@@ -3,9 +3,14 @@
 > Why this stack keeps Neon's free-tier compute allowance alive by default,
 > proven from code at HEAD `521234f` (scheduler/economics code verified
 > UNCHANGED through the R115 release `6f14bc3` — the R112→R115 delta does
-> not touch `web-scheduler.ts`/`jobs/`/`boot-migrations.ts`). This is the
+> not touch `web-scheduler.ts`/`jobs/`/`boot-migrations.ts`; cites
+> re-verified at ef3d0c3 (R118-A7)). This is the
 > economics gate for the
 > cutover: if any claim here regresses, the free-tier Neon budget burns.
+> Note added R118 (2026-10-06): the R117 OTP `lockPool` adds **2 dedicated
+> Neon clients, acquired only for the duration of an OTP start**
+> (`shared/db/src/index.ts:122-126`) on top of the main pool — bounded,
+> short-lived, and fully compatible with the autosuspend contract below.
 
 ## 1. The problem this design solves (the Neon-killer lesson)
 

@@ -2,8 +2,9 @@
 # SubNation — full-stack Docker Compose (self-hosted / local)
 # =============================================================================
 #
-# R107 (Oracle Cloud + Coolify migration). Runs BOTH production components of
-# the platform in one shot:
+# R107 (Oracle Cloud + Coolify migration — originally the Oracle Cloud
+# target; live host since 2026-10 = a Contabo VM, per the R117 live probe).
+# Runs BOTH production components of the platform in one shot:
 #
 #   subnation — Express API + Socket.IO + the built SPA, single origin,
 #               port 8080 (from THIS repository's Dockerfile)
@@ -11,7 +12,8 @@
 #
 # ── R112: THE AUTHORITATIVE PRODUCTION STRATEGY (final cutover) ────────────
 #
-#   PRODUCTION (Oracle VM + Coolify) — do NOT use this file's defaults there:
+#   PRODUCTION (self-hosted VM + Coolify — originally the Oracle VM; live
+#   host since 2026-10 = Contabo) — do NOT use this file's defaults there:
 #
 #     1. SubNation  = a Coolify resource that builds THIS repository from
 #                     Git (Dockerfile at the repo root). Coolify supplies

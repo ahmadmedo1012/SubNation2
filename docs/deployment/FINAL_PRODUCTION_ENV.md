@@ -4,7 +4,8 @@
 > UNCHANGED at the R115 release `6f14bc3` (2026-10-01): a diff of the
 > R112→R115 delta over `backend/src` + `shared/` + `frontend/src` shows
 > **zero `process.env.*` / `import.meta.env.*` readers added or removed** —
-> every row below stands exactly as written. Every variable
+> every row below stands exactly as written. Rows re-verified at ef3d0c3
+> (R118-A7). Every variable
 > below was enumerated with `rg -o "process\.env\.[A-Z_0-9]+"` over
 > `backend/src` + `shared/`, `rg -o "import\.meta\.env\.[A-Z_0-9]+"` over
 > `frontend/src`, and the same over the openwa repo's `src`. Cross-checked

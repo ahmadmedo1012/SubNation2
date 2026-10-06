@@ -1,7 +1,13 @@
 # Cloudflare Final Cutover — subnation.ly → the Oracle VM
 
+> **Historical record — the cutover EXECUTED 2026-10-01/02** (see
+> `FINAL_SIGNOFF.md`); §1–§7 below are the r112 plan as written, §8 is the
+> post-cutover truth (DNS-only zone + the Traefik-301 recommendation).
+> *(Banner added R118, 2026-10-06.)*
+
 > The DNS switch that moves subnation.ly from the old origin (Render) to the
-> Oracle VM running Coolify. Everything before the switch is READ-ONLY — the
+> Oracle VM running Coolify (as planned at r112 — the live host is a Contabo
+> VPS, R117 observed). Everything before the switch is READ-ONLY — the
 > actual record edit is a deliberate operator action, taken only after
 > `scripts/dns-cutover-check.sh` prints READY.
 >
@@ -12,15 +18,23 @@
 > Scope: Cloudflare DASHBOARD settings only — no API automation is involved
 > in the cutover (§7).
 
-## 1. DNS records (final state)
+## 1. DNS records (final state — as DESIGNED at r112)
+
+> **⚠ OBSERVED LIVE (R117+, re-confirmed 2026-10-06):** the records are
+> **DNS-only (grey)** — apex + www A records straight to the VM, Let's
+> Encrypt cert at origin, NO Cloudflare proxy/edge in the live path. The
+> table below is the r112 design, never enacted — see the §8 addendum for
+> the observed state + the open `www → apex` 301 recommendation before
+> "re-fixing" anything here.
 
 | Record | Type | Value | Proxy | Purpose |
 |---|---|---|---|---|
-| `subnation.ly` | A | `<VM_IP>` | Proxied (orange) | apex → VM |
-| `www` | CNAME | `subnation.ly` | Proxied (orange) | www alias of the apex |
+| `subnation.ly` | A | `<VM_IP>` | Proxied (orange) — **designed; live = DNS-only (grey)** | apex → VM |
+| `www` | CNAME | `subnation.ly` | Proxied (orange) — **designed; live = DNS-only (grey)** | www alias of the apex |
 | `coolify.subnation.ly` (optional) | A | `<VM_IP>` | Proxied (orange) + Cloudflare Access | Coolify dashboard, access-restricted |
 
-- `<VM_IP>` = the VM's public IPv4, confirmed in the Oracle console (§5,
+- `<VM_IP>` = the VM's public IPv4 (live host: the Contabo VM, R117 observed
+  — the original runbook said "confirmed in the Oracle console", §5,
   first checklist item).
 - The optional dashboard record is safe ONLY proxied and behind a
   Cloudflare Access policy (email/OTP allowlist) — the Coolify dashboard

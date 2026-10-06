@@ -1,5 +1,12 @@
 # FINAL CUTOVER CHECKLIST — executable, in order (R115)
 
+> **EXECUTED 2026-10-01..02 — the cutover is LIVE** (subnation.ly serving
+> from Coolify on the VM since then; see `FINAL_SIGNOFF.md` for the dated
+> release record and `docs/inspection-r117/` for the post-cutover
+> verification). The boxes below are the historical R115 print-out, kept
+> unchecked as the working record of that night — do not re-run them as if
+> the cutover were pending. Corrected R118 (2026-10-06).
+
 > Print this. Every box is executable and verifiable. Do not reorder: each
 > section's gates exist to protect the next section. Reference docs live
 > beside each line.

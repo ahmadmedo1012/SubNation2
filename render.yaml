@@ -70,8 +70,10 @@ services:
       - key: APP_URL
         value: "https://subnation.ly"
       - key: APP_ORIGINS
-        # Canonical apex + www. Pre-launch state: no legacy origin
-        # compatibility — the platform is still in development.
+        # Canonical apex + www. (r116-era comment said "Pre-launch state:
+        # the platform is still in development" — no longer true: production
+        # is LIVE at subnation.ly since 2026-10; R118, 2026-10-06.) No
+        # legacy origin compatibility.
         value: "https://subnation.ly,https://www.subnation.ly"
       # A7-2 (R116): the VERCEL_FRONTEND_ORIGIN pin is REMOVED — the
       # Render/Vercel split stack is retired (production runs the Coolify

@@ -2,7 +2,8 @@
 
 Scope: TOTP (2FA) on the admin account `ahmadmedo` — how the flow is
 implemented, the exact enrollment steps, lockout numbers, and the honest
-lost-device recovery path. Verified at HEAD 521234f against the cited files.
+lost-device recovery path. Verified at HEAD 521234f against the cited files;
+cites re-verified at ef3d0c3 (R118-A7).
 
 ## 1. The TOTP journey as implemented
 

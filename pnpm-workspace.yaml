@@ -66,7 +66,10 @@ overrides:
   # R109 P0-2: the old platform-exclusion block ("local deployment target is
   # linux-x64") removed EVERY non-x64-linux optional native build from the
   # lockfile — including linux-arm64-gnu/musl and linux-x64-musl. The Oracle
-  # A1 target is ARM64 Alpine (musl): vite build + the backend esbuild bundle
+  # ARM64 target (originally the Oracle A1; live host since 2026-10 = a
+  # Contabo VM, per the R117 live probe — ARM64 variants stay in the lock as
+  # multi-arch insurance) is ARM64 Alpine (musl): vite build + the backend
+  # esbuild bundle
   # had NO matching natives in the lock, so any arm64 (and even x64-Alpine)
   # docker build failed at the toolchain step. Removing the exclusions lets
   # pnpm-lock.yaml carry all platform variants again (verified post-regen:

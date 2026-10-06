@@ -1,13 +1,14 @@
 # Disaster Recovery Runbook — SubNation
 
-> **THE disaster-recovery source of truth for the current (Oracle/Coolify)
-> stack.** The Render/Vercel procedures are the LEGACY ROLLBACK PATH —
+> **THE disaster-recovery source of truth for the current (self-hosted VM +
+> Coolify) stack.** The Render/Vercel procedures are the LEGACY ROLLBACK PATH —
 > clearly marked below and kept until the Phase-6 deletion. Current-stack
 > recovery procedure map: `docs/deployment/FINAL_ROLLBACK_RUNBOOK.md`
 > (decision matrix) + `docs/deployment/FINAL_RESTORE_DRILL.md` (the drill)
 > + `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12-§14.
 
-**Scope (current stack):** the Coolify deployment on the Oracle VM (canonical
+**Scope (current stack):** the Coolify deployment on the self-hosted VM
+(observed live host, R117: a Contabo VPS — not Oracle; canonical
 at `https://subnation.ly` / `https://www.subnation.ly`) backed by Neon
 Postgres (project calm-art-99771185, us-east-1). No Redis is provisioned
 (anywhere — the optional Redis tier on paper is retired; see
@@ -45,7 +46,7 @@ only.
 Script: `scripts/src/backup-db.ts` (run via `pnpm run db:backup`).  
 Behaviour: streams `pg_dump --no-owner --no-privileges --format=plain` through `gzip` to `./backups/subnation-<ISO>.sql.gz`. Local retention (r110): the newest `--keep <N>` dumps (default 14) are kept — older files matching the exact generated name are pruned after each successful run.  
 Optional upload: set `BACKUP_PRESIGNED_PUT_URL` to a presigned PUT URL from any S3-compatible provider (Backblaze B2, Cloudflare R2, AWS S3) — file is HTTP PUT after the local write completes.
-Nightly automation (r110): `scripts/backup-cron.sh` — see [Automated backups](#automated-backups-r110--host-cron-on-the-oracle-vm) below.
+Nightly automation (r110): `scripts/backup-cron.sh` — see [Automated backups](#automated-backups-r110--host-cron-on-the-vm) below.
 
 **Local invocation (any Postgres-client-equipped shell):**
 
@@ -55,7 +56,7 @@ DATABASE_URL=postgresql://... pnpm run db:backup
 
 **Render Cron Job invocation (provision separately) — LEGACY (Render, pre-migration):**
 
-> Post-migration on Oracle: automated — `scripts/backup-cron.sh` installed in
+> Post-migration on the live stack: automated — `scripts/backup-cron.sh` installed in
 > the VM host crontab (see "Automated backups" below).
 > `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §13 keeps the asset table.
 > The backup script itself is hosting-neutral and unchanged.
@@ -99,7 +100,7 @@ scenario below, where this list IS the runbook)*:
 
 Keep these in a password manager (1Password / Bitwarden) with the service entry "SubNation Render".
 
-## Automated backups (r110 — host cron on the Oracle VM)
+## Automated backups (r110 — host cron on the VM)
 
 > **Status (r110): automated in-repo, operator installs once.**
 > `scripts/backup-cron.sh` is the cron wrapper; the crontab line below must
@@ -128,9 +129,11 @@ want them.
 
 ### One-time install (on the VM, as `ubuntu`)
 
-Host prerequisites (Node 22 + Corepack pnpm + `postgresql-client-17`):
-**`ORACLE_FINAL_SETUP.md` §9** — the backup chain needs exactly those and
-`backup-preflight.sh` verifies them. This block only wires the cron.
+Host prerequisites (Node 22 + Corepack pnpm + `postgresql-client-17` —
+host-neutral): **`ORACLE_FINAL_SETUP.md` §9** (Oracle-era provisioning
+guide; the same toolchain applies on the Contabo host) — the backup chain
+needs exactly those and `backup-preflight.sh` verifies them. This block
+only wires the cron.
 
 ```bash
 # Repo convention on the VM (the command book uses the same path):
@@ -268,8 +271,8 @@ longer visible in `ps` output on the backup host (R109 §27 P2 fix).
 
 > Post-migration: single-VM topology — no region failover. VM-level recovery =
 > snapshot `/data/coolify` + re-provision the stack from
-> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git (§13); watch Oracle's
-> status page instead of status.render.com.
+> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git (§13); watch the host
+> provider's status page (Contabo) instead of status.render.com.
 
 1. Subscribe to https://status.render.com — usually within 15 min an estimate appears.
 2. If outage > 1 h, consider failover:
@@ -290,7 +293,7 @@ longer visible in `ps` output on the backup host (R109 §27 P2 fix).
    - Auth & Security panel (failure rate, lockouts, Firebase failures)
    - HTTP Request Analytics (top routes, error rate)
 3. Run `SELECT * FROM auth_activity ORDER BY created_at DESC LIMIT 100` in Neon SQL Editor.
-4. Run `SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100` (after Phase 1.6 ships).
+4. Run `SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100`.
 5. Patch root cause before re-enabling traffic.
 
 **RTO target: variable; rotate-and-monitor takes ~2 h.**
@@ -327,11 +330,14 @@ Quarterly. Calendar events on the 1st of January / April / July / October.
    operator). Never backfill — a drill that was not executed does not go in
    the ledger.
 
-**Drill ledger (r110):**
+**Drill ledger (r110; refreshed R118, 2026-10-06 — mirrored from
+`FINAL_RESTORE_DRILL.md` §4, the ledger of record):**
 
 | Date             | Scenario                                  | Steps                 | Result                                                                                                                                                                                                                       | Operator |
 | ---------------- | ----------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| PENDING-OPERATOR | B — full-DB restore into a scratch branch | procedure above (1–8) | **NOT EXERCISED** — r110 automated the nightly backup but could not run a drill: the remediation sandbox has no live `DATABASE_URL` and no `pg_dump`/`psql` binaries. First drill is a pre-cutover requirement (`COOLIFY_ORACLE_MIGRATION.md` §13) | —        |
+| 2026-09-25 (R112) | B — full-DB restore (sandbox → live Neon dump source + local scratch PG cluster) | `FINAL_RESTORE_DRILL.md` §1-5 | **PASS** — details in `FINAL_RESTORE_DRILL.md` §4 | r112 agent |
+| 2026-10-01 (R115) | B — full-DB restore (release sandbox → live Neon backup source + Neon scratch branch `r115-restore-drill`) | `FINAL_RESTORE_DRILL.md` §1-5 | **PASS** — `restore-drill-check.sh` exit 0 `RESTORE DRILL DATABASE VALIDATED`; details in `FINAL_RESTORE_DRILL.md` §4 | r115 release engineer |
+| PENDING-OPERATOR | B — first **ON-VM** drill (run §1-5 from the production VM itself to prove the host toolchain) | `FINAL_RESTORE_DRILL.md` §1-5 | The two PASS drills ran from engineering/release sandboxes; the first on-VM drill remains an open operator action | —        |
 
 ## Emergency contacts
 

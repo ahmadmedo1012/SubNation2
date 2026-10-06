@@ -1,6 +1,8 @@
 # Final Rollback Runbook — SubNation + OpenWA (R115)
 
-> THE rollback choreography for the Oracle/Coolify production stack. Companions:
+> THE rollback choreography for the self-hosted VM + Coolify production stack
+> (originally written for the Oracle VM; live host since 2026-10 = Contabo —
+> R117 live probe; the choreography is host-neutral). Companions:
 > `COOLIFY_FINAL_SETUP.md` (deploy shape) · `CLOUDFLARE_FINAL_CUTOVER.md` (DNS)
 > · `RENDER_LEGACY_FALLBACK.md` (the old origin) · `docs/DISASTER_RECOVERY.md`
 > (data loss is NOT a rollback). Neon Postgres is the source of truth and
@@ -19,7 +21,7 @@ container FIRST, then start the new one** (`docker stop` → deploy). The ~15 s
 gap costs nothing (SubNation answers `503 gateway_waking` + `Retry-After: 30`
 and the frontend auto-retries); a session eviction war costs a QR re-pair.
 **This rule overrides every speed consideration.** Render-era corollary: the
-legacy `openwa-gateway` service must be suspended before the Oracle one pairs.
+legacy `openwa-gateway` service must be suspended before the VM-hosted one pairs.
 
 ## 1. Application rollback — SubNation (Coolify Git resource)
 

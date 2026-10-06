@@ -1,9 +1,15 @@
-# Final Monitoring Runbook — SubNation (Oracle VM + Coolify)
+# Final Monitoring Runbook — SubNation (self-hosted VM + Coolify)
 
 > What to watch, what the app already tells you, what "normal" looks like, and
 > the one traffic rule that must never be broken. Companion docs:
-> `docs/deployment/ORACLE_FINAL_SETUP.md` (VM hardening), `docs/deployment/
+> `docs/deployment/ORACLE_FINAL_SETUP.md` (VM hardening — the original
+> provisioning guide, Oracle era), `docs/deployment/
 > COOLIFY_FINAL_SETUP.md` (resources), `docs/DISASTER_RECOVERY.md` (backups).
+>
+> **Observed host (R118, 2026-10-06):** the live VM is a Contabo VPS (not
+> Oracle — R117 live probe). Every command below is host-neutral and works
+> as written; the Oracle-era guides stay as historical provisioning
+> references.
 
 ## 1. What to monitor on the VM
 
@@ -26,7 +32,8 @@ sudo fail2ban-client status sshd                     # expect: Currently banned:
   `docs/operations/LOGGING_AND_RETENTION_FINAL.md`).
 - **Memory:** Node RSS (single container, no swap-swap-swap: 4 GB swapfile at
   swappiness 10 is the VM safety net, not a license).
-- **fail2ban:** sshd jail active (`ORACLE_FINAL_SETUP.md` §7).
+- **fail2ban:** sshd jail active (`ORACLE_FINAL_SETUP.md` §7 — Oracle-era
+  provisioning guide; apply the equivalent hardening on the Contabo host).
 
 ## 2. What the app exposes
 
@@ -94,7 +101,7 @@ breakdown), `/healthz/neon`, `/healthz/redis`, `/healthz/worker`,
 |---|---|---|
 | `/api/healthz` 503 beyond ~150 s of uptime | migrations stuck or DB unreachable | Neon console (compute state/usage) + `docker logs subnation`; the gate only covers the WAITING window — a genuinely broken boot exits 1 |
 | `/api/healthz/live` dead (curl exit 000) | process dead | `docker ps` + `docker inspect subnation`; `restart: unless-stopped` (`docker-compose.yml:108`) should have restarted it — if it restart-loops, read the logs and redeploy from Coolify |
-| Socket.IO handshake non-200 through the domain | edge/WebSocket issue, not the app | Cloudflare dashboard → Network → **WebSockets ON** (`CLOUDFLARE_FINAL_CUTOVER.md` — the proxied record must allow WS or admin realtime silently downgrades) |
+| Socket.IO handshake non-200 through the domain | origin/router issue, not the app | Check the Traefik/Coolify router for the domain + `docker logs subnation` — the zone is **DNS-only (grey)**, so there is no Cloudflare edge in the live path (`CLOUDFLARE_FINAL_CUTOVER.md` §8). Only if the zone is ever re-proxied: Cloudflare dashboard → Network → **WebSockets ON** (the proxied record must allow WS or admin realtime silently downgrades) |
 | OTP failures returning `gateway_waking` (503 + `Retry-After: 30`) | openwa not linked or still starting | `docker logs openwa` + the gateway QR/dashboard page; re-pair per `docs/WHATSAPP_OPERATIONS.md` (`whatsapp-otp.service.ts:259`) |
 | Alerting silence during a known incident | the alerting evaluator itself died | /admin System page (`/api/admin/observability/*`) — check scheduler topology + recent alerts; verify `ALERTING_ENABLED` and channel env vars; the 60 s evaluator restarts with the container |
 
@@ -110,7 +117,7 @@ gateway was deleted for exactly this reason (`cron.ts:257-265` comment).
 `SINGLE_INSTANCE_MODE=true` exists precisely to keep idle Neon coordination
 queries at **zero** — no leader election, no lease refresh, nothing. If you
 must probe: `/api/healthz/live` and the booted `/api/healthz` handler are
-zero-DB (`health.ts:473-476` returns a static ok). **`/api/healthz/summary`
+zero-DB (`health.ts:495-501` returns a static ok). **`/api/healthz/summary`
 is NOT** — it runs the readiness aggregate incl. a Neon `SELECT 1` (15 s
 cache), so periodic summary probing keeps the autosuspended DB awake and
 burns the compute allowance.

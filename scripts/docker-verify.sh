@@ -2,7 +2,9 @@
 # =============================================================================
 # SubNation — Docker verification harness (r107; r110: full §15 gate list)
 # =============================================================================
-# Run this on ANY machine with Docker (your laptop or the Oracle VM) to prove
+# Run this on ANY machine with Docker (your laptop or the production VM
+# — originally the Oracle VM; live host since 2026-10 = a Contabo VM, per
+# the R117 live probe) to prove
 # the migration artifacts actually work. This workspace could not run Docker
 # (no daemon in the sandbox), so the "VERIFIED" labels for container behavior
 # depend on THIS script passing where Docker exists.
@@ -10,7 +12,8 @@
 # Gates (§15 runtime verification — 10/10 covered since r110):
 #   1.  Build: the production image builds on the NATIVE arch of the machine.
 #   2.  (optional, --arm64) The image builds for linux/arm64 via QEMU/buildx
-#       — the Oracle Ampere A1 target — WITHOUT a container registry.
+#       — the original Oracle Ampere A1 target (the live Contabo host uses
+#       its native arch) — WITHOUT a container registry.
 #   3.  Startup + API health: the container boots, /api/healthz flips
 #       503 "starting" → 200 (boot gate opens after migrations).
 #   4.  SPA serving: GET / → 200 (single-origin contract).

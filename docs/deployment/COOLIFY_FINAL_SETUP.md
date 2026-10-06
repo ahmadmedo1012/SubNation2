@@ -1,6 +1,8 @@
 # Coolify Final Setup — SubNation + OpenWA (R112 production)
 
-> Step-by-step Coolify resource configuration for the final Oracle cutover.
+> Step-by-step Coolify resource configuration for the final cutover
+> (originally targeting the Oracle VM; live host since 2026-10 = Contabo —
+> the resource configuration is host-neutral either way).
 > The AUTHORITATIVE production strategy is declared in the header comment of
 > `docker-compose.yml` (R112) — this doc implements it:
 >
@@ -24,7 +26,7 @@
 
 ## 1. Prerequisites
 
-- [ ] Coolify installed on the Oracle VM (wizard done, strong admin
+- [ ] Coolify installed on the VM (wizard done, strong admin
       password). VM prep — firewall contract (public 22/80/443 only), swap,
       Docker: `docs/deployment/ORACLE_FINAL_SETUP.md`.
 - [ ] GitHub connected to Coolify (source-control providers) with a token

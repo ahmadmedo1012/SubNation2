@@ -38,7 +38,15 @@ pnpm --filter @workspace/scripts exec tsx src/validate-production-env.ts \
   --file ../.env --profile compose --strict                         # your filled file → exit 0
 ```
 
-## ORACLE (the VM — first boot)
+## VM (first boot — originally Oracle ARM64; CURRENT HOST = Contabo, use the native arch)
+
+> **R118 correction (2026-10-06):** the live production host is a Contabo VPS
+> (observed R117 live probe) — NOT Oracle Cloud. The steps below are the
+> original Oracle-ARM64 walk; on the Contabo host use the provider's own
+> console/Ubuntu image and the NATIVE architecture (check `uname -m` — skip
+> the aarch64 gates unless the VM really is ARM64). The hardening/tooling
+> content (sshd, swap, docker, firewall, fail2ban, Coolify, Node 22 +
+> Corepack/pnpm + postgresql-client-17) is host-neutral.
 
 ```bash
 ssh ubuntu@<OPERATOR_INPUT_VM_IP>
@@ -46,12 +54,13 @@ sudo apt update && sudo apt full-upgrade -y
 # …then follow: docs/deployment/ORACLE_FINAL_SETUP.md §2-§11 (sshd hardening,
 #    swap, docker, the TWO-layer firewall contract, fail2ban, Coolify install,
 #    AND §9 host tooling: Node.js + Corepack/pnpm + postgresql-client-17 —
-#    required later by the backup chain and docker-verify)
+#    required later by the backup chain and docker-verify) — Oracle-era
+#    provisioning guide: adapt the provider-console parts to Contabo.
 
 # phase health checks (§10 of the same doc):
-uname -m            # aarch64
+uname -m            # aarch64 on the original Oracle target — on the live Contabo host expect the native arch
 free -h && df -h && swapon --show
-docker run --rm hello-world          # arm64 pull works
+docker run --rm hello-world          # pull works for the host arch
 sudo systemctl is-active docker fail2ban
 ss -tlnp             # only 22/80/443/8000(coolify setup) + docker bridge listeners
 ```
@@ -74,8 +83,9 @@ vi .env                   # paste real values; secrets only ever via this file
 # inspect, compose config, openwa, restart, graceful drain). It loads .env
 # itself (values never printed) and fails loudly if a required variable is
 # missing — never pass secrets on the command line or via shell history:
-./scripts/docker-verify.sh --arm64
-# → must print: ARM64 VERIFIED  AND  ALL §15 GATES PASSED
+./scripts/docker-verify.sh              # native arch (the live Contabo host)
+./scripts/docker-verify.sh --arm64     # ONLY for an ARM64 target (the original Oracle A1)
+# → must print: [ARM64] VERIFIED  AND  ALL §15 GATES PASSED
 
 # the full preflight (sections A-I; exit 0 = clear):
 ./scripts/final-cutover-preflight.sh .env
@@ -122,6 +132,11 @@ psql "<scratch-db-url>" -f /tmp/restore.sql
 #   docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md
 #   (A subnation.ly → VM_IP proxied · CNAME www → subnation.ly proxied ·
 #    SSL mode Full (strict) · WebSockets ON · cache only /assets/*)
+#
+# ⚠ OBSERVED LIVE (R117+, re-confirmed 2026-10-06): the zone is DNS-ONLY
+#   (grey) — apex + www A records straight to the VM, LE cert at origin, no
+#   CF proxy in the path (CLOUDFLARE_FINAL_CUTOVER.md §8 addendum). Do NOT
+#   "re-fix" the zone to proxied without deciding — see §8 first.
 ```
 
 ## BACKUP (after cutover)

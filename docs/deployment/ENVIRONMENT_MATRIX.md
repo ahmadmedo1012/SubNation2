@@ -22,7 +22,7 @@
 |---|---|---|---|---|
 | `AUTH_COOKIE_SAMESITE` | ✖ | `lax` prod-safe | `app.ts` cookie flags | same-origin now; `none` only for the old split |
 | `REDIS_URL` | ✔ | unset | `lib/redis-client.ts` + consumers | unset = in-memory fallbacks (current prod shape, by design — /healthz reads `ok` with a single-tier note since r108); set-but-down = capped backoff, boot degrades ≤8 s, never exits |
-| `SINGLE_INSTANCE_MODE` | ✖ | `false` | `lib/web-scheduler.ts` (R108) | **`true` = the Oracle single-container shape**: schedulers run ungated in-process, NO leader election, NO PG-lease heartbeat, ZERO periodic Neon coordination queries (idle Neon autosuspend preserved — the lease alone would burn ~720 awake-h/mo ≈ 180 CU-h, vs the 100 CU-h/project/month Free allowance). All jobs keep running; election machinery intact for a flip-back. NEVER scale the service >1 replica in this mode (double-run). Precedence: `DISABLE_WEB_SCHEDULERS=true` still wins. r110: pinned `true` in render.yaml and enforced by `validate-production-env` (compose profile / strict mode errors when REDIS_URL is unset without it) |
+| `SINGLE_INSTANCE_MODE` | ✖ | `false` | `lib/web-scheduler.ts` (R108) | **`true` = the single-container shape (r108; host-neutral — live host since 2026-10 = Contabo)**: schedulers run ungated in-process, NO leader election, NO PG-lease heartbeat, ZERO periodic Neon coordination queries (idle Neon autosuspend preserved — the lease alone would burn ~720 awake-h/mo ≈ 180 CU-h, vs the 100 CU-h/project/month Free allowance). All jobs keep running; election machinery intact for a flip-back. NEVER scale the service >1 replica in this mode (double-run). Precedence: `DISABLE_WEB_SCHEDULERS=true` still wins. r110: pinned `true` in render.yaml and enforced by `validate-production-env` (compose profile / strict mode errors when REDIS_URL is unset without it) |
 | `DISABLE_WEB_SCHEDULERS` | ✖ | `false` | `lib/web-scheduler.ts` | **true with no worker = all crons silently dead** (keep false; wins over SINGLE_INSTANCE_MODE) |
 | `DISABLE_BOOT_MIGRATIONS` | ✖ | `false` | `server.ts` | emergency rollback hatch only |
 | `MIGRATIONS_FORCE_RECONCILE` | ✖ | `false` | `backend/src/migrate.ts` | accepts `true`/`1`/`yes` (r108) — bypasses the fingerprint fast-path → full reconcile on next boot |
@@ -69,7 +69,7 @@
 | `VITE_RELEASE_SHA` | ✖ | — | Dockerfile resolves `GIT_SHA ?? RENDER_GIT_COMMIT` (r107) |
 | `VITE_GA_TRACKING_ID` / `VITE_GSC_VERIFICATION` | ✖ | loader off / no tag | |
 | `VITE_GOOGLE_CLIENT_ID` / `VITE_FIREBASE_*` (9 vars) | ✖ | provider hidden | public-by-design web config |
-| `VITE_OPENWA_DOCS_URL` | ✖ | gateway docs deep-link (admin surfaces) | admin deep-link only; the built-in Render URL dies with the Oracle cutover — set to the new gateway origin (or a static page) when it migrates |
+| `VITE_OPENWA_DOCS_URL` | ✖ | gateway docs deep-link (admin surfaces) | admin deep-link only; the built-in Render URL died with the 2026-10 cutover — set it to the live gateway origin (or a static page) |
 
 ## 4. openwa gateway (compose service 2)
 

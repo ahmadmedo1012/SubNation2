@@ -95,7 +95,7 @@ drop command the check script prints on success (`restore-drill-check.sh:99`).
 |---|---|---|---|---|
 | **2026-09-25 (R112)** | engineering sandbox → live Neon DB (dump source) + local scratch PG cluster | 1–5 above | **PASS** — details below | r112 agent |
 | **2026-10-01 (R115)** | release sandbox → live Neon (backup source) + **Neon scratch branch** `r115-restore-drill` db `drill_restore` | 1–5 above | **PASS** — details below | r115 release engineer |
-| PENDING-OPERATOR | Oracle VM (on-VM tooling proof) | 1–5 above | first ON-VM drill is a pre-cutover requirement | — |
+| PENDING-OPERATOR | the production VM (on-VM tooling proof; live host = Contabo) | 1–5 above | first ON-VM drill remains an open operator action | — |
 
 ### R115 drill record (2026-10-01) — PASS
 

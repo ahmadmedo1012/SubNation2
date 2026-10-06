@@ -10,24 +10,31 @@
 
 ## 1. The request path (browser → store)
 
+> *(Diagram corrected R118, 2026-10-06: the r112 design assumed a proxied
+> Cloudflare edge + the Oracle VM; the observed live path is DNS-only + the
+> self-hosted VM — see the R117 blockquote below.)*
+
 ```
  Internet
     │
     ▼
- Cloudflare (edge: DNS · proxy · TLS termination · WAF/DDoS-lite · WS passthrough)
-    │  subnation.ly A → <VM_IP> (proxied) · www CNAME → apex · Full (strict)
+ Cloudflare DNS (DNS-only, grey cloud — observed live: NO proxy, NO edge
+    │  TLS/WAF, NO WebSockets toggle in the path. The never-enacted r112
+    │  design was proxied-orange + Full (strict) — see CLOUDFLARE_FINAL_CUTOVER §8)
+    │  subnation.ly A → 169.58.100.161 · www → same A (both 200, no redirect today)
     ▼
- Oracle VM :443  (ONLY 22/80/443 public — two-layer firewall contract)
+ self-hosted VM :443  (observed host: Contabo — R117 live probe; 22/80/443 public)
     │
     ▼
- Coolify's Traefik (per-service Host routers · Let's Encrypt production certs)
+ Coolify's Traefik (per-service Host routers · Let's Encrypt production
+    │  certs — TLS terminates HERE, at origin)
     │  router: subnation.ly / www → subnation
     ▼
  subnation container :8080  (internal only — never a host port)
     Express 5, ONE origin serves EVERYTHING:
     ├── SPA static (frontend/dist, Arabic RTL, PWA)
     ├── /api/*            (auth, catalog, checkout, wallet, admin, SEO files)
-    └── /socket.io/*      (same-origin WS — Cloudflare WebSockets ON)
+    └── /socket.io/*      (same-origin WS — direct to origin)
 ```
 
 Single-origin contract: `VITE_API_BASE_URL`/`VITE_SOCKET_URL`/`VITE_API_URL`
@@ -41,7 +48,8 @@ There is no second origin anywhere in the path.
 > and no `cf-ray`/`server: cloudflare` headers appear (the Cloudflare zone is
 > DNS-only, grey-cloud). Verify and reconcile: if the fleet moved hosts, update
 > the DR/backup runbook host references (`ORACLE_FINAL_SETUP.md`,
-> `DISASTER_RECOVERY.md`) to the real host.
+> `DISASTER_RECOVERY.md`) to the real host. *(Reconciled R118, 2026-10-06 —
+> the host-naming truth pass landed across this docs tree.)*
 
 ## 2. The OTP path (login code via WhatsApp)
 
@@ -66,7 +74,9 @@ starting a new one** (`FINAL_ROLLBACK_RUNBOOK.md` §0).
 ```
  subnation ──DATABASE_URL (sslmode=require)──► Neon Postgres (external)
                                              business schema (boot reconciler
-                                             V1-M6…V1-M20; autosuspend-aware
+                                             V1-M6…V1-M23; drizzle mirror chain
+                                             0015 applied live — 0016 (R118)
+                                             lands next; autosuspend-aware
                                              pool: small max, short idle)
  openwa   ──PERSISTENCE_URL (sslmode=require)► same Neon
                                              openwa_sessions (gateway-created,
@@ -90,9 +100,11 @@ queries — nothing keeps Neon awake.
 | 3000/3001 | loopback-only | compose debug binds (`127.0.0.1:3000→8080`, `127.0.0.1:3001→2785`); ABSENT in the Coolify deployment |
 | 5432, 6379 | nothing listens | Postgres is external (Neon); no Redis exists |
 
-Two-layer rule: a port is reachable only if BOTH the Oracle Security List and
-host iptables/ufw allow it. Full contract + `ss -tlnp` expectations:
-`ORACLE_FINAL_SETUP.md` §6.
+Two-layer rule: a port is reachable only if BOTH the provider security group
+(e.g. the Contabo firewall, if enabled) and the host iptables/ufw allow it.
+Original contract + `ss -tlnp` expectations:
+`ORACLE_FINAL_SETUP.md` §6 (Oracle-era provisioning guide — adapt the
+provider-console part to the actual host).
 
 ## 5. Secrets map (values: `SECRET_HANDLING_FINAL.md`)
 
@@ -113,9 +125,9 @@ backup is mandatory — five of these can never be re-derived.
 | openwa container | OTP requests → 503 + `Retry-After`; store + admin + sockets fully alive | OTP only | restart/redeploy; session auto-restores from Neon |
 | subnation container | Traefik 502 on the domain; DNS still points at the VM; openwa idles | whole app surface | Coolify redeploy; boot migrations no-op; `FINAL_ROLLBACK_RUNBOOK.md` §1 |
 | Traefik (Coolify edge) | 502/timeout on EVERYTHING public — containers still run | all public traffic | `docker restart` the Coolify edge container |
-| Whole VM | Cloudflare answers DNS but the origin is gone (edge 522/523 errors) | entire stack | re-provision VM (`ORACLE_FINAL_SETUP.md`) + Coolify (`COOLIFY_FINAL_SETUP.md`) + restore (`DISASTER_RECOVERY.md`) |
+| Whole VM | Cloudflare answers DNS but the origin is gone (DNS-only zone: browsers get connection timeouts / no answer) | entire stack | re-provision VM (`ORACLE_FINAL_SETUP.md` — Oracle-era guide, adapt for the Contabo console) + Coolify (`COOLIFY_FINAL_SETUP.md`) + restore (`DISASTER_RECOVERY.md`) |
 | Neon | healthz `neon` degraded→failing; DB-backed API errors; scheduled jobs retry; openwa runs on its local folder until the DB returns | all data reads/writes | Neon-side incident; `DISASTER_RECOVERY.md` scenarios |
-| Cloudflare | DNS still cached at resolvers; edge errors/blank | edge only | grey-cloud fallback / wait out the incident (`CLOUDFLARE_FINAL_CUTOVER.md` §2) |
+| Cloudflare (DNS-only today) | domain-resolution issues only — no edge exists in the live path | DNS resolution | wait out the incident / `CLOUDFLARE_FINAL_CUTOVER.md` §8; if the zone were ever re-proxied, edge errors/blank return to this row |
 
 No split-brain exists anywhere in that table: the money path is single-writer
 by design (ONE subnation replica + transactional idempotency claims), and
@@ -126,7 +138,7 @@ Neon is the only persistent state.
 | Asset | Backed up? | Truth |
 |---|---|---|
 | Neon logical dump | **YES** | nightly `scripts/backup-cron.sh` on the VM host cron (03:15 UTC, keep 14) + optional off-VM presigned PUT (`BACKUP_PRESIGNED_PUT_URL`) — the off-VM copy is the PRIMARY recovery mechanism |
-| VM config / OS | no | re-provisionable from `ORACLE_FINAL_SETUP.md` in ~1 h |
+| VM config / OS | no | re-provisionable from `ORACLE_FINAL_SETUP.md` in ~1 h (Oracle-era guide — adapt for the actual host) |
 | Coolify config | no | re-creatable from `COOLIFY_FINAL_SETUP.md` + git |
 | openwa `/data` volume | no | re-pairable via QR in minutes (Neon blobs restore first) |
 | Code + compose + runbooks | yes | git is the source of truth |
@@ -143,10 +155,11 @@ is the real safety net.
   suggestion: there is no leader election in this mode, so a second replica
   double-runs every cron (retention, alerting, sweeps). Vertical scaling only.
 - **ONE openwa instance.** The WhatsApp single-gateway rule (§2) — full stop.
-- **Vertical only** on the VM: more Ampere OCPUs/RAM — but the Always Free
-  A1 allowance is **2 OCPU / 12 GB total** since 2026-06-15 (the earlier
-  4 OCPU / 24 GB ceiling was cut; re-verify on Oracle's Always Free page at
-  provision time). The production shape IS the ceiling: 2/12.
+- **Vertical only** on the VM: resize per the operator's host plan (the
+  live host is a Contabo VPS — R117 observed; the VM shape is not recorded
+  in this repo, record it here when known). Historical note: the original
+  r107-era target was Oracle Always Free A1, then capped at **2 OCPU /
+  12 GB total** since 2026-06-15 — that A1 allowance no longer applies.
 - **Neon is external and scales independently** — tier upgrades (PITR, compute)
   never touch this topology.
 

@@ -14,32 +14,37 @@
 > `scripts/docker-verify.sh`, multi-arch image workflows, and
 > `docs/deployment/{COOLIFY_ORACLE_MIGRATION,MIGRATION_RUNBOOK,
 > ENVIRONMENT_MATRIX,FINAL_MIGRATION_READINESS}.md` +
-> `docs/architecture/PRODUCTION_ARCHITECTURE.md`. Render/Vercel remain
-> live as the rollback path until the DNS cutover.
+> `docs/architecture/PRODUCTION_ARCHITECTURE.md`. The DNS cutover happened
+> (2026-10): production is LIVE on Coolify at a self-hosted VM (observed
+> host R117: Contabo) + Neon; Render/Vercel are retired legacy, NOT a
+> rollback path.
 >
 > **Status banner (2026-09-20):** this file is a snapshot dated 2026-09-02 and
 > its "all working / LIVE" claims predate the free-infrastructure round. For
-> current state see **OPERATIONS_RUNBOOK §5 (free-tier posture)** and
-> `docs/free-tier-optimization-2026-09-20.md` / `docs/final-audit-2026-09-20.md`.
+> current state see **`docs/README.md` (docs index)** and
+> `OPERATIONS_RUNBOOK.md` (on-call); `docs/free-tier-optimization-2026-09-20.md` /
+> `docs/final-audit-2026-09-20.md` are dated records.
 > Deploy IDs and commit refs below are historical records, kept as-is.
 
 ## Production URLs — **HISTORICAL SNAPSHOT (2026-09-20), ALL RETIRED/SUSPENDED**
 
-> **r113 label: LEGACY / ROLLBACK ONLY — NOT CURRENT PRODUCTION.** Every URL
-> below is from the Render/Vercel era and is DOWN (Render billing-suspended
+> **r113 label: LEGACY / ROLLBACK ONLY — NOT CURRENT PRODUCTION.** Every
+> Render/Vercel-era URL below is DOWN (Render billing-suspended
 > since ~2026-09-11; the Vercel mirror drifted and its integration fails on
 > every push — removal is an operator action,
-> `docs/deployment/FINAL_OPERATOR_INPUTS.md` §account-level cleanup). The
-> current production target is Oracle Cloud ARM64 + Coolify + Docker + Neon:
+> `docs/deployment/FINAL_OPERATOR_INPUTS.md` §account-level cleanup).
+> Exception: `subnation.ly` itself is the LIVE canonical production identity,
+> serving from Coolify on the self-hosted VM (observed host R117: Contabo) +
+> Neon since the 2026-10 cutover —
 > `docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`. Values kept verbatim as
-> the rollback reference they document.
+> the historical reference they document.
 
 - Frontend (Vercel): https://subnation-seven.vercel.app — **LEGACY MIRROR,
   STALE** (was "live" in the 2026-09-20 snapshot; the split stack is retired)
 - Frontend (custom domain): https://subnation.ly and https://www.subnation.ly —
-  currently 503 (origin suspended); the domain is the CANONICAL production
-  identity and moves to the Oracle VM at cutover
-  (`docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md`)
+  LIVE on Coolify since the 2026-10 cutover (was 503 while Render was
+  suspended, pre-2026-10-01); the domain is the CANONICAL production
+  identity (`docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md`)
 - Backend (Render): https://subnation2.onrender.com — LEGACY, billing-suspended
 - OpenWA Gateway: https://openwa-gateway-7aaa.onrender.com — LEGACY,
   billing-suspended (the gateway now ships as
@@ -47,12 +52,12 @@
 - Neon Database: ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech
   (project `calm-art-99771185`) — live (external, unchanged by the migration)
 
-## Deployment — LEGACY (the 2026-09-20 stack; current target: Oracle/Coolify)
+## Deployment — LEGACY (the 2026-09-20 stack; current stack: self-hosted VM + Coolify)
 
 - Frontend: Vercel (auto-deploy on push to main) — **retired split-stack
   mirror**; the SPA now ships from the same origin as the API
 - Backend: Render (`srv-d7vv91tckfvc73evnccg`, region oregon, plan free) —
-  **billing-suspended rollback path**
+  **billing-suspended (dead — not a rollback path)**
   (`docs/deployment/RENDER_LEGACY_FALLBACK.md`)
 - Last successful deploy: `dep-dac6e3n10e5c73bei34g` (commit `8878fd3`)
   (historical record)
@@ -167,12 +172,13 @@ Admin (requires admin role):
 - `VERCEL_FRONTEND_ORIGIN` — Vercel origin (sync:true, persisted)
 - `FRONTEND_ORIGINS` — secondary origin list
 
-## Custom Domain Status (as of 2026-09-20: 503 while Render is suspended)
+## Custom Domain Status (as of 2026-09-20: 503 while Render was suspended — live on Coolify since 2026-10)
 
-- `subnation.ly` — verified, HTTPS — currently 503 (Cloudflare → suspended Render)
-- `www.subnation.ly` — verified, HTTPS — currently 503 (same)
-- DNS resolved via Cloudflare to Render (direct, not Vercel); an operator
-  option in the free-tier doc is repointing DNS to Vercel
+- `subnation.ly` — verified, HTTPS — was 503 (Cloudflare → suspended Render)
+  pre-2026-10-01; now LIVE via DNS-only Cloudflare → VM (Traefik/LE) → Coolify
+- `www.subnation.ly` — verified, HTTPS — same history; both apex and www serve 200 today
+- DNS resolved via Cloudflare to Render (direct, not Vercel) in that era; the
+  zone is DNS-only (grey) today — `docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8
 
 ## WhatsApp OTP
 
@@ -184,4 +190,6 @@ Admin (requires admin role):
 ## Last Updated
 
 2026-09-20 — suspended-state pass (98-F8); original snapshot 2026-09-02 ("full
-platform operational"). Runbook §free-tier is the current-state source.
+platform operational"). 2026-10-06 — R118 truth pass: cutover recorded;
+`subnation.ly` LIVE on Coolify (self-hosted Contabo VM) + Neon. Current state:
+`docs/README.md` (docs index).

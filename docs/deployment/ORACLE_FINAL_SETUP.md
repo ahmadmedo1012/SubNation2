@@ -1,5 +1,12 @@
 # Oracle VM Final Setup — SubNation2 production host
 
+> **⚠ HISTORICAL (Oracle-era provisioning guide) — the live production host
+> since 2026-10 is a Contabo VPS (R117 live probe), not Oracle Cloud.** The
+> host-neutral hardening content still applies in spirit; every Oracle
+> console/Security-List/shape step does not. For the live host's day-2 ops
+> see `docs/operations/CONTABO_COOLIFY_OPERATIONS.md`. *(Banner added R118,
+> 2026-10-06.)*
+
 > r112 runbook for the **VM only**: bare Oracle Cloud instance → hardened Ubuntu
 > host with Docker + Coolify ready. Supersedes the setup *detail* of
 > `COOLIFY_ORACLE_MIGRATION.md` §4 (r107) without changing the architecture; it

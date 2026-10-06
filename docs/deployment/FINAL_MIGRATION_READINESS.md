@@ -1,5 +1,11 @@
 # Final Migration Readiness — SubNation2 → Oracle ARM64 + Coolify
 
+> **Historical record (R108/R110 candidate report).** The migration COMPLETED
+> with the 2026-10-01/02 cutover — production is live on Coolify at a
+> self-hosted VM (observed host: Contabo) + Neon; see `FINAL_SIGNOFF.md` and
+> `docs/inspection-r117/`. Read the tables below as the pre-cutover evidence
+> trail, not as pending work. *(Banner added R118, 2026-10-06.)*
+>
 > **R108 — FINAL MIGRATION CANDIDATE report** (mission §69, final-hardening
 > phase). Base: `175bbeb` (r107) + the R108 commits on top. Companion docs:
 > `MIGRATION_RUNBOOK.md` (the executable checklist) ·

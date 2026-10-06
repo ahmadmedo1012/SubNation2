@@ -1,10 +1,12 @@
 # Operations Runbook
 
-> **Migration state (r107):** Oracle ARM64 + Coolify is the TARGET/final
-> architecture (`docs/deployment/MIGRATION_RUNBOOK.md`). Everything
-> Render/Vercel below is the PRE-MIGRATION / rollback path and stays valid
-> only until the Phase-6 deletion. New-stack triage:
-> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §8/§12/§14.
+> **Migration COMPLETE (2026-10; corrected R118, 2026-10-06):** production
+> is Coolify on a self-hosted VM (observed live host R117: a Contabo VPS) +
+> Neon Postgres — topology of record:
+> `docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`. Everything Render/Vercel
+> below is a LEGACY historical record, NOT a usable rollback path (Render is
+> billing-suspended; the Vercel mirror is dead) — the current rollback is
+> `docs/deployment/FINAL_ROLLBACK_RUNBOOK.md` (Coolify redeploy / image pin).
 
 This runbook is the on-call companion. Each alert rule includes a triage
 section anchored to its `runbookSection` value in `ALERT_RULES`.
@@ -13,14 +15,14 @@ section anchored to its `runbookSection` value in `ALERT_RULES`.
 
 | Surface                         | URL                                                         | What it shows                                  |
 | ------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| Render (LEGACY — rollback path) | `https://dashboard.render.com/web/srv-d7vv91tckfvc73evnccg` | deploys, logs, CPU/memory metrics, env vars (pre-migration) |
-| Coolify/VM (TARGET)             | `http://<VM>/coolify` or `:8000` → project                  | containers, logs, redeploys (post-migration)   |
+| Render (LEGACY — dead: billing-suspended since 2026-09-11) | `https://dashboard.render.com/web/srv-d7vv91tckfvc73evnccg` | deploys, logs, CPU/memory metrics, env vars (pre-cutover record) |
+| Coolify/VM (PRODUCTION — live stack)   | `http://<VM>/coolify` or `:8000` → project                  | containers, logs, redeploys                    |
 | Sentry                          | `https://sentry.io/...` (set `SENTRY_DASHBOARD_URL`)        | unresolved issues, traces, performance         |
 | Neon                            | `https://console.neon.tech/...` (set `NEON_DASHBOARD_URL`)  | slow queries, indexes, connections             |
-| Internal admin observability    | `/admin/observability` (admin JWT required)                 | summary, alerts, deploys, sentry placeholder   |
+| Internal admin observability    | `/admin/system` (API: `/api/admin/observability/*`; admin JWT required) | summary, alerts, deploys, sentry placeholder   |
 
-CLI helpers via Render MCP / Neon MCP (Render MCP = LEGACY, pre-migration;
-post-migration use `docker logs` / the Coolify UI —
+CLI helpers via Render MCP / Neon MCP (Render MCP = LEGACY, pre-cutover; on
+the live stack use `docker logs` / the Coolify UI —
 `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §11):
 
 ```
@@ -31,8 +33,8 @@ list_logs resource=srv-d7vv91tckfvc73evnccg startTime=-1h
 explain ANALYZE SELECT …  (via query_render_postgres or psql)
 ```
 
-The four dashboard deep links in `/admin/observability` and alert footers are
-env-gated: `SENTRY_DASHBOARD_URL`, `RENDER_DASHBOARD_URL`, `NEON_DASHBOARD_URL`,
+The four dashboard deep links in the admin observability panel
+(`/admin/system`) and alert footers are env-gated: `SENTRY_DASHBOARD_URL`, `RENDER_DASHBOARD_URL`, `NEON_DASHBOARD_URL`,
 `ALERTING_RUNBOOK_URL` (render.yaml `sync: false`). Unset = the panel hides
 the link — see `config/env.example` (observability section) for the annotated
 rows.
@@ -70,8 +72,10 @@ rows.
 - **Triage:**
   1. `GET /api/healthz/firebase` — confirm `service_account_parse_ok=true`
      and `service_account_project_matches_env=true`.
-  2. Check Render env: `FIREBASE_SERVICE_ACCOUNT_JSON` parseability,
-     `FIREBASE_PROJECT_ID` matches the JSON `project_id`.
+  2. Check the service env (`FIREBASE_SERVICE_ACCOUNT_JSON` parseability,
+     `FIREBASE_PROJECT_ID` matches the JSON `project_id`) — on the live
+     stack that is the Coolify env / compose `.env` (Render dashboard env:
+     LEGACY, pre-cutover).
   3. Recent service-account rotation? Re-paste the JSON, redeploy.
 
 ### #fe-sentry — `frontend_sentry_error_rate_high`
@@ -109,7 +113,9 @@ rows.
 
 > **2026-09-20 final audit — dormant in the current deployment.** The
 > heartbeat is written to Redis only (`worker/heartbeat.ts`), and NO Redis
-> service is provisioned (the app runs on the PG-lease scheduler fallback).
+> service is provisioned (the deployed contract is `SINGLE_INSTANCE_MODE=true`
+> synthetic in-process leadership — §5 below; heartbeat is inert without
+> Redis).
 > The rule evaluator fails safe (`return false` when `getRedisClient()` is
 > null), so it can never fire in the current shape — this is intentional,
 > not a defect. It becomes live again the moment a Redis is attached.
@@ -156,9 +162,10 @@ rows.
 
 ## 3. Reading Render &amp; Neon logs
 
-> **LEGACY (pre-migration):** the Render access below is rollback-path only.
-> Post-migration on Oracle/Coolify: `docker logs subnation` / Coolify's log
-> pane — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §11. (The Neon parts
+> **LEGACY (pre-cutover):** the Render access below is a historical record,
+> not a rollback path (the account is billing-suspended). On the live
+> stack: `docker logs subnation` / Coolify's log pane —
+> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §11. (The Neon parts
 > stay valid on either stack.)
 
 ### Render logs (last hour, web service)
@@ -210,15 +217,38 @@ ORDER BY duration DESC;
      in Memory_MCP with `commitSha`, `regression`, `rollbackOutcome`,
      `durationSec`.
 
-## 5. Free-tier posture & resource budget
+## 5. Production resource budget (self-hosted VM + Coolify + Neon)
 
-> **R104 (2026-09-21) — the current-state authority for Render free-tier
-> economics.** Supersedes the budget rows in
-> `docs/free-tier-optimization-2026-09-20.md`. Production topology:
-> **Render free web (subnation, Docker: API + SPA) + Render free web
-> (openwa-gateway, separate repo) + Neon Postgres (external) + Vercel
-> (parallel frontend)**. No worker. No Redis. **No Northflank** (the
-> 2026-09-21 experiment was rolled back — commit f582254).
+> **R118 correction (2026-10-06):** production is ONE deployment — Coolify on
+> a self-hosted VM (observed live host R117: a Contabo VPS) running the
+> `subnation` (API + SPA) and `openwa` containers, with Neon Postgres
+> (free tier) external. The single source of truth for topology + capacity
+> is `docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md` (esp. §8 "Scaling
+> truth"). Current budget posture:
+>
+> | Pool       | Live shape                                                 | Watch                                                   |
+> | ---------- | ----------------------------------------------------------- | ------------------------------------------------------- |
+> | VM compute | one always-on self-hosted VM (operator's Contabo plan)      | container CPU/RAM via the Coolify UI / `docker stats`    |
+> | Neon       | free tier — 0.25 CU with autosuspend (the r108 economics)   | connection storms; app pools = main 8 + OTP lockPool 2   |
+> | Bandwidth  | per the host plan                                           | provider panel                                           |
+> | Builds     | Coolify builds this repo from Git on every deploy           | build duration per deploy (no shared minutes pool)       |
+>
+> The Render free-tier pools below (750 h / 5 GB / 500 min) are the
+> **pre-cutover historical record** — that stack no longer serves traffic.
+> The stack-neutral contracts further down — the anti-pattern list ("NEVER
+> reintroduce") and the timer inventory ("Remaining recurring activity") —
+> still apply verbatim: they are what keeps Neon autosuspend intact on the
+> live stack.
+
+### LEGACY — Render free-tier economics (R104 record, pre-cutover)
+
+> **R104 (2026-09-21) — historical record of the Render free-tier
+> economics** (kept for the pre-cutover story; superseded for live ops by
+> the budget block above). Pre-cutover topology: **Render free web
+> (subnation, Docker: API + SPA) + Render free web (openwa-gateway,
+> separate repo) + Neon Postgres (external) + Vercel (parallel
+> frontend)**. No worker. No Redis. **No Northflank** (the 2026-09-21
+> experiment was rolled back — commit f582254).
 
 ### The allocation (verified against render.com docs + pricing, 2026-09-21)
 
@@ -258,14 +288,16 @@ h/mo). Every budget line holds ≥ 2× headroom over a realistic month.
 | Deploy (manual, CI-gated)             | subnation / openwa                      | operator action                                   |
 | /robots.txt on a spun-down service    | nothing (Render answers before the app) | platform                                          |
 
-### NEVER reintroduce (the anti-pattern list)
+### STILL LIVE — NEVER reintroduce (the anti-pattern list; stack-neutral)
 
 Self-pings, keep-alive pingers, uptime pingers, scheduled GitHub-Action
 wakeups, `refetchInterval`-in-background polling, always-on storefront
 sockets, `reconnectionAttempts: Infinity`, timer-driven "preventive"
 maintenance, scheduled builds. Each of these was found and removed
-(2026-09-20 round + R104); every one of them converts a sleep-capable
-service into a 24/7 instance-hour burner (one forgotten tab ≈ 730 h/mo).
+(2026-09-20 round + R104); every one of them keeps a sleep-capable resource
+awake 24/7 (on Render it burned instance hours — one forgotten tab ≈ 730
+h/mo; on the live stack it would keep Neon's autosuspended compute awake and
+burn the CU allowance instead).
 
 ### Remaining recurring activity (the complete timer inventory)
 
@@ -287,13 +319,14 @@ timers removed in the 2026-09-20 free-infrastructure round (hourly OTP
 prune, hourly copilot-previews reaper, 10-min keep-alive self-pings,
 watcher intervals) stay removed: that work runs as throttled opportunistic
 sweeps fired by real traffic (`lib/opportunistic.ts`) plus the boot
-one-shots — zero artificial wake-ups, zero cost while a Render-Free
-deployment sleeps. The multi-instance election path (PG-lease refresh
+one-shots — zero artificial wake-ups (on the pre-cutover Render stack that
+kept sleeping services free; on the live stack it is what keeps Neon
+autosuspended). The multi-instance election path (PG-lease refresh
 while awake; `SCHEDULER_LEASE_REFRESH_MS` / `SCHEDULER_LEASE_TTL_SEC`)
 remains intact but INERT while the flag is set — unset
 `SINGLE_INSTANCE_MODE` to restore it.
 
-### Inspection & alarm thresholds
+### Inspection & alarm thresholds (LEGACY — Render dashboard, pre-cutover)
 
 | Check                     | Where                                      | Investigate when                                       |
 | ------------------------- | ------------------------------------------ | ------------------------------------------------------ |
@@ -349,7 +382,8 @@ $ curl https://subnation.ly/api/healthz
 $ curl -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/healthz/ready
 {"status":"ok","checks":{"redis":{...},"neon":{...},"worker":{...},"socket":{...}},"version":"abc1234","uptimeSec":12345}
 
-$ curl https://subnation.ly/api/healthz/firebase
+# /firebase is admin-gated too (requireAdmin) — a bare curl gets 401
+$ curl -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/healthz/firebase
 {"auth_enabled_flag":true,"project_id_env":"subnation-2571e","admin_app_initialized":true,...}
 ```
 
@@ -370,15 +404,41 @@ curl -X POST -H "Content-Type: application/json" \
 # Expected: 204
 ```
 
-## 9. Dual-Deployment Architecture — «معمارية النشر المزدوج»
+## 9. Single-origin architecture (post-cutover) — «معمارية الأصل الواحد»
 
-> **Pre-migration architecture (Render primary + Vercel secondary).**
-> Post-cutover: the Vercel project is deleted, single origin only —
-> `docs/deployment/MIGRATION_RUNBOOK.md` Phase 6.
+> **R118 correction (2026-10-06):** production is ONE deployment — Coolify on
+> a self-hosted VM: the `subnation` container (API + SPA, same origin) + the
+> `openwa` container + Neon Postgres. There is no Vercel and no Render in
+> the live path (the Vercel mirror 404s; Render is billing-suspended).
+>
+> - **Canonical URL:** `https://subnation.ly` — apex and `www` both serve
+>   200; there is no redirect at any layer today. The recommended
+>   `www → apex` 301 is an open operator action at the Traefik layer —
+>   `docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8.
+> - **DNS:** the Cloudflare zone is **DNS-only (grey cloud)** — no proxy, no
+>   edge TLS/WAF in the live path; TLS terminates at the VM (Traefik /
+>   Let's Encrypt). Do NOT "re-fix" the zone to proxied without deciding.
+> - **SEO checks reduce to the origin:**
+>   ```
+>   curl -sI https://subnation.ly/robots.txt      | head -1   # 200 text/plain
+>   curl -sI https://subnation.ly/sitemap.xml     | head -1   # 200 application/xml
+>   ```
+>   The backend generates both dynamically (`backend/src/routes/seo.ts`);
+>   they are not build artifacts (R97 J-4). The Vercel-rewrite concern below
+>   is moot — no Vercel exists anymore.
+>
+> The dual-deployment record below is the R97-era history, kept as LEGACY.
 
-97-F6 (R97 J-4): two live deployments run in parallel from this same repo.
-This section is the source of truth for which one is canonical and what
-on-call must keep green.
+### LEGACY — dual-deployment record (Render primary + Vercel secondary, R97)
+
+> **Pre-cutover architecture (Render primary + Vercel secondary).**
+> Superseded by the single-origin block above (cutover 2026-10: the Vercel
+> project is gone, single origin only — `docs/deployment/MIGRATION_RUNBOOK.md`
+> Phase 6).
+
+97-F6 (R97 J-4): two live deployments ran in parallel from this same repo
+(until the 2026-10 cutover). This section was the source of truth for which
+one was canonical and what on-call had to keep green.
 
 |          | PRIMARY (canonical)                                                        | SECONDARY (parallel/preview)                                                                                |
 | -------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -387,11 +447,13 @@ on-call must keep green.
 | Serves   | Backend Docker image: API + built frontend static (`frontend/dist/public`) | Static frontend build; `/api/*`, `/robots.txt`, `/sitemap.xml` proxied to Render via `vercel.json` rewrites |
 | DNS      | `subnation.ly` / `www` on Cloudflare (proxied, Always-Use-HTTPS)           | `*.vercel.app`                                                                                              |
 
-**Confirmed by live evidence (R97-A1):** `subnation.ly` responses carry
+**Confirmed by live evidence (R97-A1 — historical; today the zone is
+DNS-only and the origin is Coolify on the VM):** `subnation.ly` responses
+carried
 `server: cloudflare` + `x-render-origin-server: Render` headers and the
-backend's helmet CSP — the domain is NOT served by Vercel.
+backend's helmet CSP — the domain was NOT served by Vercel.
 
-**Operational rules:**
+**Operational rules (historical record of the R97-era dual stack):**
 
 1. **Keep both deployments green.** A red Render deploy is a production
    incident (rollback §4). A red Vercel deploy is a preview regression —
@@ -431,12 +493,12 @@ backend's helmet CSP — the domain is NOT served by Vercel.
    `subnation.ly` as the canonical URL in sitemap, canonical tags, GSC,
    and any external links. Do not advertise the `*.vercel.app` URL.
 
-**خلاصة عربية:** النطاق القانوني `subnation.ly` يُقدَّم من Cloudflare → Render
-(الأساسي — صورة Docker الواحدة تقدّم API والواجهة معًا)، ونشر Vercel موازٍ
-للمعاينة من المستودع نفسه. يجب بقاء النشرين أخضرين، وrobots/sitemap يعملان على
-كليهما (عبر rewrite إلى Render على Vercel)، ومتغيرات `VITE_*` متطابقة بين
-المنصتين، والقرار النهائي بدمج أو إزالة نشر Vercel يعود للمالك — حتى ذلك
-الحين يُعامَل `subnation.ly` كالرابط القانوني في كل مكان.
+**خلاصة عربية (سجل تاريخي — R97، ما قبل الترحيل):** النطاق القانوني
+`subnation.ly` كان يُقدَّم من Cloudflare → Render (الأساسي — صورة Docker
+الواحدة تقدّم API والواجهة معًا)، ونشر Vercel موازٍ للمعاينة من المستودع
+نفسه. **بعد الترحيل (2026-10):** نشر أحادي الأصل — Coolify على الخادم
+الذاتي (Contabo)، والنطاق عبر DNS-only، ولا وجود لـ Vercel أو Render في
+مسار الإنتاج؛ `subnation.ly` يبقى الرابط القانوني في كل مكان.
 
 ## 10. WhatsApp OTP — operator knob
 

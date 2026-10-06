@@ -4,7 +4,8 @@ Scope: how sellable stock (the `inventory` table) is loaded, verified, and
 rolled back on the r112 production system. Loading inventory is OPERATOR DATA
 ENTRY — tooling and guardrails only; nothing here fabricates stock, and no
 automation (including the AI copilot) may ever add it. Code claims verified at
-HEAD 521234f against the cited files.
+HEAD 521234f against the cited files; cites re-verified at ef3d0c3 (R118-A7;
+drifted line numbers refreshed in the same pass).
 
 ## 1. Data-model truth
 
@@ -27,7 +28,7 @@ Rules:
   work — the contract comment at inventory.ts:33-39).
 - A unit is DELIVERABLE when at least ONE of `account_email`,
   `account_password`, `extra_details` is non-null (`deliverableUnitCondition()`,
-  backend/src/routes/products.ts:82-87; manual.provider.ts:99-102).
+  backend/src/routes/products.ts:83-88; manual.provider.ts:99-102).
 - Two-pool availability mirrors checkout exactly:
   - Claim order (manual.provider.ts:50-79): variant-scoped `FOR UPDATE SKIP
     LOCKED` select first, then the generic pool (`variant_id IS NULL`), both
@@ -58,7 +59,7 @@ importer:
 4. The preview shows ready-to-add, duplicates (in-paste AND against existing
    DB rows via GET /api/admin/products/:id/inventory), and unparseable lines.
 5. Submit → POST /api/admin/products/:id/inventory
-   (backend/src/routes/admin/products.ts:509-749): structured `entries[]` (the
+   (backend/src/routes/admin/products.ts:509-751): structured `entries[]` (the
    UI path) or legacy `bulk_text`; per-row validation (credentials need
    email+password, codes a value — one bad row rejects the batch, 400); cap
    500 rows/batch; dedup-then-insert as ONE transaction under per-product
@@ -92,7 +93,7 @@ user2@mail.com|Password456|recovery@mail.com  → account + extra_details
 XBOX-12345-ABCDE                              → code-only (extra_details)
 ```
 
-Constraints (enforced in products.ts:509-749): the product must exist (404
+Constraints (enforced in products.ts:509-751): the product must exist (404
 otherwise) — the admin products list filters `is_archived = false`
 (products.ts:104), so the normal upload path cannot target archived products;
 no variant column exists — every uploaded row lands in the GENERIC pool;
@@ -160,8 +161,9 @@ Unsold units under ARCHIVED products are flagged by the orphan sweep
 
 ## 7. Expected state after a load
 
-- `/api/admin/stats` → `available_stock` counts all unsold rows (30s cache,
-  backend/src/routes/admin/stats.ts:65,76).
+- `/api/admin/stats` → `available_stock` counts all unsold rows (30s cache —
+  `cacheWrap("admin:stats", 30, …)`, backend/src/routes/admin/stats.ts:37,
+  `available_stock` at :77).
 - Storefront flips: product `is_available` (deliverable unsold > 0) and each
   variant per the two-pool rule; the catalog cache bumps (≤60s TTL).
 - stockWatcher (backend/src/jobs/stockWatcher.ts) arms: low-stock alert at
@@ -170,11 +172,23 @@ Unsold units under ARCHIVED products are flagged by the orphan sweep
   `stock:zero:<id>` + Telegram notify. The audit trail carries
   `product.inventory.upload` with added/skipped counts.
 
-## 8. The r112 truth (live state)
+## 8. Live-state snapshots (§4 SQL is the truth — numbers below are snapshots)
 
-- Catalog: 59 products total, 45 ACTIVE (is_active AND NOT is_archived),
-  263 variants.
-- Deliverable stock under ACTIVE products: 1 unit — product slug
-  `netflix-premium`; 10 deliverable units total incl. archived products' stock.
+> **Rule:** always run the §4 SQL (b) for the current figure — every number in
+> this section is a dated snapshot and goes stale the moment stock moves.
+
+- **R118 snapshot (2026-10-06, read-only DB probe):** 59 products total, 45
+  ACTIVE (`is_active` AND NOT `is_archived`), 263 variants; **6 unsold units
+  total — 3 deliverable under ACTIVE products** (cpanel ×1,
+  lifetime-cloud-storage ×1, netflix-premium ×1) + 3 under archived test
+  products. Live `/api/catalog/stats` agrees
+  (`available_products: 3, total_units: 6`).
+- **Operator decision pending:** the three active-product units are
+  `extra_details`-only placeholder rows (ids 79/80/81, uploaded 2026-10-05
+  by `ahmadmedo`) — verify they carry real deliverable codes, or delete them
+  unsold-only (§5 shape) before launch.
+- **r112 snapshot (superseded — historical):** 1 deliverable unit under
+  ACTIVE products (`netflix-premium`); 10 deliverable units total incl.
+  archived products' stock.
 - Restock is the operator's data entry task (§2): set-count cannot raise the
   number, copilot cannot, and no script should ever exist that tries.

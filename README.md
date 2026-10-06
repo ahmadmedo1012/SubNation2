@@ -7,7 +7,7 @@
 Streaming, music, gaming and productivity subscriptions — bought with an in-app
 wallet and delivered instantly with encrypted account credentials.
 
-[![Status](https://img.shields.io/badge/status-cutover_pending-f59e0b)](./docs/deployment/FINAL_MIGRATION_READINESS.md)
+[![Status](https://img.shields.io/badge/status-live-22c55e)](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md)
 [![Stack](https://img.shields.io/badge/stack-React_19_·_Express_5_·_Postgres-3b82f6)](#tech-stack)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](#requirements)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A510-f69220)](#requirements)
@@ -25,13 +25,11 @@ It is **passwordless** for customers — sign in with **Google**, **Telegram**, 
 credentials instantly after purchase. A full **admin panel** manages products,
 inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 
-> 🚧 **Status (2026-09-23): production is offline.** The Render free tier has
-> been billing-suspended since ~2026-09-11 (`subnation.ly` answers 503; the
-> Render API rejects deploys for billing-suspended services). The project is
-> mid-migration to self-hosted Docker on Oracle Cloud (Coolify, ARM64) —
-> cutover pending. Details: [Deployment status](#deployment-status-2026-09-23)
-> below and
-> [`docs/deployment/FINAL_MIGRATION_READINESS.md`](./docs/deployment/FINAL_MIGRATION_READINESS.md).
+> ✅ **Status (corrected R118, 2026-10-06): production is LIVE at
+> <https://subnation.ly>** — self-hosted Docker on Coolify since the 2026-10
+> cutover, with Neon Postgres staying external. Architecture of record:
+> [`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md);
+> current-state summary: [Deployment status](#deployment-status-2026-10) below.
 
 ---
 
@@ -60,7 +58,7 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 | Auth             | Firebase Admin (Google), Telegram HMAC, WhatsApp OTP (OpenWA), JWT + httpOnly cookies                                           |
 | Validation       | Zod (shared contracts)                                                                                                          |
 | Observability    | Sentry, Prometheus (`prom-client`), Pino                                                                                        |
-| Deploy           | Docker (single image) on Oracle Cloud A1 (ARM64) + Coolify — migration in progress, cutover pending; Neon stays external. Render free tier suspended since 2026-09-11 (see [status](#deployment-status-2026-09-23)) |
+| Deploy           | Docker (single image) on a self-hosted VM + Coolify — **live at `subnation.ly` since 2026-10** (host: Contabo VM); Neon stays external (see [status](#deployment-status-2026-10)). Render/Vercel are retired legacy |
 
 It is a **pnpm monorepo**:
 
@@ -152,49 +150,42 @@ Single-origin contract: leave `VITE_API_BASE_URL` / `VITE_SOCKET_URL` /
 `VITE_API_URL` empty — the backend serves the SPA, the browser uses relative
 `/api` paths and same-origin WebSockets. Verify a deployment with
 `./scripts/docker-verify.sh` (build + health gate + graceful-drain proof;
-`--arm64` cross-builds the Oracle Ampere target via QEMU).
+`--arm64` optionally cross-builds the ARM64 image via QEMU — the original
+Oracle A1 target was ARM64; the live host since 2026-10 is a Contabo VM).
 
-### Self-hosted: Oracle Cloud + Coolify (target — migration in progress)
+### Self-hosted: Docker + Coolify (production since 2026-10)
 
 The platform is hosting-agnostic (no Render/Vercel runtime coupling — r107
-audit) and runs as the two Docker images above behind Coolify on an Oracle
-Always Free ARM64 VM, with Neon staying external. R108 makes the
+audit) and runs as the two Docker images above behind Coolify on a
+self-hosted VM (live host since 2026-10: Contabo; the original r107 target
+was Oracle Always Free ARM64), with Neon staying external. R108 makes the
 single-container shape first-class: `SINGLE_INSTANCE_MODE=true` runs the
 schedulers ungated in-process with ZERO periodic Neon coordination queries
 (idle autosuspend preserved) — see `deploy/env.compose.example`. Validate
 your env file before deploying:
 `pnpm --filter @workspace/scripts run validate:env -- --file .env --strict`.
-Full guide + runbook: `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` and
-`docs/deployment/MIGRATION_RUNBOOK.md`; readiness state:
-`docs/deployment/FINAL_MIGRATION_READINESS.md`; target architecture:
-`docs/architecture/PRODUCTION_ARCHITECTURE.md`.
+Migration-era guides (historical): `docs/deployment/COOLIFY_ORACLE_MIGRATION.md`,
+`docs/deployment/MIGRATION_RUNBOOK.md`, and
+`docs/deployment/FINAL_MIGRATION_READINESS.md`; architecture of record:
+`docs/architecture/PRODUCTION_ARCHITECTURE.md` and
+`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`.
 
-### Deployment status (2026-09-23)
+### Deployment status (2026-10)
 
-- **Production is offline.** All eight services on the Render free-tier
-  account (including `subnation` and the openwa gateway) have been
-  billing-suspended since ~2026-09-11: `subnation.ly` answers 503 and the
-  Render API rejects both resumes and deploys for billing-suspended services.
-  The last live deploy runs 2026-09-11 code. The dated records
-  `docs/free-tier-optimization-2026-09-20.md` and
-  `docs/final-audit-2026-09-20.md` capture the suspension and the operator's
-  options (a billing action in the Render dashboard, or the free-hours
-  reset). The `deploy.yml` Render hook stays kill-switched behind the
-  `RENDER_DEPLOY_ENABLED` repo variable.
-- **The active path is the self-hosted migration** to Oracle Cloud Always
-  Free (ARM64) + Coolify described above — cutover pending; nothing in the
-  code requires Render or Vercel (r107 hosting-coupling audit).
-- **Repo state:** the full suite was green at the R109 audit base `6ab63bc`
-  (backend 1264/1264, frontend 573/573, openwa 80/80, lint/typecheck clean).
-  GitHub Actions CI is red for **billing reasons only** — private-repo
-  minutes are exhausted; jobs die in seconds without a runner.
-- **Docker builds are unblocked** (commit `bb4418e`, 2026-09-22): R109 found
-  two P0s that made the image unbuildable — the root `prepare: husky`
-  script failing the `--prod` runtime-stage install, and the arm64/musl
-  build-toolchain natives excluded from the lockfile. Both are fixed and
-  verified statically plus by an exact-stage replay in the sandbox; an
-  actual `docker build` on a Docker host is still pending
-  (`./scripts/docker-verify.sh`, extended in r110).
+- **Production is LIVE** at `https://subnation.ly` — self-hosted Docker +
+  Coolify on a Contabo VM + Neon Postgres, serving since the 2026-10-01/02
+  cutover; Coolify builds this repo from Git on every deploy (the R109-era
+  "docker build still pending" caveat is long resolved). Dated release
+  record: `docs/deployment/FINAL_SIGNOFF.md`; post-cutover audits:
+  `docs/inspection-r117/` and `docs/inspection-r118/`. The pre-cutover
+  Render/Vercel stack is retired legacy — Render billing-suspended since
+  ~2026-09-11 (`deploy.yml` stays kill-switched behind
+  `RENDER_DEPLOY_ENABLED`), the Vercel mirror is dead.
+- **Repo state (as of R117):** backend 1517 tests / 165 files green, lint /
+  typecheck clean (R109-era for comparison: backend 1264, frontend 573,
+  openwa 80). R118 adds more — see `docs/inspection-r118/`. GitHub Actions
+  CI remains red for **billing reasons only** — private-repo minutes are
+  exhausted; jobs die in seconds without a runner.
 - **Nightly backups are automated as of r110** — `scripts/backup-cron.sh`
   (host-cron wrapper around `pnpm run db:backup`); see the "Automated
   backups" section of `docs/DISASTER_RECOVERY.md`.
@@ -244,9 +235,10 @@ schemas live in `shared/api-zod`.
 
 | Document                                                   | What it covers                                                                                                  |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **[`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)**     | 📌 **Start here** — on-call playbook: alert triage, dashboards, rollback, scaling, free-tier posture, env knobs |
-| [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md)             | Historical archive — 2026-08-25 architecture/feature snapshot (predates the free-tier + no-Redis rounds)        |
-| [`PLATFORM.md`](./PLATFORM.md)                             | 2026-09-02 platform snapshot (superseded by the runbook for current state)                                      |
+| **[`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)**     | 📌 **Start here** — on-call playbook: alert triage, dashboards, rollback, resource budget, env knobs            |
+| **[`docs/README.md`](./docs/README.md)**                   | 📚 **Docs index** — CURRENT / STALE / ARCHIVED status for every doc (R118)                                      |
+| [`PROJECT_OVERVIEW.md`](./PROJECT_OVERVIEW.md)             | Historical archive — 2026-08-25 architecture/feature snapshot (Arabic)                                          |
+| [`PLATFORM.md`](./PLATFORM.md)                             | Historical snapshot 2026-09-02 (current state: docs index + runbook)                                            |
 | [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery                                                                            |
 | [`docs/API.md`](./docs/API.md)                             | API reference                                                                                                   |
 

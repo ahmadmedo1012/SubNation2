@@ -25,8 +25,10 @@
 > truth for those facts; this section used to redraw the same ASCII diagram.
 > Redrawing it here would duplicate it, so we point instead.
 
-**Stack in one line:** `Oracle VM ARM64 (2 OCPU / 12 GB) → Coolify/Traefik →
-subnation Express :8080 + openwa :2785 (internal) → external Neon + Cloudflare`.
+**Stack in one line (r112 design; observed live R117/R118 = self-hosted
+Contabo VM, Cloudflare zone DNS-only grey):** `self-hosted VM →
+Coolify/Traefik (LE at origin) → subnation Express :8080 + openwa :2785
+(internal) → external Neon + Cloudflare DNS`.
 
 > **Observed host (R117 live probe, 2026-10-05):** live A records for both
 > `subnation.ly` and `www.subnation.ly` point at `169.58.100.161` (PTR
@@ -44,7 +46,7 @@ The unique engineering content below is what the TOPOLOGY does **not** carry.
 ## 1. Runtime topology (single server)
 
 ```
-┌──────────────────────────── Oracle VM (ARM64 · 2 OCPU · 12 GB) ───────────────────────────┐
+┌────────── self-hosted VM (r112 design: Oracle ARM64 · 2 OCPU / 12 GB — live: Contabo) ─────┐
 │                                                                                             │
 │  Coolify (docker orchestration)                                                             │
 │  ├── Traefik edge (Coolify-managed, LE certs)  :80/:443 → routes by Host header            │
@@ -68,6 +70,7 @@ The unique engineering content below is what the TOPOLOGY does **not** carry.
                │                                              │
       Neon PostgreSQL (EXTERNAL)                     Cloudflare → subnation.ly
       ├── business schema (boot reconciler, V1-M6…V1-M23)  DNS proxy, WAF, WS passthrough
+      │                        (r112 design — live = DNS-only grey, no edge; see FINAL_PRODUCTION_TOPOLOGY §1)
       ├── openwa_sessions (gateway-owned, AES-GCM)
       └── scheduler_leader_lease (multi-instance shape only — idle by default)
 ```

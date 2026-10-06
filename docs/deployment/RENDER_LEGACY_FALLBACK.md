@@ -1,8 +1,9 @@
 # Render Legacy Fallback (§24 — the emergency-only truth)
 
 > The Render account is NOT the production target. It is the retired legacy
-> stack, kept (suspended) as a paper fallback only. Production = Cloudflare →
-> Oracle VM → Coolify → `subnation` + `openwa` → Neon —
+> stack, kept (suspended) as a paper fallback only. Production (live since
+> the 2026-10 cutover) = Cloudflare (DNS-only, grey) → self-hosted VM
+> (observed host R117: Contabo) → Coolify → `subnation` + `openwa` → Neon —
 > `docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`.
 > Rollback choreography: `FINAL_ROLLBACK_RUNBOOK.md`.
 
@@ -90,7 +91,8 @@ Therefore:
   when a month runs long.
 - **The October free hours are better spent on nothing: leave it suspended.**
   Resuming burns the shared pool against the 6 unused sibling services and
-  boots the old pre-r108 build (§4). The Oracle VM is the production path.
+  boots the old pre-r108 build (§4). The self-hosted VM (live host: Contabo)
+  is the production path.
 - **Decommission Render when the Oracle cutover has been stable for 2 weeks**:
   the DNS old-origin records can go after the ≥1-week soak
   (`CLOUDFLARE_FINAL_CUTOVER.md` §6); then delete the services + Vercel

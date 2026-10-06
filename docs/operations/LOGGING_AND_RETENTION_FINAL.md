@@ -50,10 +50,13 @@
   (line 285). Auth-activity rows (identifier `wa:<phone>`) go to the
   `auth_activity` table — the auth audit surface — not into pino lines.
 - **openwa phone masking:** the gateway masks digits to the last 4 in stdout
-  logs — `maskDigits` / JID-aware `maskJid` (`openwa/src/lib.ts:260-285`,
+  logs — `maskDigits` / JID-aware `maskJid` (cites live in the **separate
+  openwa repository** — `github.com/ahmadmedo1012/openwa`, not this repo;
+  production pulls `ghcr.io/ahmadmedo1012/openwa` — `openwa/src/lib.ts:260-285`,
   masks the user part, keeps the domain suffix so LID routing stays
   readable); applied at every log site that carries account/chat digits
-  (`openwa/src/index.ts:514-518, 1058-1060, 1073, 1085, 1104-1107`). Full
+  (`openwa/src/index.ts:514-518, 1058-1060, 1073, 1085, 1104-1107` — same
+  openwa repo). Full
   values stay only in the in-memory ring buffer and the encrypted DB blob —
   the log surface alone is redacted.
 - **Wallet / money routes:** `routes/wallet.ts` logs only HTTP status and
