@@ -45,6 +45,7 @@ import {
 } from "../services/openwa.service";
 import { getAuthCookieOptions } from "../lib/cookie-options";
 import { getConfiguredOrigins } from "../lib/origins";
+import { cacheWrap } from "../lib/cache";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
@@ -213,8 +214,13 @@ export const authProviderPublicRouter = Router();
 const COOKIE_SESSION_SENTINEL = "__cookie_session__";
 
 // GET /api/auth/providers
-authProviderPublicRouter.get("/providers", async (_req, res) => {
-  const settingsMap = await getAllAuthSettings();
+const authProviderCache = (_req: Request, res: Response, next: NextFunction) => {
+  res.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
+  next();
+};
+
+authProviderPublicRouter.get("/providers", authProviderCache, async (_req, res) => {
+  const settingsMap = await cacheWrap("auth:providers:settings", 60, getAllAuthSettings);
 
   // Google: fall back to env var if not configured in DB
   const googleConfig = { ...(settingsMap.get("auth.google") ?? {}) };
