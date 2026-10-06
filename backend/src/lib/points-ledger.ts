@@ -65,35 +65,15 @@ export async function insertPointsLedgerEntry(
 }
 
 /**
- * The order's purchase award as recorded at checkout (points), or null when
- * the order predates the ledger (V1-M21). Callers fall back to the frozen
- * historical formula floor(orders.amount) for pre-ledger orders — derivable
- * from the order row itself, so the reversal stays exact either way.
- */
-export async function findPurchaseAward(
-  orderId: number,
-  client: DbOrTx = db,
-): Promise<{ id: number; pointsDelta: number } | null> {
-  const rows = await client
-    .select({ id: pointsLedgerTable.id, pointsDelta: pointsLedgerTable.pointsDelta })
-    .from(pointsLedgerTable)
-    .where(
-      and(
-        eq(pointsLedgerTable.type, "purchase_award"),
-        eq(pointsLedgerTable.referenceType, "order"),
-        eq(pointsLedgerTable.referenceId, orderId),
-      ),
-    )
-    .limit(1);
-  return rows[0] ?? null;
-}
-
-/**
  * Points already revoked from a specific order by a prior refund reversal
  * (0 when none). Under the (type, reference_id) unique constraint there can
  * be at most one reversal row per order — this read is exact, and its
  * result also feeds the CAS predicate so a concurrent reversal cannot
  * double-revoke.
+ *
+ * (R118-A1 F-6: the sibling `findPurchaseAward` reader was deleted — a
+ * repo-wide caller hunt found zero production AND zero test callers;
+ * refunds attribute awards via remainingAwardForOrder below.)
  */
 export async function findRefundReversal(
   orderId: number,

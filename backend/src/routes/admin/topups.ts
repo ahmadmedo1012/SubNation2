@@ -37,10 +37,20 @@ const TopupActionBody = z
   })
   .strict();
 
-function parseTopupActionBody(req: { body?: unknown }): string | null {
+// R118-A1 F-1: this parser used to return `string | null`, conflating
+// "invalid body" with "valid body whose OPTIONAL admin_note is absent" —
+// so a contract-valid `{}` POST (openapi AdminTopupActionBody keeps
+// admin_note optional, matching the zod `.nullish()` above) was answered
+// with 400 INVALID_DATA on BOTH money-approval routes. The result is now
+// discriminated: only ok:false answers 400; a valid body without a note
+// proceeds with note = null (TopupService.approve/reject already accept
+// `string | null`).
+type TopupActionParse = { ok: false } | { ok: true; note: string | null };
+
+function parseTopupActionBody(req: { body?: unknown }): TopupActionParse {
   const parse = TopupActionBody.safeParse(req.body ?? {});
-  if (!parse.success) return null;
-  return parse.data.admin_note ?? null;
+  if (!parse.success) return { ok: false };
+  return { ok: true, note: parse.data.admin_note ?? null };
 }
 
 router.get("/topups", requireAdmin, async (req, res) => {
@@ -135,17 +145,17 @@ router.post(
     if (id === null)
       return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-    const adminNote = parseTopupActionBody(req);
-    if (adminNote === null)
+    const action = parseTopupActionBody(req);
+    if (!action.ok)
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
 
     try {
       // A4-04 (R116): the acting admin's username rides the service call —
       // TopupService persists it on the row with reviewed_at.
       const actingUsername = (req as AdminAuthenticatedRequest).adminUsername ?? null;
-      const result = await TopupService.approve(id, adminNote, actingUsername);
+      const result = await TopupService.approve(id, action.note, actingUsername);
       void writeAuditLog(req, "topup.approve", "topup", id, {
-        admin_note: adminNote,
+        admin_note: action.note,
         reviewed_by: actingUsername,
       });
       return res.json(result);
@@ -174,15 +184,15 @@ router.post(
     if (id === null)
       return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
-    const adminNote = parseTopupActionBody(req);
-    if (adminNote === null)
+    const action = parseTopupActionBody(req);
+    if (!action.ok)
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
 
     try {
       const actingUsername = (req as AdminAuthenticatedRequest).adminUsername ?? null;
-      const result = await TopupService.reject(id, adminNote, actingUsername);
+      const result = await TopupService.reject(id, action.note, actingUsername);
       void writeAuditLog(req, "topup.reject", "topup", id, {
-        admin_note: adminNote,
+        admin_note: action.note,
         reviewed_by: actingUsername,
       });
       return res.json(result);

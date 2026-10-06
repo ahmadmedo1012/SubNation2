@@ -32,7 +32,7 @@ import { eq } from "drizzle-orm";
 // test-only.
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? "33".repeat(32);
 
-import { encrypt } from "../../lib/encryption";
+import { encrypt, __resetEncryptionKeyCacheForTests } from "../../lib/encryption";
 import { signUserToken } from "../../lib/jwt";
 import { ordersRouter } from "../../routes/orders";
 import { walletRouter } from "../../routes/wallet";
@@ -138,6 +138,39 @@ async function seedCompletedOrderLegacy() {
   return { user, product, order };
 }
 
+/** Seed a COMPLETED order with caller-supplied delivered credential
+ * column values (used by the R118-A1 F-7 decrypt_failed cases to plant
+ * ciphertext written under a rotated-away key). */
+async function seedCompletedOrderWithCreds(creds: {
+  deliveredEmail: string | null;
+  deliveredPassword: string | null;
+  deliveredExtraDetails: string | null;
+}) {
+  const [user] = await db
+    .insert(usersTable)
+    .values({ phone: nextPhone(), walletBalance: "100.00" })
+    .returning();
+  const [product] = await db
+    .insert(productsTable)
+    .values({ name: "Creds Carrier Product", price: "25.00" })
+    .returning();
+  const [order] = await db
+    .insert(ordersTable)
+    .values({
+      orderCode: "CRD-" + Math.floor(Math.random() * 1e6),
+      userId: user.id,
+      productId: product.id,
+      amount: "25.00",
+      status: "completed",
+      deliveredEmail: creds.deliveredEmail,
+      deliveredPassword: creds.deliveredPassword,
+      deliveredExtraDetails: creds.deliveredExtraDetails,
+      deliveredAt: new Date(),
+    })
+    .returning();
+  return { user, product, order };
+}
+
 async function getJson(path: string, token: string) {
   const server = app.listen(0);
   try {
@@ -232,6 +265,136 @@ describe("P0-sim: formatOrder delivered-credential serialization (GET /api/order
     expect(detail.body.delivered_password).toBeNull();
     expect(detail.body.delivered_extra_details).toBeNull();
     expect(detail.body.delivered_usage_terms).toBeNull();
+  });
+});
+
+describe("R118-A1 F-7: buyer-side decrypt_failed flag (formatOrder)", () => {
+  it("completed order whose ciphertext no longer decrypts → decrypt_failed:true, all delivered fields null, no throw (detail + list)", async () => {
+    // Simulate a post-purchase ENCRYPTION_KEY rotation: the credential
+    // columns are written under an OLD key; the process (and this test's
+    // requests) run under the current one — every safeDecrypt GCM auth
+    // fails. Mirrors the admin-side R117 pattern
+    // (admin-credentials-gate.test.ts) from the buyer direction.
+    const originalKey = process.env.ENCRYPTION_KEY!;
+    process.env.ENCRYPTION_KEY = "44".repeat(32);
+    __resetEncryptionKeyCacheForTests();
+    let seeded: Awaited<ReturnType<typeof seedCompletedOrderWithCreds>>;
+    try {
+      seeded = await seedCompletedOrderWithCreds({
+        deliveredEmail: encrypt("written-under-old-key@test.local"),
+        deliveredPassword: encrypt("OldKeyPassword1"),
+        deliveredExtraDetails: encrypt("OLD-KEY-EXTRA-1"),
+      });
+    } finally {
+      process.env.ENCRYPTION_KEY = originalKey;
+      __resetEncryptionKeyCacheForTests();
+    }
+
+    const token = signUserToken({ userId: seeded.user.id });
+    const detail = (await getJson(`/api/orders/${seeded.order.orderCode}`, token)) as {
+      status: number;
+      body: DeliveredFields & { decrypt_failed?: boolean };
+    };
+    expect(detail.status).toBe(200);
+    // No throw, silent-null shape unchanged — plus the honest flag.
+    expect(detail.body.delivered_email).toBeNull();
+    expect(detail.body.delivered_password).toBeNull();
+    expect(detail.body.delivered_extra_details).toBeNull();
+    expect(detail.body.decrypt_failed).toBe(true);
+
+    // The list endpoint shares formatOrder — the flag must ride there too.
+    const list = (await getJson("/api/orders", token)) as {
+      status: number;
+      body: Array<DeliveredFields & { decrypt_failed?: boolean }>;
+    };
+    expect(list.status).toBe(200);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].decrypt_failed).toBe(true);
+  });
+
+  it("PARTIAL raw columns (only a password, undecryptable) still flags — one failing field is enough", async () => {
+    const originalKey = process.env.ENCRYPTION_KEY!;
+    process.env.ENCRYPTION_KEY = "55".repeat(32);
+    __resetEncryptionKeyCacheForTests();
+    let seeded: Awaited<ReturnType<typeof seedCompletedOrderWithCreds>>;
+    try {
+      seeded = await seedCompletedOrderWithCreds({
+        deliveredEmail: null,
+        deliveredPassword: encrypt("OnlyFieldUnderOldKey"),
+        deliveredExtraDetails: null,
+      });
+    } finally {
+      process.env.ENCRYPTION_KEY = originalKey;
+      __resetEncryptionKeyCacheForTests();
+    }
+
+    const token = signUserToken({ userId: seeded.user.id });
+    const detail = (await getJson(`/api/orders/${seeded.order.orderCode}`, token)) as {
+      status: number;
+      body: DeliveredFields & { decrypt_failed?: boolean };
+    };
+    expect(detail.status).toBe(200);
+    expect(detail.body.delivered_password).toBeNull();
+    expect(detail.body.decrypt_failed).toBe(true);
+  });
+
+  it("decryptable completed order → NO decrypt_failed key (no false positive on the happy path)", async () => {
+    const { user, order } = await seedCompletedOrderEncrypted();
+    const token = signUserToken({ userId: user.id });
+
+    const detail = (await getJson(`/api/orders/${order.orderCode}`, token)) as {
+      status: number;
+      body: DeliveredFields & { decrypt_failed?: boolean };
+    };
+    expect(detail.status).toBe(200);
+    expect(detail.body.delivered_email).toBe("buyer-account@test.local");
+    expect("decrypt_failed" in detail.body).toBe(false);
+  });
+
+  it("completed order with genuinely-empty credential columns → NO decrypt_failed (absence is not failure)", async () => {
+    const { user, order } = await seedCompletedOrderWithCreds({
+      deliveredEmail: null,
+      deliveredPassword: null,
+      deliveredExtraDetails: null,
+    });
+    const token = signUserToken({ userId: user.id });
+
+    const detail = (await getJson(`/api/orders/${order.orderCode}`, token)) as {
+      status: number;
+      body: DeliveredFields & { decrypt_failed?: boolean };
+    };
+    expect(detail.status).toBe(200);
+    expect(detail.body.delivered_email).toBeNull();
+    expect(detail.body.delivered_password).toBeNull();
+    expect("decrypt_failed" in detail.body).toBe(false);
+  });
+
+  it("non-completed order with stale ciphertext → NO decrypt_failed (the status gate nulls are not failures)", async () => {
+    const originalKey = process.env.ENCRYPTION_KEY!;
+    process.env.ENCRYPTION_KEY = "66".repeat(32);
+    __resetEncryptionKeyCacheForTests();
+    let seeded: Awaited<ReturnType<typeof seedCompletedOrderWithCreds>>;
+    try {
+      seeded = await seedCompletedOrderWithCreds({
+        deliveredEmail: encrypt("stale-but-gated@test.local"),
+        deliveredPassword: encrypt("StaleGated1"),
+        deliveredExtraDetails: null,
+      });
+    } finally {
+      process.env.ENCRYPTION_KEY = originalKey;
+      __resetEncryptionKeyCacheForTests();
+    }
+    await db.update(ordersTable).set({ status: "failed" }).where(eq(ordersTable.id, seeded.order.id));
+
+    const token = signUserToken({ userId: seeded.user.id });
+    const detail = (await getJson(`/api/orders/${seeded.order.orderCode}`, token)) as {
+      status: number;
+      body: DeliveredFields & { decrypt_failed?: boolean };
+    };
+    expect(detail.status).toBe(200);
+    expect(detail.body.status).toBe("failed");
+    expect(detail.body.delivered_email).toBeNull();
+    expect("decrypt_failed" in detail.body).toBe(false);
   });
 });
 

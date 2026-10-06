@@ -29,8 +29,16 @@
  *
  *   - **Cached request still in flight (in-progress sentinel)**: 409.
  *     Avoids two concurrent retries both running the underlying mutation
- *     while neither sees the other's result yet. (Best-effort — Redis
- *     SETNX with a short TTL.)
+ *     while neither sees the other's result yet. Enforced on BOTH sides
+ *     of the race (F-3, R118-A1): a retry whose GET sees the sentinel is
+ *     refused, AND a same-tick arrival whose sentinel SET NX loses the
+ *     atomic claim is refused with the identical 409 — previously only
+ *     the GET path was enforced and the SET NX result was ignored, so
+ *     two requests that missed the GET within the same tick BOTH
+ *     proceeded. Only a Redis outage/timeout degrades this to
+ *     pass-through (availability over strict guarantees — the durable
+ *     in-tx claims in the underlying services remain the backstop).
+ *     Sentinel TTL is 60 s.
  *
  * Cache shape (Redis):
  *   key:   `idempotent:{adminId}:{routeKey}:{userKey}`
@@ -121,6 +129,22 @@ export interface IdempotencyOptions {
   routeKey: string;
 }
 
+/**
+ * The 409 envelope shared by the two in-flight conflict paths — the
+ * sentinel seen on the GET, and the SET NX claim lost to a same-tick
+ * peer (F-3, R118-A1). One shape, one message, enforced by construction.
+ */
+function answerInFlightConflict(res: Response): void {
+  res.status(409).json({
+    success: false,
+    // Round-3 envelope drift fix: `message` → `error` (message kept
+    // for any client still reading the old field).
+    error: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
+    message: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
+    code: "IDEMPOTENCY_IN_FLIGHT",
+  });
+}
+
 export function idempotency(opts: IdempotencyOptions) {
   const { routeKey } = opts;
 
@@ -184,14 +208,7 @@ export function idempotency(opts: IdempotencyOptions) {
       const raw = await withRedisCommandTimeout("idempotency_get", () => redis.get(cacheKey));
       if (raw) {
         if (raw === IN_FLIGHT_SENTINEL) {
-          res.status(409).json({
-            success: false,
-            // Round-3 envelope drift fix: `message` → `error` (message kept
-            // for any client still reading the old field).
-            error: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
-            message: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
-            code: "IDEMPOTENCY_IN_FLIGHT",
-          });
+          answerInFlightConflict(res);
           return;
         }
         cached = JSON.parse(raw) as CachedResponse;
@@ -221,18 +238,38 @@ export function idempotency(opts: IdempotencyOptions) {
       return;
     }
 
-    // Mark in-flight (best-effort) so a concurrent retry sees a clear
-    // signal. NX ensures we don't overwrite a winning request's cached
-    // response if it just landed.
+    // Atomically CLAIM the in-flight slot so a concurrent retry sees a
+    // clear signal. SET NX is the arbiter of the same-tick race two
+    // requests can run into after both missing the GET above: exactly
+    // one claim wins ("OK"); the loser gets null and is answered with
+    // the SAME 409 as the GET path (F-3, R118-A1 — the result used to
+    // be ignored, so both concurrent arrivals proceeded to next() and
+    // the documented in-flight 409 only covered requests that arrived
+    // AFTER the sentinel had landed). A null here means the key exists
+    // NOW: either the in-flight sentinel or a cached response that
+    // landed between our GET and our SET — both are "a peer owns this
+    // key"; the client's retry then replays the cached response or
+    // proceeds once the peer settles.
+    let lostClaim = false;
     try {
-      await withRedisCommandTimeout("idempotency_inflight_set", () =>
+      const claim = await withRedisCommandTimeout("idempotency_inflight_set", () =>
         redis.set(cacheKey, IN_FLIGHT_SENTINEL, {
           EX: IN_FLIGHT_TTL_SECONDS,
           NX: true,
         }),
       );
+      lostClaim = claim === null;
     } catch (err) {
+      // Availability over strict guarantees (see file header): a
+      // timed-out or failed claim proceeds live — the underlying
+      // services are transactional and carry durable in-tx claims as
+      // the backstop.
       logger.warn({ err, route: routeKey }, "idempotency middleware: in-flight marker failed");
+    }
+
+    if (lostClaim) {
+      answerInFlightConflict(res);
+      return;
     }
 
     // Capture the response so we can cache it on success.

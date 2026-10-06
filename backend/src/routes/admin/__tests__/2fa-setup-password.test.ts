@@ -4,6 +4,7 @@ import express, { type Express } from "express";
 import { adminUsersTable, db, initTestDb, resetTestDb } from "../../../test/db";
 import { signAdminToken } from "../../../lib/jwt";
 import { hashPassword } from "../../../lib/crypto";
+import { decrypt } from "../../../lib/encryption";
 import { adminAuthRouter } from "../auth";
 
 /**
@@ -144,7 +145,11 @@ describe("POST /api/admin/2fa/setup — fresh enrollment (totpEnabled=false)", (
       expect(body.otpauth_url).toContain("SubNation");
 
       const row = await fetchRow(admin.adminId);
-      expect(row.totpSecret).toBe(body.secret);
+      // R118-B1c (A4 F-4): the secret is stored ENCRYPTED at rest (v2
+      // blob) — the response alone carries the plaintext, for enrollment.
+      expect(row.totpSecret).not.toBe(body.secret);
+      expect(row.totpSecret!.startsWith("v2:")).toBe(true);
+      expect(decrypt(row.totpSecret!)).toBe(body.secret);
       // Enrollment is a two-step flow: enabled only after verify-setup.
       expect(row.totpEnabled).toBe(false);
     } finally {
@@ -240,7 +245,10 @@ describe("POST /api/admin/2fa/setup — disabling an ENABLED 2FA (the S5 vector)
       expect(typeof body.secret).toBe("string");
 
       const row = await fetchRow(admin.adminId);
-      expect(row.totpSecret).toBe(body.secret);
+      // R118-B1c: rotation stores the NEW secret encrypted (v2 blob that
+      // decrypts to the response secret); the old value is gone.
+      expect(row.totpSecret!.startsWith("v2:")).toBe(true);
+      expect(decrypt(row.totpSecret!)).toBe(body.secret);
       expect(row.totpSecret).not.toBe("enabled-fake-secret");
       expect(row.totpEnabled).toBe(false);
     } finally {

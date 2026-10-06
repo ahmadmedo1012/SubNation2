@@ -375,6 +375,41 @@ export function createCorsOriginGate(allowedOrigins: string[], production: boole
   };
 }
 app.use(createCorsOriginGate(allowedOrigins, isProduction));
+
+/**
+ * R118-B1c (A4 F-5): emit Access-Control-Allow-Credentials ONLY when the
+ * request carries an Origin header that the gate above allowed.
+ *
+ * The `cors` package sets ACAC on EVERY response once `credentials: true`
+ * (its configureCredentials runs for preflight and actual requests alike,
+ * with no origin-conditional mode) — including the no-Origin responses
+ * that dominate real traffic (health probes, same-origin SPA calls,
+ * curl). There the header is inert (no ACAO → the browser refuses
+ * credentialed reads) but it is scanner-visible misconfig noise and
+ * invites future misuse of the flag. So the option is dropped from the
+ * `cors` config and the header is set HERE instead, mounted between the
+ * origin gate and `cors`:
+ *
+ *   - no Origin → no ACAC (the F-5 fix; same-origin/server-to-server
+ *     traffic never needed it);
+ *   - a DISALLOWED Origin never reaches this middleware (the gate 403'd
+ *     it above — its response carries no ACAC either);
+ *   - an allowed Origin (or any origin in dev's empty-allowlist reflect
+ *     mode) → ACAC: true, exactly the previous credentialed-CORS
+ *     behaviour for the cross-origin SPA, on BOTH actual requests and
+ *     the preflight OPTIONS the `cors` middleware below answers (this
+ *     middleware runs first and the header persists on the response).
+ */
+export function createCorsCredentialsHeader() {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && origin.length > 0) {
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+    next();
+  };
+}
+app.use(createCorsCredentialsHeader());
 app.use(
   cors({
     // Plain list form — disallowed origins never reach this middleware
@@ -382,7 +417,9 @@ app.use(
     // triggers CORS headers (server-to-server/same-origin pass-through).
     // Empty list in dev reflects any origin (previous behaviour).
     origin: allowedOrigins.length > 0 ? allowedOrigins : true,
-    credentials: true,
+    // credentials: REMOVED (R118-B1c, A4 F-5) — see
+    // createCorsCredentialsHeader above: ACAC is now emitted only for
+    // origin-bearing (i.e. allowlist-passed) requests.
     // 98-F3 (R98-A4 §5): preflight responses carried no
     // Access-Control-Max-Age, so every cross-origin browser request from
     // the Vercel SPA (credentials:"include") paid a fresh OPTIONS

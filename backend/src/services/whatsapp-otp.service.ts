@@ -193,6 +193,43 @@ interface PoolLike {
   connect: () => Promise<PoolClientLike>;
 }
 
+// F-4 (R118-A1): bound on the finally-branch unlock query. The lock
+// pool sets only an acquisition timeout (connectionTimeoutMillis) — no
+// statement timeout — so a silently-dead connection used to leave the
+// `SELECT pg_advisory_unlock` await hanging until TCP keepalives error
+// out. Env-overridable for tests + ops (same pattern as
+// HEALTH_AGGREGATE_TIMEOUT_MS in routes/health.ts).
+const DEFAULT_UNLOCK_TIMEOUT_MS = 5_000;
+
+function unlockTimeoutMs(): number {
+  const raw = Number(process.env.OTP_UNLOCK_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_UNLOCK_TIMEOUT_MS;
+}
+
+/**
+ * F-5 (R118-A1): lock-pool failure paths previously surfaced ONLY as
+ * warn lines — a sustained pathology (pool saturation, unlock failures)
+ * stayed invisible to the alerts drawer while every comparable
+ * condition (inventory-corrupt, coupon-maxed, credentials-sweep)
+ * alerts. Fire-and-forget by design: logAdminAlert never rejects (its
+ * own catch swallows DB failures), so the .catch here only guards the
+ * module load itself. Dynamic import — same lazy pattern the socket
+ * emits use — keeps alertLogger (and its @workspace/db import) out of
+ * this module's import graph: the module-boundary mocks used by the
+ * test suite export no adminAlertsTable, and the lock path is the one
+ * place this service runs under them.
+ *
+ * Deduped per branch ("otp:lockpool" / "otp:lockpool:saturation") so a
+ * burst of failures collapses to one drawer row per 24 h window.
+ */
+function fireLockPoolAlert(dedupeKey: string, title: string, message: string): void {
+  import("../jobs/alertLogger")
+    .then(({ logAdminAlert }) => logAdminAlert("system", title, message, { dedupeKey }))
+    .catch((err) =>
+      logger.warn({ err, dedupeKey }, "[whatsapp-otp] lock-pool admin alert dispatch failed"),
+    );
+}
+
 let cachedPool: PoolLike | null | undefined;
 
 /** R117: test seam — inject a fake lock pool to exercise the lock path
@@ -240,6 +277,14 @@ async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<
       },
       "[whatsapp-otp] start-lock pool saturated — answering busy (retryable)",
     );
+    // F-5 (R118-A1): the warn line alone is invisible to the operator's
+    // alert drawer — a sustained saturation (burst traffic or a sick
+    // DB) deserves a deduped admin alert.
+    fireLockPoolAlert(
+      "otp:lockpool:saturation",
+      "ضغط على مجموعة أقفال رموز واتساب",
+      "فشل الحصول على اتصال من مجموعة الأقفال المخصّصة لبدء رمز التحقق (lockPool) — تم الرد على الطلب بحالة «مشغول» قابلة لإعادة المحاولة. قد يشير هذا إلى تشبّه المجموعة (حدّ اتصالَين) أو تعذّر الوصول إلى قاعدة البيانات.",
+    );
     return { ok: false, reason: "cooldown", retryAfterSec: OTP_START_LOCK_RETRY_SEC };
   }
   let acquired = false;
@@ -265,8 +310,28 @@ async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<
   } finally {
     if (acquired) {
       let unlockOk = true;
+      // F-4 (R118-A1): race the unlock against a bounded timer. Without
+      // the race, a silently-dead connection hung this await until TCP
+      // keepalives error out — the /start response was delayed AND one
+      // of the two lock-pool slots stayed pinned the whole time (a
+      // second such hang 429'd every OTP start with the busy verdict).
+      // A timeout takes the SAME unlockOk=false path as a rejected
+      // query: release(true) destroys the client, closing the session
+      // so Postgres drops the advisory lock server-side. The losing
+      // (still-pending) query promise stays race-observed, so its late
+      // settlement can never surface as an unhandled rejection.
+      let unlockTimer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockKey]);
+        await Promise.race([
+          client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockKey]),
+          new Promise<never>((_, reject) => {
+            unlockTimer = setTimeout(() => {
+              reject(
+                new Error(`pg_advisory_unlock did not answer within ${unlockTimeoutMs()}ms`),
+              );
+            }, unlockTimeoutMs());
+          }),
+        ]);
       } catch (err) {
         unlockOk = false;
         logger.warn(
@@ -276,6 +341,16 @@ async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<
           },
           "[whatsapp-otp] start-lock advisory unlock failed — destroying the client so Postgres drops the session lock server-side",
         );
+        // F-5 (R118-A1): surface the pathology in the admin alerts
+        // drawer too — repeated unlock failures point at a sick
+        // lock-pool/DB connection, not a one-off blip.
+        fireLockPoolAlert(
+          "otp:lockpool",
+          "فشل تحرير قفل بدء رمز واتساب",
+          "فشل أو تجاوز مهلة أمر تحرير القفل الاستشاري (pg_advisory_unlock) لبدء رمز التحقق — تم تدمير الاتصال لضمان إسقاط القفل من جهة Postgres. تكرار هذا التنبيه قد يدل على مشكلة في الاتصال بقاعدة البيانات.",
+        );
+      } finally {
+        if (unlockTimer !== undefined) clearTimeout(unlockTimer);
       }
       // R117 (A1-P3): a session-scoped advisory lock dies with the SESSION.
       // A plain release() would return a still-locked live session to the

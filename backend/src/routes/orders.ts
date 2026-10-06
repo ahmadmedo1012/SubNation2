@@ -54,6 +54,26 @@ function formatOrder(
   // purchased account's usage rules: same lifecycle as the credentials,
   // so it is gated too rather than leaking post-refund.
   const credentialsLive = order.status === "completed";
+  // Decrypt once — the response fields and the decrypt-failure flag below
+  // read the same values.
+  const deliveredEmail = credentialsLive ? safeDecrypt(order.deliveredEmail) : null;
+  const deliveredPassword = credentialsLive ? safeDecrypt(order.deliveredPassword) : null;
+  const deliveredExtraDetails = credentialsLive ? safeDecrypt(order.deliveredExtraDetails) : null;
+  // R118-A1 F-7: buyer-side parity with the admin reveal flag
+  // (routes/admin/orders.ts credentials endpoint). A COMPLETED order whose
+  // raw credential columns are populated but no longer decrypt
+  // (post-purchase ENCRYPTION_KEY rotation, or corrupted rows) previously
+  // rendered as silent all-null delivered fields — the paying buyer's UI
+  // said "no credentials" instead of "cannot decrypt — contact support".
+  // Additive shape only: the flag appears exactly when the order is
+  // completed, at least one raw credential column exists, and EVERY
+  // decrypt came back null (a genuinely credential-less order has no raw
+  // columns and must NOT be flagged).
+  const hasRawCredentialColumns = !!(
+    order.deliveredEmail ||
+    order.deliveredPassword ||
+    order.deliveredExtraDetails
+  );
   return {
     id: order.id,
     order_code: order.orderCode,
@@ -69,12 +89,19 @@ function formatOrder(
     coupon_code: order.couponCode ?? null,
     discount_amount: toNumber(order.discountAmount),
     status: order.status,
-    delivered_email: credentialsLive ? safeDecrypt(order.deliveredEmail) : null,
-    delivered_password: credentialsLive ? safeDecrypt(order.deliveredPassword) : null,
-    delivered_extra_details: credentialsLive ? safeDecrypt(order.deliveredExtraDetails) : null,
+    delivered_email: deliveredEmail,
+    delivered_password: deliveredPassword,
+    delivered_extra_details: deliveredExtraDetails,
     delivered_usage_terms: credentialsLive ? (order.deliveredUsageTerms ?? null) : null,
     delivered_at: order.deliveredAt?.toISOString() ?? null,
     created_at: order.createdAt?.toISOString(),
+    ...(credentialsLive &&
+    hasRawCredentialColumns &&
+    !deliveredEmail &&
+    !deliveredPassword &&
+    !deliveredExtraDetails
+      ? { decrypt_failed: true }
+      : {}),
   };
 }
 

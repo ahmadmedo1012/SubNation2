@@ -1,6 +1,7 @@
 import {
   type AnyPgColumn,
   boolean,
+  check,
   index,
   integer,
   numeric,
@@ -10,6 +11,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
 import { organizationsTable } from "./organizations";
@@ -81,6 +83,14 @@ export const usersTable = pgTable(
     // a drizzle push would have dropped it (same trap idx_products_name_trgm
     // closed earlier — see products.ts for the idiom).
     phoneTrgmIdx: index("idx_users_phone_trgm").using("gin", t.phone.op("gin_trgm_ops")),
+    // R118-A3 F3: the two balance guards the boot SQL has always applied
+    // live (V1-M9 count-then-add for wallet_balance, V1-M21 probe-gated
+    // DO-block for loyalty_points — points are LYD-convertible at 100:1,
+    // so a negative balance is money creation). Declared via check() so
+    // the drizzle chain + snapshot carries them; names + expressions
+    // pinned verbatim to the boot SQL (migrate.ts).
+    walletBalanceNonnegCheck: check("chk_users_wallet_balance_nonneg", sql`wallet_balance >= 0`),
+    loyaltyPointsNonnegCheck: check("chk_users_loyalty_points_nonneg", sql`loyalty_points >= 0`),
   }),
 );
 

@@ -22,5 +22,15 @@ export const adminAlertsTable = pgTable(
     // Serves the dedupe EXISTS lookup (key + recency) and the retention
     // sweeps in one index.
     dedupeIdx: index("idx_admin_alerts_dedupe_key").on(t.dedupeKey, t.createdAt),
+    // R118-A6 F-4: the admin alerts read paths (list ORDER BY created_at
+    // DESC LIMIT/OFFSET, /new is_read=false … LIMIT 50, unread-count)
+    // had no supporting index — seq scan + top-N sort on every open
+    // admin tab poll. PLAIN (not partial WHERE NOT is_read): the main
+    // list sorts the whole table, so the partial variant would leave the
+    // hottest path unindexed; the /new + unread-count queries filter
+    // fine on the same btree. DESC mirrors the dominant ORDER BY. Boot
+    // twin: migrate.ts must CREATE INDEX IF NOT EXISTS this name for the
+    // live DB (V1-M24-class stage — see the R118-B3 report).
+    createdIdx: index("idx_admin_alerts_created").on(t.createdAt.desc()),
   }),
 );

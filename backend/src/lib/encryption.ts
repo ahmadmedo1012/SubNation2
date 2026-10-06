@@ -6,6 +6,14 @@ const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 
 /**
+ * R118-B1c (A4 F-2): version prefix marking blobs minted by the CURRENT
+ * ENCRYPTION_KEY. Blobs without it are legacy v1 (`iv:tag:ct`, every
+ * pre-R118 row incl. the 15 live credential blobs) and remain decryptable
+ * forever — the fallback path below is what makes key rotation survivable.
+ */
+const V2_PREFIX = "v2:";
+
+/**
  * Parse + validate ENCRYPTION_KEY exactly the way first-use does. Kept as the
  * single validation path for both getKey() and the boot assertion below so
  * the two can never drift.
@@ -35,13 +43,58 @@ function getKey(): Buffer {
 }
 
 /**
- * Test seam — forget the memoized key so the NEXT first-use re-parses
+ * R118-B1c (A4 F-2): the DECRYPT-ONLY rotation fallback key.
+ *
+ * ENCRYPTION_KEY_PREV holds the key that was current before a rotation.
+ * v1 blobs (no prefix) that fail GCM auth against the current key get one
+ * retry against it; v2 blobs never do (a v2 blob is by construction tied
+ * to the key that minted it — a failure there means key trouble, not a
+ * rotation in progress). Optional by design: unset (or malformed — see
+ * the warn below) simply means “no fallback”, the exact pre-R118
+ * behaviour. NEVER used for encryption — new writes are always v2 under
+ * the current key, so the prev key can be retired once the re-encrypt
+ * job (jobs/reencrypt-v1-credentials.ts) has drained every v1 blob.
+ *
+ * Memoized like the current key (B6-03); the “memoized: absent” state is
+ * tracked separately so a per-process first-use failure shape stays
+ * stable (a malformed value warns ONCE, not per call).
+ */
+let memoizedPrevKey: Buffer | null = null;
+let prevKeyMemoized = false;
+
+function getPrevKey(): Buffer | null {
+  if (!prevKeyMemoized) {
+    prevKeyMemoized = true;
+    memoizedPrevKey = null;
+    const raw = process.env.ENCRYPTION_KEY_PREV;
+    if (raw) {
+      const buf = Buffer.from(raw, "hex");
+      if (buf.length === 32) {
+        memoizedPrevKey = buf;
+      } else {
+        logger.warn(
+          {
+            category: "security",
+            decodedBytes: buf.length,
+          },
+          "ENCRYPTION_KEY_PREV is set but does not decode to 32 bytes (64 hex chars) — the rotation fallback is DISABLED for this process; v1 blobs encrypted with the previous key will fail to decrypt (safeDecrypt → null)",
+        );
+      }
+    }
+  }
+  return memoizedPrevKey;
+}
+
+/**
+ * Test seam — forget the memoized keys so the NEXT first-use re-parses
  * process.env. Production never calls this (env is immutable per process);
  * tests that simulate a key rotation mid-file use it to model "a new
- * process booting with a different key".
+ * process booting with a different key" (current AND prev keys).
  */
 export function __resetEncryptionKeyCacheForTests(): void {
   memoizedKey = null;
+  memoizedPrevKey = null;
+  prevKeyMemoized = false;
 }
 
 /**
@@ -61,9 +114,14 @@ export function __resetEncryptionKeyCacheForTests(): void {
  * passwords plaintext — and a module-load throw would break that path.
  * Parsing rules are identical to getKey() by construction (shared helper).
  *
- * NOTE for rotation: a NEW key makes previously-encrypted rows
- * undecryptable (safeDecrypt returns null); rotate only together with a
- * re-encryption pass over the inventory-credential columns.
+ * NOTE for rotation (R118-B1c supersedes the blind-rotation warning):
+ * rotation is now a three-step, zero-data-loss procedure —
+ *   1. set ENCRYPTION_KEY to the new key and ENCRYPTION_KEY_PREV to the
+ *      old one (new writes become v2 blobs under the new key; v1 reads
+ *      fall back to PREV),
+ *   2. let the re-encrypt one-shot (jobs/reencrypt-v1-credentials.ts)
+ *      upgrade every remaining v1 blob to v2,
+ *   3. once no v1 blobs remain, drop ENCRYPTION_KEY_PREV.
  */
 export function assertEncryptionKeyConfigured(): void {
   const raw = process.env.ENCRYPTION_KEY;
@@ -82,9 +140,30 @@ export function assertEncryptionKeyConfigured(): void {
     throw new Error(
       `ENCRYPTION_KEY must decode to exactly 32 bytes (64 hex chars) for AES-256-GCM; the ` +
         `current value decodes to ${bytes} byte(s). Generate a fresh key with ` +
-        "`openssl rand -hex 32` and update it on the host. Rotation note: a changed key makes " +
-        "previously-encrypted rows undecryptable (safeDecrypt returns null).",
+        "`openssl rand -hex 32` and update it on the host. Rotation note: set ENCRYPTION_KEY_PREV " +
+        "to the old key before switching, then run the v1→v2 re-encrypt one-shot " +
+        "(jobs/reencrypt-v1-credentials.ts) before retiring the old key.",
     );
+  }
+  // R118-B1c: advisory checks on the OPTIONAL rotation fallback. These
+  // WARN rather than throw: a bad ENCRYPTION_KEY_PREV degrades to the
+  // exact pre-R118 behaviour (no fallback), which is always bootable —
+  // refusing to serve over an optional convenience var would trade a
+  // data-availability hint for an outage.
+  const prevRaw = process.env.ENCRYPTION_KEY_PREV;
+  if (prevRaw) {
+    const prevBytes = Buffer.from(prevRaw, "hex").length;
+    if (prevBytes !== 32) {
+      logger.warn(
+        { category: "security", decodedBytes: prevBytes },
+        "ENCRYPTION_KEY_PREV is set but does not decode to 32 bytes (64 hex chars) — the rotation fallback is disabled; generate it with `openssl rand -hex 32` (it must be the PREVIOUS key, not a new one)",
+      );
+    } else if (prevRaw === raw) {
+      logger.warn(
+        { category: "security" },
+        "ENCRYPTION_KEY_PREV equals ENCRYPTION_KEY — the fallback is a no-op (it retries the same key). Set it to the PREVIOUS key, or unset it.",
+      );
+    }
   }
 }
 
@@ -93,27 +172,89 @@ export function encrypt(plaintext: string): string {
   const cipher = createCipheriv(ALGORITHM, getKey(), iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const authTag = cipher.getAuthTag();
-  // Format: iv:authTag:ciphertext (all hex)
-  return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted.toString("hex")}`;
+  // Format: v2:iv:authTag:ciphertext (hex after the prefix).
+  // R118-B1c (A4 F-2): every NEW blob carries the version prefix so a
+  // later rotation can tell current-key blobs from pre-rotation v1 blobs.
+  // The +3 chars are inside every current column budget (varchar(512)
+  // credential columns hold ~3 extra chars of headroom for any plaintext
+  // that fit before; the re-encrypt job length-guards the legacy edge).
+  return `${V2_PREFIX}${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
-export function decrypt(ciphertext: string): string {
-  const parts = ciphertext.split(":");
+/** Parse the `iv:tag:ct` triple (v1 body, or v2 body after prefix strip). */
+function parseSegments(blob: string): { iv: Buffer; authTag: Buffer; encrypted: Buffer } {
+  const parts = blob.split(":");
   if (parts.length !== 3) throw new Error("Invalid encrypted format");
   const iv = Buffer.from(parts[0], "hex");
   const authTag = Buffer.from(parts[1], "hex");
   const encrypted = Buffer.from(parts[2], "hex");
-  const decipher = createDecipheriv(ALGORITHM, getKey(), iv);
-  decipher.setAuthTag(authTag);
-  return decipher.update(encrypted) + decipher.final("utf8");
+  return { iv, authTag, encrypted };
+}
+
+/** AES-256-GCM open with a specific key — throws on auth/format failure. */
+function decryptSegments(
+  segments: { iv: Buffer; authTag: Buffer; encrypted: Buffer },
+  key: Buffer,
+): string {
+  const decipher = createDecipheriv(ALGORITHM, key, segments.iv);
+  decipher.setAuthTag(segments.authTag);
+  return decipher.update(segments.encrypted) + decipher.final("utf8");
+}
+
+export function decrypt(ciphertext: string): string {
+  // v2 blobs are minted by the key that was CURRENT at write time and are
+  // only ever written together with it — no fallback key applies.
+  if (ciphertext.startsWith(V2_PREFIX)) {
+    return decryptSegments(parseSegments(ciphertext.slice(V2_PREFIX.length)), getKey());
+  }
+  // v1 (prefixless) blob: current key first (the overwhelming case —
+  // every v1 blob on disk was made by what is usually still the current
+  // key), then the ENCRYPTION_KEY_PREV rotation fallback. If both fail
+  // (or no fallback is configured), rethrow the CURRENT-key error: the
+  // failure semantics stay exactly as before (safeDecrypt → null;
+  // decrypt → throws).
+  const segments = parseSegments(ciphertext);
+  let currentKeyError: unknown;
+  try {
+    return decryptSegments(segments, getKey());
+  } catch (err) {
+    currentKeyError = err;
+  }
+  const prevKey = getPrevKey();
+  if (prevKey !== null) {
+    return decryptSegments(segments, prevKey);
+  }
+  throw currentKeyError;
 }
 
 export function isEncrypted(value: string | null): boolean {
   if (!value) return false;
+  // v2: the prefix itself is the format marker. Deliberately NOT a
+  // segment-length check: a "v2:"-prefixed string that then fails the
+  // shape must still be classified as ciphertext-at-rest so decrypt()
+  // throws and safeDecrypt() nulls it — treating it as "plaintext" would
+  // ship garbage as a credential (the silent-passthrough confusion the
+  // R118 edge case forbids). Real plaintext never starts with "v2:"
+  // (base32 secrets, emails and human passwords contain no colon-triple
+  // with this prefix).
+  if (value.startsWith(V2_PREFIX)) return true;
   const parts = value.split(":");
   return (
     parts.length === 3 && parts[0].length === IV_BYTES * 2 && parts[1].length === AUTH_TAG_BYTES * 2
   );
+}
+
+/**
+ * R118-B1c (A4 F-2): true only for LEGACY v1 blobs — the exact set the
+ * re-encrypt job (jobs/reencrypt-v1-credentials.ts) upgrades. v2 blobs,
+ * plaintext values and anything v2-prefixed (incl. v2-shaped garbage,
+ * which is decrypt-failed material, not upgrade material) all return
+ * false.
+ */
+export function isV1Blob(value: string | null): boolean {
+  if (!value) return false;
+  if (value.startsWith(V2_PREFIX)) return false;
+  return isEncrypted(value);
 }
 
 // B6-03 (R116): throttle the safeDecrypt failure warn. A key mismatch or a

@@ -1,3 +1,4 @@
+import cors from "cors";
 import { beforeAll, describe, expect, it } from "vitest";
 import express, { type Express } from "express";
 
@@ -14,7 +15,15 @@ import express, { type Express } from "express";
  *
  * Mounted on a mini express app (same harness as csrf-gate.test.ts).
  * Env note: importing app.ts evaluates the whole module tree, so the
- * throwaway ENCRYPTION_KEY is set first (same as csrf-gate.test.ts).
+ * throwaway ENCRYPTION_KEY is set first (same as csrf-gate.test.ts —
+ * the dynamic import in beforeAll runs after the assignment below).
+ *
+ * R118-B1c (A4 F-5) — the second describe block pins the
+ * Access-Control-Allow-Credentials gating: the `cors` package emitted
+ * ACAC on EVERY response once `credentials: true` (incl. no-Origin
+ * ones — inert but scanner-visible); app.ts now drops the option and
+ * mounts createCorsCredentialsHeader() between the gate and `cors`,
+ * so ACAC rides only origin-bearing (allowlist-passed) requests.
  */
 
 process.env.ENCRYPTION_KEY ??= "11".repeat(32);
@@ -71,6 +80,31 @@ async function fire(
     const res = await fetch(`${url}/api/products`, { headers });
     const text = await res.text();
     return { status: res.status, body: text ? JSON.parse(text) : null };
+  } finally {
+    close();
+  }
+}
+
+/** Fire with method/headers + collect the CORS-relevant response headers. */
+async function fireForHeaders(
+  app: Express,
+  method: "GET" | "OPTIONS",
+  headers: Record<string, string>,
+): Promise<{
+  status: number;
+  acac: string | null;
+  acao: string | null;
+  maxAge: string | null;
+}> {
+  const { url, close } = await listen(app);
+  try {
+    const res = await fetch(`${url}/api/products`, { method, headers });
+    return {
+      status: res.status,
+      acac: res.headers.get("access-control-allow-credentials"),
+      acao: res.headers.get("access-control-allow-origin"),
+      maxAge: res.headers.get("access-control-max-age"),
+    };
   } finally {
     close();
   }
@@ -139,5 +173,93 @@ describe("createCorsOriginGate (R97 F2 — quiet 403, not a noisy 500)", () => {
     } finally {
       close();
     }
+  });
+});
+
+/**
+ * R118-B1c (A4 F-5) — the FULL app.ts CORS wiring (gate → credentials
+ * header → cors), replicated with the exact factories/mount order app.ts
+ * uses, so the header contract is pinned end to end:
+ *
+ *   - no-Origin requests (health probes, same-origin SPA, curl): NO
+ *     Access-Control-Allow-Credentials (the old `cors` package set it
+ *     unconditionally — inert without ACAO, but scanner-visible noise);
+ *   - allowed Origin: ACAC + echoed ACAO on actual requests AND on the
+ *     preflight OPTIONS the cors middleware answers (the credentialed
+ *     cross-origin SPA contract is unchanged);
+ *   - DISALLOWED Origin: the gate's 403 carries NO ACAC (ordering proof —
+ *     the credentials middleware sits AFTER the gate, never before it).
+ */
+describe("createCorsCredentialsHeader (R118-B1c / A4 F-5 — ACAC only with an allowed Origin)", () => {
+  const ALLOWED = ["https://subnation.ly", "https://www.subnation.ly"];
+
+  /** The exact app.ts mount order: origin gate → credentials header → cors. */
+  function buildCorsStack(allowedOrigins: string[], production: boolean): Express {
+    const app = express();
+    app.use(appModule.createCorsOriginGate(allowedOrigins, production));
+    app.use(appModule.createCorsCredentialsHeader());
+    app.use(
+      cors({
+        origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+        maxAge: 600,
+      }),
+    );
+    app.use((_req, res) => {
+      res.status(200).json({ reached: true });
+    });
+    return app;
+  }
+
+  it("no Origin header → NO Access-Control-Allow-Credentials (the F-5 fix)", async () => {
+    const res = await fireForHeaders(buildCorsStack(ALLOWED, true), "GET", {});
+    expect(res.status).toBe(200);
+    expect(res.acac).toBeNull();
+    expect(res.acao).toBeNull();
+  });
+
+  it("allowed Origin → ACAC true + echoed ACAO on the actual request (credentialed SPA contract unchanged)", async () => {
+    const res = await fireForHeaders(buildCorsStack(ALLOWED, true), "GET", {
+      Origin: "https://subnation.ly",
+    });
+    expect(res.status).toBe(200);
+    expect(res.acac).toBe("true");
+    expect(res.acao).toBe("https://subnation.ly");
+  });
+
+  it("allowed Origin → ACAC true on the PREFLIGHT too (cors answers OPTIONS; the header persists)", async () => {
+    const res = await fireForHeaders(buildCorsStack(ALLOWED, true), "OPTIONS", {
+      Origin: "https://subnation.ly",
+      "Access-Control-Request-Method": "POST",
+    });
+    expect(res.status).toBe(204);
+    expect(res.acac).toBe("true");
+    expect(res.acao).toBe("https://subnation.ly");
+    expect(res.maxAge).toBe("600"); // 98-F3 preflight cache survives the rewiring
+  });
+
+  it("preflight with NO Origin (synthetic shape) → 204 with no ACAC", async () => {
+    const res = await fireForHeaders(buildCorsStack(ALLOWED, true), "OPTIONS", {
+      "Access-Control-Request-Method": "POST",
+    });
+    expect(res.status).toBe(204);
+    expect(res.acac).toBeNull();
+  });
+
+  it("DISALLOWED Origin → the gate's 403 carries NO ACAC (mount-order proof: gate first, credentials header second)", async () => {
+    const res = await fireForHeaders(buildCorsStack(ALLOWED, true), "GET", {
+      Origin: "https://evil.example.com",
+    });
+    expect(res.status).toBe(403);
+    expect(res.acac).toBeNull();
+    expect(res.acao).toBeNull();
+  });
+
+  it("dev empty-allowlist reflect mode → any Origin still gets ACAC + reflected ACAO (previous dev behaviour)", async () => {
+    const res = await fireForHeaders(buildCorsStack([], false), "GET", {
+      Origin: "https://localhost:5173",
+    });
+    expect(res.status).toBe(200);
+    expect(res.acac).toBe("true");
+    expect(res.acao).toBe("https://localhost:5173");
   });
 });

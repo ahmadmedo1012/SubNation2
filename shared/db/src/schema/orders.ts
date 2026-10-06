@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   index,
   integer,
   numeric,
@@ -106,6 +108,14 @@ export const ordersTable = pgTable(
     // variant_id). Declared here so the drizzle chain + snapshot carry it
     // and a future push can't drop a live serving index.
     variantIdx: index("idx_orders_variant").on(t.variantId),
+    // R118-A3 F3: refund reconciliation guard the boot SQL (V1-M22)
+    // applies live — a refund is either absent or strictly positive and
+    // never exceeds the order's own amount. Pinned verbatim to the boot
+    // SQL (migrate.ts applyOrdersRefundColumnsStage).
+    refundAmountRangeCheck: check(
+      "chk_orders_refund_amount_range",
+      sql`refund_amount IS NULL OR (refund_amount > 0 AND refund_amount <= amount)`,
+    ),
   }),
 );
 

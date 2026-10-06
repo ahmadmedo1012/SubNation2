@@ -40,6 +40,7 @@ import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 import { pruneOldIdempotencyKeys } from "./idempotency-retention";
 import { pruneOldNotifications } from "./notifications-retention";
 import { pruneStaleLoginAttempts, pruneOldAuditLogs } from "./auth-audit-retention";
+import { reencryptV1CredentialBlobs } from "./reencrypt-v1-credentials";
 
 /**
  * 97-F1 (round-97 A6/D.2): flash-sale expiry catch-up, fired once at
@@ -99,6 +100,10 @@ function fireOneShotsSequentially(jobs: Array<[name: string, fn: () => Promise<u
  *     hottest insert table now catches up at boot like every sibling;
  *   - notifications retention (AUD103-1-F2, r103): read > 90d /
  *     unread > 180d — the table previously had NO retention at all.
+ *   - v1→v2 credential re-encryption (R118-B1c, A4 F-2): upgrades
+ *     legacy prefixless AES-256-GCM blobs to the versioned v2 format
+ *     under the current ENCRYPTION_KEY. Pure no-op once drained — the
+ *     five NOT LIKE 'v2:%' scans are the only steady-state cost.
  */
 export function runBootOneShots(): void {
   fireOneShotsSequentially([
@@ -135,9 +140,13 @@ export function runBootOneShots(): void {
     ["whatsapp-otp-prune", pruneExpiredOtps],
     ["admin-session-prune", pruneStaleAdminSessions],
     ["flash-sale-catchup", deactivateExpiredFlashSalesCatchUp],
+    // R118-B1c (A4 F-2): v1 → v2 credential re-encryption — LAST in the
+    // chain (a slow/failed upgrade must never delay a retention catch-up;
+    // its own failure is caught by the chain like every sibling).
+    ["reencrypt-v1-credentials", reencryptV1CredentialBlobs],
   ]);
   logger.info(
     { category: "monitoring" },
-    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, idempotencyRetention, notificationsRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup, loginAttemptsRetention, auditLogsRetention)",
+    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, idempotencyRetention, notificationsRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup, loginAttemptsRetention, auditLogsRetention, reencryptV1Credentials)",
   );
 }

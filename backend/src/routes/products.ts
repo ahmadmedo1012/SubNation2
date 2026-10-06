@@ -88,19 +88,34 @@ const deliverableUnitCondition = () =>
   );
 
 /**
- * Load the active variants for a set of products in ONE query, grouped
- * in JS by product_id. Ordered by (sort_order, price) so the selector
- * renders cheapest-first deterministically. R102: availability is
- * computed here per-variant from the SAME two-pool semantics the
- * checkout claim uses (variant-scoped first, then generic) — the
- * product-level callback parameter is gone.
+ * F-1 (R118-A6): the DB half of loadPublicVariants — variant rows +
+ * the two-pool stock counts keyed by product/variant. Split out (from
+ * what used to be one function) so the detail routes can start these
+ * queries in the SAME Promise.all as the product row: the flash-sale
+ * discount only feeds the JS projection (projectVariantDtos below),
+ * never the SQL, so it never justified a sequential stage.
  */
-async function loadPublicVariants(
-  productIds: number[],
-  discountPercent: number,
-): Promise<Map<number, PublicVariantDto[]>> {
-  const map = new Map<number, PublicVariantDto[]>();
-  if (productIds.length === 0) return map;
+interface VariantPoolData {
+  rows: Array<{
+    id: number;
+    productId: number;
+    planLabel: string | null;
+    durationLabel: string | null;
+    priceLyd: string;
+  }>;
+  /** Deliverable stock in each product's GENERIC pool (variant_id IS NULL). */
+  genericByProduct: Map<number, number>;
+  /** Deliverable stock per (variant-scoped) pool. */
+  scopedByVariant: Map<number, number>;
+}
+
+async function fetchVariantPoolData(productIds: number[]): Promise<VariantPoolData> {
+  const empty: VariantPoolData = {
+    rows: [],
+    genericByProduct: new Map(),
+    scopedByVariant: new Map(),
+  };
+  if (productIds.length === 0) return empty;
 
   const [rows, stockRows] = await Promise.all([
     db
@@ -110,8 +125,6 @@ async function loadPublicVariants(
         planLabel: productVariantsTable.planLabel,
         durationLabel: productVariantsTable.durationLabel,
         priceLyd: productVariantsTable.priceLyd,
-        sortOrder: productVariantsTable.sortOrder,
-        isActive: productVariantsTable.isActive,
       })
       .from(productVariantsTable)
       .where(
@@ -150,11 +163,25 @@ async function loadPublicVariants(
     }
   }
 
-  for (const v of rows) {
+  return { rows, genericByProduct, scopedByVariant };
+}
+
+/**
+ * F-1 (R118-A6): the JS half of loadPublicVariants — projects raw pool
+ * data into the public DTO. Identical output to the pre-split loop
+ * (labels, two-pool availability, flash-sale arithmetic), so the public
+ * variant contract is unchanged.
+ */
+function projectVariantDtos(
+  pool: VariantPoolData,
+  discountPercent: number,
+): Map<number, PublicVariantDto[]> {
+  const map = new Map<number, PublicVariantDto[]>();
+  for (const v of pool.rows) {
     const price = parseFloat(String(v.priceLyd));
     // Two-pool availability, mirroring the checkout claim exactly.
     const available =
-      (scopedByVariant.get(v.id) ?? 0) > 0 || (genericByProduct.get(v.productId) ?? 0) > 0;
+      (pool.scopedByVariant.get(v.id) ?? 0) > 0 || (pool.genericByProduct.get(v.productId) ?? 0) > 0;
     const plan = v.planLabel?.trim() || null;
     const duration = v.durationLabel?.trim() || null;
     const label = [plan, duration].filter(Boolean).join(" — ") || "الخيار الافتراضي";
@@ -172,6 +199,22 @@ async function loadPublicVariants(
     map.set(v.productId, list);
   }
   return map;
+}
+
+/**
+ * Load the active variants for a set of products in ONE query, grouped
+ * in JS by product_id. Ordered by (sort_order, price) so the selector
+ * renders cheapest-first deterministically. R102: availability is
+ * computed here per-variant from the SAME two-pool semantics the
+ * checkout claim uses (variant-scoped first, then generic) — the
+ * product-level callback parameter is gone. F-1 (R118-A6): internally
+ * fetch (fetchVariantPoolData) + project (projectVariantDtos).
+ */
+async function loadPublicVariants(
+  productIds: number[],
+  discountPercent: number,
+): Promise<Map<number, PublicVariantDto[]>> {
+  return projectVariantDtos(await fetchVariantPoolData(productIds), discountPercent);
 }
 
 /**
@@ -193,6 +236,66 @@ async function getActiveFlashSale(): Promise<{
     title: flashSale.title,
     discount_percent: flashSale.discountPercent,
     ends_at: flashSale.endsAt,
+  };
+}
+
+// ── Product detail DTO (F-1, R118-A6) ────────────────────────────────────
+
+type ProductRow = typeof productsTable.$inferSelect;
+type ActiveFlashSale = Awaited<ReturnType<typeof getActiveFlashSale>>;
+
+/**
+ * F-1 (R118-A6): single projection for BOTH detail routes — previously
+ * two copy-pasted 30-line DTO literals, now one builder so /:id and
+ * /by-slug are byte-identical by construction (the F-1 stage collapse
+ * restructured which queries run where; this keeps WHAT they return
+ * pinned). Field list + order are the PUBLIC CONTRACT (asserted by
+ * routes/__tests__/product-detail-shape.test.ts) — do not reorder.
+ */
+function buildProductDetailDto(
+  product: ProductRow,
+  flashSale: ActiveFlashSale,
+  stockCount: number,
+  orderCount: number,
+  variantPool: VariantPoolData,
+) {
+  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
+  const variants = projectVariantDtos(variantPool, discountPercent).get(product.id) ?? [];
+  const basePrice = parseFloat(String(product.price));
+  const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+  const salePrice =
+    discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
+  return {
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    description: product.description,
+    description_long: product.descriptionLong ?? null,
+    faq: product.faq ?? null,
+    seo_title: product.seoTitle ?? null,
+    features: product.features ?? null,
+    seo_description: product.seoDescription ?? null,
+    image_url: product.imageUrl,
+    price: displayBase,
+    price_from: variants.length > 1,
+    category: product.category,
+    is_active: product.isActive,
+    usage_terms: product.usageTerms,
+    stock_count: stockCount,
+    is_available: stockCount > 0,
+    sale_price: salePrice,
+    discount_percent: discountPercent > 0 ? discountPercent : null,
+    order_count: orderCount,
+    variants: variants.map((v) => ({
+      id: v.id,
+      plan_label: v.plan_label,
+      duration_label: v.duration_label,
+      label: v.label,
+      price: v.price,
+      sale_price: v.sale_price,
+      discount_percent: v.discount_percent,
+      is_available: v.is_available,
+    })),
   };
 }
 
@@ -466,11 +569,15 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
   // R104 (AG5-7): 60 s in-process cache, 200-ONLY (a pinned 404 would
   // hide a freshly published product). Admin CRUD bumps the generation.
   const cached = await withCatalogCache("detail-by-slug", slug, 60, async () => {
-    // Round-3 (8-c §2.6): 4 sequential round trips → 2. The flash-sale row
-    // doesn't depend on the product, so it rides the first Promise.all;
-    // stock + order counts ride the second. Also routes the sale-price
-    // arithmetic through computeFlashSalePrice (lib/pricing single source
-    // — this file previously carried a 4th copy of the formula).
+    // F-1 (R118-A6): 3 sequential DB stages → 2. Stage 1: product row by
+    // slug + flash sale (independent). Stage 2: everything keyed off the
+    // RESOLVED product id — stock count, completed count, and the
+    // variant pool — in one Promise.all (the variant queries only need
+    // the id; the flash-sale discount is applied in JS afterwards, never
+    // in SQL, so it doesn't sequence the variant fetch). Sale-price
+    // arithmetic stays routed through computeFlashSalePrice (lib/pricing
+    // single source — this file previously carried a 4th copy of the
+    // formula), now inside the shared buildProductDetailDto.
     const [[product], flashSale] = await Promise.all([
       db
         .select()
@@ -493,7 +600,8 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
 
     if (!product) return { found: false as const };
 
-    const [[stockResult], [orderResult]] = await Promise.all([
+    const [variantPool, [stockResult], [orderResult]] = await Promise.all([
+      fetchVariantPoolData([product.id]),
       db
         .select({ count: count() })
         .from(inventoryTable)
@@ -507,52 +615,20 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
       db
         .select({ count: count() })
         .from(ordersTable)
-        .where(and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed"))),
+        .where(
+          and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed")),
+        ),
     ]);
-
-    const basePrice = parseFloat(String(product.price));
-    const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-    const stockCount = Number(stockResult?.count ?? 0);
-    const variants =
-      (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
-    const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
-    const salePrice =
-      discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
 
     return {
       found: true as const,
-      dto: {
-        id: product.id,
-        slug: product.slug,
-        name: product.name,
-        description: product.description,
-        description_long: product.descriptionLong ?? null,
-        faq: product.faq ?? null,
-        seo_title: product.seoTitle ?? null,
-        features: product.features ?? null,
-        seo_description: product.seoDescription ?? null,
-        image_url: product.imageUrl,
-        price: displayBase,
-        price_from: variants.length > 1,
-        category: product.category,
-        is_active: product.isActive,
-        usage_terms: product.usageTerms,
-        stock_count: stockCount,
-        is_available: stockCount > 0,
-        sale_price: salePrice,
-        discount_percent: discountPercent > 0 ? discountPercent : null,
-        order_count: Number(orderResult?.count ?? 0),
-        variants: variants.map((v) => ({
-          id: v.id,
-          plan_label: v.plan_label,
-          duration_label: v.duration_label,
-          label: v.label,
-          price: v.price,
-          sale_price: v.sale_price,
-          discount_percent: v.discount_percent,
-          is_available: v.is_available,
-        })),
-      },
+      dto: buildProductDetailDto(
+        product,
+        flashSale,
+        Number(stockResult?.count ?? 0),
+        Number(orderResult?.count ?? 0),
+        variantPool,
+      ),
     };
   });
 
@@ -569,8 +645,20 @@ router.get("/:id", catalogCache, async (req, res) => {
   // R104 (AG5-7): 60 s in-process cache, 200-ONLY (same shape contract
   // as /by-slug above).
   const cached = await withCatalogCache("detail-by-id", String(id), 60, async () => {
-    // Round-3 (8-c §2.6): same 4→2 parallelization as /by-slug above.
-    const [[product], flashSale] = await Promise.all([
+    // F-1 (R118-A6): 3 sequential DB stages → 1. The id is known upfront
+    // here, so the product row, the flash sale, the stock count, the
+    // completed count, and the variant pool (rows + two-pool stock
+    // group-by) all ride ONE Promise.all — the ~100 ms app→Neon RTT is
+    // paid once instead of three times (the R118 census measured +310 ms
+    // per detail cache-miss, ≈ 3 stages × RTT). The flash-sale discount
+    // is applied to the variants in JS (buildProductDetailDto), never in
+    // SQL, so nothing had to sequence. /by-slug above keeps 2 stages —
+    // its variant/stock queries need the id resolved from the slug.
+    //
+    // Trade-off (deliberate): on the 404 path these queries now return
+    // empty instead of being skipped — 4 extra empty scans per miss,
+    // sub-millisecond each, in exchange for one RTT on every hit.
+    const [[product], flashSale, variantPool, [stockResult], [orderResult]] = await Promise.all([
       db
         .select()
         .from(productsTable)
@@ -584,11 +672,7 @@ router.get("/:id", catalogCache, async (req, res) => {
         )
         .limit(1),
       getActiveFlashSale(),
-    ]);
-
-    if (!product) return { found: false as const };
-
-    const [[stockResult], [orderResult]] = await Promise.all([
+      fetchVariantPoolData([id]),
       db
         .select({ count: count() })
         .from(inventoryTable)
@@ -605,49 +689,17 @@ router.get("/:id", catalogCache, async (req, res) => {
         .where(and(eq(ordersTable.productId, id), eq(ordersTable.status, "completed"))),
     ]);
 
-    const basePrice = parseFloat(String(product.price));
-    const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
-    const stockCount = Number(stockResult?.count ?? 0);
-    const variants =
-      (await loadPublicVariants([product.id], discountPercent)).get(product.id) ?? [];
-    const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
-    const salePrice =
-      discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
+    if (!product) return { found: false as const };
 
     return {
       found: true as const,
-      dto: {
-        id: product.id,
-        slug: product.slug,
-        name: product.name,
-        description: product.description,
-        description_long: product.descriptionLong ?? null,
-        faq: product.faq ?? null,
-        seo_title: product.seoTitle ?? null,
-        features: product.features ?? null,
-        seo_description: product.seoDescription ?? null,
-        image_url: product.imageUrl,
-        price: displayBase,
-        price_from: variants.length > 1,
-        category: product.category,
-        is_active: product.isActive,
-        usage_terms: product.usageTerms,
-        stock_count: stockCount,
-        is_available: stockCount > 0,
-        sale_price: salePrice,
-        discount_percent: discountPercent > 0 ? discountPercent : null,
-        order_count: Number(orderResult?.count ?? 0),
-        variants: variants.map((v) => ({
-          id: v.id,
-          plan_label: v.plan_label,
-          duration_label: v.duration_label,
-          label: v.label,
-          price: v.price,
-          sale_price: v.sale_price,
-          discount_percent: v.discount_percent,
-          is_available: v.is_available,
-        })),
-      },
+      dto: buildProductDetailDto(
+        product,
+        flashSale,
+        Number(stockResult?.count ?? 0),
+        Number(orderResult?.count ?? 0),
+        variantPool,
+      ),
     };
   });
 

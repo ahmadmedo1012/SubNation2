@@ -174,11 +174,39 @@ export async function cacheDelete(key: string): Promise<void> {
   memoryDelete(key);
 }
 
+// ── Single-flight in-flight load registry (F-2, R118-A6) ────────────────────
+//
+// Concurrent misses on the same key previously each ran the loader: after
+// every catalog TTL expiry (30 s) or bumpCatalogCache() generation bump
+// (10 admin mutation sites), N concurrent requests each executed the full
+// loader — the catalog list loader alone is 4 queries, so 50 concurrent
+// users produced a 200-query burst precisely at the moment of an admin
+// edit (the #1 scaling cliff on the public path).
+//
+// The registry dedupes loads per process: the first miss stores its
+// loader promise, every other same-key miss awaits THAT promise, and the
+// entry is deleted in a `finally` that runs before the shared promise
+// settles — so the map can never outlive an in-flight load (no leak) and
+// a post-settle caller always re-reads the cache instead of a stale
+// promise. Per-process by design (same topology assumption as the memory
+// LRU above); cross-instance single-flight would need a Redis
+// `SET NX EX` layer — deliberately out of scope.
+//
+// Pattern precedent: routes/health.ts `inflight` (the /healthz/summary
+// aggregate has shared its load since round-93 A3).
+const inflightLoads = new Map<string, Promise<unknown>>();
+
+/** Test seam: number of currently in-flight loads (leak detection). */
+export function __inflightLoadCountForTests(): number {
+  return inflightLoads.size;
+}
+
 /**
  * Read-through pattern: return cached value if present, else compute via
- * `loader`, store, return. Stampede-resistant only at the level of a single
- * process — for true single-flight across instances, layer a Redis
- * `SET NX EX` lock on top.
+ * `loader`, store, return. Stampede-resistant within a single process
+ * (F-2, R118-A6: concurrent misses on the same key share ONE loader run
+ * via the in-flight registry above) — for true single-flight across
+ * instances, layer a Redis `SET NX EX` lock on top.
  *
  * @example
  *   const product = await cacheWrap(`product:${id}`, 60, () => db.fetchProduct(id));
@@ -190,7 +218,20 @@ export async function cacheWrap<T>(
 ): Promise<T> {
   const cached = await cacheGet<T>(key);
   if (cached !== null && cached !== undefined) return cached;
-  const fresh = await loader();
-  await cacheSet(key, fresh, ttlSec);
-  return fresh;
+  // F-2 single-flight: the check-then-set below is synchronous (no await
+  // between), so of the concurrent missers exactly the first to resume
+  // after its cacheGet creates the shared load; the rest await it.
+  const existing = inflightLoads.get(key);
+  if (existing) return existing as Promise<T>;
+  const shared = (async () => {
+    try {
+      const fresh = await loader();
+      await cacheSet(key, fresh, ttlSec);
+      return fresh;
+    } finally {
+      inflightLoads.delete(key);
+    }
+  })();
+  inflightLoads.set(key, shared);
+  return shared;
 }

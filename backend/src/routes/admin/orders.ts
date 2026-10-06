@@ -1,4 +1,4 @@
-import { db, ordersTable, productsTable, usersTable } from "@workspace/db";
+import { db, notificationsTable, ordersTable, productsTable, usersTable } from "@workspace/db";
 import { z } from "zod";
 import { logger } from "../../lib/logger";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -15,6 +15,7 @@ import { fireThrottledMaintenance } from "../../lib/opportunistic";
 import { runStockSweep } from "../../jobs/stockWatcher";
 import { logAdminAlert } from "../../jobs/alertLogger";
 import { createNotification } from "../../notify";
+import { captureSubsystemException } from "../../lib/sentry";
 
 const router = Router();
 
@@ -105,6 +106,73 @@ function notifyOrderStatusChanged(userId: number, orderCode: string, status: Ord
     // Storefront order detail route (App.tsx): /orders/:orderCode.
     `/orders/${orderCode}`,
   );
+}
+
+/**
+ * F-9 (R118-A6): batched twin of notifyOrderStatusChanged for the BULK
+ * status path — ONE multi-row INSERT into notifications instead of N
+ * sequential single-row INSERTs. The old per-order `await` loop made an
+ * N-order batch (≤200 by the B2-F4 clamp) pay N ~100 ms round trips —
+ * a 200-order flip was ≈ 20 s of pure insert latency against the far
+ * DB. createNotification stays the single-row path (it is notify.ts's
+ * public surface — owned by another agent this round — and cannot take
+ * a values[] batch without widening that surface).
+ *
+ * Contract parity with createNotification, per buyer:
+ *   - same row shape (type "order", Arabic title via the shared status
+ *     labels, link to the storefront order detail);
+ *   - same non-fatal failure semantics (warn + Sentry capture + carry
+ *     on — a notification failure can never fail the status change);
+ *   - same post-insert "notification-new" socket emit (fire-and-
+ *     forget, carrying the inserted row id).
+ *
+ * Accepted delta (deliberate): one failed batch insert now skips ALL N
+ * notification rows instead of just one — a notifications-table
+ * failure is a global outage either way, and the status change +
+ * socket emits still go through.
+ */
+async function notifyOrderStatusChangedBatch(
+  orders: Array<{ userId: number; orderCode: string }>,
+  status: OrderStatus,
+): Promise<void> {
+  if (orders.length === 0) return;
+  const rows = orders.map((o) => ({
+    userId: o.userId,
+    type: "order" as const,
+    title: `طلبك ${o.orderCode} ${ORDER_STATUS_NOTIFICATION_LABELS[status]}`,
+    // Storefront order detail route (App.tsx): /orders/:orderCode.
+    link: `/orders/${o.orderCode}`,
+  }));
+  try {
+    const inserted = await db
+      .insert(notificationsTable)
+      .values(rows)
+      .returning({ id: notificationsTable.id, userId: notificationsTable.userId });
+    // Mirror createNotification's post-insert emit so the buyer's
+    // NotificationBell refreshes live instead of on the next poll.
+    // (id, userId) pairs ride the insert result, so multi-row returning
+    // order is irrelevant.
+    import("../../lib/socket")
+      .then(({ emitToUser }) => {
+        for (const row of inserted) {
+          emitToUser(row.userId, "notification-new", { id: row.id, type: "order" });
+        }
+      })
+      .catch((err) =>
+        logger.warn({ err }, "bulk status notification socket emit failed (non-fatal)"),
+      );
+  } catch (err) {
+    logger.warn(
+      {
+        category: "notifications",
+        err: err instanceof Error ? err.message : String(err),
+        count: rows.length,
+        status,
+      },
+      "notifyOrderStatusChangedBatch: batched insert failed (non-fatal — request continues)",
+    );
+    captureSubsystemException("notifications", err, { count: rows.length, status });
+  }
 }
 
 /**
@@ -604,10 +672,13 @@ router.patch(
     // Notify affected users
     const updatedOrders = flippedRows;
 
+    // F-9 (R118-A6): the durable notification rows ride ONE batched
+    // INSERT (notifyOrderStatusChangedBatch) instead of the old
+    // per-order awaited loop (N sequential single-row INSERTs). The
+    // A9-1 (R116) durable-notification guarantee itself is unchanged —
+    // an offline buyer still finds out their order moved.
+    await notifyOrderStatusChangedBatch(updatedOrders, status);
     for (const o of updatedOrders) {
-      // A9-1 (R116): durable notification alongside the transient socket
-      // emit — an offline buyer still finds out their order moved.
-      await notifyOrderStatusChanged(o.userId, o.orderCode, status);
       import("../../lib/socket")
         .then(({ emitToUser }) => {
           // F-15 (round-94 A1): order_code rides the payload — the

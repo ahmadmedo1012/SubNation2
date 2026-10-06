@@ -169,7 +169,10 @@ vi.mock("../../lib/audit", () => ({
 vi.mock("otplib", () => ({
   generateSecret: () => "MOCKTOTPSECRET",
   generateURI: () => "otpauth://totp/mock",
-  verifySync: () => true,
+  // R118-B1c: otplib v13's verifySync returns a RESULT OBJECT
+  // ({ valid: boolean, … }), never a boolean — the mock now mirrors the
+  // real shape (auth.ts reads verdict.valid).
+  verifySync: () => ({ valid: true }),
 }));
 
 import { adminAuthRouter } from "../admin/auth";

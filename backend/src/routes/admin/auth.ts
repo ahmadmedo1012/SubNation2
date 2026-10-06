@@ -5,6 +5,7 @@ import { Router, type CookieOptions } from "express";
 import jwt from "jsonwebtoken";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import { writeAuditLog } from "../../lib/audit";
+import { encrypt, safeDecrypt } from "../../lib/encryption";
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from "../../lib/crypto";
 import { ADMIN_JWT_SECRET, signAdminToken } from "../../lib/jwt";
 import {
@@ -347,8 +348,30 @@ router.post("/login/verify-2fa", async (req, res) => {
         );
     }
 
-    const isValid = verifySync({ token: code, secret: admin.totpSecret });
-    if (!isValid) {
+    // R118-B1c (A4 F-4): totp_secret is ENCRYPTED at rest — decrypt for
+    // verification. Legacy plaintext secrets (pre-encryption enrollments
+    // or hand-seeded rows) pass through safeDecrypt unchanged, so the
+    // verify contract is identical for both storage shapes.
+    const totpSecret = safeDecrypt(admin.totpSecret);
+    if (!totpSecret) {
+      // An encrypted secret that no longer decrypts (key rotation that
+      // forgot this row / corruption) — safeDecrypt already logged the
+      // redacted warn. Uniform 401, never a 500; the per-admin lockout
+      // above is NOT incremented (the failure is not the admin's guess).
+      return res
+        .status(401)
+        .json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
+    }
+
+    // R118-B1c (bonus fix, found by the new unmocked-otplib tests):
+    // otplib v13's verifySync returns a RESULT OBJECT
+    // ({ valid: boolean, delta, … }), not a boolean. The previous
+    // `if (!isValid)` truthiness check therefore ALWAYS passed — any
+    // format-valid 6-digit code completed the TOTP challenge (a live
+    // 2FA bypass; the lockout suite's verifySync mock returned `true`,
+    // so no test ever exercised the false verdict). Check `.valid`.
+    const verdict = verifySync({ token: code, secret: totpSecret });
+    if (!verdict.valid) {
       await recordFailedAttempt(lockoutKey);
       return res
         .status(401)
@@ -848,9 +871,17 @@ router.post("/2fa/setup", requireAdmin, async (req, res) => {
   const secret = generateSecret();
   const otpauth = generateURI({ label: `admin_${adminId}`, issuer: "SubNation", secret });
 
+  // R118-B1c (A4 F-4): the secret is stored ENCRYPTED at rest (v2 blob,
+  // AES-256-GCM — same helpers as the inventory credentials). The
+  // RESPONSE still returns the plaintext secret + otpauth URL: the
+  // operator needs it exactly once to enroll the authenticator, and the
+  // API contract is unchanged. The column stays varchar(255): a 20-byte
+  // base32 secret lands at ~125 chars of v2 blob, well inside the budget.
+  // Verify paths decrypt via safeDecrypt (legacy plaintext passthrough
+  // keeps any pre-encryption enrollment working).
   await db
     .update(adminUsersTable)
-    .set({ totpSecret: secret, totpEnabled: false })
+    .set({ totpSecret: encrypt(secret), totpEnabled: false })
     .where(eq(adminUsersTable.id, adminId));
 
   // 93-A1 S5: audit-log whenever an ENABLED secret was overwritten —
@@ -880,8 +911,20 @@ router.post("/2fa/verify-setup", requireAdmin, async (req, res) => {
     return res.status(400).json(createErrorResponse("إعداد 2FA غير موجود", ErrorCode.INVALID_DATA));
   }
 
-  const isValid = verifySync({ token: code, secret: admin.totpSecret });
-  if (!isValid) {
+  // R118-B1c (A4 F-4): the setup path stored the secret encrypted —
+  // decrypt here (legacy plaintext passes through) and fail the verify
+  // with the same 401 as a wrong code if the blob no longer decrypts.
+  const totpSecret = safeDecrypt(admin.totpSecret);
+  if (!totpSecret) {
+    return res
+      .status(401)
+      .json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
+  }
+
+  // R118-B1c: same verdict-object fix as /login/verify-2fa above —
+  // verifySync returns { valid }, never a boolean.
+  const verdict = verifySync({ token: code, secret: totpSecret });
+  if (!verdict.valid) {
     return res.status(401).json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
   }
 

@@ -1,4 +1,5 @@
 import {
+  check,
   index,
   integer,
   numeric,
@@ -62,6 +63,11 @@ export const walletTopupsTable = pgTable(
       .where(
         sql`payment_reference IS NOT NULL AND btrim(payment_reference) <> '' AND status = 'approved'`,
       ),
+    // R118-A3 F3: topups are credits — a non-positive amount is data
+    // corruption. The boot SQL (V1-M9 count-then-add) has always applied
+    // this live; pinned verbatim (same discipline as
+    // uniq_wallet_topups_payment_reference above).
+    amountPosCheck: check("chk_topups_amount_pos", sql`amount > 0`),
   }),
 );
 

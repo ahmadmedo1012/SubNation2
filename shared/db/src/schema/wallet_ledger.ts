@@ -1,4 +1,5 @@
 import {
+  check,
   index,
   integer,
   numeric,
@@ -8,6 +9,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 
 export const ledgerEntryTypeEnum = pgEnum("ledger_entry_type", [
@@ -44,5 +46,12 @@ export const walletLedgerTable = pgTable(
     // one row per money event, so this index keeps that O(log n) as the
     // ledger grows.
     userCreatedIdx: index("idx_wallet_ledger_user_created").on(t.userId, t.createdAt),
+    // R118-A3 F3: the signed-delta invariant the boot SQL applies live —
+    // V1-M9 created chk_ledger_amount_pos (amount > 0), V1-M10 replaced
+    // it with this sign-free form because adjustments store SIGNED
+    // deltas (amount = balanceAfter - balanceBefore). A zero row is a
+    // phantom mutation; pinned verbatim to the boot SQL (migrate.ts
+    // applyLedgerAmountNonzeroStage).
+    amountNonzeroCheck: check("chk_ledger_amount_nonzero", sql`amount <> 0`),
   }),
 );

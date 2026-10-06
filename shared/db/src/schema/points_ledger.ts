@@ -1,12 +1,13 @@
 import {
+  check,
   index,
   integer,
   numeric,
   pgEnum,
   pgTable,
   serial,
-  text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -85,9 +86,34 @@ export const pointsLedgerTable = pgTable(
     // refund_reversal per order, one referral_credit per referral_event,
     // one conversion_out per wallet_ledger row. admin_set / correction
     // carry reference_id NULL and are exempt.
-    sourceUnique: index("uniq_points_ledger_type_reference")
+    // R118-A3 F2: declared uniqueIndex (was plain index — the TS/snapshot
+    // lied about the LIVE object, which has been UNIQUE since V1-M21
+    // created it via `CREATE UNIQUE INDEX IF NOT EXISTS`, migrate.ts).
+    // A drizzle push under the old declaration would have rebuilt the
+    // points exactly-once guard as NON-unique under the same name, and
+    // the boot reconcile (name-exists skip) would never have restored it.
+    // Same mirror idiom as uniq_wallet_topups_payment_reference.
+    sourceUnique: uniqueIndex("uniq_points_ledger_type_reference")
       .on(t.type, t.referenceId)
       .where(sql`reference_id IS NOT NULL`),
+    // R118-A3 F3: the four structural CHECKs the boot SQL (V1-M21 table
+    // DDL, migrate.ts) has always applied live; declared via check() so
+    // the drizzle chain + snapshot carries them too (constraint names +
+    // expressions pinned verbatim to the boot SQL — same discipline as
+    // enrichment_drafts/inventory_forecasts, R98-DB-03).
+    arithmeticCheck: check(
+      "chk_points_ledger_arithmetic",
+      sql`points_after = points_before + points_delta`,
+    ),
+    deltaNonzeroCheck: check("chk_points_ledger_delta_nonzero", sql`points_delta <> 0`),
+    balancesNonnegCheck: check(
+      "chk_points_ledger_balances_nonneg",
+      sql`points_before >= 0 AND points_after >= 0`,
+    ),
+    reasonForManualCheck: check(
+      "chk_points_ledger_reason_for_manual",
+      sql`type NOT IN ('admin_set', 'correction') OR reason IS NOT NULL`,
+    ),
   }),
 );
 

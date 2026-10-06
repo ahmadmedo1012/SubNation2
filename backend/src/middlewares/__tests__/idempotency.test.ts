@@ -29,6 +29,10 @@ import { idempotency } from "../idempotency";
  *   7. Non-2xx releases the key (del) so a corrected retry runs live.
  *   8. Subject isolation (user vs admin) via the cache-key namespace.
  *   9. AUD103-2-F4: credential fields redacted in the CACHED copy only.
+ *  10. F-3 (R118-A1): two same-key arrivals that BOTH miss the GET race
+ *      on the sentinel SET NX — exactly one proceeds to the handler, the
+ *      loser is answered with the same 409 IDEMPOTENCY_IN_FLIGHT as the
+ *      GET path (previously the SET NX result was ignored and BOTH ran).
  *
  * The Redis singleton is mocked with the capture client below; the raced
  * wrapper is a passthrough (its timeout behavior is pinned in
@@ -207,6 +211,69 @@ function installTtlRedis(): TtlRedisDouble {
 beforeEach(() => {
   getRedisClientMock.mockReset();
 });
+
+/**
+ * F-3 (R118-A1) double: deterministically reproduces the same-tick race.
+ * The FIRST `get` for a key BLOCKS until a second `get` for the same key
+ * arrives, so two concurrent requests are forced to both miss the lookup
+ * BEFORE either has stored the sentinel — the exact window the old
+ * middleware let through (both proceeded; the SET NX loser's null was
+ * ignored). SET honors NX like the TTL double (loser resolves null), and a
+ * 2 s failsafe releases a stranded gate so a wiring regression fails the
+ * test instead of hanging it.
+ */
+function installRaceWindowRedis(): { setCalls: RecordedSet[] } {
+  const store = new Map<string, { value: string; expiresAt: number }>();
+  const setCalls: RecordedSet[] = [];
+  const waiters: Array<() => void> = [];
+  let getsForRacingKey = 0;
+  const now = () => Date.now();
+  const live = (key: string) => {
+    const entry = store.get(key);
+    if (!entry) return null;
+    if (now() >= entry.expiresAt) {
+      store.delete(key);
+      return null;
+    }
+    return entry;
+  };
+  const client = {
+    isReady: true,
+    get: async (key: string) => {
+      getsForRacingKey += 1;
+      if (getsForRacingKey === 1) {
+        // Hold the first GET open until a peer GET arrives (or the
+        // failsafe fires) — both lookups must observe an EMPTY store.
+        await new Promise<void>((resolve) => {
+          waiters.push(resolve);
+          setTimeout(resolve, 2_000);
+        });
+      } else {
+        for (const w of waiters) w();
+      }
+      return live(key)?.value ?? null;
+    },
+    set: async (key: string, value: string, opts: { EX?: number; NX?: boolean } = {}) => {
+      setCalls.push({ key, value, ex: opts.EX, nx: opts.NX === true });
+      if (opts.NX && live(key)) return null;
+      const ex = typeof opts.EX === "number" && opts.EX > 0 ? opts.EX : 0;
+      store.set(key, {
+        value,
+        expiresAt: ex > 0 ? now() + ex * 1000 : Number.POSITIVE_INFINITY,
+      });
+      return "OK";
+    },
+    del: async (...keys: string[]) => {
+      let removed = 0;
+      for (const key of keys) {
+        if (store.delete(key)) removed += 1;
+      }
+      return removed;
+    },
+  } as unknown as NonNullable<ReturnType<typeof getRedisClient>>;
+  getRedisClientMock.mockReturnValue(client);
+  return { setCalls };
+}
 
 describe("idempotency middleware — pass-through branches (availability over strictness)", () => {
   it("no Idempotency-Key → pass-through WITHOUT touching Redis (phase-1 legacy shape)", async () => {
@@ -624,6 +691,58 @@ describe("idempotency middleware — AUD103-2-F4 credential redaction (r103)", (
       const replay = await post(url, { product_id: 1 }, headers);
       expect(replay.headers.get("Idempotent-Replayed")).toBe("true");
       expect(replay.body).toMatchObject({ delivered_password: null, note: "kept" });
+    } finally {
+      close();
+    }
+  });
+});
+
+describe("idempotency middleware — F-3 (R118-A1): the same-tick concurrent-arrival race", () => {
+  it("two same-key requests that both miss the GET race on SET NX — exactly one proceeds, the loser gets the 409", async () => {
+    const double = installRaceWindowRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true, n: 1 });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const key = "race window one";
+      const headers = { "Idempotency-Key": key };
+
+      // Fired together BEFORE any sentinel exists; the gated GET in the
+      // double forces BOTH lookups to miss (the first get holds until
+      // the peer get arrives) — the exact window the old middleware let
+      // through when it ignored the SET NX result.
+      const [a, b] = await Promise.all([
+        post(url, { amount: 50 }, headers),
+        post(url, { amount: 50 }, headers),
+      ]);
+
+      // The money mutation ran EXACTLY once…
+      expect(handler).toHaveBeenCalledTimes(1);
+      // …one request got its 201, the other the in-flight 409.
+      expect([a.status, b.status].sort()).toEqual([201, 409]);
+      const loser = a.status === 409 ? a : b;
+      expect(loser.body).toMatchObject({
+        success: false,
+        code: "IDEMPOTENCY_IN_FLIGHT",
+      });
+      // The loser's 409 is a fresh refusal, not a replay.
+      expect(loser.headers.get("Idempotent-Replayed")).toBeNull();
+
+      // Both arrivals ATTEMPTED the atomic claim (NX, 60 s TTL) — the
+      // double resolved exactly one of them "OK" and the other null.
+      const nxClaims = double.setCalls.filter((c) => c.value === "__in_flight__");
+      expect(nxClaims).toHaveLength(2);
+      expect(nxClaims.every((c) => c.nx && c.ex === 60)).toBe(true);
+
+      await settle();
+
+      // The winner's 201 was cached normally — the loser's 409 did not
+      // poison the key: a follow-up same-key request REPLAYS.
+      const replay = await post(url, { amount: 50 }, headers);
+      expect(replay.status).toBe(201);
+      expect(replay.headers.get("Idempotent-Replayed")).toBe("true");
+      expect(handler).toHaveBeenCalledTimes(1);
     } finally {
       close();
     }

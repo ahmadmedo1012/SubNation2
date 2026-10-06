@@ -54,31 +54,12 @@ export async function insertLedgerEntry(
   }
 }
 
-/**
- * RETIRED (R115 welcome-bonus policy B) — kept for its historical rows.
- *
- * Pre-R115, referred signups received an instant 5.00 LYD wallet credit
- * and this helper wrote the matching referral_credit ledger row
- * (reference_type='referral_signup'). Those rows remain meaningful: the
- * V1-M21 backfill uses them as the evidence for marking
- * users.welcome_bonus_granted = true on pre-R115 recipients, so the
- * topup-path grant never double-pays them.
- *
- * New grants (first approved topup, all channels) write their ledger row
- * directly in topup.service.ts with reference_type='welcome_bonus'.
- */
-export async function insertReferralSignupLedger(client: DbOrTx, userId: number): Promise<void> {
-  await insertLedgerEntry(
-    {
-      userId,
-      type: "referral_credit",
-      amount: "5.00",
-      balanceBefore: "0.00",
-      balanceAfter: "5.00",
-      referenceId: userId,
-      referenceType: "referral_signup",
-      description: "رصيد ترحيبي عبر كود إحالة",
-    },
-    client,
-  );
-}
+// Historical note (R118-A1 F-6): the `referral_credit` wallet-ledger type
+// above has had NO writer since R115 retired the instant 5.00 LYD signup
+// credit (policy B moved the welcome bonus to the first approved topup —
+// those grants write their ledger rows directly in topup.service.ts with
+// reference_type='welcome_bonus'). The pre-R115 referral_signup rows
+// remain meaningful historical evidence (the V1-M21 backfill used them to
+// mark users.welcome_bonus_granted); the dead `insertReferralSignupLedger`
+// helper that used to own this shape was deleted in R118-A1 F-6 after a
+// repo-wide caller hunt found zero production AND zero test callers.
