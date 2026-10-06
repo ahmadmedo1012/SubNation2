@@ -38,7 +38,9 @@ function bundleBudgetPlugin(): Plugin {
         process.exit(1);
       }
       const html = readFileSync(htmlPath, "utf8");
-      const entryMatch = html.match(/<script[^>]*type="module"[^>]*src="[^"]*\/(index-[A-Za-z0-9-_]+\.js)"/);
+      const entryMatch = html.match(
+        /<script[^>]*type="module"[^>]*src="[^"]*\/(index-[A-Za-z0-9-_]+\.js)"/,
+      );
       const indexFile = entryMatch?.[1];
       if (!indexFile) {
         console.error("[bundle-budget] No module entry index-*.js found in index.html");
@@ -46,6 +48,11 @@ function bundleBudgetPlugin(): Plugin {
       }
 
       const filePath = path.join(outDir, indexFile);
+      // Containment guard: the scanned file must resolve inside outDir.
+      if (path.relative(outDir, filePath).startsWith("..")) {
+        console.error("[bundle-budget] Resolved path escapes outDir:", filePath);
+        process.exit(1);
+      }
 
       // 96-main (R96 P3-8): gzipSync over the full buffer — the old
       // streaming createGzip + pipeline combo resolved on "finish" and

@@ -1,0 +1,23 @@
+%% Authentication matrix — every live path (verified in code + live probes 2026-10-05)
+graph TB
+    subgraph UserAuth["User authentication"]
+        direction TB
+        G["Google / Firebase<br/>frontend: signInWithPopup (firebase v9, dynamic import)<br/>backend: verifyFirebaseIdToken (admin SDK, checkRevoked)<br/>STATUS: OFF in production — no FIREBASE_* env,<br/>live probe: 503 'Firebase غير مهيأة'<br/>PRODUCTION BLOCKER: needs service-account creds"]
+        T["Telegram<br/>Login Widget + WebApp + callback<br/>HMAC-SHA256 by SHA256(botToken), 30-min freshness,<br/>Redis-or-memory replay guard<br/>STATUS: LIVE — config in system_settings DB<br/>(bot SubNation_USERS_bot / bot_id 8884466008)"]
+        W["WhatsApp OTP<br/>POST /auth/whatsapp/start|verify → whatsapp-otp.service<br/>per-phone 60s cooldown, 5/hour, 5 attempts<br/>delivery via OpenWA gateway (X-API-Key)<br/>STATUS: DOWN — openwa_sessions table EMPTY,<br/>no session paired (operator must QR-pair)"]
+    end
+
+    subgraph AdminAuth["Admin authentication"]
+        A["username + argon2 + optional TOTP (otplib)<br/>JWT ADMIN_JWT_SECRET (separate, fail-fast)<br/>8h TTL bound to revocable admin_sessions row<br/>cookie admin_token<br/>STATUS: LIVE (admin sockets seen connecting)"]
+    end
+
+    subgraph Sessions["Session layer"]
+        S["User JWT HS256 (SESSION_SECRET) 30d,<br/>sessionId claim backed by sessions table,<br/>requireUser re-validates row (60s cache)<br/>cookie auth_token httpOnly,<br/>bodies carry sentinel '__cookie_session__'"]
+    end
+
+    G --> S
+    T --> S
+    W --> S
+
+    classDef down fill:#fee,stroke:#c00
+    class G,W down

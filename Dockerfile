@@ -46,7 +46,8 @@ COPY . .
 # IMPORTANT: keep this list in sync with the VITE_* build args in
 # docker-compose.yml (the compose/local path) and the Coolify build-args
 # panel (the production path — docs/deployment/COOLIFY_FINAL_SETUP.md §2.2).
-# render.yaml is a FROZEN legacy rollback file — do not add new keys there.
+# (render.yaml was removed 2026-10-05 — Vercel/Render fully retired; historical
+# comment references below were written when it existed.)
 # Adding a new VITE_* env var without listing it here means production code
 # will see `undefined` even though the platform has the value set.
 # -----------------------------------------------------------------------------
@@ -92,6 +93,10 @@ ARG RENDER_GIT_COMMIT=""
 # getReleaseSha(), sourcemap upload, runtime ENV) so version telemetry
 # survives the move off Render without platform-specific code.
 ARG GIT_SHA=""
+# Mission W1: Coolify passes SOURCE_COMMIT=<sha> as a build arg when
+# include_source_commit_in_build is enabled — let it drive the release
+# identity whenever GIT_SHA itself was not provided.
+ARG SOURCE_COMMIT=""
 
 ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_API_URL=$VITE_API_URL \
@@ -124,7 +129,7 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
 # R107: VITE_RELEASE_SHA is resolved here (shell-standard ${A:-$B}, no
 # reliance on Dockerfile ENV substitution) so GIT_SHA wins over
 # RENDER_GIT_COMMIT for the Sentry release tag on any platform.
-RUN VITE_RELEASE_SHA="${GIT_SHA:-${VITE_RELEASE_SHA}}" \
+RUN VITE_RELEASE_SHA="${GIT_SHA:-${SOURCE_COMMIT:-${VITE_RELEASE_SHA}}}" \
     pnpm --filter @workspace/api-server run build
 
 # --- runtime: lean image with production deps and built artifacts -------------
@@ -133,11 +138,12 @@ WORKDIR /app
 # R107: GIT_SHA re-declared + re-exported so the runtime process reads its
 # release identity through getReleaseSha() on every platform.
 ARG GIT_SHA=""
+ARG SOURCE_COMMIT=""
 ENV NODE_ENV=production \
     PORT=8080 \
     FRONTEND_DIST=/app/frontend/dist/public \
     TZ=UTC \
-    GIT_SHA=$GIT_SHA
+    GIT_SHA=${GIT_SHA:-${SOURCE_COMMIT}}
 # F6 (round-94 A6): TZ pinned explicitly — the cron slots in
 # backend/src/jobs/cron.ts are documented as UTC and previously relied on
 # Alpine's default-absent /etc/localtime (UTC by accident). A base-image

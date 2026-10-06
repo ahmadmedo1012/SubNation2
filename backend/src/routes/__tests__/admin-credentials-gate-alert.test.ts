@@ -64,7 +64,9 @@ function nextPhone(): string {
   return String(phoneSeq);
 }
 
-async function seedAdmin(username: string): Promise<{ token: string; id: number; username: string }> {
+async function seedAdmin(
+  username: string,
+): Promise<{ token: string; id: number; username: string }> {
   const [a] = await db
     .insert(adminUsersTable)
     .values({
@@ -122,69 +124,77 @@ async function listen(): Promise<{ url: string; close: () => void }> {
  * `credentials-sweep:<adminId>` (admin/orders.ts:336). */
 async function alertsByDedupeKey(
   key: string,
-): Promise<Array<{ isRead: boolean; type: string; message: string }>> {
+): Promise<Array<{ isRead: boolean; type: string; message: string | null }>> {
   return db
-    .select({ isRead: adminAlertsTable.isRead, type: adminAlertsTable.type, message: adminAlertsTable.message })
+    .select({
+      isRead: adminAlertsTable.isRead,
+      type: adminAlertsTable.type,
+      message: adminAlertsTable.message,
+    })
     .from(adminAlertsTable)
     .where(eq(adminAlertsTable.dedupeKey, key));
 }
 
 describe("R118 (A5 W-3) — the reveal-gate over-budget path writes a DEDUPED admin alert", () => {
-  it("a burst of over-budget reveals collapses to exactly ONE unread alert naming the admin; an in-budget admin gets zero", { timeout: 30_000 }, async () => {
-    const { url, close } = await listen();
-    try {
-      const orderId = await seedOrder();
-      const sweeper = await seedAdmin("sweeper_admin");
-      const honest = await seedAdmin("honest_admin");
+  it(
+    "a burst of over-budget reveals collapses to exactly ONE unread alert naming the admin; an in-budget admin gets zero",
+    { timeout: 30_000 },
+    async () => {
+      const { url, close } = await listen();
+      try {
+        const orderId = await seedOrder();
+        const sweeper = await seedAdmin("sweeper_admin");
+        const honest = await seedAdmin("honest_admin");
 
-      const reveal = (token: string) =>
-        fetch(`${url}/api/admin/orders/${orderId}/credentials`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const reveal = (token: string) =>
+          fetch(`${url}/api/admin/orders/${orderId}/credentials`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
-      // The sweeper blows the 60/10min budget, then keeps hammering —
-      // three MORE over-budget hits, each of which fires the void
-      // logAdminAlert(...) promise (admin/orders.ts:332).
-      for (let i = 0; i < 60; i++) {
-        const r = await reveal(sweeper.token);
-        expect(r.status).toBe(200);
+        // The sweeper blows the 60/10min budget, then keeps hammering —
+        // three MORE over-budget hits, each of which fires the void
+        // logAdminAlert(...) promise (admin/orders.ts:332).
+        for (let i = 0; i < 60; i++) {
+          const r = await reveal(sweeper.token);
+          expect(r.status).toBe(200);
+        }
+        for (let i = 0; i < 3; i++) {
+          const r = await reveal(sweeper.token);
+          expect(r.status).toBe(429);
+        }
+
+        // The honest admin stays well inside the budget — no alert owed.
+        const ok = await reveal(honest.token);
+        expect(ok.status).toBe(200);
+
+        // The alert writes are fire-and-forget (void … .catch) — poll the
+        // table until the deduped row lands (pglite: single-digit ms).
+        const sweeperKey = `credentials-sweep:${sweeper.id}`;
+        await vi.waitFor(
+          async () => {
+            const rows = await alertsByDedupeKey(sweeperKey);
+            expect(rows).toHaveLength(1);
+          },
+          { timeout: 5_000, interval: 25 },
+        );
+
+        const sweeperRows = await alertsByDedupeKey(sweeperKey);
+        // EXACTLY one row survives the burst — the 1 h dedupeKey window
+        // (credentials-sweep:<id>, alertLogger) collapses the 3 over-budget
+        // hits into the first insert.
+        expect(sweeperRows).toHaveLength(1);
+        expect(sweeperRows[0]!.isRead).toBe(false); // bell-visible
+        expect(sweeperRows[0]!.type).toBe("system");
+        // The message names the admin by USERNAME (session compromise is
+        // a human-investigation path — the id alone would send the
+        // operator to a SQL console mid-incident).
+        expect(sweeperRows[0]!.message).toContain("sweeper_admin");
+
+        // The in-budget admin has no sweep alert keyed to them.
+        expect(await alertsByDedupeKey(`credentials-sweep:${honest.id}`)).toHaveLength(0);
+      } finally {
+        close();
       }
-      for (let i = 0; i < 3; i++) {
-        const r = await reveal(sweeper.token);
-        expect(r.status).toBe(429);
-      }
-
-      // The honest admin stays well inside the budget — no alert owed.
-      const ok = await reveal(honest.token);
-      expect(ok.status).toBe(200);
-
-      // The alert writes are fire-and-forget (void … .catch) — poll the
-      // table until the deduped row lands (pglite: single-digit ms).
-      const sweeperKey = `credentials-sweep:${sweeper.id}`;
-      await vi.waitFor(
-        async () => {
-          const rows = await alertsByDedupeKey(sweeperKey);
-          expect(rows).toHaveLength(1);
-        },
-        { timeout: 5_000, interval: 25 },
-      );
-
-      const sweeperRows = await alertsByDedupeKey(sweeperKey);
-      // EXACTLY one row survives the burst — the 1 h dedupeKey window
-      // (credentials-sweep:<id>, alertLogger) collapses the 3 over-budget
-      // hits into the first insert.
-      expect(sweeperRows).toHaveLength(1);
-      expect(sweeperRows[0]!.isRead).toBe(false); // bell-visible
-      expect(sweeperRows[0]!.type).toBe("system");
-      // The message names the admin by USERNAME (session compromise is
-      // a human-investigation path — the id alone would send the
-      // operator to a SQL console mid-incident).
-      expect(sweeperRows[0]!.message).toContain("sweeper_admin");
-
-      // The in-budget admin has no sweep alert keyed to them.
-      expect(await alertsByDedupeKey(`credentials-sweep:${honest.id}`)).toHaveLength(0);
-    } finally {
-      close();
-    }
-  });
+    },
+  );
 });

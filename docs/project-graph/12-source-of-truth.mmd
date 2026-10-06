@@ -1,0 +1,28 @@
+%% Source of truth — where each kind of truth actually lives (verified 2026-10-05)
+graph TB
+    subgraph Code["Code & history"]
+        GITHUB["GitHub main — canonical code + history<br/>(local clone + remote 'github', PAT in ~/.git-credentials)"]
+        LOCAL["Local clone /home/rh2011/Projects/SubNation2<br/>working copy only — never canonical"]
+    end
+
+    subgraph Runtime["Runtime state"]
+        COOLIFY["Coolify (169.58.100.161:8000, v4.3.23)<br/>application config + env + deployments<br/>DB: coolify-db (root SSH access)"]
+        IMAGE["ghcr.io/ahmadmedo1012/subnation2 — image artifacts<br/>(Wave 1 target: built BY Coolify from Git)"]
+        CONTAINER["Docker container — ephemeral runtime"]
+    end
+
+    subgraph Business["Business data"]
+        NEON[("Neon Postgres — ALL business truth:<br/>products, variants, pricing, inventory,<br/>orders, wallet, ledger, users, sessions,<br/>topups, system_settings (auth configs!),<br/>openwa_sessions, audit_logs")]
+    end
+
+    subgraph Docs["Documentation"]
+        HERMES[".hermes.md — agent contract"]
+        DOCS["docs/ — topology (FINAL_PRODUCTION_TOPOLOGY),<br/>money invariants (FINAL_MONEY_INVARIANTS),<br/>env matrix, runbooks"]
+        GRAPH["docs/project-graph/ + project-state/ + project-plan/<br/>mission-era truth maps"]
+    end
+
+    GITHUB -->|"builds"| IMAGE
+    IMAGE -->|"runs"| CONTAINER
+    COOLIFY -->|"controls"| CONTAINER
+    CONTAINER -->|"reads/writes business truth"| NEON
+    NEON -.->|"auth.google/auth.telegram configs are DATA<br/>(admin-editable), not code"| GITHUB

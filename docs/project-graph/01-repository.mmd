@@ -1,0 +1,18 @@
+%% Repository layout — pnpm monorepo (verified 2026-10-05)
+graph TD
+    R[SubNation2 / main]
+
+    R --> BE[backend/ — @workspace/api-server<br/>Express 5 + TypeScript<br/>src/app.ts middleware chain<br/>src/server.ts boot + graceful drain<br/>src/migrate.ts idempotent boot reconciler (3205 lines)<br/>src/worker.ts optional worker entry<br/>src/routes/ 30+ route files incl admin/22<br/>src/services/ checkout, topup, wallet, refund,<br/>whatsapp-otp, openwa, providers/]
+    R --> FE[frontend/ — @workspace/subnation<br/>React 19 + Vite 7 + Tailwind 4<br/>React Query + Orval generated client<br/>21 public pages + 21 admin pages<br/>Arabic RTL hardcoded, dark default<br/>vite-plugin-pwa + Sentry plugin]
+    R --> SH[shared/ — @workspace/*<br/>db (Drizzle schema + drizzle/ migrations)<br/>api-spec (OpenAPI) + api-zod + api-client-react<br/>error-codes]
+    R --> SC[scripts/ — @workspace/scripts<br/>dev server, seed, backup, validate.ts,<br/>inspect.ts, check-openapi-routes.ts,<br/>generate-production-secrets.sh, dns-cutover-check.sh]
+    R --> DE[deploy/ + config/ + specs/<br/>env.compose.example, env.example]
+    R --> DOC[docs/ — architecture/, deployment/,<br/>FINAL_MONEY_INVARIANTS.md, round reports<br/>project-graph/, project-state/, project-plan/]
+    R --> GH[.github/workflows/<br/>ci.yml quality gates (billing-disabled)<br/>docker.yml multi-arch GHCR (never run)<br/>deploy.yml Render hook (kill-switched OFF)]
+
+    BE --> SH
+    FE --> SH
+    SC --> SH
+
+    classDef frozen fill:#eee,stroke:#999,stroke-dasharray: 5 5
+    class GH frozen

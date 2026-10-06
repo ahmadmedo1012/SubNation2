@@ -197,6 +197,15 @@ function decryptSegments(
   key: Buffer,
 ): string {
   const decipher = createDecipheriv(ALGORITHM, key, segments.iv);
+  // Strict tag length (mission W7, semgrep gcm-no-tag-length): only ever
+  // accept a full 128-bit GCM tag. All three decrypt funnels (v2 current,
+  // v1 current, v1 PREV-fallback) pass through here, so this single gate
+  // pins them all. isEncrypted() already enforces the length for values
+  // that went through it, but decrypt() is a public entry — a shorter tag
+  // reaching setAuthTag would widen the forgery surface.
+  if (segments.authTag.length !== AUTH_TAG_BYTES) {
+    throw new Error("Invalid auth tag length");
+  }
   decipher.setAuthTag(segments.authTag);
   return decipher.update(segments.encrypted) + decipher.final("utf8");
 }

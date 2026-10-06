@@ -1,0 +1,18 @@
+%% Deployment chain — CURRENT (as verified 2026-10-05) and TARGET
+%% Two panels: (A) what actually runs today, (B) the mission target state.
+%% Wave 1 converts A → B. Do not mistake panel A for the target.
+
+%% ── A. CURRENT (pre-Wave-1) — semi-manual image-push chain ──
+graph TB
+    subgraph CURRENT["A. CURRENT (verified pre-Wave-1)"]
+        DEV["Local repo / external agent"] -->|git push github| GH["GitHub main<br/>ahmadmedo1012/SubNation2 (private)"]
+        DEV -->|"manual: git pull to /data/SubNation2<br/>(plain dir, NOT a repo) + docker build + push"| IMG["ghcr.io/ahmadmedo1012/subnation2:coolify-latest<br/>GIT_SHA baked via build arg"]
+        IMG -->|Coolify redeploy pulls image| SN["Coolify app id=2 (source_type=dockerimage)<br/>compose generated from DB"]
+        SN --> LIVE["subnation.ly (Traefik, Let's Encrypt)"]
+        GHACTIONS["GitHub Actions docker.yml<br/>billing-suspended → DEAD"]
+        RENDER["Render/Vercel<br/>suspended / frozen-legacy files"]
+        NOTE1["⚠ Coolify does NOT build from source.<br/>⚠ Deployment queue row faked via DB writes<br/>(fix-coolify-deploy.sh)."]
+    end
+
+    classDef bad fill:#fee,stroke:#c00
+    class GHACTIONS,RENDER,NOTE1 bad

@@ -1,0 +1,28 @@
+%% Runtime process model — single container serves everything (verified)
+graph TB
+    subgraph Container["SubNation container (node:22-alpine, USER node)"]
+        N[node --enable-source-maps backend/dist/index.mjs]
+
+        N --> HTTP["Express app (app.ts)<br/>helmet CSP → cloudflareClientIp → compression →<br/>CORS origin gate → rate limiters → pino → cookie →<br/>CSRF origin gate → /api router → SPA static → errors"]
+
+        N --> BOOT["bootMigrations() (migrate.ts)<br/>fingerprint fast-path in system_settings<br/>49 CREATE TABLEs + V1-M9..M23 reconcile stages<br/>production exits(1) on critical failure"]
+
+        N --> SOCK["Socket.IO default namespace<br/>JWT + DB-session handshake auth<br/>rooms: join-user / join-admin"]
+
+        N --> SCHED["web schedulers (SINGLE_INSTANCE_MODE=true)<br/>coupon/stock/flash-sale watchers, alerting,<br/>session-prune, forecast, enrichment, security-advisories"]
+
+        N --> SPA["Static SPA frontend/dist/public<br/>/assets 1y immutable; OG share-card for product slugs;<br/>/api/healthz* JSON health; non-/api → index.html"]
+    end
+
+    subgraph Gate["Boot gate (before bootReady)"]
+        G["HTTP binds FIRST; /api/healthz* answers 503 'starting';<br/>static GETs pass; DB-backed paths 503"]
+    end
+
+    BOOT --> READY[bootReady=true → gate opens]
+    N --> GATE2[GATE2 hidden]
+
+    REDISD[("Redis: NOT CONFIGURED in production<br/>deliberate: in-memory fallbacks by design<br/>(rate-limit store, socket adapter, caches)")]
+    HTTP -.->|in-memory fallback| REDISD
+
+    classDef note fill:#ffe,stroke:#aa0
+    class REDISD note

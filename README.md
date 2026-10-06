@@ -7,7 +7,7 @@
 Streaming, music, gaming and productivity subscriptions — bought with an in-app
 wallet and delivered instantly with encrypted account credentials.
 
-[![Status](https://img.shields.io/badge/status-live-22c55e)](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md)
+[![Status](https://img.shields.io/badge/status-production_live-22c55e)](./docs/project-state/source-of-truth.md)
 [![Stack](https://img.shields.io/badge/stack-React_19_·_Express_5_·_Postgres-3b82f6)](#tech-stack)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](#requirements)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A510-f69220)](#requirements)
@@ -25,9 +25,14 @@ It is **passwordless** for customers — sign in with **Google**, **Telegram**, 
 credentials instantly after purchase. A full **admin panel** manages products,
 inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 
-> ✅ **Status (corrected R118, 2026-10-06): production is LIVE at
-> <https://subnation.ly>** — self-hosted Docker on Coolify since the 2026-10
-> cutover, with Neon Postgres staying external. Architecture of record:
+> ✅ **Status (R118 truth pass, 2026-10-06): production is LIVE at
+> <https://subnation.ly>** — self-hosted Docker on Coolify (Contabo VPS) since
+> the 2026-10 cutover, with Neon Postgres staying external. Deployment chain:
+> GitHub main → Coolify (git-source dockerfile build, push-to-deploy webhook) →
+> Traefik → `subnation.ly`. Vercel/Render are fully retired (frozen-era docs
+> below are historical). Current truth:
+> [`docs/project-state/source-of-truth.md`](./docs/project-state/source-of-truth.md);
+> architecture of record:
 > [`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md);
 > current-state summary: [Deployment status](#deployment-status-2026-10) below.
 
@@ -174,18 +179,25 @@ Migration-era guides (historical): `docs/deployment/COOLIFY_ORACLE_MIGRATION.md`
 
 - **Production is LIVE** at `https://subnation.ly` — self-hosted Docker +
   Coolify on a Contabo VM + Neon Postgres, serving since the 2026-10-01/02
-  cutover; Coolify builds this repo from Git on every deploy (the R109-era
-  "docker build still pending" caveat is long resolved). Dated release
-  record: `docs/deployment/FINAL_SIGNOFF.md`; post-cutover audits:
-  `docs/inspection-r117/` and `docs/inspection-r118/`. The pre-cutover
-  Render/Vercel stack is retired legacy — Render billing-suspended since
-  ~2026-09-11 (`deploy.yml` stays kill-switched behind
-  `RENDER_DEPLOY_ENABLED`), the Vercel mirror is dead.
-- **Repo state (as of R117):** backend 1517 tests / 165 files green, lint /
-  typecheck clean (R109-era for comparison: backend 1264, frontend 573,
-  openwa 80). R118 adds more — see `docs/inspection-r118/`. GitHub Actions
-  CI remains red for **billing reasons only** — private-repo minutes are
-  exhausted; jobs die in seconds without a runner.
+  cutover; Coolify builds this repo from Git on every deploy via the
+  push-to-deploy webhook (the R109-era "docker build still pending" caveat
+  is long resolved). Dated release record: `docs/deployment/FINAL_SIGNOFF.md`;
+  post-cutover audits: `docs/inspection-r117/` and `docs/inspection-r118/`.
+  The pre-cutover Render/Vercel stack is retired legacy — Render
+  billing-suspended since ~2026-09-11, and the Render deploy-hook workflow
+  (`deploy.yml`) plus the frozen `render.yaml`/`vercel.json` blueprints were
+  removed from the repo entirely on 2026-10-05 (rollback reference preserved
+  in git history). The dated records
+  `docs/free-tier-optimization-2026-09-20.md`,
+  `docs/final-audit-2026-09-20.md` and
+  `docs/deployment/RENDER_LEGACY_FALLBACK.md` are preserved as historical
+  audit evidence of the migration era.
+- **Repo state (as of R118):** backend 1697 tests / 188 files green,
+  frontend 770 / 111, lint / typecheck clean, build within budget
+  (R117-era for comparison: backend 1517/165). See `docs/inspection-r118/`.
+  GitHub Actions CI remains red for **billing reasons only** —
+  private-repo minutes are exhausted; jobs die in seconds without a
+  runner.
 - **Nightly backups are automated as of r110** — `scripts/backup-cron.sh`
   (host-cron wrapper around `pnpm run db:backup`); see the "Automated
   backups" section of `docs/DISASTER_RECOVERY.md`.

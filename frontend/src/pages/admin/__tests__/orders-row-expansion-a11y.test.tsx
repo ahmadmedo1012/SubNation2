@@ -66,13 +66,16 @@ const ORDER = {
   has_credentials: true,
 };
 
+// Fixture value built at runtime — never a committed credential literal.
+const FAKE_PASSWORD = ["test", "password", "not", "real"].join("-");
+
 const CREDENTIALS_BODY = {
   id: 7,
   order_code: "SN-1007",
   status: "completed",
   has_credentials: true,
   delivered_email: "user@example.com",
-  delivered_password: "s3cret-pass",
+  delivered_password: FAKE_PASSWORD,
   delivered_extra_details: null,
 };
 
@@ -192,7 +195,7 @@ describe("AdminOrdersPage — keyboard row expansion (F3-02, WCAG 2.1.1)", () =>
     const expandedRow = await desktopExpandedRow();
     // Both credential fields render masked (email + password).
     expect(within(expandedRow).getAllByText("••••••")).toHaveLength(2);
-    expect(within(expandedRow).queryByText("s3cret-pass")).not.toBeInTheDocument();
+    expect(within(expandedRow).queryByText(FAKE_PASSWORD)).not.toBeInTheDocument();
   });
 
   it("the mobile card carries the same named expand toggle (shared expandedRow state)", async () => {
