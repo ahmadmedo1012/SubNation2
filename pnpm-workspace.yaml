@@ -63,29 +63,74 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # ============================================================================
+  # R119-B3 (audit A4 F-7): SINGLE HOME for every override. The mission W7
+  # hardening (f717c6f) added its security floors to package.json
+  # pnpm.overrides — which made pnpm 10 SILENTLY IGNORE this workspace file,
+  # deactivating the four pre-existing pins below (esbuild-kit, esbuild,
+  # websocket-driver, path-to-regexp). All overrides now live HERE and
+  # package.json carries none.
+  # ============================================================================
+  #
+  # ── Security floors (CI CVE gate blocks on critical --prod findings) ──
+  #
+  # proxy-addr — GHSA-jqcg-44mw-7w3h (CRITICAL, R119-A4 F-1): crafted Fo:X
+  #   forwarded-for chains poison req.ip when `trust proxy` is set (it is —
+  #   app.ts), which keys every rate limiter → spoofing = limiter evasion.
+  #   Transitive via express; the patched 2.0.8 is in-range (^2.0.7).
+  "proxy-addr": ">=2.0.8"
+  # qs — GHSA-q8mj / GHSA-x5fp / GHSA-4mjr (3× moderate, R119-A4 F-2): DoS
+  #   class in the express query parser. Transitive via express; patched
+  #   6.16.0 is in-range (^6.14.0).
+  "qs": ">=6.16.0"
+  # body-parser — GHSA-v422-hmwv-36x6 (low; not reachable with our valid
+  #   "1mb" limit — free in-range floor anyway).
+  "body-parser": ">=2.3.0"
+  # ip-address — raised from W7's ^10.3.1: GHSA-j6r3 + GHSA-h3mg (2×
+  #   moderate) are patched in 10.7.1, which W7's floor let slip through
+  #   (R119-A4 F-5). Transitive via express-rate-limit.
+  "ip-address": "^10.7.1"
+  # @opentelemetry/core — GHSA-8988-4f7v-96qf (moderate) via @sentry/node's
+  #   telemetry chain; 2.8.0 is inside the accepted peer range.
+  "@opentelemetry/core": "^2.8.0"
+  # ── Mission W7 supply-chain floors (2026-10-05, restored here R119) ──
+  # protobufjs 7.6.6 (prototype pollution), ws >=8.21 (DoS),
+  # @fastify/busboy ^3.2.1 + form-data ^4.0.6 (multipart parsing),
+  # brace-expansion ^2.1.6 (ReDoS), @grpc/grpc-js ^1.14.5.
+  "@fastify/busboy": "^3.2.1"
+  "@grpc/grpc-js": "^1.14.5"
+  "brace-expansion": "^2.1.6"
+  "form-data": "^4.0.6"
+  "protobufjs": "^7.6.1"
+  "ws": ">=8.21.0"
+  # ── Pre-W7 pins (R109-era; were silently dead since f717c6f — restored) ──
   # R109 P0-2: the old platform-exclusion block ("local deployment target is
   # linux-x64") removed EVERY non-x64-linux optional native build from the
-  # lockfile — including linux-arm64-gnu/musl and linux-x64-musl. The Oracle
-  # ARM64 target (originally the Oracle A1; live host since 2026-10 = a
-  # Contabo VM, per the R117 live probe — ARM64 variants stay in the lock as
+  # lockfile — including linux-arm64-gnu/musl and linux-x64-musl. The ARM64
+  # target (originally the Oracle A1; live host since 2026-10 = a Contabo
+  # VPS, per the R117 live probe — ARM64 variants stay in the lock as
   # multi-arch insurance) is ARM64 Alpine (musl): vite build + the backend
-  # esbuild bundle
-  # had NO matching natives in the lock, so any arm64 (and even x64-Alpine)
-  # docker build failed at the toolchain step. Removing the exclusions lets
-  # pnpm-lock.yaml carry all platform variants again (verified post-regen:
-  # @esbuild/linux-arm64, @rollup/rollup-linux-arm64-gnu/musl,
-  # @tailwindcss/oxide-linux-arm64-*, lightningcss-linux-arm64-*, and the
-  # x64-musl variants are all present).
-  # Kept below: the version/security overrides that are unrelated to platforms.
-  # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
+  # esbuild bundle had NO matching natives in the lock, so any arm64 (and
+  # even x64-Alpine) docker build failed at the toolchain step. Removing the
+  # exclusions lets pnpm-lock.yaml carry all platform variants again
+  # (verified post-regen: @esbuild/linux-arm64, @rollup/rollup-linux-arm64-*
+  # /musl, @tailwindcss/oxide-linux-arm64-*, lightningcss-linux-arm64-*, and
+  # the x64-musl variants are all present).
+  # drizzle-kit uses esbuild internally on an older version that's
+  # vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
-  # ── Security overrides (CI CVE gate blocks on critical --prod findings) ──
-  # websocket-driver — GHSA-xv26-6w52-cph6 (critical): message corruption via
-  #   protocol length headers. Transitive via firebase → @firebase/database →
-  #   faye-websocket, whose own range (>=0.5.1) accepts the patched release.
-  # path-to-regexp — DoS via sequential optional groups (high) in the express
-  #   5 router chain; 8.3.0 was the only version in the tree, so nothing older
-  #   is disturbed by forcing the patched line.
+  # websocket-driver — GHSA-xv26-6w52-cph6 (critical): message corruption
+  #   via protocol length headers. Transitive via firebase → @firebase/
+  #   database → faye-websocket; currently resolves 0.7.5 naturally — this
+  #   floor keeps it pinned against range drift.
   "websocket-driver": ">=0.7.5"
-  "path-to-regexp": ">=8.4.0"
+  # NOTE (R119-B3): the historical "path-to-regexp": ">=8.4.0" override is
+  # deliberately NOT restored: the express-5 chain already resolves the
+  # patched 8.4.2 naturally (the override was written when 8.3.0 was
+  # current), and forcing >=8.4.0 globally would break @lhci/cli's
+  # express@4 (scripts/validate.ts check 43.2 — Lighthouse — depends on it;
+  # the A4 "unused" claim was disproven by that usage). @lhci's dev-only
+  # express@4 chain advisories are accepted risk: they never enter the
+  # Docker runtime image (root devDeps are pruned by --prod --filter) and
+  # never run on CI (no runner).
