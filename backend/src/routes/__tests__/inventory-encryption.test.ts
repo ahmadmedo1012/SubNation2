@@ -253,3 +253,76 @@ describe("POST /admin/products/:id/inventory — F7 encryption at rest", () => {
     }
   });
 });
+
+describe("POST /admin/products/:id/inventory — R119-B1 (A1 F-4) credential password length guard", () => {
+  // The R118 crypto v2 format is 3 chars longer than v1 at the same
+  // plaintext length: fixed overhead 61 chars ("v2:" + hex IV + ":" +
+  // hex auth tag + ":") + 2 chars per plaintext char (hex ct) must fit
+  // varchar(512) → 61 + 2L ≤ 512 → L ≤ 225 (v1 fit 227). Pre-guard, a
+  // 226/227-char password encrypted fine and then 22001'd at the INSERT
+  // (a 500, mid-transaction) — the guard answers a clean 400 instead.
+
+  it("a 226-char password (structured entries) → 400 INVALID_DATA, nothing inserted", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+
+      const res = await postInventory(url, token, productId, {
+        entries: [{ kind: "credentials", email: "long@t.local", password: "P".repeat(226) }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      expect((res.body as { error: string }).error).toContain("كلمة مرور الحساب");
+      expect((res.body as { error: string }).error).toContain("225");
+      // The batch is rejected whole — no partial row leaked past the guard.
+      expect(await inventoryRows(productId)).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("a 225-char password (the exact column boundary) passes the guard and the v2 blob fits varchar(512)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+      const password = "P".repeat(225);
+
+      const res = await postInventory(url, token, productId, {
+        entries: [{ kind: "credentials", email: "edge@t.local", password }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ added: 1, skipped_duplicates: 0 });
+
+      const rows = await inventoryRows(productId);
+      expect(rows).toHaveLength(1);
+      // v2 blob = 61 overhead + 2 × 225 hex ct = 511 chars ≤ 512 — the
+      // exact derivation the guard encodes (one char less headroom than
+      // the 512 ceiling; a 226-char password would be 513 → 22001).
+      expect(rows[0].accountPassword).toHaveLength(511);
+      expect(isEncrypted(rows[0].accountPassword!)).toBe(true);
+      expect(decrypt(rows[0].accountPassword!)).toBe(password);
+    } finally {
+      close();
+    }
+  });
+
+  it("the legacy bulk_text path guards the same 225-char bound", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+
+      const res = await postInventory(url, token, productId, {
+        bulk_text: `legacy@t.local|${"L".repeat(226)}`,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      expect((res.body as { error: string }).error).toContain("كلمة مرور الحساب");
+      expect(await inventoryRows(productId)).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+});

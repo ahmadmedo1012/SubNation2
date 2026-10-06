@@ -61,6 +61,19 @@ function productFieldError(
   return null;
 }
 
+/**
+ * R119-B1 (A1 F-4): the R118 crypto v2 format ("v2:iv:tag:ct") is 3 chars
+ * longer than v1 at the same plaintext length. Its fixed overhead is 61
+ * chars ("v2:" 3 + hex IV 24 + ":" + hex auth tag 32 + ":"), so a
+ * varchar(512) inventory.account_password column fits 61 + 2L ≤ 512 →
+ * L ≤ 225 plaintext chars (v1 fit 227). Fresh ingest had NO length cap —
+ * a 226/227-char password encrypted fine, then 500'd (22001) at the
+ * INSERT. Handler-enforced bound, the same B2-F3 discipline as
+ * PRODUCT_FIELD_LIMITS above; the v1→v2 re-encrypt job length-guards the
+ * legacy rows separately (jobs/reencrypt-v1-credentials.ts).
+ */
+const ACCOUNT_PASSWORD_PLAINTEXT_MAX = 225;
+
 router.get("/products", requireAdmin, async (req, res) => {
   // V4: the admin command palette sends ?search= — previously ignored
   // (the handler didn't even read req). Match name or category,
@@ -557,6 +570,18 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
               createErrorResponse(`السطر ${i + 1}: بيانات الحساب ناقصة`, ErrorCode.INVALID_DATA),
             );
         }
+        // R119-B1 (A1 F-4): keep the v2 ciphertext inside varchar(512) —
+        // see ACCOUNT_PASSWORD_PLAINTEXT_MAX above for the derivation.
+        if (password.length > ACCOUNT_PASSWORD_PLAINTEXT_MAX) {
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                `السطر ${i + 1}: كلمة مرور الحساب طويلة جداً (الحد الأقصى ${ACCOUNT_PASSWORD_PLAINTEXT_MAX} حرف)`,
+                ErrorCode.INVALID_DATA,
+              ),
+            );
+        }
         const extra = typeof e.extra === "string" && e.extra.trim() ? e.extra.trim() : null;
         items.push({
           accountEmail: email,
@@ -598,12 +623,25 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       .split("\n")
       .map((l: string) => l.trim())
       .filter(Boolean);
-    for (const line of lines) {
-      const parts = line.split(/[|,\t]/);
+    for (let li = 0; li < lines.length; li++) {
+      const parts = lines[li].split(/[|,\t]/);
       if (parts.length >= 2) {
+        const password = parts[1].trim();
+        // R119-B1 (A1 F-4): same varchar(512) budget as the structured
+        // path — guard the legacy ingest shape identically.
+        if (password.length > ACCOUNT_PASSWORD_PLAINTEXT_MAX) {
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                `السطر ${li + 1}: كلمة مرور الحساب طويلة جداً (الحد الأقصى ${ACCOUNT_PASSWORD_PLAINTEXT_MAX} حرف)`,
+                ErrorCode.INVALID_DATA,
+              ),
+            );
+        }
         items.push({
           accountEmail: parts[0].trim(),
-          accountPassword: encrypt(parts[1].trim()),
+          accountPassword: encrypt(password),
           // F7: plaintext for the dedup pass; encrypted at INSERT.
           plainExtra: parts[2]?.trim() || null,
         });
