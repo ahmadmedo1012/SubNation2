@@ -103,7 +103,7 @@ describe("CartPage — undo toast on line removal (96-F4 / R96 A2 P1-1)", () => 
     renderPage();
     await findRow();
 
-    fireEvent.click(screen.getByRole("button", { name: "حذف المنتج" }));
+    fireEvent.click(screen.getByRole("button", { name: "حذف المنتج Netflix شهر" }));
 
     // Removed from cart + localStorage…
     await waitFor(() => expect(readCart()).toHaveLength(0));
@@ -125,9 +125,12 @@ describe("CartPage — undo toast on line removal (96-F4 / R96 A2 P1-1)", () => 
     renderPage();
     await findRow();
 
-    // At qty 1 both the minus (X icon) and the trash carry «حذف المنتج» —
-    // the minus is the FIRST one in DOM order.
-    const deleteButtons = await screen.findAllByRole("button", { name: "حذف المنتج" });
+    // A4-F6 (R120-B2): at qty 1 both the minus (X icon) and the trash
+    // carry the item-named delete label — the minus is the FIRST one in
+    // DOM order.
+    const deleteButtons = await screen.findAllByRole("button", {
+      name: "حذف المنتج Netflix شهر",
+    });
     expect(deleteButtons.length).toBe(2);
     fireEvent.click(deleteButtons[0]);
 
@@ -142,12 +145,12 @@ describe("CartPage — undo toast on line removal (96-F4 / R96 A2 P1-1)", () => 
 
   it("steppers, count and trash are 44px targets with ≥8px cluster separation (P1-1)", async () => {
     seedCart(3);
-    const { container } = renderPage();
+    renderPage();
     await findRow();
 
-    const minus = screen.getByRole("button", { name: "إنقاص الكمية" });
-    const plus = screen.getByRole("button", { name: "زيادة الكمية" });
-    const trash = screen.getByRole("button", { name: "حذف المنتج" });
+    const minus = screen.getByRole("button", { name: "إنقاص كمية Netflix شهر" });
+    const plus = screen.getByRole("button", { name: "زيادة كمية Netflix شهر" });
+    const trash = screen.getByRole("button", { name: "حذف المنتج Netflix شهر" });
     for (const btn of [minus, plus, trash]) {
       expect(btn.className).toContain("min-h-11");
       expect(btn.className).toContain("min-w-11");
@@ -202,11 +205,14 @@ describe("CartPage — summary CTA copy (R111-F2 N1 + N6)", () => {
     renderPage();
     await findRow();
 
-    const cta = screen.getByRole("button", { name: "إتمام الطلب" });
+    // A3-F13 (R120-B2): the summary CTA is an asChild anchor now (was
+    // Link>Button nesting — two same-named elements, the inner one
+    // queryable by button role).
+    const cta = screen.getByRole("link", { name: "إتمام الطلب" });
     // Destination is the checkout funnel (unifying the CTA verb with
     // checkout.tsx's h1; kills the old «متابعة الشراء» /«متابعة التسوق»
     // near-duplicate pair on one screen).
-    expect(cta.closest("a")).toHaveAttribute("href", "/checkout");
+    expect(cta).toHaveAttribute("href", "/checkout");
     expect(screen.queryByText("متابعة الشراء")).not.toBeInTheDocument();
   });
 
@@ -215,9 +221,17 @@ describe("CartPage — summary CTA copy (R111-F2 N1 + N6)", () => {
     renderPage();
     await findRow();
 
-    const cta = screen.getByRole("button", { name: "سجّل دخولك للشراء" });
-    expect(cta.closest("a")).toHaveAttribute("href", "/login?redirect=/checkout");
+    const cta = screen.getByRole("link", { name: "سجّل دخولك للشراء" });
+    expect(cta).toHaveAttribute("href", "/login?redirect=/checkout");
     expect(screen.queryByText("سجل دخول للشراء")).not.toBeInTheDocument();
+
+    // A3-F4 + A3-F13 (R120-B2): the ghost «متابعة التسوق» is the
+    // populated-state twin of the empty-cart CTA — ONE 44px anchor (was
+    // a 36px Button nested inside a same-named anchor).
+    const ghost = screen.getByRole("link", { name: "متابعة التسوق" });
+    expect(ghost).toHaveAttribute("href", "/");
+    expect(ghost.className).toContain("min-h-11");
+    expect(screen.queryByRole("button", { name: "متابعة التسوق" })).not.toBeInTheDocument();
   });
 });
 
@@ -350,5 +364,75 @@ describe("CartPage — per-line totals + wallet chip (R115-I1 / A7 P3-4)", () =>
     await findRow();
 
     expect(screen.queryByText(/رصيدك/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CartPage — R120-B2 (A4-F6 labels + A3-F4/F13 empty CTA + A1-F9 links)", () => {
+  beforeEach(() => {
+    sonnerToastMock.mockReset();
+    toastSpy.mockReset();
+    localStorage.clear();
+    sessionStorage.clear();
+    authState.token = null;
+    walletMock.data = undefined;
+  });
+
+  it("A4-F6: qty/remove labels name the line's item — no ambiguous repeats in multi-item carts", async () => {
+    // Two different items so the identical-static-label ambiguity is the
+    // exact scenario the finding measured.
+    localStorage.setItem(
+      "subnation_cart_v2",
+      JSON.stringify([
+        { ...CART_ITEM, quantity: 2 },
+        {
+          ...CART_ITEM,
+          productId: 6,
+          variantId: 102,
+          slug: "disney-1m",
+          name: "Disney سنة",
+          quantity: 2,
+        },
+      ]),
+    );
+    renderPage();
+    await screen.findByText("Netflix شهر");
+
+    expect(screen.getByRole("button", { name: "زيادة كمية Netflix شهر" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "إنقاص كمية Netflix شهر" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "حذف المنتج Netflix شهر" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "زيادة كمية Disney سنة" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "حذف المنتج Disney سنة" })).toBeInTheDocument();
+  });
+
+  it("A3-F4 + A3-F13: the empty state ships ONE «متابعة التسوق» target at 44px", async () => {
+    renderPage();
+    await screen.findByText("سلتك فارغة");
+
+    // Exactly one element carries the CTA name — the anchor itself
+    // (asChild composition; the old Link>Button nesting rendered TWO
+    // same-named elements, anchor 152×20 + button 152×38).
+    const cta = screen.getByRole("link", { name: "متابعة التسوق" });
+    expect(cta).toHaveAttribute("href", "/");
+    expect(cta.className).toContain("min-h-11");
+    expect(cta.className).not.toContain("min-h-9");
+    expect(screen.queryByRole("button", { name: "متابعة التسوق" })).not.toBeInTheDocument();
+  });
+
+  it("A1-F9: a null-slug line links to /product/{id} — never to home", async () => {
+    localStorage.setItem(
+      "subnation_cart_v2",
+      JSON.stringify([{ ...CART_ITEM, slug: null, imageUrl: null, quantity: 1 }]),
+    );
+    renderPage();
+    await screen.findByText("Netflix شهر");
+
+    // Thumbnail + title links both resolve to the numeric id (the thumb
+    // link's accessible name is just the «N» initial tile, so query by href).
+    const productLinks = screen
+      .getAllByRole("link")
+      .filter((l) => l.getAttribute("href") === "/product/5");
+    expect(productLinks).toHaveLength(2);
+    // …and no line element routes to the home dead end anymore.
+    expect(screen.queryByRole("link", { name: "Netflix شهر" })).not.toHaveAttribute("href", "/");
   });
 });

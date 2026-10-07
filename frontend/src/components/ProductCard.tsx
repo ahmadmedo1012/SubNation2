@@ -294,17 +294,25 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   return (
     <div
       className={`
-        group relative h-full bg-card border border-border/50 rounded-2xl overflow-hidden cursor-pointer flex flex-col
+        group relative h-full bg-card border border-border/70 rounded-2xl overflow-hidden cursor-pointer flex flex-col
         float-in ${staggerClass}
         transition-all duration-280 ease-out
-        card-spring hover:border-border/80 hover:shadow-xl
-        ${unavailable ? "opacity-45 saturate-[0.3] pointer-events-none" : ""}
+        shadow-sm shadow-black/25
+        card-spring hover:border-border hover:shadow-xl
+        ${unavailable ? "opacity-45 saturate-[0.3]" : ""}
       `}
     >
+      {/* R120-B1 (A1-F1): card surface is hsl(220 20% 8%) ≈ rgb(16,19,24)
+          vs the body's rgb(10,12,16) — a ~1.05:1 luminance ratio, so the
+          surface alone can never delineate the container, and the old
+          border-border/50 (≈rgb(36,41,50) at half alpha) measured
+          ~invisible. The chrome now carries the container read instead:
+          resting border-border/70 + shadow-sm shadow-black/25 (the
+          --card token is deliberately untouched — another agent owns
+          input borders and the surface ladder). */}
       <Link
         href={`/product/${product.slug ?? product.id}`}
         aria-label={ariaLabel}
-        aria-disabled={unavailable || undefined}
         className="flex flex-col flex-1"
       >
         {product.discount_percent && !unavailable && (
@@ -325,9 +333,27 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
         <PopularBadge count={product.order_count} />
 
+        {/* R120-B1 (A3-F10/A4-F4): sold-out cards keep the dimmed
+            opacity/saturate treatment but are no longer dead taps —
+            pointer-events-none + aria-disabled made the whole card
+            unfocusable and un-navigable on Enter while still LOOKING
+            clickable. The card now navigates to the product page (which
+            states نفد honestly); the aria-label above already announces
+            «نفد المخزون» and the CTAs below stay gated off. */}
+
         <div className="relative aspect-square bg-card overflow-hidden">
           <div
             className={`absolute top-0 inset-x-0 h-[2px] ${accent.accentLine} opacity-65 z-[1]`}
+          />
+          {/* R120-B1 (A1-F4): unified image pad — ~7/12 catalog assets are
+              pure-white-background squares, so a bare bg-card tile made
+              white assets and transparent assets read as two different
+              card systems. One subtle top-lit gradient behind EVERY
+              image unifies the pad; object-contain + the fixed
+              aspect-square box + width/height attrs keep CLS at zero. */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 z-[1] bg-gradient-to-b from-white/[0.06] to-transparent"
           />
           <div className="shine-trigger absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full skew-x-[-14deg] pointer-events-none z-[3]" />
 
@@ -400,12 +426,17 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
 
         <div className="p-3.5 pt-3 flex flex-1 flex-col">
           <div className="flex items-start gap-2 mb-1.5">
-            <h2
+            {/* R120-B1 (A7-F13): h3 (was h2) so the section h2s own the
+                document outline; R120-B1 (A1-F10): 2 name lines below sm
+                (8/12 names clipped at 390px), 1 line from sm up. The
+                11px description row is hidden below sm (A1-F15) to fund
+                the second name line in the 2-col mobile grid. */}
+            <h3
               dir="auto"
-              className="font-bold text-sm leading-snug line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
+              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
             >
               {product.name}
-            </h2>
+            </h3>
             <span
               /* 96-F4 (R96 A6 #11): 9px Arabic was unreadable in the
                  2-up mobile grid (connected glyphs lose ح/ج/خ distinction
@@ -418,12 +449,17 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           </div>
 
           {product.description && (
-            <p className="text-muted-foreground text-2xs line-clamp-2 leading-relaxed mb-2.5">
+            <p className="hidden sm:block text-muted-foreground text-2xs line-clamp-2 leading-relaxed mb-2.5">
               {product.description}
             </p>
           )}
 
-          <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto">
+          {/* md:pe-12 (R120-B1 / A1-F2): reserves the inline-end corner
+              of the price row for the persistent desktop quick-add button
+              below (48px = 12px inset + 32px button + 4px gap) so the
+              stock/variants badge never sits under it. Mobile keeps the
+              full-width row — the always-on CTA there lives below. */}
+          <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto md:pe-12">
             <div className="flex items-baseline gap-1.5 flex-wrap">
               {product.price_from && (
                 <span className="text-3xs font-semibold text-muted-foreground">تبدأ من</span>
@@ -502,6 +538,38 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           <Lock className="w-3.5 h-3.5" />
           نفد المخزون
         </div>
+      )}
+
+      {/* ── Desktop persistent quick-add (R120-B1 / A1-F2) ───────────────
+          The desktop CTA used to be hover-reveal only — a keyboard or
+          touch-laptop user had no visible buy affordance at rest. A
+          compact 32px icon button now sits persistently in the price
+          row's inline-end corner (real <button>, sibling of the Link —
+          no nesting, keyboard-focusable) and shares handleAddToCart
+          with the mobile CTA (same 500ms double-tap lock). Sold-out
+          keeps a dimmed DISABLED affordance mirroring mobile's muted
+          bar. The hover slide-up panel below stays for delight; this
+          button layers ABOVE it (z-10 vs the panel's z-auto) so a
+          focused quick-add is never visually obscured by the panel. */}
+      {product.is_available ? (
+        <button
+          type="button"
+          onClick={handleAddToCart}
+          aria-label={`أضف ${product.name} إلى السلة`}
+          title="أضف للسلة"
+          className="hidden md:flex absolute bottom-3 left-3 z-10 h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary/90 active:scale-90 transition-all duration-150 press-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled
+          aria-label="نفد المخزون"
+          className="hidden md:flex absolute bottom-3 left-3 h-8 w-8 items-center justify-center rounded-xl bg-muted/40 border border-border/40 text-muted-foreground/70 cursor-not-allowed"
+        >
+          <Lock className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
       )}
 
       {product.is_available && (

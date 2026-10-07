@@ -34,7 +34,6 @@ import {
   AlertCircle,
   ArrowRight,
   CheckCircle,
-  Copy,
   Eye,
   EyeOff,
   Headphones,
@@ -350,8 +349,7 @@ export default function ProductPage() {
   });
 
   const product = (isLegacyNumeric ? byIdQuery.data : bySlugQuery.data) as
-    | (typeof byIdQuery.data & { slug?: string | null })
-    | undefined;
+    (typeof byIdQuery.data & { slug?: string | null }) | undefined;
   const isLoading = isLegacyNumeric ? byIdQuery.isLoading : bySlugQuery.isLoading;
   const isError = isLegacyNumeric ? byIdQuery.isError : bySlugQuery.isError;
   const refetchProduct = isLegacyNumeric ? byIdQuery.refetch : bySlugQuery.refetch;
@@ -645,7 +643,8 @@ export default function ProductPage() {
       // code) AND fire a toast for the immediate "something happened"
       // cue. Inline-only would be invisible if the user looked away;
       // toast-only would disappear in 4s before the user could read it.
-      const message = err instanceof Error ? err.message : "فشل التحقق من الكوبون";
+      const message =
+        err instanceof Error ? err.message : "تعذّر التحقق من الكوبون — حاول مرة أخرى";
       setCouponError(message);
       toast({
         title: "تعذّر تطبيق الكوبون",
@@ -979,16 +978,23 @@ export default function ProductPage() {
                       طلبك مكتمل ومحفوظ، لكن بيانات الحساب تعذّر فك تشفيرها حالياً. تواصل مع الدعم
                       وستصلك بياناتك فوراً.
                     </p>
-                    <Link href="/support">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 px-4 gap-1.5 rounded-xl font-bold"
-                      >
+                    {/* A3-F13 (R120-B2): asChild — the old Link>Button
+                        nesting rendered TWO same-named «تواصل مع الدعم»
+                        elements (the anchor + an invalid
+                        interactive-in-interactive button). One anchor,
+                        one tab stop; order-decrypt-failed.test.tsx pins
+                        the link role + label. */}
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-4 gap-1.5 rounded-xl font-bold"
+                    >
+                      <Link href="/support">
                         <Headphones className="w-3.5 h-3.5" />
                         تواصل مع الدعم
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1043,9 +1049,13 @@ export default function ProductPage() {
     <div className={`max-w-xl lg:max-w-6xl mx-auto px-4 py-6 sm:py-8 sm:pb-8 ${mobileContentPad}`}>
       {seoBlock}
       {/* Back link */}
+      {/* A3-F4 (R120-B2): min-h-11 — the 20px-tall text link measured
+          112×20 live; the catalog escape hatch now clears the 44px touch
+          floor (flex items-center centers the label inside the taller
+          box). */}
       <button
         onClick={() => navigate("/")}
-        className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm mb-5 transition-colors press-spring group"
+        className="min-h-11 flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm mb-4 transition-colors press-spring group"
       >
         <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform duration-150" />
         العودة للكتالوج
@@ -1295,8 +1305,11 @@ export default function ProductPage() {
                   key={item.label}
                   className="flex flex-col items-center gap-1 p-2.5 bg-muted/15 border border-border/35 rounded-xl text-center transition-colors hover:bg-muted/25 hover:border-border/55"
                 >
-                  <item.icon className="w-4 h-4 text-muted-foreground mb-0.5" />
-                  <span className="text-2xs font-bold text-foreground leading-tight">
+                  <item.icon className="w-5 h-5 text-muted-foreground mb-0.5" />
+                  {/* A1-F12 (R120-B2): label text-xs (was text-2xs) — the
+                      three conversion claims read as substance, not
+                      decoration, beside the 20px icons. */}
+                  <span className="text-xs font-bold text-foreground leading-tight">
                     {item.label}
                   </span>
                   <span className="text-3xs text-muted-foreground leading-tight">{item.desc}</span>
@@ -1854,7 +1867,6 @@ function CtaBlock({
 }
 
 function RecommendationsSection({ numericId }: { numericId: number }) {
-  const [, navigate] = useLocation();
   const {
     data: recommendations = [],
     isLoading,
@@ -1880,7 +1892,10 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
 
   return (
     <div className="mt-8 space-y-4">
-      <h3 className="text-lg font-bold pr-1">قد يعجبك أيضاً</h3>
+      {/* A4-F9 (R120-B2): h2 (was h3) — this section heading sat directly
+          under the page h1, skipping a level; the card titles below are
+          h3 (one under their own section heading). */}
+      <h2 className="text-lg font-bold pr-1">قد يعجبك أيضاً</h2>
       <div className="grid grid-cols-2 gap-3">
         {isLoading
           ? Array.from({ length: 2 }).map((_, i) => (
@@ -1941,7 +1956,7 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                   </div>
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold truncate mb-1">{r.name}</h4>
+                  <h3 className="text-sm font-bold truncate mb-1">{r.name}</h3>
                   <div className="text-primary-text font-bold tabular-nums">
                     {formatCurrency(r.price)}
                   </div>
@@ -1996,7 +2011,13 @@ function VariantSelector({
   return (
     <div
       className="rounded-xl border border-border/45 bg-muted/10 p-3.5 space-y-3"
-      role="radiogroup"
+      /* A4-F2 (R120-B2): role="group" (was "radiogroup") — the pills are
+         real <button>s that already implement Space/Enter, but the radiogroup
+         role PROMISES arrow-key navigation (WAI-ARIA radio pattern) and
+         none was implemented, so arrow keys did nothing. aria-pressed
+         toggle buttons only promise what they deliver; the group + label
+         keeps the SR context of what the pills choose. */
+      role="group"
       aria-label="اختر الباقة"
     >
       {hasPlanAxis && (
@@ -2013,8 +2034,7 @@ function VariantSelector({
                 <button
                   key={plan ?? "default"}
                   type="button"
-                  role="radio"
-                  aria-checked={isPlanSelected}
+                  aria-pressed={isPlanSelected}
                   aria-disabled={!planAvailable || undefined}
                   disabled={!planAvailable}
                   onClick={() => {
@@ -2048,8 +2068,7 @@ function VariantSelector({
               <button
                 key={v.id}
                 type="button"
-                role="radio"
-                aria-checked={isSelected}
+                aria-pressed={isSelected}
                 aria-label={`${v.label} — ${formatCurrency(eff)}`}
                 aria-disabled={!v.is_available || undefined}
                 disabled={!v.is_available}

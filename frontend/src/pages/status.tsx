@@ -44,7 +44,7 @@ const STATUS_META: Record<
     bg: "bg-status-warning/10",
     border: "border-status-warning/30",
     label: "أداء متدنٍ في بعض الخدمات",
-    description: "المنصة تعمل لكن قد تلاحظ بطئاً أو تأخراً في بعض الميزات.",
+    description: "المنصة تعمل لكن قد تلاحظ بطءًا أو تأخراً في بعض الميزات.",
     icon: AlertTriangle,
   },
   failing: {

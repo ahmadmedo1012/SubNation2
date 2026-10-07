@@ -148,7 +148,9 @@ async function clickBuy() {
 }
 
 async function selectVariant(label: RegExp) {
-  const pill = screen.getByRole("radio", { name: label });
+  // A4-F2 (R120-B2): the variant pills are aria-pressed toggle buttons now
+  // (was role="radio" — the role promised arrow keys that never shipped).
+  const pill = screen.getByRole("button", { name: label });
   await act(async () => {
     fireEvent.click(pill);
   });

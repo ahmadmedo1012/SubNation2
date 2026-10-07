@@ -3,10 +3,10 @@ import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
-import { formatCount, formatCurrency } from "@/lib/utils";
+import { cn, formatCount, formatCurrency } from "@/lib/utils";
 import { Wallet, LogOut, Menu, X, Sun, Moon, User, ShoppingCart, ChevronLeft } from "lucide-react";
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Suspense } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { Logo } from "./Logo";
@@ -14,6 +14,21 @@ import { Logo } from "./Logo";
 const NotificationBell = lazyWithRetry(() =>
   import("./NotificationBell").then((m) => ({ default: m.NotificationBell })),
 );
+
+// R120-B1 (A3-F1): the guest drawer's category shortcuts. Mirrors the
+// live slugs in lib/categories.ts (verified against the catalog) with
+// home.tsx's short chip labels — kept local (not imported from
+// lib/categories.ts) because CATEGORY_META carries ~9KB of landing-page
+// prose/FAQs and Navbar is in the EAGER bundle.
+const DRAWER_CATEGORIES = [
+  { slug: "streaming", label: "بث مباشر" },
+  { slug: "music", label: "موسيقى" },
+  { slug: "software", label: "برامج" },
+  { slug: "vpn", label: "VPN وشبكات" },
+  { slug: "ai-tools", label: "ذكاء اصطناعي" },
+  { slug: "seo-tools", label: "أدوات SEO" },
+  { slug: "education", label: "تعليم" },
+] as const;
 
 export function Navbar() {
   const { token, logout } = useAuth();
@@ -33,6 +48,23 @@ export function Navbar() {
   useEffect(() => {
     setOpen(false);
   }, [location]);
+
+  // R120-B1 (A3-F1): body scroll-lock while the guest drawer is open —
+  // the manual equivalent of the Radix scroll-lock app-dialog rides
+  // (save/restore the previous inline styles; compensate the scrollbar
+  // width so the lock itself doesn't shift the sticky header). Route
+  // changes close the drawer via the effect above, which also restores.
+  useEffect(() => {
+    if (!open) return;
+    const { overflow, paddingRight } = document.body.style;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = overflow;
+      document.body.style.paddingRight = paddingRight;
+    };
+  }, [open]);
 
   // 96-F5 (R96 P2-2a guard): index.html now ships
   // interactive-widget=resizes-content (Android reflows under the virtual
@@ -199,6 +231,7 @@ export function Navbar() {
                 variant="ghost"
                 size="sm"
                 onClick={logout}
+                aria-label="تسجيل الخروج"
                 className="text-muted-foreground hover:text-foreground press-spring transition-all rounded-xl h-9 w-9 p-0 flex items-center justify-center"
                 title="تسجيل الخروج"
               >
@@ -207,22 +240,29 @@ export function Navbar() {
             </div>
           ) : (
             <div className="hidden md:flex items-center gap-1.5">
-              <Link href="/login">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="press-spring transition-all font-semibold rounded-xl h-9"
-                >
-                  دخول
-                </Button>
+              {/* R120-B1 (A4-F1): the Links wear buttonVariants directly
+                  (cn-merged so overrides win) instead of nesting a
+                  <Button> inside a <Link> — invalid interactive nesting
+                  + a doubled tab stop per CTA. R120-B1 (A1-F6): the
+                  register CTA is outline now — its pink gradient
+                  competed with the hero primary on every guest page. */}
+              <Link
+                href="/login"
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "sm" }),
+                  "font-semibold rounded-xl h-9",
+                )}
+              >
+                دخول
               </Link>
-              <Link href="/register">
-                <Button
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 press-spring transition-all shadow-md shadow-primary/25 font-bold rounded-xl h-9"
-                >
-                  حساب مجاني
-                </Button>
+              <Link
+                href="/register"
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "sm" }),
+                  "font-bold rounded-xl h-9",
+                )}
+              >
+                حساب مجاني
               </Link>
             </div>
           )}
@@ -233,6 +273,9 @@ export function Navbar() {
               className="md:hidden p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all touch-target flex items-center justify-center"
               onClick={() => setOpen((v) => !v)}
               aria-label="القائمة"
+              /* R120-B1 (A4-F5): disclosure state + target wiring. */
+              aria-expanded={open}
+              aria-controls="guest-menu"
             >
               {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -300,13 +343,39 @@ export function Navbar() {
       </div>
 
       {/* Mobile guest menu — animated */}
+      {/* R120-B1 (A3-F1): the drawer now carries the 7 category shortcuts
+          + flash-sales + support (guests had NO category entry point on
+          mobile — the desktop nav's «الكتالوج» is hidden below md) and
+          the body scroll-locks while it's open (effect above). */}
       {!token && open && (
-        <div className="md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in">
+        <div
+          id="guest-menu"
+          className="md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in"
+        >
+          <div className="px-4 pt-1 pb-0.5 text-3xs font-bold text-muted-foreground/80">الفئات</div>
+          <div className="grid grid-cols-2 gap-x-2">
+            {DRAWER_CATEGORIES.map((c) => (
+              <Link
+                key={c.slug}
+                href={`/category/${c.slug}`}
+                className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors"
+              >
+                {c.label}
+              </Link>
+            ))}
+            <Link
+              href="/flash-sales"
+              className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold text-status-warning hover:bg-status-warning/10 transition-colors"
+            >
+              العروض
+            </Link>
+          </div>
+          <div className="h-px bg-border/25 my-1" aria-hidden="true" />
           <Link
-            href="/"
+            href="/support"
             className="flex items-center px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
           >
-            الكتالوج
+            الدعم الفني
           </Link>
           <Link
             href="/login"

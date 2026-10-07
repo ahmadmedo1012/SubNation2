@@ -1,5 +1,5 @@
 import { ProductCard } from "@/components/ProductCard";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
@@ -8,7 +8,7 @@ import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { keepPreviousData } from "@tanstack/react-query";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
-import { categoryLabel, formatCount, formatCurrency, statusLabel } from "@/lib/utils";
+import { categoryLabel, cn, formatCount, formatCurrency, statusLabel } from "@/lib/utils";
 import {
   getGetCatalogStatsQueryKey,
   getGetMeQueryKey,
@@ -44,7 +44,7 @@ import {
   Wallet,
   XCircle,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 
 // The seven live catalog categories (mirrors products.category values
@@ -105,19 +105,26 @@ function readInitialFiltersFromUrl() {
  * Each entry has both the canonical Latin name (visible label —
  * preserves brand recognition for users) and the Arabic
  * transliteration (the form Arabic users actually type into Google:
- * "نتفلكس", "بلايستيشن", etc). The Arabic form is exposed to
+ * "نتفلكس", "ديزني+", etc). The Arabic form is exposed to
  * crawlers via `aria-label` + a visually-hidden `.sr-only` span so
  * the chip carries Arabic-keyword weight without changing the visual.
+ *
+ * R120-B1 (A7-F5): every chip now references a brand the LIVE catalog
+ * sells (verified against the active products + lib/categories.ts).
+ * PlayStation Plus / Canva / Adobe / Microsoft 365 were removed —
+ * their categories were archived 2026-09-19 and the catalog returns
+ * 0 results for all four (a chip that filters to nothing misleads
+ * shoppers and dilutes the page's topic vector).
  */
 const BRANDS: Array<{ latin: string; ar: string }> = [
   { latin: "Netflix", ar: "نتفلكس" },
   { latin: "Spotify", ar: "سبوتيفاي" },
   { latin: "Disney+", ar: "ديزني+" },
-  { latin: "PlayStation", ar: "بلايستيشن" },
   { latin: "YouTube", ar: "يوتيوب" },
-  { latin: "Canva", ar: "كانفا" },
-  { latin: "Adobe", ar: "أدوبي" },
-  { latin: "Office 365", ar: "مايكروسوفت 365" },
+  { latin: "Shahid VIP", ar: "شاهد" },
+  { latin: "ExpressVPN", ar: "إكسبرس في بي إن" },
+  { latin: "ChatGPT Plus", ar: "شات جي بي تي" },
+  { latin: "Windows 10", ar: "ويندوز 10" },
 ];
 
 // Search history localStorage helpers
@@ -188,6 +195,10 @@ export default function HomePage() {
   // the keyframes live in index.css which is owned by another agent).
   const guestHeroRef = useRef<HTMLDivElement | null>(null);
   const [heroOnScreen, setHeroOnScreen] = useState(true);
+  // R120-B1 (A1-F3/A3-F2): mobile fold — the guest hero's 460-char SEO
+  // paragraph collapses to 2 lines below sm with this expand toggle
+  // (the FULL text stays in the DOM for crawlers; ≥sm is untouched).
+  const [heroProseOpen, setHeroProseOpen] = useState(false);
 
   // Load search history on mount
   useEffect(() => {
@@ -343,6 +354,17 @@ export default function HomePage() {
     Boolean,
   ).length;
 
+  // R120-B1 (A3-F3/A4-F4): available products lead the DEFAULT view —
+  // 6+ dimmed نفد cards used to open the grid, telling shoppers the
+  // store is empty-ish before they ever saw a buyable item. The
+  // re-order only applies when the user has NOT picked an explicit sort
+  // (their ordering intent wins); Array#sort is stable, so within each
+  // group the backend's default order (الأحدث) is preserved.
+  const displayProducts = useMemo(() => {
+    if (sort) return products;
+    return [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available));
+  }, [products, sort]);
+
   const clearFilters = () => {
     setSearch("");
     setSearchInput("");
@@ -359,10 +381,14 @@ export default function HomePage() {
     // Description leads with intent (متجر إلكتروني متخصّص لشراء اشتراكات),
     // includes the locale (في ليبيا) inside the first clause, then the
     // Arabic brand transliterations Arabic users actually type
-    // (نتفلكس، سبوتيفاي، بلايستيشن، ديزني+), closing with the three
-    // differentiators (دينار، تسليم فوري، دعم محلي). 149 chars / 160 cap.
+    // (نتفلكس، سبوتيفاي، يوتيوب، ديزني+), closing with the three
+    // differentiators (دينار، تسليم فوري، دعم محلي). ~145 chars / 160 cap.
+    // R120-B1 (A7-F5): بلايستيشن removed — the gaming category was
+    // archived 2026-09-19 and the live catalog returns 0 results; every
+    // named brand here is verified against the active catalog
+    // (يوتيوب = YouTube Premium, streaming).
     description:
-      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، بلايستيشن، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
+      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
     path: "/",
     locale: "ar",
     type: "website",
@@ -387,7 +413,9 @@ export default function HomePage() {
   return (
     <div className="min-h-[100dvh]">
       {seoBlock}
-      <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
+      {/* py-4 on mobile (R120-B1 / A1-F3): one fold-budget notch tighter
+          than the old py-5; ≥sm keeps the original rhythm. */}
+      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-7">
         {/* ── Hero ─────────────────────────────────────────── */}
         {/* `userError` breaks the infinite skeleton: a failed /me probe
             (expired session, network) previously left the shimmer hero
@@ -506,11 +534,15 @@ export default function HomePage() {
                       <Clock className="w-3.5 h-3.5" />
                       آخر الطلبات
                     </div>
-                    <Link href="/orders">
-                      <button className="flex items-center gap-0.5 text-xs text-primary-text hover:text-primary-text/75 font-bold transition-colors press-spring">
-                        عرض الكل
-                        <ChevronLeft className="w-3 h-3" />
-                      </button>
+                    <Link
+                      href="/orders"
+                      className="flex items-center gap-0.5 text-xs text-primary-text hover:text-primary-text/75 font-bold transition-colors press-spring"
+                    >
+                      {/* R120-B1 (A4-F1): Link wears the button classes
+                          directly — was <Link><button> (nested interactive
+                          elements, doubled tab stop). */}
+                      عرض الكل
+                      <ChevronLeft className="w-3 h-3" aria-hidden="true" />
                     </Link>
                   </div>
                   <div className="divide-y divide-border/15">
@@ -564,10 +596,14 @@ export default function HomePage() {
             )}
           </div>
         ) : (
-          /* Guest: editorial hero */
+          /* Guest: editorial hero — R120-B1 (A1-F3/A3-F2): the <sm fold
+             budget was ~915px at 390px (first card fully below fold);
+             the mobile-only tightening below (padding, 2-line prose,
+             compact stats strip, tighter section gaps) buys back
+             ~230px. ≥sm (and the desktop hero) are untouched. */
           <div
             ref={guestHeroRef}
-            className="relative overflow-hidden rounded-3xl border border-border/40 mb-6 bg-card page-in shadow-xl"
+            className="relative overflow-hidden rounded-3xl border border-border/40 mb-4 sm:mb-6 bg-card page-in shadow-xl"
           >
             {/* Background layers */}
             <div className="absolute inset-0 dot-grid pointer-events-none opacity-60" />
@@ -586,18 +622,21 @@ export default function HomePage() {
               style={{ animationPlayState: heroOnScreen ? "running" : "paused" }}
             />
 
-            <div className="relative px-5 py-7 sm:px-9 sm:py-10">
+            <div className="relative px-4 py-5 sm:px-9 sm:py-10">
               <div className="flex flex-wrap items-start justify-between gap-5">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-3.5">
+                  <div className="flex items-center gap-2 mb-2.5 sm:mb-3.5">
                     <span className="inline-flex items-center gap-1 text-3xs font-bold bg-primary/12 text-primary-text border border-primary/25 px-2.5 py-1 rounded-full">
                       ليبيا #1
                     </span>
-                    <span className="text-2xs text-muted-foreground font-semibold">
+                    {/* Hidden below sm (R120-B1 / A1-F3) — it duplicates the
+                        h1's first line word-for-word; mobile keeps the
+                        «ليبيا #1» pill only. */}
+                    <span className="hidden sm:inline text-2xs text-muted-foreground font-semibold">
                       سوق الاشتراكات الرقمية
                     </span>
                   </div>
-                  <h1 className="text-fluid-3xl font-bold mb-3">
+                  <h1 className="text-fluid-3xl font-bold mb-2.5 sm:mb-3">
                     {/*
                       Single contiguous phrase for Google's NLU. Visual
                       two-line split is achieved with `block` + a styled
@@ -606,31 +645,64 @@ export default function HomePage() {
                       The locale word "في ليبيا" stays attached to the
                       keyword phrase and shifts to its own line on
                       narrow viewports.
-                    */}
-                    <span className="block">سوق الاشتراكات الرقمية</span>
+                      R120-B1 (A7-F12): a real {" "} text node sits
+                      between the two block spans — two adjacent block
+                      spans fused textContent into «الرقميةفي ليبيا» —
+                      the whitespace node is not rendered between block
+                      boxes but IS in the DOM text, so crawlers and SRs
+                      read the phrase with its space. */}
+                    <span className="block">سوق الاشتراكات الرقمية</span>{" "}
                     <span className="block text-gradient-animated">في ليبيا</span>
                   </h1>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-4 max-w-md">
+                  <p
+                    className={`text-muted-foreground text-sm leading-relaxed max-w-md mb-1.5 sm:mb-4 ${
+                      heroProseOpen ? "" : "line-clamp-2"
+                    } sm:line-clamp-none`}
+                  >
                     {/*
                       Editorial intro — the only on-page Arabic prose
                       that gives Google a topic-vector beyond the title.
                       Every target keyword appears EXACTLY ONCE: سوق،
                       اشتراكات، البث المباشر، نتفلكس، ديزني+، شاهد،
-                      سبوتيفاي، الألعاب، بلايستيشن بلاس، أدوبي،
-                      مايكروسوفت ٣٦٥، الدينار الليبي، تسليم فوري. NOT
-                      keyword-stuffing — every term serves the sentence.
+                      سبوتيفاي، ويندوز، VPN، الذكاء الاصطناعي،
+                      شات جي بي تي، الدينار الليبي، تسليم فوري.
+                      R120-B1 (A7-F5): the examples now mirror the LIVE
+                      catalog only (PlayStation Plus / Adobe / Microsoft
+                      365 categories were archived 2026-09-19 — Windows,
+                      VPNs and AI tools are what actually sells). The
+                      paragraph visually collapses to 2 lines below sm
+                      (R120-B1 / A1-F3) but the FULL text stays in the
+                      DOM — the toggle below re-reveals it.
                     */}
                     <strong lang="en" className="font-bold text-foreground">
                       SubNation
                     </strong>{" "}
                     سوق إلكتروني متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة
                     اشتراكات البثّ المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي،
-                    واشتراكات الألعاب مثل بلايستيشن بلاس، وأدوات الإنتاجية مثل أدوبي ومايكروسوفت 365
-                    — كلّها بالدينار الليبي مع تسليم فوري بعد الدفع.
+                    ومفاتيح البرامج مثل ويندوز، وشبكات VPN مثل إكسبريس، وأدوات الذكاء الاصطناعي مثل
+                    شات جي بي تي — كلّها بالدينار الليبي مع تسليم فوري بعد الدفع.
                   </p>
+                  {/* R120-B1 (A1-F3): expand toggle for the collapsed prose
+                      (mobile only — ≥sm shows the full paragraph). */}
+                  <button
+                    type="button"
+                    onClick={() => setHeroProseOpen((v) => !v)}
+                    aria-expanded={heroProseOpen}
+                    className="sm:hidden inline-flex items-center gap-1 text-2xs font-bold text-primary-text hover:text-primary-text/80 transition-colors press-spring mb-3 sm:mb-0"
+                  >
+                    {heroProseOpen ? "عرض أقل" : "عرض المزيد"}
+                    <ChevronDown
+                      className={`w-3 h-3 transition-transform duration-200 ${
+                        heroProseOpen ? "rotate-180" : ""
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
 
-                  {/* Brand chips */}
-                  <div className="relative overflow-hidden mb-5">
+                  {/* Brand chips — already a single scrollable row
+                      (overflow-x-auto + scrollbar-none); mb-4 below sm
+                      (R120-B1 / A1-F3 fold budget). */}
+                  <div className="relative overflow-hidden mb-4 sm:mb-5">
                     <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl-start">
                       {BRANDS.map((brand, i) => (
                         <span
@@ -647,7 +719,7 @@ export default function HomePage() {
                             {brand.latin}
                           </span>
                           {/* Visually hidden Arabic transliteration so the
-                              crawler indexes "نتفلكس", "بلايستيشن", etc.
+                              crawler indexes "نتفلكس", "ويندوز 10", etc.
                               alongside the Latin form. .sr-only is the
                               standard a11y utility. */}
                           <span className="sr-only">{brand.ar}</span>
@@ -663,22 +735,29 @@ export default function HomePage() {
                       R116-S1 CTA recipe: size="lg" + w-full sm:w-auto — the
                       per-page bg/shadow/height/press overrides and the pulsing
                       cta-glow halo are gone; the gradient variant + global
-                      press-spring carry the affordance. */}
+                      press-spring carry the affordance.
+                      R120-B1 (A4-F1): the Links wear buttonVariants directly
+                      (cn-merged so arbitrary overrides win) instead of nesting
+                      a <Button> inside a <Link> — invalid interactive nesting
+                      + a doubled tab stop per CTA. One CTA = one tab stop;
+                      identical visuals (the svg size pin keeps the arrow at
+                      14px like the old w-3.5 h-3.5). */}
                   <div className="flex flex-col sm:flex-row gap-2.5 sm:flex-wrap">
-                    <Link href="/register" className="contents sm:block">
-                      <Button size="lg" className="w-full sm:w-auto">
-                        إنشاء حساب مجاني
-                      </Button>
+                    <Link
+                      href="/register"
+                      className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}
+                    >
+                      إنشاء حساب مجاني
                     </Link>
-                    <Link href="/login" className="contents sm:block">
-                      <Button
-                        variant="ghost"
-                        size="lg"
-                        className="w-full sm:w-auto gap-1.5 text-muted-foreground"
-                      >
-                        لدي حساب — تسجيل الدخول
-                        <ArrowLeft className="w-3.5 h-3.5 opacity-40" />
-                      </Button>
+                    <Link
+                      href="/login"
+                      className={cn(
+                        buttonVariants({ variant: "ghost", size: "lg" }),
+                        "w-full sm:w-auto gap-1.5 text-muted-foreground [&_svg]:size-3.5",
+                      )}
+                    >
+                      لدي حساب — تسجيل الدخول
+                      <ArrowLeft className="opacity-40" aria-hidden="true" />
                     </Link>
                   </div>
                 </div>
@@ -760,10 +839,13 @@ export default function HomePage() {
 
         {/* Mobile stats strip (guest) — R111-F1 G2: the same
             skeleton-while-pending / hide-on-error contract as the
-            desktop column above (identical geometry, no CLS). */}
+            desktop column above (identical geometry, no CLS).
+            R120-B1 (A1-F3/A3-F2): compacted below sm (p-2, tighter gap,
+            mb-3) — the strip is secondary data and was spending ~84px
+            of the fold budget before the first card. */}
         {!token &&
           (stats ? (
-            <div className="sm:hidden grid grid-cols-3 gap-2 mb-5">
+            <div className="sm:hidden grid grid-cols-3 gap-1.5 mb-3 sm:mb-5">
               {[
                 {
                   label: formatCount(stats.available_products, {
@@ -785,10 +867,10 @@ export default function HomePage() {
               ].map((s) => (
                 <div
                   key={s.label}
-                  className="bg-card border border-border/45 rounded-2xl p-3 text-center"
+                  className="bg-card border border-border/45 rounded-2xl p-2 sm:p-3 text-center"
                 >
                   <div
-                    className={`font-bold text-base leading-none mb-0.5 tabular-nums ${s.color}`}
+                    className={`font-bold text-sm sm:text-base leading-none mb-0.5 tabular-nums ${s.color}`}
                   >
                     {s.value}
                   </div>
@@ -797,11 +879,11 @@ export default function HomePage() {
               ))}
             </div>
           ) : statsPending ? (
-            <div className="sm:hidden grid grid-cols-3 gap-2 mb-5" aria-hidden="true">
+            <div className="sm:hidden grid grid-cols-3 gap-1.5 mb-3 sm:mb-5" aria-hidden="true">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div
                   key={i}
-                  className="bg-card border border-border/45 rounded-2xl p-3 text-center"
+                  className="bg-card border border-border/45 rounded-2xl p-2 sm:p-3 text-center"
                 >
                   <div className="h-5 w-10 mx-auto skeleton-shimmer rounded mb-1" />
                   <div className="h-2.5 w-14 mx-auto skeleton-shimmer rounded" />
@@ -815,7 +897,7 @@ export default function HomePage() {
             chrome height — 3.5rem (h-14) + the top safe-area inset the
             header now grows by in installed-PWA mode, so the bar tucks
             UNDER the taller header instead of sliding beneath it. */}
-        <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-3 bg-background/96 border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0 sm:mb-6">
+        <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-2 bg-background/96 border-b border-border/15 mb-4 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0 sm:mb-6">
           {/* Search + Sort */}
           <div className="flex gap-2 mb-2.5">
             <div className="relative flex-1" ref={searchWrapRef}>
@@ -951,7 +1033,7 @@ export default function HomePage() {
 
         {/* Result header */}
         {!isLoading && (products.length > 0 || activeFilterCount > 0) && (
-          <div className="flex items-center justify-between mb-3.5">
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3.5">
             <p className="text-sm text-muted-foreground">
               {/* 93-C8 (A11 §3): formatCount carries the Arabic plural
                   paradigm — «منتجان / منتجات / منتجاً» — instead of a
@@ -1048,7 +1130,7 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {products.map((product, i) => (
+            {displayProducts.map((product, i) => (
               <div key={product.id} className={i >= 4 ? "cv-card" : undefined}>
                 <ProductCard
                   product={
@@ -1074,7 +1156,11 @@ export default function HomePage() {
 
         {/* ── Trust footer ── */}
         {!isLoading && products.length > 0 && (
-          <div className="mt-10 pt-8 border-t border-border/25">
+          /* R120-B1 (A3-F12): tighter post-grid spacing below sm — the
+             ~405px of dead space between the last card and the footer
+             was mostly this block's mt-10/pt-8 + the stacked trust
+             cards' own padding. ≥sm keeps the original rhythm. */
+          <div className="mt-6 pt-5 sm:mt-10 sm:pt-8 border-t border-border/25">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <TrustCard
                 icon={Truck}

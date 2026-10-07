@@ -141,7 +141,9 @@ const desktopCouponInput = () => screen.getAllByPlaceholderText("رمز الكو
 const desktopValidateButton = () => screen.getAllByRole("button", { name: "تحقق" }).at(-1)!;
 
 const switchVariant = async (label: RegExp) => {
-  const pill = screen.getByRole("radio", { name: label });
+  // A4-F2 (R120-B2): the variant pills are aria-pressed toggle buttons now
+  // (was role="radio" — the role promised arrow keys that never shipped).
+  const pill = screen.getByRole("button", { name: label });
   await act(async () => {
     fireEvent.click(pill);
   });
@@ -180,9 +182,9 @@ describe("ProductPage — coupon × variant desync (R98-01 / P1)", () => {
     expect(screen.getAllByText(/−10\.00 د\.ل/).length).toBeGreaterThan(0);
 
     // The stub was called with variant A's base price (50).
-    const firstCallBody = JSON.parse(
-      String(validateFetchMock.mock.calls[0][1]?.body ?? "{}"),
-    ) as { order_amount: number };
+    const firstCallBody = JSON.parse(String(validateFetchMock.mock.calls[0][1]?.body ?? "{}")) as {
+      order_amount: number;
+    };
     expect(firstCallBody.order_amount).toBe(50);
 
     // Switch to 3 أشهر (100) — the coupon MUST void.

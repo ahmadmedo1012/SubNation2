@@ -157,9 +157,13 @@ describe("weight vocabulary = loaded weights (R115-A6 #3)", () => {
 });
 
 describe("micro-type tokens (R115-A6 #4)", () => {
-  it("--text-2xs (11px) and --text-3xs (10px) exist in the theme", () => {
+  it("--text-2xs (11px) and --text-3xs (11px) exist in the theme", () => {
+    // R120-B1 (A3-F6/A4-F11): 3xs raised 10→11px — the Arabic
+    // readability floor for nav labels/badges. Both tokens are 11px now
+    // (deliberate — conservative, no 2xs overflow risk taken).
     expect(cssText).toMatch(/--text-2xs:\s*11px/);
-    expect(cssText).toMatch(/--text-3xs:\s*10px/);
+    expect(cssText).toMatch(/--text-3xs:\s*11px/);
+    expect(cssText).not.toMatch(/--text-3xs:\s*10px/);
   });
 
   it("no text-[8..11px] arbitraries in source .tsx (10px floor, tokenized)", () => {

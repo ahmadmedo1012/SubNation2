@@ -29,7 +29,16 @@ import { MOBILE_NAV_HEIGHT, MobileNav } from "@/components/layout/MobileNav";
 import { Footer } from "@/components/layout/Footer";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ token: "test-token" }),
+  useAuth: () => ({ token: authState.token }),
+}));
+const authState = vi.hoisted(() => ({ token: "test-token" as string | null }));
+
+// R120-B1 (A1-F8/A3-F5): MobileNav subscribes to the cart state context
+// for the السلة tab's live badge — mocked at the module boundary like
+// the auth mock above (the real provider is a main.tsx concern).
+const cartState = vi.hoisted(() => ({ itemCount: 0 }));
+vi.mock("@/lib/cart", () => ({
+  useCartState: () => ({ items: [], itemCount: cartState.itemCount, totalLYD: 0, isLoaded: true }),
 }));
 
 // Vitest's jsdom environment doesn't expose import.meta.url with a
@@ -94,6 +103,25 @@ describe("MobileNav — single-source clearance constant (B6-P1-7)", () => {
     expect(cls).toContain("mobile-nav-footer-pad");
     // The old double reservation: a hardcoded 60px margin bottom.
     expect(cls).not.toContain("mb-[calc(60px");
+  });
+
+  // R120-B1 (A3-F1): guests get the MobileNav too — their footer needs
+  // the SAME single reservation (main's mobile-nav-safe-pad in App.tsx
+  // is still auth-gated, so the footer pad is the guest clearance).
+  it("the GUEST footer also reserves the nav clearance (guest MobileNav)", () => {
+    authState.token = null;
+    try {
+      render(
+        <Router>
+          <Footer />
+        </Router>,
+      );
+      const footer = document.querySelector("footer");
+      expect(footer).toBeInstanceOf(HTMLElement);
+      expect((footer as HTMLElement).className).toContain("mobile-nav-footer-pad");
+    } finally {
+      authState.token = "test-token";
+    }
   });
 });
 
@@ -208,12 +236,13 @@ describe("MobileNav — 96-F5 (R96 F-4 + P2-3): GPU diet + keyboard hide", () =>
     };
     Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
     const originalAdd = window.addEventListener.bind(window);
-    const addSpy = vi
-      .spyOn(window, "addEventListener")
-      .mockImplementation(((type: string, cb: EventListenerOrEventListenerObject) => {
-        (windowListeners[type] ??= []).push(cb as () => void);
-        return originalAdd(type, cb);
-      }) as typeof window.addEventListener);
+    const addSpy = vi.spyOn(window, "addEventListener").mockImplementation(((
+      type: string,
+      cb: EventListenerOrEventListenerObject,
+    ) => {
+      (windowListeners[type] ??= []).push(cb as () => void);
+      return originalAdd(type, cb);
+    }) as typeof window.addEventListener);
     try {
       render(
         <Router>

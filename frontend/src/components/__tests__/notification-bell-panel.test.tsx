@@ -54,7 +54,9 @@ async function openPanel(): Promise<HTMLElement> {
       <NotificationBell />
     </Router>,
   );
-  fireEvent.click(screen.getByRole("button", { name: "الإشعارات" }));
+  // R120-B1 (A4-F7): the bell's accessible name carries the unread count
+  // when one exists — regex keeps this helper valid in either state.
+  fireEvent.click(screen.getByRole("button", { name: /الإشعارات/ }));
   return (await screen.findByRole("dialog", { name: "الإشعارات" })) as HTMLElement;
 }
 

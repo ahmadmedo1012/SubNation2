@@ -324,7 +324,11 @@ export function NotificationBell() {
   return (
     <div className="relative" ref={wrapRef}>
       {/* Bell button — 94-C3 (A3 P1-3): touch-target lifts the hit box
-          from 32×32 (p-2 + w-4 icon) to the 44×44 WCAG 2.5.5 floor. */}
+          from 32×32 (p-2 + w-4 icon) to the 44×44 WCAG 2.5.5 floor.
+          R120-B1 (A4-F7): the accessible name carries the unread count
+          (mirroring the cart idiom «السلة، N منتج») — a screen-reader
+          user heard «الإشعارات» with no signal that anything was
+          unread. 9+ cap matches the visual badge. */}
       <button
         ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
@@ -333,7 +337,21 @@ export function NotificationBell() {
             ? "bg-primary/12 text-primary-text"
             : "hover:bg-secondary/70 text-muted-foreground hover:text-foreground"
         }`}
-        aria-label="الإشعارات"
+        aria-label={
+          unread > 0
+            ? `الإشعارات، ${
+                unread > 9
+                  ? "9+"
+                  : formatCount(unread, {
+                      one: "إشعار غير مقروء",
+                      two: "إشعاران غير مقروءان",
+                      few: "إشعارات غير مقروءة",
+                      many: "إشعاراً غير مقروءاً",
+                      other: "إشعار غير مقروء",
+                    })
+              }`
+            : "الإشعارات"
+        }
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -444,7 +462,11 @@ function NotificationPanel({
           top,
           left,
           width,
-          maxHeight: `calc(100vh - ${top + 16}px)`,
+          // R120-B1 (A3-F7): dvh straggler — the mobile branch above is
+          // 100dvh; 100vh here overshot by the browser chrome on
+          // dynamic-toolbar viewports, pushing the last rows under the
+          // URL bar.
+          maxHeight: `calc(100dvh - ${top + 16}px)`,
         };
       })();
 

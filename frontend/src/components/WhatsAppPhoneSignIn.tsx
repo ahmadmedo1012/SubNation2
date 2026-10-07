@@ -399,8 +399,14 @@ export function WhatsAppPhoneSignIn({
   // This is the canonical OTP UX — the moment the user finishes typing
   // (or paste-fills) the code, we verify without requiring an extra tap.
   // (verifyCode is intentionally omitted from deps; including it would
-  // re-fire the effect on every render. Keying on (step, code) is the
-  // correct one-shot semantics here.)
+  // re-fire the effect on every render. Keying on (step, code, loading)
+  // is the correct one-shot semantics here.)
+  // A5-F7 (R120-B2): `loading` is a dep so the 6th digit landing while a
+  // resend/settle request is in flight still auto-submits once that
+  // request settles — the effect used to bail on `if (loading) return`
+  // with deps [code, step] only, so the bail path never re-fired and the
+  // verify silently no-op'd. The `autoSubmittedFor` ref still guarantees
+  // exactly one submit per code value.
   useEffect(() => {
     if (step !== "code") return;
     if (loading) return;
@@ -408,7 +414,7 @@ export function WhatsAppPhoneSignIn({
     if (autoSubmittedFor.current === code) return;
     autoSubmittedFor.current = code;
     void verifyCode();
-  }, [code, step]);
+  }, [code, step, loading]);
 
   // Guard AFTER all hooks so hook count is identical on every render
   // (rules-of-hooks). A return before the second useEffect above would
@@ -506,8 +512,12 @@ export function WhatsAppPhoneSignIn({
                   /* F3-12 (R111 WCAG 1.4.11): `focus:border-primary/50`
                   alone measured 1.70:1 vs the resting border on the dark
                   card — the ring token at full opacity (3.76:1 dark card /
-                  5.30:1 light) carries the focus indicator contrast. */
-                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-left text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  5.30:1 light) carries the focus indicator contrast.
+                  A4-F12 (R120-B2): the resting border is
+                  `border-muted-foreground/75` (5.0:1 dark / 3.7:1 light vs
+                  the card) — `border-border/60` measured 1.15:1 and left
+                  the field extent sub-perceptual on the same-fill card. */
+                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-card px-3 text-left text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
                 />
                 {/* 94-C3 (A3 P2-5): white on #25D366 was ~2:1 (AA fail).
                 bg keeps the WhatsApp brand green; the label rides the
@@ -589,8 +599,10 @@ export function WhatsAppPhoneSignIn({
                   /* F3-12 (R111 WCAG 1.4.11): same fix as the phone field
                   above — a real 3.76:1+ ring instead of the 1.70:1 border
                   tint. (tracking-widest here is Latin digits only — the
-                  global letter-spacing guard zeroes it for Arabic.) */
-                  className="flex-1 h-11 rounded-xl border border-border/60 bg-card px-3 text-center tracking-widest text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  global letter-spacing guard zeroes it for Arabic.)
+                  A4-F12 (R120-B2): resting border at muted-foreground/75
+                  (≥3:1 both themes) — was border-border/60 at 1.15:1. */
+                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-card px-3 text-center tracking-widest text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
                   autoFocus
                 />
                 {typeof navigator !== "undefined" &&
@@ -602,7 +614,7 @@ export function WhatsAppPhoneSignIn({
                       disabled={loading}
                       title="لصق الرمز من الحافظة"
                       aria-label="لصق الرمز من الحافظة"
-                      className="h-11 w-11 rounded-xl border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
+                      className="h-11 w-11 rounded-xl border border-muted-foreground/75 bg-card text-muted-foreground hover:text-foreground hover:border-muted-foreground flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
                     >
                       <ClipboardPaste className="w-4 h-4" />
                     </button>

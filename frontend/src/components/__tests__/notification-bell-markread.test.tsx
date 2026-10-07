@@ -101,7 +101,10 @@ function renderBell() {
 }
 
 function openPanel() {
-  fireEvent.click(screen.getByRole("button", { name: "الإشعارات" }));
+  // R120-B1 (A4-F7): the bell's accessible name now carries the unread
+  // count («الإشعارات، 2 إشعارات غير مقروءة») — regex match, exact
+  // string would miss every state with unread > 0.
+  fireEvent.click(screen.getByRole("button", { name: /الإشعارات/ }));
   // The portal'd panel renders in the same commit as the click — no
   // findBy needed (and none possible: it polls on faked timers).
   return screen.getByRole("dialog", { name: "الإشعارات" });

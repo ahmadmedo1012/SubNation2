@@ -189,12 +189,20 @@ export default function CartPage() {
           <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
             ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة
           </p>
-          <Link href="/">
-            <Button className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold">
+          {/* A3-F4 + A3-F13 (R120-B2): asChild composition — the previous
+              Link>Button nesting rendered TWO same-named «متابعة التسوق»
+              elements (anchor 152×20 + button 152×38 measured live), and
+              the button shipped 38px. One anchor styled as the 44px
+              primary CTA: one tab stop, one target. */}
+          <Button
+            asChild
+            className="min-h-11 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+          >
+            <Link href="/">
               <Sparkles className="w-4 h-4" />
               متابعة التسوق
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       ) : (
         <>
@@ -220,7 +228,11 @@ export default function CartPage() {
                       users verify totals. min-w-[10rem] forces the wrap
                       before the title column gets that narrow. */}
                   <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2.5">
-                    <Link href={it.slug ? `/product/${it.slug}` : "/"}>
+                    {/* A1-F9 (R120-B2): slug ?? productId — a null-slug line
+                        used to link HOME (silent dead end); the product route
+                        resolves numeric ids (by-id fetch + replaceState to the
+                        canonical slug), mirroring ProductCard's link idiom. */}
+                    <Link href={`/product/${it.slug ?? it.productId}`}>
                       <div className="w-14 h-14 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
                         {it.imageUrl ? (
                           <img
@@ -238,7 +250,7 @@ export default function CartPage() {
                       </div>
                     </Link>
                     <div className="flex-1 min-w-[10rem]">
-                      <Link href={it.slug ? `/product/${it.slug}` : "/"}>
+                      <Link href={`/product/${it.slug ?? it.productId}`}>
                         <div className="font-bold text-sm leading-snug truncate group-hover:text-primary transition-colors">
                           {it.name}
                         </div>
@@ -297,7 +309,9 @@ export default function CartPage() {
                           type="button"
                           onClick={() => handleUpdate(it, it.quantity - 1)}
                           className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center"
-                          aria-label={it.quantity === 1 ? "حذف المنتج" : "إنقاص الكمية"}
+                          aria-label={
+                            it.quantity === 1 ? `حذف المنتج ${it.name}` : `إنقاص كمية ${it.name}`
+                          }
                         >
                           {it.quantity === 1 ? (
                             <X className="w-4 h-4 text-status-error" />
@@ -315,7 +329,7 @@ export default function CartPage() {
                           type="button"
                           onClick={() => handleUpdate(it, it.quantity + 1)}
                           className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center"
-                          aria-label="زيادة الكمية"
+                          aria-label={`زيادة كمية ${it.name}`}
                         >
                           <Plus className="w-4 h-4" />
                         </button>
@@ -324,7 +338,7 @@ export default function CartPage() {
                         type="button"
                         onClick={() => removeWithUndo(it)}
                         className="min-h-11 min-w-11 px-2 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors flex items-center justify-center"
-                        aria-label="حذف المنتج"
+                        aria-label={`حذف المنتج ${it.name}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -353,33 +367,46 @@ export default function CartPage() {
                 <span className="font-bold text-2xl tabular-nums">{formatCurrency(total)}</span>
               </div>
             </div>
+            {/* A3-F4 + A3-F13 (R120-B2): the populated summary rides the
+                same asChild composition as the empty-state CTA above —
+                Link>Button nesting rendered TWO same-named elements per
+                CTA (anchor + invalid interactive-in-interactive button),
+                and the ghost «متابعة التسوق» shipped at the Button
+                default min-h-9 (36px), under the 44px floor its
+                empty-state twin was fixed for. One anchor per CTA, one
+                tab stop; the primaries keep their h-12 (48px). */}
             {token ? (
-              <Link href="/checkout">
-                <Button className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12">
+              <Button
+                asChild
+                className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
+              >
+                <Link href="/checkout">
                   {/* R111-F2 N1: «إتمام الطلب» — the destination page's own
                       name (checkout.tsx h1), replacing «متابعة الشراء» which
                       sat right above the ghost «متابعة التسوق» as a
                       near-duplicate label pair on one screen. */}
                   إتمام الطلب
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             ) : (
-              <Link href="/login?redirect=/checkout">
-                <Button className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12">
+              <Button
+                asChild
+                className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
+              >
+                <Link href="/login?redirect=/checkout">
                   {/* R111-F2 N6: shadda + pronoun — matches the app-standard
                       «سجّل» family (login.tsx, errors.ts). */}
                   سجّل دخولك للشراء
-                </Button>
-              </Link>
-            )}
-            <Link href="/">
-              <Button
-                variant="ghost"
-                className="w-full mt-2 text-muted-foreground hover:text-foreground font-bold"
-              >
-                متابعة التسوق
+                </Link>
               </Button>
-            </Link>
+            )}
+            <Button
+              asChild
+              variant="ghost"
+              className="w-full mt-2 min-h-11 text-muted-foreground hover:text-foreground font-bold"
+            >
+              <Link href="/">متابعة التسوق</Link>
+            </Button>
             {/* R94-A1 #19 (P3): boilerplate-tax disclaimer removed — the
                 pricing model is base − discount, no tax logic exists in
                 the backend. The line now states the actual payment

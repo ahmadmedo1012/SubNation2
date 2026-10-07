@@ -24,7 +24,7 @@
  * (vitest-config pattern).
  */
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -335,5 +335,93 @@ describe("AdminProductsPage — honest one-way-door archive + #new deep link (R1
 
     await screen.findAllByText("Netflix 1M");
     expect(screen.queryByText("إضافة منتج جديد")).not.toBeInTheDocument();
+  });
+});
+
+/** R120-B4 (A2-F2 + A2-F12) — server-side search wiring + honest
+ *  header count + the accessible clear-search control. */
+describe("AdminProductsPage — server-side search + honest catalog count (R120-B4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockProductsResult(PRODUCTS);
+    (useCreateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    (useUpdateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("the search box feeds the SERVER-side ?search= after the 300ms debounce (not a client filter)", async () => {
+    renderPage();
+    const input = await screen.findByPlaceholderText("بحث في المنتجات…");
+
+    fireEvent.change(input, { target: { value: "netflix" } });
+
+    // Before the debounce settles, the initial (unsearched) params ride
+    // the generated hook.
+    expect(useListAdminProducts).toHaveBeenCalledWith(
+      { search: undefined },
+      expect.anything(),
+    );
+
+    // After the 300ms debounce, the settled term enters the hook params
+    // (the orders/users idiom — one request per typing pause).
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 340));
+    });
+    expect(useListAdminProducts).toHaveBeenLastCalledWith(
+      { search: "netflix" },
+      expect.anything(),
+    );
+  });
+
+  it("a short catalog keeps the honest «في الكتالوج» total", async () => {
+    renderPage();
+    await screen.findAllByText("Netflix 1M");
+    // 2 products < the 200-row server cap → the total IS known.
+    expect(screen.getByText(/في الكتالوج/)).toBeInTheDocument();
+    expect(screen.queryByText(/الأحدث أولاً/)).not.toBeInTheDocument();
+  });
+
+  it("a full 200-row cap page flips the header to «عرض N (الأحدث أولاً)» + the partial-data hint", async () => {
+    // Exactly the backend cap (routes/admin/products.ts limit(200)) —
+    // the old header claimed «200 منتج في الكتالوج», a false total:
+    // older products beyond the cap were invisible to the list.
+    mockProductsResult(
+      Array.from({ length: 200 }, (_, i) => PRODUCT(i + 1, `Product ${i + 1}`)),
+    );
+    renderPage();
+    await screen.findAllByText("Product 1");
+
+    expect(screen.getByText(/عرض 200/)).toBeInTheDocument();
+    expect(screen.getByText(/الأحدث أولاً/)).toBeInTheDocument();
+    expect(screen.queryByText(/في الكتالوج/)).not.toBeInTheDocument();
+    // The category tabs are client-side over the capped window — the
+    // hint says so (the orders honest-count discipline).
+    expect(
+      screen.getByText(/الفلاتر تعمل على المنتجات المعروضة فقط/),
+    ).toBeInTheDocument();
+  });
+
+  it("the clear-search control carries an accessible name and a padded hit area (A2-F12)", async () => {
+    renderPage();
+    const input = await screen.findByPlaceholderText("بحث في المنتجات…");
+    fireEvent.change(input, { target: { value: "net" } });
+
+    const clear = screen.getByRole("button", { name: "مسح البحث" });
+    expect(clear.className).toContain("p-2");
+
+    fireEvent.click(clear);
+    expect(input).toHaveValue("");
   });
 });

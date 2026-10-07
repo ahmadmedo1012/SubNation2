@@ -1,14 +1,32 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { useCartState } from "@/lib/cart";
+import { formatCount } from "@/lib/utils";
 import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
-import { Home, Wallet, ShoppingBag, Star, User } from "lucide-react";
+import { Home, LayoutGrid, LogIn, ShoppingBag, ShoppingCart, User, Wallet } from "lucide-react";
 
-const TABS = [
+const AUTHED_TABS = [
   { href: "/", icon: Home, label: "الرئيسية" },
   { href: "/wallet", icon: Wallet, label: "المحفظة" },
   { href: "/orders", icon: ShoppingBag, label: "طلباتي" },
-  { href: "/loyalty", icon: Star, label: "الولاء" },
+  // R120-B1 (A1-F8/A3-F5): السلة replaces الولاء — the cart (the money
+  // funnel) had no bottom-nav entry while الولاء is reachable from both
+  // الرئيسية (loyalty card) and حسابي. Same 5-tab layout contract.
+  { href: "/cart", icon: ShoppingCart, label: "السلة" },
   { href: "/profile", icon: User, label: "حسابي" },
+];
+
+// R120-B1 (A3-F1): guests get the nav too — it previously returned null
+// for them, so the ONLY guest navigation on mobile was the hamburger
+// drawer. Safe tabs only: auth surfaces (المحفظة/الطلبات/الولاء/حسابي)
+// are hidden. «الكتالوج» opens the flagship category (streaming — the
+// category page carries the sibling-categories nav to every other
+// section), and «تسجيل الدخول» completes the funnel entry.
+const GUEST_TABS = [
+  { href: "/", icon: Home, label: "الرئيسية" },
+  { href: "/category/streaming", icon: LayoutGrid, label: "الكتالوج" },
+  { href: "/cart", icon: ShoppingCart, label: "السلة" },
+  { href: "/login", icon: LogIn, label: "تسجيل الدخول" },
 ];
 
 /**
@@ -35,6 +53,11 @@ export function MobileNav() {
   const { token } = useAuth();
   const [location] = useLocation();
 
+  // R120-B1 (A1-F8): live cart count for the السلة tab badge — the
+  // state-only context split (R111-F4-F1) means this re-renders the nav
+  // exactly when the cart data changes, never on command identities.
+  const { itemCount } = useCartState();
+
   // 96-F5 (R96 P2-3): hide the nav while the virtual keyboard is open —
   // a fixed bottom bar riding above the keyboard eats the vertical
   // space next to the caret and, on some iOS versions, visually covers
@@ -49,7 +72,21 @@ export function MobileNav() {
   // layouts that don't fire visualViewport).
   const keyboardVisible = useKeyboardVisibility();
 
-  if (!token) return null;
+  // R120-B1 (A3-F1): hidden on the auth pages for everyone — mirrors
+  // Footer's isAuth guard, and the guest tab set's «تسجيل الدخول»
+  // would be a self-link there anyway.
+  if (location === "/login" || location === "/register") return null;
+
+  // R120-B1 (A3-F1): hidden for GUESTS on product pages only — the
+  // product page's guest sticky buy bar is position:sticky bottom-0
+  // (96-F4 / R96 A1 M11 geometry, product.tsx — owned by another agent),
+  // so a fixed 60px nav here would cover the guest CTA. Authed users
+  // keep the nav (their buy bar rides mobile-sticky-above-nav).
+  // TODO(R120 follow-up, product-page owner): switch the guest bar to
+  // mobile-sticky-above-nav + auth-style clearance and drop this guard.
+  if (!token && location.startsWith("/product")) return null;
+
+  const tabs = token ? AUTHED_TABS : GUEST_TABS;
 
   return (
     <nav
@@ -73,21 +110,41 @@ export function MobileNav() {
       {/* Gradient top rule */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
-      <div className="relative grid grid-cols-5" style={{ height: MOBILE_NAV_HEIGHT }}>
-        {TABS.map((tab) => {
+      {/* R120-B1 (A3-F1): the grid span adapts to the tab count (5
+          authed / 4 guest) — the height contract below is unchanged. */}
+      <div
+        className={`relative grid ${tabs.length === 5 ? "grid-cols-5" : "grid-cols-4"}`}
+        style={{ height: MOBILE_NAV_HEIGHT }}
+      >
+        {tabs.map((tab) => {
           // Match "/" exactly (otherwise every route would highlight it).
           // For other tabs, match either the exact path or a deeper path
           // segment ("/profile" matches "/profile/edit" but not "/profile2").
+          // The guest «الكتالوج» tab highlights on ANY /category/* page
+          // (R120-B1 / A3-F1) — it is the catalog-browsing entry point.
           const active =
             tab.href === "/"
               ? location === "/"
-              : location === tab.href || location.startsWith(`${tab.href}/`);
+              : tab.href === "/category/streaming"
+                ? location.startsWith("/category/")
+                : location === tab.href || location.startsWith(`${tab.href}/`);
+          const isCartTab = tab.href === "/cart";
+          const cartAriaLabel =
+            isCartTab && itemCount > 0
+              ? `السلة، ${formatCount(itemCount, {
+                  one: "منتج",
+                  two: "منتجان",
+                  few: "منتجات",
+                  many: "منتجاً",
+                  other: "منتج",
+                })}`
+              : tab.label;
           return (
             <Link
               key={tab.href}
               href={tab.href}
               className="min-w-0"
-              aria-label={tab.label}
+              aria-label={cartAriaLabel}
               aria-current={active ? "page" : undefined}
             >
               <div
@@ -106,18 +163,27 @@ export function MobileNav() {
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-7 h-[2.5px] rounded-full bg-primary/80 tab-slide-in" />
                 )}
 
-                {/* Icon */}
-                <tab.icon
-                  strokeWidth={active ? 2.5 : 1.8}
-                  className={`
-                    relative z-10 transition-all duration-200 ease-out
-                    ${
-                      active
-                        ? "w-[22px] h-[22px] text-primary-text"
-                        : "w-[20px] h-[20px] text-muted-foreground"
-                    }
-                  `}
-                />
+                {/* Icon — the السلة icon carries the live count badge
+                    (R120-B1 / A1-F8): the same 9+ cap + inline-end
+                    corner idiom as the Navbar cart/bell badges. */}
+                <span className="relative">
+                  <tab.icon
+                    strokeWidth={active ? 2.5 : 1.8}
+                    className={`
+                      relative z-10 transition-all duration-200 ease-out
+                      ${
+                        active
+                          ? "w-[22px] h-[22px] text-primary-text"
+                          : "w-[20px] h-[20px] text-muted-foreground"
+                      }
+                    `}
+                  />
+                  {isCartTab && itemCount > 0 && (
+                    <span className="absolute -top-1.5 -left-2 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-3xs font-bold leading-none tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
+                      {itemCount > 9 ? "9+" : itemCount}
+                    </span>
+                  )}
+                </span>
 
                 {/* Label */}
                 <span

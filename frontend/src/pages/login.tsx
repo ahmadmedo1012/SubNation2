@@ -105,17 +105,20 @@ export default function LoginPage() {
         </div>
 
         {/* Tabs — clear login vs register */}
+        {/* A3-F4 (R120-B2): both tabs min-h-11 — the active tab measured
+            172×40 live (it is this screen's own-name “submit” per the
+            audit); 44px matches the provider buttons below it. */}
         <div className="grid grid-cols-2 gap-1 p-1 bg-muted/30 border border-border/40 rounded-2xl mb-5 reveal-up stagger-1">
           <button
             type="button"
-            className="py-2.5 rounded-xl text-sm font-bold bg-card text-foreground shadow-sm cursor-default"
+            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-bold bg-card text-foreground shadow-sm cursor-default"
             aria-current="page"
           >
             تسجيل الدخول
           </button>
           <Link
             href="/register"
-            className="py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
+            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
           >
             حساب جديد
           </Link>

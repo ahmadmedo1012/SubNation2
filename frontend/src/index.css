@@ -95,11 +95,12 @@
   --font-mono: var(--app-font-mono);
 
   /* Micro-type (R115-A6 #4): the two sub-xs sizes the app had hardcoded
-     ~320× as arbitrary values. 2xs/3xs keep the 10px readability floor
-     (8/9px literals are killed, not tokenized) and set font-size only —
-     same computed behavior as the text-[Npx] arbitraries they replace. */
+     ~320× as arbitrary values. R120-B1 (A3-F6/A4-F11): 3xs raised
+     10→11px — 10px was below the Arabic readability floor on nav labels
+     and badges (connected glyphs lose dot distinction); 2xs stays 11px
+     (conservative — no overflow risk taken on denser 2xs surfaces). */
   --text-2xs: 11px;
-  --text-3xs: 10px;
+  --text-3xs: 11px;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -1104,7 +1105,14 @@
 @layer utilities {
   .cv-card {
     content-visibility: auto;
-    contain-intrinsic-size: 280px;
+    /* R120-B1 (A1-F14): `auto 320px` — the plain 280px underestimated the
+       real card height (aspect-square image + 2-line title + price row +
+       CTA ≈ 300–340px on the 2-col mobile grid), so the first paint of a
+       scrolled-to row reserved ~40–60px too little and the page jumped
+       when the real card rendered. `auto` lets the browser remember the
+       last-rendered size once a card has painted; 320px is the improved
+       fallback for the first pass. */
+    contain-intrinsic-size: auto 320px;
   }
 }
 

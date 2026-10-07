@@ -52,6 +52,12 @@ export function useConfirm() {
   // cleared when the dialog closes. Held in a ref so updating it
   // doesn't re-render and accidentally close the dialog.
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
+  // A4-F3 (R120-B2): the element that had focus when confirm() opened.
+  // This dialog is controlled/programmatic — there is no Radix
+  // <AlertDialogTrigger>, so on close Radix has no trigger to return
+  // focus to and document.activeElement lands on <body>, dropping
+  // keyboard users back to the top of the tab order mid-task.
+  const invokerRef = useRef<HTMLElement | null>(null);
 
   const confirm = useCallback((opts: ConfirmOptions): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
@@ -62,9 +68,25 @@ export function useConfirm() {
         resolverRef.current(false);
         resolverRef.current = null;
       }
+      // Capture BEFORE opening — after the dialog mounts, focus moves
+      // into it and the invoker would be lost.
+      if (typeof document !== "undefined") {
+        invokerRef.current =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      }
       resolverRef.current = resolve;
       setState({ open: true, ...opts });
     });
+  }, []);
+
+  // A4-F3 (R120-B2): hand focus back to the invoking element. Guarded —
+  // the invoker may have unmounted while the dialog was open (list
+  // re-render, navigation), in which case focus stays where Radix
+  // left it instead of throwing on a detached node.
+  const restoreInvokerFocus = useCallback(() => {
+    const el = invokerRef.current;
+    invokerRef.current = null;
+    if (el && el.isConnected) el.focus();
   }, []);
 
   const settle = useCallback((value: boolean) => {
@@ -85,7 +107,16 @@ export function useConfirm() {
           if (!open) settle(false);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent
+          /* A4-F3 (R120-B2): fires once on every close path (cancel
+             click, action click, ESC) AFTER Radix would otherwise move
+             focus — preventDefault stops the body-focus default and
+             returns focus to the captured invoker instead. */
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            restoreInvokerFocus();
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>{state.title}</AlertDialogTitle>
             {state.description && (
@@ -110,7 +141,7 @@ export function useConfirm() {
         </AlertDialogContent>
       </AlertDialog>
     );
-  }, [state, settle]);
+  }, [state, settle, restoreInvokerFocus]);
 
   return { confirm, ConfirmDialog };
 }

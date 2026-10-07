@@ -534,3 +534,83 @@ describe("error funnel — getErrorMessage everywhere (96-F2 §4.1)", () => {
     expect(alert.textContent).toContain("الرمز غير صحيح");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. A5-F7 (R120-B2) — auto-submit must survive a 6th digit landing mid-request
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("OTP auto-submit when the 6th digit lands mid-request (A5-F7 / R120-B2)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it("fires the verify once the in-flight request settles (was: silently no-op)", async () => {
+    await reachCodeStepFake();
+    const otp = screen.getByPlaceholderText("رمز التحقق");
+
+    // A resend hangs (loading=true) — deferred promise resolved manually.
+    let resolveResend!: (v: unknown) => void;
+    fetchMock.mockImplementationOnce(() => new Promise((r) => (resolveResend = r)));
+    // The verify that the auto-submit SHOULD eventually fire.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { error: "الرمز غير صحيح", code: "UNAUTHORIZED" }),
+    );
+    advanceSeconds(60); // free the resend button from the cooldown
+    fireEvent.click(screen.getByRole("button", { name: "لم يصلك الرمز؟ إعادة الإرسال" }));
+    await flushAsync();
+
+    // The full code lands while the request is still in flight — the
+    // auto-submit effect bails on `if (loading) return` and, pre-fix,
+    // deps [code, step] never re-fired it (the code value never changes
+    // again). No verify may fire yet.
+    fireEvent.change(otp, { target: { value: "123456" } });
+    expect(
+      fetchMock.mock.calls.filter((c) => String(c[0]) === "/api/auth/whatsapp/verify"),
+    ).toHaveLength(0);
+
+    // The hanging request FAILS with a plain error (a success would clear
+    // the typed code) — loading flips back to false.
+    resolveResend(jsonResponse(500, { error: "خلل مؤقت", code: "INTERNAL_ERROR" }));
+    // Fake timers: drain microtasks only — never findBy* (waitFor polls
+    // on faked timers and hangs; see the file header).
+    await flushAsync();
+    await flushAsync();
+
+    // THE FIX: `loading` in the effect deps re-fires the auto-submit; the
+    // autoSubmittedFor ref still guarantees exactly one verify.
+    const verifyCalls = fetchMock.mock.calls.filter(
+      (c) => String(c[0]) === "/api/auth/whatsapp/verify",
+    );
+    expect(verifyCalls).toHaveLength(1);
+    expect(JSON.parse((verifyCalls[0]![1] as RequestInit).body as string)).toMatchObject({
+      phone: PHONE,
+      code: "123456",
+    });
+    // The verify response surfaced its precise copy (the request truly ran).
+    expect(screen.getByRole("alert").textContent).toContain("الرمز غير صحيح");
+  });
+
+  it("adding loading to the deps does NOT double-submit on the settle re-fire", async () => {
+    await reachCodeStepFake();
+    const otp = screen.getByPlaceholderText("رمز التحقق");
+
+    // Normal path: 6th digit typed while idle → auto-submit → 401 mismatch.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(401, { error: "الرمز غير صحيح", code: "UNAUTHORIZED" }),
+    );
+    fireEvent.change(otp, { target: { value: "111111" } });
+    await flushAsync();
+    await flushAsync();
+
+    // Fake timers → sync query (the alert state settled with the drained
+    // microtasks above).
+    expect(screen.getByRole("alert").textContent).toContain("الرمز غير صحيح");
+
+    // loading flipped true→false around the verify; the effect re-ran on
+    // each flip but autoSubmittedFor pinned the code — still ONE verify.
+    const verifyCalls = fetchMock.mock.calls.filter(
+      (c) => String(c[0]) === "/api/auth/whatsapp/verify",
+    );
+    expect(verifyCalls).toHaveLength(1);
+  });
+});
