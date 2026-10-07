@@ -212,3 +212,13 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   404 shape), login shows Google+Telegram. One initial "price missing" was the test's own timing
   (async query) — re-verified with settle: price + stock render. Mobile 390px: no overflow, zero
   console errors.
+
+- **2026-10-07** R121-FINAL — **GCM authTagLength fix recovered from stalled agent session**:
+  Session `sess_32cb56cf` examined `backend/src/lib/encryption.ts` (Mimosa hook confirmed
+  `outcome:clear, coverage:complete, findingCount:0` at the time) but stopped before applying
+  the belt-and-braces fix. Re-applied: `createDecipheriv(ALGORITHM, key, segments.iv)` →
+  `createDecipheriv(ALGORITHM, key, segments.iv, { authTagLength: AUTH_TAG_BYTES })`.
+  Commit `1f25dff`. Typecheck clean (backend + frontend + scripts all PASS). Pushed to origin/main;
+  Coolify deploy triggered. This was the last loose end from the R121 security sweep — every
+  decrypt funnel now has explicit 128-bit tag enforcement at the Node.js native layer, in addition
+  to the existing `segments.authTag.length !== AUTH_TAG_BYTES` gate.
