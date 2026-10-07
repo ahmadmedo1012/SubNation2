@@ -26,7 +26,13 @@ export const walletLedgerTable = pgTable(
     id: serial("id").primaryKey(),
     userId: integer("user_id")
       .notNull()
-      .references(() => usersTable.id, { onDelete: "cascade" }),
+      // R122 (A4-P1-2): RESTRICT — wallet_ledger is a NEVER-delete audit
+      // trail (same retention class as points_ledger). The boot twin is
+      // V1-M25 (migrate.ts applyMoneyLedgerUserFkRestrictStage), which
+      // rebuilds fk_wallet_ledger_user as ON DELETE RESTRICT; this
+      // declaration keeps the drizzle chain mirror in lockstep. The only
+      // supported "deletion" story is user ANONYMIZATION (keep the rows).
+      .references(() => usersTable.id, { onDelete: "restrict" }),
     type: ledgerEntryTypeEnum("type").notNull(),
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     balanceBefore: numeric("balance_before", { precision: 10, scale: 2 }).notNull(),
@@ -53,5 +59,20 @@ export const walletLedgerTable = pgTable(
     // phantom mutation; pinned verbatim to the boot SQL (migrate.ts
     // applyLedgerAmountNonzeroStage).
     amountNonzeroCheck: check("chk_ledger_amount_nonzero", sql`amount <> 0`),
+    // R122 (A4-P2-5): the arithmetic identity points_ledger has carried
+    // since V1-M21, in the type-aware form wallet_ledger's TWO writer
+    // conventions require (documented at V1-M10): purchases store POSITIVE
+    // magnitudes with the debit sign carried by `type`
+    // (balance_after = balance_before - amount), while topup / refund /
+    // adjustment / referral_credit rows all satisfy
+    // balance_after = balance_before + amount (adjustments store SIGNED
+    // deltas: amount = balanceAfter - balanceBefore). The naive uniform
+    // identity would reject every purchase — the V1-M10 disaster class.
+    // Boot twin: V1-M26 (migrate.ts applyMoneyArithmeticChecksStage),
+    // probe-gated count-then-add.
+    arithmeticCheck: check(
+      "chk_ledger_arithmetic",
+      sql`(type <> 'purchase' AND balance_after = balance_before + amount) OR (type = 'purchase' AND balance_after = balance_before - amount)`,
+    ),
   }),
 );

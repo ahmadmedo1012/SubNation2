@@ -147,7 +147,10 @@ CREATE INDEX idx_inventory_variant ON inventory (variant_id);
 CREATE TABLE orders (
   id serial PRIMARY KEY,
   order_code varchar(50) NOT NULL UNIQUE,
-  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- R122 (A4-P1-2): prod parity — the boot FK name (migrate.ts fkStatements)
+  -- rebuilt ON DELETE RESTRICT by V1-M25; orders are financial history.
+  user_id integer NOT NULL,
+  CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
   product_id integer NOT NULL REFERENCES products(id) ON DELETE RESTRICT, -- AUD103-1-F9 (r103): prod parity
   variant_id integer REFERENCES product_variants(id) ON DELETE SET NULL,
   variant_label varchar(240),
@@ -168,6 +171,10 @@ CREATE TABLE orders (
   refund_amount numeric(10,2),
   refunded_by_admin_id integer,
   CONSTRAINT chk_orders_refund_amount_range CHECK (refund_amount IS NULL OR (refund_amount > 0 AND refund_amount <= amount)),
+  -- R122 (A4-P2-5): prod parity — V1-M26 (migrate.ts
+  -- applyMoneyArithmeticChecksStage) applies this live; checkout's
+  -- INVALID_PRICE gate already enforces it at the perimeter.
+  CONSTRAINT chk_orders_amount_pos CHECK (amount > 0),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -179,9 +186,12 @@ CREATE INDEX idx_orders_variant ON orders (variant_id);
 -- Same constraint set as the boot stage (migrate.ts applyPointsLedgerStage):
 -- arithmetic integrity, non-negative balances, non-zero deltas, reason
 -- for manual types, and the structural exactly-once partial UNIQUE.
+-- R122 (A4-P1-2): the user FK keeps the boot's inline-REFERENCES shape —
+-- Postgres auto-names it points_ledger_user_id_fkey, the exact name
+-- V1-M25 probes/rebuilds — now ON DELETE RESTRICT (never-delete trail).
 CREATE TABLE points_ledger (
   id serial PRIMARY KEY,
-  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   type points_ledger_type NOT NULL,
   points_delta integer NOT NULL,
   points_before integer NOT NULL,
@@ -228,16 +238,25 @@ CREATE UNIQUE INDEX uniq_provider_fulfillments_provider_order
 
 CREATE TABLE wallet_ledger (
   id serial PRIMARY KEY,
-  -- V1-M9 (B8-02): named FK (ON DELETE CASCADE) — prod name/definition,
-  -- not an auto-generated inline one, so parity tests can pin it.
+  -- V1-M9 (B8-02): named FK — prod name/definition, not an auto-generated
+  -- inline one, so parity tests can pin it. R122 (A4-P1-2): V1-M25 rebuilds
+  -- it ON DELETE RESTRICT (never-delete audit trail) — the CASCADE the
+  -- round-93 harness mirrored is the pre-R122 shape.
   user_id integer NOT NULL,
-  CONSTRAINT fk_wallet_ledger_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_wallet_ledger_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
   type ledger_entry_type NOT NULL,
   amount numeric(10,2) NOT NULL,
   -- V1-M10 (round-93 A2/A7): sign-free nonzero — adjustments store SIGNED
   -- deltas, so the original V1-M9 form (amount > 0) broke every admin
   -- debit with a 23514 rollback + 500. amount = 0 stays forbidden.
   CONSTRAINT chk_ledger_amount_nonzero CHECK (amount <> 0),
+  -- R122 (A4-P2-5): prod parity — the type-aware arithmetic identity
+  -- V1-M26 applies live (purchases debit: after = before - amount; every
+  -- other type credits: after = before + amount, adjustments signed).
+  CONSTRAINT chk_ledger_arithmetic CHECK (
+    (type <> 'purchase' AND balance_after = balance_before + amount)
+    OR (type = 'purchase' AND balance_after = balance_before - amount)
+  ),
   balance_before numeric(10,2) NOT NULL,
   balance_after numeric(10,2) NOT NULL,
   reference_id integer,
@@ -248,7 +267,10 @@ CREATE TABLE wallet_ledger (
 
 CREATE TABLE wallet_topups (
   id serial PRIMARY KEY,
-  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- R122 (A4-P1-2): prod parity — the boot FK name (migrate.ts
+  -- fkStatements) rebuilt ON DELETE RESTRICT by V1-M25.
+  user_id integer NOT NULL,
+  CONSTRAINT fk_topups_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
   amount numeric(10,2) NOT NULL,
   CONSTRAINT chk_topups_amount_pos CHECK (amount > 0),
   payment_method varchar(50) NOT NULL DEFAULT 'mobile_transfer',

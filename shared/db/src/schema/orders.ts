@@ -31,7 +31,11 @@ export const ordersTable = pgTable(
     orderCode: varchar("order_code", { length: 50 }).notNull().unique(),
     userId: integer("user_id")
       .notNull()
-      .references(() => usersTable.id, { onDelete: "cascade" }),
+      // R122 (A4-P1-2): RESTRICT — orders are financial history; the only
+      // supported "deletion" story is user anonymization (keep the rows).
+      // Boot twin: V1-M25 (migrate.ts applyMoneyLedgerUserFkRestrictStage)
+      // rebuilds fk_orders_user as ON DELETE RESTRICT.
+      .references(() => usersTable.id, { onDelete: "restrict" }),
     productId: integer("product_id")
       .notNull()
       .references(() => productsTable.id, { onDelete: "restrict" }),
@@ -116,6 +120,13 @@ export const ordersTable = pgTable(
       "chk_orders_refund_amount_range",
       sql`refund_amount IS NULL OR (refund_amount > 0 AND refund_amount <= amount)`,
     ),
+    // R122 (A4-P2-5): every order is a positive-money charge — checkout
+    // already enforces this at the perimeter (the INVALID_PRICE gate,
+    // checkout.service.ts, rejects finalPrice <= 0); the CHECK closes the
+    // bypass paths (cron, SQL console, a future writer) the same way
+    // chk_topups_amount_pos does for topups. Boot twin: V1-M26 (migrate.ts
+    // applyMoneyArithmeticChecksStage), probe-gated count-then-add.
+    amountPosCheck: check("chk_orders_amount_pos", sql`amount > 0`),
   }),
 );
 

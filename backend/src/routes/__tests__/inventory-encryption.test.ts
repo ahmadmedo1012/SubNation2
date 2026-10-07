@@ -326,3 +326,72 @@ describe("POST /admin/products/:id/inventory — R119-B1 (A1 F-4) credential pas
     }
   });
 });
+
+describe("GET /admin/products/:id/inventory — R122 (A4-P2-7) preview cap", () => {
+  // The route used to materialize EVERY inventory row of the product (the
+  // upload path allows up to 100,000) + one GCM decrypt per row. The fix:
+  // exact count aggregates + a hard 200-row items cap with an honest
+  // `truncated` flag + `items_cap` (the risk.ts hasMore idiom).
+
+  /** Direct batch insert of `n` inventory rows; every 10th is sold. */
+  async function seedInventoryBulk(productId: number, n: number): Promise<number> {
+    const rows = Array.from({ length: n }, (_, i) => ({
+      productId,
+      accountEmail: `bulk${String(i).padStart(5, "0")}@t.local`,
+      accountPassword: null,
+      // Plaintext is fine here — safeDecrypt passes it through unchanged;
+      // this test pins the CAP, not the crypto (covered above).
+      extraDetails: `CODE-${String(i).padStart(5, "0")}`,
+      isSold: i % 10 === 0,
+    }));
+    await db.insert(inventoryTable).values(rows);
+    return rows.filter((r) => r.isSold).length;
+  }
+
+  it("caps items at 200, reports EXACT counts, and flags truncation honestly", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+      const sold = await seedInventoryBulk(productId, 205);
+
+      const res = await getInventory(url, token, productId);
+      expect(res.status).toBe(200);
+      // Counts stay exact (aggregate) — the dialog's stock summary is not
+      // clipped to the preview window.
+      expect(res.body.total).toBe(205);
+      expect(res.body.sold).toBe(sold); // 21 (every 10th of 205)
+      expect(res.body.available).toBe(205 - sold);
+      // The decrypted preview is hard-capped…
+      const items = res.body.items as Array<{ account_email: string }>;
+      expect(items).toHaveLength(200);
+      // …oldest-first (the set-count convention — deterministic prefix)…
+      expect(items[0].account_email).toBe("bulk00000@t.local");
+      expect(items[199].account_email).toBe("bulk00199@t.local");
+      // …and the response SAYS it is truncated with the cap value.
+      expect(res.body.truncated).toBe(true);
+      expect(res.body.items_cap).toBe(200);
+    } finally {
+      close();
+    }
+  });
+
+  it("a small inventory is returned whole — no truncation flag", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+      const sold = await seedInventoryBulk(productId, 3);
+
+      const res = await getInventory(url, token, productId);
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(3);
+      expect(res.body.sold).toBe(sold);
+      expect(res.body.items).toHaveLength(3);
+      expect(res.body.truncated).toBe(false);
+      expect(res.body.items_cap).toBe(200);
+    } finally {
+      close();
+    }
+  });
+});

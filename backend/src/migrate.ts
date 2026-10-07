@@ -1443,6 +1443,224 @@ export async function applyListReadPathIndexesStage(
   logger.info({ category: "storage" }, "V1-M24: list read-path indexes (idempotent)");
 }
 
+// ── V1-M25 (R122, A4-P1-2): money-ledger user FKs CASCADE → RESTRICT ────────
+//
+// The four money-history tables' user FKs were created ON DELETE CASCADE
+// (fk_wallet_ledger_user here in V1-M9, fk_orders_user / fk_topups_user in
+// the fkStatements loop, points_ledger's inline REFERENCES in V1-M21) while
+// the documented retention policy for both ledgers is "NEVER delete"
+// (points_ledger.ts: "audit trail; excluded from all retention jobs — same
+// class as wallet_ledger"). CASCADE + that policy is a latent catastrophe:
+// one manual `DELETE FROM users` (GDPR request, cleanup script, SQL-console
+// typo) would atomically erase the user's COMPLETE financial record —
+// orders, wallet_ledger, points_ledger, topups — with zero alerts,
+// defeating the exactly-once/arithmetic CHECKs those tables carry. No
+// production code path deletes users; this stage removes the footgun.
+//
+// The only supported "deletion" story is user ANONYMIZATION (NULL out
+// phone/PII, keep every money row) — RESTRICT enforces exactly that
+// boundary at the DB level.
+//
+// Stage shape (V1-M9/M21 discipline — every statement single, probe-gated,
+// re-runs no-ops):
+//   1. Orphan probe per table (count, plain SELECT): rows whose user_id
+//      has no matching users row ALERT (deduped admin alert, nothing is
+//      ever deleted by boot) and skip that table's rebuild — the operator
+//      re-links the rows, the next boot applies the constraint.
+//   2. Definition probe (pg_constraint, the catalog behind
+//      information_schema): if the only FK on the column is the canonical
+//      boot name with confdeltype 'r' (RESTRICT) → skip, ZERO DDL — the
+//      steady-state boot contract.
+//   3. Converge: DROP CONSTRAINT IF EXISTS (canonical name) + the V1-M20
+//      any-name sweep (drops ANY FK on the column regardless of name —
+//      belt for chain-built / hand-provisioned environments) + DO-block
+//      ADD CONSTRAINT … ON DELETE RESTRICT (duplicate_object swallow).
+//
+// Interaction with the earlier creators (they are NOT modified — the
+// stage-freeze discipline): after this stage, the fkStatements loop's
+// `ADD CONSTRAINT fk_orders_user …` and V1-M9's wallet ADD raise
+// duplicate_object and are swallowed on every later boot (the name already
+// exists), so orders / wallet_topups / points_ledger keep RESTRICT with
+// zero DDL. V1-M9's wallet_ledger block is the one exception: its DROP is
+// unconditional, so it re-creates fk_wallet_ledger_user as CASCADE early
+// in every boot and this stage re-converges it to RESTRICT at the tail —
+// the transient CASCADE window exists only mid-migration (business routes
+// are boot-gated to 503 until migrations finish), at the cost of two extra
+// brief AccessExclusiveLocks per cold boot on wallet_ledger. When the
+// stage freeze is ever lifted, changing V1-M9's ADD to RESTRICT restores
+// the zero-DDL steady state for that table too.
+//
+// Drizzle mirror: wallet_ledger.ts / points_ledger.ts / orders.ts /
+// wallet_topups.ts declare onDelete:"restrict" (chain 0018).
+export async function applyMoneyLedgerUserFkRestrictStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // R122 (A4-P1-2): canonical boot names — fk_* from the fkStatements
+  // family; points_ledger's FK is the Postgres AUTO name its inline
+  // `REFERENCES users(id)` CREATE TABLE column gets (V1-M21), kept as-is
+  // so the name this stage probes/drops/adds is byte-identical to the one
+  // the boot itself created.
+  const targets: Array<{ table: string; constraint: string }> = [
+    { table: "wallet_ledger", constraint: "fk_wallet_ledger_user" },
+    { table: "orders", constraint: "fk_orders_user" },
+    { table: "wallet_topups", constraint: "fk_topups_user" },
+    { table: "points_ledger", constraint: "points_ledger_user_id_fkey" },
+  ];
+
+  for (const { table, constraint } of targets) {
+    // 1. Orphan probe — alert, never delete (V1-M9 short-circuit shape).
+    const orphans = extractCount(
+      await execute(sql`
+        SELECT count(*) AS c
+        FROM ${sql.raw(table)} t
+        LEFT JOIN users u ON u.id = t.user_id
+        WHERE u.id IS NULL
+      `),
+    );
+    if (orphans > 0) {
+      await alertMoneyConstraintIssue(
+        `صفوف يتيمة في ${table} (V1-M25)`,
+        `Found ${orphans} ${table} row(s) whose user_id has no matching users row — the ON DELETE RESTRICT rebuild of ${constraint} was SKIPPED and NOTHING was deleted. Re-link the rows manually, then reboot to apply the constraint.`,
+        `db:fkrestrict:${constraint}`,
+      );
+      continue;
+    }
+
+    // 2. Definition probe — confdeltype 'r' = ON DELETE RESTRICT.
+    const fkRows = extractRows(
+      await execute(sql`
+        SELECT con.conname AS conname, con.confdeltype AS confdeltype
+        FROM pg_constraint con
+        JOIN pg_attribute a
+          ON a.attrelid = con.conrelid
+         AND a.attnum = ANY (con.conkey)
+        WHERE con.contype = 'f'
+          AND con.conrelid = ${table}::regclass
+          AND a.attname = 'user_id'
+      `),
+    );
+    const alreadyRestrict =
+      fkRows.length === 1 &&
+      String(fkRows[0].conname) === constraint &&
+      String(fkRows[0].confdeltype) === "r";
+    if (alreadyRestrict) continue; // steady state — zero DDL
+
+    // 3. Converge to the canonical boot-named RESTRICT FK.
+    await execute(sql.raw(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${constraint}`));
+    await execute(
+      sql.raw(`
+      DO $$
+      DECLARE
+        fk_name text;
+      BEGIN
+        FOR fk_name IN
+          SELECT con.conname
+          FROM pg_constraint con
+          JOIN pg_attribute a
+            ON a.attrelid = con.conrelid
+           AND a.attnum = ANY (con.conkey)
+          WHERE con.contype = 'f'
+            AND con.conrelid = '${table}'::regclass
+            AND a.attname = 'user_id'
+        LOOP
+          EXECUTE format('ALTER TABLE ${table} DROP CONSTRAINT %I', fk_name);
+        END LOOP;
+      END $$;
+    `),
+    );
+    await execute(
+      sql.raw(`
+      DO $$ BEGIN
+        ALTER TABLE ${table} ADD CONSTRAINT ${constraint}
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `),
+    );
+    logger.info(
+      { category: "storage", table, constraint },
+      "V1-M25: money-history user FK rebuilt as ON DELETE RESTRICT (never-delete audit-trail policy)",
+    );
+  }
+}
+
+// ── V1-M26 (R122, A4-P2-5): the two money CHECKs the R118 sweep missed ──────
+//
+// R118-A3 F3 pinned the ten live money CHECKs into the schema TS + chain
+// but stopped short of the money tables' own arithmetic:
+//   - orders.amount had no positivity CHECK (only the refund-range twin);
+//     checkout's INVALID_PRICE gate enforces finalPrice > 0 at the
+//     perimeter, but a bypass writer (cron, SQL console, a future service)
+//     could commit a negative/zero charge silently.
+//   - wallet_ledger had no arithmetic identity while points_ledger has
+//     carried one since V1-M21. The naive uniform identity
+//     (balance_after = balance_before + amount) is WRONG here: purchases
+//     store POSITIVE magnitudes with the debit sign carried by `type`
+//     (checkout: newBalance = balance − finalPrice), while topup / refund
+//     / referral_credit rows are plain credits and adjustment rows store
+//     SIGNED deltas (amount = balanceAfter − balanceBefore) — the V1-M10
+//     documented convention split. The CHECK below encodes exactly that
+//     split (verified writer-by-writer: checkout.service, topup.service,
+//     refund.service, adjustment.service, routes/loyalty).
+//
+// Probe-gated count-then-add per constraint, byte-for-byte the V1-M9
+// checkConstraints loop: a violation count > 0 → deduped admin alert +
+// skip (the operator fixes data, the next boot applies the constraint);
+// otherwise the DO-block ADD swallows duplicate_object on re-runs.
+//
+// Drizzle mirror: orders.ts (chk_orders_amount_pos) + wallet_ledger.ts
+// (chk_ledger_arithmetic) — chain 0018.
+export async function applyMoneyArithmeticChecksStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // R122 (A4-P2-5): name/expression pinned verbatim to the schema TS
+  // declarations (the 0016 MIRROR_CHECKS discipline).
+  const checkConstraints: Array<{
+    name: string;
+    table: string;
+    check: string;
+    violation: string;
+  }> = [
+    {
+      name: "chk_orders_amount_pos",
+      table: "orders",
+      check: "amount > 0",
+      violation: "amount <= 0",
+    },
+    {
+      name: "chk_ledger_arithmetic",
+      table: "wallet_ledger",
+      check:
+        "(type <> 'purchase' AND balance_after = balance_before + amount) OR (type = 'purchase' AND balance_after = balance_before - amount)",
+      violation:
+        "(type <> 'purchase' AND balance_after <> balance_before + amount) OR (type = 'purchase' AND balance_after <> balance_before - amount)",
+    },
+  ];
+  for (const { name, table, check, violation } of checkConstraints) {
+    const violations = extractCount(
+      await execute(sql.raw(`SELECT count(*) AS c FROM ${table} WHERE ${violation}`)),
+    );
+    if (violations > 0) {
+      await alertMoneyConstraintIssue(
+        `بيانات تخالف قيد ${name} (V1-M26)`,
+        `Found ${violations} existing row(s) violating ${name} on ${table} — constraint NOT added. Fix the data, then reboot to apply it.`,
+        `db:constraint:${name}`,
+      );
+      continue;
+    }
+    await execute(
+      sql.raw(`
+        DO $$ BEGIN
+          ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${check});
+        EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
+      `),
+    );
+  }
+  logger.info(
+    { category: "storage" },
+    "V1-M26: orders.amount>0 + wallet_ledger arithmetic CHECKs (idempotent)",
+  );
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -3259,6 +3477,20 @@ export async function runMigrations() {
     // idx_admin_alerts_created boot twin that never shipped. Idempotent;
     // steady-state boots are no-ops. See applyListReadPathIndexesStage docs.
     await applyListReadPathIndexesStage();
+
+    // ── V1-M25 (R122, A4-P1-2): rebuild the four money-history user ──
+    // FKs (wallet_ledger / orders / wallet_topups / points_ledger) as
+    // ON DELETE RESTRICT — the never-delete audit-trail policy, enforced
+    // at the DB level. Probe-gated: orphan count → alert + skip; already
+    // RESTRICT → zero DDL. See applyMoneyLedgerUserFkRestrictStage docs
+    // for the V1-M9 interaction note.
+    await applyMoneyLedgerUserFkRestrictStage();
+
+    // ── V1-M26 (R122, A4-P2-5): chk_orders_amount_pos + the type-aware ──
+    // chk_ledger_arithmetic — the two money CHECKs the R118-A3 F3 sweep
+    // stopped short of. Probe-gated count-then-add (V1-M9 idiom).
+    // See applyMoneyArithmeticChecksStage docs.
+    await applyMoneyArithmeticChecksStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

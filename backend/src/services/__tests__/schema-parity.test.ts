@@ -29,6 +29,14 @@
  * silent schema-TS regression fails here even where the pglite harness
  * carries no such table (inventory_forecasts / enrichment_drafts are not
  * in the harness DDL — TS parity is the goal there).
+ *
+ * R122 (A4-P1-2 + A4-P2-5) extension: the harness also carries the
+ * V1-M25/V1-M26 post-boot shape — the four money-history user FKs as
+ * ON DELETE RESTRICT (never-delete audit-trail policy; fk_orders_user /
+ * fk_topups_user now by their boot names, points_ledger by the boot
+ * auto-name) and the two V1-M26 CHECKs (chk_orders_amount_pos + the
+ * type-aware chk_ledger_arithmetic). Behavioral pins: a user delete is
+ * BLOCKED when ledger rows exist and still succeeds when none do.
  */
 
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -50,6 +58,7 @@ import {
   inventoryForecastsTable,
   inventoryTable,
   ordersTable,
+  pointsLedgerTable,
   productVariantsTable,
 } from "@workspace/db/schema";
 import { AdjustmentService } from "../../services/adjustment.service";
@@ -126,8 +135,35 @@ describe("initTestDb carries the production money schema (V1-M9 + V1-M10)", () =
     expect(await constraintDef("chk_coupons_used_le_max")).toBe(
       "CHECK (((max_uses IS NULL) OR (used_count <= max_uses)))",
     );
+    // R122 (A4-P1-2): V1-M25 rebuilds the money-ledger user FK as ON DELETE
+    // RESTRICT — the never-delete audit-trail policy. NOT the pre-R122
+    // CASCADE (a manual DELETE FROM users must never silently erase a
+    // user's complete financial history).
     expect(await constraintDef("fk_wallet_ledger_user")).toBe(
-      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT",
+    );
+    // R122 (A4-P2-5): the two V1-M26 CHECKs (definitions as pg renders them).
+    expect(await constraintDef("chk_orders_amount_pos")).toBe("CHECK ((amount > (0)::numeric))");
+    expect(await constraintDef("chk_ledger_arithmetic")).toContain(
+      "balance_after = (balance_before + amount)",
+    );
+    expect(await constraintDef("chk_ledger_arithmetic")).toContain(
+      "balance_after = (balance_before - amount)",
+    );
+  });
+
+  it("the other three money-history user FKs exist by boot NAME and are RESTRICT (V1-M25)", async () => {
+    // R122 (A4-P1-2): orders + wallet_topups carry the boot fkStatements
+    // names; points_ledger carries the boot CREATE TABLE auto-name — the
+    // exact names V1-M25 probes and rebuilds.
+    expect(await constraintDef("fk_orders_user")).toBe(
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT",
+    );
+    expect(await constraintDef("fk_topups_user")).toBe(
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT",
+    );
+    expect(await constraintDef("points_ledger_user_id_fkey")).toBe(
+      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT",
     );
   });
 
@@ -320,6 +356,136 @@ describe("round-98 F4: harness carries the V1-M16/M17 live-only objects", () => 
   });
 });
 
+describe("R122 (A4-P1-2): money-history user FKs are ON DELETE RESTRICT", () => {
+  it("deleting a user with ANY money-history row is BLOCKED, per table (23503 on the boot FK name)", async () => {
+    // The pre-R122 CASCADE silently erased the user's complete financial
+    // record on a manual DELETE FROM users; RESTRICT must refuse instead.
+    // One seeded row per money table — the violating constraint name pins
+    // WHICH FK refused (wallet_ledger, orders, wallet_topups, points_ledger).
+    const cases: Array<{ name: string; seed: (userId: number) => Promise<unknown> }> = [
+      {
+        name: "fk_wallet_ledger_user",
+        seed: (userId) =>
+          db.insert(walletLedgerTable).values({
+            userId,
+            type: "topup",
+            amount: "10.00",
+            balanceBefore: "0.00",
+            balanceAfter: "10.00",
+          }),
+      },
+      {
+        name: "fk_orders_user",
+        seed: async (userId) => {
+          const [product] = await db
+            .insert(productsTable)
+            .values({ name: `restrict-probe-${userId}`, price: "10.00" })
+            .returning();
+          return db.insert(ordersTable).values({
+            orderCode: `ORD-RP-${userId}`,
+            userId,
+            productId: product.id,
+            amount: "10.00",
+            status: "completed",
+          });
+        },
+      },
+      {
+        name: "fk_topups_user",
+        seed: (userId) =>
+          db.insert(walletTopupsTable).values({ userId, amount: "25.00", status: "approved" }),
+      },
+      {
+        name: "points_ledger_user_id_fkey",
+        seed: (userId) =>
+          db.insert(pointsLedgerTable).values({
+            userId,
+            type: "purchase_award",
+            pointsDelta: 10,
+            pointsBefore: 0,
+            pointsAfter: 10,
+          }),
+      },
+    ];
+
+    for (const { name, seed } of cases) {
+      const user = await makeUser("10.00");
+      await seed(user.id);
+      expect(
+        await constraintViolationName(db.delete(usersTable).where(eq(usersTable.id, user.id))),
+      ).toBe(name);
+      // The money row survived the refused delete.
+      const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+      expect(u).toBeDefined();
+    }
+  });
+
+  it("deleting a user with NO dependent money rows still succeeds (RESTRICT is not a blanket block)", async () => {
+    const user = await makeUser("10.00");
+    await db.delete(usersTable).where(eq(usersTable.id, user.id));
+    const [gone] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(gone).toBeUndefined();
+  });
+});
+
+describe("R122 (A4-P2-5): the V1-M26 money CHECKs reject bypass-writer dirt", () => {
+  it("a zero/negative orders.amount write is rejected (chk_orders_amount_pos)", async () => {
+    const user = await makeUser("10.00");
+    const [product] = await db
+      .insert(productsTable)
+      .values({ name: "amount-pos-probe", price: "10.00" })
+      .returning();
+    expect(
+      await constraintViolationName(
+        db.insert(ordersTable).values({
+          orderCode: "ORD-ZERO-1",
+          userId: user.id,
+          productId: product.id,
+          amount: "0.00",
+          status: "pending",
+        }),
+      ),
+    ).toBe("chk_orders_amount_pos");
+  });
+
+  it("an incoherent wallet_ledger row is rejected per type (chk_ledger_arithmetic)", async () => {
+    const user = await makeUser("100.00");
+    // Credit-type row where after != before + amount.
+    expect(
+      await constraintViolationName(
+        db.insert(walletLedgerTable).values({
+          userId: user.id,
+          type: "topup",
+          amount: "10.00",
+          balanceBefore: "100.00",
+          balanceAfter: "200.00",
+        }),
+      ),
+    ).toBe("chk_ledger_arithmetic");
+    // Purchase rows use the DEBIT identity (after = before - amount) — the
+    // naive uniform CHECK would have rejected this legitimate row.
+    await db.insert(walletLedgerTable).values({
+      userId: user.id,
+      type: "purchase",
+      amount: "14.99",
+      balanceBefore: "100.00",
+      balanceAfter: "85.01",
+    });
+    // ...and a purchase row that violates the debit identity is rejected.
+    expect(
+      await constraintViolationName(
+        db.insert(walletLedgerTable).values({
+          userId: user.id,
+          type: "purchase",
+          amount: "14.99",
+          balanceBefore: "100.00",
+          balanceAfter: "114.99",
+        }),
+      ),
+    ).toBe("chk_ledger_arithmetic");
+  });
+});
+
 describe("round-98 F4: schema TS declares the live-only objects (compile-level)", () => {
   it("orders + inventory declare the V1-M16 variant indexes", () => {
     const ordersIdx = getTableConfig(ordersTable).indexes.find(
@@ -408,5 +574,46 @@ describe("round-98 F4: schema TS declares the live-only objects (compile-level)"
     // (V1-M17) — drizzle's uniqueIndex() cannot express it; see the
     // mirror comment in product-variants.ts.
     expect(indexColumns(idx!)).toEqual(["product_id", "plan_label", "duration_label"]);
+  });
+});
+
+describe("R122: schema TS declares the V1-M25/V1-M26 objects (compile-level)", () => {
+  it("the four money-history tables declare the user FK as onDelete restrict", () => {
+    // R122 (A4-P1-2): the TS declarations must match the boot's post-V1-M25
+    // shape so a chain regeneration mirrors RESTRICT (not the dead CASCADE).
+    const tables: Array<{ name: string; table: Parameters<typeof getTableConfig>[0] }> = [
+      { name: "wallet_ledger", table: walletLedgerTable },
+      { name: "orders", table: ordersTable },
+      { name: "wallet_topups", table: walletTopupsTable },
+      { name: "points_ledger", table: pointsLedgerTable },
+    ];
+    for (const { name, table } of tables) {
+      const fk = getTableConfig(table).foreignKeys.find((f) =>
+        f.reference().columns.some((c) => c.name === "user_id"),
+      );
+      expect(fk, `${name} user FK missing from the TS schema`).toBeDefined();
+      const ref = fk!.reference();
+      const foreignTableName = String(
+        (ref.foreignTable as unknown as Record<symbol, unknown>)[Symbol.for("drizzle:Name")],
+      );
+      expect(foreignTableName).toBe("users");
+      expect(fk!.onDelete, `${name} user FK must be restrict post-V1-M25`).toBe("restrict");
+    }
+  });
+
+  it("orders + wallet_ledger declare the two V1-M26 CHECKs with their exact names", () => {
+    // R122 (A4-P2-5): the 0016 MIRROR_CHECKS discipline — the TS check
+    // names must match the boot's constraint names byte-for-byte.
+    const ordersChecks = getTableConfig(ordersTable).checks;
+    expect(ordersChecks.map((c) => c.name)).toContain("chk_orders_amount_pos");
+    expect(sqlText(ordersChecks.find((c) => c.name === "chk_orders_amount_pos")?.value)).toBe(
+      "amount > 0",
+    );
+
+    const ledgerChecks = getTableConfig(walletLedgerTable).checks;
+    expect(ledgerChecks.map((c) => c.name)).toContain("chk_ledger_arithmetic");
+    expect(sqlText(ledgerChecks.find((c) => c.name === "chk_ledger_arithmetic")?.value)).toBe(
+      "(type <> 'purchase' AND balance_after = balance_before + amount) OR (type = 'purchase' AND balance_after = balance_before - amount)",
+    );
   });
 });

@@ -23,7 +23,12 @@ export const walletTopupsTable = pgTable(
     id: serial("id").primaryKey(),
     userId: integer("user_id")
       .notNull()
-      .references(() => usersTable.id, { onDelete: "cascade" }),
+      // R122 (A4-P1-2): RESTRICT — topups are the credit-side money trail
+      // (uniq_wallet_topups_payment_reference guards their exactly-once
+      // semantics); a user delete must not silently erase them. Boot twin:
+      // V1-M25 (migrate.ts applyMoneyLedgerUserFkRestrictStage) rebuilds
+      // fk_topups_user as ON DELETE RESTRICT.
+      .references(() => usersTable.id, { onDelete: "restrict" }),
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     paymentMethod: varchar("payment_method", { length: 50 }).notNull().default("mobile_transfer"),
     paymentNetwork: varchar("payment_network", { length: 50 }),

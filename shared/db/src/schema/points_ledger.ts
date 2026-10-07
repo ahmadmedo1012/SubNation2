@@ -60,7 +60,14 @@ export const pointsLedgerTable = pgTable(
     id: serial("id").primaryKey(),
     userId: integer("user_id")
       .notNull()
-      .references(() => usersTable.id, { onDelete: "cascade" }),
+      // R122 (A4-P1-2): RESTRICT — this table's own docstring says
+      // "Retention: NEVER delete from this table (audit trail; excluded
+      // from all retention jobs — same class as wallet_ledger)", but the
+      // FK was CASCADE: a manual DELETE FROM users would atomically erase
+      // the user's entire points history. Boot twin: V1-M25 (migrate.ts
+      // applyMoneyLedgerUserFkRestrictStage) rebuilds the boot-created
+      // points_ledger_user_id_fkey as ON DELETE RESTRICT.
+      .references(() => usersTable.id, { onDelete: "restrict" }),
     type: pointsLedgerTypeEnum("type").notNull(),
     /** Signed delta: positive = earned, negative = revoked/spent. */
     pointsDelta: integer("points_delta").notNull(),
