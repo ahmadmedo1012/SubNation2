@@ -158,3 +158,30 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   not in the repo) — headline deferred: www→apex 301 + http 301 (edge action), VITE_SENTRY_DSN +
   VITE_GSC_VERIFICATION unset (operator actions), 14 >1,000-line component extractions, CSS
   admin-share split, A6-F2/F9/F10.
+- **2026-10-07** **Round R121 — broken-admin revival + Telegram ops channel + edge canonicalization**
+  (live browser audit of all 20 admin pages as the trigger, minted session, revoked after).
+  Commit `b5c9151`: (1) `/admin/products/enrichment` + `/admin/risk/events/:id` rendered the PUBLIC
+  404 — the top-level dispatch used `/admin/:rest*`, which regexparam 3 parses as a single segment
+  (`[^/]+?`); nested paths fell through to the storefront NotFound. Bare `/admin/*` is the true
+  multi-segment splat (verified against regexparam 3.0.0's parser). (2) `/admin/system` hit the
+  error boundary — the metrics endpoint wraps its snapshot in a last-known-good envelope
+  (`{ value, lastKnownGoodAt, stale }`) while the page read the flat shape; query now unwraps and
+  treats `value:null` as an honest error state. Post-deploy re-audit: all 20 admin pages render,
+  400s from the cold-start settle window gone.
+- **2026-10-07** R121 ops channel — Telegram notifications + topup approval cards came alive:
+  `TELEGRAM_BOT_TOKEN` (login-bot reuse from `system_settings:auth.telegram`) +
+  `TELEGRAM_WEBHOOK_SECRET` (generated) + `TELEGRAM_CHAT_ID`/`TELEGRAM_ADMIN_IDS` (operator) set in
+  Coolify; webhook re-registered WITH the secret (was 403-ing every delivery since R98). Verified
+  end-to-end via the app's own diagnostic: `/api/admin/diagnostics/telegram-test` →
+  `{configured:true, delivered:true, attempts:1}`.
+- **2026-10-07** R121 edge — www→apex 308 at the Traefik file-provider layer
+  (`/data/coolify/proxy/dynamic/www-redirect.yml`, priority 1000, apex untouched). Found + fixed a
+  latent poisoning: the dead v2-syntax `subnation.yml` errored on every watcher callback and
+  blocked the whole dynamic directory; archived with its 4 backup variants to
+  `dynamic-archive/`. Live probes: https://www → 308 https://apex (query preserved), apex 200,
+  all 12 routers enabled.
+- **R121 deferred (human-only blockers):** Sentry — org `subnation` has NO project; the provided
+  CLI token is scoped `org:ci` (releases only, cannot create projects or read DSNs). Unblocks the
+  moment either the project exists + DSN is pasted (→ `VITE_SENTRY_DSN` build arg + `SENTRY_DSN`
+  runtime) or a full-scope token is issued (release + sourcemap pipeline then runs unattended).
+  GSC `VITE_GSC_VERIFICATION` still needs the operator's Search Console token.
