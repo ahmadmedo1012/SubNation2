@@ -1,27 +1,24 @@
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
 import { CATEGORY_META } from "@/lib/categories";
 import { Logo } from "./Logo";
 
 export function Footer() {
   const [location] = useLocation();
-  const { token } = useAuth();
   const isAuth = location === "/login" || location === "/register";
   if (isAuth) return null;
 
-  // R120-B1 (A3-F1): the guest MobileNav is suppressed on product pages
-  // (that page's guest sticky buy bar owns the bottom — see MobileNav's
-  // product guard), so no pad is reserved there; everywhere else the
-  // fixed nav renders for guests AND authed users alike.
-  const reserveNavPad = !(!token && location.startsWith("/product"));
-
+  // R120-B7 (reviewer finding): the former guest /product/* exception
+  // is gone — the guest MobileNav renders on product pages now (the
+  // sticky buy bar pins above it), so the footer reserves the nav
+  // clearance on EVERY storefront route for guests AND authed users
+  // alike. One clearance contract, no per-route carve-outs.
   return (
     <footer
       className={`relative border-t border-border/30 bg-gradient-to-b from-background via-background to-card/40 mt-12 ${
         /* Reserve the fixed MobileNav's height BELOW the legal row
            (mobile-nav-footer-pad = padding, defined at max-width 767.98px
            so desktop is untouched — no md: reset needed). Applied for
-           guests too now (R120-B1 / A3-F1 — the MobileNav renders for
+           guests too (R120-B1 / A3-F1 — the MobileNav renders for
            guests; main's mobile-nav-safe-pad in App.tsx is still
            auth-gated, so this padding is the guest clearance). Replaces
            the old mb-[calc(60px+env)] double reservation: main's
@@ -29,7 +26,7 @@ export function Footer() {
            for page content, so this is the only clearance the footer
            itself needs — and as padding it can never collapse through
            #root (B6-P1-7). */
-        reserveNavPad ? "mobile-nav-footer-pad" : ""
+        "mobile-nav-footer-pad"
       }`}
     >
       {/* Hairline brand tint at the top — barely visible but unifies

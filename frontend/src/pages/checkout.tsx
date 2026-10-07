@@ -1351,11 +1351,13 @@ export default function CheckoutPage() {
               <div className="text-center py-8 text-muted-foreground">
                 <ShoppingBag className="w-10 h-10 mx-auto mb-3 opacity-30" />
                 <p className="text-sm font-bold mb-3">سلتك فارغة</p>
-                <Link href="/">
-                  <Button variant="outline" size="sm" className="font-bold">
-                    تصفح المنتجات
-                  </Button>
-                </Link>
+                {/* R120-B7 (reviewer finding — A4-F1 sweep completion):
+                    asChild composition (cart.tsx ghost-CTA idiom) instead
+                    of Link>Button nesting — one anchor, one tab stop, no
+                    invalid interactive-in-interactive button. */}
+                <Button asChild variant="outline" size="sm" className="font-bold">
+                  <Link href="/">تصفح المنتجات</Link>
+                </Button>
               </div>
             ) : (
               <>

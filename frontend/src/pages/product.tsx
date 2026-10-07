@@ -1424,18 +1424,22 @@ export default function ProductPage() {
         } ${
           token
             ? "fixed left-0 right-0 mobile-sticky-above-nav pb-3"
-            : /* 96-F4 (R96 A1 M11): guests get neither clearance utility
-                 (mobile-nav-footer-pad is auth-gated; main is unpadded) and
-                 the Footer is the last in-flow element — a `fixed` bar
-                 geometrically MUST cover its legal row at scroll end, no
-                 matter how much bottom padding the page root carries.
-                 position:sticky bottom-0 keeps the same mid-scroll docking
-                 (the bar pins to the viewport bottom while the page root
-                 extends below it) but lands with the content BEFORE the
-                 footer enters — never covering it. -mx-4 restores the
-                 full-bleed width inside the px-4 page root;
-                 mobile-sticky-bottom-safe keeps the env(safe-area) padding. */
-              "sticky bottom-0 -mx-4 mobile-sticky-bottom-safe"
+            : /* 96-F4 (R96 A1 M11) → R120-B7 (reviewer finding): guests
+                 keep position:sticky — it lands with the content BEFORE
+                 the footer enters, never covering the legal row (the one
+                 advantage over the authed fixed bar) — but the pin no
+                 longer sits at bottom-0: the guest bottom nav renders on
+                 /product/* now, and a bottom-0 pin would dock UNDER the
+                 60px fixed nav. mobile-sticky-above-nav (bottom:
+                 --mobile-nav-h + safe-area) puts the bar's bottom edge
+                 exactly at the nav's top edge mid-scroll — the same
+                 clearance the authed fixed bar rides — while keeping the
+                 dock-with-content landing at scroll end. -mx-4 restores
+                 the full-bleed width inside the px-4 page root; pb-3
+                 matches the authed bar's breathing (the nav owns the
+                 env(safe-area) inset now, so the retired bottom-safe
+                 utility's own inset padding is deliberately dropped). */
+              "sticky -mx-4 mobile-sticky-above-nav pb-3"
         }`}
       >
         <CtaBlock

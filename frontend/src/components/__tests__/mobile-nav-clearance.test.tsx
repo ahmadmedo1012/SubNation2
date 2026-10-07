@@ -24,7 +24,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { Router } from "wouter";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MOBILE_NAV_HEIGHT, MobileNav } from "@/components/layout/MobileNav";
 import { Footer } from "@/components/layout/Footer";
 
@@ -46,6 +46,10 @@ vi.mock("@/lib/cart", () => ({
 // package dir, both for `npx vitest run` and `pnpm --filter … test:run`).
 const cssText = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
 const appText = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+// R120-B7: the guest product-page buy bar is asserted read-only (the
+// App.tsx pattern above) — its pin must ride the shared above-nav
+// clearance now that the guest nav renders on /product/*.
+const productText = readFileSync(resolve(process.cwd(), "src/pages/product.tsx"), "utf8");
 
 describe("MobileNav — single-source clearance constant (B6-P1-7)", () => {
   it("exports the nav height and the CSS variable mirrors it (drift guard)", () => {
@@ -122,6 +126,52 @@ describe("MobileNav — single-source clearance constant (B6-P1-7)", () => {
     } finally {
       authState.token = "test-token";
     }
+  });
+});
+
+// R120-B7 (reviewer finding): the guest MobileNav renders on /product/*
+// — the buy-bar geometry is reconciled by pinning the guest sticky bar
+// ABOVE the nav with the shared clearance utility, and the guest
+// clearance contract extends to product pages (footer pad + page-root
+// pad both reserve the nav there now).
+describe("MobileNav — guest product-page reconciliation (R120-B7)", () => {
+  afterEach(() => {
+    window.history.pushState({}, "", "/");
+    authState.token = "test-token";
+  });
+
+  it("the GUEST footer reserves the nav clearance ON product pages (no route exception)", () => {
+    authState.token = null;
+    window.history.pushState({}, "", "/product/netflix-1m");
+    render(
+      <Router>
+        <Footer />
+      </Router>,
+    );
+    const footer = document.querySelector("footer");
+    expect(footer).toBeInstanceOf(HTMLElement);
+    expect((footer as HTMLElement).className).toContain("mobile-nav-footer-pad");
+  });
+
+  it("the guest sticky buy bar pins above the nav via the shared utility (read-only)", () => {
+    // product.tsx guest branch: sticky + mobile-sticky-above-nav (never
+    // bottom-0 — that pin would dock under the fixed 60px nav), and the
+    // retired mobile-sticky-bottom-safe class is gone from the page.
+    expect(productText).toContain('"sticky -mx-4 mobile-sticky-above-nav pb-3"');
+    expect(productText).not.toContain("mobile-sticky-bottom-safe");
+  });
+
+  it("the guest product page pad reserves the bar AND the nav (main is unpadded for guests)", () => {
+    const rule = cssText.match(/\.mobile-product-pad-guest\s*\{[^}]*\}/)?.[0] ?? "";
+    // bar (68px) + nav (--mobile-nav-h) + safe-area + breathing unit.
+    expect(rule).toContain("68px");
+    expect(rule).toContain("var(--mobile-nav-h)");
+    expect(rule).toContain("env(safe-area-inset-bottom)");
+  });
+
+  it("mobile-sticky-above-nav is defined at the mobile-only breakpoint (the shared pin)", () => {
+    const rule = cssText.match(/\.mobile-sticky-above-nav\s*\{[^}]*\}/)?.[0] ?? "";
+    expect(rule).toContain("bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom))");
   });
 });
 

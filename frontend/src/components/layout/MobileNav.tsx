@@ -77,14 +77,12 @@ export function MobileNav() {
   // would be a self-link there anyway.
   if (location === "/login" || location === "/register") return null;
 
-  // R120-B1 (A3-F1): hidden for GUESTS on product pages only — the
-  // product page's guest sticky buy bar is position:sticky bottom-0
-  // (96-F4 / R96 A1 M11 geometry, product.tsx — owned by another agent),
-  // so a fixed 60px nav here would cover the guest CTA. Authed users
-  // keep the nav (their buy bar rides mobile-sticky-above-nav).
-  // TODO(R120 follow-up, product-page owner): switch the guest bar to
-  // mobile-sticky-above-nav + auth-style clearance and drop this guard.
-  if (!token && location.startsWith("/product")) return null;
+  // R120-B7 (reviewer finding): the former guest /product/* guard is
+  // GONE — the guest sticky buy bar now pins ABOVE the nav via the
+  // shared mobile-sticky-above-nav utility (bottom: --mobile-nav-h +
+  // safe-area), the same clearance the authed fixed bar rides, and the
+  // Footer reserves the nav pad on product pages for guests too. One
+  // nav contract on every storefront route; no product-page exception.
 
   const tabs = token ? AUTHED_TABS : GUEST_TABS;
 

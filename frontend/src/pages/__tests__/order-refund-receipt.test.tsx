@@ -31,7 +31,7 @@
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OrdersPage from "@/pages/orders";
 import OrderDetailPage from "@/pages/order-detail";
 import { useGetOrder, useListOrders } from "@workspace/api-client-react";
@@ -82,26 +82,42 @@ beforeEach(() => {
   vi.mocked(useListOrders).mockReset();
   vi.mocked(useGetOrder).mockReset();
   toastSpy.mockReset();
+  fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
 });
 
-describe("OrdersPage — a refunded row is calm info, not failure (R115-I1 / A8 P2-3)", () => {
-  it("shows the undo glyph + info accent + the refund receipt chip with the AMOUNT", () => {
-    vi.mocked(useListOrders).mockReturnValue({
-      data: [REFUNDED_ORDER],
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as unknown as ReturnType<typeof useListOrders>);
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
+/** R120-B7: orders.tsx fetches /api/orders?page=N directly — the
+ * orders-load-more.test.tsx fetch-mock idiom. */
+const jsonRes = (body: unknown, ok = true, status = 200) =>
+  ({ ok, status, json: async () => body }) as Response;
+const fetchMock = vi.fn<typeof fetch>();
+
+describe("OrdersPage — a refunded row is calm info, not failure (R115-I1 / A8 P2-3)", () => {
+  it("shows the undo glyph + info accent + the refund receipt chip with the AMOUNT", async () => {
+    // R120-B7: orders.tsx rides useInfiniteQuery over the raw
+    // /api/orders?page=N URL (the ?page= consumption) — mock the global
+    // fetch like orders-load-more.test.tsx does, no generated hook.
+    fetchMock.mockImplementation(async () => jsonRes([REFUNDED_ORDER]));
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     render(
-      <Router>
-        <OrdersPage />
-      </Router>,
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <OrdersPage />
+        </Router>
+      </QueryClientProvider>,
     );
 
     // The row (scoped from the order code so the filter chips' own
     // XCircle icon — the failed bucket — doesn't pollute the assertion).
-    const codeEl = screen.getByText("SNDB41REF");
+    // R120-B7: real QueryClient → the first page resolves async.
+    const codeEl = await screen.findByText("SNDB41REF");
     const row = codeEl.closest("a") as HTMLElement;
     expect(row).not.toBeNull();
     const card = row.querySelector("div.bg-card") as HTMLElement;

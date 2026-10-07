@@ -263,8 +263,7 @@ export default function OrderDetailPage() {
   // arrive that way. The honest message points at support instead.
   // Local cast: the flag ships on the buyer Order response
   // independently of the generated schema revision.
-  const decryptFailed =
-    !hasDelivery && !!(order as { decrypt_failed?: boolean }).decrypt_failed;
+  const decryptFailed = !hasDelivery && !!(order as { decrypt_failed?: boolean }).decrypt_failed;
   const discountAmount = (order as { discount_amount?: number }).discount_amount;
   const couponCode = (order as { coupon_code?: string }).coupon_code;
   const originalAmount = discountAmount ? (order.amount ?? 0) + discountAmount : null;
@@ -469,12 +468,19 @@ export default function OrderDetailPage() {
                 طلبك مكتمل ومحفوظ، لكن بيانات الحساب تعذّر فك تشفيرها حالياً. تواصل مع الدعم وستصلك
                 بياناتك فوراً.
               </p>
-              <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
-                <Button className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold">
+              {/* R120-B7 (reviewer finding — A4-F1 sweep completion):
+                  asChild composition (cart.tsx ghost-CTA idiom) instead of
+                  Link>Button nesting — one anchor, one tab stop, identical
+                  styling. */}
+              <Button
+                asChild
+                className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold"
+              >
+                <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
                   <ExternalLink className="w-3.5 h-3.5" />
                   تواصل مع الدعم
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           ) : (
             <div className="bg-card border border-border/50 rounded-2xl p-7 text-center float-in stagger-1">
@@ -549,24 +555,35 @@ export default function OrderDetailPage() {
               users miss it.
             */}
             {order.status === "failed" && (
-              <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
-                <Button className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold">
+              /* R120-B7 (reviewer finding — A4-F1 sweep completion): same
+                 asChild composition as the decrypt-failure card above —
+                 one anchor, one tab stop. */
+              <Button
+                asChild
+                className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold"
+              >
+                <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
                   <ExternalLink className="w-3.5 h-3.5" />
                   تواصل مع الدعم
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             )}
           </div>
         )}
 
         {/* ── Actions ───────────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 float-in stagger-2">
-          <Link href="/">
-            <Button className="w-full bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/22 gap-1.5 rounded-xl">
+          {/* R120-B7 (reviewer finding — A4-F1 sweep completion): asChild
+              composition — one anchor, one tab stop. */}
+          <Button
+            asChild
+            className="w-full bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/22 gap-1.5 rounded-xl"
+          >
+            <Link href="/">
               <Sparkles className="w-4 h-4" />
               تصفح المزيد
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <Button
             variant="outline"
             onClick={() => navigate("/orders")}

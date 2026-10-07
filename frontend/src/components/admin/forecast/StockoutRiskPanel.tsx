@@ -335,11 +335,12 @@ function ExplainDrawer({
         </div>
       )}
       <div className="pt-1 border-t border-border/30">
-        <Link href={`/admin/products?highlight=${row.product_id}`}>
-          <Button size="sm" variant="outline" className="text-xs gap-1.5">
-            فتح في المنتجات
-          </Button>
-        </Link>
+        {/* R120-B7 (reviewer finding — A4-F1 sweep completion): asChild
+            composition (cart.tsx / Navbar CTA idiom) instead of Link>Button
+            nesting — one anchor, one tab stop, identical styling. */}
+        <Button asChild size="sm" variant="outline" className="text-xs gap-1.5">
+          <Link href={`/admin/products?highlight=${row.product_id}`}>فتح في المنتجات</Link>
+        </Button>
       </div>
     </div>
   );

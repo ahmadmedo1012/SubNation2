@@ -87,15 +87,23 @@ describe("index.css — pb-safe / pt-safe stay deleted (R118-B2 / A2 F-3)", () =
   // definition each. R118-B2 (A2 F-3) went one step further and removed
   // both classes entirely — exhaustive grep showed ZERO production
   // consumers (the live safe-area reservations are the Tailwind env()
-  // arbitraries, `mobile-sticky-bottom-safe`, and MobileNav's inline
-  // paddingBottom). Same guard shape as the --badge-outline deletion
-  // below: the classes stay dead so nobody cargo-cults them back.
+  // arbitraries and MobileNav's inline paddingBottom). Same guard shape
+  // as the --badge-outline deletion below: the classes stay dead so
+  // nobody cargo-cults them back.
   it(".pb-safe is not declared anywhere", () => {
     expect(cssText).not.toMatch(/\.pb-safe\s*\{/);
   });
 
   it(".pt-safe is not declared anywhere", () => {
     expect(cssText).not.toMatch(/\.pt-safe\s*\{/);
+  });
+
+  it(".mobile-sticky-bottom-safe stays deleted too (R120-B7 — zero consumers)", () => {
+    // The guest product buy bar was its ONLY consumer; R120-B7 switched
+    // that bar to the shared mobile-sticky-above-nav clearance (the
+    // MobileNav owns the env(safe-area) inset now), so the class went
+    // the way of pb-safe/pt-safe: dead declaration = cargo-cult bait.
+    expect(cssText).not.toMatch(/\.mobile-sticky-bottom-safe\s*\{/);
   });
 
   it("the dead R118-B2 entrance/elevation classes stay deleted too", () => {

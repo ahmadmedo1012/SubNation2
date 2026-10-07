@@ -11,13 +11,13 @@
 -- fresh environment, or a future wiring):
 --
 --   - every CREATE INDEX carries IF NOT EXISTS (V1-M21/B8-10 idiom) — on
---     the runtime shape the boot twin (V1-M25 stage + the base missing-
+--     the runtime shape the boot twin (V1-M24 stage + the base missing-
 --     indexes block) has already created both objects under these exact
 --     names;
 --   - the DROP INDEX carries IF EXISTS (0013 idiom): on a chain-built
 --     database the 0000-era twin is the (user_id, is_read) shape and must
 --     be dropped for the (user_id, created_at DESC) swap; on the runtime
---     shape the V1-M25 probe-gated swap has already converged it, so the
+--     shape the V1-M24 probe-gated swap has already converged it, so the
 --     drop+create pair rebuilds the identical object once and no-ops
 --     thereafter.
 DROP INDEX IF EXISTS "idx_notifications_user";--> statement-breakpoint

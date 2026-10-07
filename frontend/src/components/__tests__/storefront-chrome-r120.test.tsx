@@ -140,7 +140,7 @@ describe("MobileNav — guest rendering + cart tab (R120-B1 / A3-F1 + A1-F8)", (
     expect(screen.getByRole("link", { name: "السلة، 2 منتجان" })).toBeInTheDocument();
   });
 
-  it("stays hidden on the auth pages and on guest product pages (product.tsx owns that bar)", () => {
+  it("stays hidden on the auth pages (everyone) — and RENDERS for guests on product pages (R120-B7)", () => {
     window.history.pushState({}, "", "/login");
     const { unmount } = render(
       <Router>
@@ -150,13 +150,18 @@ describe("MobileNav — guest rendering + cart tab (R120-B1 / A3-F1 + A1-F8)", (
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     unmount();
 
+    // R120-B7 (reviewer finding): the former guest /product/* guard is
+    // gone — the guest sticky buy bar now pins ABOVE the nav via the
+    // shared mobile-sticky-above-nav clearance, so the guest nav renders
+    // on product detail like everywhere else (no thumb-zone exception).
     window.history.pushState({}, "", "/product/netflix-1m");
     render(
       <Router>
         <MobileNav />
       </Router>,
     );
-    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /السلة/ })).toBeInTheDocument();
   });
 });
 

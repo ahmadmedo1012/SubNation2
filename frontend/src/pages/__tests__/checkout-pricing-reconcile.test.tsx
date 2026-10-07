@@ -224,6 +224,12 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
     expect(await screen.findByText(/لم يعد متاحاً للشراء — أُزيل من الطلب/)).toBeInTheDocument();
     expect(screen.getByText(/Netflix شهر/)).toBeInTheDocument(); // the notice names the line
     expect(readCart()).toHaveLength(0);
+    // R120-B7 (A4-F1 completion): the empty-state CTA is ONE anchor
+    // wearing the button styling (asChild composition) — no nested
+    // button, no doubled tab stop.
+    const cta = screen.getByRole("link", { name: "تصفح المنتجات" });
+    expect(cta).toHaveAttribute("href", "/");
+    expect(cta.querySelector("button")).toBeNull();
     // The price-update notice must NOT appear (this was a drop, not a reprice).
     expect(screen.queryByText(PRICE_NOTICE)).not.toBeInTheDocument();
   });

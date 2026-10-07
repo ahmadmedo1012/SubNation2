@@ -1,13 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
-import { getListOrdersQueryKey, useListOrders } from "@workspace/api-client-react";
+import { type Order } from "@workspace/api-client-react";
 import {
   CheckCircle,
+  ChevronDown,
   ChevronLeft,
   Clock,
   Layers,
+  Loader2,
   Package,
   ShoppingBag,
   Sparkles,
@@ -17,9 +20,15 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 
 type OrderFilter = "all" | "pending" | "completed" | "failed";
+
+// R120-B7 (reviewer finding — A6-F1 UI consumption): the route's page
+// size for the accumulating list. The backend default limit is 200 (the
+// cap that made order #201+ unreachable before ?page= existed).
+const ORDERS_PAGE_SIZE = 200;
 
 const STAGGER = [
   "",
@@ -160,15 +169,70 @@ export default function OrdersPage() {
   const [, navigate] = useLocation();
   const [filter, setFilter] = useState<OrderFilter>("all");
 
+  // R120-B7 (reviewer finding — A6-F1 UI consumption): the list rides
+  // the accumulating useInfiniteQuery idiom (admin/orders.tsx 94-C2
+  // A2 P1-1) over the route's ?page= param — a reseller past 200
+  // orders could never reach order #201+ before. The generated client
+  // can't express `page` yet (orval/zod alignment pending — see the
+  // api-zod hand-edit note), so the page fetch is the raw-URL idiom
+  // admin tickets already use (R120-B5 / A2-F9). The key keeps the
+  // "/api/orders" prefix so the product-page and checkout purchase
+  // invalidations still refresh this list (TanStack prefix match).
   const {
-    data: orders = [],
+    data: ordersPages,
     isLoading,
     isError,
     refetch,
-  } = useListOrders(undefined, {
-    query: { enabled: !!token, queryKey: getListOrdersQueryKey() },
-    request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage: loadingMoreOrders,
+  } = useInfiniteQuery<Order[], Error>({
+    queryKey: ["/api/orders", "load-more"],
+    queryFn: async ({ pageParam, signal }) => {
+      const r = await fetch(`/api/orders?page=${pageParam as number}`, {
+        headers: { Authorization: token ? `Bearer ${token}` : "" },
+        signal,
+      });
+      if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as {
+          error?: string;
+          code?: string;
+        } | null;
+        throw new Error(getErrorMessage(body) || `تعذّر تحميل الطلبات (HTTP ${r.status})`);
+      }
+      const d = await r.json();
+      return Array.isArray(d) ? (d as Order[]) : [];
+    },
+    initialPageParam: 1,
+    // Frozen contract (A6-F2, the admin twins' honesty rule): the body
+    // is a plain array with no total meta — a full page means the next
+    // page MIGHT exist; the first short/empty page is the definite end.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === ORDERS_PAGE_SIZE ? allPages.length + 1 : undefined,
+    enabled: !!token,
   });
+
+  // Accumulated list — dedup by id (admin/tickets.tsx R120-B5 idiom):
+  // a purchase between page requests shifts offset boundaries, so a
+  // row can legitimately repeat across pages.
+  const orders = useMemo(() => {
+    const seen = new Set<number>();
+    const rows: Order[] = [];
+    for (const page of ordersPages?.pages ?? []) {
+      for (const o of page) {
+        if (seen.has(o.id)) continue;
+        seen.add(o.id);
+        rows.push(o);
+      }
+    }
+    return rows;
+  }, [ordersPages]);
+
+  // A single short page is the only case where the total is provably
+  // known — otherwise the honest count is «عرض N» (admin/orders.tsx
+  // 94-C2 A2 P1-1 wording: never a grand total the plain-array
+  // contract can't know).
+  const knownTotal = (ordersPages?.pages.length ?? 0) <= 1 && orders.length < ORDERS_PAGE_SIZE;
 
   useEffect(() => {
     if (!token) navigate("/login");
@@ -209,14 +273,25 @@ export default function OrdersPage() {
           <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shadow-sm shrink-0">
             {/* R94-A1 #11 (P3): Arabic pluralization via the shared
                 formatCount (طلبان / طلبات / طلباً) instead of a frozen
-                singular «طلب» after every count. */}
-            {formatCount(orders.length, {
-              one: "طلب",
-              two: "طلبان",
-              few: "طلبات",
-              many: "طلباً",
-              other: "طلب",
-            })}
+                singular «طلب» after every count. R120-B7 (A6-F1): once a
+                second page may exist the count is what the list SHOWS
+                («عرض N (الأحدث أولاً)», admin/orders.tsx honesty idiom),
+                never a grand total the plain-array contract can't know. */}
+            {knownTotal
+              ? formatCount(orders.length, {
+                  one: "طلب",
+                  two: "طلبان",
+                  few: "طلبات",
+                  many: "طلباً",
+                  other: "طلب",
+                })
+              : `عرض ${formatCount(orders.length, {
+                  one: "طلب",
+                  two: "طلبان",
+                  few: "طلبات",
+                  many: "طلباً",
+                  other: "طلب",
+                })} (الأحدث أولاً)`}
           </div>
         )}
       </div>
@@ -316,31 +391,78 @@ export default function OrdersPage() {
           <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
             ابدأ بتصفح الكتالوج واشترِ أول اشتراك رقمي
           </p>
-          <Link href="/">
-            <Button className="min-h-11 gap-2">
+          {/* R120-B7 (reviewer finding — A4-F1 sweep completion): asChild
+              composition (cart.tsx ghost-CTA idiom) instead of Link>Button
+              nesting — one anchor, one tab stop, identical styling. */}
+          <Button asChild className="min-h-11 gap-2">
+            <Link href="/">
               <Sparkles className="w-4 h-4" />
               تصفح الكتالوج
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       ) : visibleOrders.length === 0 ? (
-        // Filter is active but matched nothing. Distinct from the
-        // "no orders at all" empty state above — here the user has
-        // orders, just none in the chosen bucket. Surface a quick
-        // way to drop the filter without forcing them to find the
-        // "all" chip again.
-        <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
-          <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto mb-3 flex items-center justify-center">
-            <Package className="w-5 h-5 opacity-35" />
+        hasNextPage ? (
+          /* R120-B7 (A6-F1, admin/orders.tsx R115 A9 P2 pattern): the
+             filter chips run CLIENT-SIDE over the accumulated pages, so
+             an active bucket can read «لا توجد طلبات» while matching
+             rows sit on unloaded pages (hasNextPage=true). The hard
+             empty state was a false claim; keep the load-more visible
+             + the honest incompleteness hint instead. */
+          <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto flex items-center justify-center">
+              <Package className="w-5 h-5 opacity-35" />
+            </div>
+            <p className="font-bold text-sm text-foreground/85">
+              لا طلبات مطابقة ضمن الصفحات المحمّلة
+            </p>
+            <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
+            <div className="flex justify-center gap-2 flex-wrap pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={loadingMoreOrders || isLoading}
+                onClick={() => void fetchNextPage()}
+              >
+                {loadingMoreOrders ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
+                  </>
+                )}
+              </Button>
+              <button
+                onClick={() => setFilter("all")}
+                className="text-xs font-bold text-primary hover:underline mt-1.5"
+              >
+                عرض كل الطلبات
+              </button>
+            </div>
           </div>
-          <p className="font-bold text-sm mb-3 text-foreground/85">لا توجد طلبات في هذه الفئة</p>
-          <button
-            onClick={() => setFilter("all")}
-            className="text-xs font-bold text-primary-text hover:text-primary border border-primary/22 px-4 py-1.5 rounded-xl hover:bg-primary/8 transition-colors press-spring"
-          >
-            عرض كل الطلبات
-          </button>
-        </div>
+        ) : (
+          // Filter is active but matched nothing (and the whole list is
+          // provably loaded — a single short page). Distinct from the
+          // "no orders at all" empty state above — here the user has
+          // orders, just none in the chosen bucket. Surface a quick
+          // way to drop the filter without forcing them to find the
+          // "all" chip again.
+          <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
+            <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto mb-3 flex items-center justify-center">
+              <Package className="w-5 h-5 opacity-35" />
+            </div>
+            <p className="font-bold text-sm mb-3 text-foreground/85">لا توجد طلبات في هذه الفئة</p>
+            <button
+              onClick={() => setFilter("all")}
+              className="text-xs font-bold text-primary-text hover:text-primary border border-primary/22 px-4 py-1.5 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+            >
+              عرض كل الطلبات
+            </button>
+          </div>
+        )
       ) : (
         /* Orders list */
         <div className="space-y-2.5">
@@ -457,6 +579,32 @@ export default function OrdersPage() {
               </Link>
             );
           })}
+
+          {/* R120-B7 (reviewer finding — A6-F1): append-in-place
+              «تحميل المزيد» (admin/orders.tsx 94-C2 A2 P1-1 idiom) —
+              a reseller past 200 orders could never reach order #201+
+              before the route grew ?page=. Hidden once a page comes
+              back short (the plain-array contract's definite end). */}
+          {hasNextPage && (
+            <div className="flex justify-center pt-3">
+              <Button
+                variant="outline"
+                className="min-h-11 gap-1.5"
+                disabled={loadingMoreOrders || isLoading}
+                onClick={() => void fetchNextPage()}
+              >
+                {loadingMoreOrders ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> جارٍ التحميل…
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4" /> تحميل المزيد
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

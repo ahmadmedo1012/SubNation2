@@ -179,9 +179,7 @@ describe("OrderDetailPage — decrypt_failed honesty (R118-B2 / A2)", () => {
     expect(screen.getByText("تعذّر فك تشفير بيانات التسليم")).toBeInTheDocument();
     // The misleading "still being prepared" promise must not appear.
     expect(screen.queryByText("قيد الإعداد")).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/سيتم تسليم بيانات الحساب فور اكتمال الطلب/),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/سيتم تسليم بيانات الحساب فور اكتمال الطلب/)).not.toBeInTheDocument();
   });
 
   it("the honest card links to support with the order code as ?ref", () => {
@@ -195,6 +193,10 @@ describe("OrderDetailPage — decrypt_failed honesty (R118-B2 / A2)", () => {
     expect(supportLinks.length).toBeGreaterThan(0);
     const cardLink = supportLinks.find((a) => a.getAttribute("href") === "/support?ref=SNDB91KEY");
     expect(cardLink).toBeDefined();
+    // R120-B7 (A4-F1 completion): the CTA is ONE anchor wearing the
+    // button styling (asChild composition) — no nested button, so no
+    // doubled tab stop on the failure path's primary action.
+    expect(cardLink?.querySelector("button")).toBeNull();
   });
 
   it("without the flag: a pending order keeps the normal «قيد الإعداد» state", () => {

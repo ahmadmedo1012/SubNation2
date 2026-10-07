@@ -726,6 +726,15 @@ paths:
             minimum: 1
             maximum: 200
             default: 200
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            1-based page number (default 1; offset = (page-1)*limit —
+            the admin/orders clamp idiom). R120-B6/A6-F1: additive —
+            rows past the cap were unreachable before; page=1 is
+            byte-identical to the old response.
       responses:
         "200":
           description: User's orders
@@ -928,6 +937,14 @@ paths:
             minimum: 1
             maximum: 200
             default: 100
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            1-based page number (default 1; offset = (page-1)*limit).
+            R120-B6/A6-F1: additive — rows 201+ were unreachable before;
+            page=1 is byte-identical to the old response.
       responses:
         "200":
           description: Newest-first ledger entries (topup, purchase, refund, adjustment, referral_credit)
@@ -959,6 +976,16 @@ paths:
       operationId: listTopups
       tags: [wallet]
       summary: List user's top-up requests
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            1-based page number (default 1; fixed 200-row pages,
+            offset = (page-1)*200). R120-B6/A6-F1: additive — topups
+            past the first 200 were unreachable before; page=1 is
+            byte-identical to the old response.
       responses:
         "200":
           description: Top-up history
@@ -1509,6 +1536,14 @@ paths:
             minimum: 1
             maximum: 200
             default: 100
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            1-based page number (default 1; offset = (page-1)*limit).
+            R120-B6/A6-F1: additive — rows 201+ were unreachable before;
+            page=1 is byte-identical to the old response.
       responses:
         "200":
           description: Newest-first points_ledger entries
@@ -5057,8 +5092,20 @@ components:
           type: number
         available_stock:
           type: integer
+          description: |
+            Deliverable unsold units (ghost rows with zero credentials
+            are excluded — they ride unsold_rows below).
         total_wallet_balance:
           type: number
+        # R120-B4 (A2-F3): open/in_progress support tickets — rides the
+        # same 30s cacheWrap window as pending_topups (the admin layout's
+        # tickets badge and the dashboard consume it).
+        open_tickets:
+          type: integer
+        # R120-B4: the raw unsold-row count (ghost rows with zero
+        # credentials) the inventory forecast surfaces.
+        unsold_rows:
+          type: integer
       required:
         [
           total_users,
@@ -5069,6 +5116,8 @@ components:
           today_revenue,
           available_stock,
           total_wallet_balance,
+          open_tickets,
+          unsold_rows,
         ]
 
     # Identity-enrichment fields (user_display_name … user_has_whatsapp)

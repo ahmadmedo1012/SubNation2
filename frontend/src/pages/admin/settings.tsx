@@ -1349,15 +1349,18 @@ export default function AdminSettingsPage() {
             </div>
 
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in delay-75">
-              {/* R120-B4 (A2-F5): «حقائق الأمان المعمولة» — descriptive
+              {/* R120-B4 (A2-F5): «حقائق الأمان المطبَّقة» — descriptive
                   info panel. The old checklist hardcoded ok:true on every
                   row and rendered live green CheckCircle ticks: static
                   claims dressed as VERIFIED status. No check icons, no
                   status colors — the facts describe what the deployment
-                  uses, nothing claims it was just checked. */}
+                  uses, nothing claims it was just checked. (R120-B7:
+                  «المعمولة» → «المطبَّقة» — the independent review's
+                  Arabic-slip fix: «معمولة» is not standard for "in
+                  effect".) */}
               <div className="flex items-center gap-2.5 mb-1">
                 <Info className="w-4 h-4 text-muted-foreground shrink-0" />
-                <h2 className="font-bold text-sm">حقائق الأمان المعمولة</h2>
+                <h2 className="font-bold text-sm">حقائق الأمان المطبَّقة</h2>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
                 كيف تعمل طبقة الأمان في هذا النظام — للعلم، وليست إعدادات قابلة للتعديل من هنا

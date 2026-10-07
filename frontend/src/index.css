@@ -1000,9 +1000,11 @@
 
   /* R118-B2 (A2 F-3): .pb-safe / .pt-safe removed — zero production
      consumers (the live safe-area reservations are the Tailwind
-     arbitrary `env()` styles, `mobile-sticky-bottom-safe`, and the
-     MobileNav inline paddingBottom). They looked like the live
-     `mobile-sticky-bottom-safe` family and invited cargo-cult use. */
+     arbitrary `env()` styles and the MobileNav inline paddingBottom;
+     mobile-sticky-bottom-safe joined them in R120-B7 when the guest buy
+     bar switched to the shared mobile-sticky-above-nav clearance — the
+     nav owns the env() inset now). They looked like the live
+     `mobile-sticky-above-nav` family and invited cargo-cult use. */
 
   /* ── Mobile-only layout utilities ──────────────────────────────────
      All utilities below are scoped to the breakpoints where their
@@ -1035,13 +1037,14 @@
   }
 
   @media (max-width: 639.98px) {
+    /* Both product-page sticky bars ride this: the authed FIXED bar
+       (bottom offset) and — since R120-B7, when the guest bottom nav
+       started rendering on /product/* — the GUEST sticky bar's pin
+       (same offset; the bar docks above the nav instead of under it).
+       Also unlocks the html:has(.mobile-sticky-above-nav) scroll-padding
+       rule for guest product pages (focus lands clear of nav + bar). */
     .mobile-sticky-above-nav {
       bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
-    }
-
-    .mobile-sticky-bottom-safe {
-      bottom: 0;
-      padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
     }
 
     /* Product page body padding. `main` already reserves the MobileNav
@@ -1051,9 +1054,12 @@
     .mobile-product-pad-auth {
       padding-bottom: calc(68px + 0.5rem);
     }
-    /* Guest: sticky bar (~68px) + safe-area, no nav (main is unpadded) */
+    /* Guest: sticky bar (~68px) + the nav itself (R120-B7 — the guest
+       bottom nav renders on /product/* now; main is unpadded for
+       guests, so the page root carries BOTH clearances) + safe-area
+       + breathing room. */
     .mobile-product-pad-guest {
-      padding-bottom: calc(68px + env(safe-area-inset-bottom) + 0.5rem);
+      padding-bottom: calc(68px + var(--mobile-nav-h) + env(safe-area-inset-bottom) + 0.5rem);
     }
   }
 }
