@@ -156,7 +156,20 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
 # R107: VITE_RELEASE_SHA is resolved here (shell-standard ${A:-$B}, no
 # reliance on Dockerfile ENV substitution) so GIT_SHA wins over
 # RENDER_GIT_COMMIT for the Sentry release tag on any platform.
+# R121: Sentry build-time wiring — when Coolify supplies these three
+# build args, the vite build emits hidden source maps, @sentry/vite-plugin
+# uploads them under the GIT_SHA release and deletes them, and backend
+# build.mjs runs the same inject+upload for the API bundle. Unset (the
+# default) = uploads skipped, zero maps emitted, exactly the pre-R121
+# behavior. Never bake real values as defaults — secrets pass through
+# Coolify build args only.
+ARG SENTRY_AUTH_TOKEN=""
+ARG SENTRY_ORG=""
+ARG SENTRY_PROJECT=""
 RUN VITE_RELEASE_SHA="${GIT_SHA:-${SOURCE_COMMIT:-${VITE_RELEASE_SHA}}}" \
+    SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN}" \
+    SENTRY_ORG="${SENTRY_ORG}" \
+    SENTRY_PROJECT="${SENTRY_PROJECT}" \
     pnpm --filter @workspace/api-server run build
 
 # --- runtime: lean image with production deps and built artifacts -------------

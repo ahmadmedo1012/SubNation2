@@ -546,6 +546,19 @@ export default defineConfig({
             org: process.env.SENTRY_ORG,
             project: process.env.SENTRY_PROJECT,
             authToken: process.env.SENTRY_AUTH_TOKEN,
+            // R121: the upload MUST land on the same release the runtime
+            // reports — instrument.ts's release is VITE_RELEASE_SHA (GIT_SHA
+            // short, set by the Dockerfile RUN) — not the plugin default
+            // (name@version), which would orphan the maps from the events.
+            release: {
+              name:
+                (
+                  process.env.VITE_RELEASE_SHA ||
+                  process.env.GIT_SHA ||
+                  process.env.SOURCE_COMMIT ||
+                  ""
+                ).slice(0, 7) || undefined,
+            },
             telemetry: false,
             silent: false,
             sourcemaps: { deleteSourcemapsAfterUpload: true },
