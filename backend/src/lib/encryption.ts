@@ -208,7 +208,7 @@ function decryptSegments(
   segments: { iv: Buffer; authTag: Buffer; encrypted: Buffer },
   key: Buffer,
 ): string {
-  const decipher = createDecipheriv(ALGORITHM, key, segments.iv);
+  const decipher = createDecipheriv(ALGORITHM, key, segments.iv, { authTagLength: AUTH_TAG_BYTES });
   // Strict tag length (mission W7, semgrep gcm-no-tag-length): only ever
   // accept a full 128-bit GCM tag. Every decrypt funnel — the current key
   // and the PREV fallback, for BOTH blob generations (R119-B1, A1 F-1
