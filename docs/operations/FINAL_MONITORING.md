@@ -2,8 +2,9 @@
 
 > What to watch, what the app already tells you, what "normal" looks like, and
 > the one traffic rule that must never be broken. Companion docs:
-> `docs/deployment/ORACLE_FINAL_SETUP.md` (VM hardening — the original
-> provisioning guide, Oracle era), `docs/deployment/
+> `docs/deprecated/ORACLE_FINAL_SETUP.md` (VM hardening — the original
+> provisioning guide, Oracle era; moved to `docs/deprecated/` by the R122
+> docs reorg), `docs/deployment/
 > COOLIFY_FINAL_SETUP.md` (resources), `docs/DISASTER_RECOVERY.md` (backups).
 >
 > **Observed host (R118, 2026-10-06):** the live VM is a Contabo VPS (not
@@ -32,8 +33,9 @@ sudo fail2ban-client status sshd                     # expect: Currently banned:
   `docs/operations/LOGGING_AND_RETENTION_FINAL.md`).
 - **Memory:** Node RSS (single container, no swap-swap-swap: 4 GB swapfile at
   swappiness 10 is the VM safety net, not a license).
-- **fail2ban:** sshd jail active (`ORACLE_FINAL_SETUP.md` §7 — Oracle-era
-  provisioning guide; apply the equivalent hardening on the Contabo host).
+- **fail2ban:** sshd jail active (`docs/deprecated/ORACLE_FINAL_SETUP.md`
+  §7 — Oracle-era provisioning guide; apply the equivalent hardening on
+  the Contabo host).
 
 ## 2. What the app exposes
 
@@ -75,7 +77,7 @@ breakdown), `/healthz/neon`, `/healthz/redis`, `/healthz/worker`,
 
 - **Boot → ready:** seconds on a warm Neon; a full cold start incl. the
   migration gate is ~40 s (backend-warm) to ~55-80 s (Neon also asleep — r111
-  static timeline, `docs/inspection-r111/CONSOLIDATED-FINDINGS.md`), all well
+  static timeline, `docs/history/inspection-r111/CONSOLIDATED-FINDINGS.md`), all well
   inside the compose `start_period: 150s`.
 - **Neon autosuspend:** idle DB sleeps (~5 min idle); the first request pays a
   ~2 s wake (r98 measured ~1.8 s). A slow-first-query after quiet periods is

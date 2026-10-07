@@ -100,7 +100,7 @@
 | `GCLOUD_PROJECT` / `GOOGLE_APPLICATION_CREDENTIALS` | ADC fallbacks in `firebase-admin.ts` | ✖ | ✖ | SubNation | runtime | unset | Leave unset |
 | `GOOGLE_CLIENT_ID` | Backend Google OAuth client id (`auth-settings.ts`) | ✖ | ✖ | SubNation | runtime | unset = provider hidden | Optional |
 | `ENRICHMENT_RUNNER_ENABLED` / `ENRICHMENT_DAILY_TOKEN_CAP` / `ENRICHMENT_PER_RUN_CAP` / `FORECAST_RUNNER_ENABLED` | Predictive runners (also need `WORKER_TIER=true`) | ✖ | ✖ | SubNation | runtime | `false` / `50000` / `50` / `false` | Leave unset (inert without a worker) |
-| `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` | Source-map upload in `backend/build.mjs` | ✖ | ✔ | SubNation | **build-time only** | unset = upload skipped | CI/GHCR concern — never Coolify runtime env |
+| `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` | Source-map upload in `backend/build.mjs` + frontend vite plugin | ✖ | ✔ | SubNation | **build-time only** | unset = upload skipped | **Coolify build-time since R121-B (2026-10-07)** — never Coolify **runtime** env |
 
 ## 5. SubNation build-time — VITE_* (baked into the SPA at `docker build`)
 

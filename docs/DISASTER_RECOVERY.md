@@ -5,11 +5,12 @@
 > clearly marked below and kept until the Phase-6 deletion. Current-stack
 > recovery procedure map: `docs/deployment/FINAL_ROLLBACK_RUNBOOK.md`
 > (decision matrix) + `docs/deployment/FINAL_RESTORE_DRILL.md` (the drill)
-> + `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12-§14.
+> + `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` §12-§14 (the r107 guide,
+> moved to `docs/deprecated/` by the R122 docs reorg).
 
 **Scope (current stack):** the Coolify deployment on the self-hosted VM
 (observed live host, R117: a Contabo VPS — not Oracle; canonical
-at `https://subnation.ly` / `https://www.subnation.ly`) backed by Neon
+at `https://subnation.ly` — www 308→apex since R121) backed by Neon
 Postgres (project calm-art-99771185, us-east-1). No Redis is provisioned
 (anywhere — the optional Redis tier on paper is retired; see
 `NEON_IDLE_ECONOMICS.md` §7).
@@ -58,7 +59,7 @@ DATABASE_URL=postgresql://... pnpm run db:backup
 
 > Post-migration on the live stack: automated — `scripts/backup-cron.sh` installed in
 > the VM host crontab (see "Automated backups" below).
-> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §13 keeps the asset table.
+> `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` §13 keeps the asset table.
 > The backup script itself is hosting-neutral and unchanged.
 
 1. Create a new Render Cron Job (free tier supports cron jobs ≤ 15 min runtime).
@@ -81,7 +82,7 @@ Git repository on GitHub (`ahmadmedo1012/SubNation2`), main branch. Branch prote
 service definition modulo `sync: false` secrets, which must be repopulated
 from password manager. Post-migration the stack definition is
 `docker-compose.yml` + Coolify (re-provision from
-`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git).
+`docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` + git).
 
 ### 5. Secrets
 
@@ -268,7 +269,7 @@ longer visible in `ps` output on the backup host (R109 §27 P2 fix).
 ### Scenario C — Application failed deploy (bad commit went to main) — LEGACY (Render, pre-migration)
 
 > Post-migration equivalent: redeploy the previous Coolify deployment (or pin
-> an older image tag in compose) — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md`
+> an older image tag in compose) — `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
 > §12.
 
 1. Render Dashboard → Service → Deploys → click the previous-known-good deploy → **Rollback**.
@@ -282,7 +283,7 @@ longer visible in `ps` output on the backup host (R109 §27 P2 fix).
 
 > Post-migration: single-VM topology — no region failover. VM-level recovery =
 > snapshot `/data/coolify` + re-provision the stack from
-> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` + git (§13); watch the host
+> `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` + git (§13); watch the host
 > provider's status page (Contabo) instead of status.render.com.
 
 1. Subscribe to https://status.render.com — usually within 15 min an estimate appears.

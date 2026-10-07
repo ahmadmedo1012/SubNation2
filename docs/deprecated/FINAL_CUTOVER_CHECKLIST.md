@@ -1,0 +1,134 @@
+> **DEPRECATED (2026-10-07, R122 docs reorg).** Moved from `docs/deployment/FINAL_CUTOVER_CHECKLIST.md`; superseded/completed — kept for reference only, not current state.
+
+# FINAL CUTOVER CHECKLIST — executable, in order (R115)
+
+> **EXECUTED 2026-10-01..02 — the cutover is LIVE** (subnation.ly serving
+> from Coolify on the VM since then; see `FINAL_SIGNOFF.md` for the dated
+> release record and `docs/inspection-r117/` for the post-cutover
+> verification). The boxes below are the historical R115 print-out, kept
+> unchecked as the working record of that night — do not re-run them as if
+> the cutover were pending. Corrected R118 (2026-10-06).
+
+> Print this. Every box is executable and verifiable. Do not reorder: each
+> section's gates exist to protect the next section. Reference docs live
+> beside each line.
+
+## SECTION A — PRE-CUTOVER (engineering-ready proof)
+
+- [ ] Source gates green at the release SHA: typecheck, lint 0 errors,
+      **backend 1497 + frontend 703 + openwa 103 = 2303 tests**, OpenAPI
+      route gate, migration drift, production build, gitleaks 0
+      (re-verified locally at the R115 release SHA `6f14bc3`, 2026-10-01 —
+      see `FINAL_SIGNOFF.md`; re-run via
+      `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL).
+      NOTE: GitHub Actions is disabled on SubNation2 (billing —
+      `FINAL_OPERATOR_INPUTS.md` §account-level cleanup), so GitHub shows
+      NO CI runs for `6f14bc3`; the local run of the same CI commands is
+      the release authority
+- [ ] Secrets generated on the VM: `scripts/generate-production-secrets.sh`;
+      values in password manager + encrypted offline backup
+      (`docs/deployment/SECRET_HANDLING_FINAL.md`)
+- [ ] Filled `.env` passes `validate-production-env.ts --strict` (exit 0)
+      and `scripts/final-cutover-preflight.sh .env` exits 0 with
+      **PREFLIGHT CLEAR (OpenWA: PASSED)** — sections A-I, the OpenWA
+      gate included; "CLEAR WITH OPENWA SKIPPED" is NOT sufficient here
+      (it means the stack was not up when it ran)
+- [ ] Oracle VM ready: `ORACLE_FINAL_SETUP.md` §11 VM READY checklist
+      (aarch64, docker, 2-layer firewall 22/80/443-only, fail2ban, swap,
+      host tooling: Node/pnpm/pg_dump per §9)
+- [ ] Docker ready: `docker-verify.sh --arm64` printed
+      **ARM64 VERIFIED** + all 10 gates passed
+- [ ] Coolify ready: `COOLIFY_FINAL_SETUP.md` checklist complete
+      (SubNation Git resource + OpenWA sha-pinned image, env entered,
+      healthchecks green, domain attached, HTTPS/Let's Encrypt green)
+- [ ] Neon reachable: healthz 200 through the domain via
+      `dns-cutover-check.sh subnation.ly <VM_IP>` → **READY**
+- [ ] Backup completed on the VM: one real run ended with
+      "✓ gzip integrity verified" + "✓ backup complete"; nightly crontab
+      installed (`FINAL_COMMAND_BOOK.md` §NEON)
+- [ ] Restore drill completed on the VM: `restore-drill-check.sh` exit 0
+      against a scratch DB (`docs/deployment/FINAL_RESTORE_DRILL.md`;
+      sandbox drills PASSED 2026-09-25 (R112) and 2026-10-01 (R115
+      pre-migration backup, Neon scratch branch, exit 0) — this box is
+      the VM-parity rerun)
+- [x] DB pre-reconciliation DONE (2026-10-01, release engineer): backup
+      `subnation_preR115_20261001T024634Z.sql.gz` verified + drill PASS;
+      R115 stages V1-M18…M22 applied to canonical Neon (0 skips, backfill
+      counts sane); schema = R115 expected (42/42, drift 0); wallet 5/5 +
+      loyalty 3/3 reconciled; legacy Render writers suspended. First
+      production boot = no-op verify reconcile + fingerprint write
+- [ ] SubNation healthy: container health=healthy, `/api/healthz` 200
+- [ ] OpenWA healthy: `/healthz` 200; WhatsApp session linked via QR
+      (operator, in the gateway dashboard — never share the QR/code)
+
+## SECTION B — PRIVATE SMOKE TEST (before DNS; via --resolve or the
+Coolify preview URL — NO public traffic yet)
+
+- [ ] SPA: home + catalog + one product page render (Arabic RTL intact)
+- [ ] API: `/api/healthz` 200, `/api/healthz/summary` sane, catalog loads
+- [ ] Auth: WhatsApp OTP request → message received → login succeeds
+      (this proves the whole SubNation→openwa→WhatsApp chain)
+- [ ] Catalog: product availability truthful vs admin inventory counts
+- [ ] Checkout (e2e dry): with test stock loaded, a test purchase credits
+      the order + decrements inventory + wallet math correct —
+      then refund it in admin and verify
+- [ ] Loyalty economics (R115): the test purchase writes its
+      `points_ledger` row (award) in the same transaction; the refund
+      revokes exactly the unspent award remainder; the wallet page
+      STATEMENT (`GET /wallet/ledger`) and the loyalty page POINTS HISTORY
+      (`GET /loyalty/ledger`) render the movements with Arabic labels
+- [ ] Welcome policy B (R115): a referred test account gets NOTHING at
+      signup and 5 LYD credited at its FIRST approved topup (verify on a
+      scratch account — never fabricate on real ones)
+- [ ] Socket.IO: live order/wallet updates arrive in the browser session
+- [ ] Admin: login + TOTP enrollment screen reachable + inventory upload
+      dialog opens (`docs/operations/FINAL_ADMIN_TOTP_SETUP.md`)
+
+## SECTION C — CUTOVER (the irreversible-feeling part; each step reversible)
+
+- [ ] `scripts/dns-cutover-check.sh subnation.ly <VM_IP>` → **READY**
+      (checked AGAIN, minutes before the switch)
+- [ ] Cloudflare DNS switched: A `subnation.ly` → VM IP (proxied),
+      `www` CNAME → apex (proxied); TTL ≤ 300 s beforehand
+      (`docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §5 order)
+- [ ] HTTPS green: `https://subnation.ly` serves the Coolify Let's Encrypt
+      cert (Full strict end-to-end; no browser warnings)
+- [ ] WebSocket green: a logged-in browser session receives live updates
+- [ ] External health green: `https://subnation.ly/api/healthz` → 200
+      from an external network (phone on mobile data)
+
+## SECTION D — POST-CUTOVER (first 24 hours)
+
+- [ ] Logs: `docker logs` both services — no error bursts, no restart loops
+- [ ] Memory/CPU: `free -h`, `docker stats` — Node RSS stable (no leak climb)
+- [ ] Neon behavior: compute graph active only under real traffic;
+      **after 1 idle hour: zero lease/election loglines**
+      (`docs/deployment/NEON_IDLE_ECONOMICS.md` §9)
+- [ ] Scheduler: admin observability shows mode=single, active, all crons
+      visible; the 05:00 UTC slot ran (next morning)
+- [ ] OpenWA: OTP still working after a Neon idle period (gateway_waking
+      path recovers; first OTP after idle may take ~40 s — documented normal)
+- [ ] Backup cron: the nightly ledger line appears; artifact integrity
+      verified in the log
+
+## SECTION E — SECURITY (close the doors)
+
+- [ ] Admin TOTP **enabled** on `ahmadmedo`
+      (`docs/operations/FINAL_ADMIN_TOTP_SETUP.md` — the enrollment itself)
+- [ ] Coolify access restricted: coolify subdomain behind Cloudflare Access
+      (or IP allowlist), port 8000 closed, strong Coolify account password
+- [ ] SSH locked down: key-only auth confirmed, fail2ban active, no extra
+      users
+- [ ] No unnecessary ports: `ss -tlnp` shows only 22/80/443 + docker bridge;
+      the FINAL firewall contract
+      (`docs/deployment/ORACLE_FINAL_SETUP.md` §the final firewall contract)
+- [ ] Secrets exist ONLY in: Coolify env + password manager + encrypted
+      offline backup (never in git, chat, or the repo)
+- [ ] Render decision: leave the 6 unused services suspended
+      (`docs/deployment/RENDER_LEGACY_FALLBACK.md` — decommission after
+      2 stable weeks)
+
+## SIGN-OFF
+
+When every box above is checked, record the run in
+`docs/deployment/FINAL_SIGNOFF.md` and the cutover is complete.

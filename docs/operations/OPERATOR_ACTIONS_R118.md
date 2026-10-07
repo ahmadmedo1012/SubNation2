@@ -1,8 +1,13 @@
 # Operator Actions — R118 (the ordered list)
 
 > Status: CURRENT @ 2026-10-06 (R118; supply-chain + rotation follow-ups
-> re-dated R119, 2026-10-07). Read this first.
-> Every item carries its evidence anchor (`docs/inspection-r118/*`). Live
+> re-dated R119, 2026-10-07) — **status refreshed R122 (2026-10-07):
+> actions 1 & 8 are DONE (R121 — action 8 executed as a 308, see
+> `docs/operations/WWW_TO_APEX_301.md`); actions 2 & 3 unverified (no
+> evidence of stock load / TOTP enrollment through R121); 4–7, 9–10 still
+> open.** Read this first.
+> Every item carries its evidence anchor (`docs/inspection-r118/*` — moved
+> to `docs/history/inspection-r118/` by the R122 docs reorg). Live
 > truth this list was written against (verified R118, 2026-10-06;
 > deployment state re-verified R119):
 > production **LIVE** at https://subnation.ly (Contabo VM + Coolify +
@@ -10,12 +15,11 @@
 > Cloudflare DNS-only) · single admin `ahmadmedo` (username login + argon2,
 > TOTP implemented but **not enrolled**) · sellable stock = **3 placeholder
 > units** (inventory rows 79/80/81 — `extra_details` only, uploaded
-> 2026-10-05) + 42 active products with zero stock · **`main` is now ahead
-> again**: the R118 chain + the waves merge (966d70f) pushed 2026-10-06
-> 17:23Z via the push-to-deploy webhook (live healthz ok, no SHA exposed
-> externally — confirm the live `GIT_SHA` in the Coolify dashboard before
-> ticking action 1) · www and apex both serve 200 (301 www→apex
-> recommended).
+> 2026-10-05) + 42 active products with zero stock · ~~**`main` is now ahead
+> again**~~ (DONE — the R118 chain + the waves merge (966d70f) + the R120/R121
+> chains all deployed via the push-to-deploy webhook since 2026-10-06) ·
+> ~~www and apex both serve 200 (301 www→apex recommended)~~ (DONE —
+> **www → apex 308 LIVE since R121**, 2026-10-07).
 
 **Launch blockers: actions 1–3.** The store cannot sell safely, and the
 admin account is single-factor, until those three are done. 4–5 are
@@ -40,7 +44,12 @@ stock, so the live process is the one the R118 findings describe).
 
 ---
 
-## 🔴 1. Deploy `main` — the live build is older than the repo
+## 🔴 1. Deploy `main` — the live build is older than the repo — ✅ DONE (R121)
+
+- **Done:** every push to `main` deploys via the push-to-deploy webhook
+  since 2026-10-06 (merge `966d70f`, then the R120/R121 chains — live
+  `GIT_SHA` verifiable in the Coolify dashboard / container env). The
+  original finding (R118-A6 F-10) is preserved below as the dated record.
 
 - **What:** trigger a Coolify redeploy of the SubNation resource from git
   `main` (flow + checks: `docs/operations/CONTABO_COOLIFY_OPERATIONS.md` §4).
@@ -48,7 +57,7 @@ stock, so the live process is the one the R118 findings describe).
   `index-BTNM_6lU.js` — production is running a build older than the
   R116→R118 chain (overhaul + OTP lockPool + reveal gate + decrypt honesty
   + warmup probe + this round's fixes). Everything audited in
-  `docs/inspection-r118/` is code-at-`main`; action 2 below assumes it is
+  `docs/history/inspection-r118/` is code-at-`main`; action 2 below assumes it is
   live.
 - **Verify after:** `curl -s https://subnation.ly/api/healthz` → 200 and
   `.version` equals the deployed `GIT_SHA`; then re-run the two-line
@@ -167,14 +176,15 @@ stock, so the live process is the one the R118 findings describe).
   (Evidence: R118-A6 F-6; `docs/operations/NEON_COLD_START_RUNBOOK.md`
   §"Related env knob".) Effort: S.
 
-## 🟡 8. www→apex 301 at Traefik
+## 🟡 8. www→apex 301 at Traefik — ✅ DONE (R121, executed as 308)
 
-- The canonical-host decision is already made in the product (every sitemap/
-  robots/og/canonical signal points at the apex); only the redirect is
-  missing. Paste-able Traefik dynamic config + Coolify wiring + verification
-  + rollback: **`docs/operations/WWW_TO_APEX_301.md`**. Never in-app
-  (R116 loop lesson). (Evidence: R118-A7 F34(c); CLOUDFLARE_FINAL_CUTOVER
-  §8.) Effort: S.
+- **Executed 2026-10-07 (R121):** live as a **308** via the standalone
+  dynamic router `/data/coolify/proxy/dynamic/www-redirect.yml`
+  (priority 1000). Design/rollback record:
+  **`docs/operations/WWW_TO_APEX_301.md`** (its §3 "Alternative" shape is
+  what shipped); operator summary: `OPERATIONS_RUNBOOK.md` §13. Never
+  in-app (R116 loop lesson). (Evidence: R118-A7 F34(c);
+  CLOUDFLARE_FINAL_CUTOVER §8.)
 
 ## 🟡 9. Mark all alerts read (after action 2)
 

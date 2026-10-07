@@ -7,7 +7,7 @@
 > checklist + alert rules), `docs/deployment/NEON_IDLE_ECONOMICS.md` (the
 > free-tier CU math), `docs/deployment/COOLIFY_FINAL_SETUP.md` (resources).
 >
-> Production DB (verified R118, 2026-10-06 — `docs/inspection-r118/
+> Production DB (verified R118, 2026-10-06 — `docs/history/inspection-r118/
 > R118-A3-database.md`): Neon Postgres 17, endpoint
 > `ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech` (PgBouncer
 > pooled), branch `br-lucky-bird-avkvvzo7`, region us-east-1, 12 MB /
@@ -22,7 +22,7 @@ connection pays a **resume penalty of 0.5–2 s** before the first query runs:
 
 - R117 live measurement (2026-10-05, probe-host→Neon `SELECT 1`):
   **1,326 ms** cold connect vs 215 ms warm
-  (`docs/inspection-r117/live-production-smoke.md:80`).
+  (`docs/history/inspection-r117/live-production-smoke.md:80`).
 - R118-A3 measurement (2026-10-06): three fresh direct connects →
   **1,434 / 1,525 / 1,402 ms** to first `SELECT 1` (≈1.4 s steady).
 
@@ -115,7 +115,7 @@ per `docs/NEON_MCP_SETUP.md` — endpoint verified live R118).
 | Option | Effect | Cost / caveat |
 |---|---|---|
 | **Accept it** (do nothing) | One 1–2.5 s outlier per idle period; React Query retry already masks it for users | Zero. This is the current state (R118-A6 F-3b). |
-| **Re-enable Cloudflare proxy (orange cloud)** | The edge serves `s-maxage=60` catalog + sitemap and `immutable` assets — most anonymous cold traffic never reaches Neon (R118-A6 F-3a; also closes the "no edge cache" gap) | **Loop lesson first**: the R116 Cloudflare loop was caused by the in-app hostname redirect (removed in `f10bb9b`), not the proxy itself — but do NOT re-proxy until you have verified there is no hostname-rewriting redirect at any layer. The planned Traefik www→apex 301 (`docs/operations/WWW_TO_APEX_301.md`) is a permanent redirect at the origin — verify one www URL end-to-end (curl -I, expect 301 → apex, then 200) after any re-proxy. Also re-check the R117-A4 DNS-only observations (`docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8). TLS/origin config: CLOUDFLARE_FINAL_CUTOVER §1–§4 describes the proxied setup. |
+| **Re-enable Cloudflare proxy (orange cloud)** | The edge serves `s-maxage=60` catalog + sitemap and `immutable` assets — most anonymous cold traffic never reaches Neon (R118-A6 F-3a; also closes the "no edge cache" gap) | **Loop lesson first**: the R116 Cloudflare loop was caused by the in-app hostname redirect (removed in `f10bb9b`), not the proxy itself — but do NOT re-proxy until you have verified there is no hostname-rewriting redirect at any layer. The **live** Traefik www→apex **308** (`/data/coolify/proxy/dynamic/www-redirect.yml`, R121 — `docs/operations/WWW_TO_APEX_301.md`) is a permanent redirect at the origin — verify one www URL end-to-end (curl -I, expect 308 → apex, then 200) after any re-proxy. Also re-check the R117-A4 DNS-only observations (`docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8). TLS/origin config: CLOUDFLARE_FINAL_CUTOVER §1–§4 describes the proxied setup. |
 | **Move Neon to eu-central-1 (Frankfurt)** | RTT ~100 ms → ~5–10 ms: cuts ~200–300 ms off **every uncached DB request** (R118-A6 F-1: detail ≈ 3 sequential stages, catalog ≈ 2). Data is tiny (59 products / 263 variants / 12 MB) — a branch-copy + `DATABASE_URL` repoint is an S/M-effort move | Does **not** remove cold-start (auto-suspend is independent of region) — it shortens every warm path. Numbers + procedure sketch: `R118-A6-performance.md` F-1. |
 | **Keep-alive ping (NOT recommended)** | A `SELECT 1` every <5 min would keep the compute awake | A 4-min keep-alive ≈ **~190 CU-h/month** on the 0.25 CU compute ≈ the entire Neon free allowance (R118-A6 F-3c; economics: `docs/deployment/NEON_IDLE_ECONOMICS.md`). The old keep-alive cron was removed for exactly this reason (`jobs/cron.ts:241-269`). |
 

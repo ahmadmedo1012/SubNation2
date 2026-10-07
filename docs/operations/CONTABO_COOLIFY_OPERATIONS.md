@@ -31,8 +31,8 @@ per plan) replaces the Oracle Cloud console in every doc that mentions one.
 
 | Older doc | Status for THIS host |
 |---|---|
-| `docs/deployment/ORACLE_FINAL_SETUP.md` | The original **provisioning** guide — written for Oracle Cloud free tier (ARM64, Security Lists, OCI console). **Different cloud.** The host-neutral parts (SSH hardening, fail2ban, unattended-upgrades, docker install) still apply in spirit; every Oracle console/Security-List/shape step does not (R118-A7 F17). |
-| `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` | r107 migration history — how Coolify was first installed. Useful if you ever re-provision Coolify from scratch; not the live runbook. |
+| `docs/deprecated/ORACLE_FINAL_SETUP.md` | The original **provisioning** guide — written for Oracle Cloud free tier (ARM64, Security Lists, OCI console). **Different cloud.** The host-neutral parts (SSH hardening, fail2ban, unattended-upgrades, docker install) still apply in spirit; every Oracle console/Security-List/shape step does not (R118-A7 F17). |
+| `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` | r107 migration history — how Coolify was first installed. Useful if you ever re-provision Coolify from scratch; not the live runbook. |
 | `docs/deployment/COOLIFY_FINAL_SETUP.md` | **Still authoritative** for the two Coolify resources, domains, healthchecks, and deploy order — it is host-neutral (R118-A7 verdict: accurate). |
 | `docs/DISASTER_RECOVERY.md` | Authoritative for backup/restore procedures (host-neutral); its host wording was corrected to the self-hosted (Contabo) VM in the R118-B4a truth pass (2026-10-06; A7 F11). |
 
@@ -93,10 +93,11 @@ resource's **Domains** config: `https://subnation.ly` **and**
 Let's Encrypt production certs cover both (COOLIFY_FINAL_SETUP §6; both
 hosts must also appear in `APP_ORIGINS`).
 
-Today both hostnames serve the app (www 200 = apex 200, byte-identical —
-R117-A4; verified R118). The recommended canonical-host change — a single
-**www→apex 301 at this Traefik layer** — is a paste-able operator action:
-see `docs/operations/WWW_TO_APEX_301.md`. **Never** implement that redirect
+Since R121 (2026-10-07) www → apex is a **live 308** at this Traefik layer
+(`/data/coolify/proxy/dynamic/www-redirect.yml`, priority 1000); only the
+apex serves the app. Design/rollback record:
+`docs/operations/WWW_TO_APEX_301.md` (operator summary:
+`OPERATIONS_RUNBOOK.md` §13). **Never** implement that redirect
 in the app (the R116 Cloudflare-loop incident is why the in-app redirect
 was removed in `f10bb9b`).
 
@@ -140,8 +141,8 @@ What the runbooks assume on the host (DISASTER_RECOVERY host-prereqs :131):
 - **Node 22 + Corepack pnpm** (backup/restore scripts run through pnpm),
 - **postgresql-client-17** (`psql` for the verification/restoration SQL),
 - **docker** (+ the docker compose plugin for local/bare-VM variant runs),
-- git, plus the hardening from `ORACLE_FINAL_SETUP.md` §7-in-spirit
-  (fail2ban/ssh) where not already installed.
+- git, plus the hardening from `docs/deprecated/ORACLE_FINAL_SETUP.md`
+  §7-in-spirit (fail2ban/ssh) where not already installed.
 
 ## 9. Related docs
 

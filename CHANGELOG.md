@@ -4,7 +4,90 @@ One entry per repair round, newest first. SubNation2 ships by round (no
 semver); each entry lists the feature-level changes with their evidence
 trail. Rounds before R116 are summarized compactly at the bottom — full
 history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
-and the round reports indexed in `docs/README.md` (proposed `docs/archive/`).
+and the round reports indexed in `docs/README.md` (historical rounds now
+live under `docs/history/` — executed R122).
+
+## Round R121 — admin revival + Telegram ops + 308 edge + Sentry LIVE — 2026-10-07
+
+Triggered by a live browser audit of all 20 admin pages (session minted for
+the audit, revoked after). Chain `b5c9151`→`1f4b24c` plus two operator
+actions at the edge/env; every fix verified on production post-deploy.
+
+### Fixed
+- **Broken admin surfaces revived** (`b5c9151`):
+  `/admin/products/enrichment` + `/admin/risk/events/:id` rendered the
+  PUBLIC 404 — the top-level dispatch used `/admin/:rest*`, which regexparam
+  3 parses as a single segment (`[^/]+?`), so nested paths fell through to
+  the storefront NotFound; bare `/admin/*` is the true multi-segment splat
+  (verified against regexparam 3.0.0's parser). `/admin/system` hit the
+  error boundary — the metrics endpoint wraps its snapshot in a
+  last-known-good envelope (`{value, lastKnownGoodAt, stale}`) while the
+  page read the flat shape; the query now unwraps and treats `value:null`
+  as an honest error state. Post-deploy re-audit: all 20 admin pages
+  render; cold-start-settle 400s gone.
+- **Sentry fully activated, both sides** (`8530dfa` + `e1de0e6` + Coolify
+  env): org `subnation` (EU/de), projects `javascript-react` +
+  `subnation-backend`; `VITE_SENTRY_DSN` (frontend build arg) + `SENTRY_DSN`
+  (backend runtime) + `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT`
+  (build args → source-map pipeline). The vite plugin release is pinned to
+  `VITE_RELEASE_SHA` (was `name@version` — orphaned maps) with Dockerfile
+  ARG passthrough. Deploy `e1de0e6` exposed a real gate bug: Coolify
+  passes `GIT_SHA` declared-but-EMPTY and `??` kept `""`, slipping
+  `--release=""` past the gate — switched to `||` with a `SOURCE_COMMIT`
+  fallback. Verified END-TO-END under release `e1de0e6`: both bundles'
+  upload reports green; `sentry-debug` → `dsnConfigured:true,
+  release:e1de0e6`; a controlled `?mode=throw` event reached
+  `subnation-backend` (verified via API, then deleted); real-browser
+  `__sentryStatus()` → `initialized:true, release:e1de0e6`; the console
+  Sentry warning is gone. (Pipeline now documented in
+  `OPERATIONS_RUNBOOK.md` §11.)
+- **GCM `authTagLength` native enforcement** (`1f25dff`, recovered from a
+  stalled agent session per `26035eb`): `createDecipheriv` now passes
+  `authTagLength` at construction — native Node enforcement under the
+  existing 128-bit `setAuthTag` gate; 25/25 encryption tests pass incl.
+  the rotation ladder.
+
+### Operator actions landed (same round, verified live)
+- **Telegram ops channel LIVE**: `TELEGRAM_BOT_TOKEN` (login-bot reuse
+  from `system_settings:auth.telegram`) + `TELEGRAM_WEBHOOK_SECRET`
+  (generated) + `TELEGRAM_CHAT_ID`/`TELEGRAM_ADMIN_IDS` set in Coolify;
+  webhook re-registered WITH the secret (deliveries had been 403-ing since
+  R98). Verified via the app's own diagnostic
+  `POST /api/admin/diagnostics/telegram-test` →
+  `{configured:true, delivered:true, attempts:1}`.
+- **www→apex 308 edge canonicalization**: standalone Traefik file-provider
+  router `/data/coolify/proxy/dynamic/www-redirect.yml` (priority 1000,
+  apex untouched); the dead v2-syntax `subnation.yml` that poisoned the
+  whole dynamic directory archived with its 4 backups to
+  `dynamic-archive/`. Live probes: www → 308 apex (query preserved), apex
+  200, all 12 routers enabled.
+
+### Verification
+- **R121-C security sweep** (semgrep auto + trivy CRITICAL + gitleaks full
+  history): one real finding — the GCM fix above; everything else
+  false-positive (telegram/aws/jwt "key" hits are synthetic test fixtures;
+  the 2 gcp-api-key history findings are the PUBLIC Firebase web key;
+  `minimumReleaseAge: 1440` already set). Trivy: zero CRITICAL.
+- **R121-D e2e: 19/19** (Playwright/Chrome) — storefront journey
+  (home → category → product → cart → checkout guest gate), auth gates
+  never 5xx, API contracts (products/providers/healthz/sitemap/robots/404
+  shape), login shows Google + Telegram; mobile 390px: no overflow, zero
+  console errors.
+- **R121-E Mimosa deep scan** (seal sha256:1f52f7e8…): 716 files, 174
+  entry points, 686 auth surfaces, **124 findings — 0 real issues** (the
+  record for this repo): all 13 "actionable" candidates debunked
+  (strict-regex topup callback ≠ command injection; JS `Array.sort()` ≠
+  mongo `$sort`; parseInt-defaulted query params); 12 HIGH false
+  positives; 99 inconclusive = query-budget exhaustion, not safety.
+
+### Gates
+Backend 199 files / 1779 tests, frontend 122 / 843, typecheck clean
+(R120 baseline + the `37ac15e` polish + R121 additions).
+
+### Known deferred (operator-only)
+GSC `VITE_GSC_VERIFICATION` token (paste-and-go — runbook §14); swap the
+full-scope Sentry build token for an `org:ci`-scoped one (runbook §11
+recommendation, not blocking).
 
 ## Round R120 — full-spectrum product excellence — 2026-10-07
 
@@ -48,6 +131,19 @@ agents closed ~70 (all P1/P2-actionable + cheap P3s) in 5 commits +
   zod), admin tail routes zod'd, enrichment final_text 16k cap, OTP
   global daily send ceiling (OTP_DAILY_SEND_CAP, deduped admin alert),
   Dockerfile digest-pinned.
+- **Independent-review polish** (`37ac15e`, post-entry): A4-F1 nesting
+  sweep completed — the 6 remaining Button-in-Link instances (checkout,
+  orders, order-detail ×3, StockoutRiskPanel) converted to the
+  asChild/buttonVariants single-tab-stop idiom, pinned by the
+  a4-f1-nesting-sweep test; A6-F1 fully closed — the orders page now
+  CONSUMES `?page=` via the accumulating useInfiniteQuery idiom (a
+  reseller past 200 orders could see but never reach order #201+; honest
+  عرض N badge + load-more + cross-page dedup); guest bottom-nav enabled on
+  `/product/*`; `openapi.yaml` documents the `?page=` param (4 user
+  money-history routes) + `open_tickets` in admin stats; drizzle `0017`
+  boot-stage naming corrected; copy fix «حقائق الأمان المطبَّقة» +
+  `--text-2xs` 11→12px. Frontend gates after it: 122 files / 843 tests,
+  lint 0 errors / 85 warnings.
 
 ### Gates
 Backend 199 files / 1776 tests (+72), frontend 119 / 829 (+59), typecheck
@@ -267,5 +363,5 @@ round, R112–R115 migration prep + Neon schema mirror + restore drills, and
 the **R115 cutover to self-hosted Docker (Coolify on a Contabo VM, Traefik +
 Let's Encrypt at origin) executed 2026-10-01/02** — release ledger:
 `docs/deployment/FINAL_SIGNOFF.md`. Per-round detail: `git log` + the round
-reports and inspection folders indexed in `docs/README.md` (proposed
-`docs/archive/`).
+reports and inspection folders indexed in `docs/README.md` (historical
+rounds now live under `docs/history/` — executed R122).

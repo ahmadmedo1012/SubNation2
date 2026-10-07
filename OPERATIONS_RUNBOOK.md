@@ -19,11 +19,12 @@ section anchored to its `runbookSection` value in `ALERT_RULES`.
 | Coolify/VM (PRODUCTION — live stack)   | `http://<VM>/coolify` or `:8000` → project                  | containers, logs, redeploys                    |
 | Sentry                          | `https://sentry.io/...` (set `SENTRY_DASHBOARD_URL`)        | unresolved issues, traces, performance         |
 | Neon                            | `https://console.neon.tech/...` (set `NEON_DASHBOARD_URL`)  | slow queries, indexes, connections             |
-| Internal admin observability    | `/admin/system` (API: `/api/admin/observability/*`; admin JWT required) | summary, alerts, deploys, sentry placeholder   |
+| Internal admin observability    | `/admin/system` (API: `/api/admin/observability/*`; admin JWT required) | summary, alerts, deploys (Sentry links env-gated — see §11) |
 
 CLI helpers via Render MCP / Neon MCP (Render MCP = LEGACY, pre-cutover; on
 the live stack use `docker logs` / the Coolify UI —
-`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §11):
+`docs/operations/CONTABO_COOLIFY_OPERATIONS.md` §4; the r107-era guide now
+lives at `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` §11):
 
 ```
 # last hour of web service logs
@@ -52,9 +53,10 @@ rows.
   2. If a single endpoint dominates: rollback (§4) or hotfix.
   3. If Redis or Neon failing checks fired simultaneously, treat as a
      dependency outage (`#redis` or `#neon`).
-- **Mitigation:** rollback to last-known-good deploy via Render dashboard
-  (LEGACY, pre-migration — §4). Post-migration: Coolify redeploy previous /
-  compose image pin — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12.
+- **Mitigation:** rollback via §4 (Coolify redeploy-previous /
+  git-revert+push). Full choreography:
+  `docs/deployment/FINAL_ROLLBACK_RUNBOOK.md` +
+  `docs/operations/CONTABO_COOLIFY_OPERATIONS.md` §7.
 
 ### #auth-failure — `auth_failure_rate_high`
 
@@ -80,10 +82,12 @@ rows.
 
 ### #fe-sentry — `frontend_sentry_error_rate_high`
 
-> **2026-09-20 final audit — DORMANT (no evaluator).** This rule returns
+> **2026-09-20 final audit — DORMANT (no evaluator); still true at R122.**
+> This rule returns
 > false by design: it needs a Sentry-events signal the backend cannot read
-> for free. Triage Sentry's own dashboards directly; treat this rule as
-> deferred until a signal source is wired.
+> for free (`alerting.service.ts` — by design). **Frontend Sentry itself is
+> LIVE since R121-B (2026-10-07)** — triage via the Sentry dashboard (§11);
+> only the *rule evaluator* is dormant.
 
 - **Threshold:** > 10 frontend events / min.
 - **Triage:** open Sentry, group by browser / route — usually a regression
@@ -165,8 +169,9 @@ rows.
 > **LEGACY (pre-cutover):** the Render access below is a historical record,
 > not a rollback path (the account is billing-suspended). On the live
 > stack: `docker logs subnation` / Coolify's log pane —
-> `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §11. (The Neon parts
-> stay valid on either stack.)
+> `docs/operations/CONTABO_COOLIFY_OPERATIONS.md` §4 (the r107-era guide
+> now lives at `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` §11). (The Neon
+> parts stay valid on either stack.)
 
 ### Render logs (last hour, web service)
 
@@ -192,10 +197,48 @@ WHERE state = 'active' AND NOW() - query_start > INTERVAL '500ms'
 ORDER BY duration DESC;
 ```
 
-## 4. Deploy rollback — LEGACY (Render, pre-migration)
+## 4. Deploy & rollback — the Coolify flow (live stack)
 
-> Post-migration app rollback = Coolify redeploy previous / compose image
-> pin — `docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §12.
+> **R122 (2026-10-07):** this section now leads with the LIVE push-to-deploy
+> chain. The Render-era procedure below it is LEGACY history (Render is
+> billing-suspended; not a rollback path since the 2026-10 cutover). Full
+> choreography of record: `docs/deployment/FINAL_ROLLBACK_RUNBOOK.md`
+> (read its §0 WhatsApp single-gateway rule + §4 Neon compatibility truth
+> first) and `docs/operations/CONTABO_COOLIFY_OPERATIONS.md` §7.
+
+**Deploy path (every push):** GitHub `main` → Coolify push-to-deploy webhook
+(HMAC-verified) → git-source dockerfile build → healthcheck-gated
+(`/api/healthz`) rolling update. The repo is public and Actions runs green
+on every push (R119+). Rollback paths on this stack, in order of preference:
+
+1. **Deploy the previous commit (no code change):** Coolify → SubNation
+   resource → point the deployment at the last-known-good SHA + set the
+   matching `GIT_SHA` build arg → Deploy (panels are named by function —
+   commit / redeploy-an-older-deploy; `COOLIFY_FINAL_SETUP.md` §7).
+   RTO ≈ one build (2–4 min).
+2. **`git revert` + push:** revert the bad commit(s) on `main` and push —
+   the webhook deploys the revert like any other commit. Preferred when
+   history should stay linear and the revert is small.
+3. **Pre-rollback gates (either path):** CI green on the target SHA; the
+   migration-compatibility diff — `git diff <live-sha> <target-sha> --
+   backend/src/migrate.ts shared/db/src/schema/` — empty diff = inside
+   the safe window (FINAL_ROLLBACK_RUNBOOK §4); record the SHA pair.
+4. **Verify:** `GET /api/healthz` → `{"status":"ok"}`; the deployed-SHA
+   gate — healthz does **not** expose the SHA, so confirm the live
+   `GIT_SHA` in the Coolify dashboard / container env equals the target
+   (`docs/project-state/source-of-truth.md`); one login + one catalog
+   page.
+5. **Notify:** `POST /api/admin/alerts/test rule=worker_heartbeat_missing`
+   fires a Telegram message on the ops channel (§12).
+6. **Record:** incident note under
+   `.kiro/specs/observability-seo-cwv-maturity:rollback-events`
+   (a Memory_MCP entity, not a file path) with `commitSha`, `regression`,
+   `rollbackOutcome`, `durationSec`.
+
+Neon NEVER rolls back — data problems go to `docs/DISASTER_RECOVERY.md`,
+not to a redeploy.
+
+### LEGACY — Render rollback (pre-migration, dead path — kept as history)
 
 1. **Identify last-known-good deploy:**
    - Render MCP `list_deploys serviceId=srv-d7vv91tckfvc73evnccg limit=10`.
@@ -209,14 +252,6 @@ ORDER BY duration DESC;
    - `GET /api/healthz/ready` (admin JWT required) returns `{status:"ok"}`
      within 30 s.
    - `GET /api/admin/diagnostics` shows the rolled-back commit SHA.
-4. **Notify:**
-   - Telegram message via `POST /api/admin/alerts/test rule=worker_heartbeat_missing`
-     (until Phase 7 task 44 wires automatic post-rollback notification).
-5. **Record:**
-   - Add a note under
-     `.kiro/specs/observability-seo-cwv-maturity:rollback-events`
-     in Memory_MCP with `commitSha`, `regression`, `rollbackOutcome`,
-     `durationSec`.
 
 ## 5. Production resource budget (self-hosted VM + Coolify + Neon)
 
@@ -303,8 +338,9 @@ burn the CU allowance instead).
 ### Remaining recurring activity (the complete timer inventory)
 
 R108 shape — **`SINGLE_INSTANCE_MODE=true`** (the deployed default; see
-`docs/deployment/COOLIFY_ORACLE_MIGRATION.md` §9, the accuracy reference
-for this list): synthetic in-process leadership — **no leader election, no
+`docs/deprecated/COOLIFY_ORACLE_MIGRATION.md` §9, the accuracy reference
+for this list — the r107 guide moved to `docs/deprecated/` by the R122 docs
+reorg; content unchanged): synthetic in-process leadership — **no leader election, no
 PG-lease refresher, ZERO periodic Neon coordination queries**, so idle
 Neon autosuspend is preserved. The old "PG-lease refresh 25 s
 recurring-while-awake" and "crons under the leader lock" rows described
@@ -412,10 +448,14 @@ curl -X POST -H "Content-Type: application/json" \
 > `openwa` container + Neon Postgres. There is no Vercel and no Render in
 > the live path (the Vercel mirror 404s; Render is billing-suspended).
 >
-> - **Canonical URL:** `https://subnation.ly` — apex and `www` both serve
->   200; there is no redirect at any layer today. The recommended
->   `www → apex` 301 is an open operator action at the Traefik layer —
->   `docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8.
+> - **Canonical URL:** `https://subnation.ly` — `www → apex` **308** has been
+>   LIVE at the Traefik file-provider layer since R121 (2026-10-07):
+>   `/data/coolify/proxy/dynamic/www-redirect.yml`, priority 1000, path+query
+>   preserved; apex serves 200. Rollback/verify:
+>   `docs/operations/WWW_TO_APEX_301.md` (§4/§5; note the live code is 308,
+>   not the 301 proposed there). The dead v2-syntax `subnation.yml` that
+>   poisoned the whole dynamic dir was archived to `dynamic-archive/`
+>   (§13).
 > - **DNS:** the Cloudflare zone is **DNS-only (grey cloud)** — no proxy, no
 >   edge TLS/WAF in the live path; TLS terminates at the VM (Traefik /
 >   Let's Encrypt). Do NOT "re-fix" the zone to proxied without deciding.
@@ -434,7 +474,7 @@ curl -X POST -H "Content-Type: application/json" \
 
 > **Pre-cutover architecture (Render primary + Vercel secondary).**
 > Superseded by the single-origin block above (cutover 2026-10: the Vercel
-> project is gone, single origin only — `docs/deployment/MIGRATION_RUNBOOK.md`
+> project is gone, single origin only — `docs/deprecated/MIGRATION_RUNBOOK.md`
 > Phase 6).
 
 97-F6 (R97 J-4): two live deployments ran in parallel from this same repo
@@ -479,7 +519,8 @@ backend's helmet CSP — the domain was NOT served by Vercel.
    `VITE_SOCKET_URL` (empty on Render same-origin; on Vercel point at the
    Render origin or rely on the `/api` proxy), `VITE_GA_TRACKING_ID`.
    `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` are build-time
-   only (source-map upload) — currently unset on both.
+   only (source-map upload) — set + live as Coolify build args since R121-B
+   (2026-10-07, §11); in the Render/Vercel era above they were unset.
    Note (97-F6): a build without `VITE_SENTRY_DSN` now ships NO Sentry
    vendor chunk at all — the DSN-less SDK used to cost ~151 KB brotli on
    the boot path. Setting the DSN on either platform re-enables it
@@ -508,3 +549,147 @@ round-96 settle gate: how long a freshly-paired
 OpenWA session must wait after linking before it may dispatch OTPs (pair-code
 key propagation takes 10–30 s; a QR device-list rebuild can take longer).
 Full annotated reference: `config/env.example` (WhatsApp OTP section).
+
+## 11. Sentry — release pipeline & error tracking (LIVE since R121-B, 2026-10-07)
+
+**Both sides are live.** Org `subnation` (**EU / de region**) with two
+projects: `javascript-react` (frontend) and `subnation-backend` (backend).
+End-to-end verified 2026-10-07 under release `e1de0e6` (progress log
+R121-B).
+
+**Coolify env (the wiring of record):**
+
+| Var | Where | Role |
+|---|---|---|
+| `VITE_SENTRY_DSN` | SubNation **build arg** | ships the SDK + DSN into the SPA bundle (`Dockerfile` ARG) |
+| `SENTRY_DSN` | SubNation **runtime** | backend SDK init |
+| `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` | SubNation **build args** | source-map upload — frontend vite plugin + backend `backend/build.mjs` |
+
+**Release identity = `GIT_SHA` (7-char short).** The vite plugin's release
+is pinned to `VITE_RELEASE_SHA` (fallbacks `GIT_SHA` / `SOURCE_COMMIT`) —
+commit `8530dfa`; the plugin default (`name@version`) orphaned the maps
+from the runtime events. The backend gate (`backend/build.mjs`) runs
+`sentry-cli sourcemaps inject + upload --release=<short-SHA>` and then
+**deletes the `.map` files from the artefact** (Sentry retains the maps and
+resolves stack traces server-side). Both upload paths run only when the
+token trio is present at build time.
+
+**The `e1de0e6` lesson (empty-`GIT_SHA` gate bypass):** Coolify passes
+`GIT_SHA` declared-but-**EMPTY** on some paths; the old `??` fallback kept
+`""` and slipped `--release=""` past the gate, failing the upload. Both
+release computations now use `||` with a `SOURCE_COMMIT` fallback (commit
+`e1de0e6`). If a build log ever shows an upload for an empty release, it is
+this bug class — not a token problem.
+
+**Verify a deploy's telemetry (the R121-B checklist):**
+
+1. Build log: both bundles' source-map upload reports green under the new
+   release (= the deployed SHA short).
+2. `GET /api/admin/diagnostics/sentry-debug` (admin JWT) →
+   `dsnConfigured:true` + `release:<short-SHA>`.
+3. Frontend, real browser console: `__sentryStatus()` →
+   `initialized:true, release:<short-SHA>` (the "Sentry not configured"
+   console warning is gone when wired).
+4. Controlled event: `sentry-debug?mode=throw` reaches the
+   `subnation-backend` project (verify the issue via the Sentry API/UI,
+   then delete it — clean state).
+
+**Alert-rule note:** `#fe-sentry` (§2) stays DORMANT by design — the rule
+evaluator needs a Sentry-events signal the backend cannot read for free.
+Frontend Sentry itself is LIVE; triage via the Sentry dashboard
+(`SENTRY_DASHBOARD_URL` env-gates the admin-panel deep link).
+
+**Operator recommendation (open, not blocking):** the current
+`SENTRY_AUTH_TOKEN` is **full-scope**. Swap it for an **`org:ci`-scoped
+token** (org-level CI token — releases only; creation is UI-only on
+Sentry SaaS) when convenient. `org:ci` cannot read DSNs or create
+projects, which is the right shape for a build-arg token.
+
+## 12. Telegram ops channel — alerts + topup approvals (LIVE since R121, 2026-10-07)
+
+Notifications (low stock, orders, alerts) and **topup approval cards** are
+delivered to the operator chat. The wiring of record (Coolify env):
+
+- `TELEGRAM_BOT_TOKEN` — the **login bot reused** for ops (its login config
+  lives in `system_settings:auth.telegram`; the ops channel reuses the same
+  bot via env).
+- `TELEGRAM_WEBHOOK_SECRET` — must match the `setWebhook` `secret_token`;
+  enforced with a constant-time compare on every callback
+  (`backend/src/routes/telegram-webhook.ts`).
+- `TELEGRAM_CHAT_ID` + `TELEGRAM_ADMIN_IDS` — the destination chat + the
+  accounts allowed to press the approval buttons (bootstrap: send `/start`
+  to the bot — it replies with the numeric IDs; see `config/env.example`
+  Telegram section).
+
+**History:** deliveries had been **403-ing since R98** — the webhook was
+registered without the secret. R121 re-registered it WITH the secret; the
+403s stopped.
+
+**Verify / diagnose:** `POST /api/admin/diagnostics/telegram-test` (admin
+JWT) → expected `{"configured":true,"delivered":true,"attempts":1}`
+(structured failure reasons — bad token, chat_not_found, network timeout —
+come back `delivered:false` with an explanation, still HTTP 200). The §8
+synthetic alert test exercises the same delivery path.
+
+**Approval buttons:** the topup callback parser is strict by design —
+`/^topup_(app|rej):(\d+)$/` + `Number()` validation (verified by the R121-E
+Mimosa scan: no command-injection path). Only `TELEGRAM_ADMIN_IDS`
+accounts can press them.
+
+## 13. Edge canonicalization — www→apex 308 (LIVE since R121, 2026-10-07)
+
+- **What is live:** `/data/coolify/proxy/dynamic/www-redirect.yml` — a
+  standalone Traefik file-provider router at **priority 1000**; every
+  `https://www.subnation.ly/<path>?<query>` → **308** → the apex (path +
+  query preserved); the apex serves 200 untouched.
+- **The poisoning lesson:** the dead v2-syntax `subnation.yml` (plus 4
+  backup variants) errored on every watcher callback and **blocked the
+  whole dynamic directory**. They were quarantined to
+  `/data/coolify/proxy/dynamic-archive/`. Rule: **never leave a broken
+  file in `dynamic/`** — a single syntax error silences every other
+  dynamic router.
+- **Verify (2 minutes):**
+  ```bash
+  curl -sI https://www.subnation.ly/ | head -n 5
+  #    expect: HTTP/2 308 + location: https://subnation.ly/
+  curl -sIL -o /dev/null -w '%{num_redirects} %{url_effective}\n' https://www.subnation.ly/
+  #    expect: 1  https://subnation.ly/
+  curl -s https://subnation.ly/api/healthz   # expect: {"status":"ok"}
+  ```
+- **All-routers sanity check (on the VM):** confirm all 12 Traefik routers
+  are enabled — Coolify UI → Server → Proxy, or the Traefik API
+  (`/api/http/routers`) via the proxy container — every router `Status:
+  enabled`, including `subnation-www-redirect` (priority 1000).
+- **Design + rollback record:** `docs/operations/WWW_TO_APEX_301.md` — note
+  the live implementation is the §3 "Alternative" shape (standalone dynamic
+  router) returning **308**, not the 301 proposed there; §4 expectations
+  read 301 where production returns 308. Rollback = remove the file; apex
+  is unaffected.
+
+## 14. Pending operator actions (R122 status)
+
+- **GSC verification token** — `VITE_GSC_VERIFICATION` is still unset (the
+  `Dockerfile` ARG exists at the build). Paste-and-go: operator pastes the
+  Google Search Console HTML-tag token into the Coolify build args →
+  redeploy. Nothing else needed (the build bakes the meta tag).
+- **Sentry token de-scoping** — swap the full-scope `SENTRY_AUTH_TOKEN`
+  build arg for an `org:ci`-scoped token (§11 recommendation).
+- **Stock + TOTP** (unverified since R118): the open items in
+  `docs/operations/OPERATOR_ACTIONS_R118.md` — status header refreshed
+  R122.
+
+## 15. Backups & restore drills (pointer)
+
+Nightly **on the VM host** (host cron, not Coolify, not Neon):
+`scripts/backup-cron.sh` at **03:15 UTC daily**, gzip dumps to
+`/var/backups/subnation/`, keep 14, exit code propagated so cron flags
+failures; optional off-VM copy via `BACKUP_PRESIGNED_PUT_URL` (S3-compatible
+presigned PUT). Neon's own point-in-time history is only ~6 h on the free
+plan — the nightly dump is the primary recovery path.
+
+**Full inventory + scenarios:** `docs/DISASTER_RECOVERY.md`. **Restore
+procedure + drill ledger:** `docs/deployment/FINAL_RESTORE_DRILL.md` — two
+PASS drills on record (2026-09-25 R112; 2026-10-01 R115 — the R115
+pre-cutover drill, with the verified artifact
+`subnation_preR115_20261001T024634Z.sql.gz`). Re-run a drill after any
+backup-script change.

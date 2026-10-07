@@ -144,8 +144,8 @@ scratch cluster on 127.0.0.1. It therefore validates the dump pipeline, the
 restore path, and the validation tooling end-to-end. It does NOT prove the
 on-VM toolchain (host-cron entry, `pg_dump` on the VM's PATH, `/var/backups`
 write path) — which is why the operator's **first ON-VM drill remains a
-cutover-checklist item** (`docs/deployment/FINAL_MIGRATION_READINESS.md` §2
-"restore rehearsal before cutover" + Operator TODOs, `docs/r111-round-report.md`
+cutover-checklist item** (`docs/deprecated/FINAL_MIGRATION_READINESS.md` §2
+"restore rehearsal before cutover" + Operator TODOs, `docs/history/r111-round-report.md`
 item 5, and the `PENDING-OPERATOR` ledger row in `docs/DISASTER_RECOVERY.md`).
 
 ## 5. Cadence

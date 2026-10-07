@@ -21,7 +21,7 @@
  Cloudflare DNS (DNS-only, grey cloud — observed live: NO proxy, NO edge
     │  TLS/WAF, NO WebSockets toggle in the path. The never-enacted r112
     │  design was proxied-orange + Full (strict) — see CLOUDFLARE_FINAL_CUTOVER §8)
-    │  subnation.ly A → 169.58.100.161 · www → same A (both 200, no redirect today)
+    │  subnation.ly A → 169.58.100.161 · www → same A, **redirected www→apex 308 at Traefik (www-redirect.yml, priority 1000, R121)**
     ▼
  self-hosted VM :443  (observed host: Contabo — R117 live probe; 22/80/443 public)
     │

@@ -51,7 +51,7 @@ pnpm --filter @workspace/scripts exec tsx src/validate-production-env.ts \
 ```bash
 ssh ubuntu@<OPERATOR_INPUT_VM_IP>
 sudo apt update && sudo apt full-upgrade -y
-# …then follow: docs/deployment/ORACLE_FINAL_SETUP.md §2-§11 (sshd hardening,
+# …then follow: docs/deprecated/ORACLE_FINAL_SETUP.md §2-§11 (sshd hardening,
 #    swap, docker, the TWO-layer firewall contract, fail2ban, Coolify install,
 #    AND §9 host tooling: Node.js + Corepack/pnpm + postgresql-client-17 —
 #    required later by the backup chain and docker-verify) — Oracle-era

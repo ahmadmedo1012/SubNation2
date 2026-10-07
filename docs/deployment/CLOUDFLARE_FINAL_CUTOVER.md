@@ -161,6 +161,15 @@ decision — not needed for this cutover.
 
 ## 8. R117 canonical-host addendum (observed 2026-10-05)
 
+> **2026-10-07 (R121) update — the recommendation below is EXECUTED:**
+> www→apex is LIVE as a **308** at the Traefik file-provider layer
+> (`/data/coolify/proxy/dynamic/www-redirect.yml`, priority 1000; the
+> dead v2-syntax `subnation.yml` + 4 backups quarantined to
+> `dynamic-archive/`). Design/rollback record:
+> `docs/operations/WWW_TO_APEX_301.md`; operator summary:
+> `OPERATIONS_RUNBOOK.md` §13. The observations below are the dated
+> R117 record (pre-redirect) — kept verbatim.
+
 Observed live reality, recorded by the R117 smoke audit — it differs from
 what §1–§2 above describe and from the `f10bb9b` commit's premise:
 

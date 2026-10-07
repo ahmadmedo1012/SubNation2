@@ -225,7 +225,9 @@ multi-instance shape.
   openwa gateway. Free-tier hour economics: shared 750 h/month pool across 8
   services → exhausted → all services billing-suspended (~2026-09-11;
   `subnation.ly` 503, resume/deploy API-rejected — dated records:
-  `docs/free-tier-optimization-2026-09-20.md`, `docs/final-audit-2026-09-20.md`;
+  `docs/history/free-tier-optimization-2026-09-20.md`,
+  `docs/history/final-audit-2026-09-20.md` (both moved to `docs/history/`
+  by the R122 docs reorg);
   the last live deploy runs 2026-09-11 code) → monthly October reset cycle.
   The migration's motivation.
 - **2026-09-20:** Northflank fully rolled back (project deleted, keys

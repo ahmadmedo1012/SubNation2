@@ -34,10 +34,11 @@ Pre-rollback gates (all three, in order):
 
 1. **CI green on the target commit** — GitHub → Actions on that exact SHA.
    A commit whose CI is red is not a rollback target, it is a second incident.
-   **While Actions is disabled on SubNation2 (billing — still true at R115,
-   2026-10-01): substitute the local gate run** —
-   `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL on the target SHA (the
-   exact CI commands). Do NOT skip this gate because GitHub shows nothing.
+   (The repo is public and Actions runs on every push since R119 — the
+   R115-era "Actions disabled (billing)" state is history. If a run is
+   somehow missing, substitute the local gate run —
+   `docs/deployment/FINAL_COMMAND_BOOK.md` §LOCAL on the target SHA, the
+   exact CI commands. Do NOT skip this gate.)
 2. **Migration compatibility** — the target commit must share the same
    migration state as what is live (§4). `git diff <live-sha> <target-sha> --
    backend/src/migrate.ts shared/db/src/schema/` — empty diff = inside the

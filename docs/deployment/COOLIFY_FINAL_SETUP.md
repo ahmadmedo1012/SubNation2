@@ -28,7 +28,7 @@
 
 - [ ] Coolify installed on the VM (wizard done, strong admin
       password). VM prep — firewall contract (public 22/80/443 only), swap,
-      Docker: `docs/deployment/ORACLE_FINAL_SETUP.md`.
+      Docker: `docs/deprecated/ORACLE_FINAL_SETUP.md` (moved R122).
 - [ ] GitHub connected to Coolify (source-control providers) with a token
       that can READ `ahmadmedo1012/SubNation2` (repo is PUBLIC since the
       wave-1 cutover — API `private:false`, verified 2026-10-07; a token is

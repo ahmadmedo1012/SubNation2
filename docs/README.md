@@ -1,190 +1,138 @@
 # SubNation2 — Docs Index
 
-> Status legend: **CURRENT** = verified against code/live state, safe to act on
-> (open-fix notes inline where a section is stale) · **STALE** = truth-pass or
-> re-scope before trusting · **ARCHIVED** = dated historical artifact (proposed
-> move to `docs/archive/` — moves are NOT executed; this index is the record).
+> Status legend: **CURRENT** = verified against code/live state, safe to
+> act on · **HISTORY** = dated historical artifact, now under
+> `docs/history/` · **DEPRECATED** = superseded/executed plan or
+> migration-era guide, now under `docs/deprecated/` · **PENDING** =
+> designed-but-deferred work, now under `docs/pending/`.
 >
-> Index written **R118 (2026-10-06)**, executing the proposal in
-> `docs/inspection-r118/R118-A7-docs.md` §5 (96 files inventoried at `ef3d0c3`;
-> this index reconciles it against the live tree: +7 `inspection-r118/` reports
-> + 4 new operations docs + this file = 108 markdown files under `docs/` at
-> R118). **Post-merge recount (2026-10-07, R119-B4): merge `966d70f` added the
-> three mission-era trees (+15 md) — total markdown under `docs/` is now
-> 123**; see "Mission-era truth maps" below and Index stats.
-> Live baseline for every "current state" claim: `https://subnation.ly` 200,
-> Contabo VM + Coolify + Traefik + Let's Encrypt at origin, Neon Postgres 17
-> (us-east-1, pooled endpoint), Cloudflare **DNS-only (grey)** — verified
-> R118 (2026-10-06), evidence in `R118-A7-docs.md` §1.
+> **R122 docs reorganization (2026-10-07) — EXECUTED.** The R118-era
+> "proposed move to `docs/archive/`" was superseded and executed by the
+> R122-D1 round as the 4-bucket layout (CURRENT in place · HISTORY ·
+> DEPRECATED · PENDING — see the bucket table below). All moves used
+> `git mv`; every moved file carries a one-line banner with its old path;
+> `docs/history/README.md` is the move map. Dated ledger entries that cite
+> pre-move paths (CHANGELOG rounds, the progress log) are intentionally
+> not retro-edited.
 >
-> Repo-root companions (not under `docs/`): `README.md` and
-> `OPERATIONS_RUNBOOK.md` were **FALSE** at R118-Audit (A7 F1–F3: they describe
-> the pre-2026-10 Render/Vercel stack as production) — **corrected 2026-10-06
-> by the R118-B4a truth pass** (live Contabo/Coolify stack recorded; Render/
-> Vercel demoted to LEGACY).
+> Index rewritten **R122 (2026-10-07)** on top of the R118/R119 passes.
+> Live baseline for every "current state" claim: `https://subnation.ly`
+> 200 (Contabo VM + Coolify + Traefik + Let's Encrypt at origin, Neon
+> Postgres 17 us-east-1 pooled, Cloudflare **DNS-only grey**),
+> **www→apex 308 LIVE at the Traefik layer since R121** (`www-redirect.yml`
+> priority 1000), **Sentry LIVE both sides since R121-B** (org `subnation`
+> EU/de, projects `javascript-react` + `subnation-backend`),
+> **Telegram ops channel LIVE since R121** — verified R122-D1 against the
+> progress log R121 entries + live probes.
+>
+> Repo-root companions (not under `docs/`): `README.md` (intro + deployment
+> status), `OPERATIONS_RUNBOOK.md` (on-call playbook — §11 Sentry, §12
+> Telegram ops, §13 edge canonicalization, §14 pending actions, §15
+> backups added R122), `CHANGELOG.md` (round ledger; R121 entry added
+> R122). The old root snapshots `PLATFORM.md` + `PROJECT_OVERVIEW.md`
+> moved to `docs/history/`.
 
 ## Start here — for incidents
 
 1. **`docs/DISASTER_RECOVERY.md`** — is data at risk? (RTO/RPO, backup
    inventory, recovery scenarios; two PASS restore drills on record in
    `docs/deployment/FINAL_RESTORE_DRILL.md`.)
-2. **`OPERATIONS_RUNBOOK.md`** (repo root) — §2 alert-triage anchors are
-   verified accurate (A7 §3e); §5/§9 rewritten to the live single-origin
-   stack (R118-B4a, 2026-10-06).
+2. **`OPERATIONS_RUNBOOK.md`** (repo root) — §2 alert-triage anchors,
+   §4 Coolify deploy/rollback, §11–§15 the R121+ operator sections
+   (Sentry pipeline, Telegram ops, edge canonicalization, pending
+   actions, backups).
 3. **`docs/operations/FINAL_MONITORING.md`** — healthz family, cron slots,
-   alerting channels, weekly checklist (retitled "self-hosted VM + Coolify"
-   with the observed-Contabo-host note — R118-B4a; A7 F7).
+   alerting channels, weekly checklist.
 
 Not an incident but "what do I do next?" →
-**`docs/operations/OPERATOR_ACTIONS_R118.md`** (the ordered, dated operator
-action list for this round — deploy, stock, TOTP are launch-blocking).
+**`docs/operations/OPERATOR_ACTIONS_R118.md`** (status refreshed R122:
+actions 1 & 8 DONE — 8 executed as the 308; 2/3 unverified; 4–7, 9–10
+open).
 
-## CURRENT (operator-facing) — 38 files
+## Pointer hierarchy (of record)
+
+`docs/README.md` (this index) = the front door →
+`docs/project-state/source-of-truth.md` = current live state →
+`docs/architecture/FINAL_*` = topology/capacity records.
+`OPERATIONS_RUNBOOK.md` owns on-call ops; `CHANGELOG.md` owns the round
+ledger; `docs/API.md` owns the API surface.
+
+## CURRENT (operator-facing) — 48 files in place
 
 ### operations/ (the runbooks you actually open)
 
-| File | What it covers | R118-B4a status (2026-10-06) |
+| File | What it covers | Status |
 |---|---|---|
-| `operations/OPERATOR_ACTIONS_R118.md` | **NEW R118** — the ordered operator action list (deploy / stock / TOTP / region / proxy decisions) | — |
-| `operations/CONTABO_COOLIFY_OPERATIONS.md` | **NEW R118** — day-2 ops for the live Contabo host + Coolify + Traefik | — |
-| `operations/NEON_COLD_START_RUNBOOK.md` | **NEW R118** — Neon auto-suspend: symptoms, checks, when to panic, mitigation menu | — |
-| `operations/WWW_TO_APEX_301.md` | **NEW R118** — the paste-able Traefik 301 for the canonical-host decision | — |
-| `operations/FINAL_INVENTORY_LOADING.md` | How sellable stock is loaded/verified/rolled back — the #1 operator runbook | §8 refreshed to the R118 snapshot (3 active-product units, ids 79/80/81 pending operator verify-or-delete; §4 SQL named the truth); stamp + drifted cites fixed |
-| `operations/FINAL_ADMIN_TOTP_SETUP.md` | TOTP enrollment on `ahmadmedo` (implemented, not yet enrolled) | stamp re-verified R118 (the F21 test-filename quote was stale — `.tsx` already on disk) |
-| `operations/FINAL_MONITORING.md` | What to watch, cron slots, healthz family, alerting | retitled + observed-host note (F7); CF-WebSocket triage re-routed to Traefik/origin with the DNS-only caveat (F8) |
-| `operations/LOGGING_AND_RETENTION_FINAL.md` | Retention windows + log rotation — **best doc in the set** (A7 §3d: all 13 rows exact) | openwa cites labeled as sibling-repo (F30) |
+| `operations/OPERATOR_ACTIONS_R118.md` | The ordered operator action list | status header refreshed R122 (1 & 8 DONE; 2/3 unverified; 4–7, 9–10 open) |
+| `operations/CONTABO_COOLIFY_OPERATIONS.md` | Day-2 ops for the live Contabo host + Coolify + Traefik | §5 updated R122 (www→apex 308 LIVE); Oracle-guide refs repointed to `docs/deprecated/` |
+| `operations/NEON_COLD_START_RUNBOOK.md` | Neon auto-suspend: symptoms, checks, when to panic, mitigation menu | §6 updated R122 (live 308, not planned 301) |
+| `operations/WWW_TO_APEX_301.md` | The canonical-host change | **EXECUTED 2026-10-07 (R121)** — live as a **308** via `www-redirect.yml`; preserved as the design + rollback record |
+| `operations/FINAL_INVENTORY_LOADING.md` | How sellable stock is loaded/verified/rolled back — the #1 operator runbook | CURRENT (stock items 2/3 still open — see OPERATOR_ACTIONS) |
+| `operations/FINAL_ADMIN_TOTP_SETUP.md` | TOTP enrollment on `ahmadmedo` | CURRENT (enrollment still unverified through R121) |
+| `operations/FINAL_MONITORING.md` | What to watch, cron slots, healthz family, alerting | CURRENT (Oracle refs repointed to `docs/deprecated/` R122) |
+| `operations/LOGGING_AND_RETENTION_FINAL.md` | Retention windows + log rotation | CURRENT |
 
 ### architecture/
 
-| File | Covers | Notes |
+| File | Covers | Status |
 |---|---|---|
-| `architecture/FINAL_PRODUCTION_TOPOLOGY.md` | THE topology source of truth | §1 diagram redrawn (DNS-only + self-hosted VM), capacity model genericized, chain → V1-M23 + drizzle 0015/0016 note (F9/F10/F20) |
-| `architecture/PRODUCTION_ARCHITECTURE.md` | Data-path + migration-chain detail | R117-C1 fixes verified; the "Cloudflare →" diagram + stack-one-line now carry the DNS-only/self-hosted correction (F9 class) |
+| `architecture/FINAL_PRODUCTION_TOPOLOGY.md` | THE topology source of truth | §1 diagram updated R122 (www 308 at Traefik) |
+| `architecture/PRODUCTION_ARCHITECTURE.md` | Data-path + migration-chain detail | CURRENT (history refs repointed to `docs/history/` R122) |
 
 ### deployment/
 
-| File | Covers | Notes |
+| File | Covers | Status |
 |---|---|---|
-| `deployment/CLOUDFLARE_FINAL_CUTOVER.md` | DNS/cutover history | §1 now annotated "as DESIGNED at r112 — OBSERVED LIVE = DNS-only grey, see §8" (F18); **§8 addendum remains the truth** |
-| `deployment/COOLIFY_FINAL_SETUP.md` | The two Coolify resources + domains + healthchecks | host-neutral, accurate (A7 verdict) |
-| `deployment/FINAL_COMMAND_BOOK.md` | Copy-paste command book | VM section retitled (originally Oracle ARM64; CURRENT HOST = Contabo, native arch; `--arm64` conditional) + DNS-state warning (F17/F18) — see also `operations/CONTABO_COOLIFY_OPERATIONS.md` |
-| `deployment/FINAL_PRODUCTION_ENV.md` | The env contract (per-variable authority) | stamp re-verified at ef3d0c3 (R118-A7) |
-| `deployment/FINAL_ROLLBACK_RUNBOOK.md` | Redeploy-rollback choreography | subtitle corrected to self-hosted VM (host-neutral content) |
-| `deployment/FINAL_RESTORE_DRILL.md` | Restore-drill procedure + ledger (2 PASS drills) | accurate (A7 verdict) |
-| `deployment/FINAL_SIGNOFF.md` | Dated release ledger (R115 = cutover release) | accurate as a dated record |
-| `deployment/SECRET_HANDLING_FINAL.md` | Secret map for the two Coolify resources | accurate (A7 verdict) |
-| `deployment/NEON_IDLE_ECONOMICS.md` | Neon free-tier CU math, suspend policy | stamp re-verified R118 + the R117 OTP `lockPool` note added (F19) |
-| `deployment/ENVIRONMENT_MATRIX.md` | r108-era env matrix | "Oracle single-container shape" wording genericized (rows verified) |
-| `deployment/RENDER_LEGACY_FALLBACK.md` | Render legacy record | `:4-5` "Production = Cloudflare → Oracle VM" corrected to the live DNS-only/Contabo path (F9/F11 class) |
+| `deployment/CLOUDFLARE_FINAL_CUTOVER.md` | DNS/cutover history | §8 carries the R121 EXECUTED update note (R122); §1–§7 are the dated r112 design record |
+| `deployment/COOLIFY_FINAL_SETUP.md` | The two Coolify resources + domains + healthchecks | CURRENT |
+| `deployment/FINAL_COMMAND_BOOK.md` | Copy-paste command book | CURRENT |
+| `deployment/FINAL_PRODUCTION_ENV.md` | The env contract (per-variable authority) | Sentry token row updated R122 (Coolify build-time since R121-B) |
+| `deployment/FINAL_ROLLBACK_RUNBOOK.md` | Redeploy-rollback choreography | CI gate note updated R122 (repo public, Actions on push) |
+| `deployment/FINAL_RESTORE_DRILL.md` | Restore-drill procedure + ledger (2 PASS drills) | CURRENT |
+| `deployment/FINAL_SIGNOFF.md` | Dated R115 release ledger | cutover-executed note added R122 |
+| `deployment/SECRET_HANDLING_FINAL.md` | Secret map for the two Coolify resources | CURRENT |
+| `deployment/NEON_IDLE_ECONOMICS.md` | Neon free-tier CU math, suspend policy | CURRENT |
+| `deployment/ENVIRONMENT_MATRIX.md` | r108-era env matrix | CURRENT (rows verified) |
 
 ### docs/ root + topic dirs
 
-| File | Covers | Notes |
+| File | Covers | Status |
 |---|---|---|
-| `DISASTER_RECOVERY.md` | THE DR source of truth | host references genericized to the self-hosted (Contabo) VM; drill ledger now mirrors the 2 PASS drills + the honest on-VM gap (F11/F12) |
-| `WHATSAPP_OPERATIONS.md` | WhatsApp gateway ops | R117-C1 rewrite verified accurate |
-| `API.md` | Rate limits + surface (operator reference) | accurate (A7 verdict) |
-| `COMPLIANCE.md` | Data-retention/backup compliance claims | **corrected R118-B4a** (F13/F14): audit_logs 180-day purge documented; nightly automated backups + the 2 PASS restore drills recorded |
-| `FINAL_MONEY_INVARIANTS.md` | M1–M14 money invariants | header stamp re-verified R118 (prior proofs 521234f/ef3d0c3); M1/M4/M7 cites + M10 suite + index locations corrected (A1 F-2/F-8, A5 infra-6) |
-| `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | accurate — endpoint matches live probe URL (A7 verdict) |
-| `loyalty/FINAL_LOYALTY_POLICY.md` · `loyalty/LOYALTY_ECONOMICS.md` | Loyalty policy + economics | accurate (A7 verdict) |
-| `pricing/PRICING_ECONOMICS.md` | Pricing/margin model | accurate (A7 verdict) |
-| `ux/FINAL_UX_SYSTEM.md` | UX/design-system policy | accurate (A7 verdict) |
+| `DISASTER_RECOVERY.md` | THE DR source of truth | canonical-host line updated R122 (www 308→apex) |
+| `WHATSAPP_OPERATIONS.md` | WhatsApp gateway ops | CURRENT (R117 rewrite verified) |
+| `API.md` | Rate limits + surface (operator reference) | CURRENT |
+| `COMPLIANCE.md` | Data-retention/backup compliance claims | CURRENT (R118-B4a corrections) |
+| `FINAL_MONEY_INVARIANTS.md` | M1–M14 money invariants | CURRENT |
+| `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
+| `SEO_PRODUCTS.json` | The 37 curated Arabic product entries (R116) | CURRENT |
+| `loyalty/FINAL_LOYALTY_POLICY.md` · `loyalty/LOYALTY_ECONOMICS.md` | Loyalty policy + economics | CURRENT |
+| `pricing/PRICING_ECONOMICS.md` | Pricing/margin model | CURRENT |
+| `ux/FINAL_UX_SYSTEM.md` | UX/design-system policy | CURRENT |
 
-### inspection-r118/ (this round's evidence — read alongside the docs above)
-
-`R118-A1-backend.md` (backend correctness) · `R118-A2-frontend.md` (frontend/a11y)
-· `R118-A3-database.md` (live DB census + the F1 stock finding) ·
-`R118-A4-security.md` (security; F-1 TOTP-not-enrolled) ·
-`R118-A5-tests.md` (test quality + coverage gaps) ·
-`R118-A6-performance.md` (latency census, plans, pool math) ·
-`R118-A7-docs.md` (this docs audit + the index proposal this file executes).
-
-## Mission-era truth maps (waves line, merged in `966d70f`) — 3 trees
-
-> **Pointer hierarchy (declared once, of record):** `docs/README.md` (this
-> index) = the front door → `docs/project-state/source-of-truth.md` = current
-> live state → `docs/architecture/FINAL_*` = topology/capacity records.
-
-These three trees are the mission-era truth maps (Wave-0..10 snapshot,
-2026-10-05; live truth reconciled post-merge `966d70f` — discrepancies are
-recorded in `project-state/source-of-truth.md` "Known contradictions" #7,
-R119-B4 pass 2026-10-07):
+### project-plan/ + project-state/ + project-graph/ (mission-era trees)
 
 | Tree | Files | What it is |
 |---|---|---|
-| `project-graph/` | 13 `.mmd` (00–12) | Mermaid truth maps: system overview, repository, runtime, deployment (CURRENT map = `03-deployment-target.mmd`; the stale pre-Wave-1 `03-deployment.mmd` was deleted 2026-10-07, preserved in git history), data model, authentication, commerce flow, WhatsApp flow, admin capabilities, provider flow, external integrations, env/secrets, source-of-truth |
-| `project-plan/` | 11 `.md` (00–10) | Master plan (all waves DONE 2026-10-05), current/target state, dependency graph, critical path, execution waves, verification matrix, deployment plan, rollback plan, external blockers (rows 3 + 6 RESOLVED), append-only progress log (ends with the `966d70f` merge record) |
-| `project-state/` | 4 `.md` | `source-of-truth.md` (current live state — part of the pointer hierarchy above), `external-integrations-final.md` (Vercel DELETED / Render RETIRED record, Coolify production authority, WhatsApp `subnation-otp` paired & READY), `wave-345-audit.md`, `embronic-adapter-design.md` |
+| `project-plan/` | `10-progress-log.md` (append-only; R121+ still writes to it) | THE progress ledger — 00–09 moved to `docs/deprecated/project-plan/` (all waves DONE 2026-10-05) |
+| `project-state/` | `source-of-truth.md` (current live state — part of the pointer hierarchy; R121 reconciliation + reorg note added R122), `external-integrations-final.md` | Live-state records; `wave-345-audit.md` → `docs/history/`, `embronic-adapter-design.md` → `docs/pending/` |
+| `project-graph/` | 13 `.mmd` (00–12) | Mermaid truth maps (CURRENT deployment map = `03-deployment-target.mmd`) |
 
-## STALE (truth-pass or re-scope before trusting) — 6 files under docs/
+## The 4-bucket layout (R122, 2026-10-07)
 
-> The **R118-B4a truth pass landed 2026-10-06**: the two repo-root historical
-> snapshots below were corrected in place (false-present-tense claims flipped,
-> "current state" pointers repointed to this index); the `deployment/`
-> migration-era files remain historical records — check each file's own header
-> stamp before trusting it.
+| Bucket | Files | Location |
+|---|---|---|
+| **CURRENT** | 48 (33 md + 13 mmd + 1 json) | in place (this index's tables above) |
+| **HISTORY** | 74 (incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r118, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit` |
+| **DEPRECATED** | 16 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set |
+| **PENDING** | 1 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design; `FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands) |
 
-- `PLATFORM.md` (repo root, bannered historical) — false-present-tense claims
-  inside the banner corrected R118-B4a (A7 F6); still a dated snapshot.
-- `PROJECT_OVERVIEW.md` (repo root, bannered historical, Arabic) — "current
-  state" pointers repointed to this index + the runbook, and the live
-  Contabo/Coolify stack recorded (A7 F35; R118-B4a).
-- `deployment/MIGRATION_RUNBOOK.md` — Render/Vercel→Oracle checklist;
-  migration complete.
-- `deployment/COOLIFY_ORACLE_MIGRATION.md` — r107 migration guide; historical.
-- `deployment/ORACLE_FINAL_SETUP.md` — complete **Oracle Cloud** provisioning
-  guide for a host that is not the live one (live = Contabo; A7 F17). Keep for
-  its host-neutral VM-hardening sections until folded into
-  `operations/CONTABO_COOLIFY_OPERATIONS.md`, then archive.
-- `deployment/FINAL_MIGRATION_READINESS.md`, `FINAL_OPERATOR_INPUTS.md`,
-  `FINAL_CUTOVER_CHECKLIST.md` — migration-era "pending" docs; the cutover
-  executed 2026-10-01/02 (A7 F32 — the checklist now carries an EXECUTED
-  banner, R118-B4a).
-
-## ARCHIVED (proposed `docs/archive/` moves — NOT executed; 63 files)
-
-All are dated audit/round artifacts — valuable as history, wrong as "current
-state". Proposal: `git mv` into `docs/archive/` (keeps history) + add an
-`ARCHIVED (date)` first line. Nothing is moved by R118; this list is the
-proposal of record (A7 §5 rules: `FINAL_*` stays the CURRENT naming pattern;
-dated files get the ARCHIVED banner instead of deletion).
-
-- **Inspection rounds:** `inspection-r94/` (8) · `inspection-r96/` (6) ·
-  `inspection-r97/` (6) · `inspection-r98/` (8) · `inspection-r111/` (5) ·
-  `inspection-r117/` (4) — 37 files, ≈1.0 MB.
-  (`inspection-r118/` stays CURRENT — it is this round's evidence.)
-- **Round reports + repair plans:** `round-92-audit` · `round-93-audit` ·
-  `round-94-audit` · `round-95-whatsapp-excellence` ·
-  `round-96-mobile-perfection` · `round-96-repair-plan` ·
-  `round-97-repair-plan` · `round-97-report` · `round-98-repair-plan` ·
-  `round-98-report` · `r110-remediation-2026-09-23` · `r111-round-report` ·
-  `r116-round-report` · `r117-round-report` — 14 files.
-- **Dated audits/plans:** `deep-audit-2026-09-06` ·
-  `strongest-round-2026-09-06` · `db-audit-2026-09-07` ·
-  `final-audit-2026-09-20` · `free-tier-optimization-2026-09-20` ·
-  `subnation-ux-world-class-plan-2026-09-06` — 6 files.
-- **UX audits:** `ux-audit-storefront` · `ux-audit-admin` ·
-  `ux-audit-icons` — 3 files.
-- **Catalog/SEO:** `catalog/final-report-2026-09-20` ·
-  `catalog/catalog-gap-analysis-2026-09-20` · `seo-enrichment-r116` — 3 files.
-
-## Index stats (R118, 2026-10-06)
-
-- **CURRENT: 38** (27 verified legacy docs + 7 `inspection-r118/` reports +
-  4 new operations docs) — 15 of the 27 legacy carry inline open-fix notes
-  (A7 findings being addressed in this round's truth pass).
-- **STALE: 6** under `docs/` (+2 repo-root historical snapshots + the two
-  root front-door docs named in the header).
-- **ARCHIVED proposals: 63.**
-- Total markdown under `docs/`: 108 at R118 + 15 from the merged waves line
-  (11 `project-plan/` + 4 `project-state/`) = **123** (recounted 2026-10-07,
-  R119-B4; excludes the 13 `.mmd` graph files under `project-graph/`).
+Move map for dated ledger entries: `docs/history/README.md`.
 
 ## House rules (from A7 §5, binding for new docs)
 
 1. `FINAL_*` is the only naming pattern for CURRENT operator docs.
-2. Dated files get an `ARCHIVED (date)` first line instead of deletion.
+2. Dated files get an `ARCHIVED (date)` first line instead of deletion —
+   now enforced by the R122 banners on every moved file.
 3. Every "for current state see X" pointer lands on **this index**.
-4. New docs carry `Status: CURRENT @ <date>` and the change that invalidates
-   them must touch that line.
+4. New docs carry `Status: CURRENT @ <date>` and the change that
+   invalidates them must touch that line.

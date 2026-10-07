@@ -12,6 +12,10 @@
 > V1-M21 opening-balance boot-abort P0, calculator safe-min math, FIFO
 > pre-ledger reversals).
 >
+> **Cutover executed 2026-10-01/02** — this table is the dated R115
+> pre-cutover ledger; the post-cutover release record is `git log` +
+> `docs/project-plan/10-progress-log.md` (R116→R121).
+>
 > **CI truth for this table:** GitHub Actions is disabled on SubNation2
 > (billing suspension — `FINAL_OPERATOR_INPUTS.md` §account-level cleanup), so
 > **zero CI runs exist for `6f14bc3` on GitHub**. Every gate below was
@@ -51,8 +55,8 @@
 
 ## Remaining operator actions (the only work left)
 
-Per `docs/deployment/FINAL_OPERATOR_INPUTS.md` + the executable
-`docs/deployment/FINAL_CUTOVER_CHECKLIST.md`: VM provisioning → Coolify →
+Per `docs/deprecated/FINAL_OPERATOR_INPUTS.md` + the executable
+`docs/deprecated/FINAL_CUTOVER_CHECKLIST.md`: VM provisioning → Coolify →
 secrets → docker-verify/preflight on VM → backup cron + restore drill →
 WhatsApp QR → TOTP enrollment → inventory load → private smoke test →
 DNS cutover. Account-level: restore Actions minutes (or accept local-gate

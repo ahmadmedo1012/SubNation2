@@ -1,12 +1,15 @@
 # www → apex 301 at Traefik — SubNation Canonical-Host Change
 
-> Status: CURRENT @ 2026-10-06 (R118). Operator action, S effort,
-> stateless + instantly reversible.
+> Status: **EXECUTED 2026-10-07 (R121)** — live as a **308** (not the 301
+> proposed below) via the standalone dynamic router
+> `/data/coolify/proxy/dynamic/www-redirect.yml` (priority 1000; the §3
+> "Alternative" shape). This doc is preserved as the design + rollback
+> record; §4 expectations read 301 where production returns 308.
 > Decision + evidence recorded in
 > `docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8 (R117 addendum, observed
 > 2026-10-05); this doc adds the paste-able config it asked for
 > (R118-A7 F34(c)). Companion: `docs/operations/CONTABO_COOLIFY_OPERATIONS.md`
-> §5 (the Traefik layer).
+> §5 (the Traefik layer); operator summary: `OPERATIONS_RUNBOOK.md` §13.
 
 ## 1. The decision (already made by the codebase)
 
@@ -21,12 +24,11 @@ observations, 2026-10-05):
   baked into `frontend/index.html:63` since R117 (verified present in the
   build output by R117-V2).
 
-Today, however, **no redirect exists at any layer**: `https://www.
-subnation.ly/` and the apex both answer 200 with byte-identical bodies
-(verified R118 2026-10-06, `R118-A7-docs.md` §1). Two live hostnames for
-one site dilutes the SEO consolidation the canonical signals are aiming
-at. The fix: a single **www→apex 301 (permanent)** so every www URL lands
-on the apex original.
+Executed 2026-10-07: www → apex **308** (path + query preserved); apex 200.
+(Pre-R121 both hostnames answered 200 byte-identical — R118 record,
+verified `R118-A7-docs.md` §1.) A single live hostname per site is what
+the canonical signals below were aiming at; the redirect is now in force
+at the Traefik layer.
 
 ## 2. Why the redirect lives at Traefik — NOT in-app, NOT Cloudflare
 

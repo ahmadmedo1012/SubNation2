@@ -51,7 +51,7 @@ dangerous-green gap where `EX` deletion on either SET passed silently)
 Full-suite proof at 521234f (R112): **backend 157 files / 1447 tests /
 0 failed**; the money files above are the money slice of that number.
 (Counts move every round — R117 recorded 165 files / 1517 tests, R118 adds
-more; see `docs/inspection-r118/`. The money slice itself is indexed above.)
+more; see `docs/history/inspection-r118/`. The money slice itself is indexed above.)
 
 ## 3. Migration ordering truth (r112 re-verified)
 

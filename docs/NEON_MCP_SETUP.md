@@ -76,7 +76,8 @@ The project uses Neon PostgreSQL:
 
 - Host: ep-spring-term-avwgxrte-pooler.c-11.us-east-1.aws.neon.tech
   (project `calm-art-99771185` "SubNation2" — created 2026-08-25 after the
-  quota exhaustion of the original project; see PLATFORM.md incident section.
+  quota exhaustion of the original project; see the incident section of
+  `docs/history/PLATFORM.md` (the 2026-09-02 snapshot).
   The old host `ep-noisy-dream-aqltup8y…` is DEAD — never wire tooling to it.)
 - Database: neondb
 - User: neondb_owner

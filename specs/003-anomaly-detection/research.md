@@ -2,8 +2,9 @@
 
 **Feature**: 003-anomaly-detection
 **Phase**: 0 (research)
-**Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md),
-[`specs/001-ai-opportunity-assessment/assessment.md`](../001-ai-opportunity-assessment/assessment.md).
+**Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md)
+(spec 001 — ai-opportunity-assessment — is referenced by the original
+research but was never committed to this repo; `specs/` starts at 003).
 
 This file resolves the technical decisions left open by the
 design document. Each decision is in the format

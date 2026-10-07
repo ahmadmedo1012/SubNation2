@@ -88,8 +88,9 @@ already baked as `<link rel="canonical" href="https://subnation.ly/">`).
   observability, scripts/start) — deliberately kept (documented legacy, no
   service exists to reach; R117 A7-2 restored the boot warn for the
   split-era-origin family).
-- Historical docs (`docs/deployment/RENDER_LEGACY_FALLBACK.md`,
-  `docs/free-tier-optimization-2026-09-20.md`, round reports) preserved as
+- Historical docs (`docs/history/RENDER_LEGACY_FALLBACK.md`,
+  `docs/history/free-tier-optimization-2026-09-20.md`, round reports —
+  moved to `docs/history/` by the R122 docs reorg) preserved as
   labeled historical evidence. The `r115-db` re-suspension record stands.
 
 ## Coolify status — production authority
@@ -125,4 +126,5 @@ already baked as `<link rel="canonical" href="https://subnation.ly/">`).
 2. Optional: GA4 ID, Search Console token, Sentry DSNs, Telegram alert-bot
    pair, Redis (deliberately unset by design), inventory restock for
    provider-backed products (or wait for the Embronic integration prepared in
-   `docs/project-state/embronic-adapter-design.md`).
+   `docs/pending/embronic-adapter-design.md` — moved there by the R122
+   docs reorg).
