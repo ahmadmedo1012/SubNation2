@@ -181,7 +181,8 @@ function projectVariantDtos(
     const price = parseFloat(String(v.priceLyd));
     // Two-pool availability, mirroring the checkout claim exactly.
     const available =
-      (pool.scopedByVariant.get(v.id) ?? 0) > 0 || (pool.genericByProduct.get(v.productId) ?? 0) > 0;
+      (pool.scopedByVariant.get(v.id) ?? 0) > 0 ||
+      (pool.genericByProduct.get(v.productId) ?? 0) > 0;
     const plan = v.planLabel?.trim() || null;
     const duration = v.durationLabel?.trim() || null;
     const label = [plan, duration].filter(Boolean).join(" — ") || "الخيار الافتراضي";
@@ -615,9 +616,7 @@ router.get("/by-slug/:slug", catalogCache, async (req, res) => {
       db
         .select({ count: count() })
         .from(ordersTable)
-        .where(
-          and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed")),
-        ),
+        .where(and(eq(ordersTable.productId, product.id), eq(ordersTable.status, "completed"))),
     ]);
 
     return {
@@ -731,6 +730,16 @@ router.get("/:id/recommendations", catalogCache, async (req, res) => {
 
     if (!product) return { found: false as const };
 
+    // R120-B6/A6-F15: products.category is NULLABLE — a product with no
+    // category has no same-category peers. Early-return the empty
+    // recommendations array (the exact shape the recommendation select
+    // would produce) instead of leaning on SQL's `= NULL` never-true
+    // comparison, which the old `as string` cast silently papered over
+    // at the type level.
+    if (product.category === null) {
+      return { found: true as const, items: [] };
+    }
+
     const recommendations = await db
       .select({
         id: productsTable.id,
@@ -741,7 +750,7 @@ router.get("/:id/recommendations", catalogCache, async (req, res) => {
       .from(productsTable)
       .where(
         and(
-          eq(productsTable.category, product.category as string),
+          eq(productsTable.category, product.category),
           eq(productsTable.isActive, true),
           eq(productsTable.isArchived, false),
           sql`${productsTable.id} != ${id}`,

@@ -40,6 +40,8 @@ import {
 } from "../../lib/loyalty-policy";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+// R120-B6/A6-F8: zod for the admin lib perimeter.
+import { z } from "zod";
 
 const router = Router();
 
@@ -47,16 +49,26 @@ const router = Router();
 const WATCH_GROSS_PCT = 15; // below this: WATCH
 const THIN_GROSS_PCT = 5; // below this: THIN MARGIN
 
-interface CalculatorInputs {
-  product_id?: number;
-  /** R115: the sellable unit — when omitted, the product's cheapest ACTIVE variant is used. */
-  variant_id?: number;
-  /** Manual sandbox mode (ignored when product_id/variant_id given). */
-  price?: number;
-  cost_price?: number | null;
-  coupon_code?: string;
-  simulate_referred?: boolean;
-}
+/**
+ * R120-B6/A6-F8: the body used to be a bare `req.body as CalculatorInputs`
+ * cast — a non-string coupon_code (e.g. `123`) sailed straight into
+ * computePricing's `.trim()` and 500'd. Local zod perimeter; every
+ * existing 400/404 message is preserved: all fields stay optional so `{}`
+ * still lands on the "أدخل معرف..." guidance 400 below, and floats still
+ * fall through the integer guards exactly as before (the schema only
+ * rejects WRONG-TYPED values — the class that used to crash or silently
+ * misbehave).
+ */
+const CalculatorBody = z.object({
+  variant_id: z.number().optional(),
+  product_id: z.number().optional(),
+  price: z.number().optional(),
+  cost_price: z.number().nullish(),
+  coupon_code: z.string().optional(),
+  simulate_referred: z.boolean().optional(),
+});
+
+type CalculatorInputs = z.infer<typeof CalculatorBody>;
 
 interface CalculatorWarning {
   severity: "loss" | "low_margin" | "info" | "cap";
@@ -67,7 +79,13 @@ interface CalculatorWarning {
 type RiskState = "SAFE" | "WATCH" | "THIN" | "LOSS";
 
 router.post("/pricing/calculate", requireAdmin, async (req, res) => {
-  const body = (req.body ?? {}) as CalculatorInputs;
+  // R120-B6/A6-F8: parse first — wrong-typed fields (the 500 class) get
+  // the standard 400 instead of crashing inside computePricing.
+  const parse = CalculatorBody.safeParse(req.body ?? {});
+  if (!parse.success) {
+    return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+  }
+  const body: CalculatorInputs = parse.data;
 
   const config = await getPricingConfig();
 
@@ -336,7 +354,12 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
       message_ar: "هذا الخيار غير نشط حالياً — لا يمكن شراؤه حتى يُفعَّل.",
     });
   }
-  if (couponInfo && couponInfo.valid && couponInfo.type === "percentage" && couponInfo.value > Math.max(50, capPct)) {
+  if (
+    couponInfo &&
+    couponInfo.valid &&
+    couponInfo.type === "percentage" &&
+    couponInfo.value > Math.max(50, capPct)
+  ) {
     warnings.push({
       severity: "low_margin",
       code: "aggressive_coupon",

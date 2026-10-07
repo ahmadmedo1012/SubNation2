@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
+import { pageParam } from "../lib/http";
 import { logger } from "../lib/logger";
 import { roundLydString } from "../lib/money";
 import { normalizeLibyanPhone } from "../lib/crypto";
@@ -162,12 +163,18 @@ router.get("/", requireUser, async (req, res) => {
 router.get("/topups", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
+  // R120-B6/A6-F1: the list was hard-capped at the first 200 topups with
+  // no way to reach older history. Additive ?page= (admin/orders.ts clamp
+  // idiom, offset=(page-1)*200) — default page=1 → offset 0 → identical.
+  const offset = (pageParam(req) - 1) * 200;
+
   const topups = await db
     .select()
     .from(walletTopupsTable)
     .where(eq(walletTopupsTable.userId, userId))
     .orderBy(desc(walletTopupsTable.createdAt))
-    .limit(200);
+    .limit(200)
+    .offset(offset);
 
   return res.json(topups.map(formatTopup));
 });
@@ -191,13 +198,21 @@ router.get("/ledger", requireUser, async (req, res) => {
 
   const limitRaw = Number(req.query.limit ?? 100);
   const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 100;
+  // R120-B6/A6-F1: additive ?page= (admin/orders.ts clamp idiom,
+  // offset=(page-1)*limit) — rows 201+ were unreachable before. Default
+  // page=1 → offset 0 → byte-identical response. (limitParam from
+  // lib/http.ts is intentionally NOT adopted here: its parseInt idiom
+  // accepts "12.9"/"1e2" where this route's stricter Number.isInteger
+  // idiom falls back to 100 — adoption would drift behavior (A6-F14).)
+  const offset = (pageParam(req) - 1) * limit;
 
   const entries = await db
     .select()
     .from(walletLedgerTable)
     .where(eq(walletLedgerTable.userId, userId))
     .orderBy(desc(walletLedgerTable.createdAt), desc(walletLedgerTable.id))
-    .limit(limit);
+    .limit(limit)
+    .offset(offset);
 
   return res.json(
     entries.map((e) => ({

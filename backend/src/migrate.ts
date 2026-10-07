@@ -1381,6 +1381,68 @@ export async function applyTopupReviewedByStage(
   logger.info({ category: "storage" }, "V1-M23: wallet_topups.reviewed_by (idempotent)");
 }
 
+// ── V1-M24 (R120-B6, A6-F3/F4): user/admin list read-path indexes ─────────
+// Two serving gaps on high-frequency poll surfaces:
+//   A6-F3  the notification bell reads WHERE user_id ORDER BY created_at
+//          DESC LIMIT 40 — the legacy idx_notifications_user (user_id,
+//          is_read) only served the user_id prefix, forcing a top-N sort
+//          on every poll. is_read was never a predicate on that route
+//          (grep-verified), so the shape is SWAPPED same-name to
+//          (user_id, created_at DESC) — V1-M17's probe-gated rebuild
+//          pattern: catalog probe of the live indexdef, DROP+CREATE only
+//          when the old shape is genuinely present, zero DDL on every
+//          steady-state boot.
+//   A6-F4  the admin ticket queue filters status + sorts updated_at DESC
+//          — only the user-side idx_tickets_user existed. Purely
+//          additive (status, updated_at DESC) twin.
+// Plus the R118-A6-F4 leftover: idx_admin_alerts_created was declared in
+// schema TS + the 0016 drizzle mirror with a "boot twin: migrate.ts must
+// CREATE INDEX IF NOT EXISTS this name" promise that never shipped — the
+// live DB never received it (nothing executes the chain at runtime).
+// Closing the loop here (R120-B6 gap-closure, verified: no other creator).
+// Drizzle mirror for all three: 0017_silent_greymalkin.sql.
+export async function applyListReadPathIndexesStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // Additive twins first (V1-M21/B8-10 idiom) — IF NOT EXISTS covers both
+  // the fresh-install and the already-swapped steady state. One statement
+  // per execute: pglite's extended-protocol parser rejects multi-statement
+  // batches (42601), and stage tests run against the pglite harness.
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_tickets_status_updated
+      ON support_tickets (status, updated_at DESC);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_admin_alerts_created
+      ON admin_alerts (created_at DESC);
+  `);
+
+  // A6-F3 same-name swap: probe the live indexdef — only a genuinely
+  // legacy (user_id, is_read) shape pays the DROP+CREATE. Fresh installs
+  // get the new shape directly from the base missing-indexes block above;
+  // steady-state boots send zero DDL on this table.
+  const notifIdxRows = extractRows(
+    await execute(sql`
+      SELECT indexdef AS indexdef FROM pg_indexes
+      WHERE tablename = 'notifications'
+        AND indexname = 'idx_notifications_user'
+    `),
+  );
+  const notifIndexdef = String(notifIdxRows[0]?.["indexdef"] ?? "");
+  if (notifIndexdef.includes("is_read")) {
+    await execute(sql`DROP INDEX IF EXISTS idx_notifications_user`);
+    await execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_notifications_user
+        ON notifications (user_id, created_at DESC);
+    `);
+    logger.info(
+      { category: "storage" },
+      "V1-M24: swapped idx_notifications_user → (user_id, created_at DESC), the bell sort shape (R120-B6/A6-F3)",
+    );
+  }
+  logger.info({ category: "storage" }, "V1-M24: list read-path indexes (idempotent)");
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -2212,7 +2274,11 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_inventory_sold ON inventory(is_sold) WHERE is_sold = false;
       CREATE INDEX IF NOT EXISTS idx_topups_user ON wallet_topups(user_id);
       CREATE INDEX IF NOT EXISTS idx_topups_status ON wallet_topups(status);
-      CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+      -- R120-B6/A6-F3: fresh installs get the bell-sort shape directly
+      -- (user_id, created_at DESC). Legacy (user_id, is_read) databases
+      -- are converged by the V1-M24 probe-gated swap stage below — same
+      -- name, so this IF NOT EXISTS no-ops there.
+      CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets(user_id);
       CREATE INDEX IF NOT EXISTS idx_referral_referrer ON referral_events(referrer_id);
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
@@ -3186,6 +3252,13 @@ export async function runMigrations() {
     // attribution on the operator-facing money queue. Idempotent
     // (ADD COLUMN IF NOT EXISTS). See applyTopupReviewedByStage docs.
     await applyTopupReviewedByStage();
+
+    // ── V1-M24 (R120-B6, A6-F3/F4): list read-path indexes — the ──
+    // notification-bell sort shape swap (probe-gated, V1-M17 idiom) +
+    // the admin ticket-queue (status, updated_at DESC) twin + the R118
+    // idx_admin_alerts_created boot twin that never shipped. Idempotent;
+    // steady-state boots are no-ops. See applyListReadPathIndexesStage docs.
+    await applyListReadPathIndexesStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

@@ -678,15 +678,31 @@ export const CreateOrderHeader = zod.object({
     ),
 });
 
+// ── R120-B6/A6-F7 SURGICAL EDIT (the one hand-written block in this file) ──
+// The spec source (shared/api-spec/openapi.yaml → CreateOrderBody) carries
+// the tightened contract: product_id minimum: 1, coupon_code maxLength: 64.
+// Regeneration is currently BLOCKED for this workspace: api-spec resolves
+// orval ^8.40.0, whose zod output targets zod v4 (`zod.int()`, iso.datetime)
+// while the workspace pins zod ^3.25.76 — `pnpm codegen` fails typecheck and
+// rewrites the whole file (8.5.3 → 8.40 formatting churn). The block below
+// mirrors what orval 8.5.3 (the version that generated this file) emits
+// from the tightened spec, plus `.int()` on product_id — orval's mapper
+// cannot express integer-ness for `type: integer` (it emits bare
+// zod.number()), so the finding's int bound is hand-applied here.
+// Re-run codegen after the orval/zod alignment, carry `.int()` forward
+// (or express it via multipleOf: 1 in the spec), and delete this comment.
+export const createOrderBodyProductIdMin = 1;
+export const createOrderBodyCouponCodeMax = 64;
+
 export const CreateOrderBody = zod.object({
-  product_id: zod.number(),
+  product_id: zod.number().int().min(createOrderBodyProductIdMin),
   variant_id: zod
     .number()
     .nullish()
     .describe(
       "The selected catalog variant (product_variants.id). Optional: when omitted and the product has active variants, the cheapest active one is charged (matching the storefront display price).\n",
     ),
-  coupon_code: zod.string().nullish(),
+  coupon_code: zod.string().max(createOrderBodyCouponCodeMax).nullish(),
 });
 
 export const CreateOrderResponse = zod

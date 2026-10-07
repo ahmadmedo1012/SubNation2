@@ -431,7 +431,9 @@ CREATE TABLE notifications (
   is_read boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_notifications_user ON notifications (user_id, is_read);
+-- R120-B6/A6-F3: steady-state (post-V1-M24) shape — the schema TS + the
+-- boot swap converge (user_id, created_at DESC) for the bell sort.
+CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 
 -- V1-M9 (B8-10) composites for the admin "status + newest-first" lists,
 -- declared by the schema TS and created by applyMoneyConstraintStage.

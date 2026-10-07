@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, usersTable, referralEventsTable, pointsLedgerTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
+import { pageParam } from "../lib/http";
 import { idempotency } from "../middlewares/idempotency";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { insertLedgerEntry } from "../lib/ledger";
@@ -291,13 +292,21 @@ router.get("/ledger", requireUser, async (req, res) => {
 
   const limitRaw = Number(req.query.limit ?? 100);
   const limit = Number.isInteger(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? limitRaw : 100;
+  // R120-B6/A6-F1: additive ?page= (admin/orders.ts clamp idiom,
+  // offset=(page-1)*limit) — rows 201+ were unreachable before. Default
+  // page=1 → offset 0 → byte-identical response. (limitParam from
+  // lib/http.ts is intentionally NOT adopted here: its parseInt idiom
+  // accepts "12.9"/"1e2" where this route's stricter Number.isInteger
+  // idiom falls back to 100 — adoption would drift behavior (A6-F14).)
+  const offset = (pageParam(req) - 1) * limit;
 
   const entries = await db
     .select()
     .from(pointsLedgerTable)
     .where(eq(pointsLedgerTable.userId, userId))
     .orderBy(desc(pointsLedgerTable.createdAt), desc(pointsLedgerTable.id))
-    .limit(limit);
+    .limit(limit)
+    .offset(offset);
 
   return res.json(
     entries.map((e) => ({

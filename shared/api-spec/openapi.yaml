@@ -4369,7 +4369,12 @@ components:
       type: object
       properties:
         product_id:
+          # R120-B6/A6-F7: product ids are positive integers (serial PKs) —
+          # the bare `type: integer` generated an unbounded zod.number()
+          # (0/negatives/floats passed the parse and died as a 404/500
+          # downstream). minimum: 1 tightens the generated zod to .min(1).
           type: integer
+          minimum: 1
         variant_id:
           type: ["integer", "null"]
           description: >
@@ -4377,7 +4382,12 @@ components:
             when omitted and the product has active variants, the cheapest
             active one is charged (matching the storefront display price).
         coupon_code:
+          # R120-B6/A6-F7: unbounded string → DB + cache round-trips with
+          # arbitrarily large payloads. 64 bounds it above coupons.code's
+          # varchar(50) with headroom; maxLength binds the generated zod
+          # (the route still normalizes trim+uppercase after parse).
           type: ["string", "null"]
+          maxLength: 64
       required: [product_id]
 
     Order:

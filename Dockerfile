@@ -6,7 +6,34 @@
 # (see config/env.example).
 # -----------------------------------------------------------------------------
 
-ARG NODE_VERSION=22-alpine
+# R120-B6/A8-F2: digest-pinned node base. `22-alpine` alone is a FLOATING
+# tag — every Coolify rebuild resolved whatever the tag pointed at THAT
+# day, so the same commit could build on two different base images (and a
+# compromised/retagged upstream would flow in silently on the next
+# redeploy). The @sha256 digest pins the exact multi-arch manifest list;
+# both FROM lines below resolve through ${NODE_VERSION} so they stay
+# identical by construction.
+#
+# ── Deliberate-bump procedure (mirrors how pnpm-workspace.yaml overrides
+#    are maintained — a pinned upstream is only as good as its documented
+#    refresh path) ──
+#
+#   1. Fetch the CURRENT digest of the tag you want (both must agree):
+#        TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/node:pull" | sed -E 's/.*"token":"([^"]+)".*/\1/')
+#        curl -sI -H "Authorization: Bearer $TOKEN" \
+#          -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+#          https://registry-1.docker.io/v2/library/node/manifests/22-alpine | grep -i docker-content-digest
+#      (fallback: https://hub.docker.com/v2/repositories/library/node/tags/22-alpine —
+#       the JSON `digest` field is the same manifest-list digest)
+#   2. Replace the digest below and note the reason + date in this
+#      comment block (node LTS patch, CVE, arch fix) — e.g.
+#      "bumped 2026-10-07: node 22.x.x security release".
+#   3. Rebuild via scripts/docker-verify.sh (or docker compose build) —
+#      the digest changes only when upstream actually republishes the tag.
+#
+# Pinned 2026-10-07 (R120-B6): node 22-alpine manifest list as resolved by
+# registry-1.docker.io (cross-checked against hub.docker.com's tag digest).
+ARG NODE_VERSION=22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
 
 # --- deps: install the full pnpm workspace with dev dependencies --------------
 FROM node:${NODE_VERSION} AS deps

@@ -49,7 +49,12 @@ router.use((_req, res, next) => {
   next();
 });
 
-const VALID_LEVELS = new Set(["low", "medium", "high", "critical"]);
+// R120-B6/A6-F8 (typecheck follow-up): z.enum() needs a literal tuple,
+// not a spread Set — the values are declared as const tuples and the
+// membership Sets are DERIVED from them (one source of truth, same
+// Set<string> type every .has() call site already uses).
+const LEVEL_VALUES = ["low", "medium", "high", "critical"] as const;
+const VALID_LEVELS = new Set<string>(LEVEL_VALUES);
 const VALID_LABELS = new Set(["confirmed_fraud", "false_positive", "escalated"]);
 // A5-03 (round-94): `?eventType=` feeds the risk_event_type pg-enum
 // column. `level` next to it was already validated via VALID_LEVELS, but
@@ -57,7 +62,7 @@ const VALID_LABELS = new Set(["confirmed_fraud", "false_positive", "escalated"])
 // reached Postgres as 22P02 (`invalid input value for enum
 // "risk_event_type"`) → 500 INTERNAL_ERROR. Values mirror
 // riskEventTypeEnum (shared/db/src/schema/risk.ts).
-const VALID_EVENT_TYPES = new Set([
+const EVENT_TYPE_VALUES = [
   "login_attempt",
   "login_success",
   "login_failure",
@@ -70,7 +75,41 @@ const VALID_EVENT_TYPES = new Set([
   "coupon_apply",
   "referral_event",
   "admin_force_reauth",
-]);
+] as const;
+const VALID_EVENT_TYPES = new Set<string>(EVENT_TYPE_VALUES);
+
+// R120-B6/A6-F8: the four admin risk write bodies were bare `req.body as`
+// casts — every field survived on manual typeof guards, which silently
+// dropped/coerced wrong-typed values (a non-string notes became null, a
+// float user_id rounded into the int column, a bogus event_type reached
+// the risk_event_type pg-enum as 22P02 → 500). Local zod perimeter — the
+// schemas validate TYPES; the existing VALUE checks (VALID_LABELS
+// membership, cap counts, "no fields") stay verbatim after the parse so
+// every pinned 400 message is byte-identical. Parse failures get the
+// repo-standard 400 (INVALID_DATA + بيانات غير صالحة).
+const RiskLabelBody = z.object({
+  label: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+const RiskBulkLabelBody = z.object({
+  event_ids: z.array(z.number().positive()),
+  label: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+const RiskRuleUpdateBody = z.object({
+  enabled: z.boolean().optional(),
+  // parseDsl is the authoritative validator for the expression payload.
+  expression: z.unknown().optional(),
+  description: z.string().optional(),
+});
+
+const RiskSynthBody = z.object({
+  level: z.enum(LEVEL_VALUES).optional(),
+  event_type: z.enum(EVENT_TYPE_VALUES).optional(),
+  user_id: z.number().int().positive().optional(),
+});
 // ────────────────────────────────────────────────────────────────────────
 // GET /events — paginated review queue
 // ────────────────────────────────────────────────────────────────────────
@@ -262,13 +301,20 @@ router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
     res.status(400).json(createErrorResponse("معرّف الحدث غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
-  const body = (req.body ?? {}) as { label?: string; notes?: string };
-  const label = typeof body.label === "string" ? body.label : "";
+  // R120-B6/A6-F8: zod perimeter (wrong-typed fields → 400, not silent
+  // null-drops); the VALID_LABELS value check below keeps its exact message.
+  const labelParse = RiskLabelBody.safeParse(req.body ?? {});
+  if (!labelParse.success) {
+    res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+    return;
+  }
+  const body = labelParse.data;
+  const label = body.label ?? "";
   if (!VALID_LABELS.has(label)) {
     res.status(400).json(createErrorResponse("التصنيف غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
-  const notes = typeof body.notes === "string" ? body.notes.slice(0, 1000) : null;
+  const notes = body.notes != null ? body.notes.slice(0, 1000) : null;
 
   const [exists] = await db
     .select({ id: riskEventsTable.id })
@@ -308,10 +354,16 @@ router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────
 router.post("/risk/events/bulk-label", requireAdmin, async (req, res) => {
   const adminReq = req as AdminAuthenticatedRequest;
-  const body = (req.body ?? {}) as { event_ids?: unknown; label?: string; notes?: string };
-  const ids = Array.isArray(body.event_ids)
-    ? body.event_ids.filter((v): v is number => typeof v === "number" && v > 0)
-    : [];
+  // R120-B6/A6-F8: zod perimeter — every entry must be a positive number
+  // (mixed/garbage arrays used to be silently filtered); the count caps +
+  // label value check below keep their exact messages.
+  const bulkParse = RiskBulkLabelBody.safeParse(req.body ?? {});
+  if (!bulkParse.success) {
+    res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+    return;
+  }
+  const body = bulkParse.data;
+  const ids = body.event_ids;
   if (ids.length === 0) {
     res.status(400).json(createErrorResponse("event_ids مطلوب", ErrorCode.INVALID_DATA));
     return;
@@ -324,12 +376,12 @@ router.post("/risk/events/bulk-label", requireAdmin, async (req, res) => {
       );
     return;
   }
-  const label = typeof body.label === "string" ? body.label : "";
+  const label = body.label ?? "";
   if (!VALID_LABELS.has(label)) {
     res.status(400).json(createErrorResponse("التصنيف غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
-  const notes = typeof body.notes === "string" ? body.notes.slice(0, 1000) : null;
+  const notes = body.notes != null ? body.notes.slice(0, 1000) : null;
 
   // Filter to actually-existing event ids before writing labels — partial
   // success is preferable to a transaction-wide failure here.
@@ -404,15 +456,19 @@ router.put("/risk/rules/:id", requireAdmin, async (req, res) => {
     res.status(400).json(createErrorResponse("معرّف القاعدة غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
-  const body = (req.body ?? {}) as {
-    enabled?: boolean;
-    expression?: unknown;
-    description?: string;
-  };
+  // R120-B6/A6-F8: zod perimeter — enabled/description must be genuinely
+  // typed (a string "true" used to be silently ignored); parseDsl stays the
+  // expression authority, and the "no fields" 400 keeps its exact message.
+  const ruleParse = RiskRuleUpdateBody.safeParse(req.body ?? {});
+  if (!ruleParse.success) {
+    res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+    return;
+  }
+  const body = ruleParse.data;
 
   const update: Record<string, unknown> = {};
-  if (typeof body.enabled === "boolean") update.enabled = body.enabled;
-  if (typeof body.description === "string") {
+  if (body.enabled !== undefined) update.enabled = body.enabled;
+  if (body.description != null) {
     update.description = body.description.slice(0, 2000);
   }
   if (body.expression !== undefined) {
@@ -549,13 +605,11 @@ router.put("/risk/config", requireAdmin, async (req, res) => {
       (current?.thresholds as { critical: number } | null)?.critical ??
       85,
   };
-  if (
-    !(
-      thresholds.low < thresholds.medium &&
-      thresholds.medium < thresholds.high &&
-      thresholds.high < thresholds.critical
-    )
-  ) {
+  if (!(
+    thresholds.low < thresholds.medium &&
+    thresholds.medium < thresholds.high &&
+    thresholds.high < thresholds.critical
+  )) {
     res
       .status(400)
       .json(
@@ -741,16 +795,24 @@ router.post("/risk/synth", requireAdmin, async (req, res) => {
     return;
   }
   const adminReq = req as AdminAuthenticatedRequest;
-  const body = (req.body ?? {}) as { level?: string; event_type?: string; user_id?: number };
-  const level =
-    typeof body.level === "string" && VALID_LEVELS.has(body.level) ? body.level : "critical";
-  const eventType = typeof body.event_type === "string" ? body.event_type : "topup_attempt";
+  // R120-B6/A6-F8: zod perimeter — an out-of-enum event_type used to
+  // reach the risk_event_type column as 22P02 → 500, and a float user_id
+  // silently rounded into the integer column. Optional fields keep their
+  // documented defaults (level → critical, event_type → topup_attempt).
+  const synthParse = RiskSynthBody.safeParse(req.body ?? {});
+  if (!synthParse.success) {
+    res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
+    return;
+  }
+  const body = synthParse.data;
+  const level = body.level ?? "critical";
+  const eventType = body.event_type ?? "topup_attempt";
   const score = level === "critical" ? 95 : level === "high" ? 70 : level === "medium" ? 40 : 10;
 
   const [row] = await db
     .insert(riskEventsTable)
     .values({
-      userId: typeof body.user_id === "number" && body.user_id > 0 ? body.user_id : null,
+      userId: body.user_id ?? null,
       eventType: eventType as never,
       score,
       level: level as never,
@@ -782,7 +844,7 @@ router.post("/risk/synth", requireAdmin, async (req, res) => {
   if (level === "critical") {
     void sendCriticalRiskAlert({
       riskEventId: row.id,
-      userId: typeof body.user_id === "number" && body.user_id > 0 ? body.user_id : null,
+      userId: body.user_id ?? null,
       eventType,
       score,
       level: "critical",

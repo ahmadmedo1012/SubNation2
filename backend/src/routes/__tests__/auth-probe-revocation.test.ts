@@ -195,7 +195,7 @@ describe("GET /api/auth/probe — session revocation parity (93-A1 S2)", () => {
     }
   });
 
-  it("legacy token WITHOUT sessionId still authenticates (requireUser semantics, unchanged)", async () => {
+  it("legacy token WITHOUT sessionId still authenticates OUTSIDE production (fixtures)", async () => {
     const [u] = await db.insert(usersTable).values({ phone: nextPhone() }).returning();
     const legacyToken = signUserToken({ userId: u.id }); // no sessionId claim
     const { url, close } = await listen(buildApp());
@@ -204,6 +204,50 @@ describe("GET /api/auth/probe — session revocation parity (93-A1 S2)", () => {
       expect(body.authenticated).toBe(true);
     } finally {
       close();
+    }
+  });
+
+  it("legacy sid-less token is REJECTED in production — no authenticated:true, no PII (R120-B6/A8-F1)", async () => {
+    // requireUser (r103, AUD103-3-F5) and the admin probe both fail-closed
+    // on sid-less tokens in production — the user probe used to hand the
+    // full profile to an unrevokable legacy token. Mirror test: flip
+    // NODE_ENV just for the request (the route reads it per-request).
+    const [u] = await db.insert(usersTable).values({ phone: nextPhone() }).returning();
+    const legacyToken = signUserToken({ userId: u.id }); // no sessionId claim
+    const previousEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status, body } = await probe(url, { Cookie: `auth_token=${legacyToken}` });
+      expect(status).toBe(200); // 200-always contract preserved
+      expect(body.authenticated).toBe(false);
+      expect(body.user).toBeUndefined();
+    } finally {
+      close();
+      if (previousEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousEnv;
+      }
+    }
+  });
+
+  it("sid-carrying token still authenticates in production (only the sid-less branch fails closed)", async () => {
+    const seeded = await seedSession();
+    const previousEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const { url, close } = await listen(buildApp());
+    try {
+      const { body } = await probe(url, { Cookie: `auth_token=${seeded.token}` });
+      expect(body.authenticated).toBe(true);
+      expect(body.user.phone).toBeDefined();
+    } finally {
+      close();
+      if (previousEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousEnv;
+      }
     }
   });
 

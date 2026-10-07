@@ -4,7 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { safeDecrypt } from "../lib/encryption";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
-import { stringParam } from "../lib/http";
+import { limitParam, pageParam, stringParam } from "../lib/http";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { idempotency } from "../middlewares/idempotency";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
@@ -112,8 +112,13 @@ router.get("/", requireUser, async (req, res) => {
   // only available fetch returned the full 200-row list (with a
   // safeDecrypt per row server-side). ?limit= gives callers exactly what
   // they display. Default stays 200 (profile page), clamped to [1, 200].
-  const limitRaw = parseInt(String(req.query.limit ?? "200"), 10);
-  const limit = Number.isNaN(limitRaw) ? 200 : Math.min(Math.max(limitRaw, 1), 200);
+  // R120-B6/A6-F1: the clamp moved into lib/http.ts limitParam (identical
+  // idiom — no behavior change) and an optional ?page= (admin/orders.ts
+  // clamp idiom, offset=(page-1)*limit) lets the profile page walk past
+  // the 200-row cap — rows 201+ were previously unreachable. Default
+  // page=1 → offset 0 → byte-identical response.
+  const limit = limitParam(req, 200, 200);
+  const offset = (pageParam(req) - 1) * limit;
 
   const orders = await db
     .select({
@@ -125,7 +130,8 @@ router.get("/", requireUser, async (req, res) => {
     .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
     .where(eq(ordersTable.userId, userId))
     .orderBy(desc(ordersTable.createdAt))
-    .limit(limit);
+    .limit(limit)
+    .offset(offset);
 
   return res.json(orders.map((r) => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
 });
@@ -164,11 +170,13 @@ router.post(
     const parse = CreateOrderBody.safeParse(req.body);
     if (!parse.success)
       return res.status(400).json(createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA));
-    const { product_id, variant_id } = parse.data;
+    // R120-B6/A6-F7: coupon_code now comes from the PARSED body only — the
+    // old raw re-read of req.body.coupon_code was a split-brain (it
+    // bypassed the tightened maxLength 64 + re-accepted shapes safeParse
+    // had just rejected). Trim + uppercase normalization is unchanged.
+    const { product_id, variant_id, coupon_code } = parse.data;
     const couponCode: string | undefined =
-      typeof req.body.coupon_code === "string"
-        ? req.body.coupon_code.trim().toUpperCase()
-        : undefined;
+      typeof coupon_code === "string" ? coupon_code.trim().toUpperCase() : undefined;
 
     const result = await CheckoutService.purchase({
       userId,

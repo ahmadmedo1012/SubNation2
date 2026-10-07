@@ -400,6 +400,9 @@ router.get("/me", requireUser, async (req, res) => {
  *   - Cookie/header missing or invalid → 200 with { authenticated: false }
  *   - Session row deleted/expired for a signature-valid token → 200 with
  *     { authenticated: false }  (93-A1 S2, round-93 — see below)
+ *   - Legacy sid-less token in PRODUCTION → 200 with { authenticated: false }
+ *     (R120-B6/A8-F1 — same fail-closed posture as requireUser + the admin
+ *     probe; see below)
  *   - Cookie/header valid + session live + user found → 200 with { authenticated: true, user, linked_identities }
  *   - User row missing for a valid token → 200 with { authenticated: false }
  *
@@ -456,8 +459,21 @@ router.get("/probe", async (req, res) => {
       );
     }
   }
-  // Legacy token without sessionId (pre-unification) — requireUser's
-  // semantics: still valid for its signed lifetime, no row check.
+  // Legacy token without sessionId (pre-unification). requireUser's
+  // semantics CHANGED at r103 (AUD103-3-F5): production REJECTS sid-less
+  // tokens — a sid-less token is UNREVOKABLE (logout / logout-all / user
+  // deletion can never kill it). R120-B6/A8-F1 mirrors that here and in
+  // the admin probe (routes/admin/auth.ts): a legacy sid-less token must
+  // NOT receive authenticated:true + the full profile in production.
+  // Non-production keeps accepting it so pglite fixtures that sign
+  // tokens directly (without minting session rows) keep passing.
+  if (!result.payload.sessionId && process.env.NODE_ENV === "production") {
+    logger.info(
+      { userId: result.payload.userId, category: "auth.session" },
+      "[auth] probe rejected legacy sid-less user token (production fail-closed)",
+    );
+    return res.status(200).json({ authenticated: false });
+  }
 
   const userId = result.payload.userId;
   // Round-3 (8-c §2.6): concurrent user + identities read.

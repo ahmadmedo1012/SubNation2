@@ -32,6 +32,19 @@ router.use((_req, res, next) => {
 
 const VALID_STATES = new Set<DraftState>(["drafted", "published", "rejected", "draft_invalid"]);
 
+/**
+ * R120-B6/A6-F12: hard cap on the admin-supplied `final_text` override.
+ * The publish flow lands it verbatim in products.description /
+ * description_long / faq — PUBLIC catalog surfaces — so an unbounded
+ * override (the old check only required "non-empty after trim") let a
+ * single admin POST park up to the 1 MB body limit into the public
+ * product page, the catalog cache, and every SEO render. 16,000 chars is
+ * ~2× the longest legit generated draft; measured AFTER trim because
+ * publish.ts trims before persisting (the cap guards exactly the text
+ * that lands, mirroring that trim).
+ */
+const FINAL_TEXT_MAX_CHARS = 16_000;
+
 function buildPanelUrl(id: number): string {
   const base = (process.env.APP_ORIGIN ?? "").replace(/\/+$/, "");
   return `${base}/admin/products/enrichment?focus=${id}`;
@@ -95,6 +108,21 @@ router.post("/enrichment/:id/publish", requireAdmin, async (req: Request, res: R
     typeof body.final_text === "string" && body.final_text.trim().length > 0
       ? body.final_text
       : null;
+  // R120-B6/A6-F12: reject BEFORE the publish flow runs — the draft must
+  // stay `drafted` and the product row untouched (400, same shape as the
+  // id/state guards above). Trim-first so the check measures the exact
+  // text publish.ts would persist.
+  if (finalTextOverride !== null && finalTextOverride.trim().length > FINAL_TEXT_MAX_CHARS) {
+    res
+      .status(400)
+      .json(
+        createErrorResponse(
+          `النص المرسل أطول من الحد المسموح (${FINAL_TEXT_MAX_CHARS} حرفاً)`,
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+    return;
+  }
 
   const outcome = await publishDraft({
     draftId: id,

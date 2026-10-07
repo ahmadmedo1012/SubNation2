@@ -94,6 +94,11 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         invalid_phone: "رقم الهاتف غير صالح",
         cooldown: "يرجى الانتظار قبل طلب رمز جديد",
         hourly_limit: "تم تجاوز حد المحاولات، حاول لاحقاً",
+        // R120-B6/A8-F5: the process-wide daily send ceiling tripped — an
+        // operator-visible outage-by-design (deduped admin alert fires in
+        // the service). Honest Arabic copy: the ban lifts at the next UTC
+        // day boundary, not "try again in a minute".
+        daily_limit: "تم الوصول إلى الحد اليومي لإرسال رموز التحقق، حاول غداً",
         delivery_failed: "تعذّر إرسال الرمز عبر WhatsApp، حاول مجدداً",
         recipient_not_on_whatsapp: "هذا الرقم غير مسجَّل في WhatsApp",
         // r95: the gateway is configured but the WhatsApp session is
@@ -120,7 +125,10 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
       const status =
         result.reason === "invalid_phone" || result.reason === "recipient_not_on_whatsapp"
           ? 400
-          : result.reason === "cooldown" || result.reason === "hourly_limit"
+          : result.reason === "cooldown" ||
+              result.reason === "hourly_limit" ||
+              // A8-F5: the daily ceiling is the same rate-limit class.
+              result.reason === "daily_limit"
             ? 429
             : result.reason === "gateway_disabled" ||
                 result.reason === "whatsapp_not_paired" ||
@@ -149,6 +157,8 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
       const codeByReason: Partial<Record<string, ErrorCode>> = {
         cooldown: ErrorCode.RATE_LIMITED,
         hourly_limit: ErrorCode.RATE_LIMITED,
+        // A8-F5: daily ceiling — 429 class, same as the per-phone caps.
+        daily_limit: ErrorCode.RATE_LIMITED,
         gateway_disabled: ErrorCode.SERVICE_UNAVAILABLE,
         whatsapp_not_paired: ErrorCode.SERVICE_UNAVAILABLE,
         whatsapp_settling: ErrorCode.SERVICE_UNAVAILABLE,
