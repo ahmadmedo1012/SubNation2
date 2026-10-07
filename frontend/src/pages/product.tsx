@@ -25,6 +25,7 @@ import {
   getProduct,
   type CreateOrderBody,
   type Product,
+  type ProductRecommendation,
   type User,
   useGetMe,
   useGetProduct,
@@ -1918,10 +1919,18 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
               /* R115-I1 (A7 P3-9): wouter <Link> instead of a raw <a href> —
                  the anchor did a FULL page reload (SPA state lost: cart
                  context, auth boot, scroll restoration) while every
-                 other product surface navigates client-side. */
+                 other product surface navigates client-side.
+                 R122 (A1 P2-8): the href is now SLUG-canonical — the
+                 backend adds `slug` to the recommendations DTO in the
+                 same push, but the generated type regen may land apart
+                 from this edit, so the local widening reads it with the
+                 `slug ?? id` fallback (the exact idiom cart.tsx and
+                 ProductCard already use). Crawlers stop seeing
+                 non-canonical /product/<id> internal links and the URL
+                 bar stays clean on first paint. */
               <Link
                 key={r.id}
-                href={`/product/${r.id}`}
+                href={`/product/${(r as ProductRecommendation & { slug?: string | null }).slug ?? r.id}`}
                 onClick={() => window.scrollTo(0, 0)}
                 className="block bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 cursor-pointer hover:border-primary/40 transition-all group"
               >

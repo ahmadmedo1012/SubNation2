@@ -1,6 +1,6 @@
 import { memo, useRef } from "react";
 import { Link } from "wouter";
-import { formatCurrency, categoryLabel } from "@/lib/utils";
+import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useCartCommands } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
@@ -283,7 +283,19 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
     product.name,
     categoryLabel(product.category),
     `${product.price_from ? "تبدأ من " : ""}${formatCurrency(displayPrice)}`,
-    product.variants && product.variants.length > 1 ? `${product.variants.length} باقات` : null,
+    /* R122 (A1 P2-1): the frozen «N باقات» plural broke the Arabic
+       paradigm for every count (2 → «باقتان», 3–10 → «باقات», 11+ →
+       «باقة»); formatCount is the app standard used at 20+ count
+       sites (utils.ts:49). */
+    product.variants && product.variants.length > 1
+      ? formatCount(product.variants.length, {
+          one: "باقة",
+          two: "باقتان",
+          few: "باقات",
+          many: "باقة",
+          other: "باقة",
+        })
+      : null,
     unavailable ? "نفد المخزون" : null,
     // 93-C8 (A11 §1): «آخر 2 متوفرة» is a broken dual; «متبقٍ N
     // فقط» is agreement-safe for every count 1..3.
@@ -479,7 +491,15 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 <span
                   className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
                 >
-                  {product.variants.length} باقات
+                  {/* R122 (A1 P2-1): same formatCount swap as the aria-label
+                      above — «2 باقتان» instead of the frozen «2 باقات». */}
+                  {formatCount(product.variants.length, {
+                    one: "باقة",
+                    two: "باقتان",
+                    few: "باقات",
+                    many: "باقة",
+                    other: "باقة",
+                  })}
                 </span>
               ) : isLowStock ? (
                 <StatusBadge

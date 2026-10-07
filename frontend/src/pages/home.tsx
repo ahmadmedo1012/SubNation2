@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { keepPreviousData } from "@tanstack/react-query";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
 import { categoryLabel, cn, formatCount, formatCurrency, statusLabel } from "@/lib/utils";
+import type { CategoryMeta } from "@/lib/categories";
 import {
   getGetCatalogStatsQueryKey,
   getGetMeQueryKey,
@@ -115,16 +116,25 @@ function readInitialFiltersFromUrl() {
  * their categories were archived 2026-09-19 and the catalog returns
  * 0 results for all four (a chip that filters to nothing misleads
  * shoppers and dilutes the page's topic vector).
+ *
+ * R122 (A11-F1): each chip now carries `cat` — the live category its
+ * brand sells under — so the chip is a real navigation affordance to
+ * that category's landing page (they were sr-only spans: advertised
+ * brands shoppers could not tap). R122 (A11 P0-adjacent): the same
+ * mapping powers the client-side in-stock surfacing below (chips whose
+ * category currently has stock lead the row + carry a success dot);
+ * while the live catalog runs this thin (44/45 sold out at audit
+ * time), the hero must not funnel guests into a wall of نفد cards.
  */
-const BRANDS: Array<{ latin: string; ar: string }> = [
-  { latin: "Netflix", ar: "نتفلكس" },
-  { latin: "Spotify", ar: "سبوتيفاي" },
-  { latin: "Disney+", ar: "ديزني+" },
-  { latin: "YouTube", ar: "يوتيوب" },
-  { latin: "Shahid VIP", ar: "شاهد" },
-  { latin: "ExpressVPN", ar: "إكسبرس في بي إن" },
-  { latin: "ChatGPT Plus", ar: "شات جي بي تي" },
-  { latin: "Windows 10", ar: "ويندوز 10" },
+const BRANDS: Array<{ latin: string; ar: string; cat: CategoryMeta["slug"] }> = [
+  { latin: "Netflix", ar: "نتفلكس", cat: "streaming" },
+  { latin: "Spotify", ar: "سبوتيفاي", cat: "music" },
+  { latin: "Disney+", ar: "ديزني+", cat: "streaming" },
+  { latin: "YouTube", ar: "يوتيوب", cat: "streaming" },
+  { latin: "Shahid VIP", ar: "شاهد", cat: "streaming" },
+  { latin: "ExpressVPN", ar: "إكسبرس في بي إن", cat: "vpn" },
+  { latin: "ChatGPT Plus", ar: "شات جي بي تي", cat: "ai-tools" },
+  { latin: "Windows 10", ar: "ويندوز 10", cat: "software" },
 ];
 
 // Search history localStorage helpers
@@ -365,6 +375,32 @@ export default function HomePage() {
     return [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available));
   }, [products, sort]);
 
+  // R122 (A11 P0-adjacent): per-category stock map for the hero brand
+  // chips, computed from the ALREADY-LOADED products array (presentation
+  // only — no new endpoint, no inventory feature). Null whenever the
+  // current view is filtered (search/category/available_only change
+  // WHICH products the array holds, so per-category counts would lie);
+  // sort never changes membership, so it stays truthful under any sort.
+  const categoryHasStock = useMemo<Set<string> | null>(() => {
+    if (search || category || availableOnly) return null;
+    const cats = new Set<string>();
+    for (const p of products) {
+      if (p.is_available && p.category) cats.add(p.category);
+    }
+    return cats;
+  }, [products, search, category, availableOnly]);
+
+  // R122 (A11-F1/P0-adjacent): chips whose category currently has stock
+  // lead the scrollable row (Array#sort is stable — the editorial order
+  // survives within each group). No data (filtered view / empty grid) →
+  // the editorial order stands unchanged.
+  const heroBrands = useMemo(() => {
+    if (!categoryHasStock || categoryHasStock.size === 0) return BRANDS;
+    return [...BRANDS].sort(
+      (a, b) => Number(categoryHasStock.has(b.cat)) - Number(categoryHasStock.has(a.cat)),
+    );
+  }, [categoryHasStock]);
+
   const clearFilters = () => {
     setSearch("");
     setSearchInput("");
@@ -539,8 +575,11 @@ export default function HomePage() {
                       className="flex items-center gap-0.5 text-xs text-primary-text hover:text-primary-text/75 font-bold transition-colors press-spring"
                     >
                       {/* R120-B1 (A4-F1): Link wears the button classes
-                          directly — was <Link><button> (nested interactive
-                          elements, doubled tab stop). */}
+                          directly — was a Button nested inside a Link
+                          (nested interactive elements, doubled tab stop).
+                          R122 (A1-P1): comment reworded — the nesting
+                          sweep's regex now matches lowercase button markup
+                          too, and the old literal quoted the defect shape. */}
                       عرض الكل
                       <ChevronLeft className="w-3 h-3" aria-hidden="true" />
                     </Link>
@@ -701,30 +740,57 @@ export default function HomePage() {
 
                   {/* Brand chips — already a single scrollable row
                       (overflow-x-auto + scrollbar-none); mb-4 below sm
-                      (R120-B1 / A1-F3 fold budget). */}
+                      (R120-B1 / A1-F3 fold budget).
+                      R122 (A11-F1): each chip is now a Link to its
+                      category's landing page (category.tsx sibling-chip
+                      idiom) — they were sr-only spans, so the hero
+                      advertised brands shoppers could not tap. The chips
+                      ride the app's min-h-11 tap-target floor now that
+                      they are interactive, and in-stock categories lead
+                      the row with a success dot (A11 P0-adjacent: with
+                      the live catalog 98% sold out, the hero must
+                      surface what is actually buyable — the data is the
+                      already-loaded products array, presentation only). */}
                   <div className="relative overflow-hidden mb-4 sm:mb-5">
                     <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl-start">
-                      {BRANDS.map((brand, i) => (
-                        <span
-                          key={brand.latin}
-                          aria-label={brand.ar}
-                          className={`shrink-0 text-2xs font-bold bg-muted/40 border border-border/40 text-muted-foreground px-2.5 py-1 rounded-full whitespace-nowrap hover:border-border/70 hover:text-muted-foreground transition-all duration-150 float-in stagger-${Math.min(i + 1, 8)}`}
-                        >
-                          {/* 96-F5 (R96 A6 #16): lang="en" on the Latin label
-                              so screen readers stop spelling brand names with
-                              Arabic phonemes («نِتفليكس»); the Arabic sr-only
-                              transliteration below already carries the SEO
-                              weight. */}
-                          <span aria-hidden="true" lang="en">
-                            {brand.latin}
-                          </span>
-                          {/* Visually hidden Arabic transliteration so the
-                              crawler indexes "نتفلكس", "ويندوز 10", etc.
-                              alongside the Latin form. .sr-only is the
-                              standard a11y utility. */}
-                          <span className="sr-only">{brand.ar}</span>
-                        </span>
-                      ))}
+                      {heroBrands.map((brand, i) => {
+                        const inStock = categoryHasStock?.has(brand.cat) ?? false;
+                        return (
+                          <Link
+                            key={brand.latin}
+                            href={`/category/${brand.cat}`}
+                            aria-label={inStock ? `${brand.ar} — متوفر الآن` : brand.ar}
+                            className={`shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 text-2xs font-bold rounded-full whitespace-nowrap transition-all duration-150 press-spring float-in stagger-${Math.min(i + 1, 8)} ${
+                              inStock
+                                ? "bg-status-success/8 border border-status-success/30 text-foreground hover:border-status-success/55"
+                                : "bg-muted/40 border border-border/40 text-muted-foreground hover:border-border/70 hover:text-foreground"
+                            }`}
+                          >
+                            {/* 96-F5 (R96 A6 #16): lang="en" on the Latin label
+                                so screen readers stop spelling brand names with
+                                Arabic phonemes («نِتفليكس»); the Arabic sr-only
+                                transliteration below already carries the SEO
+                                weight. */}
+                            <span aria-hidden="true" lang="en">
+                              {brand.latin}
+                            </span>
+                            {/* Visually hidden Arabic transliteration so the
+                                crawler indexes "نتفلكس", "ويندوز 10", etc.
+                                alongside the Latin form. .sr-only is the
+                                standard a11y utility. */}
+                            <span className="sr-only">{brand.ar}</span>
+                            {inStock && (
+                              /* Decorative availability dot — the chip's
+                                 accessible name (aria-label above) carries
+                                 the «متوفر الآن» signal for ATs. */
+                              <span
+                                aria-hidden="true"
+                                className="w-1.5 h-1.5 rounded-full bg-status-success shrink-0"
+                              />
+                            )}
+                          </Link>
+                        );
+                      })}
                       <span className="shrink-0 text-2xs text-muted-foreground px-1 whitespace-nowrap">
                         وأكثر…
                       </span>

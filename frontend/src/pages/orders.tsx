@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
@@ -235,7 +236,16 @@ export default function OrdersPage() {
   const knownTotal = (ordersPages?.pages.length ?? 0) <= 1 && orders.length < ORDERS_PAGE_SIZE;
 
   useEffect(() => {
-    if (!token) navigate("/login");
+    // R122 (A11-F3): preserve the return path on the guest redirect —
+    // the commerce flows' `?redirect=` idiom (cart/PDP/checkout); a
+    // post-login user lands back on their order history, not `/`. The
+    // path is read INSIDE the effect (not from the useLocation
+    // subscription) so the redirect itself can't re-fire the effect and
+    // eat the original target (checkout.tsx:548 idiom, generalized).
+    if (!token) {
+      const { pathname, search } = window.location;
+      navigate(`/login?redirect=${encodeURIComponent(pathname + search)}`);
+    }
   }, [token, navigate]);
 
   // Round-3 (react-hooks/rules-of-hooks): this memo previously sat after
@@ -254,7 +264,11 @@ export default function OrdersPage() {
     return failed;
   }, [filter, orders, pending, completed, failed]);
 
-  if (!token) return null;
+  // R122 (A1-P2): guests get the list-shaped RouteSkeleton instead of
+  // a bare null — checkout.tsx's R115-I1 guard (the white frame between
+  // the lazy-skeleton swap-out and the redirect tick read as a blank
+  // page on slow links). Same "list" shape ROUTE_SHAPES maps /orders to.
+  if (!token) return <RouteSkeleton shape="list" />;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -437,7 +451,10 @@ export default function OrdersPage() {
               </Button>
               <button
                 onClick={() => setFilter("all")}
-                className="text-xs font-bold text-primary hover:underline mt-1.5"
+                /* R122 (A1 P2-7): the text CTA was ~24px tall — min-h-11
+                   rides the 44px tap-target floor the load-more right
+                   above it already follows. */
+                className="inline-flex items-center min-h-11 px-2 text-xs font-bold text-primary hover:underline"
               >
                 عرض كل الطلبات
               </button>
@@ -457,7 +474,9 @@ export default function OrdersPage() {
             <p className="font-bold text-sm mb-3 text-foreground/85">لا توجد طلبات في هذه الفئة</p>
             <button
               onClick={() => setFilter("all")}
-              className="text-xs font-bold text-primary-text hover:text-primary border border-primary/22 px-4 py-1.5 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+              /* R122 (A1 P2-7): py-1.5 was ~30px tall — min-h-11 rides the
+                 44px tap-target floor. */
+              className="text-xs font-bold text-primary-text hover:text-primary border border-primary/22 px-4 min-h-11 rounded-xl hover:bg-primary/8 transition-colors press-spring"
             >
               عرض كل الطلبات
             </button>

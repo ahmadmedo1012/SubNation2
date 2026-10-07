@@ -618,7 +618,9 @@ export default function SupportPage() {
                     key={c.value}
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, category: c.value }))}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-150 press-spring min-h-[36px] ${
+                    /* R122 (A1 P2-7): min-h-[36px] → min-h-11 — the 44px
+                       tap-target floor the catalog chips already ride. */
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-150 press-spring min-h-11 ${
                       form.category === c.value
                         ? "bg-primary text-white border-primary shadow-sm shadow-primary/20"
                         : "bg-muted/35 border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"

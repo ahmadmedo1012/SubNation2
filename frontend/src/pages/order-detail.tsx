@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
@@ -182,10 +183,24 @@ export default function OrderDetailPage() {
   };
 
   useEffect(() => {
-    if (!token) navigate("/login");
+    // R122 (A11-F3): preserve the return path (order deep links are the
+    // URLs support shares back over WhatsApp — the dominant channel);
+    // the commerce flows' `?redirect=` idiom, honored by login.tsx. The
+    // path is read INSIDE the effect (not from the useLocation
+    // subscription) so the redirect itself can't re-fire the effect and
+    // eat the order code (checkout.tsx:548 idiom, generalized).
+    if (!token) {
+      const { pathname, search } = window.location;
+      navigate(`/login?redirect=${encodeURIComponent(pathname + search)}`);
+    }
   }, [token, navigate]);
 
-  if (!token) return null;
+  // R122 (A1-P2): guests get the order-shaped RouteSkeleton instead of a
+  // bare null — checkout.tsx's R115-I1 guard (the white frame between
+  // the lazy-skeleton swap-out and the redirect tick read as a blank
+  // page on slow links). Same "order" shape ROUTE_SHAPES maps
+  // /orders/:code to, so the swap-in is a content-fill, not a jump.
+  if (!token) return <RouteSkeleton shape="order" />;
 
   if (isLoading)
     return (
@@ -596,11 +611,17 @@ export default function OrderDetailPage() {
 
         {/* Support */}
         <div className="text-center py-1 pb-2">
-          <Link href="/support">
-            <button className="text-xs text-muted-foreground hover:text-primary/80 transition-colors inline-flex items-center gap-1.5 press-spring">
-              <ExternalLink className="w-3 h-3" />
-              مشكلة في هذا الطلب؟ تواصل مع الدعم
-            </button>
+          {/* R122 (A1-P1): the Link wears the text-CTA classes directly —
+              was a native button nested inside a Link (invalid interactive
+              nesting + a doubled tab stop), the exact A4-F1 class the
+              R120-B7 sweep missed because its regex only matched the
+              capitalized Button component. */}
+          <Link
+            href="/support"
+            className="text-xs text-muted-foreground hover:text-primary/80 transition-colors inline-flex items-center gap-1.5 press-spring"
+          >
+            <ExternalLink className="w-3 h-3" />
+            مشكلة في هذا الطلب؟ تواصل مع الدعم
           </Link>
         </div>
       </div>

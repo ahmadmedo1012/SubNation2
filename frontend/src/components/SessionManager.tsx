@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useAuth } from "@/lib/auth";
+import { formatDateShort } from "@/lib/utils";
 import { LogOut, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -113,7 +114,13 @@ export function SessionManager() {
               <div className="min-w-0">
                 <p className="font-bold text-sm truncate">{session.device}</p>
                 <p className="text-3xs text-muted-foreground">
-                  آخر نشاط: {new Date(session.lastActive).toLocaleDateString("ar-LY")}
+                  {/* R122 (A1 P2-3): the bare toLocaleDateString("ar-LY") was
+                      the 96-F7 Latin-digit-pin class (engines without ar-LY
+                      data render Arabic-Indic ٠١٢ digits). formatDateShort
+                      is pinned to ar-LY-u-nu-latn AND reads better for a
+                      "last activity" stamp (relative «قبل 5 دقائق» under
+                      48h, calendar date beyond). */}
+                  آخر نشاط: {formatDateShort(session.lastActive)}
                 </p>
               </div>
               {session.current && (

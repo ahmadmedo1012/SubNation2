@@ -1,6 +1,7 @@
 import { CopyButton } from "@/components/CopyButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { generateIdempotencyKey } from "@/lib/idempotency";
@@ -242,10 +243,20 @@ export default function LoyaltyPage() {
 
   const headers = { Authorization: token ? `Bearer ${token}` : "" };
 
-  // Login redirect (unchanged): the queries above are gated on
-  // `enabled: !!token`, so an unauthenticated visit never fetches.
+  // Login redirect: the queries above are gated on `enabled: !!token`,
+  // so an unauthenticated visit never fetches.
+  // R122 (A11-F3): the redirect now PRESERVES the return path (the
+  // commerce flows' `?redirect=` idiom — cart/PDP/checkout; login.tsx
+  // honors same-origin internal paths only), so a post-login user
+  // lands back on the loyalty program instead of `/`. The path is read
+  // INSIDE the effect (not from the useLocation subscription) so the
+  // redirect itself can't re-fire the effect and eat the target
+  // (checkout.tsx:548 idiom, generalized).
   useEffect(() => {
-    if (!token) navigate("/login");
+    if (!token) {
+      const { pathname, search } = window.location;
+      navigate(`/login?redirect=${encodeURIComponent(pathname + search)}`);
+    }
   }, [token, navigate]);
 
   // R115 (A12 de-hardcode / A8 #8+#10): EVERY conversion gate on this
@@ -421,6 +432,14 @@ export default function LoyaltyPage() {
     },
   ];
 
+  // R122 (A1-P2): guests get the detail-shaped RouteSkeleton instead of
+  // the zeroed page frame — the enabled:false queries report loaded with
+  // no data, so a guest used to see the tier/points fallback literals
+  // («برونزي»، 0 نقطة) for the frame between mount and the redirect tick.
+  // Same "detail" shape ROUTE_SHAPES maps /loyalty to (checkout.tsx's
+  // R115-I1 guard idiom).
+  if (!token) return <RouteSkeleton shape="detail" />;
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-7 page-in">
       <div className="flex items-center gap-3 mb-6">
@@ -572,7 +591,13 @@ export default function LoyaltyPage() {
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <div
                   dir="ltr"
-                  className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2.5 font-mono text-sm font-bold tracking-widest truncate text-left"
+                  /* R122 (A1 P2-4): tracking-widest was a silent no-op — the
+                     global Arabic letter-spacing guard (index.css:917)
+                     zeroes the five tracking utilities app-wide, so the
+                     SAME referral code rendered with 0.2em spacing on
+                     /referrals and 0 here. Arbitrary form unified to
+                     tracking-[0.2em] for LTR mono runs. */
+                  className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2.5 font-mono text-sm font-bold tracking-[0.2em] truncate text-left"
                 >
                   {data.referral_code}
                 </div>
@@ -609,12 +634,19 @@ export default function LoyaltyPage() {
                 </div>
               ))}
             </div>
-            <Link href="/referrals">
-              <button className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-primary/8 hover:bg-primary/15 border border-primary/20 hover:border-primary/30 text-primary text-sm font-bold transition-all active:scale-[0.98] press-spring">
-                <Users className="w-3.5 h-3.5" />
-                عرض سجل الإحالات الكامل
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
+            {/* R122 (A1-P1): the Link wears the CTA classes directly —
+                was a native button nested inside a Link (invalid
+                interactive nesting + a doubled tab stop; lowercase
+                markup slipped past the R120-B7 sweep's capitalized-only
+                regex). min-h-11 rides the app-wide 44px tap-target floor
+                while converting. */}
+            <Link
+              href="/referrals"
+              className="w-full min-h-11 py-2 flex items-center justify-center gap-2 rounded-xl bg-primary/8 hover:bg-primary/15 border border-primary/20 hover:border-primary/30 text-primary text-sm font-bold transition-all active:scale-[0.98] press-spring"
+            >
+              <Users className="w-3.5 h-3.5" />
+              عرض سجل الإحالات الكامل
+              <ChevronLeft className="w-3.5 h-3.5" />
             </Link>
           </div>
 

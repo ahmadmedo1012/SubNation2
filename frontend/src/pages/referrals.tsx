@@ -23,6 +23,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 
 interface LoyaltyOverview {
@@ -117,8 +118,17 @@ export default function ReferralsPage() {
 
   // Redirect to login if not authenticated. Runs in an effect so we
   // never trigger a router state update during the render phase.
+  // R122 (A11-F3): the redirect now PRESERVES the return path (the
+  // commerce flows' `?redirect=` idiom — cart/PDP/checkout; login.tsx
+  // honors same-origin internal paths only). The path is read INSIDE
+  // the effect (not from the useLocation subscription) so the redirect
+  // itself can't re-fire the effect and eat the target
+  // (checkout.tsx:548 idiom, generalized).
   useEffect(() => {
-    if (!token) navigate("/login");
+    if (!token) {
+      const { pathname, search } = window.location;
+      navigate(`/login?redirect=${encodeURIComponent(pathname + search)}`);
+    }
   }, [token, navigate]);
 
   const headers: HeadersInit = { Authorization: token ? `Bearer ${token}` : "" };
@@ -224,6 +234,14 @@ export default function ReferralsPage() {
     .filter((e) => e.status === "credited")
     .reduce((s, e) => s + e.points_earned, 0);
 
+  // R122 (A1-P2): guests get the list-shaped RouteSkeleton instead of the
+  // ZEROED frame — the enabled:false queries report loaded with no data,
+  // so a guest used to see four "0" stat tiles + a "—" referral code for
+  // the frame between mount and the redirect tick (a false "you have no
+  // referrals" flash on a money-adjacent page). Same "list" shape
+  // ROUTE_SHAPES maps /referrals to (checkout.tsx's R115-I1 guard idiom).
+  if (!token) return <RouteSkeleton shape="list" />;
+
   const STEPS = [
     {
       icon: Share2,
@@ -261,16 +279,21 @@ export default function ReferralsPage() {
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/loyalty">
-          <button
-            aria-label="رجوع لبرنامج الولاء"
-            className="w-8 h-8 rounded-lg hover:bg-secondary/70 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors press-spring"
-          >
-            {/* Back = points RIGHT under the unified RTL icon decision
-                (same idiom as terms.tsx / category.tsx back buttons —
-                B4 P2-8). Previously a bare ChevronLeft pointing left. */}
-            <ChevronLeft className="w-4 h-4 rotate-180" />
-          </button>
+        {/* R122 (A1-P1): the back control is ONE anchor wearing the
+            icon-button classes — was a native button nested inside a
+            Link (invalid interactive nesting + a doubled tab stop).
+            R122 (A1-P2, tap floor): the old w-8 h-8 was 32px — w-11 h-11
+            rides the 44px floor the app enforces on every other icon
+            control. */}
+        <Link
+          href="/loyalty"
+          aria-label="رجوع لبرنامج الولاء"
+          className="w-11 h-11 rounded-lg hover:bg-secondary/70 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors press-spring"
+        >
+          {/* Back = points RIGHT under the unified RTL icon decision
+              (same idiom as terms.tsx / category.tsx back buttons —
+              B4 P2-8). Previously a bare ChevronLeft pointing left. */}
+          <ChevronLeft className="w-4 h-4 rotate-180" />
         </Link>
         <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
           <Users className="w-4.5 h-4.5 text-primary" />
@@ -509,7 +532,13 @@ export default function ReferralsPage() {
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-foreground/90 font-mono tracking-wide">
+                        {/* R122 (A1 P2-4): tracking-wide → the arbitrary
+                            tracking-[0.2em] form — the named utility is a
+                            silent no-op under the global Arabic
+                            letter-spacing guard (index.css:917), so this
+                            LTR mono phone run rendered with 0 spacing
+                            (unified with the referral-code runs). */}
+                        <p className="text-sm font-bold text-foreground/90 font-mono tracking-[0.2em]">
                           {ev.phone_masked}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -543,12 +572,17 @@ export default function ReferralsPage() {
 
           {/* CTA to loyalty */}
           <div className="mt-4 text-center">
-            <Link href="/loyalty">
-              <button className="flex items-center gap-1.5 mx-auto text-sm text-muted-foreground hover:text-primary transition-colors press-spring">
-                <Star className="w-3.5 h-3.5" />
-                عرض نقاطي وبرنامج الولاء
-                <ArrowLeft className="w-3.5 h-3.5" />
-              </button>
+            {/* R122 (A1-P1): the Link wears the CTA classes directly —
+                was a native button nested inside a Link (invalid
+                interactive nesting + a doubled tab stop). min-h-11 rides
+                the 44px tap-target floor while converting. */}
+            <Link
+              href="/loyalty"
+              className="inline-flex items-center min-h-11 gap-1.5 mx-auto text-sm text-muted-foreground hover:text-primary transition-colors press-spring"
+            >
+              <Star className="w-3.5 h-3.5" />
+              عرض نقاطي وبرنامج الولاء
+              <ArrowLeft className="w-3.5 h-3.5" />
             </Link>
           </div>
         </>

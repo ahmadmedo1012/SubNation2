@@ -46,7 +46,10 @@ export function OnboardingPage() {
 
   useEffect(() => {
     if (!token) {
-      navigate("/login");
+      // R122 (A11-F3): preserve the return path (commerce-flows'
+      // `?redirect=` idiom) so a post-login user still lands on the
+      // welcome screen the signup flow intended for them.
+      navigate(`/login?redirect=${encodeURIComponent("/onboarding")}`);
       return;
     }
     if (user && (user as { onboarded_at?: string }).onboarded_at) {
@@ -136,7 +139,14 @@ export function OnboardingPage() {
                 <FeatureRow
                   icon={ShoppingBag}
                   title="كتالوج كامل"
-                  description="نتفلكس، ديزني+، سبوتيفاي، بلايستيشن وأكثر."
+                  /* R122 (A1 P2-2): بلايستيشن removed — the gaming category
+                     was archived 2026-09-19 and R120-B1 (A7-F5) scrubbed it
+                     from home's hero/SEO with the rationale "a chip that
+                     filters to an empty grid misleads shoppers"; this
+                     first-run screen kept naming a brand the live catalog
+                     no longer sells. شاهد (Shahid VIP) is verified-live in
+                     streaming. */
+                  description="نتفلكس، ديزني+، شاهد، سبوتيفاي وأكثر."
                 />
               </div>
 
@@ -181,7 +191,10 @@ export function OnboardingPage() {
                 type="button"
                 onClick={() => setStep(1)}
                 disabled={completing}
-                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+                /* R122 (A1 P2-7): py-1 was ~28px tall — inline-flex +
+                   min-h-11 rides the 44px tap-target floor (the التالي
+                   CTAs above are h-12). */
+                className="w-full inline-flex items-center justify-center min-h-11 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 السابق
               </button>

@@ -15,6 +15,15 @@
  * level pins for the chrome surfaces live in storefront-chrome-r120
  * («zero button descendants inside links»); this is the source-level
  * app-wide net.
+ *
+ * R122 (A1-P1): the net was blind to NATIVE lowercase button markup —
+ * four live customer-site nests survived it (order-detail support link,
+ * loyalty referrals CTA, referrals back + loyalty CTA) because the
+ * regex only matched the capitalized Button component. The character
+ * class now matches both. To keep round-tagged fix COMMENTS that quote
+ * the pre-fix shape (a documentation convention this codebase leans
+ * on) from tripping the net, block comments are stripped before the
+ * match — same semantics as the JSX compiler, which drops them too.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -40,16 +49,31 @@ function collectSourceTsx(dir: string): string[] {
 }
 const sourceTsxFiles = collectSourceTsx(resolve(process.cwd(), "src"));
 
-/** A <Link …> whose first element child is a <Button …> — the A4-F1
- * defect shape. The asChild composition (<Button asChild><Link/>) and
- * buttonVariants-on-Link both pass this net by construction. */
-const LINK_WRAPPING_BUTTON = /<Link[^>]*>\s*<Button[\s>]/;
+/** A <Link …> whose first element child is a <Button …> or a native
+ * <button …> — the A4-F1 defect shape. The asChild composition
+ * (<Button asChild><Link/>) and buttonVariants-on-Link both pass this
+ * net by construction.
+ *
+ * R122 (A1-P1): the character class now matches the LOWERCASE native
+ * button too — four live customer-site nests (order-detail ×1,
+ * loyalty ×1, referrals ×2) survived the R120-B7 sweep precisely
+ * because this regex only matched the capitalized Button component. */
+const LINK_WRAPPING_BUTTON = /<Link[^>]*>\s*<[Bb]utton[\s>]/;
+
+/** R122 (A1-P1): strip block comments before matching — fix comments
+ * legitimately quote the pre-fix defect shape (e.g. “was a Button
+ * nested inside a Link” written with real angle brackets), and the
+ * compiler drops comments anyway, so only comment-free text can carry
+ * a live nest. Line comments (`// …`) never contain JSX and are left
+ * alone. */
+const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const stripComments = (source: string): string => source.replace(BLOCK_COMMENT, "");
 
 describe("A4-F1 completion — zero Button-inside-Link nesting app-wide (R120-B7)", () => {
-  it("no source .tsx nests a <Button> as the direct child of a <Link>", () => {
+  it("no source .tsx nests a <Button> or native <button> as the direct child of a <Link>", () => {
     const offenders: string[] = [];
     for (const f of sourceTsxFiles) {
-      const text = readFileSync(f, "utf8");
+      const text = stripComments(readFileSync(f, "utf8"));
       if (LINK_WRAPPING_BUTTON.test(text)) offenders.push(f);
     }
     expect(offenders).toEqual([]);

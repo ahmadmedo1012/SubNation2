@@ -186,6 +186,20 @@ export default function CategoryPage() {
     return buildFaqLd(meta.faqs);
   }, [meta]);
 
+  // R122 (A11-F3): available products lead the default grid — home.tsx
+  // got this re-order in R120-B1 (A3-F3/A4-F4) but the category landing
+  // pages never did, so /category/streaming opened with a wall of نفد
+  // cards (the live catalog ran 44/45 sold out at live-audit time —
+  // the hero/filters funnel guests straight into these pages).
+  // Presentation-only re-order of the already-loaded array; Array#sort
+  // is stable, so within each group the backend's default order
+  // (الأحدث) is preserved. The category page exposes no user-facing
+  // sort, so there is no explicit ordering intent to respect here.
+  const displayProducts = useMemo(
+    () => [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available)),
+    [products],
+  );
+
   // R120-B3 (A7-F1 P1): CAPTURE the useSeo return — the block was called
   // without rendering it, so all 7 category landing pages shipped the
   // DEFAULT title/description and zero JSON-LD (Breadcrumb/FAQ/ItemList)
@@ -319,7 +333,7 @@ export default function CategoryPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {products.map((product, i) => (
+            {displayProducts.map((product, i) => (
               <ProductCard key={product.id} product={product as Product} index={i} />
             ))}
           </div>

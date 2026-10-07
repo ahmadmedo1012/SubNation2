@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useSocket } from "@/hooks/use-socket";
@@ -376,9 +377,7 @@ const LedgerEntryRow = memo(function LedgerEntryRow({
             </span>
           )}
           {entry.created_at && (
-            <span className="text-3xs text-muted-foreground">
-              · {formatDate(entry.created_at)}
-            </span>
+            <span className="text-3xs text-muted-foreground">· {formatDate(entry.created_at)}</span>
           )}
         </div>
       </div>
@@ -582,7 +581,14 @@ function TransferCodePanel({
         {code ? (
           <div
             dir="ltr"
-            className="font-mono font-bold text-base sm:text-lg tracking-wide rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
+            /* R122 (A1 P2-4): tracking-wide was a silent no-op — the global
+               Arabic letter-spacing guard (index.css:917) zeroes the five
+               tracking utilities app-wide, so this LTR mono code rendered
+               with 0 spacing while the same class of datum on /referrals
+               had 0.2em. The arbitrary tracking-[0.2em] form carries the
+               intended spacing for Latin-only runs; the guard's
+               letter-join protection stays intact for Arabic. */
+            className="font-mono font-bold text-base sm:text-lg tracking-[0.2em] rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
           >
             {code}
           </div>
@@ -826,7 +832,19 @@ export default function WalletPage() {
   }, [network, amount, method]);
 
   useEffect(() => {
-    if (!token) navigate("/login");
+    // R122 (A11-F3): the guest redirect now PRESERVES the return path
+    // (the commerce flows' `?redirect=` idiom — cart/PDP/checkout already
+    // do this; login.tsx honors same-origin internal paths only). A
+    // post-login user lands back on the wallet deep link they opened
+    // from WhatsApp instead of the bare home feed. The path is read
+    // INSIDE the effect, not from the useLocation subscription — the
+    // redirect itself changes the location, so a `location` dep would
+    // re-fire the effect onto /login and eat the original target
+    // (checkout.tsx:548's constant-target idiom, generalized).
+    if (!token) {
+      const { pathname, search } = window.location;
+      navigate(`/login?redirect=${encodeURIComponent(pathname + search)}`);
+    }
     // wouter's navigate is a stable reference — listing it is free and
     // keeps exhaustive-deps honest (r111 lint parity).
   }, [token, navigate]);
@@ -1053,7 +1071,14 @@ export default function WalletPage() {
   const presets =
     method === "mobile_transfer" ? (NETWORK_PRESETS[network] ?? []) : [25, 50, 100, 200];
   const senderPhoneErr = senderPhoneTouched ? libyanPhoneError(senderPhone) : null;
-  if (!token) return null;
+  // R122 (A1-P2): guests get the list-shaped RouteSkeleton instead of
+  // a bare null — mirrors checkout.tsx's R115-I1 guard: between the
+  // lazy-skeleton swap-out and the redirect tick, a null render painted
+  // a blank white frame on the money page (deep links shared over
+  // WhatsApp — the dominant local channel — read as a broken page on
+  // slow links). Same "list" shape ROUTE_SHAPES maps /wallet to, so the
+  // swap-in is a content-fill, not a layout jump.
+  if (!token) return <RouteSkeleton shape="list" />;
 
   const tier = wallet?.loyalty_tier ?? "bronze";
 

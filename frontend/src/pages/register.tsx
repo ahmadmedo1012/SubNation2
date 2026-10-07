@@ -97,7 +97,13 @@ export default function RegisterPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-bold leading-tight">
                   تم تطبيق رمز الإحالة:{" "}
-                  <span dir="ltr" className="font-mono tracking-wider">
+                  {/* R122 (A1 P2-4): tracking-wider was a silent no-op — the
+                      global Arabic letter-spacing guard (index.css:917)
+                      zeroes the five tracking utilities app-wide, so this
+                      LTR mono code chip rendered with 0 spacing while the
+                      same code on /referrals had 0.2em. Arbitrary form
+                      unified to tracking-[0.2em]. */}
+                  <span dir="ltr" className="font-mono tracking-[0.2em]">
                     {referral}
                   </span>
                 </p>

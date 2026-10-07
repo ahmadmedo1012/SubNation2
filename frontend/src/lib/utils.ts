@@ -79,6 +79,15 @@ export function formatDate(dateStr: string): string {
   });
 }
 
+// R122 (A1 P2-3): time-of-day twin of formatDate, pinned to the same
+// Latin-digit extension — the status page's "last updated" stamp called
+// toLocaleTimeString("ar-LY") bare, the exact 96-F7 class (engines
+// lacking ar-LY data fall back to root "ar" → Arabic-Indic ٠١٢ digits,
+// breaking the site-wide Latin-numerals convention).
+export function formatTime(date: Date): string {
+  return date.toLocaleTimeString(AR_DATE_LOCALE, { hour: "2-digit", minute: "2-digit" });
+}
+
 export function tierLabel(tier: string): string {
   const labels: Record<string, string> = {
     bronze: "برونزي",

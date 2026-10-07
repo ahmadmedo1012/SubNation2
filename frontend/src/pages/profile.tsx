@@ -2,6 +2,7 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { CopyButton } from "@/components/CopyButton";
 import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useToast } from "@/hooks/use-toast";
@@ -75,7 +76,16 @@ export default function ProfilePage() {
   const [unlinkingProvider, setUnlinkingProvider] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) navigate("/login");
+    // R122 (A11-F3): preserve the return path on the guest redirect —
+    // the commerce flows' `?redirect=` idiom (cart/PDP/checkout);
+    // login.tsx honors same-origin internal paths only. The path is
+    // read INSIDE the effect (not from the useLocation subscription) so
+    // the redirect itself can't re-fire the effect and eat the target
+    // (checkout.tsx:548 idiom, generalized).
+    if (!token) {
+      const { pathname, search } = window.location;
+      navigate(`/login?redirect=${encodeURIComponent(pathname + search)}`);
+    }
   }, [token, navigate]);
 
   // R115 (A8 #4): the me-query failure branch — the identity card used
@@ -189,7 +199,12 @@ export default function ProfilePage() {
   };
 
   const tier = user?.loyalty_tier ?? "bronze";
-  if (!token) return null;
+  // R122 (A1-P2): guests get the form-shaped RouteSkeleton instead of a
+  // bare null — checkout.tsx's R115-I1 guard (the white frame between
+  // the lazy-skeleton swap-out and the redirect tick read as a blank
+  // page on slow links). Same "form" shape ROUTE_SHAPES maps /profile
+  // to, so the swap-in is a content-fill, not a layout jump.
+  if (!token) return <RouteSkeleton shape="form" />;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
@@ -272,19 +287,30 @@ export default function ProfilePage() {
                 {user.display_name && (
                   <div className="text-sm font-bold mb-1.5 truncate">{user.display_name}</div>
                 )}
-                <div
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3"
-                  dir="ltr"
-                >
+                {/* R122 (A1-P3): the row used to carry dir="ltr" — correct
+                    for the 09XXXXXXXX phone run, but it leaked onto the
+                    Arabic Telegram branch and reversed its word order
+                    («Telegram حساب» is what an RTL reader saw). The row
+                    now inherits the page's RTL base; direction is scoped
+                    per branch — the digit run stays LTR, and the Latin
+                    brand token is isolated in its own LTR span (the
+                    app's mixed-direction idiom, same shape as the
+                    lang="en" spans on home's brand chips). */}
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
                   {user.phone?.startsWith("tg_") ? (
                     <>
                       <Smartphone className="w-3 h-3" />
-                      <span>حساب Telegram</span>
+                      <span>
+                        حساب{" "}
+                        <span lang="en" dir="ltr">
+                          Telegram
+                        </span>
+                      </span>
                     </>
                   ) : (
                     <>
                       <Phone className="w-3 h-3" />
-                      <span>{user.phone}</span>
+                      <span dir="ltr">{user.phone}</span>
                     </>
                   )}
                 </div>
@@ -319,7 +345,13 @@ export default function ProfilePage() {
                   <div className="text-3xs text-muted-foreground font-semibold mb-0.5">
                     رمز الإحالة
                   </div>
-                  <div dir="ltr" className="font-mono font-bold tracking-widest text-sm text-left">
+                  {/* R122 (A1 P2-4): tracking-widest was a silent no-op — the
+                      global Arabic letter-spacing guard (index.css:917)
+                      zeroes the five tracking utilities app-wide, so the
+                      SAME referral code rendered with 0.2em spacing on
+                      /referrals and 0 here. Arbitrary form unified to
+                      tracking-[0.2em] for LTR mono runs. */}
+                  <div dir="ltr" className="font-mono font-bold tracking-[0.2em] text-sm text-left">
                     {user.referral_code}
                   </div>
                 </div>
@@ -502,7 +534,11 @@ export default function ProfilePage() {
               <div className="pt-1 space-y-2">
                 {!linkedProviders.find((i) => i.provider === "google.com") && (
                   <AuthProviders
-                    buttonClassName="w-full h-9 text-xs rounded-lg border border-border/60 bg-background"
+                    /* R122 (A1 P2-7): h-9 (36px) → h-11 — the component's
+                       own default (AuthProviders.tsx) and the app's 44px
+                       tap-target floor; this was the only sub-floor
+                       override in the app. */
+                    buttonClassName="w-full h-11 text-xs rounded-lg border border-border/60 bg-background"
                     onSuccess={() => {
                       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
                       refetchProviders();

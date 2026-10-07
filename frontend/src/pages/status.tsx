@@ -1,4 +1,5 @@
 import { fetchHealthzSummary, type CheckStatus, type HealthzSummary } from "@/lib/healthz";
+import { formatTime } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
@@ -96,9 +97,7 @@ export default function StatusPage(): ReactElement {
   const Icon = meta.icon;
 
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
-  const lastUpdatedLabel = lastUpdated
-    ? lastUpdated.toLocaleTimeString("ar-LY", { hour: "2-digit", minute: "2-digit" })
-    : "—";
+  const lastUpdatedLabel = lastUpdated ? formatTime(lastUpdated) : "—";
 
   return (
     <div className="min-h-[100dvh] bg-background">

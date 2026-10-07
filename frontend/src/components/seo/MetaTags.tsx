@@ -7,7 +7,13 @@ export interface SeoInput {
   description: string;
   /** Absolute or relative URL of the canonical image (real /opengraph.jpg is 1280×720) */
   image?: string;
-  /** og:image:width override — defaults to the REAL /opengraph.jpg (1280×720). R120-B3 (A7-F6): the hardcoded 1200×630 lied about every image. */
+  /** og:image:width override — defaults to the REAL /opengraph.jpg (1280×720).
+   * R120-B3 (A7-F6): the hardcoded 1200×630 lied about every image.
+   * R122 (A7): dims are now declared ONLY when they are actually known —
+   * a caller image without explicit dims OMITS the og:image:width/height
+   * pair entirely instead of inheriting the default 1280×720 (product
+   * webp art is ~450×450; mis-declared dims force scrapers into a
+   * wasteful fetch to learn the truth — the exact A7-F6 class). */
   imageWidth?: number;
   /** og:image:height override — see imageWidth. */
   imageHeight?: number;
@@ -78,7 +84,17 @@ function getAppOrigin(): string {
 }
 
 function clamp(text: string, max: number): string {
-  return text.length <= max ? text : text.slice(0, Math.max(0, max - 1)).trim() + "…";
+  if (text.length <= max) return text;
+  // R122 (A7): cut at the last WORD BOUNDARY inside the budget — the
+  // old raw slice chopped words mid-glyph and Arabic shards like
+  // «…الليب…» leaked into titles/descriptions (SERP snippets and
+  // WhatsApp unfurls read as broken). Same length limits (result ≤ max
+  // incl. the ellipsis); a single unbroken word longer than the budget
+  // still falls back to the character cut.
+  const sliced = text.slice(0, Math.max(0, max - 1)).trimEnd();
+  const lastSpace = sliced.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? sliced.slice(0, lastSpace) : sliced;
+  return cut.trimEnd() + "…";
 }
 
 function upsertMeta(
@@ -106,6 +122,14 @@ function upsertLink(rel: string, href: string): void {
     document.head.appendChild(el);
   }
   el.setAttribute("href", href);
+}
+
+/** R122 (A7): the head is upsert-managed and tags are never removed on
+ * unmount — a page that must NOT declare og:image dims has to actively
+ * evict the pair, or the previous page's values survive the route
+ * change (home's default 1280×720 would stick to every product page). */
+function removeMeta(selector: string): void {
+  document.head.querySelectorAll(selector).forEach((el) => el.remove());
 }
 
 function setTitle(title: string): void {
@@ -138,9 +162,15 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   const robots = input.robots ?? "index,follow";
   const ogType = input.type ?? "website";
   const isFallback = input.fallback === true;
-  // R120-B3 (A7-F6): hoisted so the effect deps below can watch them.
-  const imageWidth = input.imageWidth ?? DEFAULT_IMAGE_WIDTH;
-  const imageHeight = input.imageHeight ?? DEFAULT_IMAGE_HEIGHT;
+  // R122 (A7): dims are declared only when KNOWN — the real
+  // /opengraph.jpg defaults (R120-B3 A7-F6, verified with `file`),
+  // caller-provided overrides, or nothing at all. A caller image of
+  // unknown size (product webp art) must not inherit the default
+  // 1280×720 declaration.
+  const usesDefaultImage = !input.image || input.image === DEFAULT_IMAGE;
+  const imageWidth = input.imageWidth ?? (usesDefaultImage ? DEFAULT_IMAGE_WIDTH : undefined);
+  const imageHeight = input.imageHeight ?? (usesDefaultImage ? DEFAULT_IMAGE_HEIGHT : undefined);
+  const hasImageDims = imageWidth !== undefined && imageHeight !== undefined;
 
   const apply = (): void => {
     setTitle(title);
@@ -169,15 +199,28 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
     upsertMeta('meta[property="og:image"]', "property", "og:image", image);
     // R116-S1: explicit dimensions alongside og:image — scrapers (WhatsApp
     // is the dominant share channel) size the unfurl without a headless
-    // image fetch. Defaults match the REAL /opengraph.jpg (A7-F6); callers
-    // with per-page art (product webp) pass their own dims.
-    upsertMeta('meta[property="og:image:width"]', "property", "og:image:width", String(imageWidth));
-    upsertMeta(
-      'meta[property="og:image:height"]',
-      "property",
-      "og:image:height",
-      String(imageHeight),
-    );
+    // image fetch. R122 (A7): declared ONLY when the real size is known
+    // (default /opengraph.jpg or caller-provided overrides); an image of
+    // unknown size OMITS the pair — and actively evicts any stale values
+    // the previous page upserted (removeMeta above), because a WRONG
+    // declaration is the A7-F6 lie again.
+    if (hasImageDims) {
+      upsertMeta(
+        'meta[property="og:image:width"]',
+        "property",
+        "og:image:width",
+        String(imageWidth),
+      );
+      upsertMeta(
+        'meta[property="og:image:height"]',
+        "property",
+        "og:image:height",
+        String(imageHeight),
+      );
+    } else {
+      removeMeta('meta[property="og:image:width"]');
+      removeMeta('meta[property="og:image:height"]');
+    }
     upsertMeta('meta[property="og:locale"]', "property", "og:locale", ogLocale);
     // AUD103-6-F10 (r103): og:locale:alternate DROPPED — the alternate
     // list must name REAL translations; advertising a nonexistent en_US
@@ -223,6 +266,7 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
     image,
     imageWidth,
     imageHeight,
+    hasImageDims,
     robots,
     ogType,
     ogLocale,

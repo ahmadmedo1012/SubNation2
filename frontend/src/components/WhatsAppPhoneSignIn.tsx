@@ -598,11 +598,15 @@ export function WhatsAppPhoneSignIn({
                   enterKeyHint="done"
                   /* F3-12 (R111 WCAG 1.4.11): same fix as the phone field
                   above — a real 3.76:1+ ring instead of the 1.70:1 border
-                  tint. (tracking-widest here is Latin digits only — the
-                  global letter-spacing guard zeroes it for Arabic.)
+                  tint. (R122 A1 P2-4: tracking now rides the arbitrary
+                  tracking-[0.2em] form — the old tracking-widest was a
+                  no-op: the global Arabic letter-spacing guard
+                  (index.css:917) zeroes the five named utilities on ALL
+                  runs, not just Arabic ones, so this Latin-digit OTP
+                  rendered untracked despite the intent documented here.)
                   A4-F12 (R120-B2): resting border at muted-foreground/75
                   (≥3:1 both themes) — was border-border/60 at 1.15:1. */
-                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-card px-3 text-center tracking-widest text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-card px-3 text-center tracking-[0.2em] text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
                   autoFocus
                 />
                 {typeof navigator !== "undefined" &&
