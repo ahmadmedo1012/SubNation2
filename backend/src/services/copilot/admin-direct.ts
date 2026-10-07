@@ -317,11 +317,23 @@ const ALLOWED_FIELDS = new Set([
   "usageTerms",
   "imageUrl",
   "category",
+  // R122 (A7-P2 + A4-P2-3): the operator SEO overrides join the
+  // copilot-writable set — they were read-only (write-orphaned columns)
+  // while the storefront renders them; the assistant can now maintain
+  // them like any other content field. Caps mirror the DB columns
+  // (varchar 200/320) and the admin zod perimeter.
+  "seoTitle",
+  "seoDescription",
   "price",
   "costPrice",
   "isActive",
   "isArchived",
 ]);
+// R122 (A7-P2): exported for the allowed-fields regression test — the
+// direct-execute path is DB-audited end-to-end, so the test pins the
+// SET contents (a hallucinated field must be rejected, a real one
+// accepted) instead of duplicating the transaction harness.
+export const UPDATE_PRODUCT_ALLOWED_FIELDS = ALLOWED_FIELDS;
 
 const updateProductSpec: Tool = {
   type: "function",
@@ -330,10 +342,11 @@ const updateProductSpec: Tool = {
     description:
       "Apply a direct update to one product. Executes IMMEDIATELY — there " +
       "is no separate confirmation step. Supports content fields (name, " +
-      "description, descriptionLong, faq, usageTerms, imageUrl, category) " +
-      "AND pricing fields (price, costPrice) AND status flags (isActive, " +
-      "isArchived). For stock changes, use update_stock instead. " +
-      "ALWAYS call resolve_product first if you only know the product by name.",
+      "description, descriptionLong, faq, usageTerms, imageUrl, category, " +
+      "seoTitle, seoDescription) AND pricing fields (price, costPrice) AND " +
+      "status flags (isActive, isArchived). For stock changes, use " +
+      "update_stock instead. ALWAYS call resolve_product first if you only " +
+      "know the product by name.",
     parameters: {
       type: "object",
       required: ["id", "fields"],
@@ -363,6 +376,10 @@ const updateProductSpec: Tool = {
             usageTerms: { type: "string", maxLength: 10000 },
             imageUrl: { type: "string", maxLength: 1000 },
             category: { type: "string", maxLength: 100 },
+            // R122 (A7-P2 + A4-P2-3): the SEO overrides — camelCase like
+            // every ALLOWED_FIELDS entry, capped at the DB columns.
+            seoTitle: { type: "string", maxLength: 200 },
+            seoDescription: { type: "string", maxLength: 320 },
             price: {
               type: "string",
               description:
@@ -604,8 +621,7 @@ export async function executeUpdateStock(
             LIMIT ${want}
           `);
           const idsR = idsRes as unknown as
-            | { rows?: Array<{ id: number }> }
-            | Array<{ id: number }>;
+            { rows?: Array<{ id: number }> } | Array<{ id: number }>;
           const idList = Array.isArray(idsR) ? idsR : (idsR.rows ?? []);
           if (idList.length > 0) {
             await tx.execute(sql`

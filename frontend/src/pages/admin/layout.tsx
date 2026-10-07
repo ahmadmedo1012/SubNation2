@@ -1,6 +1,10 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+// R122 (A2-P2): GlobalSearch's three raw fetches ride the session-aware
+// wrapper (401 → global toast + redirect instead of a silent "no
+// results").
+import { adminFetchJson } from "@/lib/admin-session";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
@@ -258,6 +262,7 @@ const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; 
 // ── Global search component ──────────────────────────────────────────────────
 
 function GlobalSearch({ onClose }: { onClose: () => void }) {
+  const { hasAdminPermission } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{
     orders: AdminOrder[];
@@ -280,6 +285,27 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // R122 (A2-P2): the palette used to promise orders/users/products
+  // results to EVERY admin, but all three endpoints are permission-
+  // scoped (orders/users/inventory — backend routes/admin/index.ts) — a
+  // scoped operator typed a real query and got «لا نتائج» for sections
+  // they can never open (empty ≠ unauthorized). Same hasAdminPermission
+  // idiom as the nav filter: only the sections the operator can
+  // actually open are fetched and offered.
+  const canSearchOrders = hasAdminPermission("orders");
+  const canSearchUsers = hasAdminPermission("users");
+  const canSearchProducts = hasAdminPermission("inventory");
+  const anySection = canSearchOrders || canSearchUsers || canSearchProducts;
+  // The placeholder tells the truth about what THIS operator can
+  // search (the old fixed copy named all three regardless of scope).
+  const searchPlaceholder = [
+    canSearchOrders && "الطلبات",
+    canSearchUsers && "المستخدمين",
+    canSearchProducts && "المنتجات",
+  ]
+    .filter(Boolean)
+    .join("، ");
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -305,16 +331,36 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
       // 94-C2 (A2 P2-3): r.ok checked BEFORE parsing — an error body
       // (401/500 JSON envelope) previously parsed to a non-array and
       // silently became "لا نتائج" during an outage.
+      // R122 (A2-P2): the session-aware wrapper owns the r.ok guard +
+      // the global 401 handler now; every failure shape (error
+      // envelope, session expiry, abort) collapses to [] here — the
+      // scope filter above already keeps unreachable sections out of
+      // the request set entirely.
       const jsonList = async (url: string): Promise<unknown[]> => {
-        const r = await fetch(url, { headers, signal: controller.signal });
-        if (!r.ok) return [];
-        const d = await r.json().catch(() => null);
-        return Array.isArray(d) ? d : [];
+        try {
+          const d = await adminFetchJson<unknown>(url, {
+            headers,
+            signal: controller.signal,
+          });
+          return Array.isArray(d) ? d : [];
+        } catch {
+          /* session-expired (global toast + redirect in flight), error
+             envelope, or aborted — the next keystroke owns the state */
+          return [];
+        }
       };
+      // R122 (A2-P2): only the scoped-in sections are fetched — a
+      // 403-ing section never gets asked.
       Promise.all([
-        jsonList(`/api/admin/orders?search=${encodeURIComponent(q)}`),
-        jsonList(`/api/admin/users?search=${encodeURIComponent(q)}`),
-        jsonList(`/api/admin/products?search=${encodeURIComponent(q)}`),
+        canSearchOrders
+          ? jsonList(`/api/admin/orders?search=${encodeURIComponent(q)}`)
+          : Promise.resolve([]),
+        canSearchUsers
+          ? jsonList(`/api/admin/users?search=${encodeURIComponent(q)}`)
+          : Promise.resolve([]),
+        canSearchProducts
+          ? jsonList(`/api/admin/products?search=${encodeURIComponent(q)}`)
+          : Promise.resolve([]),
       ])
         .then(([orders, users, products]) => {
           if (controller.signal.aborted) return;
@@ -335,7 +381,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, headers]);
+  }, [query, headers, canSearchOrders, canSearchUsers, canSearchProducts]);
 
   const total = results.orders.length + results.users.length + results.products.length;
 
@@ -410,7 +456,9 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="بحث في الطلبات، المستخدمين، المنتجات…"
+            // R122 (A2-P2): scope-honest placeholder — only the sections
+            // this operator can open are named.
+            placeholder={`بحث في ${searchPlaceholder}…`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
@@ -430,6 +478,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           <div id="global-search-results" role="listbox" className="max-h-72 overflow-y-auto">
             {!loading && total === 0 && (
               <div className="py-10 text-center text-muted-foreground text-sm">
+                {/* R122 (A2-P2): scoped-out sections are never fetched —
+                    this empty copy only ever speaks for the sections that
+                    WERE searched (an admin with no search scope never
+                    reaches the palette; see the triggers in AdminLayout). */}
                 لا نتائج لـ "{query}"
               </div>
             )}
@@ -548,7 +600,12 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
         {/* Idle hint */}
         {query.length < 2 && (
           <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-            ابحث باسم المنتج، رقم الطلب، أو رقم الهاتف
+            {/* R122 (A2-P2): the idle hint names only the scoped-in
+                sections; a no-section admin gets the honest scope
+                message instead of a promise the palette cannot keep. */}
+            {anySection
+              ? `ابحث باسم المنتج، رقم الطلب، أو رقم الهاتف`
+              : "البحث السريع يتطلب صلاحية عرض الطلبات أو المستخدمين أو المنتجات"}
           </div>
         )}
 
@@ -596,7 +653,11 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+  // R122 (A2-P2): lastUpdated is null until the first badge query
+  // actually lands data — the old new Date() seed made the pill read
+  // «الآن» on mount even while every fetch was failing (see the pill
+  // render in the top bar below).
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [secondsAgo, setSecondsAgo] = useState(0);
 
   // Auto-fetch unread alerts count for the badge — works on every page.
@@ -617,7 +678,13 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // (data undefined ⇒ badge hides / falls back to the page-passed
   // count) instead of lying with a zero. 401/500/503 are "unknown",
   // never "0"; the next socket event or 5-min fallback refetch recovers.
-  const { data: alertCountData, dataUpdatedAt: alertsUpdatedAt } = useQuery<{ count: number }>({
+  const {
+    data: alertCountData,
+    dataUpdatedAt: alertsUpdatedAt,
+    // R122 (A2-P2): feeds the "last updated" pill's error state (see
+    // anyBadgeQueryError below).
+    isError: alertsQueryError,
+  } = useQuery<{ count: number }>({
     queryKey: ["admin-alerts-unread-count"],
     queryFn: async () => {
       const r = await fetch("/api/admin/alerts/unread-count", { headers });
@@ -653,7 +720,14 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // tickets), mirroring pendingTopups' finance gating.
   const canSeeFinanceBadge = hasAdminPermission("finance");
   const canSeeSupportBadge = hasAdminPermission("support");
-  const { data: layoutStats, dataUpdatedAt: statsUpdatedAt } = useGetAdminStats({
+  const {
+    data: layoutStats,
+    dataUpdatedAt: statsUpdatedAt,
+    // R122 (A2-P2): feeds the "last updated" pill's error state — a
+    // disabled (scope-less) query never errors, so this is naturally
+    // false for admins the stats subscription doesn't apply to.
+    isError: statsQueryError,
+  } = useGetAdminStats({
     query: {
       queryKey: getGetAdminStatsQueryKey(),
       enabled: !!adminToken && (canSeeFinanceBadge || canSeeSupportBadge),
@@ -697,6 +771,16 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // queries always-on for every admin (alerts) or scoped (stats):
   // dataUpdatedAt advances only when fresh data actually landed.
   const dataRefreshedAt = Math.max(alertsUpdatedAt, statsUpdatedAt);
+  // R122 (A2-P2): the "last updated" pill used to render an always-green
+  // pulsing dot and a "الآن" seeded at mount — on a fresh mount with a
+  // failing API it claimed freshness while nothing had landed, and the
+  // dot stayed green through every query error (the sibling system.tsx
+  // colors its aggregate pill by real status). The pill now derives from
+  // the REAL query state: gray (no pulse) while the first fetch is in
+  // flight, amber when a badge query sits in error (with the honest
+  // stale age of whatever did land), emerald pulse only once data has
+  // actually landed and no badge query is failing.
+  const anyBadgeQueryError = alertsQueryError || statsQueryError;
   useEffect(() => {
     if (dataRefreshedAt > 0) {
       setLastUpdated(new Date(dataRefreshedAt));
@@ -704,6 +788,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     }
   }, [dataRefreshedAt]);
   useEffect(() => {
+    // No data has landed yet — there is no age to tick (the pill shows
+    // the in-flight/error state instead of a fake "الآن").
+    if (!lastUpdated) return;
     const id = setInterval(
       () => setSecondsAgo(Math.round((Date.now() - lastUpdated.getTime()) / 1000)),
       5000,
@@ -711,17 +798,33 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     return () => clearInterval(id);
   }, [lastUpdated]);
 
+  // R122 (A2-P2): the palette + its triggers render only for operators
+  // holding at least one of the three searched scopes (GlobalSearch does
+  // the per-section gating) — an admin whose scopes 403 all three
+  // endpoints no longer sees a search affordance that can only ever
+  // answer «لا نتائج». Declared before the ⌘K effect below so the
+  // shortcut and the triggers share one source of truth.
+  const canGlobalSearch =
+    hasAdminPermission("orders") || hasAdminPermission("users") || hasAdminPermission("inventory");
+
   // Cmd+K / Ctrl+K global shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        // R122 (A2-P2): the shortcut only opens the palette when the
+        // operator holds at least one search scope (the triggers below
+        // hide for scope-less admins — the shortcut must not promise
+        // what they cannot use).
+        if (!canGlobalSearch) return;
         e.preventDefault();
         setShowSearch((v) => !v);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+    // Scopes are fixed for the session (AuthProvider re-reads them only
+    // on re-login) — the first-render capture below is the whole truth.
+  }, [canGlobalSearch]);
 
   // 93-C7 / C-UX3 (A12 H9): ESC closes the mobile nav drawer — it was
   // the only mobile surface with no keyboard exit (backdrop-click only).
@@ -892,7 +995,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
       {/* Footer: search hint + logout */}
       <div className="p-2.5 border-t border-border space-y-0.5">
-        {!collapsed && (
+        {!collapsed && canGlobalSearch && (
           <button
             onClick={() => setShowSearch(true)}
             className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all duration-150 group press-spring"
@@ -918,7 +1021,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   return (
     <div className="min-h-screen flex bg-background">
       {/* Global search overlay */}
-      {showSearch && adminToken && <GlobalSearch onClose={() => setShowSearch(false)} />}
+      {showSearch && adminToken && canGlobalSearch && (
+        <GlobalSearch onClose={() => setShowSearch(false)} />
+      )}
 
       {/* Desktop sidebar */}
       <aside
@@ -969,31 +1074,57 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           <h1 className="font-bold text-sm flex-1 truncate">{pageTitle}</h1>
 
           {/* Global search trigger */}
-          <button
-            onClick={() => setShowSearch(true)}
-            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/70 border border-border/60 hover:border-border transition-all duration-150 text-muted-foreground text-xs group"
-          >
-            <Search className="w-3 h-3" />
-            <span>بحث...</span>
-            <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
-              ⌘K
-            </kbd>
-          </button>
+          {canGlobalSearch && (
+            <button
+              onClick={() => setShowSearch(true)}
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/70 border border-border/60 hover:border-border transition-all duration-150 text-muted-foreground text-xs group"
+            >
+              <Search className="w-3 h-3" />
+              <span>بحث...</span>
+              <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
+                ⌘K
+              </kbd>
+            </button>
+          )}
 
           {/* Mobile search icon */}
-          <button
-            onClick={() => setShowSearch(true)}
-            /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (edge-adjacent
-               target, was ~28px). */
-            className="sm:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
-          >
-            <Search className="w-5 h-5" />
-          </button>
+          {canGlobalSearch && (
+            <button
+              onClick={() => setShowSearch(true)}
+              /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (edge-adjacent
+                 target, was ~28px). */
+              className="sm:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Last updated */}
+          {/* R122 (A2-P2): the dot + label now reflect query reality —
+              emerald pulse only when data landed and no badge query
+              errors; amber (no pulse) while a query sits in error, with
+              the honest stale age; gray while the first fetch is still
+              in flight (never a fake "الآن/live"). */}
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
-            <span className="hidden sm:inline">{refreshLabel}</span>
+            {anyBadgeQueryError ? (
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-status-warning inline-block"
+                title="تعذّر تحديث البيانات"
+              />
+            ) : lastUpdated ? (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 inline-block" />
+            )}
+            <span className="hidden sm:inline">
+              {anyBadgeQueryError
+                ? lastUpdated
+                  ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
+                  : "تعذّر التحديث"
+                : lastUpdated
+                  ? refreshLabel
+                  : "جارٍ التحديث…"}
+            </span>
           </div>
 
           {/* Theme toggle — always visible. Reuses the app-level

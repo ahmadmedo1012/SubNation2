@@ -13,6 +13,8 @@ import { and, asc, count, eq, inArray, isNotNull, min, or, sql } from "drizzle-o
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { escapeLikeTerm, intParam } from "../lib/http";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+// R122 (A11-F2): Arabic-brand alias expansion for the public search below.
+import { expandArabicSearchTerms } from "../lib/arabic-search";
 
 const router = Router();
 
@@ -341,9 +343,25 @@ router.get("/", catalogCache, async (req, res) => {
       // A6-9 (R116): escape %/_ so a literal percent in the query can't
       // reshape the LIKE pattern (parity with the admin search sweep,
       // r103 AUD103-3-F4).
-      conditions.push(
-        sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(search.trim()) + "%"}`,
+      // R122 (A11-F2): Arabic-market search enablement. Product names are
+      // English but the Libyan audience searches in Arabic — the raw-only
+      // ILIKE returned 0 results for «نتفليكس» and even the site's own
+      // hero spelling «نتفلكس» (live audit r122-a11 §P1-1). The raw
+      // whole-string condition stays FIRST and unchanged; recognized
+      // Arabic brand aliases + ≥3-char transliteration skeletons
+      // (lib/arabic-search, bounded ≤12 terms) are OR'd in as extra
+      // literal ILIKEs, every one escapeLikeTerm'd. Pure-English queries
+      // expand to nothing, so their SQL — and results — are identical.
+      // Search stays UNCACHEABLE exactly as before (B6-02 above): no new
+      // cache keys are minted for the expanded forms.
+      const rawTerm = search.trim();
+      const likePatterns = [rawTerm, ...expandArabicSearchTerms(rawTerm)].map(
+        (term) => sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(term) + "%"}`,
       );
+      const searchCondition = or(...likePatterns);
+      // or() types as SQL | undefined; likePatterns always holds the raw
+      // pattern, so the fallback is unreachable in practice.
+      conditions.push(searchCondition ?? likePatterns[0]);
     }
 
     // Aggregate stock + order counts as a single subquery join, no JS-side reduce.
@@ -743,6 +761,12 @@ router.get("/:id/recommendations", catalogCache, async (req, res) => {
     const recommendations = await db
       .select({
         id: productsTable.id,
+        // R122 (A1-P2): slug in the recommendations DTO — the frontend
+        // rail links /product/<slug ?? id>; the id-only link forced a
+        // numeric-URL navigation (then replaceState'd to the slug) for
+        // every recommended product. Same nullable contract as every
+        // other product surface (slug is present post-backfill).
+        slug: productsTable.slug,
         name: productsTable.name,
         imageUrl: productsTable.imageUrl,
         price: productsTable.price,
@@ -762,6 +786,7 @@ router.get("/:id/recommendations", catalogCache, async (req, res) => {
       found: true as const,
       items: recommendations.map((r) => ({
         id: r.id,
+        slug: r.slug,
         name: r.name,
         image_url: r.imageUrl,
         price: parseFloat(String(r.price)),

@@ -58,6 +58,12 @@ export const CATALOG_LOW_RISK_FIELDS = new Set([
   "usageTerms",
   "imageUrl",
   "category",
+  // R122 (A7-P2 + A4-P2-3): the operator SEO overrides are low-risk
+  // CONTENT edits (same class as description/faq) — they join the
+  // draft/preview whitelist so the assistant can propose them without
+  // the super-admin direct-execute path.
+  "seoTitle",
+  "seoDescription",
 ]);
 
 export function refusal(

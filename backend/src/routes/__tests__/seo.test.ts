@@ -28,8 +28,8 @@ import { db, initTestDb, productsTable, resetTestDb } from "../../test/db";
 
 const TEST_ORIGIN = "https://seo-contract-test.example";
 
-let seoRouter: typeof import("../seo")["default"];
-let bumpSitemapCache: typeof import("../seo")["bumpSitemapCache"];
+let seoRouter: (typeof import("../seo"))["default"];
+let bumpSitemapCache: (typeof import("../seo"))["bumpSitemapCache"];
 
 beforeAll(async () => {
   process.env.APP_URL = TEST_ORIGIN;
@@ -85,7 +85,13 @@ describe("GET /robots.txt (R118-A5 #16)", () => {
       expect(res.cacheControl).toContain("max-age=300");
 
       // Public crawlable surface.
-      for (const allow of ["Allow: /", "Allow: /product/", "Allow: /category/", "Allow: /support", "Allow: /terms"]) {
+      for (const allow of [
+        "Allow: /",
+        "Allow: /product/",
+        "Allow: /category/",
+        "Allow: /support",
+        "Allow: /terms",
+      ]) {
         expect(res.text).toContain(`\n${allow}\n`);
       }
 
@@ -116,7 +122,12 @@ describe("GET /robots.txt (R118-A5 #16)", () => {
       }
 
       // Admin + internal observability + API surface.
-      for (const disallow of ["Disallow: /admin", "Disallow: /admin/", "Disallow: /status", "Disallow: /api/"]) {
+      for (const disallow of [
+        "Disallow: /admin",
+        "Disallow: /admin/",
+        "Disallow: /status",
+        "Disallow: /api/",
+      ]) {
         expect(res.text).toContain(`\n${disallow}\n`);
       }
 
@@ -134,8 +145,20 @@ describe("GET /sitemap.xml (R118-A5 #16)", () => {
   it("carries the canonical APP_ORIGIN on every <loc>, excludes archived/inactive products, lists active ones by slug", async () => {
     await db.insert(productsTable).values([
       { name: "Live One", slug: "live-one", price: "10.00", isActive: true, isArchived: false },
-      { name: "Archived One", slug: "archived-one", price: "10.00", isActive: true, isArchived: true },
-      { name: "Inactive One", slug: "inactive-one", price: "10.00", isActive: false, isArchived: false },
+      {
+        name: "Archived One",
+        slug: "archived-one",
+        price: "10.00",
+        isActive: true,
+        isArchived: true,
+      },
+      {
+        name: "Inactive One",
+        slug: "inactive-one",
+        price: "10.00",
+        isActive: false,
+        isArchived: false,
+      },
       { name: "No Slug", slug: null, price: "10.00", isActive: true, isArchived: false },
     ]);
 
@@ -186,6 +209,57 @@ describe("GET /sitemap.xml (R118-A5 #16)", () => {
       // Arabic alternate + x-default for explicit-locale crawlers.
       expect(res.text).toContain('hreflang="ar"');
       expect(res.text).toContain('hreflang="x-default"');
+    } finally {
+      close();
+    }
+  });
+
+  // ── R122 (A7-P2): per-route lastmod policy ────────────────────────────────
+
+  it("editorial statics (/terms, /support) OMIT <lastmod>; catalog-driven entries keep it (R122 A7-P2)", async () => {
+    await db.insert(productsTable).values({
+      name: "Lastmod Product",
+      slug: "lastmod-product",
+      price: "10.00",
+      isActive: true,
+      isArchived: false,
+    });
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await getBody(url, "/sitemap.xml");
+      expect(res.status).toBe(200);
+
+      // Parse per-entry (a regex from the FIRST <url> would span across
+      // sibling entries and match their lastmods too).
+      const entries = res.text
+        .split("<url>")
+        .slice(1)
+        .map((chunk) => chunk.split("</url>")[0] ?? "");
+      const entryFor = (path: string): string | null =>
+        entries.find((e) => e.includes(`<loc>${TEST_ORIGIN}${path}</loc>`)) ?? null;
+
+      // Editorial pages: no honest content-timestamp source exists, and
+      // the OLD global MAX(product.updated_at) churned a "fresh" lastmod
+      // on every product edit with zero content change — the noisy-field
+      // trap. They now omit the tag entirely (sitemap.org: optional).
+      expect(entryFor("/terms")).not.toContain("<lastmod>");
+      expect(entryFor("/support")).not.toContain("<lastmod>");
+
+      // Catalog-driven routes DID change when products changed — they
+      // keep the catalog lastmod (and the entries stay well-formed).
+      for (const path of ["/", "/category/vpn", "/flash-sales"]) {
+        const entry = entryFor(path);
+        expect(entry, `entry for ${path}`).not.toBeNull();
+        // R122 main-agent fix: toContain(regex) looks for the regex's
+        // LITERAL source string, not a pattern match — toMatch is the
+        // regex assertion (same idiom as the product-\d+ check above).
+        expect(entry).toMatch(/<lastmod>\d{4}-\d{2}-\d{2}T/);
+      }
+
+      // Product entries keep their OWN per-row lastmod (unchanged).
+      const productEntry = entryFor("/product/lastmod-product");
+      expect(productEntry).toMatch(/<lastmod>\d{4}-\d{2}-\d{2}T/);
     } finally {
       close();
     }

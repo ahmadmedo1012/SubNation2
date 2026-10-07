@@ -57,8 +57,9 @@ const draftCatalogEditSpec: Tool = {
     name: "draft_catalog_edit",
     description:
       "Propose a low-risk edit to a single product's content fields " +
-      "(name, description, descriptionLong, faq, usageTerms, imageUrl, category). " +
-      "DOES NOT EXECUTE — the human must approve the resulting preview.",
+      "(name, description, descriptionLong, faq, usageTerms, imageUrl, " +
+      "category, seoTitle, seoDescription). DOES NOT EXECUTE — the human " +
+      "must approve the resulting preview.",
     parameters: {
       type: "object",
       required: ["id", "fields"],
@@ -70,7 +71,7 @@ const draftCatalogEditSpec: Tool = {
           additionalProperties: true,
           minProperties: 1,
           description:
-            "Partial product fields to update. Allowed: name, description, descriptionLong, faq, usageTerms, imageUrl, category.",
+            "Partial product fields to update. Allowed: name, description, descriptionLong, faq, usageTerms, imageUrl, category, seoTitle, seoDescription.",
           properties: {
             name: { type: "string", maxLength: 255 },
             description: { type: "string", maxLength: 5000 },
@@ -90,6 +91,10 @@ const draftCatalogEditSpec: Tool = {
             usageTerms: { type: "string", maxLength: 10000 },
             imageUrl: { type: "string", format: "uri", maxLength: 1000 },
             category: { type: "string", maxLength: 100 },
+            // R122 (A7-P2 + A4-P2-3): the SEO overrides — camelCase like
+            // every CATALOG_LOW_RISK_FIELDS entry, capped at the DB columns.
+            seoTitle: { type: "string", maxLength: 200 },
+            seoDescription: { type: "string", maxLength: 320 },
           },
         },
       },

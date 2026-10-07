@@ -121,26 +121,47 @@ const SITEMAP_TTL_MS = 60_000;
 const SITEMAP_MAX_URLS = 50_000; // sitemap.org spec cap per file
 let sitemapCache: SitemapCacheEntry | null = null;
 
-const STATIC_ROUTES: Array<{ path: string; changefreq: string; priority: string }> = [
-  { path: "/", changefreq: "daily", priority: "1.0" },
+/**
+ * R122 (A7-P2): per-route lastmod policy. Every static entry used to
+ * share MAX(product.updated_at) — a catalog proxy that is legitimate
+ * ONLY for routes that RENDER the catalog (homepage, category landings,
+ * flash-sales: when products change, those pages genuinely changed).
+ * /terms (yearly) and /support (monthly) churned a "fresh" lastmod on
+ * every product edit with zero content change — noisy lastmod is the
+ * fastest way to teach Google to ignore the field site-wide. Those
+ * editorial pages now OMIT lastmod entirely (honest "unknown" beats a
+ * lie; sitemap.org makes the tag optional) until they gain a real
+ * content-timestamp source.
+ */
+interface StaticRoute {
+  path: string;
+  changefreq: string;
+  priority: string;
+  /** "catalog" = the catalog-driven global lastmod; "none" = omit the tag. */
+  lastmod: "catalog" | "none";
+}
+
+const STATIC_ROUTES: StaticRoute[] = [
+  { path: "/", changefreq: "daily", priority: "1.0", lastmod: "catalog" },
   // Category landing pages — each targets a distinct intent cluster
   // (the seven live categories mirroring products.category in
   // production) with unique h1, intro, and FAQs. Higher priority
   // than /support + /terms because they're money pages with money
   // intent. Retired gaming/productivity pages are intentionally
   // absent: they render a noindex surface until restocked.
-  { path: "/category/streaming", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/music", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/software", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/vpn", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/ai-tools", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/seo-tools", changefreq: "weekly", priority: "0.9" },
-  { path: "/category/education", changefreq: "weekly", priority: "0.9" },
-  { path: "/support", changefreq: "monthly", priority: "0.4" },
-  { path: "/terms", changefreq: "yearly", priority: "0.3" },
+  { path: "/category/streaming", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  { path: "/category/music", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  { path: "/category/software", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  { path: "/category/vpn", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  { path: "/category/ai-tools", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  { path: "/category/seo-tools", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  { path: "/category/education", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  { path: "/support", changefreq: "monthly", priority: "0.4", lastmod: "none" },
+  { path: "/terms", changefreq: "yearly", priority: "0.3", lastmod: "none" },
   // V3-A4: money page missing from the sitemap — index,follow but
-  // never listed for discovery.
-  { path: "/flash-sales", changefreq: "daily", priority: "0.8" },
+  // never listed for discovery. Renders the live on-sale catalog →
+  // keeps the catalog-driven lastmod.
+  { path: "/flash-sales", changefreq: "daily", priority: "0.8", lastmod: "catalog" },
 ];
 
 function escapeXml(value: string): string {
@@ -152,12 +173,20 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function urlEntry(loc: string, lastmod: string, changefreq: string, priority: string): string {
+function urlEntry(
+  loc: string,
+  // R122 (A7-P2): lastmod is now OPTIONAL — editorial static routes
+  // (terms/support) omit it (see STATIC_ROUTES below); product +
+  // catalog-driven entries keep their real timestamps.
+  lastmod: string | null,
+  changefreq: string,
+  priority: string,
+): string {
   const escapedLoc = escapeXml(loc);
   return [
     "  <url>",
     `    <loc>${escapedLoc}</loc>`,
-    `    <lastmod>${lastmod}</lastmod>`,
+    ...(lastmod ? [`    <lastmod>${lastmod}</lastmod>`] : []),
     `    <changefreq>${changefreq}</changefreq>`,
     `    <priority>${priority}</priority>`,
     // The site is currently Arabic-only. We declare the Arabic alternate
@@ -172,8 +201,8 @@ function urlEntry(loc: string, lastmod: string, changefreq: string, priority: st
 }
 
 async function buildSitemap(): Promise<string> {
-  // Static-route lastmod uses MAX(updatedAt) of active products as a loose
-  // proxy: when products change, the catalog (homepage) effectively did too.
+  // Catalog-driven lastmod (R122 A7-P2: now consumed ONLY by the routes
+  // whose rendered content IS the catalog — see STATIC_ROUTES).
   const [{ maxUpdated }] = await db
     .select({ maxUpdated: sql<string | null>`MAX(${productsTable.updatedAt})` })
     .from(productsTable)
@@ -193,7 +222,12 @@ async function buildSitemap(): Promise<string> {
     .limit(SITEMAP_MAX_URLS - STATIC_ROUTES.length);
 
   const staticEntries = STATIC_ROUTES.map((r) =>
-    urlEntry(`${APP_ORIGIN}${r.path}`, globalLastmod, r.changefreq, r.priority),
+    urlEntry(
+      `${APP_ORIGIN}${r.path}`,
+      r.lastmod === "catalog" ? globalLastmod : null,
+      r.changefreq,
+      r.priority,
+    ),
   );
 
   const productEntries = products.map((p) =>

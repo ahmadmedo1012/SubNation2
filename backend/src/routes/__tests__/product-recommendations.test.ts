@@ -127,6 +127,10 @@ describe("GET /api/products/:id/recommendations — null-category guard (R120-B6
     expect(body).toEqual([
       {
         id: peerId,
+        // R122 (A1-P2): slug rides the recommendations DTO — the
+        // frontend rail links /product/<slug ?? id>; the id-only link
+        // forced a numeric-URL hop for every recommended product.
+        slug: "rec-same-cat-peer",
         name: "Same Cat Peer",
         image_url: "https://cdn.example.com/rec-same-cat-peer.webp",
         price: 19.5,

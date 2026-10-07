@@ -5,6 +5,10 @@ import path from "node:path";
 import type { Express } from "express";
 import { eq } from "drizzle-orm";
 import { db, initTestDb, productsTable, resetTestDb, flashSalesTable } from "../test/db";
+// R122 (A3-P1): the shell's /product/* lookup now rides the catalog
+// cache — the same generation bump admin CRUD performs keeps each
+// test's re-seeded rows fresh (module state persists across `it`s).
+import { bumpCatalogCache } from "../lib/catalog-cache";
 
 /**
  * R120-B3 (A7-F3 / A7-F7 / A7-F16) — the per-route SPA-shell rewrite.
@@ -83,6 +87,10 @@ afterAll(() => {
 
 beforeEach(async () => {
   await resetTestDb();
+  // R122 (A3-P1): the /product/* shell lookup is cached for 60 s — the
+  // admin-CRUD generation bump keeps the re-seeded rows below visible to
+  // every test (same contract the /api/products detail routes' tests ride).
+  bumpCatalogCache();
   const [active] = await db
     .insert(productsTable)
     .values({
@@ -230,6 +238,86 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     expect(desc!.length).toBeLessThanOrEqual(180);
   });
 
+  // ── R122 (A7-P1-1 + A7-P2-5): DB-backed seo_title / seo_description ──
+
+  it("R122: a row with seo_title/seo_description ships THEM in the raw shell (not the English brand fallback)", async () => {
+    const [seoRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Netflix Premium",
+        slug: "netflix-seo-shell-test",
+        description: "وصف عادي",
+        price: "63.84",
+        category: "streaming",
+        seoTitle: "Netflix — اشتراك أصلي بالدينار الليبي | SubNation",
+        seoDescription: "اشتراك Netflix Premium أصلي بالدينار الليبي مع تسليم فوري بعد الدفع.",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${seoRow.slug}`);
+    expect(r.status).toBe(200);
+    // The operator override — NOT `${name} — SubNation` (A7-P1-1: the
+    // raw-HTML title used to be English brand-only while the hydrated
+    // page showed the Arabic keyword title).
+    expect(titleOf(r.body)).toBe("Netflix — اشتراك أصلي بالدينار الليبي | SubNation");
+    expect(metaContent(r.body, "property", "og:title")).toBe(
+      "Netflix — اشتراك أصلي بالدينار الليبي | SubNation",
+    );
+    // The seo_description VERBATIM (≤160) — no price suffix, mirroring
+    // the hydrated page's .slice(0, 160) (A7-P2-5: both surfaces tell
+    // the same story).
+    expect(metaContent(r.body, "name", "description")).toBe(
+      "اشتراك Netflix Premium أصلي بالدينار الليبي مع تسليم فوري بعد الدفع.",
+    );
+    expect(canonicalHref(r.body)).toBe(`https://subnation.ly/product/${seoRow.slug}`);
+  });
+
+  it("R122: an over-long seo_title clamps to the MetaTags 60-char budget; an over-long seo_description slices at 160", async () => {
+    const [seoRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Clamp Product",
+        slug: "clamp-seo-shell-test",
+        price: "10.00",
+        category: "tools",
+        // 70 chars → clamped like MetaTags.clamp(title, 60).
+        seoTitle: "T".repeat(70),
+        // 200 chars → sliced at 160 like product.tsx's description.
+        seoDescription: "D".repeat(200),
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${seoRow.slug}`);
+    const title = titleOf(r.body)!;
+    expect(title.length).toBeLessThanOrEqual(60);
+    expect(title.endsWith("…")).toBe(true);
+    expect(title.startsWith("T".repeat(50))).toBe(true);
+    const desc = metaContent(r.body, "name", "description")!;
+    expect(desc).toBe("D".repeat(160));
+  });
+
+  it("R122: whitespace-only seo overrides fall back to the defaults (trim, not truthiness)", async () => {
+    const [seoRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Fallback Product",
+        slug: "fallback-seo-shell-test",
+        description: "وصف المنتج للاختبار",
+        price: "12.00",
+        category: "tools",
+        seoTitle: "   ",
+        seoDescription: "",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${seoRow.slug}`);
+    expect(titleOf(r.body)).toBe("Fallback Product — SubNation");
+    expect(metaContent(r.body, "name", "description")).toContain("السعر 12.00 د.ل");
+  });
+
   it("a numeric /product/:id request canonicalizes to the row's SLUG url", async () => {
     const r = await get(`/product/${activeProduct.id}`);
     expect(r.status).toBe(200);
@@ -290,24 +378,34 @@ describe("SPA shell rewrite — noindex families in the raw shell (A7-F16)", () 
   );
 });
 
-// ── Unknown paths: no canonical at all ──────────────────────────────────────
+// ── Unknown paths: no canonical, noindex (R122 A7-P1-2) ───────────────────
 
-describe("SPA shell rewrite — unknown public paths (no lying canonical)", () => {
-  it("an unknown path keeps the 200 shell (SPA 404 UX) but DROPS the homepage canonical", async () => {
+describe("SPA shell rewrite — unknown public paths (no lying canonical, noindex)", () => {
+  it("an unknown path keeps the 200 shell (SPA 404 UX) but DROPS the homepage canonical + stamps noindex (R122 A7-P1-2)", async () => {
     const r = await get("/some-unknown-page");
     expect(r.status).toBe(200);
     expect(isSpaShell(r)).toBe(true);
     expect(canonicalOf(r.body)).toBeNull();
-    // Title/robots stay the baseline — the client owns the 404 UX.
+    // R122 (A7-P1-2): the SPA renders its own noindex 404 surface for
+    // exactly these URLs (not-found.tsx) — the raw shell used to keep
+    // the static index,follow and contradict it for every non-rendering
+    // engine. Title stays the baseline; the client owns the 404 UX.
     expect(titleOf(r.body)).toBe("SubNation — سوق الاشتراكات الرقمية");
-    expect(metaContent(r.body, "name", "robots")).toBe("index,follow");
+    expect(metaContent(r.body, "name", "robots")).toBe("noindex,follow");
   });
 
-  it("an unknown category slug keeps 200 + no canonical (SPA noindex surface)", async () => {
+  it("an unknown category slug keeps 200 + no canonical + noindex (SPA noindex surface, R122 A7-P1-2)", async () => {
     const r = await get("/category/gaming");
     expect(r.status).toBe(200);
     expect(canonicalOf(r.body)).toBeNull();
     expect(titleOf(r.body)).toBe("SubNation — سوق الاشتراكات الرقمية");
+    expect(metaContent(r.body, "name", "robots")).toBe("noindex,follow");
+  });
+
+  it("KNOWN routes stay index,follow (the noindex stamp never over-reaches)", async () => {
+    const r = await get("/category/vpn");
+    expect(metaContent(r.body, "name", "robots")).toBe("index,follow");
+    expect(canonicalHref(r.body)).toBe("https://subnation.ly/category/vpn");
   });
 });
 
@@ -318,6 +416,40 @@ describe("SPA shell rewrite — response headers unchanged", () => {
     const r = await get("/category/vpn");
     expect(r.cacheControl).toContain("no-store");
     expect(r.contentType).toContain("text/html");
+  });
+});
+
+// ── R122 (A3-P1): the /product/* shell lookup rides the catalog cache ───────
+
+describe("SPA shell product lookup — catalog-cache contract (R122 A3-P1)", () => {
+  it("a repeat GET serves the CACHED meta for 60 s; bumpCatalogCache() (admin CRUD) refreshes it", async () => {
+    const slug = activeProduct.slug;
+    // Prime the cache.
+    const first = await get(`/product/${slug}`);
+    expect(titleOf(first.body)).toBe("ExpressVPN اشتراك اختبار — SubNation");
+
+    // Direct DB edit (no bump) — the cached shell meta must NOT change
+    // within the TTL: this pins that the cache actually exists (without
+    // it, every GET re-queried and the edit would leak through instantly).
+    await db
+      .update(productsTable)
+      .set({ name: "اسم جديد بعد التخزين المؤقت", seoTitle: "عنوان SEO جديد" })
+      .where(eq(productsTable.id, activeProduct.id));
+    const stale = await get(`/product/${slug}`);
+    expect(titleOf(stale.body)).toBe("ExpressVPN اشتراك اختبار — SubNation");
+
+    // The admin-CRUD invalidation hook (bumpCatalogCache is what the
+    // admin product routes call) orphans the entry → fresh meta.
+    bumpCatalogCache();
+    const fresh = await get(`/product/${slug}`);
+    expect(titleOf(fresh.body)).toBe("عنوان SEO جديد");
+  });
+
+  it("an over-160-char slug 404s without a query (varchar(160) can never match — the by-slug route's guard)", async () => {
+    const r = await get(`/product/${"x".repeat(161)}`);
+    expect(r.status).toBe(404);
+    expect(isSpaShell(r)).toBe(true);
+    expect(canonicalOf(r.body)).toBeNull();
   });
 });
 

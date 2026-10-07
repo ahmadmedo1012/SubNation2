@@ -5468,6 +5468,21 @@ components:
           type: ["string", "null"]
         usage_terms:
           type: ["string", "null"]
+        # R122 (A7-P2 + A4-P2-3): the operator SEO overrides were read-only
+        # (every write path omitted them — dead columns). Wired here with
+        # the COLUMN-aligned caps (seo_title varchar(200), seo_description
+        # varchar(320), shared/db/src/schema/products.ts) so an over-long
+        # value 400s at the zod perimeter instead of 500ing (22001) at the
+        # INSERT — the B2-F3 bound discipline, carried in the spec for the
+        # NEW fields so the generated zod rejects overlong values directly.
+        seo_title:
+          type: ["string", "null"]
+          maxLength: 200
+          description: Operator override for the product page <title>.
+        seo_description:
+          type: ["string", "null"]
+          maxLength: 320
+          description: Operator override for the meta description.
         is_active:
           type: boolean
       required: [name, price]
@@ -5494,6 +5509,17 @@ components:
           type: ["string", "null"]
         usage_terms:
           type: ["string", "null"]
+        # R122 (A7-P2 + A4-P2-3): same SEO-override fields as
+        # CreateProductBody — nullable so an explicit null CLEARS the
+        # override (the row falls back to the name-based default).
+        seo_title:
+          type: ["string", "null"]
+          maxLength: 200
+          description: Operator override for the product page <title>; null clears it.
+        seo_description:
+          type: ["string", "null"]
+          maxLength: 320
+          description: Operator override for the meta description; null clears it.
         is_active:
           type: ["boolean", "null"]
 

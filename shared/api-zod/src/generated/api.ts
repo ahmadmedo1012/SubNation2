@@ -1941,6 +1941,10 @@ export const createProductBodyPriceMax = 1000000;
 export const createProductBodyCostPriceMin = 0;
 export const createProductBodyCostPriceMax = 1000000;
 
+export const createProductBodySeoTitleMax = 200;
+
+export const createProductBodySeoDescriptionMax = 320;
+
 export const CreateProductBody = zod.object({
   name: zod.string(),
   description: zod.string().nullish(),
@@ -1953,6 +1957,16 @@ export const CreateProductBody = zod.object({
     .nullish(),
   category: zod.string().nullish(),
   usage_terms: zod.string().nullish(),
+  seo_title: zod
+    .string()
+    .max(createProductBodySeoTitleMax)
+    .nullish()
+    .describe("Operator override for the product page <title>."),
+  seo_description: zod
+    .string()
+    .max(createProductBodySeoDescriptionMax)
+    .nullish()
+    .describe("Operator override for the meta description."),
   is_active: zod.boolean().optional(),
 });
 
@@ -1969,6 +1983,10 @@ export const updateProductBodyPriceMax = 1000000;
 export const updateProductBodyCostPriceMin = 0;
 export const updateProductBodyCostPriceMax = 1000000;
 
+export const updateProductBodySeoTitleMax = 200;
+
+export const updateProductBodySeoDescriptionMax = 320;
+
 export const UpdateProductBody = zod.object({
   name: zod.string().nullish(),
   description: zod.string().nullish(),
@@ -1981,6 +1999,16 @@ export const UpdateProductBody = zod.object({
     .nullish(),
   category: zod.string().nullish(),
   usage_terms: zod.string().nullish(),
+  seo_title: zod
+    .string()
+    .max(updateProductBodySeoTitleMax)
+    .nullish()
+    .describe("Operator override for the product page <title>; null clears it."),
+  seo_description: zod
+    .string()
+    .max(updateProductBodySeoDescriptionMax)
+    .nullish()
+    .describe("Operator override for the meta description; null clears it."),
   is_active: zod.boolean().nullish(),
 });
 

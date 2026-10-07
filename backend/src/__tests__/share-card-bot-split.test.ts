@@ -5,6 +5,10 @@ import path from "node:path";
 import type { Express } from "express";
 import { eq } from "drizzle-orm";
 import { db, initTestDb, productsTable, resetTestDb, flashSalesTable } from "../test/db";
+// R122 (A3-P1): the share card's product lookup now rides the catalog
+// cache — the admin-CRUD generation bump keeps each test's re-seeded
+// rows fresh (module state persists across `it`s).
+import { bumpCatalogCache } from "../lib/catalog-cache";
 
 /**
  * R111 (D2-F1 + D2-F4) — share-card crawler split + archived WHERE.
@@ -106,6 +110,10 @@ afterAll(() => {
 
 beforeEach(async () => {
   await resetTestDb();
+  // R122 (A3-P1): the card's /product/* lookup is cached for 60 s — the
+  // admin-CRUD generation bump keeps the re-seeded rows below visible to
+  // every test.
+  bumpCatalogCache();
   const [active] = await db
     .insert(productsTable)
     .values({
@@ -358,5 +366,36 @@ describe("share card price + description (R120-B3 A7-F9/A7-F17)", () => {
     expect(desc.length).toBeLessThanOrEqual(180);
     expect(desc.startsWith("ط".repeat(150))).toBe(true);
     expect(desc).toContain("السعر 79.80 د.ل");
+  });
+});
+
+// ── R122 (A3-P1): the card's product lookup rides the catalog cache ─────────
+
+describe("share card product lookup — catalog-cache contract (R122 A3-P1)", () => {
+  it("a repeat card GET serves the CACHED row for 60 s; bumpCatalogCache() (admin CRUD) refreshes it", async () => {
+    const slug = activeProduct.slug!;
+    // Prime the cache.
+    const first = await get(`/product/${slug}`, UA.whatsapp);
+    expect(isCard(first)).toBe(true);
+    expect(first.body).toContain("Netflix بطاقة الاختبار");
+
+    // Direct DB edit (no bump) — the cached card must keep the OLD name
+    // within the TTL (pins that the cache exists on the card path too;
+    // a spoofed-unfurler burst used to mint a fresh query per request).
+    await db
+      .update(productsTable)
+      .set({ name: "اسم جديد بعد الكاش" })
+      .where(eq(productsTable.id, activeProduct.id));
+    const stale = await get(`/product/${slug}`, UA.whatsapp);
+    expect(isCard(stale)).toBe(true);
+    expect(stale.body).toContain("Netflix بطاقة الاختبار");
+
+    // The admin-CRUD invalidation hook orphans the entry → fresh card.
+    bumpCatalogCache();
+    const fresh = await get(`/product/${slug}`, UA.whatsapp);
+    expect(isCard(fresh)).toBe(true);
+    expect(fresh.body).toContain("اسم جديد بعد الكاش");
+    // The card's own edge-cache hint is unchanged.
+    expect(fresh.cacheControl).toContain("max-age=60");
   });
 });

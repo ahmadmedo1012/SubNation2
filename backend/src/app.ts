@@ -18,6 +18,11 @@ import { logger } from "./lib/logger";
 import { verifyUserToken } from "./lib/jwt";
 import { createResilientRateLimitStore } from "./lib/rate-limit-store";
 import { applyFlashSale } from "./lib/pricing";
+// R122 (A3-P1): the /product/:slug shell + share-card lookups ride the
+// catalog cache (60 s TTL, generation-bumped by admin CRUD) — they are
+// unauthenticated, outside every rate limiter, and were the one route
+// family hitting Postgres per request.
+import { withCatalogCache } from "./lib/catalog-cache";
 import { cloudflareClientIp } from "./middlewares/cloudflareClientIp";
 import { correlationMiddleware } from "./middlewares/correlation";
 import { instrumentationIsolation } from "./middlewares/instrumentation-isolation";
@@ -957,10 +962,25 @@ const frontendDist = resolveFrontendDist();
 //               SPA's NOINDEX_ROUTES + robots.txt Disallow list) and
 //               the homepage canonical is STRIPPED (a canonical aiming
 //               a noindex page at the homepage is a contradiction).
+//   R122 (A7-P1-1): the product shell now prefers the row's DB-backed
+//               seo_title / seo_description (operator overrides, the
+//               SAME fields the hydrated page renders) over the
+//               English brand-only `${name} — SubNation` fallback —
+//               raw-HTML and post-render titles finally agree on the
+//               45 money pages.
+//   R122 (A7-P1-2): unknown public paths and unknown category slugs
+//               ALSO get `noindex,follow` — the SPA renders its own
+//               noindex 404 surface for exactly these URLs, and the
+//               raw shell used to contradict it with index,follow.
+//   R122 (A3-P1): the /product/:slug DB lookup behind this layer (and
+//               the share card's) is unauthenticated and sits outside
+//               every rate limiter — it now rides the catalog cache
+//               idiom (60 s TTL, generation-bumped by admin CRUD).
 //
 // Unknown paths: the homepage canonical is stripped (NO canonical
-// beats a lying one); the shell stays 200 so the SPA's client-side 404
-// owns the UX.
+// beats a lying one) and the robots meta is stamped `noindex,follow`
+// (R122 A7-P1-2 — mirrors the SPA's own 404 treatment); the shell stays
+// 200 so the SPA's client-side 404 owns the UX.
 //
 // Safety posture: the shell is read ONCE at boot into memory and every
 // rewrite is a pure string op on that snapshot (streaming-safe, and the
@@ -968,14 +988,51 @@ const frontendDist = resolveFrontendDist();
 // rewrites the HTML document body). Only EXISTING tags are rewritten,
 // never inserted, so a stub/test shell without the markers passes
 // through byte-identical.
+//
+// R122 (A7-P2): boot-time comment-balance guard. rewriteOutsideComments
+// splits on CLOSED comments only — an unclosed `<!--` in a future shell
+// edit turns the whole tail into one "non-comment" segment and the
+// title rewriter pairs the COMMENT's `<title>` prose with the real
+// closer (the d22f24e incident class: canonical + every og tag deleted
+// from /category/* shells, silently). An imbalanced shell now refuses to
+// enter the rewrite layer AT ALL (fatal boot log + SPA_SHELL_HTML=null
+// → the fallback below serves the UNTOUCHED file) — the site boots with
+// baseline meta instead of shipping destructive rewrites.
 const SPA_SHELL_HTML = (() => {
   if (!frontendDist) return null;
   try {
-    return readFileSync(path.join(frontendDist, "index.html"), "utf8");
+    const html = readFileSync(path.join(frontendDist, "index.html"), "utf8");
+    // R122 (A7-P2): the d22f24e guard — see the block comment above.
+    // Degrade (null) instead of throwing: the API/money surface must
+    // survive a cosmetic shell defect; the fatal log + the pinned
+    // regression test are the loud half of the contract.
+    if (!shellCommentsBalance(html)) {
+      const opens = (html.match(/<!--/g) ?? []).length;
+      const closes = (html.match(/-->/g) ?? []).length;
+      logger.fatal(
+        { category: "seo", opens, closes },
+        "SPA shell HTML comments are UNBALANCED (<!-- vs -->) — the d22f24e " +
+          "rewrite bug class. Serving the UNREWRITTEN shell (baseline meta) " +
+          "until the template is fixed; refusing to run the shell rewriter.",
+      );
+      return null;
+    }
+    return html;
   } catch {
     return null;
   }
 })();
+
+/**
+ * R122 (A7-P2): true when the shell's HTML comment delimiters balance.
+ * Exported for the regression tests (unit cases + the real shipped
+ * frontend/index.html pin). A mismatch means rewriteOutsideComments'
+ * split-on-closed-comments would treat comment prose as markup — the
+ * d22f24e incident class (see SPA_SHELL_HTML above).
+ */
+export function shellCommentsBalance(html: string): boolean {
+  return (html.match(/<!--/g) ?? []).length === (html.match(/-->/g) ?? []).length;
+}
 
 /** Authoritative public origin — the SAME resolution routes/seo.ts and
  * the share card use (APP_URL with the canonical production default). */
@@ -1019,6 +1076,95 @@ function buildShareDescription(description: string | null, displayPrice: string)
     .slice(0, 150);
   const assembled = `${body} — السعر ${displayPrice} د.ل`;
   return assembled.length <= 180 ? assembled : `${assembled.slice(0, 179)}…`;
+}
+
+/**
+ * R122 (A7-P2-5): clamp an operator seo_title for the shell, mirroring
+ * MetaTags.clamp(text, 60) VERBATIM (frontend/src/components/seo/
+ * MetaTags.tsx) so the raw-HTML title and the hydrated title agree on
+ * the same 60-char budget. The DB column allows 200; only the DISPLAY
+ * is clamped.
+ */
+function clampSeoTitleForShell(title: string): string {
+  return title.length <= 60 ? title : title.slice(0, 59).trim() + "…";
+}
+
+/**
+ * R122 (A3-P1): the ONE cached product lookup behind BOTH no-JS share
+ * surfaces — resolveSpaShellMeta's /product/* branch (browser/indexer
+ * shells) and the unfurler OG card below. Both used to run their own
+ * uncached `SELECT … WHERE slug|id AND is_archived=false` (plus the
+ * flash-sale stage for the display price) on every request: these GETs
+ * are unauthenticated, sit OUTSIDE every rate limiter (all limiters
+ * mount under /api), and the shell's response is no-store — so wire-speed
+ * /product/<slug> bursts reached Neon directly. Now the row + display
+ * price ride the catalog cache idiom (lib/catalog-cache.ts): 60 s TTL,
+ * generation-bumped by admin product/variant/flash-sale/pricing CRUD —
+ * the same freshness contract the /api/products detail routes accept
+ * (their DTO prices are equally flash-sale-derived at 60 s).
+ *
+ * Dead-slug misses ARE cached ({ found: false }): the A3 attack rotates
+ * unique garbage slugs, and an uncached 404 path would leave that DoS
+ * surface fully open. Bounded by the LRU entry/byte budget
+ * (lib/cache.ts B6-02) — entries here are ~200 B, so a garbage-slug flood
+ * evicts old entries instead of growing memory.
+ */
+interface ShareSurfaceProduct {
+  slug: string | null;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  price: string;
+  isActive: boolean;
+  seoTitle: string | null;
+  seoDescription: string | null;
+}
+
+async function lookupProductForShareSurfaces(
+  slugOrId: string,
+  numeric: number | null,
+): Promise<{ found: false } | { found: true; row: ShareSurfaceProduct; displayPrice: string }> {
+  // R122 (A3-P1): products.slug is varchar(160) — an over-long slug can
+  // NEVER match a row, so answering the miss without a query ALSO keeps
+  // attacker-minted multi-KB slugs from becoming LRU KEYS (the byte
+  // budget tracks values, not keys). Mirrors the /api/products/by-slug
+  // 160-char guard.
+  if (numeric === null && slugOrId.length > 160) return { found: false };
+  return withCatalogCache(
+    "spa-share",
+    numeric !== null ? `id:${numeric}` : `slug:${slugOrId}`,
+    60,
+    async () => {
+      const [row] = await db
+        .select({
+          slug: productsTable.slug,
+          name: productsTable.name,
+          description: productsTable.description,
+          imageUrl: productsTable.imageUrl,
+          price: productsTable.price,
+          isActive: productsTable.isActive,
+          // R122 (A7-P1-1): the operator SEO overrides — same columns the
+          // hydrated page renders (frontend/src/pages/product.tsx).
+          seoTitle: productsTable.seoTitle,
+          seoDescription: productsTable.seoDescription,
+        })
+        .from(productsTable)
+        .where(
+          and(
+            numeric !== null ? eq(productsTable.id, numeric) : eq(productsTable.slug, slugOrId),
+            // Same WHERE half as every public product surface (D2-F4): an
+            // archived row can never render a shell or a share card.
+            eq(productsTable.isArchived, false),
+          ),
+        )
+        .limit(1);
+      if (!row) return { found: false as const };
+      // Flash-aware display price folded INTO the cached entry — the
+      // 60 s staleness budget matches the share card's own
+      // Cache-Control max-age=60 and the detail routes' cached sale_price.
+      return { found: true as const, row, displayPrice: await shareDisplayPrice(row.price) };
+    },
+  );
 }
 
 /**
@@ -1213,7 +1359,9 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
   if (category) {
     const meta = SHELL_CATEGORY_META[category[1]];
     // Unknown category slug → the SPA renders its noindex 404 surface;
-    // unknown-path treatment (no canonical) applies.
+    // unknown-path treatment (no canonical) applies. R122 (A7-P1-2):
+    // the raw shell now stamps noindex,follow too — it used to keep the
+    // static index,follow and contradict the SPA's own rendered robots.
     return meta
       ? {
           status: 200,
@@ -1221,7 +1369,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
           description: meta.metaDescription,
           canonical: `${origin}/category/${category[1]}`,
         }
-      : { status: 200, canonical: null };
+      : { status: 200, canonical: null, robots: "noindex,follow" };
   }
 
   const product = /^\/product\/([^/]+)$/.exec(norm);
@@ -1233,31 +1381,32 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
       return { status: 404, canonical: null };
     }
     const numeric = /^\d+$/.test(slugOrId) ? Number.parseInt(slugOrId, 10) : null;
-    const [row] = await db
-      .select({
-        slug: productsTable.slug,
-        name: productsTable.name,
-        description: productsTable.description,
-        price: productsTable.price,
-        isActive: productsTable.isActive,
-      })
-      .from(productsTable)
-      .where(
-        and(
-          numeric !== null ? eq(productsTable.id, numeric) : eq(productsTable.slug, slugOrId),
-          // Same WHERE half as the share card (D2-F4): an archived row
-          // can never render a shell with product meta.
-          eq(productsTable.isArchived, false),
-        ),
-      )
-      .limit(1);
+    // R122 (A3-P1): the cached lookup shared with the share card (see
+    // lookupProductForShareSurfaces) — this branch used to run its own
+    // uncached query on every unauthenticated, un-rate-limited GET.
+    const lookup = await lookupProductForShareSurfaces(slugOrId, numeric);
     // A7-F7: unknown / inactive / archived product slug → real 404 (the
     // shell still ships so the SPA's not-found page renders client-side).
-    if (!row || !row.isActive) return { status: 404, canonical: null };
+    if (!lookup.found || !lookup.row.isActive) return { status: 404, canonical: null };
+    const row = lookup.row;
+    // R122 (A7-P1-1 + A7-P2-5): prefer the operator's DB-backed SEO
+    // overrides — the SAME fields the hydrated page renders
+    // (frontend/src/pages/product.tsx: seo_title?.trim() ? seo_title :
+    // fallback, description from seo_description sliced to 160). The
+    // raw-HTML title used to be English brand-only on every product page
+    // while the rendered page showed the Arabic keyword title — a split
+    // title signal for every non-rendering engine. Fallbacks keep the
+    // pre-R122 behavior (name — SubNation / price-suffixed share copy).
+    const seoTitle = row.seoTitle?.trim() || null;
+    const seoDescription = row.seoDescription?.trim() || null;
     return {
       status: 200,
-      title: `${row.name} — SubNation`,
-      description: buildShareDescription(row.description, await shareDisplayPrice(row.price)),
+      title: seoTitle ? clampSeoTitleForShell(seoTitle) : `${row.name} — SubNation`,
+      description: seoDescription
+        ? // Mirrors the hydrated page's plain .slice(0, 160) — no price
+          // suffix, no ellipsis — so both surfaces tell the same story.
+          seoDescription.slice(0, 160)
+        : buildShareDescription(row.description, lookup.displayPrice),
       // Prefer the row's canonical slug URL (numeric-id requests get
       // replaceState'd to it client-side — R117 F-4).
       canonical: `${origin}/product/${row.slug ?? slugOrId}`,
@@ -1279,9 +1428,13 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
   }
 
   // Unknown public path: strip the canonical — a homepage canonical on
-  // an unknown URL is a duplicate-content lie; the SPA's client-side 404
-  // owns the UX and the shell's index,follow robots stays acceptable.
-  return { status: 200, canonical: null };
+  // an unknown URL is a duplicate-content lie — and stamp noindex,follow
+  // (R122 A7-P1-2): the SPA's client-side 404 owns the UX AND already
+  // renders noindex for exactly these URLs; the raw shell keeping the
+  // static index,follow contradicted it for every non-rendering engine
+  // (an unbounded soft-404 crawl space). 200 stays — the SPA must boot
+  // to render the 404 UI.
+  return { status: 200, canonical: null, robots: "noindex,follow" };
 }
 
 if (frontendDist) {
@@ -1364,31 +1517,16 @@ if (frontendDist) {
     try {
       const slugOrId = decodeURIComponent(match[1]);
       const numeric = /^\d+$/.test(slugOrId) ? Number.parseInt(slugOrId, 10) : null;
-      const [product] = await db
-        .select({
-          name: productsTable.name,
-          description: productsTable.description,
-          imageUrl: productsTable.imageUrl,
-          price: productsTable.price,
-          isActive: productsTable.isActive,
-        })
-        .from(productsTable)
-        .where(
-          and(
-            numeric !== null ? eq(productsTable.id, numeric) : eq(productsTable.slug, slugOrId),
-            // D2-F4 (R111): mirror the detail-route WHERE — an archived
-            // row can never render a share card, even if a PATCH flips
-            // is_active=true back on it (the PATCH-side guard is a
-            // sibling fix; live dump today: archived ⇒ is_active=false,
-            // so this is latent-hardening, not a live leak).
-            eq(productsTable.isArchived, false),
-          ),
-        )
-        .limit(1);
-      if (!product || !product.isActive) {
+      // R122 (A3-P1): the cached lookup shared with the shell meta layer
+      // (lookupProductForShareSurfaces) — this card path is unauthenticated
+      // and outside every rate limiter, and a spoofed unfurler UA used to
+      // mint a fresh uncached products query per request.
+      const lookup = await lookupProductForShareSurfaces(slugOrId, numeric);
+      if (!lookup.found || !lookup.row.isActive) {
         next();
         return;
       }
+      const product = lookup.row;
       const esc = escapeHtmlAttr;
       const origin = appOrigin();
       const canonical = `${origin}/product/${slugOrId}`;
@@ -1408,11 +1546,9 @@ if (frontendDist) {
       // R120-B3 (A7-F9 + A7-F17): prefer the live flash-sale price when
       // one is active (shareDisplayPrice — the same lib/pricing.ts stage
       // the catalog applies) and assemble the description inside display
-      // limits (buildShareDescription).
-      const desc = buildShareDescription(
-        product.description,
-        await shareDisplayPrice(product.price),
-      );
+      // limits (buildShareDescription). R122 (A3-P1): the display price
+      // now rides the cached lookup (60 s TTL, admin-CRUD-bumped).
+      const desc = buildShareDescription(product.description, lookup.displayPrice);
       const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>

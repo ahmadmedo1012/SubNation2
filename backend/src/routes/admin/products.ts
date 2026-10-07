@@ -225,6 +225,12 @@ router.post("/products", requireAdmin, async (req, res) => {
       costPrice: data.cost_price != null ? String(data.cost_price) : null,
       category: data.category ?? null,
       usageTerms: data.usage_terms ?? null,
+      // R122 (A7-P2 + A4-P2-3): the operator SEO overrides — write-orphaned
+      // columns since the import; now persisted on create. The generated
+      // zod carries the column-aligned caps (200/320) directly, so no
+      // handler-side productFieldError entry is needed for these.
+      seoTitle: data.seo_title ?? null,
+      seoDescription: data.seo_description ?? null,
       isActive: data.is_active ?? true,
     })
     .returning();
@@ -316,6 +322,16 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
   }
   if (data.category != null) updateData.category = data.category;
   if (data.usage_terms != null) updateData.usageTerms = data.usage_terms;
+  // R122 (A7-P2 + A4-P2-3): the SEO overrides use the cost_price
+  // explicit-null-clears pattern — `seo_title: null` CLEARS the override
+  // so the row falls back to the name-based default (the columns are
+  // nullable overrides by design, shared/db/src/schema/products.ts).
+  if (data.seo_title !== undefined) {
+    updateData.seoTitle = data.seo_title ?? null;
+  }
+  if (data.seo_description !== undefined) {
+    updateData.seoDescription = data.seo_description ?? null;
+  }
   if (data.is_active != null) updateData.isActive = data.is_active;
 
   const [product] = await db
@@ -383,6 +399,21 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });
 
+/**
+ * R122 (A4-P2-7): hard cap on the per-product inventory preview. The route
+ * used to select ALL inventory rows for a product (the upload path allows
+ * up to 100,000 units) and ran one AES-GCM decrypt per row — an admin
+ * dialog on a bulk-imported product pulled 100k rows + 100k decrypts into
+ * one response and the 15 s statement_timeout turned that into a
+ * catalog-size-dependent 500. The counts (total/sold/available) stay EXACT
+ * (aggregate, no row materialization); the decrypted `items` list is
+ * capped at INVENTORY_PREVIEW_LIMIT rows, oldest-first (deterministic; the
+ * same oldest-first convention set-count uses), with an honest `truncated`
+ * flag + `items_cap` so the admin UI can say "showing the first N of
+ * total" instead of silently showing a partial dedup preview.
+ */
+const INVENTORY_PREVIEW_LIMIT = 200;
+
 router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
   const productId = intParam(req, "id");
   if (productId === null)
@@ -398,6 +429,20 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
   if (!product)
     return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
 
+  // R122 (A4-P2-7): exact counts via aggregates — no row materialization,
+  // no decrypts. The previous shape derived them from the (unbounded) row
+  // select; keeping them exact preserves the dialog's stock summary for
+  // any catalog size.
+  const [totals] = await db
+    .select({
+      total: count(),
+      sold: sql<number>`count(*) filter (where ${inventoryTable.isSold} = true)`.mapWith(Number),
+    })
+    .from(inventoryTable)
+    .where(eq(inventoryTable.productId, productId));
+  const total = Number(totals?.total ?? 0);
+  const sold = Number(totals?.sold ?? 0);
+
   // Only fields needed for the dedup-preview in the inventory dialog.
   // accountPassword is intentionally NOT returned — it's not needed
   // for dedup and would needlessly expose encrypted material.
@@ -408,6 +453,10 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
   // safeDecrypt passes legacy plaintext through unchanged and returns
   // null for undecryptable rows (the inventory-health diagnostic reports
   // those separately).
+  //
+  // R122 (A4-P2-7): LIMIT + 1 (the risk.ts/copilot-history hasMore idiom)
+  // — one row more than the cap is fetched to detect truncation without
+  // a second COUNT, then sliced off.
   const rows = await db
     .select({
       accountEmail: inventoryTable.accountEmail,
@@ -415,18 +464,25 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
       isSold: inventoryTable.isSold,
     })
     .from(inventoryTable)
-    .where(eq(inventoryTable.productId, productId));
+    .where(eq(inventoryTable.productId, productId))
+    .orderBy(asc(inventoryTable.id))
+    .limit(INVENTORY_PREVIEW_LIMIT + 1);
+  const truncated = rows.length > INVENTORY_PREVIEW_LIMIT;
+  const previewRows = truncated ? rows.slice(0, INVENTORY_PREVIEW_LIMIT) : rows;
 
-  const sold = rows.filter((r) => r.isSold).length;
   return res.json({
-    total: rows.length,
+    total,
     sold,
-    available: rows.length - sold,
-    items: rows.map((r) => ({
+    available: total - sold,
+    items: previewRows.map((r) => ({
       account_email: r.accountEmail,
       extra_details: safeDecrypt(r.extraDetails),
       is_sold: r.isSold,
     })),
+    // R122 (A4-P2-7): honest truncation indication for the admin dialog
+    // (the UI surface itself is a separate change — backend flag only).
+    truncated,
+    items_cap: INVENTORY_PREVIEW_LIMIT,
   });
 });
 
