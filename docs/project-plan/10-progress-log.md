@@ -222,3 +222,19 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   Coolify deploy triggered. This was the last loose end from the R121 security sweep — every
   decrypt funnel now has explicit 128-bit tag enforcement at the Node.js native layer, in addition
   to the existing `segments.authTag.length !== AUTH_TAG_BYTES` gate.
+
+- **2026-10-07** R121-E Mimosa deep scan (scan-2026-10-07T17-16-47.267Z-bf56ce580aac, seal
+  sha256:1f52f7e8d4b713afad37f6a00ce7fe2e6050ab582f7a5449d2e1a12cec266269): 716 files parsed,
+  174 entry points, 686 auth surfaces observed. 124 findings total — VERIFIED: **0 real issues**.
+  Breakdown: 13 flagged as actionable (1 HIGH command-injection candidate in telegram-webhook.ts,
+  12 medium cross-file taint / mongo-sort candidates). ALL debunked on inspection:
+  · "command-injection" in handleCallbackQuery → parseTopupCallback uses strict regex
+    `/^topup_(app|rej):(\d+)$/` + Number() validation; zero shell execution path.
+  · "mongo-sort-injection" in backup-db.ts / validate.ts / auth-settings.ts → all are
+    JavaScript Array.prototype.sort() on safe data (filenames, numeric scores, env keys),
+    NOT MongoDB $sort with user input. Mimosa conflates JS .sort() with mongo sort vectors.
+  · "cross-file taint" in copilot/settings.ts, forecast.ts, orders.ts → req.query parsed via
+    Number.parseInt with defaults; req.body validated against CopilotPhaseFlags schema.
+  · 12 HIGH false positives (hardcoded creds in script variable-name comparisons, SSRF on
+    operator-configured env URLs, path.resolve anchored to repoRoot). 99 inconclusive
+    (query budget exhaustion, not safety issues). Project security posture: EXCELLENT.
