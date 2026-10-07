@@ -41,8 +41,11 @@ export function buildOrganizationLd() {
       name: "Libya",
       sameAs: "https://www.wikidata.org/wiki/Q1016",
     },
+    // R120-B3 (A7-F5): the description names what the catalog ACTUALLY
+    // sells (streaming/VPN/Windows+software/AI — the live categories);
+    // "PS Plus" advertised a retired family with zero results.
     description:
-      "سوق الاشتراكات الرقمية في ليبيا — Netflix، Spotify، PS Plus، Disney+ بالدينار الليبي.",
+      "سوق الاشتراكات الرقمية في ليبيا — Netflix والبث المباشر، اشتراكات VPN، تراخيص Windows والبرامج، أدوات الذكاء الاصطناعي بالدينار الليبي.",
   };
 }
 
@@ -110,14 +113,20 @@ export function buildProductLd(p: ProductLdInput) {
         ? p.imageUrl
         : `${origin}${p.imageUrl}`
       : `${origin}/subnation-logo.png`,
-    sku: String(p.id),
-    // AUD103-6-F3 (r103): Brand means MANUFACTURER to Google — the raw
-    // category slug ("streaming"/"vpn") polluted the knowledge-graph
-    // association; ship the human Arabic label instead.
+    // R120-B3 (A7-F20): sku = slug-based, not the raw DB id — "1" told
+    // Google Shopping nothing and leaked row identity. Legacy slug-less
+    // rows keep the numeric fallback.
+    sku: p.slug ? `subnation-${p.slug}` : String(p.id),
+    // R120-B3 (A7-F11): brand = the SELLER (SubNation) — the old
+    // categoryLabel («بث مباشر» for a Netflix product) asserted the
+    // marketplace's own taxonomy as the MANUFACTURER, polluting
+    // knowledge-graph association. The category still ships — as the
+    // Product LD `category` field, which is what it actually is.
     brand: {
       "@type": "Brand",
-      name: categoryLabel(p.category) || "SubNation",
+      name: "SubNation",
     },
+    category: categoryLabel(p.category) || undefined,
     offers: {
       "@type": "Offer",
       price: Number(p.price).toFixed(2),

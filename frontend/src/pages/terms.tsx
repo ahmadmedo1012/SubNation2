@@ -74,7 +74,9 @@ function TermsContent() {
       <Section title="4. الأسعار والدفع">
         <p>جميع الأسعار بالدينار الليبي (د.ل) وقابلة للتغيير دون إشعار مسبق.</p>
         <p>
-          تتم عمليات الشحن عبر تحويل رصيد الهاتف (ليبيانا/مدار) أو تحويل بنكي (LyPay). تُعالَج
+          {/* R120-B5 (copy): «تحويل مصرفي» — the wallet page's canonical
+              LyPay label (wallet.tsx). «تحويل بنكي» drifted from it. */}
+          تتم عمليات الشحن عبر تحويل رصيد الهاتف (ليبيانا/مدار) أو تحويل مصرفي (LyPay). تُعالَج
           الطلبات خلال ساعات العمل.
         </p>
       </Section>
@@ -211,7 +213,10 @@ export default function TermsPage() {
   });
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
+    // R120-B5 (A3-F7): dvh straggler — the project's viewport-fill
+    // convention (home.tsx:416): min-h-[100dvh], not min-h-screen, so
+    // mobile browser chrome can't over-scroll the page shell.
+    <div className="max-w-2xl mx-auto px-4 py-8 min-h-[100dvh]">
       {seoBlock}
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-7">

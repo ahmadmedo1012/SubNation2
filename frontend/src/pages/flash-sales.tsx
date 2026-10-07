@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
+import { buildItemListLd } from "@/lib/seo-builders";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
 import { CATEGORY_ACCENT, CATEGORY_ICON, DEFAULT_ACCENT } from "@/components/ProductCard";
 import { useGetFlashSale, useListProducts, type Product } from "@workspace/api-client-react";
@@ -169,15 +170,6 @@ function FlashCard({
 }
 
 export default function FlashSalesPage() {
-  useSeo({
-    title: "عروض فلاش — SubNation",
-    description: "خصومات حصرية لفترة محدودة على أفضل الاشتراكات الرقمية",
-    type: "website",
-    path: "/flash-sales",
-    locale: "ar",
-    robots: "index,follow",
-  });
-
   const { data: products = [], isLoading, isError, refetch } = useListProducts({});
 
   // Products with a flash-sale price are considered "on sale"
@@ -221,8 +213,27 @@ export default function FlashSalesPage() {
   // notice replaces the stale urgency.
   const saleEnded = endsAt !== null && countdown.expired;
 
+  // R120-B3 (A7-F1 P1): CAPTURE the useSeo return — the block was called
+  // without rendering it, so /flash-sales shipped the DEFAULT
+  // title/description and zero JSON-LD. The ItemList LD names the
+  // on-sale products (home.tsx pattern: emitted only once the list is
+  // loaded — an empty ItemList reads as thin structured data).
+  const seoBlock = useSeo({
+    title: "عروض فلاش — SubNation",
+    description: "خصومات حصرية لفترة محدودة على أفضل الاشتراكات الرقمية",
+    type: "website",
+    path: "/flash-sales",
+    locale: "ar",
+    robots: "index,follow",
+    jsonLd:
+      onSale.length > 0
+        ? [buildItemListLd(onSale.slice(0, 30).map((p) => ({ id: p.slug ?? p.id, name: p.name })))]
+        : undefined,
+  });
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
+      {seoBlock}
       {/* Header */}
       <div className="text-center mb-9 page-in">
         <div className="relative w-16 h-16 mx-auto mb-5">

@@ -46,9 +46,11 @@
     <!-- R116-S1: og:image dimensions + twitter:card in the static
          no-JS baseline too — scrapers that never run JS (and WhatsApp's
          unfurler) size the card without a headless image fetch.
-         MetaTags upserts each of these in place at runtime. -->
-    <meta data-rh="true" property="og:image:width" content="1200" />
-    <meta data-rh="true" property="og:image:height" content="630" />
+         MetaTags upserts each of these in place at runtime.
+         R120-B3 (A7-F6): 1280×720 — the REAL /opengraph.jpg size (was a
+         1200×630 lie that mismatched every served image). -->
+    <meta data-rh="true" property="og:image:width" content="1280" />
+    <meta data-rh="true" property="og:image:height" content="720" />
     <meta data-rh="true" name="twitter:card" content="summary_large_image" />
     <!-- R117 (A4-P3-4): static canonical link for the no-JS baseline.
          The apex is the canonical host everywhere (sitemap, robots,
@@ -62,19 +64,27 @@
          provides; MetaTags upserts it in place per route at runtime. -->
     <link data-rh="true" rel="canonical" href="https://subnation.ly/" />
     <title data-rh="true">SubNation — سوق الاشتراكات الرقمية</title>
+    <!-- R120-B3 (A7-F5): the default description names what the catalog
+         ACTUALLY sells — Netflix/البث المباشر، VPN، تراخيص Windows
+         والبرامج، أدوات AI (the seven live categories in
+         lib/categories.ts). "PS Plus" advertised a retired family with
+         zero results. ~140 chars, keeps the د.ل + ليبيا keywords. -->
     <meta
       data-rh="true"
       name="description"
-      content="سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وDisney+ وأكثر بالدينار الليبي."
+      content="اشترِ Netflix والبث المباشر واشتراكات VPN وتراخيص Windows والبرامج وأدوات الذكاء الاصطناعي بالدينار الليبي (د.ل) — تسليم فوري في ليبيا."
     />
     <!-- Static pre-hydration tint matches the dark --primary (#dc1840 =
          hsl(348 80% 48%)); MetaTags re-upserts per-theme values at runtime. -->
     <meta data-rh="true" name="theme-color" content="#dc1840" />
     <meta data-rh="true" property="og:title" content="SubNation — سوق الاشتراكات الرقمية" />
+    <!-- R120-B3 (A7-F23): the static og:description was a 41-char generic
+         line that wasted the share-card copy — it now mirrors the default
+         meta description (locale + offering + د.ل). -->
     <meta
       data-rh="true"
       property="og:description"
-      content="اشترك في أفضل الخدمات الرقمية بالدينار الليبي"
+      content="اشترِ Netflix والبث المباشر واشتراكات VPN وتراخيص Windows والبرامج وأدوات الذكاء الاصطناعي بالدينار الليبي (د.ل) — تسليم فوري في ليبيا."
     />
     <meta data-rh="true" property="og:type" content="website" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

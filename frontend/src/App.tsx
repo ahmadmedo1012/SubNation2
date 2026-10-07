@@ -644,8 +644,11 @@ function AppRoutes() {
   // POSTs the auth payload and redirects to / on success.
   const isChromeless = location === "/status" || location === "/auth/telegram-callback";
 
+  // R120-B3 (A3-F7): min-h-screen → the codebase's min-h-[100dvh]
+  // convention (login/register/home pattern) — 100vh overscrolls on
+  // mobile dynamic-toolbar viewports.
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-[100dvh] bg-background text-foreground">
       <ScrollToTop />
       {/* F3-07 (R116): sr-only polite announcement of the new page's
           title on every SPA navigation — storefront AND admin. */}
@@ -669,7 +672,7 @@ function AppRoutes() {
       <MetaTags
         fallback
         title="SubNation — سوق الاشتراكات الرقمية"
-        description="سوق الاشتراكات الرقمية في ليبيا. اشترك في Netflix وSpotify وPS Plus وDisney+ وأكثر بالدينار الليبي."
+        description="اشترِ Netflix والبث المباشر واشتراكات VPN وتراخيص Windows والبرامج وأدوات الذكاء الاصطناعي بالدينار الليبي (د.ل) — تسليم فوري في ليبيا."
         path={location || "/"}
         robots={robotsForPath(location)}
       />

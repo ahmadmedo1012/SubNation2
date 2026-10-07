@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
@@ -171,6 +172,11 @@ export default function AdminAlertsPage() {
   const qc = useQueryClient();
   const headers = useAdminHeaders();
   const { toast } = useToast();
+  // R120-B4 (A2-F6): the shared styled confirm — the single-alert
+  // delete was a ONE-TAP destructive action (the bulk paths all had
+  // confirmation friction). The dialog names the alert's type + title
+  // so the operator knows exactly what is being removed.
+  const { confirm, ConfirmDialog } = useConfirm();
   const [filter, setFilter] = useState<FilterType>("all");
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
@@ -355,6 +361,22 @@ export default function AdminAlertsPage() {
   const unreadCount = data?.pages[0]?.unreadCount ?? 0;
   const totalAlerts = data?.pages[0]?.total;
   const readCount = alerts.filter((a) => a.isRead).length;
+
+  // R120-B4 (A2-F6): confirm BEFORE the DELETE fires — the destructive
+  // single-alert path now matches the bulk-delete friction (the dialog
+  // carries the alert type + title, the same context the bulk confirm
+  // names its count).
+  const confirmDeleteAlert = async (alert: AdminAlertItem) => {
+    const typeLabel = TYPE_META[alert.type]?.label ?? "تنبيه";
+    const confirmed = await confirm({
+      title: "حذف التنبيه؟",
+      description: `سيتم حذف تنبيه «${alert.title}» (${typeLabel}) نهائياً${alert.message ? ` — «${alert.message}»` : ""}. لا يمكن التراجع عن الحذف.`,
+      confirmLabel: "حذف",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    deleteAlert.mutate(alert.id);
+  };
 
   const displayed = alerts.filter((a) => {
     if (filter === "unread") return !a.isRead;
@@ -667,7 +689,7 @@ export default function AdminAlertsPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              deleteAlert.mutate(alert.id);
+                              void confirmDeleteAlert(alert);
                             }}
                             className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                             title="حذف"
@@ -732,6 +754,8 @@ export default function AdminAlertsPage() {
           </div>
         )}
       </div>
+      {/* R120-B4 (A2-F6): the single-delete confirm dialog mount. */}
+      <ConfirmDialog />
     </AdminLayout>
   );
 }

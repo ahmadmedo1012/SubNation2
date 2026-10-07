@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { ipKeyGenerator, rateLimit, type Store } from "express-rate-limit";
 import helmet from "helmet";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import pinoHttp from "pino-http";
 import * as Sentry from "@sentry/node";
@@ -17,6 +17,7 @@ import { bodyParserRecovery } from "./lib/body-parser-recovery";
 import { logger } from "./lib/logger";
 import { verifyUserToken } from "./lib/jwt";
 import { createResilientRateLimitStore } from "./lib/rate-limit-store";
+import { applyFlashSale } from "./lib/pricing";
 import { cloudflareClientIp } from "./middlewares/cloudflareClientIp";
 import { correlationMiddleware } from "./middlewares/correlation";
 import { instrumentationIsolation } from "./middlewares/instrumentation-isolation";
@@ -933,6 +934,329 @@ app.use(seoRouter);
 
 const frontendDist = resolveFrontendDist();
 
+// ── R120-B3 (A7-F3 / A7-F7 / A7-F16): per-route static-shell SEO meta ──────
+//
+// The SPA fallback below used to send the SAME index.html for every
+// route — so the shell's hard-coded `<link rel=canonical
+// href="https://subnation.ly/">` told every no-JS crawler (and every
+// indexer that reads the raw HTML before rendering) that /category/vpn,
+// /product/x, /login… were all duplicates of the HOMEPAGE. Three audit
+// findings ride this one shell-rewrite layer:
+//
+//   A7-F3 (P1): known public routes get their REAL canonical + title +
+//               description rewritten into the shell before sending —
+//               category pages from the map below, products from the
+//               same DB row the share card uses, statics for
+//               /flash-sales, /terms, /support.
+//   A7-F7 (P2): /product/:slug that misses the DB (unknown / inactive /
+//               archived row) now answers 404 — the shell still ships
+//               so the SPA's client-side not-found page renders, but
+//               crawlers no longer see a 200 "soft 404".
+//   A7-F16(P3): auth/transactional/admin families get `noindex,follow`
+//               stamped into the static robots meta (mirroring the
+//               SPA's NOINDEX_ROUTES + robots.txt Disallow list) and
+//               the homepage canonical is STRIPPED (a canonical aiming
+//               a noindex page at the homepage is a contradiction).
+//
+// Unknown paths: the homepage canonical is stripped (NO canonical
+// beats a lying one); the shell stays 200 so the SPA's client-side 404
+// owns the UX.
+//
+// Safety posture: the shell is read ONCE at boot into memory and every
+// rewrite is a pure string op on that snapshot (streaming-safe, and the
+// immutable-asset/CSP headers above are untouched — this layer only
+// rewrites the HTML document body). Only EXISTING tags are rewritten,
+// never inserted, so a stub/test shell without the markers passes
+// through byte-identical.
+const SPA_SHELL_HTML = (() => {
+  if (!frontendDist) return null;
+  try {
+    return readFileSync(path.join(frontendDist, "index.html"), "utf8");
+  } catch {
+    return null;
+  }
+})();
+
+/** Authoritative public origin — the SAME resolution routes/seo.ts and
+ * the share card use (APP_URL with the canonical production default). */
+function appOrigin(): string {
+  return (process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "");
+}
+
+/** HTML-escape for text/attribute contexts (title bodies, meta content). */
+function escapeHtmlAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * R120-B3 (A7-F9): the price a share card / shell meta should advertise
+ * — the ACTIVE flash-sale price (via lib/pricing.ts, the single source
+ * the catalog + checkout apply) when one is live and lower than the
+ * list price; the list price otherwise. Mirrors product.tsx's seoPrice
+ * rule (sale_price preferred only when it is actually lower).
+ */
+async function shareDisplayPrice(listPrice: string): Promise<string> {
+  const base = Number(listPrice);
+  if (!Number.isFinite(base)) return listPrice;
+  const { flashSale, basePrice } = await applyFlashSale(base);
+  return flashSale && basePrice < base ? basePrice.toFixed(2) : listPrice;
+}
+
+/**
+ * R120-B3 (A7-F17): assemble the share description INSIDE display
+ * limits — body sliced to ~150, price suffix appended, then the WHOLE
+ * string clamped to 180 (the old slice(0,180) + suffix could overshoot
+ * every card's display budget).
+ */
+function buildShareDescription(description: string | null, displayPrice: string): string {
+  const body = (description ?? "اشتراك رقمي أصلي بالدينار الليبي من SubNation")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 150);
+  const assembled = `${body} — السعر ${displayPrice} د.ل`;
+  return assembled.length <= 180 ? assembled : `${assembled.slice(0, 179)}…`;
+}
+
+/**
+ * Category landing-page meta for the static shell — DUPLICATED from
+ * frontend/src/lib/categories.ts (metaTitle / metaDescription verbatim).
+ * The backend build cannot import the frontend source (tsc rootDir:
+ * "src"), so parity is PINNED by test:
+ * src/__tests__/spa-shell-category-parity.test.ts fails when either
+ * copy drifts. Keep both files in sync when a category's meta changes.
+ * Exported for that parity test.
+ */
+export const SHELL_CATEGORY_META: Record<string, { metaTitle: string; metaDescription: string }> = {
+  streaming: {
+    metaTitle: "اشتراكات البث المباشر في ليبيا — Netflix و Disney+ و Shahid",
+    metaDescription:
+      "اشترِ اشتراكات Netflix و Disney+ و Shahid VIP و Amazon Prime Video بالدينار الليبي. تسليم فوري في طرابلس وبنغازي ومصراتة وكامل ليبيا.",
+  },
+  music: {
+    metaTitle: "اشتراكات الموسيقى في ليبيا — Spotify Premium بالدينار الليبي",
+    metaDescription:
+      "اشترِ اشتراك Spotify Premium وخدمات الموسيقى الأخرى بالدينار الليبي. تسليم فوري، جودة صوت عالية، استماع بدون إعلانات في كامل ليبيا.",
+  },
+  software: {
+    metaTitle: "مفاتيح Windows ورخص برامج أصلية في ليبيا — تفعيل فوري",
+    metaDescription:
+      "اشترِ مفاتيح Windows 10 و WinRAR و Grammarly و cPanel أصلية بالدينار الليبي. تراخيص دائمة، تفعيل فوري، ضمان استبدال في كامل ليبيا.",
+  },
+  vpn: {
+    metaTitle: "اشتراكات VPN في ليبيا — ExpressVPN و CyberGhost و IPVanish",
+    metaDescription:
+      "اشترِ اشتراكات ExpressVPN و CyberGhost و IPVanish و HMA بالدينار الليبي. تسليم فوري، تشفير كامل، خوادم عالمية، تعمل في كامل ليبيا.",
+  },
+  "ai-tools": {
+    metaTitle: "اشتراك ChatGPT Plus في ليبيا — الذكاء الاصطناعي بالدينار الليبي",
+    metaDescription:
+      "فعّل ChatGPT Plus و Shopia AI بالدينار الليبي بدون بطاقة دولية. تسليم فوري لبيانات الحساب، وصول كامل للنماذج المتقدمة، دعم في كامل ليبيا.",
+  },
+  "seo-tools": {
+    metaTitle: "اشتراكات Ahrefs و Semrush في ليبيا — أدوات SEO احترافية",
+    metaDescription:
+      "اشترِ اشتراكات Ahrefs و Semrush الاحترافية بالدينار الليبي. تحليل روابط وكلمات مفتاحية ومنافسين، فاتورة شهرية أو سنوية، تسليم فوري في ليبيا.",
+  },
+  education: {
+    metaTitle: "اشتراكات Skillshare و Scribd في ليبيا — تعلم بلا حدود",
+    metaDescription:
+      "اشترِ اشتراكات Skillshare و Scribd الأصلية بالدينار الليبي. آلاف الدورات ومكتبة كتب غير محدودة، تنزيل بدون إنترنت، تسليم فوري في كامل ليبيا.",
+  },
+};
+
+/** Static public routes with fixed meta (mirrors each page's useSeo block). */
+const SHELL_STATIC_ROUTE_META: Record<string, { title: string; description: string }> = {
+  "/flash-sales": {
+    title: "عروض فلاش — SubNation",
+    description: "خصومات حصرية لفترة محدودة على أفضل الاشتراكات الرقمية",
+  },
+  "/support": {
+    title: "الدعم والأسئلة الشائعة — SubNation",
+    description:
+      "إجابات حول الدفع وشحن المحفظة والاشتراكات والاسترداد وتسجيل الدخول في SubNation. افتح تذكرة دعم في أي وقت.",
+  },
+  "/terms": {
+    title: "الشروط والأحكام — SubNation",
+    description:
+      "شروط استخدام منصة SubNation: سياسة الشراء، شحن المحفظة، الاشتراكات الرقمية، والاسترداد.",
+  },
+};
+
+/**
+ * A7-F16: static-shell noindex families — the SAME path families the
+ * SPA's NOINDEX_ROUTES (frontend/src/App.tsx) and robots.txt Disallow
+ * list cover. `noindex,follow` (not none) so crawlers keep walking
+ * outbound links instead of treating them as dangling.
+ */
+const SHELL_NOINDEX_RES: RegExp[] = [
+  /^\/login$/,
+  /^\/register$/,
+  /^\/forgot-password$/,
+  /^\/onboarding(\/|$)/,
+  /^\/auth(\/|$)/,
+  /^\/cart(\/|$)/,
+  /^\/checkout(\/|$)/,
+  /^\/wallet(\/|$)/,
+  /^\/orders(\/|$)/,
+  /^\/loyalty(\/|$)/,
+  /^\/referrals(\/|$)/,
+  /^\/profile(\/|$)/,
+  /^\/admin(\/|$)/,
+  /^\/status(\/|$)/,
+];
+
+/** Resolved per-route shell meta (exported for the shell-rewrite tests). */
+export interface SpaShellMeta {
+  /** HTTP status for the shell response (200; 404 for dead product slugs). */
+  status: number;
+  /** Rewrites <title> + og:title when present. */
+  title?: string;
+  /** Rewrites meta[name=description] + og:description when present. */
+  description?: string;
+  /** Absolute canonical URL; `null` STRIPS the link; undefined leaves it. */
+  canonical?: string | null;
+  /** robots override ("noindex,follow" for auth/admin families). */
+  robots?: string;
+}
+
+/**
+ * Pure regex helpers — each rewrites ONLY an existing tag (no insertion):
+ * the production shell carries every marker (data-rh), while stub/test
+ * shells without a marker pass through untouched.
+ */
+function rewriteMetaTag(
+  html: string,
+  attr: "name" | "property",
+  key: string,
+  content: string,
+): string {
+  const tagRe = new RegExp(`<meta\\b(?=[^>]*\\b${attr}\\s*=\\s*["']${key}["'])[^>]*>`, "i");
+  if (!tagRe.test(html)) return html;
+  return html.replace(tagRe, (tag) =>
+    tag.replace(/\bcontent\s*=\s*("([^"]*)"|'([^']*)')/i, `content="${escapeHtmlAttr(content)}"`),
+  );
+}
+
+function rewriteCanonical(html: string, href: string | null): string {
+  const linkRe = /<link\b(?=[^>]*\brel\s*=\s*["']canonical["'])[^>]*>/i;
+  if (href === null) return html.replace(linkRe, "");
+  if (!linkRe.test(html)) return html;
+  return html.replace(linkRe, (tag) =>
+    tag.replace(/\bhref\s*=\s*("([^"]*)"|'([^']*)')/i, `href="${escapeHtmlAttr(href)}"`),
+  );
+}
+
+/** Apply resolved meta to the in-memory shell snapshot (exported for tests). */
+export function applySpaShellMeta(html: string, meta: SpaShellMeta): string {
+  let out = html;
+  if (meta.title !== undefined) {
+    out = out.replace(
+      /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i,
+      (_m: string, open: string, _inner: string, close: string) =>
+        open + escapeHtmlAttr(meta.title as string) + close,
+    );
+    out = rewriteMetaTag(out, "property", "og:title", meta.title);
+  }
+  if (meta.description !== undefined) {
+    out = rewriteMetaTag(out, "name", "description", meta.description);
+    out = rewriteMetaTag(out, "property", "og:description", meta.description);
+  }
+  if (meta.robots !== undefined) {
+    out = rewriteMetaTag(out, "name", "robots", meta.robots);
+  }
+  if (meta.canonical !== undefined) {
+    out = rewriteCanonical(out, meta.canonical);
+  }
+  return out;
+}
+
+/**
+ * Resolve the shell meta for a request path (exported for tests; hits
+ * the DB only for /product/*). Trailing slashes are normalized.
+ */
+export async function resolveSpaShellMeta(pathname: string, origin: string): Promise<SpaShellMeta> {
+  const norm = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (norm === "" || norm === "/") return { status: 200 }; // homepage shell is already correct
+
+  const category = /^\/category\/([^/]+)$/.exec(norm);
+  if (category) {
+    const meta = SHELL_CATEGORY_META[category[1]];
+    // Unknown category slug → the SPA renders its noindex 404 surface;
+    // unknown-path treatment (no canonical) applies.
+    return meta
+      ? {
+          status: 200,
+          title: meta.metaTitle,
+          description: meta.metaDescription,
+          canonical: `${origin}/category/${category[1]}`,
+        }
+      : { status: 200, canonical: null };
+  }
+
+  const product = /^\/product\/([^/]+)$/.exec(norm);
+  if (product) {
+    let slugOrId: string;
+    try {
+      slugOrId = decodeURIComponent(product[1] as string);
+    } catch {
+      return { status: 404, canonical: null };
+    }
+    const numeric = /^\d+$/.test(slugOrId) ? Number.parseInt(slugOrId, 10) : null;
+    const [row] = await db
+      .select({
+        slug: productsTable.slug,
+        name: productsTable.name,
+        description: productsTable.description,
+        price: productsTable.price,
+        isActive: productsTable.isActive,
+      })
+      .from(productsTable)
+      .where(
+        and(
+          numeric !== null ? eq(productsTable.id, numeric) : eq(productsTable.slug, slugOrId),
+          // Same WHERE half as the share card (D2-F4): an archived row
+          // can never render a shell with product meta.
+          eq(productsTable.isArchived, false),
+        ),
+      )
+      .limit(1);
+    // A7-F7: unknown / inactive / archived product slug → real 404 (the
+    // shell still ships so the SPA's not-found page renders client-side).
+    if (!row || !row.isActive) return { status: 404, canonical: null };
+    return {
+      status: 200,
+      title: `${row.name} — SubNation`,
+      description: buildShareDescription(row.description, await shareDisplayPrice(row.price)),
+      // Prefer the row's canonical slug URL (numeric-id requests get
+      // replaceState'd to it client-side — R117 F-4).
+      canonical: `${origin}/product/${row.slug ?? slugOrId}`,
+    };
+  }
+
+  const staticMeta = SHELL_STATIC_ROUTE_META[norm];
+  if (staticMeta) {
+    return {
+      status: 200,
+      title: staticMeta.title,
+      description: staticMeta.description,
+      canonical: `${origin}${norm}`,
+    };
+  }
+
+  if (SHELL_NOINDEX_RES.some((re) => re.test(norm))) {
+    return { status: 200, canonical: null, robots: "noindex,follow" };
+  }
+
+  // Unknown public path: strip the canonical — a homepage canonical on
+  // an unknown URL is a duplicate-content lie; the SPA's client-side 404
+  // owns the UX and the shell's index,follow robots stays acceptable.
+  return { status: 200, canonical: null };
+}
+
 if (frontendDist) {
   // Serve hashed assets with 1-year immutable cache (file names change on rebuild)
   app.use(
@@ -1038,13 +1362,8 @@ if (frontendDist) {
         next();
         return;
       }
-      const esc = (s: string) =>
-        s
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
-      const origin = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/, "");
+      const esc = escapeHtmlAttr;
+      const origin = appOrigin();
       const canonical = `${origin}/product/${slugOrId}`;
       // 110-F (R110 — 109-n P2): r103 absolutized og:image in MetaTags but
       // missed this no-JS surface — unfurlers (WhatsApp/Facebook, the
@@ -1059,11 +1378,14 @@ if (frontendDist) {
           ? product.imageUrl
           : `${origin}${product.imageUrl.startsWith("/") ? "" : "/"}${product.imageUrl}`
         : null;
-      const desc =
-        (product.description ?? "اشتراك رقمي أصلي بالدينار الليبي من SubNation")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 180) + ` — السعر ${product.price} د.ل`;
+      // R120-B3 (A7-F9 + A7-F17): prefer the live flash-sale price when
+      // one is active (shareDisplayPrice — the same lib/pricing.ts stage
+      // the catalog applies) and assemble the description inside display
+      // limits (buildShareDescription).
+      const desc = buildShareDescription(
+        product.description,
+        await shareDisplayPrice(product.price),
+      );
       const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -1092,7 +1414,7 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
     }
   });
 
-  app.use((req, res, next) => {
+  app.use(async (req, res, next) => {
     if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {
       next();
       return;
@@ -1104,7 +1426,23 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
     // currently Arabic-only — when an English locale ships, swap this
     // to derive from the request path / Accept-Language.
     res.setHeader("Content-Language", "ar");
-    res.sendFile(path.join(frontendDist, "index.html"));
+
+    // R120-B3 (A7-F3/F7/F16): per-route shell rewrite — see the
+    // SPA_SHELL_HTML block above for the full rationale. Degrade to the
+    // untouched shell when the boot-time read failed or the /product/*
+    // DB lookup hiccups: the SEO meta layer is best-effort and must
+    // never take the page down.
+    if (!SPA_SHELL_HTML) {
+      res.sendFile(path.join(frontendDist, "index.html"));
+      return;
+    }
+    let meta: SpaShellMeta;
+    try {
+      meta = await resolveSpaShellMeta(req.path, appOrigin());
+    } catch {
+      meta = { status: 200 };
+    }
+    res.status(meta.status).type("html").send(applySpaShellMeta(SPA_SHELL_HTML, meta));
   });
 }
 
@@ -1116,6 +1454,25 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 // calls next(err) so our localized handler below still produces the
 // Arabic-text user-facing response.
 Sentry.setupExpressErrorHandler(app);
+
+/**
+ * R120-B3 (A8-F3): map a zod issue array to the MINIMAL client shape —
+ * `{ path, code }` pairs only. The full issues (messages, received
+ * values) are implementation detail: they used to ride the 400 body
+ * verbatim and leak parser internals to any client. The complete detail
+ * still reaches operators through the global error handler's
+ * `logger.error({ err, … })` line. Exported for the 400-shape regression
+ * test (no live route bubbles a ZodError today — every route safeParse's
+ * and answers its own 400 — so the branch is pinned at unit level).
+ */
+export function zodIssuesToClient(
+  issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; code: string }>,
+): Array<{ path: string; code: string }> {
+  return issues.map((issue) => ({
+    path: issue.path.map((segment) => String(segment)).join("."),
+    code: issue.code,
+  }));
+}
 
 // ── Global error handler ──────────────────────────────────────────────────────
 //
@@ -1135,9 +1492,17 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     // robust shape (zod 4 drops the alias) and avoids accidentally
     // catching arbitrary objects that happen to carry an `errors`
     // property.
+    // R120-B3 (A8-F3): the full zod issue array (messages, received
+    // values, paths) is implementation detail echoed to clients — map
+    // to minimal { path, code } pairs via zodIssuesToClient (exported
+    // so the R120 400-shape tests pin the client contract directly).
+    // The complete issues stay in the pino log line above
+    // (logger.error({ err, … }) carries the whole error object, issues
+    // included). No frontend consumer reads details (getErrorMessage
+    // keys off code/error/message only).
     res.status(400).json(
       createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {
-        details: { issues: err.issues },
+        details: { issues: zodIssuesToClient(err.issues) },
       }),
     );
   } else if (
@@ -1145,10 +1510,13 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     "errors" in err &&
     Array.isArray((err as { errors?: unknown }).errors)
   ) {
+    // R120-B3 (A8-F3): the raw `.errors` passthrough minimized to a
+    // count — same rationale as the ZodError branch above (full detail
+    // already rode the pino log line at the top of this handler).
     const errorWithErrors = err as { errors?: unknown[] };
     res.status(400).json(
       createErrorResponse("بيانات غير صالحة", ErrorCode.INVALID_DATA, {
-        details: errorWithErrors.errors,
+        details: { count: errorWithErrors.errors?.length ?? 0 },
       }),
     );
   } else {

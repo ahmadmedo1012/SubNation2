@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Express } from "express";
-import { db, initTestDb, productsTable, resetTestDb } from "../test/db";
+import { eq } from "drizzle-orm";
+import { db, initTestDb, productsTable, resetTestDb, flashSalesTable } from "../test/db";
 
 /**
  * R111 (D2-F1 + D2-F4) — share-card crawler split + archived WHERE.
@@ -292,27 +293,70 @@ describe("share-card vs SPA shell through the real app (D2-F1)", () => {
 // ── D2-F4 (WHERE half): archived rows never render a card ───────────────────
 
 describe("share-card archived WHERE (D2-F4)", () => {
-  it("whatsapp UA on an ARCHIVED-but-active product (by slug) → SPA shell, no card", async () => {
+  it("whatsapp UA on an ARCHIVED-but-active product (by slug) → NO card; the SPA shell answers 404 (R120-B3 A7-F7)", async () => {
     const r = await get(`/product/${archivedActiveProduct.slug}`, UA.whatsapp);
-    expect(r.status).toBe(200);
+    // R120-B3 (A7-F7): dead product slugs no longer answer 200 — the
+    // shell still ships (client-side 404 UX) but with a REAL 404 status
+    // so crawlers stop seeing a soft-404. Was: expect(200).
+    expect(r.status).toBe(404);
     expect(isSpaShell(r)).toBe(true);
     expect(isCard(r)).toBe(false);
   });
 
-  it("whatsapp UA on an ARCHIVED-but-active product (by numeric id) → SPA shell, no card", async () => {
+  it("whatsapp UA on an ARCHIVED-but-active product (by numeric id) → NO card; shell 404 (A7-F7)", async () => {
     const r = await get(`/product/${archivedActiveProduct.id}`, UA.whatsapp);
+    expect(r.status).toBe(404);
     expect(isSpaShell(r)).toBe(true);
     expect(isCard(r)).toBe(false);
   });
 
-  it("whatsapp UA on an INACTIVE product → SPA shell (existing guard, pinned)", async () => {
+  it("whatsapp UA on an INACTIVE product → NO card; shell 404 (A7-F7)", async () => {
     const r = await get(`/product/${inactiveProduct.slug}`, UA.whatsapp);
+    expect(r.status).toBe(404);
     expect(isSpaShell(r)).toBe(true);
     expect(isCard(r)).toBe(false);
   });
 
   it("control: the same whatsapp UA on the ACTIVE product still gets the card (the WHERE did not over-reach)", async () => {
     const r = await get(`/product/${activeProduct.slug}`, UA.whatsapp);
+    expect(r.status).toBe(200);
     expect(isCard(r)).toBe(true);
+  });
+});
+
+// ── R120-B3 (A7-F9 + A7-F17): the card's price + description budget ─────────
+
+describe("share card price + description (R120-B3 A7-F9/A7-F17)", () => {
+  it("an active flash sale drives the CARD price too (list 79.80 → 25% → 59.85)", async () => {
+    await db.insert(flashSalesTable).values({
+      title: "عرض فلاش اختبار",
+      discountPercent: "25.00",
+      endsAt: new Date(Date.now() + 60 * 60 * 1000),
+      isActive: true,
+    });
+
+    const r = await get(`/product/${activeProduct.slug}`, UA.whatsapp);
+    expect(isCard(r)).toBe(true);
+    // The flash-sale price rides the card description (the same
+    // lib/pricing.ts stage the catalog applies) — not the list price.
+    expect(r.body).toContain("السعر 59.85 د.ل");
+    expect(r.body).not.toContain("السعر 79.80");
+  });
+
+  it("the assembled card description stays inside the 180-char display budget", async () => {
+    await db
+      .update(productsTable)
+      .set({ description: "ط".repeat(300) })
+      .where(eq(productsTable.id, activeProduct.id));
+
+    const r = await get(`/product/${activeProduct.slug}`, UA.whatsapp);
+    expect(isCard(r)).toBe(true);
+    const desc = r.body.match(/property="og:description" content="([^"]*)"/)?.[1] ?? "";
+    // 150-char body slice + " — السعر 79.80 د.ل" suffix, assembled ≤ 180
+    // (the OLD slice(0,180) + suffix could overshoot the budget).
+    expect(desc.length).toBeGreaterThan(0);
+    expect(desc.length).toBeLessThanOrEqual(180);
+    expect(desc.startsWith("ط".repeat(150))).toBe(true);
+    expect(desc).toContain("السعر 79.80 د.ل");
   });
 });

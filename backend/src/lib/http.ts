@@ -32,6 +32,34 @@ export function queryString(req: Request, name: string, fallback = ""): string {
 }
 
 /**
+ * R120-B6/A6-F1: clamp helper for user-facing list `?limit=` params.
+ *
+ * Canonicalizes the exact clamp idiom the user orders list has used since
+ * round-3 (8-c §2.4): parseInt of the (first) query value, NaN → `def`,
+ * clamped to [1, max]. Byte-identical to the previous inline code for
+ * every current input — including the array/multi-value and non-string
+ * query shapes, which `queryString` collapses the same way `String()`
+ * did (A6-F14: no drift on adoption).
+ *
+ * NOTE: routes that historically used the stricter `Number()` +
+ * `Number.isInteger` idiom (wallet/loyalty ledgers reject "12.9"/"1e2"
+ * where this helper would parse 12/1) intentionally do NOT adopt this —
+ * adoption must keep behavior identical for every current input.
+ */
+export function limitParam(req: Request, def: number, max: number): number {
+  const raw = parseInt(queryString(req, "limit", String(def)), 10);
+  return Number.isNaN(raw) ? def : Math.min(Math.max(raw, 1), max);
+}
+
+/**
+ * R120-B6/A6-F1: clamp helper for user-facing list `?page=` params — the
+ * exact admin/orders.ts:213-217 idiom (page ≥ 1; NaN/garbage/0 → 1).
+ */
+export function pageParam(req: Request): number {
+  return Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
+}
+
+/**
  * AUD103-3-F4 (r103): escape SQL LIKE wildcards in an admin search term.
  * `%` / `_` inside the search input would otherwise act as pattern
  * wildcards (a bare "%" search matched every row, enabling pattern scans

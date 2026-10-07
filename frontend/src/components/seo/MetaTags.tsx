@@ -5,8 +5,12 @@ export interface SeoInput {
   title: string;
   /** 120-160 chars description for meta description and og:description */
   description: string;
-  /** Absolute or relative URL of the canonical image (1200×630 PNG ideal) */
+  /** Absolute or relative URL of the canonical image (real /opengraph.jpg is 1280×720) */
   image?: string;
+  /** og:image:width override — defaults to the REAL /opengraph.jpg (1280×720). R120-B3 (A7-F6): the hardcoded 1200×630 lied about every image. */
+  imageWidth?: number;
+  /** og:image:height override — see imageWidth. */
+  imageHeight?: number;
   /** OpenGraph type — defaults to "website"; "product" for product detail */
   type?: "website" | "product" | "article";
   /** Public path for the canonical link, e.g. "/" or "/product/42" */
@@ -41,6 +45,12 @@ export interface SeoInput {
 // type="application/ld+json"> creation — no inline executable script.
 
 const DEFAULT_IMAGE = "/opengraph.jpg";
+/** R120-B3 (A7-F6): the REAL pixel size of /opengraph.jpg (verified with
+ * `file`: 1280×720) — the previous hardcoded 1200×630 mis-declared every
+ * og:image and forced scrapers into a wasteful image fetch to learn the
+ * truth. Callers with a different image pass imageWidth/imageHeight. */
+const DEFAULT_IMAGE_WIDTH = 1280;
+const DEFAULT_IMAGE_HEIGHT = 720;
 
 /** 94-C3 (A3 P3-6): the browser-chrome tint was a single raw #e11d48 —
  * a rose hex that matches NEITHER theme's --primary (dark 348 80% 48% /
@@ -128,6 +138,9 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   const robots = input.robots ?? "index,follow";
   const ogType = input.type ?? "website";
   const isFallback = input.fallback === true;
+  // R120-B3 (A7-F6): hoisted so the effect deps below can watch them.
+  const imageWidth = input.imageWidth ?? DEFAULT_IMAGE_WIDTH;
+  const imageHeight = input.imageHeight ?? DEFAULT_IMAGE_HEIGHT;
 
   const apply = (): void => {
     setTitle(title);
@@ -154,12 +167,17 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
     upsertMeta('meta[property="og:type"]', "property", "og:type", ogType);
     upsertMeta('meta[property="og:url"]', "property", "og:url", url);
     upsertMeta('meta[property="og:image"]', "property", "og:image", image);
-    // R116-S1: explicit dimensions alongside og:image — scrapers
-    // (WhatsApp is the dominant share channel) can size the unfurl
-    // without a headless image fetch. 1200×630 is the summary_large_image
-    // ideal the SeoInput doc already names.
-    upsertMeta('meta[property="og:image:width"]', "property", "og:image:width", "1200");
-    upsertMeta('meta[property="og:image:height"]', "property", "og:image:height", "630");
+    // R116-S1: explicit dimensions alongside og:image — scrapers (WhatsApp
+    // is the dominant share channel) size the unfurl without a headless
+    // image fetch. Defaults match the REAL /opengraph.jpg (A7-F6); callers
+    // with per-page art (product webp) pass their own dims.
+    upsertMeta('meta[property="og:image:width"]', "property", "og:image:width", String(imageWidth));
+    upsertMeta(
+      'meta[property="og:image:height"]',
+      "property",
+      "og:image:height",
+      String(imageHeight),
+    );
     upsertMeta('meta[property="og:locale"]', "property", "og:locale", ogLocale);
     // AUD103-6-F10 (r103): og:locale:alternate DROPPED — the alternate
     // list must name REAL translations; advertising a nonexistent en_US
@@ -198,7 +216,18 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
         notifyFallback();
       }
     };
-  }, [title, description, url, image, robots, ogType, ogLocale, isFallback]);
+  }, [
+    title,
+    description,
+    url,
+    image,
+    imageWidth,
+    imageHeight,
+    robots,
+    ogType,
+    ogLocale,
+    isFallback,
+  ]);
 
   return null;
 }

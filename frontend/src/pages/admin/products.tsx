@@ -51,7 +51,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 
 const EMPTY_FORM = {
@@ -106,6 +106,29 @@ const CATEGORY_FILTERS = [
   { value: "gaming", label: "ألعاب" },
   { value: "productivity", label: "إنتاجية" },
 ];
+
+/** R120-B4 (A2-F2): the backend list (routes/admin/products.ts) clamps
+ *  at 200 newest rows with NO page param — the client-side search used
+ *  to run only over that window while the header presented its length
+ *  as «N منتج في الكتالوج» (a false total: older products beyond the
+ *  cap were invisible to both the search and the counter). The search
+ *  now rides the server-side ?search= (ILIKE + trigram, covers the
+ *  WHOLE catalog); a full 200-row page means the total is NOT known
+ *  and the header switches to the honest «عرض N (الأحدث أولاً)».
+ *  Accumulating load-more is impossible against this frozen contract
+ *  (no `page` param server-side) — the cap hint + search is the honest
+ *  surface instead. */
+const PRODUCTS_SERVER_CAP = 200;
+
+/** Arabic plural forms for the catalog counter (formatCount). */
+const PRODUCT_COUNT_FORMS = {
+  zero: "منتجات",
+  one: "منتج",
+  two: "منتجان",
+  few: "منتجات",
+  many: "منتجًا",
+  other: "منتج",
+};
 
 function InlineStockEdit({
   productId,
@@ -227,12 +250,18 @@ export default function AdminProductsPage() {
     name: string;
   } | null>(null);
   // 94-C2 (A2 P2-3): the GlobalSearch palette deep-links here with
-  // ?search= — prefill the box so the operator's query survives the
-  // navigation (the catalog search is client-side over the loaded
-  // list, so the URL param only needs to seed the initial state).
+  // ?search= — prefill the box (R120-B4: the search is now SERVER-side,
+  // so the param also seeds the debounced mirror the first query
+  // carries — no double fetch).
   const [search, setSearch] = useState(
     () => new URLSearchParams(window.location.search).get("search") ?? "",
   );
+  // R120-B4 (A2-F2): 300ms debounce feeding the server-side ?search=
+  // (the orders/users pattern) — one request per typing pause, not per
+  // keystroke; the query-key change aborts the in-flight request via
+  // the generated hook's AbortSignal.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  const searchParam = useSearch();
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingStockId, setEditingStockId] = useState<number | null>(null);
@@ -264,6 +293,21 @@ export default function AdminProductsPage() {
     return () => window.removeEventListener("hashchange", openCreateFromHash);
   }, []);
 
+  // R120-B4 (A2-F2): GlobalSearch deep-links (?search=…) — keep the box
+  // in sync when the URL search changes without clobbering local typing
+  // (the orders.tsx idiom).
+  useEffect(() => {
+    const q = new URLSearchParams(searchParam).get("search") ?? "";
+    setSearch((prev) => (prev === q ? prev : q));
+  }, [searchParam]);
+
+  // R120-B4 (A2-F2): the debounce — only the settled value enters the
+  // query key.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const headers = useAdminHeaders();
 
   // 98-F7 (R98-05): dirty-state guard for the product editor — a long
@@ -276,6 +320,12 @@ export default function AdminProductsPage() {
   const editorDirty = showForm && JSON.stringify(form) !== JSON.stringify(formBaseline);
   useDirtyGuard(editorDirty);
 
+  // R120-B4 (A2-F2): the debounced search rides the existing server-side
+  //  ?search= (ILIKE name + category, newest-first, capped 200). The
+  //  queryKey carries the params (getListAdminProductsQueryKey(params)) so
+  //  a settled search restarts the query; the base-key invalidations
+  //  (invalidate() + socket pushes) still prefix-match and refresh it.
+  const listParams = { search: debouncedSearch.trim() || undefined };
   const {
     data: products = [],
     isLoading,
@@ -286,15 +336,19 @@ export default function AdminProductsPage() {
     isError,
     error,
     refetch,
-  } = useListAdminProducts(undefined, {
+  } = useListAdminProducts(listParams, {
     query: {
-      queryKey: getListAdminProductsQueryKey(),
+      queryKey: getListAdminProductsQueryKey(listParams),
       enabled: !!adminToken,
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,
     },
     request: { headers },
   });
+
+  // R120-B4 (A2-F2): a full cap page = the total is NOT provably known;
+  // a short page IS the whole (search-filtered) catalog.
+  const catalogCapped = products.length >= PRODUCTS_SERVER_CAP;
 
   const loadErrorMessage = isError ? getErrorMessage(error) : null;
 
@@ -442,14 +496,12 @@ export default function AdminProductsPage() {
     setForm({ ...EMPTY_FORM });
   };
 
-  const filtered = products.filter((p) => {
-    const matchSearch =
-      !search ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      categoryLabel(p.category).includes(search);
-    const matchCategory = !categoryFilter || p.category === categoryFilter;
-    return matchSearch && matchCategory;
-  });
+  // R120-B4 (A2-F2): the search ran on the SERVER (?search= covers the
+  //  whole catalog, not just the loaded window) — only the category tab
+  //  stays client-side over the (possibly capped) loaded rows.
+  const filtered = categoryFilter
+    ? products.filter((p) => p.category === categoryFilter)
+    : products;
 
   const lowStockCount = products.filter((p) => p.stock_count === 0 && p.is_active).length;
 
@@ -583,7 +635,20 @@ export default function AdminProductsPage() {
           <div>
             <h1 className="text-xl font-bold mb-0.5">المنتجات</h1>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{products.length} منتج في الكتالوج</span>
+              {/* R120-B4 (A2-F2): honest count (the orders idiom). The old
+                  «{products.length} منتج في الكتالوج» presented the capped
+                  200-row window as the whole catalog. A full cap page →
+                  «عرض N (الأحدث أولاً)»; a search → «نتائج البحث: N» (the
+                  result set IS complete when shorter than the cap);
+                  otherwise the catalog genuinely fits and the total is
+                  true. */}
+              <span>
+                {catalogCapped
+                  ? `عرض ${formatCount(products.length, PRODUCT_COUNT_FORMS)} (الأحدث أولاً)`
+                  : debouncedSearch.trim()
+                    ? `نتائج البحث: ${formatCount(products.length, PRODUCT_COUNT_FORMS)}`
+                    : `${formatCount(products.length, PRODUCT_COUNT_FORMS)} في الكتالوج`}
+              </span>
               {lowStockCount > 0 && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
@@ -909,7 +974,11 @@ export default function AdminProductsPage() {
             {search && (
               <button
                 onClick={() => setSearch("")}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="مسح البحث"
+                /* R120-B4 (A2-F12): the orders.tsx fixed version — bare
+                   w-3 icon ≈ 12px target; p-2 lifts the tappable area to
+                   ~28px. */
+                className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -943,6 +1012,17 @@ export default function AdminProductsPage() {
           )}
           <span className="text-xs text-muted-foreground mr-auto">{filtered.length} منتج</span>
         </div>
+
+        {/* R120-B4 (A2-F2): partial-data hint — over a capped window the
+            category tabs (and their counts) only see the newest
+            PRODUCTS_SERVER_CAP rows; the search box is the path to older
+            products (the orders.tsx honest-count hint idiom). */}
+        {catalogCapped && !isLoading && (
+          <p className="text-3xs text-muted-foreground">
+            الفلاتر تعمل على المنتجات المعروضة فقط (أحدث {PRODUCTS_SERVER_CAP}) — استخدم البحث
+            للوصول إلى المنتجات الأقدم
+          </p>
+        )}
 
         {/* Grid */}
         {/* 94-C2 (A2 P1-2): refresh of an already-rendered catalog

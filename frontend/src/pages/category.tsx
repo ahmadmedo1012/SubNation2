@@ -186,7 +186,11 @@ export default function CategoryPage() {
     return buildFaqLd(meta.faqs);
   }, [meta]);
 
-  useSeo({
+  // R120-B3 (A7-F1 P1): CAPTURE the useSeo return — the block was called
+  // without rendering it, so all 7 category landing pages shipped the
+  // DEFAULT title/description and zero JSON-LD (Breadcrumb/FAQ/ItemList)
+  // in the deployed bundle. Same pattern as home.tsx/product.tsx.
+  const seoBlock = useSeo({
     title: meta ? meta.metaTitle : "صفحة غير موجودة — SubNation",
     description: meta ? meta.metaDescription : "الفئة المطلوبة غير موجودة.",
     type: "website",
@@ -205,6 +209,9 @@ export default function CategoryPage() {
   if (!meta || !theme) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-7 page-in text-center">
+        {/* A7-F1: the noindex/not-found SEO block renders here too — the
+            unknown-slug surface still needs its title + robots applied. */}
+        {seoBlock}
         <h1 className="text-2xl font-bold mb-3">الفئة غير موجودة</h1>
         <p className="text-muted-foreground mb-6">
           الفئة المطلوبة غير معروفة. يمكنك تصفّح كل المنتجات من الصفحة الرئيسية.
@@ -223,6 +230,7 @@ export default function CategoryPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7 page-in">
+      {seoBlock}
       {/* Breadcrumb (visible) */}
       <nav
         aria-label="مسار التنقّل"

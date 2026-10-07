@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { Link } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
 import { buildFaqLd, type FaqItem } from "@/lib/seo-builders";
 
@@ -155,7 +155,11 @@ function categoryIcon(cat: string | null) {
 
 export default function SupportPage() {
   const { token } = useAuth();
-  const [, navigate] = useLocation();
+  // R120-B3 (A7-F2 P1): /support is robots-Allow'ed and sitemap-listed —
+  // anonymous visitors now get the PUBLIC FAQ surface (accordion +
+  // FAQPage JSON-LD + the support meta); only the ticket inbox/create
+  // form is auth-gated. `isAuthenticated` gates every ticket UI below.
+  const isAuthenticated = !!token;
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -228,16 +232,18 @@ export default function SupportPage() {
   };
 
   useEffect(() => {
-    if (!token) {
-      navigate("/login");
-      return;
-    }
-    fetchTickets();
+    // R120-B3 (A7-F2 P1): NO anonymous redirect — the FAQ surface is
+    // public. The ticket fetch itself is already token-guarded inside
+    // fetchTickets; anonymous visitors simply never load the inbox.
+    if (token) fetchTickets();
   }, [token]);
 
   useEffect(() => {
     if (selectedTicket) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [selectedTicket?.replies?.length]);
+    // R120-B3 (A5-F8): re-run when SWITCHING tickets too — the old
+    // [replies.length] key skipped the scroll when a second ticket had
+    // the SAME reply count (e.g. both empty) as the previously open one.
+  }, [selectedTicket?.id, selectedTicket?.replies?.length]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -380,7 +386,7 @@ export default function SupportPage() {
           </div>
         </div>
 
-        {!selectedTicket && !showCreate && (
+        {!selectedTicket && !showCreate && isAuthenticated && (
           <Button
             onClick={() => setShowCreate(true)}
             className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 active:scale-[0.97] transition-all gap-1.5 rounded-xl shrink-0"
@@ -440,7 +446,7 @@ export default function SupportPage() {
             // so the panel doesn't shift when ticketReplies arrive.
             <div
               className="p-5 space-y-4 overflow-hidden"
-              style={{ maxHeight: "min(460px, calc(100vh - 260px))" }}
+              style={{ maxHeight: "min(460px, calc(100dvh - 260px))" }}
               aria-busy="true"
             >
               <div className="flex justify-start">
@@ -456,7 +462,7 @@ export default function SupportPage() {
           ) : (
             <div
               className="p-5 space-y-5 overflow-y-auto scrollbar-none"
-              style={{ maxHeight: "min(460px, calc(100vh - 260px))" }}
+              style={{ maxHeight: "min(460px, calc(100dvh - 260px))" }}
             >
               {selectedTicket.replies.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -539,7 +545,7 @@ export default function SupportPage() {
                 <Input
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="اكتب ردك هنا..."
+                  placeholder="اكتب ردك هنا…"
                   aria-label="نص الرد على التذكرة"
                   /* 96-F6 (R96 A2 P2-6 + P3-3): 44px row (matches the send
                      button) + mobile Enter key labelled “send” + the
@@ -707,7 +713,33 @@ export default function SupportPage() {
       )}
 
       {/* ── Tickets List ─────────────────────────────────────────── */}
+      {/* R120-B3 (A7-F2 P1): the ticket inbox/create surface is the ONLY
+          auth-gated part of /support. Anonymous visitors get a login CTA
+          (the ?redirect=/support deep-link is the guarded-page convention
+          login.tsx already validates) instead of the old hard redirect —
+          the FAQ section below stays fully public. */}
+      {!selectedTicket && !isAuthenticated && (
+        <div className="text-center py-12 px-4 bg-card border border-primary/22 rounded-2xl reveal-up">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
+            <MessageSquare className="w-6 h-6 text-primary" />
+          </div>
+          <p className="font-bold text-sm mb-1.5 text-foreground/80">تحتاج مساعدة شخصية؟</p>
+          <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
+            سجّل الدخول لفتح تذكرة دعم ومتابعة الرد من هذه الصفحة
+          </p>
+          <Button
+            asChild
+            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
+          >
+            <Link href="/login?redirect=/support">
+              <Headphones className="w-4 h-4" />
+              سجّل الدخول لفتح تذكرة
+            </Link>
+          </Button>
+        </div>
+      )}
       {!selectedTicket &&
+        isAuthenticated &&
         (loading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
