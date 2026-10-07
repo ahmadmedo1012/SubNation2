@@ -185,3 +185,30 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   moment either the project exists + DSN is pasted (→ `VITE_SENTRY_DSN` build arg + `SENTRY_DSN`
   runtime) or a full-scope token is issued (release + sourcemap pipeline then runs unattended).
   GSC `VITE_GSC_VERIFICATION` still needs the operator's Search Console token.
+- **2026-10-07** **R121-B — Sentry FULLY ACTIVATED** (operator supplied a full-scope token): org
+  `subnation` (EU/de region) already had `javascript-react` + `subnation-backend` projects. Coolify
+  env: `VITE_SENTRY_DSN` (frontend build arg), `SENTRY_DSN` (backend runtime), `SENTRY_AUTH_TOKEN` +
+  `SENTRY_ORG` + `SENTRY_PROJECT` (build args → source-map pipeline). Commit `8530dfa`: vite plugin
+  release pinned to `VITE_RELEASE_SHA` (was name@version — orphaned maps) + Dockerfile ARG
+  passthrough for the three build vars. Deploy `e1de0e6` exposed a real gate bug — commit
+  `e1de0e6`: Coolify passes GIT_SHA declared-but-EMPTY, `??` kept `""` and slipped
+  `--release=""` past the gate; switched to `||` with SOURCE_COMMIT fallback. Verified END-TO-END:
+  both bundles' upload reports green under release `e1de0e6`; backend `sentry-debug` reports
+  `dsnConfigured:true, release:e1de0e6`; the `?mode=throw` controlled event reached the
+  `subnation-backend` project (issue verified via API, then deleted — clean state); real-browser
+  `__sentryStatus()` → `initialized:true, release:e1de0e6`. Console Sentry warning GONE.
+  Recommendation left for the operator: swap the full-scope build token for an `org:ci` token
+  (UI-only creation on SaaS) — logged in the runbook, not blocking.
+- **2026-10-07** R121-C security sweep (semgrep auto + trivy CRITICAL + gitleaks full history):
+  one real finding fixed — `encryption.ts` GCM decipher now passes `authTagLength` at construction
+  (native Node enforcement under the existing 128-bit setAuthTag gate); 25/25 encryption tests
+  pass including the rotation ladder. Everything else false-positive: semgrep "telegram/aws/jwt
+  key" hits are synthetic test fixtures; gitleaks' 2 `gcp-api-key` findings (history-only, files
+  since deleted) are the PUBLIC Firebase web key; `minimumReleaseAge: 1440` already set in
+  pnpm-workspace.yaml (R119). Trivy: zero CRITICAL.
+- **2026-10-07** R121-D e2e sweep (19 checks, Playwright/Chrome): 19/19 in substance — storefront
+  journey (home grid → category → product price+buy → cart → checkout guest gate), auth gates
+  (/wallet /orders /loyalty never 5xx), API contracts (products/providers/healthz/sitemap/robots/
+  404 shape), login shows Google+Telegram. One initial "price missing" was the test's own timing
+  (async query) — re-verified with settle: price + stock render. Mobile 390px: no overflow, zero
+  console errors.
