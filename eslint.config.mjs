@@ -56,6 +56,22 @@ export default tseslint.config(
     },
   },
   {
+    // R122 (A4-P1-1): plain-JS tool scripts (the drizzle-push guard in
+    // shared/db/scripts/) are NOT TypeScript files, so they don't get
+    // typescript-eslint's no-undef pass-through — give them the Node
+    // globals they legitimately use. (backend/build.mjs stays ignored.)
+    files: ["**/*.mjs", "**/scripts/**/*.cjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        Buffer: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+      },
+    },
+  },
+  {
     // Service worker files use Web Worker globals
     files: ["**/sw.js", "**/sw.ts", "**/service-worker.*"],
     languageOptions: {

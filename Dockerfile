@@ -144,15 +144,33 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_OPENWA_DOCS_URL=$VITE_OPENWA_DOCS_URL \
     VITE_RELEASE_SHA=$RENDER_GIT_COMMIT
 
-# R104 (AG12-1): build ONLY. The root `pnpm run build` chains
-# lint + typecheck BEFORE the actual build — duplicating the CI quality
-# job inside the platform build (Render build minutes used to be a shared
-# 500/mo free-tier budget; on Coolify the builder runs on the VM's own
-# CPU, where a double build just wastes deploy minutes).
-# CI (.github/workflows/ci.yml) and the deploy gate already own those
-# gates; a manual deploy of a red-CI commit is the operator's explicit
-# override.
+# R104 (AG12-1) — history: this stage used to be build ONLY. The root
+# `pnpm run build` chains lint + typecheck BEFORE the actual build, and
+# duplicating the CI quality job inside the platform build was avoided for
+# cost (Render build minutes used to be a shared 500/mo free-tier budget;
+# on Coolify the builder runs on the VM's own CPU, where a double build
+# just wastes deploy minutes). That stance assumed CI gates the merge.
 #
+# R122 (A9-P0-2): that assumption does not hold at DEPLOY time. CI
+# (.github/workflows/ci.yml) runs green on every push to main, but the
+# Coolify push-to-deploy webhook fires on the push itself and builds this
+# image WITHOUT waiting for CI — so a type error could reach production
+# before CI even reports (esbuild transpiles without typechecking — see
+# backend/build.mjs — and vite does not typecheck either). The image build
+# therefore now enforces the strongest cheap gate itself: `pnpm run
+# typecheck` (tsc --build over the shared project references + per-package
+# --noEmit, exactly what CI's quality job runs; ~1-2 min on the builder's
+# own CPU per the R104 note above; noEmitOnError makes any red a hard
+# build failure) as deploy-time defense-in-depth. Lint and the vitest
+# suites remain CI-owned (folding them in here would add ~6-8 min to every
+# webhook deploy — deliberately not on the critical path). A manual deploy
+# of a red-CI commit is still the operator's explicit override.
+# Side note: `tsc --build` emits shared/*/dist declaration artifacts
+# (~1.1 MB d.ts + .tsbuildinfo) into this stage; they ride the runtime
+# `COPY /app/shared` as inert type-only files (exports resolve to src/*.ts)
+# — harmless next to the full TS sources that copy already ships.
+RUN pnpm run typecheck
+
 # R107: VITE_RELEASE_SHA is resolved here (shell-standard ${A:-$B}, no
 # reliance on Dockerfile ENV substitution) so GIT_SHA wins over
 # RENDER_GIT_COMMIT for the Sentry release tag on any platform.

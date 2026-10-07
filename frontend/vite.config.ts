@@ -615,9 +615,21 @@ export default defineConfig({
           ) {
             return "vendor-charts";
           }
-          if (id.includes("node_modules/lucide-react")) {
-            return "vendor-icons";
-          }
+          // R122 (A6-P1-1): lucide-react NO LONGER gets a manual chunk. The
+          // old rule pinned ALL 135 icons the app imports into ONE
+          // vendor-icons chunk; since the eager path references that chunk
+          // (Navbar/App/error pages use 14 icons), every cold storefront
+          // visit preloaded all 135 icons (11.2 KB gz) while only ~1.2 KB
+          // gz of them are eager-reachable — the other 121 icons (90%) are
+          // referenced exclusively by lazy admin/storefront routes. With no
+          // rule, Rollup's default chunking inlines the entry-reachable
+          // icons into their importing chunks and assigns lazy-only icons
+          // to the lazy page chunks (or a small on-demand shared chunk):
+          // eager path 152,438 → 144,430 B gz (−8.0 KB), back under the
+          // 145 KiB warn line; the entry chunk absorbed the eager icons
+          // (27,718 → 30,881 B gz, still far under its 55 KiB gate).
+          // Named per-icon imports are tree-shaken either way (no
+          // barrel imports in src), so nothing regresses for lazy routes.
           if (
             id.includes("node_modules/socket.io-client") ||
             id.includes("node_modules/engine.io-client")

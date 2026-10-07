@@ -9,9 +9,13 @@
 # TRIGGERS — deliberately NOT every push:
 #   - workflow_dispatch (manual, from the Actions tab)
 #   - version tags v* (release artifacts)
-# This repo is PRIVATE: GitHub Actions minutes are metered, and QEMU-emulated
-# arm64 builds are ~3-5× slower than native (~15-25 min each). The zero-cost
-# alternative is letting Coolify build from Git directly on the VM.
+# R122 (premise corrected): this was originally written when the repo was
+# PRIVATE with metered Actions minutes. The repo is PUBLIC now (minutes
+# free), but the manual/tag-only trigger discipline stays: Coolify's
+# push-to-deploy webhook already builds every push on the VM itself, so
+# publishing GHCR multi-arch images from here adds nothing on the per-push
+# path — and the QEMU-emulated arm64 legs stay ~3-5× slower than native
+# (~15-25 min each), which is not worth burning on every commit.
 #
 # STRUCTURE (r110, closes R109 109-j P2-2 — arm64 failure used to block the
 # amd64 publish because ONE buildx invocation built+pushed both platforms):
@@ -34,9 +38,10 @@
 #     on the next commit whose arm64 leg is green. Previously-published
 #     sha-<short> tags are immutable and are never retro-fitted.
 #
-# STATUS: NOT YET VERIFIED on real infrastructure (no Docker in the r107
-# workspace + Actions minutes exhausted). Validate with a manual run before
-# relying on the published image.
+# STATUS: NOT YET VERIFIED on real infrastructure (the r107 workspace had
+# no Docker; the "Actions minutes exhausted" blocker cited then is
+# obsolete — the repo is public and minutes are free, R122). Validate with
+# a manual run before relying on the published image.
 name: Docker Image (multi-arch)
 
 on:

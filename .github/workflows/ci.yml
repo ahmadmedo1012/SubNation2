@@ -160,10 +160,15 @@ jobs:
   #     scanned — their CVEs do not ship to production. Use `pnpm audit`
   #     locally without `--prod` to see them.
   #
-  # DEPENDABOT DECISION (R119-B5, audit A7-F8): No dependabot while the
-  # private-repo CI runner is dead (billing) — dependabot PRs would be
-  # untestable noise; the weekly pnpm-audit gate in this workflow is the
-  # supply-chain watch. Revisit when a runner is funded.
+  # DEPENDABOT DECISION (R119-B5, audit A7-F8; premise corrected R122):
+  # the original decision — "no dependabot while the private-repo CI
+  # runner is dead (billing); revisit when a runner is funded" — rested
+  # on a premise that no longer holds: the repo is PUBLIC and this CI
+  # runs green on every push (R122 verification), so Actions minutes are
+  # free and dependabot PRs would be fully CI-testable. The revisit
+  # condition is therefore MET; whether to actually enable dependabot is
+  # now a plain ops choice. Until then, this weekly pnpm-audit gate
+  # remains the supply-chain watch.
   audit:
     name: CVE scanning (pnpm audit, prod deps)
     runs-on: ubuntu-latest
