@@ -26,7 +26,13 @@ import { type ReactNode } from "react";
 import AdminReferralsPage from "@/pages/admin/referrals";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({
+    adminToken: "test-admin-token",
+    // R122 (A2-P1): the page gates the credit button on the finance
+    // scope — default-grant keeps these load-failure tests scoped to
+    // their own concern (see referrals-finance-gate.test.tsx).
+    hasAdminPermission: () => true,
+  }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({

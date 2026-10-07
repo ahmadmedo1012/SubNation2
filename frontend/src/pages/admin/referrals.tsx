@@ -105,7 +105,7 @@ function StatCard({
 }
 
 export default function AdminReferralsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -277,6 +277,17 @@ export default function AdminReferralsPage() {
   const stats = data?.stats;
   const topReferrers = data?.top_referrers ?? [];
   const list = data?.list ?? [];
+
+  // R122 (A2-P1): the credit POST is finance-gated server-side
+  // (backend routes/admin/referrals.ts — requirePermission("finance"),
+  // the B1-3 rationale: points are LYD-convertible money a scoped
+  // users-admin must not mint). The button used to render enabled for a
+  // users-only operator, who confirmed the dialog and only THEN hit the
+  // 403 — the same "offered then 403'd mid-flow" class R120-B4 (A2-F4)
+  // eliminated in users.tsx (canEditMoney) and orders.tsx
+  // (canBulkRefund). Same idiom: disabled up front with the honest
+  // reason instead.
+  const canCredit = hasAdminPermission("finance");
 
   return (
     <AdminLayout onRefresh={() => fetchData()}>
@@ -519,7 +530,10 @@ export default function AdminReferralsPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => handleCredit(row)}
-                          disabled={crediting === row.id}
+                          // R122 (A2-P1): finance scope required — see
+                          // canCredit above (users.tsx canEditMoney idiom).
+                          disabled={crediting === row.id || !canCredit}
+                          title={canCredit ? undefined : "يتطلب صلاحية المالية"}
                           className="h-7 px-2.5 text-xs gap-1 border-primary/25 text-primary hover:bg-primary/8 hover:border-primary/40"
                         >
                           {crediting === row.id ? (

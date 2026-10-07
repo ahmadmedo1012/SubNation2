@@ -2,8 +2,12 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useChartColors } from "@/lib/chart-theme";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
+// R122 (A2-P1): the recent-orders error state surfaces the backend's
+// Arabic envelope (403 permission body / 5xx) via the shared mapper.
+import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
+import { Button } from "@/components/ui/button";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -214,7 +218,7 @@ function exportChartCSV(data: ChartDay[], days: number) {
 }
 
 export default function AdminDashboardPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   // R115-A6 #7: every series/axis/grid color rides the theme tokens
@@ -230,6 +234,17 @@ export default function AdminDashboardPage() {
   const [granularity, setGranularity] = useState<"daily" | "weekly" | "monthly">("daily");
 
   const headers = useAdminHeaders();
+
+  // R122 (A2-P2): the stats + chart-data endpoints are requireAdmin-only
+  // (no scope), but the money they carry (today/total revenue, aggregate
+  // wallet balance, the revenue series + CSV export) is finance-class
+  // data the panel elsewhere scope-gates (wallet edits, refunds, coupons
+  // nav). The dashboard is the one nav item with no scope, so the UI is
+  // the only honest gate: non-finance operators get the non-money tiles
+  // (users / stock / topups queue count stays visible via the finance
+  // branches below) — same hasAdminPermission idiom as the nav filter
+  // and users.tsx canEditMoney.
+  const canSeeMoney = hasAdminPermission("finance");
 
   const {
     data: stats,
@@ -249,7 +264,20 @@ export default function AdminDashboardPage() {
     request: { headers },
   });
 
-  const { data: recentOrders = [], isLoading: recentOrdersLoading } = useListAdminOrders(
+  // R122 (A2-P1): `isError`/`error` were never destructured — on a 403
+  // (support/finance-only admin without the orders scope) or a 5xx
+  // outage, `data` stayed undefined, the `= []` default kicked in and
+  // the stream rendered the false «لا توجد طلبات بعد» empty state while
+  // the same screen's stats showed real order counts (the exact
+  // false-empty class killed on every list page; orders.tsx pins its own
+  // copy in orders-false-empty-pagination.test.tsx).
+  const {
+    data: recentOrders = [],
+    isLoading: recentOrdersLoading,
+    isError: recentOrdersError,
+    error: recentOrdersErrorDetail,
+    refetch: refetchRecentOrders,
+  } = useListAdminOrders(
     { limit: 8 },
     {
       query: {
@@ -304,7 +332,15 @@ export default function AdminDashboardPage() {
     fetchChart(chartDays);
   };
 
-  const badges = { pendingTopups: stats?.pending_topups ?? 0, openTickets: 0 };
+  // R122 (A2-P2): the layout merges this page-passed fallback with its
+  // own finance-gated server count (layout.tsx canSeeFinanceBadge) — a
+  // non-finance operator would otherwise still see the pending-topups
+  // total on the (finance-scoped, hidden) nav item's mobile hamburger
+  // badge. Scope the page fallback to match.
+  const badges = {
+    pendingTopups: canSeeMoney ? (stats?.pending_topups ?? 0) : 0,
+    openTickets: 0,
+  };
 
   const displayData = aggregateData(chartData, granularity);
 
@@ -344,6 +380,8 @@ export default function AdminDashboardPage() {
     ? [
         {
           label: "إيرادات اليوم",
+          // R122 (A2-P2): finance-gated tile — see canSeeMoney above.
+          finance: true,
           value: formatCurrency(stats.today_revenue ?? 0),
           sub: `${stats.today_orders ?? 0} طلب اليوم`,
           icon: TrendingUp,
@@ -370,6 +408,8 @@ export default function AdminDashboardPage() {
         },
         {
           label: "إجمالي الإيرادات",
+          // R122 (A2-P2): finance-gated tile — see canSeeMoney above.
+          finance: true,
           value: formatCurrency(stats.total_revenue ?? 0),
           sub: `${stats.total_orders ?? 0} طلب إجمالاً`,
           icon: BarChart2,
@@ -419,6 +459,8 @@ export default function AdminDashboardPage() {
         },
         {
           label: "رصيد المحافظ",
+          // R122 (A2-P2): finance-gated tile — see canSeeMoney above.
+          finance: true,
           value: formatCurrency(stats.total_wallet_balance ?? 0),
           sub: "إجمالي أرصدة المستخدمين",
           icon: Wallet,
@@ -430,13 +472,20 @@ export default function AdminDashboardPage() {
           sparkColor: "",
         },
       ]
+        // R122 (A2-P2): hide the money tiles for non-finance operators —
+        // the non-money tiles (pending-topups count, users, stock) stay
+        // for every scope.
+        .filter((c) => canSeeMoney || !(c as { finance?: boolean }).finance)
     : [];
 
   return (
     <AdminLayout onRefresh={handleRefresh} badges={badges}>
       <div className="space-y-6">
         {/* Urgent alert */}
-        {(stats?.pending_topups ?? 0) > 0 && (
+        {/* R122 (A2-P2): finance-gated — the topups page is finance-scoped
+            (nav + backend), and the old banner deep-linked EVERY admin
+            into an honest-but-dead 403 card. */}
+        {canSeeMoney && (stats?.pending_topups ?? 0) > 0 && (
           <div className="flex items-center justify-between p-4 bg-yellow-400/8 border border-yellow-400/20 rounded-2xl gap-4 float-in">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-yellow-400/15 flex items-center justify-center shrink-0">
@@ -520,27 +569,35 @@ export default function AdminDashboardPage() {
             <span className="text-3xs text-muted-foreground font-semibold hidden sm:inline">
               إجراءات:
             </span>
-            {(stats.pending_topups ?? 0) > 0 && (
+            {/* R122 (A1): the four quick-action CTAs were
+                <Link><button>…</button></Link> — invalid
+                interactive-in-interactive nesting + a doubled tab stop
+                (the A4-F1 class; the admin pages escaped that sweep).
+                Same fix as the app standard: ONE interactive element —
+                the file's own urgent-banner idiom (Link > styled span
+                with cursor-pointer). R122 (A2-P2): the topups CTA is
+                additionally finance-gated (see canSeeMoney above). */}
+            {canSeeMoney && (stats.pending_topups ?? 0) > 0 && (
               <Link href="/admin/topups">
-                <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-semibold press-spring">
+                <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-400/8 hover:bg-yellow-400/15 border border-yellow-400/20 hover:border-yellow-400/35 text-yellow-400 transition-all duration-150 font-semibold press-spring cursor-pointer">
                   <Clock className="w-3 h-3" /> موافقة الشحن ({stats.pending_topups})
-                </button>
+                </span>
               </Link>
             )}
             <Link href="/admin/orders">
-              <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150">
+              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150 cursor-pointer">
                 <ListOrdered className="w-3 h-3" /> الطلبات
-              </button>
+              </span>
             </Link>
             <Link href="/admin/products">
-              <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150">
+              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150 cursor-pointer">
                 <Plus className="w-3 h-3" /> منتج جديد
-              </button>
+              </span>
             </Link>
             <Link href="/admin/users">
-              <button className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150">
+              <span className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-border text-muted-foreground hover:text-foreground transition-all duration-150 cursor-pointer">
                 <Users className="w-3 h-3" /> المستخدمون
-              </button>
+              </span>
             </Link>
           </div>
         )}
@@ -581,237 +638,254 @@ export default function AdminDashboardPage() {
               </div>
             ) : (
               <div className="xl:col-span-3 space-y-5 float-in stagger-7">
-                {/* Revenue + Orders chart */}
-                <div className="bg-card border border-border/60 rounded-2xl p-5">
-                  <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
-                    <div>
-                      <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                          <span className="w-3 h-0.5 bg-primary rounded inline-block" />
-                          الإيرادات
-                        </span>
-                        <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                          <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />
-                          الطلبات
-                        </span>
-                        <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                          <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />
-                          الخصومات
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Granularity picker */}
-                      <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
-                        {GRANULARITY_OPTIONS.map((g) => (
+                {/* Revenue + Orders chart + Discounts & Coupon Orders
+                    chart — R122 (A2-P2): finance-gated. Both series carry
+                    money (revenue, discount value) and the CSV export
+                    rides the first panel's header; the non-finance
+                    operator keeps the new-users chart below. */}
+                {canSeeMoney && (
+                  <>
+                    {/* Revenue + Orders chart */}
+                    <div className="bg-card border border-border/60 rounded-2xl p-5">
+                      <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
+                        <div>
+                          <h2 className="font-bold text-sm">الإيرادات والطلبات</h2>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="flex items-center gap-1 text-3xs text-muted-foreground">
+                              <span className="w-3 h-0.5 bg-primary rounded inline-block" />
+                              الإيرادات
+                            </span>
+                            <span className="flex items-center gap-1 text-3xs text-muted-foreground">
+                              <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />
+                              الطلبات
+                            </span>
+                            <span className="flex items-center gap-1 text-3xs text-muted-foreground">
+                              <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />
+                              الخصومات
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Granularity picker */}
+                          <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
+                            {GRANULARITY_OPTIONS.map((g) => (
+                              <button
+                                key={g.value}
+                                onClick={() => setGranularity(g.value)}
+                                className={`px-2 py-1 rounded text-3xs font-bold transition-all duration-150 ${
+                                  granularity === g.value
+                                    ? "bg-card shadow-sm text-foreground"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {g.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Period picker */}
+                          <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
+                            {PERIOD_OPTIONS.map((opt) => (
+                              <button
+                                key={opt.days}
+                                onClick={() => onChangeDays(opt.days)}
+                                className={`px-2.5 py-1 rounded text-2xs font-bold transition-all duration-150 ${
+                                  chartDays === opt.days
+                                    ? "bg-card shadow-sm text-foreground"
+                                    : "text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Export chart data */}
                           <button
-                            key={g.value}
-                            onClick={() => setGranularity(g.value)}
-                            className={`px-2 py-1 rounded text-3xs font-bold transition-all duration-150 ${
-                              granularity === g.value
-                                ? "bg-card shadow-sm text-foreground"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
+                            onClick={() => exportChartCSV(displayData, chartDays)}
+                            className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                            title="تصدير بيانات المخطط CSV"
                           >
-                            {g.label}
+                            <Download className="w-3.5 h-3.5" />
                           </button>
-                        ))}
+                        </div>
                       </div>
-
-                      {/* Period picker */}
-                      <div className="flex items-center gap-0.5 bg-muted/40 border border-border/60 rounded-lg p-0.5">
-                        {PERIOD_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.days}
-                            onClick={() => onChangeDays(opt.days)}
-                            className={`px-2.5 py-1 rounded text-2xs font-bold transition-all duration-150 ${
-                              chartDays === opt.days
-                                ? "bg-card shadow-sm text-foreground"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
+                      {chartLoading ? (
+                        <div className="h-40 skeleton-shimmer rounded-lg" />
+                      ) : (
+                        <ResponsiveContainer width="100%" height={160}>
+                          <AreaChart
+                            data={displayData}
+                            margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
                           >
-                            {opt.label}
-                          </button>
-                        ))}
+                            <defs>
+                              <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={chart.primary} stopOpacity={0.2} />
+                                <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
+                              </linearGradient>
+                              <linearGradient id="ordGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={chart.success} stopOpacity={0.2} />
+                                <stop offset="95%" stopColor={chart.success} stopOpacity={0} />
+                              </linearGradient>
+                              <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={chart.warning} stopOpacity={0.15} />
+                                <stop offset="95%" stopColor={chart.warning} stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke={chart.grid}
+                              vertical={false}
+                            />
+                            <XAxis
+                              dataKey="date"
+                              // Round-3 (8-e §1.4): daily buckets carry the raw
+                              // backend ISO key ("2026-09-06") — unlocalized and
+                              // inconsistent with the Arabic month names the same
+                              // axis shows in weekly/monthly mode. Format it.
+                              tickFormatter={(value: string) => {
+                                const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                                return Number.isNaN(d.getTime())
+                                  ? value
+                                  : d.toLocaleDateString("ar-LY", {
+                                      month: "short",
+                                      day: "numeric",
+                                      timeZone: "UTC",
+                                    });
+                              }}
+                              tick={{ fontSize: 10, fill: chart.muted }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis
+                              tick={{ fontSize: 10, fill: chart.muted }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <Tooltip content={<ChartTooltip />} />
+                            <Area
+                              type="monotone"
+                              dataKey="revenue"
+                              name="الإيرادات"
+                              stroke={chart.primary}
+                              fill="url(#revGrad)"
+                              strokeWidth={2}
+                              dot={false}
+                              activeDot={{ r: 3 }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="orders"
+                              name="الطلبات"
+                              stroke={chart.success}
+                              fill="url(#ordGrad)"
+                              strokeWidth={2}
+                              dot={false}
+                              activeDot={{ r: 3 }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="discounts"
+                              name="الخصومات"
+                              stroke={chart.warning}
+                              fill="url(#discGrad)"
+                              strokeWidth={1.5}
+                              dot={false}
+                              activeDot={{ r: 3 }}
+                              strokeDasharray="4 2"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+
+                    {/* Discounts & Coupon Orders chart */}
+                    <div className="bg-card border border-border/60 rounded-2xl p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
+                          <p className="text-3xs text-muted-foreground mt-0.5">
+                            قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 text-3xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <span className="w-3 h-0.5 bg-amber-400 rounded inline-block" />
+                            الخصومات
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded bg-emerald-500/60 inline-block" />
+                            طلبات بكوبون
+                          </span>
+                        </div>
                       </div>
-
-                      {/* Export chart data */}
-                      <button
-                        onClick={() => exportChartCSV(displayData, chartDays)}
-                        className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
-                        title="تصدير بيانات المخطط CSV"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
+                      {chartLoading ? (
+                        <div className="h-28 skeleton-shimmer rounded-lg" />
+                      ) : displayData.every(
+                          (d) => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0,
+                        ) ? (
+                        <div className="h-28 flex items-center justify-center text-muted-foreground text-xs">
+                          لا يوجد استخدام كوبونات في هذه الفترة
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={120}>
+                          <BarChart
+                            data={displayData}
+                            margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
+                          >
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke={chart.grid}
+                              vertical={false}
+                            />
+                            <XAxis
+                              dataKey="date"
+                              // Round-3 (8-e §1.4): daily buckets carry the raw
+                              // backend ISO key ("2026-09-06") — unlocalized and
+                              // inconsistent with the Arabic month names the same
+                              // axis shows in weekly/monthly mode. Format it.
+                              tickFormatter={(value: string) => {
+                                const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+                                return Number.isNaN(d.getTime())
+                                  ? value
+                                  : d.toLocaleDateString("ar-LY", {
+                                      month: "short",
+                                      day: "numeric",
+                                      timeZone: "UTC",
+                                    });
+                              }}
+                              tick={{ fontSize: 10, fill: chart.muted }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis
+                              tick={{ fontSize: 10, fill: chart.muted }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <Tooltip content={<ChartTooltip />} />
+                            <Bar
+                              dataKey="discounts"
+                              name="الخصومات"
+                              fill={chart.warning}
+                              radius={[3, 3, 0, 0]}
+                              maxBarSize={24}
+                              fillOpacity={0.8}
+                            />
+                            <Bar
+                              dataKey="coupon_orders"
+                              name="طلبات بكوبون"
+                              fill={chart.success}
+                              radius={[3, 3, 0, 0]}
+                              maxBarSize={24}
+                              fillOpacity={0.6}
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
                     </div>
-                  </div>
-                  {chartLoading ? (
-                    <div className="h-40 skeleton-shimmer rounded-lg" />
-                  ) : (
-                    <ResponsiveContainer width="100%" height={160}>
-                      <AreaChart
-                        data={displayData}
-                        margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
-                      >
-                        <defs>
-                          <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={chart.primary} stopOpacity={0.2} />
-                            <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="ordGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={chart.success} stopOpacity={0.2} />
-                            <stop offset="95%" stopColor={chart.success} stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="discGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={chart.warning} stopOpacity={0.15} />
-                            <stop offset="95%" stopColor={chart.warning} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                        <XAxis
-                          dataKey="date"
-                          // Round-3 (8-e §1.4): daily buckets carry the raw
-                          // backend ISO key ("2026-09-06") — unlocalized and
-                          // inconsistent with the Arabic month names the same
-                          // axis shows in weekly/monthly mode. Format it.
-                          tickFormatter={(value: string) => {
-                            const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                            return Number.isNaN(d.getTime())
-                              ? value
-                              : d.toLocaleDateString("ar-LY", {
-                                  month: "short",
-                                  day: "numeric",
-                                  timeZone: "UTC",
-                                });
-                          }}
-                          tick={{ fontSize: 10, fill: chart.muted }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10, fill: chart.muted }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <Tooltip content={<ChartTooltip />} />
-                        <Area
-                          type="monotone"
-                          dataKey="revenue"
-                          name="الإيرادات"
-                          stroke={chart.primary}
-                          fill="url(#revGrad)"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 3 }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="orders"
-                          name="الطلبات"
-                          stroke={chart.success}
-                          fill="url(#ordGrad)"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 3 }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="discounts"
-                          name="الخصومات"
-                          stroke={chart.warning}
-                          fill="url(#discGrad)"
-                          strokeWidth={1.5}
-                          dot={false}
-                          activeDot={{ r: 3 }}
-                          strokeDasharray="4 2"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-
-                {/* Discounts & Coupon Orders chart */}
-                <div className="bg-card border border-border/60 rounded-2xl p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h2 className="font-bold text-sm">الخصومات والكوبونات</h2>
-                      <p className="text-3xs text-muted-foreground mt-0.5">
-                        قيمة الخصم اليومي وعدد الطلبات باستخدام كوبون
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3 text-3xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <span className="w-3 h-0.5 bg-amber-400 rounded inline-block" />
-                        الخصومات
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="w-2.5 h-2.5 rounded bg-emerald-500/60 inline-block" />
-                        طلبات بكوبون
-                      </span>
-                    </div>
-                  </div>
-                  {chartLoading ? (
-                    <div className="h-28 skeleton-shimmer rounded-lg" />
-                  ) : displayData.every(
-                      (d) => (d.discounts || 0) === 0 && (d.coupon_orders || 0) === 0,
-                    ) ? (
-                    <div className="h-28 flex items-center justify-center text-muted-foreground text-xs">
-                      لا يوجد استخدام كوبونات في هذه الفترة
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={120}>
-                      <BarChart
-                        data={displayData}
-                        margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                        <XAxis
-                          dataKey="date"
-                          // Round-3 (8-e §1.4): daily buckets carry the raw
-                          // backend ISO key ("2026-09-06") — unlocalized and
-                          // inconsistent with the Arabic month names the same
-                          // axis shows in weekly/monthly mode. Format it.
-                          tickFormatter={(value: string) => {
-                            const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                            return Number.isNaN(d.getTime())
-                              ? value
-                              : d.toLocaleDateString("ar-LY", {
-                                  month: "short",
-                                  day: "numeric",
-                                  timeZone: "UTC",
-                                });
-                          }}
-                          tick={{ fontSize: 10, fill: chart.muted }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10, fill: chart.muted }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <Tooltip content={<ChartTooltip />} />
-                        <Bar
-                          dataKey="discounts"
-                          name="الخصومات"
-                          fill={chart.warning}
-                          radius={[3, 3, 0, 0]}
-                          maxBarSize={24}
-                          fillOpacity={0.8}
-                        />
-                        <Bar
-                          dataKey="coupon_orders"
-                          name="طلبات بكوبون"
-                          fill={chart.success}
-                          radius={[3, 3, 0, 0]}
-                          maxBarSize={24}
-                          fillOpacity={0.6}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
+                  </>
+                )}
 
                 {/* New users chart */}
                 <div className="bg-card border border-border/60 rounded-2xl p-5">
@@ -929,6 +1003,39 @@ export default function AdminDashboardPage() {
                       <div className="h-4 bg-muted skeleton-shimmer rounded w-14" />
                     </div>
                   ))}
+                </div>
+              ) : recentOrdersError ? (
+                /* R122 (A2-P1): a failed load (403 for an orders-less
+                   scope, or a 5xx outage) is NOT "no orders" — the false
+                   «لا توجد طلبات بعد» empty state rendered while the
+                   same screen's stats showed real order counts. Same
+                   triad discipline as the page's chart section and every
+                   admin list page: error card + retry. getErrorMessage
+                   surfaces the backend's Arabic 403 body («ليست لديك
+                   صلاحية…») when that's what failed. */
+                <div
+                  role="alert"
+                  className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+                    <WifiOff className="w-6 h-6 text-status-error/70" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-foreground/80">تعذّر تحميل الطلبات</p>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      {getErrorMessage(recentOrdersErrorDetail) ||
+                        "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => void refetchRecentOrders()}
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    إعادة المحاولة
+                  </Button>
                 </div>
               ) : recentOrders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">

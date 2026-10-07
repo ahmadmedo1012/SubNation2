@@ -246,6 +246,12 @@ function RejectModal({
 // (`dismissable`). The live "جاري done/total" counter is additionally a
 // role=status region so the per-item progress reaches screen readers while
 // the loop runs (the old subtitle swap was visual-only).
+// R122 (A2-P2): the modal gains the SAME optional note field the
+// single-reject modal has — the bulk loops used to stamp every row with
+// the boilerplate «تمت الموافقة الجماعية»/«مرفوض جماعياً», weakening the
+// audit trail the note column and the ledgers carry (the mandatory-reason
+// discipline wallet edits already enforce). The note stays OPTIONAL
+// (matching RejectModal): empty → the boilerplate fallback rides the body.
 function BulkConfirmModal({
   action,
   count,
@@ -258,12 +264,20 @@ function BulkConfirmModal({
   action: "approve" | "reject";
   count: number;
   open: boolean;
-  onConfirm: () => void;
+  onConfirm: (note: string) => void;
   onCancel: () => void;
   loading: boolean;
   /** Live per-item progress while a long approveAll loop runs (B5-01). */
   progress?: { done: number; total: number } | null;
 }) {
+  const [note, setNote] = useState("");
+
+  // The AppDialog shell stays mounted (Radix owns the close animation),
+  // so the note resets on open — same as RejectModal's field.
+  useEffect(() => {
+    if (open) setNote("");
+  }, [open]);
+
   return (
     <AppDialog
       open={open}
@@ -290,7 +304,7 @@ function BulkConfirmModal({
                 ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20"
                 : "bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-destructive/20"
             }`}
-            onClick={onConfirm}
+            onClick={() => onConfirm(note)}
             disabled={loading}
           >
             {loading && progress
@@ -304,14 +318,42 @@ function BulkConfirmModal({
         </>
       }
     >
-      <AppDialogBody className="p-0">
+      <AppDialogBody>
+        {/* R122 (A2-P2): the optional per-action reason — mirrors
+            RejectModal's field (label, ⌘/Ctrl+Enter submit, optional). */}
+        <div>
+          <label
+            htmlFor="topups-bulk-note"
+            className="text-xs font-bold text-muted-foreground block mb-1.5"
+          >
+            سبب المعالجة الجماعية <span className="text-muted-foreground">(اختياري)</span>
+          </label>
+          <textarea
+            id="topups-bulk-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={
+              action === "approve"
+                ? "مثال: مطابقة كشوف الحسابات المسائية..."
+                : "مثال: مراجع غير صحيح، إشعارات مكررة..."
+            }
+            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            dir="rtl"
+            disabled={loading}
+            onKeyDown={(e) => {
+              // ESC is Radix's (guarded by `dismissable` while the money
+              // loop runs); only the submit shortcut stays field-local.
+              if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);
+            }}
+          />
+        </div>
         {/* Live progress (aria-live via role=status) — announced per item
             while the money loop runs; hidden when idle so the static count
             line under the title carries the summary. */}
         <div
           role="status"
           aria-live="polite"
-          className="px-5 pt-3 text-xs text-muted-foreground tabular-nums min-h-[1rem]"
+          className="px-1 pt-2 text-xs text-muted-foreground tabular-nums min-h-[1rem]"
         >
           {loading && progress ? `جاري ${progress.done}/${progress.total}...` : ""}
         </div>
@@ -645,7 +687,10 @@ export default function AdminTopupsPage() {
     }
   };
 
-  const handleBulkAction = async (action: "approve" | "reject") => {
+  // R122 (A2-P2): the bulk loops accept the operator's optional note
+  // (BulkConfirmModal's new field) — empty keeps the old boilerplate
+  // fallback so the ledger always carries SOME reason.
+  const handleBulkAction = async (action: "approve" | "reject", note = "") => {
     setIsBulkProcessing(true);
     const ids = Array.from(selectedIds);
     let successCount = 0;
@@ -665,20 +710,14 @@ export default function AdminTopupsPage() {
     for (const id of ids) {
       const url = `/api/admin/topups/${id}/${action}`;
       try {
-        let r: Response;
-        if (action === "approve") {
-          r = await fetch(url, {
-            method: "POST",
-            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-            body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
-          });
-        } else {
-          r = await fetch(url, {
-            method: "POST",
-            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-            body: JSON.stringify({ admin_note: "مرفوض جماعياً" }),
-          });
-        }
+        const r = await fetch(url, {
+          method: "POST",
+          headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
+          body: JSON.stringify({
+            admin_note:
+              note.trim() || (action === "approve" ? "تمت الموافقة الجماعية" : "مرفوض جماعياً"),
+          }),
+        });
         // 93-C6 / F-07 (A5 S-3): session expired mid-loop — stop the
         // money loop; the global handler has toasted + redirected.
         if (isAdminUnauthorized(r, url)) break;
@@ -741,7 +780,7 @@ export default function AdminTopupsPage() {
   // counter for long queues, and per-item failures are collected and
   // summarized in ONE toast with per-item reasons instead of two
   // count-only toasts.
-  const approveAll = async () => {
+  const approveAll = async (note = "") => {
     if (isApproveAllBusy) return; // re-click guard (double-loop prevention)
     const pending = allTopups.filter((t) => t.status === "pending");
     if (pending.length === 0) return;
@@ -756,7 +795,12 @@ export default function AdminTopupsPage() {
           method: "POST",
           // Same per-iteration key generation as handleBulkAction above.
           headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-          body: JSON.stringify({ admin_note: "تمت الموافقة الجماعية" }),
+          body: JSON.stringify({
+            // R122 (A2-P2): the operator's bulk-confirm note rides every
+            // row — empty keeps the boilerplate fallback (see
+            // handleBulkAction).
+            admin_note: note.trim() || "تمت الموافقة الجماعية",
+          }),
         });
         // 93-C6 / F-07 (A5 S-3): session expired mid-loop — abort the
         // money loop (the global handler has toasted + redirected);
@@ -832,11 +876,13 @@ export default function AdminTopupsPage() {
         open={bulkAction !== null}
         action={bulkAction === "approveAll" ? "approve" : (bulkAction ?? "approve")}
         count={bulkAction === "approveAll" ? pendingCount : selectedPendingCount}
-        onConfirm={() =>
+        // R122 (A2-P2): the modal's optional note threads into whichever
+        // loop the confirm fires (bulk approve/reject or approveAll).
+        onConfirm={(note) =>
           bulkAction === "approveAll"
-            ? void approveAll()
+            ? void approveAll(note)
             : bulkAction === "approve" || bulkAction === "reject"
-              ? void handleBulkAction(bulkAction)
+              ? void handleBulkAction(bulkAction, note)
               : undefined
         }
         onCancel={() => setBulkAction(null)}

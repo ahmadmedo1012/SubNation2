@@ -17,7 +17,10 @@
  *     generated-client query/mutation (orders/topups/users/stats…)
  *     covers automatically.
  *   - Raw fetch() call sites in admin pages check
- *     `isAdminUnauthorized(res, url)` in their error paths.
+ *     `isAdminUnauthorized(res, url)` in their error paths — or, since
+ *     R122 (A2-P2), ride the `adminFetch` / `adminFetchJson` wrappers
+ *     below, which bake that check (plus the ok-guard + safe error-body
+ *     parse) into one helper so the ~30 raw sites cannot drift again.
  *
  * On the FIRST admin-API 401 while a session is believed active it:
  *   1. toasts «انتهت الجلسة — سجّل دخولك مجددًا» once (15 s dedupe —
@@ -46,6 +49,11 @@
  */
 
 import { toast } from "@/hooks/use-toast";
+// R122 (A2-P2): adminFetchJson maps the backend error envelope
+// (`code`/`error`) to its Arabic message exactly like every converted
+// call site did inline — errors.ts has no imports back into this
+// module, so the dependency is acyclic.
+import { getErrorMessage } from "@/lib/errors";
 
 /** Arabic toast copy for the session-expired redirect. */
 export const ADMIN_SESSION_EXPIRED_MESSAGE = "انتهت الجلسة — سجّل دخولك مجددًا";
@@ -69,9 +77,16 @@ function isAdminApiUrl(url: string): boolean {
   if (url.includes("://")) {
     // Absolute URL (Expo base-URL deployments): the path segment still
     // decides. Cheap containment check is fine — there are no other
-    // /api/admin/ shapes in this app.
-    return url.includes("/api/admin/");
+    // admin-API shapes in this app.
+    // R122 (A2-P2): the admin coupon surface lives at /api/coupons/admin
+    // (requireAdmin + requirePermission("finance"), backend
+    // routes/coupons.ts) — OUTSIDE the /api/admin/ tree the old check
+    // only recognized, so a coupon-page 401 could never reach the
+    // global handler. The storefront /api/coupons/validate stays public
+    // (prefix-precise match, not a /api/coupons/ blanket).
+    return url.includes("/api/admin/") || url.includes("/api/coupons/admin");
   }
+  if (url.startsWith("/api/coupons/admin")) return true;
   if (!url.startsWith("/api/admin/")) return false;
   return !AUTH_EXEMPT_PREFIXES.some((p) => url.startsWith(p));
 }
@@ -159,6 +174,72 @@ export function handleAdminUnauthorized(url: string): boolean {
 export function isAdminUnauthorized(res: { status: number }, url: string): boolean {
   if (res.status !== 401) return false;
   return handleAdminUnauthorized(url);
+}
+
+// ── R122 (A2-P2): the raw-fetch wrappers ────────────────────────────
+
+/**
+ * R122 (A2-P2): thrown by adminFetch/adminFetchJson when a 401 was an
+ * expired admin session (the global toast + redirect have ALREADY
+ * fired). Callers' catch blocks recognize it and stay quiet —
+ * `if (err instanceof AdminSessionExpiredError) return;` — instead of
+ * layering their own generic «فشلت العملية» toast on top of the
+ * session-expired toast (the retry-loop noise class the audit found on
+ * 8 of 20 pages).
+ */
+export class AdminSessionExpiredError extends Error {
+  constructor() {
+    super(ADMIN_SESSION_EXPIRED_MESSAGE);
+    this.name = "AdminSessionExpiredError";
+  }
+}
+
+/**
+ * R122 (A2-P2): session-aware raw fetch for admin pages — `fetch()` +
+ * the global 401 handler, returning the Response untouched otherwise.
+ * For call sites that need custom status/body handling (207 partial
+ * success, Array.isArray guards, empty-body tolerance): everything on
+ * the 200 path behaves exactly as before.
+ *
+ * A 401 that belongs to an expired session throws AdminSessionExpiredError
+ * AFTER the global handler has toasted + redirected — callers return
+ * quietly from their catch on that sentinel.
+ */
+export async function adminFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init);
+  if (res.status === 401 && handleAdminUnauthorized(url)) {
+    throw new AdminSessionExpiredError();
+  }
+  return res;
+}
+
+/**
+ * R122 (A2-P2): fetch + ok-guard + safe error-body parse in one — the
+ * common admin-page shape (`if (!r.ok) throw new
+ * Error(getErrorMessage(body) || fallback)` then `r.json()`). A
+ * non-JSON error body (502 HTML) no longer throws an English
+ * SyntaxError into an Arabic toast (the coupons.tsx class the audit
+ * called out): the parse is guarded and the fallback carries the
+ * status. A non-JSON SUCCESS body still throws (the strict queryFn
+ * contract — a garbage 200 must land in the error state, never render
+ * as an empty list).
+ */
+export async function adminFetchJson<T>(
+  url: string,
+  init?: RequestInit,
+  opts: { fallbackError?: string } = {},
+): Promise<T> {
+  const res = await adminFetch(url, init);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as {
+      error?: string;
+      code?: string;
+    } | null;
+    throw new Error(
+      getErrorMessage(body) || opts.fallbackError || `فشلت العملية (HTTP ${res.status})`,
+    );
+  }
+  return (await res.json()) as T;
 }
 
 /** Test-only: reset module state between cases. */
