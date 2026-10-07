@@ -3,7 +3,14 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { eq, sql } from "drizzle-orm";
-import { db, initTestDb, resetTestDb, sessionsTable, usersTable } from "../../test/db";
+import {
+  db,
+  initTestDb,
+  resetTestDb,
+  sessionsTable,
+  userAuthIdentitiesTable,
+  usersTable,
+} from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { authRouter } from "../auth";
 import { __clearSessionValidityCacheForTests } from "../../lib/session-liveness";
@@ -355,6 +362,54 @@ describe("POST /api/auth/onboarding/complete (R118-A5 #7)", () => {
         .from(usersTable)
         .where(eq(usersTable.id, stranger.id));
       expect(strangerRow.onboardedAt).toBeNull();
+    } finally {
+      close();
+    }
+  });
+});
+
+// R122 (A5-P2-3): GET /sessions and GET /providers/linked were the only
+// authenticated user GETs without Cache-Control: no-store — /me, /probe and
+// six whole routers (orders, wallet, support, notifications, cart, loyalty)
+// already carry it. The device list (session ids, IPs, UAs) and the linked
+// provider list (provider_uid, emails, phones) are per-user PII that an
+// intermediary or a future "cache everything" edge rule must never serve
+// stale — especially after logout.
+describe("R122 (A5-P2-3) — no-store on the two straggler authenticated GETs", () => {
+  it("GET /sessions ships Cache-Control: no-store", async () => {
+    const user = await seedUser();
+    const session = await createSession(user.id);
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/auth/sessions`, {
+        headers: { Cookie: `auth_token=${session.token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+
+  it("GET /providers/linked ships Cache-Control: no-store", async () => {
+    const user = await seedUser();
+    const session = await createSession(user.id);
+    // One linked identity so the payload genuinely carries the PII shape.
+    await db.insert(userAuthIdentitiesTable).values({
+      userId: user.id,
+      provider: "telegram",
+      providerUid: "123456789",
+      phone: "0910000001",
+    });
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/auth/providers/linked`, {
+        headers: { Cookie: `auth_token=${session.token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      const body = (await res.json()) as { providers: unknown[] };
+      expect(body.providers).toHaveLength(1);
     } finally {
       close();
     }

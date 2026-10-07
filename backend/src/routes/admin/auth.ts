@@ -911,22 +911,49 @@ router.post("/2fa/verify-setup", requireAdmin, async (req, res) => {
     return res.status(400).json(createErrorResponse("إعداد 2FA غير موجود", ErrorCode.INVALID_DATA));
   }
 
+  // R122 (A5-P2): the H10 asymmetry — /login/verify-2fa has carried a
+  // per-admin attempt lockout since H10 because "TOTP codes are only 6
+  // digits" (cheap online brute-force), but this sibling endpoint verified
+  // codes with nothing but the apiLimiter budget (admin requests carry no
+  // user token, so they ride the anonymous 600/min envelope). A stolen
+  // session + an abandoned pending enrollment (totpSecret set,
+  // totpEnabled=false) left the 10^6 keyspace guessable — and a success
+  // locked the REAL admin out of their own 2FA. Port the exact H10 idiom:
+  // the SAME `admin-2fa:{adminId}` key as verify-2fa (the two endpoints
+  // target the same admin's TOTP code, so they share one budget), default
+  // 5-attempt/15-min exponential policy, 429 while locked, reset on success.
+  const lockoutKey = `admin-2fa:${admin.id}`;
+  const { locked, lockedUntil } = await checkLockout(lockoutKey);
+  if (locked) {
+    const mins = Math.ceil((lockedUntil!.getTime() - Date.now()) / 60_000);
+    return res
+      .status(429)
+      .json(
+        createErrorResponse(
+          `الحساب مقفل بسبب محاولات فاشلة. حاول بعد ${mins} دقيقة.`,
+          ErrorCode.ACCOUNT_LOCKED,
+        ),
+      );
+  }
+
   // R118-B1c (A4 F-4): the setup path stored the secret encrypted —
   // decrypt here (legacy plaintext passes through) and fail the verify
   // with the same 401 as a wrong code if the blob no longer decrypts.
+  // Same rule as verify-2fa: this failure is NOT the admin's guess, so
+  // the lockout counter above is NOT incremented.
   const totpSecret = safeDecrypt(admin.totpSecret);
   if (!totpSecret) {
-    return res
-      .status(401)
-      .json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
+    return res.status(401).json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
   }
 
   // R118-B1c: same verdict-object fix as /login/verify-2fa above —
   // verifySync returns { valid }, never a boolean.
   const verdict = verifySync({ token: code, secret: totpSecret });
   if (!verdict.valid) {
+    await recordFailedAttempt(lockoutKey);
     return res.status(401).json(createErrorResponse("رمز التحقق غير صحيح", ErrorCode.UNAUTHORIZED));
   }
+  await resetAttempts(lockoutKey);
 
   await db
     .update(adminUsersTable)

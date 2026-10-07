@@ -51,8 +51,16 @@ let healthModule: typeof import("../health");
  * production as long as the admin_users row exists + is active — same
  * fixture shape as metrics-auth.test.ts). Needed because
  * /healthz/{worker,socket} are admin-gated.
+ *
+ * R122 (A5-P2): the deep /healthz/* diagnostics are now ALSO
+ * settings-scoped (parity with the /admin/diagnostics + /admin/observability
+ * twins). This file's admin therefore carries ["settings"]; a second,
+ * scope-less admin seeds the 403 cases below.
  */
 let adminToken: string;
+/** An active admin with NO permission scopes (requireAdmin passes, every
+ * requirePermission fails) — the support-only-operator shape. */
+let scopelessAdminToken: string;
 
 beforeAll(async () => {
   // Dynamic import so the env assignments above run BEFORE the health
@@ -64,9 +72,19 @@ beforeAll(async () => {
   await initTestDb();
   const [admin] = await db
     .insert(adminUsersTable)
-    .values({ username: "health_admin", passwordHash: "x", isActive: true })
+    .values({
+      username: "health_admin",
+      passwordHash: "x",
+      isActive: true,
+      permissions: ["settings"],
+    })
     .returning();
   adminToken = signAdminToken({ adminId: admin.id, role: "admin" });
+  const [scopeless] = await db
+    .insert(adminUsersTable)
+    .values({ username: "health_admin_scopeless", passwordHash: "x", isActive: true })
+    .returning();
+  scopelessAdminToken = signAdminToken({ adminId: scopeless.id, role: "admin" });
 }, 30_000);
 
 const ENV_KEYS = [
@@ -378,6 +396,74 @@ describe("R110-E — DESIGNED no-Redis single-instance shape reads as OK", () =>
     const res = await requestHealthz("/healthz/worker");
 
     expect(res.status).toBe(401);
+  });
+});
+
+// R122 (A5-P2): the deep /healthz/* diagnostics are settings-scoped like
+// their /admin/diagnostics + /admin/observability twins — an active but
+// scope-less admin (the support-only operator) reads 403, while the public
+// probes (/healthz, /healthz/live, /healthz/summary) stay anonymous.
+describe("R122 (A5-P2) — deep /healthz/* subroutes require the settings scope", () => {
+  it("an active scope-less admin is 403'd on /healthz/worker (requireAdmin passes, requirePermission fails)", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const res = await requestHealthz("/healthz/worker", {
+      Authorization: `Bearer ${scopelessAdminToken}`,
+    });
+
+    expect(res.status).toBe(403);
+    // requirePermission's envelope (lib/permissions.ts) — FORBIDDEN, the
+    // same shape the /admin/diagnostics twins answer with.
+    expect(JSON.parse(res.body)).toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("the settings-scoped admin passes the same route (200 + the single-tier note)", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    const res = await requestHealthz("/healthz/worker", {
+      Authorization: `Bearer ${adminToken}`,
+    });
+
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body).status).toBe("ok");
+  });
+
+  it("the scope gate covers the whole deep family: ready + firebase + redis + neon + socket", async () => {
+    delete process.env.REDIS_URL;
+    vi.mocked(getRedisClient).mockReturnValue(null);
+
+    for (const path of [
+      "/healthz/ready",
+      "/healthz/firebase",
+      "/healthz/redis",
+      "/healthz/neon",
+      "/healthz/socket",
+    ]) {
+      const scoped = await requestHealthz(path, {
+        Authorization: `Bearer ${adminToken}`,
+      });
+      expect(scoped.status).not.toBe(403); // settings holder reaches the handler
+
+      const scopeless = await requestHealthz(path, {
+        Authorization: `Bearer ${scopelessAdminToken}`,
+      });
+      expect(scopeless.status).toBe(403);
+      expect(JSON.parse(scopeless.body)).toMatchObject({ code: "FORBIDDEN" });
+    }
+  });
+
+  it("the public probes stay anonymous: /healthz, /healthz/live, /healthz/summary", async () => {
+    vi.mocked(getRedisClient).mockReturnValue(makeHangingRedis() as never);
+    process.env.HEALTH_AGGREGATE_TIMEOUT_MS = "60";
+
+    for (const path of ["/healthz", "/healthz/live"]) {
+      const res = await requestHealthz(path);
+      expect(res.status).toBe(200);
+    }
+    const summary = await requestHealthz("/healthz/summary");
+    expect(summary.status).toBe(200);
   });
 });
 

@@ -186,6 +186,13 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
 router.get("/providers/linked", requireUser, async (req, res) => {
   const userId = (req as AuthenticatedRequest).userId;
 
+  // R122 (A5-P2): no-store parity — this surface returns provider_uid /
+  // linked emails / phones (PII); every other authenticated user GET
+  // (/me, /probe, orders, wallet, cart, loyalty, support, notifications)
+  // already carries Cache-Control: no-store, and an intermediary or
+  // future "cache everything" edge rule must never serve it stale.
+  res.setHeader("Cache-Control", "no-store");
+
   try {
     const identities = await db
       .select({
@@ -776,6 +783,11 @@ function describeDeviceInArabic(ua: string | null | undefined): string {
 
 router.get("/sessions", requireUser, async (req, res) => {
   const authReq = req as AuthenticatedRequest;
+
+  // R122 (A5-P2): no-store parity — the device list carries session ids,
+  // IP addresses and user agents; same discipline as /providers/linked
+  // above and every other authenticated user GET in the app.
+  res.setHeader("Cache-Control", "no-store");
 
   // Real session rows written by createUserSession at every login. The
   // previous implementation returned a single hardcoded "current" row —

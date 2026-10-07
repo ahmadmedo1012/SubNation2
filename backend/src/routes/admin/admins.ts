@@ -27,10 +27,24 @@ const VALID_SCOPES = new Set<string>([PERMISSION_SCOPES.ALL, ...ALL_SCOPES]);
  * entire RBAC model. Granting "all" now requires the ACTING admin to
  * already hold "all". Returns an Express response on violation, or
  * null when the grant is allowed.
+ *
+ * R122 (A5-P1): the H9 gate keyed on the literal "all" element only — an
+ * admins-scoped operator could still mint a puppet admin holding the full
+ * 7-scope union (orders+finance+inventory+support+users+admins+settings),
+ * which is functionally "all" and bypasses the H9 gate entirely. Grants
+ * are now SUBSET-BOUNDED: an acting admin may only grant scopes they
+ * personally hold; "all" remains the only scope that can grant anything
+ * (hasPermission treats it as the universal wildcard). Returns true when
+ * the grant would exceed the actor's own authority.
  */
-function allGrantViolation(req: { adminPermissions?: string[] }, perms: string[]): boolean {
-  const acting = req.adminPermissions ?? [];
-  return perms.includes("all") && !acting.includes("all");
+function grantViolation(req: { adminPermissions?: string[] }, perms: string[]): boolean {
+  const acting = new Set(req.adminPermissions ?? []);
+  // "all" is the wildcard — an actor holding it may grant any subset.
+  if (acting.has("all")) return false;
+  // A scoped actor can only grant inside their own envelope. Note this
+  // subsumes the old H9 rule: a non-"all" actor never has "all" in their
+  // own set, so granting ["all", …] still violates.
+  return perms.some((scope) => !acting.has(scope));
 }
 
 function sanitizePermissions(input: unknown): string[] | null {
@@ -131,12 +145,15 @@ router.post("/", async (req, res) => {
         createErrorResponse("يجب اختيار صلاحية واحدة على الأقل من القائمة", ErrorCode.INVALID_DATA),
       );
   }
-  if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
+  // R122 (A5-P1): subset-bounded grants (see grantViolation) — a scoped
+  // creator can no longer mint an admin holding scopes they do not hold
+  // themselves (the 7-scope union was functionally "all").
+  if (grantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
     return res
       .status(403)
       .json(
         createErrorResponse(
-          "منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً",
+          "لا يمكنك منح صلاحيات لا تملكها بنفسك",
           ErrorCode.INSUFFICIENT_PERMISSIONS,
         ),
       );
@@ -242,12 +259,15 @@ router.patch("/:id", async (req, res) => {
         .status(400)
         .json(createErrorResponse("يجب اختيار صلاحية واحدة على الأقل", ErrorCode.INVALID_DATA));
     }
-    if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
+    // R122 (A5-P1): the same subset bound as POST — editing ANOTHER admin's
+    // permissions is a grant too; a scoped actor may only set scopes inside
+    // their own envelope (the old gate fired on the "all" element only).
+    if (grantViolation(req as unknown as { adminPermissions?: string[] }, cleanPerms)) {
       return res
         .status(403)
         .json(
           createErrorResponse(
-            "منح صلاحية 'all' يتطلب أن تملكها أنت أيضاً",
+            "لا يمكنك منح صلاحيات لا تملكها بنفسك",
             ErrorCode.INSUFFICIENT_PERMISSIONS,
           ),
         );
@@ -380,22 +400,29 @@ router.post("/:id/enable", async (req, res) => {
   // A disabled ["all"] super-admin being re-enabled restores full
   // access — the same escalation surface as granting "all" (V1-L11,
   // red-team 2026-09-06). Require the acting admin to hold "all".
+  // R122 (A5-P1): generalized to the subset bound — re-enabling a
+  // disabled admin restores EVERY scope that admin holds, so the actor
+  // must personally hold every one of them ("all" is the only envelope
+  // that covers a target holding "all"). The old check keyed on the
+  // target's "all" element only, so an admins-scoped actor could
+  // re-enable a puppet holding the full 7-scope union.
   const [target] = await db
     .select({ permissions: adminUsersTable.permissions })
     .from(adminUsersTable)
     .where(eq(adminUsersTable.id, id))
     .limit(1);
-  if (target && (target.permissions ?? []).includes("all")) {
-    if (allGrantViolation(req as unknown as { adminPermissions?: string[] }, ["all"])) {
-      return res
-        .status(403)
-        .json(
-          createErrorResponse(
-            "إعادة تمكين مسؤول بصلاحية 'all' يتطلب أن تملكها أنت أيضاً",
-            ErrorCode.INSUFFICIENT_PERMISSIONS,
-          ),
-        );
-    }
+  if (
+    target &&
+    grantViolation(req as unknown as { adminPermissions?: string[] }, target.permissions ?? [])
+  ) {
+    return res
+      .status(403)
+      .json(
+        createErrorResponse(
+          "إعادة تمكين هذا المسؤول تتطلب أن تملك كل صلاحياته",
+          ErrorCode.INSUFFICIENT_PERMISSIONS,
+        ),
+      );
   }
 
   const [updated] = await db

@@ -9,6 +9,19 @@ import { getIO } from "../lib/socket";
 import { logger } from "../lib/logger";
 import { getReleaseSha } from "../lib/release-sha";
 import { requireAdmin } from "../middlewares/requireAdmin";
+// R122 (A5-P2): the deep /healthz/* diagnostic subroutes leak deployment
+// config shape (Firebase project id, service-account parseability, Redis/
+// Neon latency + error text, scheduler topology) — the same sensitivity
+// class as their /api/admin/diagnostics + /api/admin/observability twins,
+// which are mounted under requirePermission("settings")
+// (routes/admin/index.ts:123-125). requireAdmin alone let ANY scoped
+// admin (e.g. a support-only operator) read them; the settings scope now
+// matches the twins AND the admin UI, which gates the /admin/system page
+// (the only frontend consumer of /healthz/ready) behind scope "settings"
+// (pages/admin/layout.tsx). /healthz, /healthz/live and /healthz/summary
+// stay PUBLIC — they are the compose/Coolify healthcheck + public status
+// probes (docs/operations/FINAL_MONITORING.md) and carry no detail.
+import { requirePermission } from "../lib/permissions";
 
 const router: IRouter = Router();
 
@@ -504,8 +517,9 @@ router.get("/healthz", (_req, res) => {
 
 // Diagnostic endpoint — admin-gated. Leaks deployment config (Firebase
 // project id, service-account-JSON shape, env presence) so MUST NOT be
-// exposed to public users.
-router.get("/healthz/firebase", requireAdmin, async (_req, res) => {
+// exposed to public users. R122 (A5-P2): settings-scoped like the
+// /admin/diagnostics twins (see the import block comment).
+router.get("/healthz/firebase", requireAdmin, requirePermission("settings"), async (_req, res) => {
   const flagEnabled = process.env.FIREBASE_AUTH_ENABLED === "true";
   const projectIdEnv = process.env.FIREBASE_PROJECT_ID || null;
   const hasServiceAccountJson = !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -803,7 +817,7 @@ router.get("/healthz/summary", async (_req, res) => {
 // Admin-gated detailed readiness. Returns the full per-check breakdown
 // for operators on /admin/system. Cached aggregate so even admin
 // polling at 30 s × N admins doesn't dominate the event loop.
-router.get("/healthz/ready", requireAdmin, async (_req, res) => {
+router.get("/healthz/ready", requireAdmin, requirePermission("settings"), async (_req, res) => {
   try {
     const state = await getReadyState();
     res.status((state.status as CheckStatus) === "failing" ? 503 : 200).json(state);
@@ -829,87 +843,109 @@ router.get("/healthz/live", (_req, res) => {
 
 // Per-subsystem health endpoints — admin-gated. Each leaks latency +
 // error messages + state details that are not safe to expose
-// publicly. The public surface is /healthz/summary.
-router.get("/healthz/redis", requireAdmin, async (_req, res): Promise<void> => {
-  const redis = getRedisClient();
+// publicly. The public surface is /healthz/summary. R122 (A5-P2):
+// settings-scoped like the /admin/diagnostics twins (see the import block
+// comment in this file).
+router.get(
+  "/healthz/redis",
+  requireAdmin,
+  requirePermission("settings"),
+  async (_req, res): Promise<void> => {
+    const redis = getRedisClient();
 
-  if (!redis) {
-    res.status(503).json({
-      status: "failing",
-      error: "Redis not configured",
-      lastCheckedAt: new Date().toISOString(),
-    });
-    return;
-  }
-
-  const result = await checkRedis(redis);
-  res.status(result.status === "failing" ? 503 : 200).json(result);
-});
-
-router.get("/healthz/neon", requireAdmin, async (_req, res): Promise<void> => {
-  const result = await checkNeon();
-  res.status(result.status === "failing" ? 503 : 200).json(result);
-});
-
-router.get("/healthz/worker", requireAdmin, async (_req, res): Promise<void> => {
-  const redis = getRedisClient();
-
-  if (!redis) {
-    if (!process.env.REDIS_URL) {
-      // R110-E (109-k P3-2): REDIS_URL unset is the DESIGNED single-instance
-      // shape (see the aggregate branch above). The worker heartbeat only
-      // exists in the multi-instance topology — the honest answer for an
-      // operator here is "healthy, not applicable", not a 503 that reads
-      // like an outage.
-      res.status(200).json({
-        status: "ok",
-        optional: true,
-        note: "not configured — single-instance, no-Redis by design (worker heartbeat requires Redis)",
+    if (!redis) {
+      res.status(503).json({
+        status: "failing",
+        error: "Redis not configured",
         lastCheckedAt: new Date().toISOString(),
       });
       return;
     }
-    res.status(503).json({
-      status: "failing",
-      error: "Redis configured but unavailable (needed for worker heartbeat check)",
-      lastCheckedAt: new Date().toISOString(),
-    });
-    return;
-  }
 
-  const result = await checkWorker(redis);
-  res.status(result.status === "failing" ? 503 : 200).json(result);
-});
+    const result = await checkRedis(redis);
+    res.status(result.status === "failing" ? 503 : 200).json(result);
+  },
+);
 
-router.get("/healthz/socket", requireAdmin, async (_req, res): Promise<void> => {
-  const io = getIO();
-  const redis = getRedisClient();
+router.get(
+  "/healthz/neon",
+  requireAdmin,
+  requirePermission("settings"),
+  async (_req, res): Promise<void> => {
+    const result = await checkNeon();
+    res.status(result.status === "failing" ? 503 : 200).json(result);
+  },
+);
 
-  if (!io || !redis) {
-    if (!process.env.REDIS_URL) {
-      // R110-E (109-k P3-2): same designed-shape honesty as /healthz/worker
-      // above — without Redis, Socket.IO runs on its in-memory adapter, which
-      // is the only correct topology for a single instance.
-      res.status(200).json({
-        status: "ok",
-        optional: true,
-        note: "not configured — single-instance, no-Redis by design (Socket.IO uses the in-memory adapter)",
+router.get(
+  "/healthz/worker",
+  requireAdmin,
+  requirePermission("settings"),
+  async (_req, res): Promise<void> => {
+    const redis = getRedisClient();
+
+    if (!redis) {
+      if (!process.env.REDIS_URL) {
+        // R110-E (109-k P3-2): REDIS_URL unset is the DESIGNED single-instance
+        // shape (see the aggregate branch above). The worker heartbeat only
+        // exists in the multi-instance topology — the honest answer for an
+        // operator here is "healthy, not applicable", not a 503 that reads
+        // like an outage.
+        res.status(200).json({
+          status: "ok",
+          optional: true,
+          note: "not configured — single-instance, no-Redis by design (worker heartbeat requires Redis)",
+          lastCheckedAt: new Date().toISOString(),
+        });
+        return;
+      }
+      res.status(503).json({
+        status: "failing",
+        error: "Redis configured but unavailable (needed for worker heartbeat check)",
         lastCheckedAt: new Date().toISOString(),
       });
       return;
     }
-    res.status(503).json({
-      status: "failing",
-      error: !io
-        ? "Socket.IO not initialized"
-        : "Redis configured but unavailable (needed for adapter check)",
-      lastCheckedAt: new Date().toISOString(),
-    });
-    return;
-  }
 
-  const result = await checkSocket(io, redis);
-  res.status(result.status === "failing" ? 503 : 200).json(result);
-});
+    const result = await checkWorker(redis);
+    res.status(result.status === "failing" ? 503 : 200).json(result);
+  },
+);
+
+router.get(
+  "/healthz/socket",
+  requireAdmin,
+  requirePermission("settings"),
+  async (_req, res): Promise<void> => {
+    const io = getIO();
+    const redis = getRedisClient();
+
+    if (!io || !redis) {
+      if (!process.env.REDIS_URL) {
+        // R110-E (109-k P3-2): same designed-shape honesty as /healthz/worker
+        // above — without Redis, Socket.IO runs on its in-memory adapter, which
+        // is the only correct topology for a single instance.
+        res.status(200).json({
+          status: "ok",
+          optional: true,
+          note: "not configured — single-instance, no-Redis by design (Socket.IO uses the in-memory adapter)",
+          lastCheckedAt: new Date().toISOString(),
+        });
+        return;
+      }
+      res.status(503).json({
+        status: "failing",
+        error: !io
+          ? "Socket.IO not initialized"
+          : "Redis configured but unavailable (needed for adapter check)",
+        lastCheckedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const result = await checkSocket(io, redis);
+    res.status(result.status === "failing" ? 503 : 200).json(result);
+  },
+);
 
 export default router;
