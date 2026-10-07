@@ -747,7 +747,11 @@ function AppRoutes() {
 
               <Route path="/admin/login" component={AdminLoginPage} />
               <Route path="/admin" component={AdminProtectedRoutes} />
-              <Route path="/admin/:rest*" component={AdminProtectedRoutes} />
+              {/* regexparam 3 parses `:rest*` as a SINGLE segment (`[^/]+?`), so
+                  nested paths like /admin/products/enrichment and
+                  /admin/risk/events/:id fell through to the public 404. A bare
+                  `*` is the true multi-segment splat. */}
+              <Route path="/admin/*" component={AdminProtectedRoutes} />
 
               <Route component={NotFound} />
             </Switch>

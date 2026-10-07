@@ -497,7 +497,21 @@ export default function AdminSystemPage(): ReactElement | null {
 
   const metricsQ = useQuery<MetricsSnapshot>({
     queryKey: ["admin-observability-metrics"],
-    queryFn: fetchAdminJson<MetricsSnapshot>("/api/admin/observability/metrics"),
+    // The metrics endpoint wraps its snapshot in a last-known-good
+    // envelope (`{ value, lastKnownGoodAt, stale }` — see the backend's
+    // CachedWithLKG). Unwrap here; `value: null` (backend has never
+    // built a snapshot, e.g. right after boot) is an honest "no data"
+    // state → throw so the panel renders its error fallback instead of
+    // crashing on a missing `http`/`socket` subtree.
+    queryFn: async () => {
+      const env = await fetchAdminJson<{
+        value: MetricsSnapshot | null;
+        lastKnownGoodAt: string | null;
+        stale: boolean;
+      }>("/api/admin/observability/metrics")();
+      if (!env?.value) throw new Error("NO_METRICS_SNAPSHOT");
+      return env.value;
+    },
     // Kept at 15 s — realtime CWV + event-loop is the highest-value
     // panel for live operator triage.
     refetchInterval: 15_000,
