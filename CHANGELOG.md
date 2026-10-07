@@ -7,6 +7,113 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R122 — full-spectrum audit quartet + Arabic search + DB safety + docs truth — 2026-10-07
+
+Eleven parallel read-only auditors (storefront UX, admin, backend, database,
+security, performance, SEO, code quality, testing/CI, docs truth, live
+browser) over `1f4b24c`, then nine fix agents; 10 thematic commits
+`e91cab0`→`663ee8e` + this docs commit. Gates on the merged tree: backend
+214 files / **2003 tests** PASS (+15/+224), frontend 125 / **853** PASS
+(+3/+10), typecheck clean, lint 0 errors, build + budget PASS with the
+eager path **152,438 → 144,618 B gz** (out of the warn zone). CI verified
+ALIVE and green on every R122 push (the repo is PUBLIC — the
+"private-billing dead CI" premise was false; stale comments corrected).
+Live-verified post-deploy: Arabic search («نتفليكس»/«نتفلكس»/«سبوتيفاي»/
+«ديزني»/«في بي إن»/«يوتيوب» all resolve), unknown-path shells noindex,
+sitemap per-route lastmod, Sentry release `663ee8e` in the live bundle,
+healthz green, CI green.
+
+### Security
+- **RBAC grants subset-bounded** (`e91cab0`): a scoped admin could mint
+  puppet admins holding the full 7-scope union (functionally "all",
+  bypassing the H9 gate) — grants are now inside the actor's own envelope
+  on create, patch AND the re-enable path. 2FA setup-verify gained the
+  per-admin lockout its login sibling had; deep healthz subroutes are
+  settings-scoped like their diagnostics twins; sessions/providers carry
+  `no-store`.
+- **Money-ledger FKs CASCADE→RESTRICT** (`108ebde`): a manual
+  `DELETE FROM users` could atomically erase a user's entire financial
+  history — V1-M25 (probe-gated, V1-M9/M21 discipline) rebuilds
+  wallet_ledger/points_ledger/orders/wallet_topups user FKs as
+  `ON DELETE RESTRICT`; V1-M26 adds the two money CHECKs the R118 sweep
+  missed (the wallet arithmetic identity in the type-aware purchase-debit
+  form); drizzle chain mirror `0018`; `drizzle-kit push` fenced behind
+  `I_ACCEPT_DRIZZLE_PUSH_DANGER` (one push against the boot-built live DB
+  = drop/recreate all 40 FKs by name — the one-command outage, A4-P1-1).
+
+### Fixed
+- **Arabic search** (`aaed70a`): the live-verified defect «نتفليكس» → 0
+  results against an English-named catalog. Query-side bridge: Arabic
+  normalization (tashkeel/tatweel/alef folds/Arabic-Indic digits), a
+  65-entry curated brand-alias map from the real catalog, transliteration
+  fallback with hard bounds. Pure-English SQL byte-identical to before.
+- **SEO shell** (`6ba4b5e`): the product shell prefers row-level
+  seo_title/seo_description (write paths now wired through admin form +
+  zod + copilot ALLOWED_FIELDS — the columns were write-orphaned); unknown
+  public paths + dead category slugs emit `noindex,follow` (the raw shell
+  no longer contradicts the SPA's 404); the uncached `/product/:slug`
+  shell lookups ride the catalog cache (they sat outside every rate
+  limiter — cheap-DoS surface); a boot-time comment-balance guard refuses
+  to run the rewriter on an imbalanced shell (the d22f24e class);
+  per-route sitemap lastmod (editorial statics omit the noisy tag);
+  recommendations DTO carries slug.
+- **Storefront UX** (`2cb85b4`): guests get shaped RouteSkeletons instead
+  of blank/zeroed frames; login redirects preserve the full return path
+  (commerce `?redirect=` idiom); `<Link><button>` nesting eliminated;
+  RTL Telegram-account row reads correctly; hero chips navigate; in-stock
+  items surface first where the grid allows; Arabic plurals, letterspacing
+  unification, ≥44px tap targets; MetaTags clamps at word boundary and
+  stops declaring 1280×720 on ~450px images.
+- **Admin UX** (`dc11827`): the referrals credit button is finance-gated
+  client-side (the last un-gated money action); the dashboard shows the
+  honest error state on 403/5xx (was a false "no orders yet"); the
+  always-green status pill reflects error/stale; GlobalSearch + money
+  KPIs scoped by permission; bulk topup actions take notes; ~30 raw
+  fetches routed through the 401-aware admin-session contract; product
+  form gains the SEO fields.
+- **Backend contracts** (`c2f531a`): pageParam capped (unbounded OFFSET
+  closed); loyalty referral counts exact past the 200-row limit +
+  pagination; cart `intParam` digit-exact; idempotency body-hash
+  key-order-insensitive (canonical JSON serializer — reordered identical
+  bodies no longer false-409); checkout dead branch → honest assertion;
+  points-replay bounded.
+
+### Build/Deploy
+- **Deploy-time typecheck gate** (`ad05d11`): Coolify's push-webhook
+  deploys WITHOUT waiting for CI — the Docker build now enforces
+  `pnpm run typecheck` (the strongest cheap gate) before bundling; the
+  R104 build-only comment rewritten honestly. The lucide manualChunks
+  rule (all 135 icons pinned eagerly) removed: eager path −8 kB gz, back
+  under the warn line with 5.9 kB headroom.
+- **Money-path tests** (`772be0f`): the Telegram chat-button topup
+  approve/reject path (allowlist, stale pre-check, exactly-once incl.
+  callback replay, actor attribution, always-200) had ZERO coverage —
+  now pinned over the real TopupService; whatsapp/verify + firebase/
+  refresh contracts pinned (43 tests).
+
+### Docs
+- **Truth pass + 4-bucket reorg** (`663ee8e` + this commit): 24 false/
+  stale statements fixed across 17 files (all 7 "www serves 200" claims →
+  the live redirect; "Sentry optional" → live; README test counts + CI
+  section; the org:ci token-swap recommendation actually logged); the
+  runbook restructured to 6/6 operator sections (Coolify-first rollback,
+  Sentry pipeline, Telegram ops, edge canonicalization, GSC, backups);
+  CHANGELOG R121 entry; 74 files → `docs/history/`, 16 →
+  `docs/deprecated/`, 1 → `docs/pending/`; ~46 links repointed, 0 broken
+  (97 verified). R122 verification correction: the live www→apex status
+  is **301** (probed HTTP/2 + HTTP/1.1, path+query preserved) — the R121
+  record's "308" digit was wrong; runbook §13 + WWW doc updated.
+
+### Known open items (operator)
+- **Catalog 98% sold out** (44/45 products) — restock is a business
+  decision through the (intentionally deferred) inventory/Embronic track.
+- GSC `VITE_GSC_VERIFICATION` still awaits the operator's token
+  (paste-and-go).
+- Product `seo_title`/`seo_description` are wired end-to-end but EMPTY on
+  existing rows — filling them (Arabic keyword titles per product) is the
+  next highest-leverage SEO action for the operator.
+- Sentry org:ci token swap recommendation stands (runbook §11).
+
 ## Round R121 — admin revival + Telegram ops + 308 edge + Sentry LIVE — 2026-10-07
 
 Triggered by a live browser audit of all 20 admin pages (session minted for

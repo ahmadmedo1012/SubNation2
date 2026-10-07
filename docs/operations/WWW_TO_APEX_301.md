@@ -1,10 +1,13 @@
 # www → apex 301 at Traefik — SubNation Canonical-Host Change
 
-> Status: **EXECUTED 2026-10-07 (R121)** — live as a **308** (not the 301
-> proposed below) via the standalone dynamic router
+> Status: **EXECUTED 2026-10-07 (R121)** — live as a **single-hop permanent
+> redirect** via the standalone dynamic router
 > `/data/coolify/proxy/dynamic/www-redirect.yml` (priority 1000; the §3
-> "Alternative" shape). This doc is preserved as the design + rollback
-> record; §4 expectations read 301 where production returns 308.
+> "Alternative" shape). **R122 verification (2026-10-07 23:30Z):** consistent
+> live probes (HTTP/2 + HTTP/1.1, bare root + path + query, full header
+> inspection) return **HTTP/2 301** with path+query preserved — the R121
+> record's "308" digit was wrong; behavior is exactly as required either
+> way. This doc is preserved as the design + rollback record.
 > Decision + evidence recorded in
 > `docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8 (R117 addendum, observed
 > 2026-10-05); this doc adds the paste-able config it asked for

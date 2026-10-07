@@ -238,3 +238,72 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   · 12 HIGH false positives (hardcoded creds in script variable-name comparisons, SSRF on
     operator-configured env URLs, path.resolve anchored to repoRoot). 99 inconclusive
     (query budget exhaustion, not safety issues). Project security posture: EXCELLENT.
+
+- **2026-10-07** **Round R122 — full-spectrum audit wave + fix wave (11 auditors → 9 fix agents → 10
+  thematic commits + docs)**. Triggered by the operator's local work push (38 commits, R118–R121,
+  synced `ef3d0c3`→`1f4b24c`). Baseline on sync: typecheck clean, lint 0 errors, backend 199/1779 +
+  frontend 122/843 PASS. Eleven READ-ONLY auditors (A1 storefront UX · A2 admin · A3 backend · A4
+  database · A5 security · A6 performance · A7 SEO · A8 code quality · A9 testing/CI · A10 docs
+  truth · A11 live-browser on production) → reports in `tool-results/r122-*.md` (session-local).
+  Headline: **0 P0 code defects**; P0-class findings were (a) docs lying about reality (7×
+  "www serves 200", "Sentry optional", README's "dead CI"), (b) a business-state issue — **catalog
+  98% sold out** (44/45; restock belongs to the deferred inventory/Embronic track, NOT code), and
+  (c) an Arabic-search conversion killer (English-only catalog names vs Arabic queries).
+- **R122 verification corrections (my own probes, overriding audit claims):** A9's "GitHub Actions
+  is DEAD (private-repo minutes)" was **FALSE** — the repo is PUBLIC (`private:false`, API-verified)
+  and Actions runs GREEN on every recent push (probed run pages: check-circle-fill on `1f4b24c` and
+  every R122 commit). The stale "dead CI" comments in ci.yml/docker.yml/README corrected. The real
+  CI gap A9 half-found is different: **Coolify's push-webhook deploys without waiting for CI** —
+  closed by adding `pnpm run typecheck` to the Docker build (R104 comment rewritten honestly).
+- **R122 fixes (commits `e91cab0`→`663ee8e`):** security — RBAC grants subset-bounded on
+  create/patch/re-enable (the 7-scope-union puppet-admin escalation), 2FA setup lockout, healthz
+  subroute scope parity, no-store hardening; database — **V1-M25** money-ledger user FKs rebuilt
+  `ON DELETE RESTRICT` (probe-gated; CASCADE could erase a user's whole financial history on one
+  manual delete), **V1-M26** the two money CHECKs R118 missed, chain mirror `0018`, `drizzle-kit
+  push` fenced behind `I_ACCEPT_DRIZZLE_PUSH_DANGER` (the boot-built live DB carries different FK
+  names than the chain — one push = drop/recreate all 40); SEO — shell prefers row-level
+  `seo_title`/`seo_description` (write paths wired through admin form + zod + copilot), unknown
+  paths + dead category slugs `noindex,follow`, `/product/:slug` shell lookups ride the catalog
+  cache (were uncached AND outside every rate limiter), boot-time comment-balance guard (the
+  d22f24e class), per-route sitemap lastmod, recommendations DTO + slug; **Arabic search** —
+  normalization + 65-entry curated brand-alias map + transliteration fallback, English SQL
+  byte-identical; storefront — guest RouteSkeletons, return-path-preserving login redirects,
+  `<Link><button>` sweep, RTL Telegram row, hero chips navigate, in-stock-first presentation;
+  admin — referrals credit finance-gated (last un-gated money action), honest dashboard error
+  states + status pill, scoped GlobalSearch/money KPIs, bulk notes, ~30 raw fetches → 401-aware
+  admin-session; backend contracts — pageParam cap, exact loyalty referral counts + pagination,
+  cart intParam, canonical idempotency body-hash, checkout assertion, points-replay bound;
+  build — **deploy-time typecheck gate** in Dockerfile, lucide manualChunks removed (eager path
+  152,438→144,618 B gz, back under the 148,480 warn line); tests — telegram topup money path
+  (was ZERO-covered), whatsapp/verify, firebase/refresh (43 new tests).
+- **R122 gates on the merged tree (verified before push):** backend **214 files / 2003 tests**
+  PASS (+15/+224 vs baseline), frontend **125 / 853** PASS (+3/+10), typecheck clean, lint 0
+  errors / 86 warnings, build + both budget gates PASS, frozen lockfile OK, 97 doc links → 0
+  broken. One flaky-looking failure chased to root cause during gating: the new sitemap test used
+  `toContain(regex)` (literal-substring semantics) — fixed to `toMatch`; the implementation was
+  correct all along.
+- **R122 docs:** 24 false/stale statements fixed across 17 files; runbook restructured to 6/6
+  operator sections (§4 Coolify-first rollback; new §11 Sentry pipeline incl. the org:ci swap
+  recommendation, §12 Telegram ops channel, §13 edge canonicalization, §14 GSC, §15 backups);
+  CHANGELOG gained the R121 entry + this round's; **4-bucket docs reorg** — 74 files →
+  `docs/history/`, 16 → `docs/deprecated/`, 1 → `docs/pending/` (Embronic design), 48 current
+  in place, `docs/README.md` rewritten as the bucket index, ~46 links repointed.
+- **R122 deploy + live verification (push `663ee8e`, 2026-10-07 23:19:20Z → live 23:25Z, ~6 min):
+  first deploy with the in-Docker typecheck gate — green.** Live probes: healthz `{"status":"ok"}`;
+  Arabic search «نتفليكس»/«نتفلكس»→Netflix, «سبوتيفاي»→Spotify, «ديزني»→Disney+, «في بي إن»→all
+  three VPN products, «يوتيوب»→YouTube Premium (English queries unchanged; «بلاستيشن»/«شاهد»
+  honest-empty — those products are archived); unknown path `/xyz-check-r122` → shell
+  `noindex,follow` while home + known categories stay `index,follow`; sitemap `/`+`/flash-sales`
+  keep lastmod, `/support`+`/terms` omit it; `/login` still noindex; dead product slug → real 404;
+  Sentry release `663ee8e` present in the live entry bundle; **www→apex correction: the live edge
+  returns HTTP/2 301** (path+query preserved, no intermediate hops — probed HTTP/2 + HTTP/1.1;
+  the R121 "308" record was wrong about the digit, right about the behavior; runbook §13 + WWW doc
+  updated); CI green on the push.
+- **R122 deferred (honest ledger):** strictFunctionTypes off (A8; risky late — needs its own round);
+  rowsFromResult/DbOrTx adoption (~50 sites + 21 casts — mechanical but money-path-wide); admin
+  CSS token partition (~6-8 kB gz more, needs real-browser admin verification); committed
+  Playwright e2e suite + response-contract tests vs openapi (A9); redundant-index cleanup +
+  organizations table fate (A4, needs its own probe-gated stage round); 13 components >1,000-line
+  extraction plans (A2/A8 wrote the plans; execution is mechanical but large); filling
+  `seo_title`/`seo_description` rows (operator content work, Arabic keyword titles per product);
+  GSC token + Sentry org:ci swap + **catalog restock** (business decision, Embronic track).

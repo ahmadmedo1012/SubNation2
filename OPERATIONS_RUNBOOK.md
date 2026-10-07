@@ -448,12 +448,16 @@ curl -X POST -H "Content-Type: application/json" \
 > `openwa` container + Neon Postgres. There is no Vercel and no Render in
 > the live path (the Vercel mirror 404s; Render is billing-suspended).
 >
-> - **Canonical URL:** `https://subnation.ly` — `www → apex` **308** has been
+> - **Canonical URL:** `https://subnation.ly` — `www → apex` **301** has been
 >   LIVE at the Traefik file-provider layer since R121 (2026-10-07):
 >   `/data/coolify/proxy/dynamic/www-redirect.yml`, priority 1000, path+query
->   preserved; apex serves 200. Rollback/verify:
->   `docs/operations/WWW_TO_APEX_301.md` (§4/§5; note the live code is 308,
->   not the 301 proposed there). The dead v2-syntax `subnation.yml` that
+>   preserved; apex serves 200. **R122 verification note:** the R121 record
+>   (and the §13 text below before this pass) said **308**, but consistent
+>   live probes on 2026-10-07 23:30Z (HTTP/2 + HTTP/1.1, bare root + path +
+>   query, full header inspection — no intermediate hops) return **HTTP/2
+>   301**. The redirect WORKS exactly as intended; only the status-code digit
+>   in the record was wrong. Rollback/verify:
+>   `docs/operations/WWW_TO_APEX_301.md` (§4/§5). The dead v2-syntax `subnation.yml` that
 >   poisoned the whole dynamic dir was archived to `dynamic-archive/`
 >   (§13).
 > - **DNS:** the Cloudflare zone is **DNS-only (grey cloud)** — no proxy, no
@@ -636,12 +640,15 @@ synthetic alert test exercises the same delivery path.
 Mimosa scan: no command-injection path). Only `TELEGRAM_ADMIN_IDS`
 accounts can press them.
 
-## 13. Edge canonicalization — www→apex 308 (LIVE since R121, 2026-10-07)
+## 13. Edge canonicalization — www→apex 301 (LIVE since R121, 2026-10-07)
 
 - **What is live:** `/data/coolify/proxy/dynamic/www-redirect.yml` — a
   standalone Traefik file-provider router at **priority 1000**; every
-  `https://www.subnation.ly/<path>?<query>` → **308** → the apex (path +
-  query preserved); the apex serves 200 untouched.
+  `https://www.subnation.ly/<path>?<query>` → **301** → the apex (path +
+  query preserved); the apex serves 200 untouched. (R122 correction: the
+  R121 record said 308 — live probes return 301 on both HTTP/2 and
+  HTTP/1.1; either way it is a single-hop, method-preserving permanent
+  redirect, which is the required behavior.)
 - **The poisoning lesson:** the dead v2-syntax `subnation.yml` (plus 4
   backup variants) errored on every watcher callback and **blocked the
   whole dynamic directory**. They were quarantined to
@@ -651,7 +658,7 @@ accounts can press them.
 - **Verify (2 minutes):**
   ```bash
   curl -sI https://www.subnation.ly/ | head -n 5
-  #    expect: HTTP/2 308 + location: https://subnation.ly/
+  #    expect: HTTP/2 301 + location: https://subnation.ly/
   curl -sIL -o /dev/null -w '%{num_redirects} %{url_effective}\n' https://www.subnation.ly/
   #    expect: 1  https://subnation.ly/
   curl -s https://subnation.ly/api/healthz   # expect: {"status":"ok"}
@@ -660,11 +667,8 @@ accounts can press them.
   are enabled — Coolify UI → Server → Proxy, or the Traefik API
   (`/api/http/routers`) via the proxy container — every router `Status:
   enabled`, including `subnation-www-redirect` (priority 1000).
-- **Design + rollback record:** `docs/operations/WWW_TO_APEX_301.md` — note
-  the live implementation is the §3 "Alternative" shape (standalone dynamic
-  router) returning **308**, not the 301 proposed there; §4 expectations
-  read 301 where production returns 308. Rollback = remove the file; apex
-  is unaffected.
+- **Design + rollback record:** `docs/operations/WWW_TO_APEX_301.md`. Rollback
+  = remove the file; apex is unaffected.
 
 ## 14. Pending operator actions (R122 status)
 
