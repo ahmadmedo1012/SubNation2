@@ -241,7 +241,10 @@ const DesktopOrderRow = React.memo(function DesktopOrderRow({
             }}
             aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
             aria-pressed={isSelected}
-            className="text-muted-foreground hover:text-primary transition-colors"
+            /* R120-B4 (A2-F13): p-2 -m-1 ≈ 28px hit area (the expand
+               chevron's fix) — the ~14px icon-only target fed the bulk
+               refund selection on touch devices. */
+            className="p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary transition-colors"
           >
             {isSelected ? (
               <CheckSquare className="w-3.5 h-3.5 text-primary" />
@@ -399,7 +402,9 @@ const MobileOrderCard = React.memo(function MobileOrderCard({
           }}
           aria-label={`تحديد الطلب ${order.order_code} للإجراء الجماعي`}
           aria-pressed={isSelected}
-          className="mt-0.5 text-muted-foreground hover:text-primary transition-colors shrink-0"
+          /* R120-B4 (A2-F13): same p-2 -m-1 hit-area fix as the desktop
+             row selector. */
+          className="mt-0.5 p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary transition-colors shrink-0"
         >
           {isSelected ? (
             <CheckSquare className="w-4 h-4 text-primary" />
@@ -492,7 +497,7 @@ const MobileOrderCard = React.memo(function MobileOrderCard({
 });
 
 export default function AdminOrdersPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
@@ -516,6 +521,9 @@ export default function AdminOrdersPage() {
   const [showStats, setShowStats] = useState(true);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  // R120-B4 (A2-F19): the bulk-status menu trigger — ESC returns focus
+  // here when the menu closes (keyboard users rejoin where they left).
+  const bulkMenuTriggerRef = useRef<HTMLButtonElement>(null);
   // ── B6-03 (R116): credentials-on-demand ──────────────────────────────
   // The list no longer ships decrypted credentials. The plaintext is
   // fetched from GET /api/admin/orders/:id/credentials the FIRST time an
@@ -897,24 +905,43 @@ export default function AdminOrdersPage() {
 
   if (!adminToken) return null;
 
-  const exportCSV = () => {
-    const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
-    const rows = filtered.map((o) => [
-      o.order_code ?? "",
-      o.user_phone ?? "",
-      (o.product_name ?? "").replace(/,/g, "؛"),
-      o.amount ?? 0,
-      statusLabel(o.status),
-      o.created_at ? formatDate(o.created_at) : "",
-    ]);
-    const csv = [csvHeaders, ...rows].map((r) => r.join(",")).join("\n");
+  // R120-B4 (A2-F4): refund visibility follows the backend's OWN gate —
+  // the bulk-status PATCH answers 403 for `refunded` unless the acting
+  // admin carries the finance scope (routes/admin/orders.ts A6-01). The
+  // option is HIDDEN for orders-only operators instead of offered and
+  // 403'd mid-flow after the operator already curated a selection.
+  const canBulkRefund = hasAdminPermission("finance");
+
+  // R120-B4 (A2-F18): one CSV download ritual shared by both export
+  // paths (the two copies were byte-identical except the filename).
+  const downloadCsv = (rows: (string | number)[][], filename: string) => {
+    const csv = rows.map((r) => r.join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const orderCsvRows = (list: AdminOrderRow[]): (string | number)[][] => {
+    const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
+    return [
+      csvHeaders,
+      ...list.map((o) => [
+        o.order_code ?? "",
+        o.user_phone ?? "",
+        (o.product_name ?? "").replace(/,/g, "؛"),
+        o.amount ?? 0,
+        statusLabel(o.status),
+        o.created_at ? formatDate(o.created_at) : "",
+      ]),
+    ];
+  };
+
+  const exportCSV = () => {
+    downloadCsv(orderCsvRows(filtered), `orders_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const toggleSelectAll = () => {
@@ -926,23 +953,7 @@ export default function AdminOrdersPage() {
 
   const exportSelected = () => {
     const sel = filtered.filter((o) => selectedIds.has(o.id));
-    const csvHeaders = ["رقم الطلب", "المستخدم", "المنتج", "المبلغ", "الحالة", "التاريخ"];
-    const rows = sel.map((o) => [
-      o.order_code ?? "",
-      o.user_phone ?? "",
-      (o.product_name ?? "").replace(/,/g, "؛"),
-      o.amount ?? 0,
-      statusLabel(o.status),
-      o.created_at ? formatDate(o.created_at) : "",
-    ]);
-    const csv = [csvHeaders, ...rows].map((r) => r.join(",")).join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `orders_selected_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(orderCsvRows(sel), `orders_selected_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   return (
@@ -1099,9 +1110,7 @@ export default function AdminOrdersPage() {
                       <Tag className="w-3 h-3" />
                       كوبونات مستخدمة
                     </div>
-                    <div className="font-bold text-base tabular-nums">
-                      {uniqueCouponCount}
-                    </div>
+                    <div className="font-bold text-base tabular-nums">{uniqueCouponCount}</div>
                     <div className="text-3xs text-muted-foreground mt-0.5">كود فريد</div>
                   </div>
                 </div>
@@ -1176,8 +1185,19 @@ export default function AdminOrdersPage() {
             <span className="text-sm font-bold text-primary">{selectedIds.size} طلب محدد</span>
             <div className="flex gap-2 mr-auto flex-wrap items-center">
               {/* Bulk status dropdown */}
+              {/* R120-B4 (A2-F19): menu semantics on the hand-rolled
+                  dropdown — role="menu"/menuitem, ESC closes + returns
+                  focus to the trigger, ↑/↓ move between items, focus
+                  lands on the first item on open. A repo Radix
+                  DropdownMenu primitive does not exist (components/ui
+                  ships only alert-dialog/app-dialog) and adding one is
+                  out of scope — this is the minimal ARIA + keyboard
+                  contract instead. */}
               <div className="relative">
                 <Button
+                  ref={bulkMenuTriggerRef}
+                  aria-haspopup="menu"
+                  aria-expanded={bulkStatusOpen}
                   size="sm"
                   variant="outline"
                   className="h-7 text-xs gap-1.5"
@@ -1197,12 +1217,45 @@ export default function AdminOrdersPage() {
                 {bulkStatusOpen && (
                   <>
                     <div className="fixed inset-0 z-20" onClick={() => setBulkStatusOpen(false)} />
-                    <div className="absolute left-0 top-full mt-1 z-30 bg-card border border-border/60 rounded-2xl shadow-xl overflow-hidden min-w-[160px] animate-in fade-in zoom-in-95 duration-100">
-                      {BULK_STATUSES.map((s) => (
+                    <div
+                      role="menu"
+                      aria-label="تغيير الحالة الجماعي"
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.stopPropagation();
+                          setBulkStatusOpen(false);
+                          bulkMenuTriggerRef.current?.focus();
+                        } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                          e.preventDefault();
+                          const items = Array.from(
+                            e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                              '[role="menuitem"]',
+                            ),
+                          );
+                          if (items.length === 0) return;
+                          const idx = items.indexOf(document.activeElement as HTMLButtonElement);
+                          const next =
+                            e.key === "ArrowDown"
+                              ? items[(idx + 1 + items.length) % items.length]
+                              : items[(idx - 1 + items.length) % items.length];
+                          next?.focus();
+                        }
+                      }}
+                      className="absolute left-0 top-full mt-1 z-30 bg-card border border-border/60 rounded-2xl shadow-xl overflow-hidden min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
+                    >
+                      {BULK_STATUSES.filter(
+                        // R120-B4 (A2-F4): the refund entry is
+                        // finance-gated (see canBulkRefund above) — it
+                        // renders only when the operator can actually
+                        // execute it.
+                        (s) => s.value !== "refunded" || canBulkRefund,
+                      ).map((s, i) => (
                         <button
                           key={s.value}
+                          role="menuitem"
+                          autoFocus={i === 0}
                           onClick={() => applyBulkStatus(s.value)}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-muted/40 transition-colors text-right ${s.color}`}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-muted/40 focus:bg-muted/40 focus:outline-none transition-colors text-right ${s.color}`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.color.replace("text-", "bg-")}`}
@@ -1429,7 +1482,9 @@ export default function AdminOrdersPage() {
                           onClick={toggleSelectAll}
                           aria-label="تحديد كل الطلبات المعروضة للإجراء الجماعي"
                           aria-pressed={allFilteredSelected}
-                          className="text-muted-foreground hover:text-primary transition-colors"
+                          /* R120-B4 (A2-F13): same p-2 -m-1 hit-area fix
+                             as the row selectors. */
+                          className="p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary transition-colors"
                         >
                           {allFilteredSelected ? (
                             <CheckSquare className="w-3.5 h-3.5 text-primary" />

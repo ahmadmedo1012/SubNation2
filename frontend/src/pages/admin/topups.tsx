@@ -373,7 +373,14 @@ export default function AdminTopupsPage() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [statusFilter, setStatusFilter] = useState("pending");
+  // R120-B4 (A2-F7): the layout's «المعلقة فقط» context action deep-links
+  // /admin/topups?status=pending — the initial filter now consumes the
+  // param (validated against the real filter values; anything else falls
+  // back to the queue's default "pending" view).
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("status") ?? "";
+    return STATUS_FILTERS.some((s) => s.value === fromUrl) ? fromUrl : "pending";
+  });
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [rejectTarget, setRejectTarget] = useState<any | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());

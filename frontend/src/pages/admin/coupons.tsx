@@ -331,7 +331,17 @@ export default function AdminCouponsPage() {
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-1">
             <div className="text-2xl font-bold text-foreground tabular-nums">{coupons.length}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">إجمالي الكوبونات</div>
+            {/* R120-B4 (A2-F22): honest wording. The list endpoint
+                (routes/coupons.ts AUD103-4-F9) caps at 200 newest rows
+                with NO page param — «إجمالي الكوبونات» claimed a total
+                the payload cannot know once the cap is hit. A short list
+                IS the whole set (the total is then true); a full 200-row
+                page switches to «عرض N (الأحدث أولاً)». Load-more is not
+                trivial against the hand-rolled fetch here (no page
+                contract server-side) — wording honesty this round. */}
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {coupons.length >= 200 ? `عرض ${coupons.length} (الأحدث أولاً)` : "إجمالي الكوبونات"}
+            </div>
           </div>
           <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-2">
             <div className="text-2xl font-bold text-emerald-400 tabular-nums">{activeCount}</div>

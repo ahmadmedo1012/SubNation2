@@ -1,5 +1,12 @@
-import { db, inventoryTable, ordersTable, usersTable, walletTopupsTable } from "@workspace/db";
-import { and, count, eq, gte, sql, sum } from "drizzle-orm";
+import {
+  db,
+  inventoryTable,
+  ordersTable,
+  supportTicketsTable,
+  usersTable,
+  walletTopupsTable,
+} from "@workspace/db";
+import { and, count, eq, gte, inArray, isNotNull, or, sql, sum } from "drizzle-orm";
 import { Router } from "express";
 import { cacheWrap } from "../../lib/cache";
 import { requireAdmin } from "../../middlewares/requireAdmin";
@@ -19,6 +26,22 @@ const TRIPOLI_OFFSET_MS = 2 * 60 * 60 * 1000;
 function tripoliDayStartUtc(now: number): number {
   return Math.floor((now + TRIPOLI_OFFSET_MS) / 86_400_000) * 86_400_000 - TRIPOLI_OFFSET_MS;
 }
+
+/** R120-B4 (A6-F5): a unit counts as available stock only when it is
+ *  DELIVERABLE — at least one credential field present. Mirrors
+ *  routes/products.ts:83 `deliverableUnitCondition` (R102) verbatim; the
+ *  admin count previously counted ALL unsold rows, so ghost rows
+ *  (zero credentials — refused at checkout by the INVENTORY_CORRUPT
+ *  gate) inflated the dashboard's stock KPI above what the public
+ *  stats reported for the same catalog. Defined locally because the
+ *  public route's helper is not exported (importing across route
+ *  modules would couple the two routers). */
+const deliverableUnitCondition = () =>
+  or(
+    isNotNull(inventoryTable.accountPassword),
+    isNotNull(inventoryTable.accountEmail),
+    isNotNull(inventoryTable.extraDetails),
+  );
 
 /** YYYY-MM-DD Tripoli calendar key from a UTC day-start instant. */
 function tripoliKey(dayStartUtcMs: number): string {
@@ -44,6 +67,13 @@ router.get("/stats", requireAdmin, async (_req, res) => {
       [todayRevenue],
       [availableStock],
       [totalWallet],
+      // R120-B4 (A2-F3): the support badge count — tickets NOT yet
+      // resolved (the ticket_status pg enum is open/in_progress/closed;
+      // dashboard + tickets page badge the same population).
+      [openTickets],
+      // R120-B4 (A6-F5): raw unsold-row count kept alongside the
+      // deliverable-units stock so a ghost-row gap stays observable.
+      [unsoldRows],
     ] = await Promise.all([
       db.select({ count: count() }).from(usersTable),
       db.select({ count: count() }).from(ordersTable).where(eq(ordersTable.status, "completed")),
@@ -63,8 +93,19 @@ router.get("/stats", requireAdmin, async (_req, res) => {
         .select({ sum: sum(ordersTable.amount) })
         .from(ordersTable)
         .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
-      db.select({ count: count() }).from(inventoryTable).where(eq(inventoryTable.isSold, false)),
+      // R120-B4 (A6-F5): deliverable units only — the public stock
+      // definition (see deliverableUnitCondition above). The raw
+      // unsold count rides along as unsold_rows.
+      db
+        .select({ count: count() })
+        .from(inventoryTable)
+        .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
       db.select({ sum: sum(usersTable.walletBalance) }).from(usersTable),
+      db
+        .select({ count: count() })
+        .from(supportTicketsTable)
+        .where(inArray(supportTicketsTable.status, ["open", "in_progress"])),
+      db.select({ count: count() }).from(inventoryTable).where(eq(inventoryTable.isSold, false)),
     ]);
 
     return {
@@ -76,6 +117,13 @@ router.get("/stats", requireAdmin, async (_req, res) => {
       today_revenue: parseFloat(String(todayRevenue?.sum ?? 0)),
       available_stock: Number(availableStock?.count ?? 0),
       total_wallet_balance: parseFloat(String(totalWallet?.sum ?? 0)),
+      // R120-B4 (A2-F3): rides the same 30s cacheWrap window as
+      // pending_topups — a ticket closed up to 30s ago may still count
+      // (the established admin:stats staleness contract; no write-side
+      // invalidation exists for this cache key — see the topup approve
+      // path, which shares the window).
+      open_tickets: Number(openTickets?.count ?? 0),
+      unsold_rows: Number(unsoldRows?.count ?? 0),
     };
   });
 

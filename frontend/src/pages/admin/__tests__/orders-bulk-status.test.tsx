@@ -40,8 +40,16 @@ vi.mock("@workspace/api-client-react", () => ({
   setUnauthorizedHandler: vi.fn(),
 }));
 
+// R120-B4 (A2-F4): the auth mock reads from hoisted mutable state so
+// the finance-gating test can flip the scope per-test (default: granted,
+// matching the pre-existing tests).
+const { authState } = vi.hoisted(() => ({ authState: { finance: true } }));
+
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({
+    adminToken: "test-admin-token",
+    hasAdminPermission: (scope: string) => authState[scope] !== false,
+  }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -117,7 +125,8 @@ function selectRow(orderCode: string) {
 }
 
 /** Selects both orders, opens the bulk-status dropdown and clicks the
- *  given status — returns the scoped useConfirm dialog once it opens. */
+ *  given status — returns the scoped useConfirm dialog once it opens.
+ *  R120-B4 (A2-F19): the menu items now carry role="menuitem". */
 async function openBulkConfirm(statusLabel: string) {
   // 94-C2: the list is async (useInfiniteQuery) — wait for the rows.
   await screen.findAllByText("SN-1001");
@@ -130,7 +139,7 @@ async function openBulkConfirm(statusLabel: string) {
   // scope so the item is not confused with the equal-named filter tab.
   const anchor = screen.getByRole("button", { name: "تغيير الحالة" }).parentElement;
   if (!anchor) throw new Error("dropdown anchor not found");
-  fireEvent.click(within(anchor).getByRole("button", { name: statusLabel }));
+  fireEvent.click(within(anchor).getByRole("menuitem", { name: statusLabel }));
 
   const title = await screen.findByText("استرداد جماعي للطلبات");
   const dialog = title.closest('[role="alertdialog"]');
@@ -222,7 +231,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     selectRow("SN-1002");
     fireEvent.click(screen.getByRole("button", { name: "تغيير الحالة" }));
     const anchor = screen.getByRole("button", { name: "تغيير الحالة" }).parentElement!;
-    fireEvent.click(within(anchor).getByRole("button", { name: "مكتمل" }));
+    fireEvent.click(within(anchor).getByRole("menuitem", { name: "مكتمل" }));
 
     const title = await screen.findByText("تغيير الحالة الجماعي");
     const dialog = title.closest('[role="alertdialog"]')!;
@@ -233,5 +242,66 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     expect(toastArg.title).toBe("تم تحديث حالة 2 طلب");
     expect(toastArg.description).toContain("مكتمل");
     expect(toastArg.variant).toBe("success");
+  });
+});
+
+/** R120-B4 (A2-F4 + A2-F19) — the bulk menu follows the backend's RBAC
+ *  gate (refund = finance) and carries real menu semantics. */
+describe("AdminOrdersPage — finance-gated refund option + menu semantics (R120-B4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOrdersResult(ORDERS);
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    authState.finance = true;
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    authState.finance = true;
+  });
+
+  async function openBulkMenu(): Promise<HTMLElement> {
+    await screen.findAllByText("SN-1001");
+    selectRow("SN-1001");
+    fireEvent.click(screen.getByRole("button", { name: "تغيير الحالة" }));
+    const anchor = screen.getByRole("button", { name: "تغيير الحالة" }).parentElement;
+    if (!anchor) throw new Error("dropdown anchor not found");
+    return anchor;
+  }
+
+  it("an orders-scope-only admin does NOT see the refund option (the backend 403s it)", async () => {
+    authState.finance = false;
+    renderPage();
+
+    const anchor = await openBulkMenu();
+    const menu = within(anchor).getByRole("menu");
+    // The refund entry is gone…
+    expect(within(menu).queryByRole("menuitem", { name: "مسترجع" })).not.toBeInTheDocument();
+    // …while the non-money transitions stay offered.
+    expect(within(menu).getByRole("menuitem", { name: "مكتمل" })).toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitem").length).toBe(3);
+  });
+
+  it("a finance admin still sees the refund option", async () => {
+    renderPage();
+
+    const anchor = await openBulkMenu();
+    const menu = within(anchor).getByRole("menu");
+    expect(within(menu).getByRole("menuitem", { name: "مسترجع" })).toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitem").length).toBe(4);
+  });
+
+  it("carries role=menu; ESC closes it and returns focus to the trigger", async () => {
+    renderPage();
+
+    const anchor = await openBulkMenu();
+    const menu = within(anchor).getByRole("menu");
+    expect(menu).toBeInTheDocument();
+
+    // ESC on the menu closes it…
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    // …and focus returns to the trigger button.
+    await waitFor(() => expect(screen.getByRole("button", { name: "تغيير الحالة" })).toHaveFocus());
   });
 });

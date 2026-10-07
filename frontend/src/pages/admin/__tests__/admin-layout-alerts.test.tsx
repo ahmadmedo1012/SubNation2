@@ -29,7 +29,9 @@ import { AdminLayout } from "@/pages/admin/layout";
 
 // R115 (A9 P2): the pendingTopups badge tests flip the finance scope —
 // the auth mock reads from hoisted mutable state (default: every
-// scope granted, matching the pre-existing tests).
+// scope granted, matching the pre-existing tests). R120-B4 (A2-F3):
+// the support scope joins the flip set (the openTickets badge rides
+// the same stats subscription).
 const { authState } = vi.hoisted(() => ({ authState: { finance: true } }));
 
 vi.mock("@/lib/auth", () => ({
@@ -181,6 +183,26 @@ async function topupsBadgeChip(): Promise<string | null> {
   return link.textContent ?? null;
 }
 
+/** Routes fetch: the badge endpoints + the stats endpoint the layout
+ *  itself now subscribes to (through the REAL generated client —
+ *  customFetch rides the stubbed global fetch). Module-scope since the
+ *  R120-B4 openTickets suite rides the same router. */
+function routeFetch(over: { stats?: () => Response }) {
+  return vi.fn((input: unknown) => {
+    const url = String(input);
+    if (url.includes("/api/admin/stats")) {
+      return Promise.resolve(over.stats());
+    }
+    if (url.includes("/api/admin/alerts/unread-count")) {
+      return Promise.resolve(resLike({ body: { count: 0 } }));
+    }
+    if (url.includes("/api/admin/alerts/new")) {
+      return Promise.resolve(resLike({ body: { alerts: [] } }));
+    }
+    return Promise.resolve(resLike({ body: {} }));
+  });
+}
+
 describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourced (R115 A9 P2)", () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -193,25 +215,6 @@ describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourc
     localStorage.removeItem("sn_last_alert_id");
     authState.finance = true;
   });
-
-  /** Routes fetch: the badge endpoints + the stats endpoint the layout
-   *  itself now subscribes to (through the REAL generated client —
-   *  customFetch rides the stubbed global fetch). */
-  function routeFetch(over: { stats?: () => Response }) {
-    return vi.fn((input: unknown) => {
-      const url = String(input);
-      if (url.includes("/api/admin/stats")) {
-        return Promise.resolve(over.stats());
-      }
-      if (url.includes("/api/admin/alerts/unread-count")) {
-        return Promise.resolve(resLike({ body: { count: 0 } }));
-      }
-      if (url.includes("/api/admin/alerts/new")) {
-        return Promise.resolve(resLike({ body: { alerts: [] } }));
-      }
-      return Promise.resolve(resLike({ body: {} }));
-    });
-  }
 
   it("renders the server count with NO page-passed badges (the layout fetches it itself)", async () => {
     fetchMock.mockImplementation(
@@ -259,8 +262,13 @@ describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourc
     });
   });
 
-  it("an admin WITHOUT the finance scope never polls stats (the nav item is finance-scoped)", async () => {
+  it("an admin with neither the finance nor the support scope never polls stats (no badge to feed)", async () => {
+    // R120-B4 (A2-F3): the stats subscription widened from finance-only
+    // to finance-OR-support (the openTickets badge rides the same
+    // payload). The R115 premise — finance=false ⇒ no poll — is now
+    // finance=false AND support=false ⇒ no poll.
     authState.finance = false;
+    authState.support = false;
     fetchMock.mockImplementation(
       routeFetch({ stats: () => resLike({ body: { pending_topups: 9 } }) }),
     );
@@ -277,6 +285,76 @@ describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourc
       expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/stats"))).toBe(
         false,
       );
+    });
+  });
+});
+
+/** The sidebar الدعم الفني nav item carrying the openTickets badge chip. */
+async function ticketsBadgeChip(): Promise<string | null> {
+  const link = await screen.findByRole("link", { name: /الدعم الفني/ });
+  return link.textContent ?? null;
+}
+
+describe("AdminLayout openTickets badge — server-sourced, support-gated (R120-B4 A2-F3)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.setItem("sn_last_alert_id", "0");
+    authState.finance = true;
+    authState.support = true;
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.removeItem("sn_last_alert_id");
+    authState.finance = true;
+    authState.support = true;
+  });
+
+  it("a support-scoped admin gets the server open_tickets count on the tickets chip", async () => {
+    authState.finance = false;
+    fetchMock.mockImplementation(
+      routeFetch({
+        stats: () =>
+          resLike({
+            body: {
+              total_users: 3,
+              total_orders: 1,
+              total_revenue: 25,
+              pending_topups: 0,
+              today_orders: 0,
+              today_revenue: 0,
+              available_stock: 4,
+              total_wallet_balance: 0,
+              open_tickets: 5,
+            },
+          }),
+      }),
+    );
+
+    renderLayout();
+
+    await waitFor(async () => {
+      expect(await ticketsBadgeChip()).toContain("5");
+    });
+  });
+
+  it("a stats failure renders NO tickets chip digit (error = unknown, never 0)", async () => {
+    authState.finance = false;
+    fetchMock.mockImplementation(
+      routeFetch({
+        stats: () => resLike({ ok: false, status: 500, body: { error: "x", code: "Y" } }),
+      }),
+    );
+
+    renderLayout();
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("/api/admin/stats"));
+      expect(call).toBeDefined();
+    });
+    await waitFor(async () => {
+      const text = await ticketsBadgeChip();
+      expect(text).not.toMatch(/\d/);
     });
   });
 });

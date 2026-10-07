@@ -34,7 +34,12 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({
+    adminToken: "test-admin-token",
+    // R120-B4 (A2-F4): the wallet/points form is finance-gated —
+    // default-grant keeps these tier tests scoped to their own concern.
+    hasAdminPermission: () => true,
+  }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({

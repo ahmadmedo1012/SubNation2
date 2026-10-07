@@ -136,22 +136,27 @@ export function AdminSecurityDashboard() {
   };
 
   const exportToCSV = () => {
+    // R120-B4 (A5-F14): Arabic headers — the users CSV already ships
+    // Arabic and the UTF-8 BOM is emitted below, so Excel renders these
+    // correctly. The action VALUE also localizes through actionLabel
+    // (the same map the timeline + filter use — A2 P3-18), so the file
+    // matches what the operator sees on screen.
     const headers = [
-      "ID",
-      "User ID",
-      "Identifier",
-      "Action",
-      "Success",
-      "Provider",
-      "Failure Reason",
-      "IP Address",
-      "Created At",
+      "المعرّف",
+      "معرّف المستخدم",
+      "هوية الدخول",
+      "الإجراء",
+      "النجاح",
+      "مزوّد الدخول",
+      "سبب الفشل",
+      "عنوان IP",
+      "التاريخ",
     ];
     const rows = activities.map((a) => [
       a.id,
       a.userId,
       a.identifier,
-      a.action,
+      actionLabel(a.action),
       a.success,
       a.provider || "",
       a.failureReason || "",

@@ -61,6 +61,84 @@ export function getServerSecret(): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// R120-B6/A8-F5: process-wide daily send ceiling
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Every pre-existing OTP cap is keyed per-phone (cooldown, hourly limit)
+// or per-IP (the /start limiter in app.ts). A distributed attacker
+// rotating IPs can hit a distinct number under each — no individual cap
+// ever trips, while the gateway burns quota and real phones receive
+// spam. This is the global brake the identifier-keyed caps cannot
+// provide: a single in-memory counter of ACTUAL sends (successful
+// dispatches only — a failed delivery consumed nothing), reset at the
+// UTC day boundary (TZ=UTC is pinned in the Dockerfile runtime stage).
+//
+// In-memory by design: the deployment is single-replica
+// (SINGLE_INSTANCE_MODE, R108), so process state IS the global state,
+// and a restart legitimately re-arms the brake (a restart is also a
+// fresh operator-visible event). Concurrency note: different phones do
+// not share the per-phone start lock, so a burst racing at count =
+// cap-1 may overshoot by a few concurrent sends before the gate trips —
+// acceptable for an abuse brake, not a billing meter.
+
+interface OtpDailySendState {
+  /** UTC calendar day (YYYY-MM-DD) the counter belongs to. */
+  utcDay: string;
+  /** Successful sends this UTC day, process-wide (all phones/purposes). */
+  sent: number;
+  /** True once the cap-trip error + admin alert have fired for this day. */
+  capTripAnnounced: boolean;
+}
+
+const otpDailySendState: OtpDailySendState = {
+  utcDay: new Date().toISOString().slice(0, 10),
+  sent: 0,
+  capTripAnnounced: false,
+};
+
+/** Env-tunable ceiling (OTP_DAILY_SEND_CAP; documented in config/env.example). */
+const DEFAULT_OTP_DAILY_SEND_CAP = 500;
+
+function otpDailySendCap(): number {
+  const raw = Number(process.env.OTP_DAILY_SEND_CAP);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_OTP_DAILY_SEND_CAP;
+}
+
+/** Roll the counter at the UTC day boundary — lazily, on first touch of the day. */
+function otpDailyStateForToday(): OtpDailySendState {
+  const today = new Date().toISOString().slice(0, 10);
+  if (otpDailySendState.utcDay !== today) {
+    otpDailySendState.utcDay = today;
+    otpDailySendState.sent = 0;
+    otpDailySendState.capTripAnnounced = false;
+  }
+  return otpDailySendState;
+}
+
+/**
+ * A8-F5: deduped operator alert on the cap trip — same lazy-dynamic-import
+ * pattern as fireLockPoolAlert (the module-boundary mocks used by this
+ * service's test suites export no adminAlertsTable). logAdminAlert's
+ * dedupeKey ("otp-daily-cap") collapses repeats within its 24 h window;
+ * the call-site capTripAnnounced flag makes the firing itself once per
+ * UTC day even before the DB dedupe engages.
+ */
+function fireOtpDailyCapAlert(sent: number, cap: number): void {
+  import("../jobs/alertLogger")
+    .then(({ logAdminAlert }) =>
+      logAdminAlert(
+        "system",
+        "بلوغ الحد اليومي لإرسال رموز واتساب",
+        `تم إيقاف إرسال رموز التحقق عبر واتساب مؤقتاً: بلغ العدد اليومي المُرسل الحد الأقصى (${sent}/${cap}، بتوقيت UTC). الطلبات الجديدة تُرفض برمز 429 حتى بداية اليوم التالي بتوقيت UTC. إن كان هذا مفاجئاً فراجع سجل النشاط (auth_activity) بحثاً عن إساءة استخدام من عناوين IP متعددة.`,
+        { dedupeKey: "otp-daily-cap" },
+      ),
+    )
+    .catch((err) =>
+      logger.warn({ err, dedupeKey: "otp-daily-cap" }, "[whatsapp-otp] daily-cap admin alert dispatch failed"),
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // startOtp — generate + send
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -89,7 +167,10 @@ export type StartOtpResult =
         // gets a short cooldown so it does not instantly re-send a SECOND
         // WhatsApp message ("which code is mine?") while the first is live.
         | "store_failed"
-        | "gateway_disabled";
+        | "gateway_disabled"
+        // R120-B6/A8-F5: the process-wide daily send ceiling tripped — see
+        // the daily-counter block in startOtpLocked. Route answers 429.
+        | "daily_limit";
       retryAfterSec?: number;
     };
 
@@ -409,6 +490,35 @@ async function startOtpLocked(input: StartOtpInput, phone: string): Promise<Star
     return { ok: false, reason: "hourly_limit" };
   }
 
+  // R120-B6/A8-F5: the process-wide daily ceiling — checked BEFORE the
+  // generate+send, so a tripped cap burns nothing on the gateway. The
+  // announcement (logger.error + deduped admin alert) fires exactly ONCE
+  // per UTC day: the first tripped request announces, the rest reuse the
+  // already-tripped verdict silently (the DB-level dedupeKey would
+  // collapse them too, but the call-site flag keeps the log noise at one
+  // line as well).
+  const daily = otpDailyStateForToday();
+  const cap = otpDailySendCap();
+  if (daily.sent >= cap) {
+    if (!daily.capTripAnnounced) {
+      daily.capTripAnnounced = true;
+      logger.error(
+        { category: "whatsapp.otp", sent: daily.sent, cap, utcDay: daily.utcDay },
+        "[whatsapp-otp] daily send cap reached — refusing new OTP sends until the next UTC day",
+      );
+      fireOtpDailyCapAlert(daily.sent, cap);
+    }
+    await safeLog({
+      identifier: `wa:${phone}`,
+      action: "register",
+      success: false,
+      failureReason: "daily_limit",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    });
+    return { ok: false, reason: "daily_limit" };
+  }
+
   // Generate + send BEFORE inserting, so a delivery failure doesn't
   // leave a dead row that throttles the user's next attempt.
   const code = generateOtp();
@@ -513,6 +623,13 @@ async function startOtpLocked(input: StartOtpInput, phone: string): Promise<Star
           : {}),
     };
   }
+
+  // R120-B6/A8-F5: count the send the moment the message actually went
+  // out — NOT at row-insert time. A store_failed send still consumed
+  // gateway quota and still landed on somebody's phone, so it must count
+  // against the daily ceiling (same accounting basis as the cap's purpose:
+  // real dispatched messages).
+  otpDailyStateForToday().sent += 1;
 
   const expiresAt = new Date(Date.now() + OTP_TTL_SEC * 1000);
   const insertValues = {

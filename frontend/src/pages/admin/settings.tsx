@@ -1,4 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { Button } from "@/components/ui/button";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/errors";
@@ -29,7 +31,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 
 interface TelegramSettings {
@@ -626,7 +628,9 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
   if (!session) {
     return (
       <div className="text-sm text-muted-foreground py-8">
-        تعذر تحميل بيانات الحساب. حاول إعادة تسجيل الدخول.
+        {/* R120-B4 (A2-F21): typo fix — تعذّر (with shadda), the
+            spelling used everywhere else in the admin copy. */}
+        تعذّر تحميل بيانات الحساب. حاول إعادة تسجيل الدخول.
       </div>
     );
   }
@@ -840,7 +844,20 @@ export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<TelegramSettings | null>(null);
   const [providers, setProviders] = useState<AuthProvider[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("account");
+  // R120-B4 (A2-F10): the settings/providers fetches used to swallow
+  // failures with `.catch(() => null)` — an outage or expired session
+  // rendered empty rows («غير موجود» per key) instead of an error
+  // surface. The failure is now first-class: the card below carries the
+  // Arabic reason + retry.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // R120-B4 (A2-F20): activeTab is URL-addressable (?tab=) — deep
+  // links survive refresh/share, and tab clicks update the address
+  // (two-way sync, the orders ?search= idiom).
+  const searchParam = useSearch();
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t && TABS.some((x) => x.id === t) ? t : "account";
+  });
 
   // Telegram diagnostic-ping state. Operator hits the "اختبار" button →
   // we POST /api/admin/diagnostics/telegram-test and render the
@@ -888,24 +905,71 @@ export default function AdminSettingsPage() {
     }
   }
 
-  useEffect(() => {
-    if (!adminToken) return;
-    const headers = adminHeaders;
+  // R120-B4 (A2-F10): r.ok + isAdminUnauthorized FIRST (the orders
+  // error-card idiom) — the bodies are parsed only on OK, and a 401
+  // mid-session defers to the global handler instead of a local error
+  // card on top.
+  const fetchJsonOrNull = async (url: string): Promise<Record<string, unknown> | null> => {
+    const res = await fetch(url, { headers: adminHeaders });
+    if (isAdminUnauthorized(res, url)) throw new Error("__unauthorized__");
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+        code?: string;
+      } | null;
+      throw new Error(getErrorMessage(body) || `فشل التحميل (HTTP ${res.status})`);
+    }
+    return (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  };
 
-    Promise.all([
-      fetch("/api/admin/settings", { headers })
-        .then((r) => r.json())
-        .catch(() => null),
-      fetch("/api/admin/settings/auth", { headers })
-        .then((r) => r.json())
-        .catch(() => ({ providers: [] })),
-    ])
-      .then(([sysSettings, authData]) => {
-        if (sysSettings) setSettings(sysSettings);
-        if (authData?.providers) setProviders(authData.providers);
-      })
-      .finally(() => setLoading(false));
+  const loadSettingsAndProviders = async (): Promise<void> => {
+    setLoadError(null);
+    try {
+      const [sysSettings, authData] = await Promise.all([
+        fetchJsonOrNull("/api/admin/settings"),
+        fetchJsonOrNull("/api/admin/settings/auth"),
+      ]);
+      if (sysSettings) setSettings(sysSettings as unknown as TelegramSettings);
+      if (authData && Array.isArray(authData.providers))
+        setProviders(authData.providers as AuthProvider[]);
+    } catch (err) {
+      if (err instanceof Error && err.message === "__unauthorized__") {
+        // The global 401 handler toasted + redirected — nothing local.
+        setLoading(false);
+        return;
+      }
+      setLoadError(err instanceof Error && err.message ? err.message : "تعذّر تحميل الإعدادات");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (adminToken) void loadSettingsAndProviders();
+    // Mount-only by design (mirrors the original effect): adminHeaders
+    // is referentially stable per session (useAdminHeaders rides a
+    // useMemo), so depending on the per-render closure would refetch
+    // for nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminToken]);
+
+  // R120-B4 (A2-F20): URL → tab (a ?tab= change lands without
+  // clobbering a tab the operator already picked locally).
+  useEffect(() => {
+    const t = new URLSearchParams(searchParam).get("tab");
+    if (t && TABS.some((x) => x.id === t)) {
+      setActiveTab((prev) => (prev === t ? prev : t));
+    }
+  }, [searchParam]);
+
+  // R120-B4 (A2-F20): tab → URL (replaceState — tab flips don't spam
+  // the history stack).
+  const selectTab = (id: string) => {
+    setActiveTab(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", id);
+    window.history.replaceState(null, "", url.toString());
+  };
 
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
@@ -930,7 +994,7 @@ export default function AdminSettingsPage() {
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => selectTab(tab.id)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all duration-150 ${activeTab === tab.id ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
             >
               <tab.icon className="w-3.5 h-3.5" />
@@ -975,6 +1039,21 @@ export default function AdminSettingsPage() {
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="h-16 skeleton-shimmer rounded-2xl" />
                 ))}
+              </div>
+            ) : loadError ? (
+              /* R120-B4 (A2-F10): the shared error-card idiom — a failed
+                  providers load is NOT an empty provider list. */
+              <div
+                role="alert"
+                className="text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl"
+              >
+                <p className="font-bold text-sm mb-1.5 text-foreground/80">
+                  تعذّر تحميل طرق المصادقة
+                </p>
+                <p className="text-xs mb-5 max-w-xs mx-auto leading-relaxed">{loadError}</p>
+                <Button onClick={() => void loadSettingsAndProviders()} size="sm" variant="outline">
+                  إعادة المحاولة
+                </Button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1041,6 +1120,28 @@ export default function AdminSettingsPage() {
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="h-12 bg-muted skeleton-shimmer rounded-2xl" />
                   ))}
+                </div>
+              ) : loadError ? (
+                /* R120-B4 (A2-F10): a failed settings load is NOT
+                    «غير موجود» per key — the error card names the
+                    failure and offers the retry (the old
+                    `.catch(() => null)` rendered confidently-wrong
+                    rows off a null payload). */
+                <div
+                  role="alert"
+                  className="text-center py-10 text-muted-foreground bg-muted/20 border border-status-error/22 rounded-2xl"
+                >
+                  <p className="font-bold text-sm mb-1.5 text-foreground/80">
+                    تعذّر تحميل حالة التكاملات
+                  </p>
+                  <p className="text-xs mb-5 max-w-xs mx-auto leading-relaxed">{loadError}</p>
+                  <Button
+                    onClick={() => void loadSettingsAndProviders()}
+                    size="sm"
+                    variant="outline"
+                  >
+                    إعادة المحاولة
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1199,7 +1300,15 @@ export default function AdminSettingsPage() {
         {/* ── Notifications Tab ─────────────────────────────────────────── */}
         {activeTab === "notifications" && (
           <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
-            <h2 className="font-bold mb-4 text-sm">الأحداث التي يتم إشعارك بها</h2>
+            <h2 className="font-bold mb-1 text-sm">الأحداث التي يتم إشعارك بها</h2>
+            {/* R120-B4 (A2-F5): descriptive info panel — the old rows
+                rendered a green CheckCircle per event, which read as a
+                CONFIGURABLE per-event switch that never was (the
+                notification set is fixed server-side). No check icons,
+                no per-row status semantics. */}
+            <p className="text-xs text-muted-foreground mb-4">
+              قائمة إعلامية ثابتة — تُرسل إشعارات تيليجرام للمشرفين عند كل حدث مما يلي
+            </p>
             <div className="space-y-2">
               {[
                 "تسجيل مستخدم جديد",
@@ -1212,7 +1321,7 @@ export default function AdminSettingsPage() {
                   key={event}
                   className="flex items-center gap-3 px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl"
                 >
-                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <Bell className="w-4 h-4 text-muted-foreground shrink-0" />
                   <span className="text-sm">{event}</span>
                   <span className="mr-auto text-xs text-muted-foreground">عبر تيليجرام</span>
                 </div>
@@ -1240,40 +1349,48 @@ export default function AdminSettingsPage() {
             </div>
 
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in delay-75">
-              <h2 className="font-bold mb-4 text-sm">إعدادات الأمان</h2>
+              {/* R120-B4 (A2-F5): «حقائق الأمان المعمولة» — descriptive
+                  info panel. The old checklist hardcoded ok:true on every
+                  row and rendered live green CheckCircle ticks: static
+                  claims dressed as VERIFIED status. No check icons, no
+                  status colors — the facts describe what the deployment
+                  uses, nothing claims it was just checked. */}
+              <div className="flex items-center gap-2.5 mb-1">
+                <Info className="w-4 h-4 text-muted-foreground shrink-0" />
+                <h2 className="font-bold text-sm">حقائق الأمان المعمولة</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                كيف تعمل طبقة الأمان في هذا النظام — للعلم، وليست إعدادات قابلة للتعديل من هنا
+              </p>
               <div className="space-y-3 text-sm text-muted-foreground">
                 {[
-                  { label: "تشفير JWT", value: "HS256 — مفتاح عشوائي آمن", ok: true },
+                  { label: "تشفير الجلسات (JWT)", value: "HS256 — مفتاح عشوائي آمن" },
                   // 94-C2 (A2 P2-7): the backend hashes admin passwords
                   // with argon2 (backend/src/lib/crypto.ts — argon2.hash
-                  // with memory-hard options). «SHA-256 + salt» was a
-                  // hand-written claim that contradicted the server.
-                  { label: "تشفير كلمات المرور", value: "Argon2id", ok: true },
-                  { label: "تحديد معدل الطلبات", value: "20 طلب/15 دق على تسجيل الدخول", ok: true },
-                  { label: "CORS", value: "مقيّد بنطاقات APP_ORIGINS", ok: true },
+                  // with memory-hard options).
+                  { label: "تشفير كلمات المرور", value: "Argon2id" },
+                  { label: "تحديد معدل الطلبات", value: "20 طلب/15 دق على تسجيل الدخول" },
+                  { label: "CORS", value: "مقيّد بنطاقات APP_ORIGINS" },
                   {
                     label: "OAuth Redirect Safety",
                     value: "كود مؤقت — يُستخدم مرة واحدة",
-                    ok: true,
                   },
                   {
                     label: "Telegram Widget Verify",
                     value: "HMAC-SHA256 + فحص auth_date",
-                    ok: true,
                   },
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className="flex items-center justify-between px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl"
+                    className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl"
                   >
                     <div className="flex items-center gap-2.5">
                       <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
                       <span className="font-semibold text-sm">{item.label}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-muted-foreground">{item.value}</span>
-                      <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    </div>
+                    <span className="text-xs font-mono text-muted-foreground text-left">
+                      {item.value}
+                    </span>
                   </div>
                 ))}
               </div>

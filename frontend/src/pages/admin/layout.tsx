@@ -12,6 +12,7 @@ import {
   useGetAdminStats,
   type AdminOrder,
   type AdminProduct,
+  type AdminStats,
   type AdminUser,
 } from "@workspace/api-client-react";
 import {
@@ -49,7 +50,10 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 
-const NAV_SECTIONS = [
+// R120-B4 (A2-F1): exported for the nav-scope parity regression test
+// (admin-layout-nav-scope.test.tsx asserts each scoped item matches the
+// requirePermission its page's APIs actually enforce).
+export const NAV_SECTIONS = [
   {
     label: "التشغيل",
     items: [
@@ -91,7 +95,12 @@ const NAV_SECTIONS = [
       { href: "/admin/pricing", label: "حاسبة الأسعار", icon: Calculator, scope: "inventory" },
       { href: "/admin/users", label: "المستخدمون", icon: Users, scope: "users" },
       { href: "/admin/referrals", label: "الإحالات", icon: Gift, scope: "users" },
-      { href: "/admin/coupons", label: "الكوبونات", icon: Tag, scope: "inventory" },
+      // R120-B4 (A2-F1): scope parity — every coupon admin API is
+      // requirePermission("finance") (backend/src/routes/coupons.ts
+      // list/create/patch/delete), so an inventory-only operator saw
+      // the nav item and hit a 403 wall on click. The scope now matches
+      // the enforced permission (pinned by admin-layout-nav-scope.test.tsx).
+      { href: "/admin/coupons", label: "الكوبونات", icon: Tag, scope: "finance" },
       { href: "/admin/promotions", label: "العروض السريعة", icon: Zap, scope: "inventory" },
     ],
   },
@@ -236,8 +245,14 @@ function computeActiveHref(location: string): string {
 const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; href: string }[]> =
   {
     "/admin/products": [{ label: "إضافة منتج جديد", icon: Plus, href: "/admin/products#new" }],
-    "/admin/topups": [{ label: "المعلقة فقط", icon: Clock, href: "/admin/topups" }],
-    "/admin/orders": [{ label: "آخر الطلبات", icon: Zap, href: "/admin/orders" }],
+    // R120-B4 (A2-F7): the topups context action used to link to the
+    // page ITSELF (no filter — a dead link). It now deep-links the
+    // pending queue via ?status=pending, which topups.tsx consumes on
+    // mount. The orders entry ("آخر الطلبات" → the same unfiltered
+    // page) was removed outright: the orders list is newest-first by
+    // server default, so the link promised a filter that does not
+    // exist — only the working products#new pattern stays.
+    "/admin/topups": [{ label: "المعلقة فقط", icon: Clock, href: "/admin/topups?status=pending" }],
   };
 
 // ── Global search component ──────────────────────────────────────────────────
@@ -602,7 +617,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // (data undefined ⇒ badge hides / falls back to the page-passed
   // count) instead of lying with a zero. 401/500/503 are "unknown",
   // never "0"; the next socket event or 5-min fallback refetch recovers.
-  const { data: alertCountData } = useQuery<{ count: number }>({
+  const { data: alertCountData, dataUpdatedAt: alertsUpdatedAt } = useQuery<{ count: number }>({
     queryKey: ["admin-alerts-unread-count"],
     queryFn: async () => {
       const r = await fetch("/api/admin/alerts/unread-count", { headers });
@@ -632,16 +647,31 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // item is finance-scoped, so there is no badge to render without it
   // and no reason to poll. A query error = unknown (never a lying 0):
   // mergedBadges falls back to whatever the current page passed.
+  // R120-B4 (A2-F3): the open-tickets badge also rides the server
+  // stats count (see A2-F3 below) — the query is enabled when EITHER
+  // badge-owning nav scope is visible (finance → topups, support →
+  // tickets), mirroring pendingTopups' finance gating.
   const canSeeFinanceBadge = hasAdminPermission("finance");
-  const { data: layoutStats } = useGetAdminStats({
+  const canSeeSupportBadge = hasAdminPermission("support");
+  const { data: layoutStats, dataUpdatedAt: statsUpdatedAt } = useGetAdminStats({
     query: {
       queryKey: getGetAdminStatsQueryKey(),
-      enabled: !!adminToken && canSeeFinanceBadge,
+      enabled: !!adminToken && (canSeeFinanceBadge || canSeeSupportBadge),
       refetchInterval: 300_000,
       refetchIntervalInBackground: false,
     },
     request: { headers },
   });
+
+  // R120-B4 (A2-F3): openTickets joins the layout-sourced badges. The
+  // dashboard/tickets pages used to be the ONLY passers — every other
+  // admin page rendered a hard 0 while tickets waited. The stats
+  // endpoint now counts open/in_progress tickets (30s cacheWrap window,
+  // the same staleness contract pending_topups already rides); the
+  // tickets page keeps its local override via the `badges` fallback.
+  // Local widening only — the generated AdminStats type predates the
+  // open_tickets field (regenerating orval bindings is a follow-up).
+  const layoutStatsWide = layoutStats as (AdminStats & { open_tickets?: number }) | undefined;
 
   const mergedBadges = {
     ...badges,
@@ -650,13 +680,29 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     // count — a partial that disagreed with the dashboard's server
     // number); the page-passed value stays as the error fallback.
     pendingTopups: layoutStats?.pending_topups ?? badges?.pendingTopups ?? 0,
+    // R120-B4 (A2-F3): support-gated server truth with the same
+    // page-passed error fallback (never a lying 0 — a stats failure
+    // leaves openTickets undefined and the tickets page's local count
+    // wins).
+    openTickets: canSeeSupportBadge
+      ? (layoutStatsWide?.open_tickets ?? badges?.openTickets ?? 0)
+      : (badges?.openTickets ?? 0),
     unreadAlerts: alertCountData?.count ?? badges?.unreadAlerts ?? 0,
   };
 
+  // R120-B4 (A2-F10): the pill's timestamp is keyed on the layout's
+  // OWN query data updates — the old `useEffect(…, [children])` fired
+  // on every page render (any keystroke in any controlled input
+  // restarted the "الآن" clock while the data sat stale). Both badge
+  // queries always-on for every admin (alerts) or scoped (stats):
+  // dataUpdatedAt advances only when fresh data actually landed.
+  const dataRefreshedAt = Math.max(alertsUpdatedAt, statsUpdatedAt);
   useEffect(() => {
-    setLastUpdated(new Date());
-    setSecondsAgo(0);
-  }, [children]);
+    if (dataRefreshedAt > 0) {
+      setLastUpdated(new Date(dataRefreshedAt));
+      setSecondsAgo(0);
+    }
+  }, [dataRefreshedAt]);
   useEffect(() => {
     const id = setInterval(
       () => setSecondsAgo(Math.round((Date.now() - lastUpdated.getTime()) / 1000)),

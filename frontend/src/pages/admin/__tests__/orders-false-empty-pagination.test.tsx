@@ -48,7 +48,13 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({
+    adminToken: "test-admin-token",
+    // R120-B4 (A2-F4): the page gates the bulk-refund option on the
+    // finance scope — default-grant keeps these pagination tests scoped
+    // to their own concern.
+    hasAdminPermission: () => true,
+  }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({

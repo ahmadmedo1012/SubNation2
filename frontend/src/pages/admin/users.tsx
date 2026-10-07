@@ -173,7 +173,7 @@ function TableSkeleton() {
 }
 
 export default function AdminUsersPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
@@ -488,6 +488,14 @@ export default function AdminUsersPage() {
 
   const hasFilters = tierFilter !== "" || sortBy !== "wallet_desc";
 
+  // R120-B4 (A2-F4): wallet + loyalty-points mutations require the
+  // finance scope on the backend (PATCH /api/admin/users/:id — B1-3
+  // pattern: wallet_adjustment/balance AND loyalty_points both gate on
+  // requirePermission("finance")). The form used to stay fully editable
+  // for a users-only operator and 403 after the confirm dialog — the
+  // fields are now disabled with the honest reason up front.
+  const canEditMoney = hasAdminPermission("finance");
+
   // (r110 + R115) Money-edit note gate: the backend 400s any wallet OR
   // points mutation whose note is <3 trimmed chars. "Money field
   // present" mirrors handleSave's parse — a wallet amount in the input
@@ -519,10 +527,15 @@ export default function AdminUsersPage() {
     ];
     const rows = sorted.map((u) => [
       u.phone ?? "",
-      ((u.wallet_balance ?? 0) || 0).toFixed(2),
+      // R120-B4 (A5-F13): the shared currency formatter (grouping + د.ل)
+      // — the same string the table renders, so the CSV never presents
+      // an ungrouped 1234.50 the UI never showed. (The dashboard's
+      // chart CSV still uses raw toFixed(2) — its copy is another
+      // agent's file; noted in the R120-B4 report.)
+      formatCurrency(u.wallet_balance ?? 0),
       tierLabel(u.loyalty_tier ?? ""),
       u.loyalty_points ?? 0,
-      ((u.lifetime_spend ?? 0) || 0).toFixed(2),
+      formatCurrency(u.lifetime_spend ?? 0),
       u.order_count ?? 0,
       u.created_at ? formatDate(u.created_at) : "",
     ]);
@@ -613,7 +626,13 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div>
-                <div className="text-3xs font-bold text-muted-foreground mb-2">الترتيب</div>
+                <div className="text-3xs font-bold text-muted-foreground mb-2">
+                  {/* R120-B4 (A2-F8): the sort is CLIENT-side over the
+                      loaded pages — the label no longer presents it as a
+                      global ranking (the hint below fires on partial
+                      data). Server-side sort is a documented follow-up. */}
+                  الترتيب (ضمن المعروض)
+                </div>
                 <div className="flex gap-1 flex-wrap">
                   {SORT_OPTIONS.map((s) => (
                     <button
@@ -644,6 +663,15 @@ export default function AdminUsersPage() {
                 </div>
               )}
             </div>
+            {/* R120-B4 (A2-F8): partial-data honesty — the sort ranks
+                only the loaded pages while the directory keeps its
+                «عرض N (الأحدث أولاً)» count; the one-line hint mirrors
+                the orders honest-count discipline. */}
+            {!knownTotal && (
+              <p className="text-3xs text-muted-foreground mt-3">
+                الترتيب يعمل على المستخدمين المعروضين فقط — حمّل المزيد لتوسيع النطاق
+              </p>
+            )}
           </div>
         )}
 
@@ -740,7 +768,11 @@ export default function AdminUsersPage() {
                 // the backend 400s otherwise (round-94 wallet contract,
                 // R115 points contract). A nothing-changed form stays
                 // enabled and is answered honestly at the save path.
-                disabled={saving || (noteRequired && !noteValid)}
+                // R120-B4 (A2-F4): a non-finance operator has nothing
+                // editable in this dialog (wallet/points are finance-
+                // gated, tier is derived) — the submit stays disabled
+                // instead of 403ing after the confirm.
+                disabled={saving || !canEditMoney || (noteRequired && !noteValid)}
               >
                 <CheckCircle className="w-4 h-4 ml-1.5" />
                 {saving ? "جارٍ الحفظ..." : "حفظ"}
@@ -797,6 +829,14 @@ export default function AdminUsersPage() {
                 </div>
 
                 <form id="user-edit-form" onSubmit={handleSave} className="space-y-4">
+                  {/* R120-B4 (A2-F4): the honest gate — shown instead of
+                      letting a users-only operator fill the form and hit
+                      the finance 403 at save time. */}
+                  {!canEditMoney && (
+                    <p className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2">
+                      تعديل المحفظة والنقاط يتطلب صلاحية المالية — الحقول للعرض فقط
+                    </p>
+                  )}
                   <div>
                     <Label className="mb-2 block text-sm font-semibold">تعديل المحفظة (د.ل)</Label>
                     <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
@@ -804,13 +844,15 @@ export default function AdminUsersPage() {
                         <button
                           key={opt.value}
                           type="button"
+                          disabled={!canEditMoney}
+                          title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
                           onClick={() =>
                             setForm((f) => ({
                               ...f,
                               wallet_mode: opt.value as EditUserForm["wallet_mode"],
                             }))
                           }
-                          className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                          className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                         >
                           {opt.icon && <opt.icon className="w-3 h-3" />}
                           {opt.label}
@@ -821,6 +863,8 @@ export default function AdminUsersPage() {
                       type="number"
                       min="0"
                       step="0.5"
+                      disabled={!canEditMoney}
+                      title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
                       placeholder={
                         form.wallet_mode === "set"
                           ? "الرصيد الجديد"
@@ -850,6 +894,8 @@ export default function AdminUsersPage() {
                       <Input
                         id="user-edit-note"
                         type="text"
+                        disabled={!canEditMoney}
+                        title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
                         value={form.note}
                         onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                         placeholder="سبب التعديل (3 أحرف على الأقل)"
@@ -881,6 +927,8 @@ export default function AdminUsersPage() {
                         type="number"
                         min="0"
                         step="1"
+                        disabled={!canEditMoney}
+                        title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
                         value={form.loyalty_points}
                         onChange={(e) => setForm((f) => ({ ...f, loyalty_points: e.target.value }))}
                         dir="ltr"
