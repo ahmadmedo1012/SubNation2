@@ -35,7 +35,6 @@ import {
   type CreateOrderBody,
   type Order,
   type Product,
-  type User,
 } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { formatCount } from "@/lib/utils";
@@ -989,7 +988,12 @@ export default function CheckoutPage() {
               // cached error response.
               clearCheckoutUnitKey(it.productId, it.variantId ?? null, unit);
             }
-            failureMessage = apiErrorData(e)?.error || getErrorMessage(e) || "فشل في إنشاء الطلب";
+            // R120-B5 (copy): the تعذّر-family fallback — the vague
+            // «فشل في إنشاء الطلب» sat below the app's calm + actionable
+            // error-copy bar (the same family as «تعذّر التحقق من
+            // رصيدك» / «تعذّر تطبيق الكوبون» on this page).
+            failureMessage =
+              apiErrorData(e)?.error || getErrorMessage(e) || "تعذّر إنشاء الطلب — حاول مرة أخرى";
             couponFailure = isCouponFailureMessage(failureMessage ?? undefined);
             break;
           }

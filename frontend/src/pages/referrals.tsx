@@ -136,15 +136,28 @@ export default function ReferralsPage() {
   // Replaces the previous fetch+useState+useEffect-on-mount pattern
   // which never refreshed unless the user reloaded the page — that
   // was the source of the "data feels stale" complaint.
+  //
+  // R120-B5 (A5-F4/F5/F6): the overview key is the SHARED cache identity
+  // with pages/loyalty.tsx (ONE entry for GET /api/loyalty) and carries
+  // NO token — the app-wide key convention (generated keys are
+  // token-less; auth.tsx clears the cache on logout). Before this, the
+  // two pages kept separate entries (["loyalty-overview", token] here,
+  // a raw-fetch useState copy there), so a points conversion on
+  // /loyalty left THIS page's balance stale for up to 60 s — loyalty's
+  // convert mutation now invalidates this exact key. Keep the tuple in
+  // sync with loyalty.tsx's LOYALTY_OVERVIEW_QUERY_KEY — pinned by
+  // loyalty-referrals-shared-cache.test.tsx.
   const overviewQ = useQuery<LoyaltyOverview>({
-    queryKey: ["loyalty-overview", token],
+    queryKey: ["loyalty", "overview"],
     queryFn: () => customFetch<LoyaltyOverview>("/api/loyalty", { headers }),
     enabled: !!token,
     staleTime: 60_000,
   });
 
   const eventsQ = useQuery<ReferralEvent[]>({
-    queryKey: ["loyalty-referrals", token],
+    // R120-B5 (A5-F6): token dropped from the key (same family prefix as
+    // the overview — "loyalty" groups the endpoint's queries).
+    queryKey: ["loyalty", "referrals"],
     queryFn: async () => {
       const d = await customFetch<ReferralEvent[]>("/api/loyalty/referrals", { headers });
       return Array.isArray(d) ? d : [];

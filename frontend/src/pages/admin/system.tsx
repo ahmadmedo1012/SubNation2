@@ -195,10 +195,18 @@ function formatUptime(seconds: number): string {
   return `${s}\u2009ث`;
 }
 
+// R120-B5 (A5-F13): the hand-rolled K/M compaction (`(n/1e6).toFixed(1)`)
+// is now Intl's compact notation — the engine-generated version of the
+// same output ("1.2K" / "3.4M", locale separators included), matching the
+// shared-formatter convention the rest of the admin rides (utils.ts
+// Intl.NumberFormatters). Tile UX is unchanged: counts stay compact.
+const METRIC_COUNT_FORMATTER = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
 function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
+  return METRIC_COUNT_FORMATTER.format(n);
 }
 
 function formatMs(v: number | null | undefined): string {

@@ -346,10 +346,20 @@ describe("LoyaltyPage — post-success money refresh (balance + cache invalidati
     await waitFor(() => expect(convertCalls).toHaveLength(1));
 
     // Money moved: the Navbar balance (useGetMe) and wallet page
-    // (useGetWallet) caches are invalidated (B4 P1-7 pair).
+    // (useGetWallet) caches are invalidated (B4 P1-7 pair)…
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["/api/auth/me"] });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["/api/wallet"] });
+    });
+    // …AND the SHARED loyalty-overview cache identity (R120-B5, A5-F4/F5):
+    // pages/referrals.tsx renders from the same ["loyalty","overview"]
+    // entry — before R120 the convert only refetched this page's local
+    // copy, leaving /referrals on the pre-convert balance for ≤60 s.
+    // The ledger twin (the conversion_out row this mutation appended)
+    // is invalidated in the same breath.
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["loyalty", "overview"] });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["loyalty", "ledger"] });
     });
 
     // And the points tile refreshes to the deducted balance.

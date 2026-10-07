@@ -236,6 +236,16 @@ function collectAndSend(name: CWVSample["name"], value: number): void {
 export interface InitWebVitalsOptions {
   enabled?: boolean;
   endpoint?: string;
+  /**
+   * R120-B5 (A5-F18): fraction of sessions that collect CWV samples
+   * (0 ≤ rate ≤ 1). Decided ONCE per init call — one coin flip for the
+   * whole session, never per metric — via Math.random() < sampleRate,
+   * so an un-sampled boot skips the web-vitals subscriptions and the
+   * visibility/pagehide listeners entirely (zero observer + listener
+   * overhead, zero beacons). Defaults to 1.0 — every session collected,
+   * the exact pre-R120 behavior until a caller configures otherwise.
+   */
+  sampleRate?: number;
 }
 
 /**
@@ -244,10 +254,19 @@ export interface InitWebVitalsOptions {
  * Defaults to enabled. Pass `{ enabled: false }` to skip (e.g. in dev).
  */
 export function initWebVitals(options: InitWebVitalsOptions = {}): void {
-  const { enabled = true } = options;
+  const { enabled = true, sampleRate = 1 } = options;
   if (!enabled) return;
   // `endpoint` arg accepted for API parity with design.md §3.1.14;
   // routing remains the constant BEACON_ENDPOINT.
+
+  // A5-F18: session-level sampling — clamp defensively (an out-of-range
+  // rate must never disable collection by accident; it collects).
+  const rate = Number.isFinite(sampleRate) ? Math.min(1, Math.max(0, sampleRate)) : 1;
+  // Math.random() ∈ [0, 1) — `x < 1` is always true, so the default 1.0
+  // keeps 100% of sessions. One flip per session (init runs once at
+  // boot), all-or-nothing: metrics are only meaningful as a complete
+  // per-visit set, never per-metric sampling.
+  if (Math.random() >= rate) return;
 
   try {
     onLCP((m) => collectAndSend("LCP", m.value));

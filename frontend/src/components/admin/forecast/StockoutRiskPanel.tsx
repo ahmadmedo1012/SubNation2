@@ -38,6 +38,17 @@ import { Link } from "wouter";
 type Confidence = "high" | "medium" | "low" | "insufficient_data";
 type PipelineState = "fresh" | "stale" | "uninitialized" | "calibrating";
 
+/** R120-B5 (A5-F13): grouped 2-decimal formatting for the drawer's
+ *  non-money coefficients (avg daily units, day-of-week blend) — the
+ *  utils.ts formatCurrency convention minus the " د.ل" suffix. The
+ *  previous bare toFixed(2) rendered "1234.50" with no thousands
+ *  grouping on four-digit+ values, misreading as a smaller magnitude
+ *  at a glance. */
+const DECIMAL_2_FORMATTER = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 interface AtRiskRow {
   product_id: number;
   product_name: string;
@@ -295,11 +306,11 @@ function ExplainDrawer({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <KV
             label="متوسط المبيعات اليومية"
-            value={e.avg_daily_sales == null ? "—" : e.avg_daily_sales.toFixed(2)}
+            value={e.avg_daily_sales == null ? "—" : DECIMAL_2_FORMATTER.format(e.avg_daily_sales)}
           />
           <KV
             label="معامل اليوم"
-            value={e.dow_blend_7d == null ? "—" : e.dow_blend_7d.toFixed(2)}
+            value={e.dow_blend_7d == null ? "—" : DECIMAL_2_FORMATTER.format(e.dow_blend_7d)}
           />
           <KV label="أيام تاريخ الطلبات" value={String(e.days_of_history_available)} />
           <KV label="مخزون عند آخر تشغيل" value={String(row.current_stock_on_hand)} />

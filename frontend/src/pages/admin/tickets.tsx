@@ -1,6 +1,9 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+// R120-B5 (A2-F9): the hand-rolled card-list skeleton joins the shared
+// admin TableSkeleton (the orders/users/coupons console idiom).
+import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // 93-C7 / C-UX2 (A12 B1): the hand-rolled STATUS_CONFIG map (raw
 // blue/yellow hues + a parallel duplicate in storefront support.tsx)
 // is replaced by the canonical STATUS_TONE mapper + statusLabel.
@@ -16,6 +19,7 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatDate, formatRelativeTime, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle,
@@ -30,7 +34,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -112,23 +116,6 @@ export default function AdminTicketsPage() {
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const [tickets, setTickets] = useState<TicketSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  // B5-04 (round-92 audit): fetchTickets had `.catch(() => {})` — a
-  // failed queue load rendered the false "لا توجد تذاكر" empty state,
-  // so an admin on a flaky network believed the support queue was
-  // empty. The failure now surfaces as the distinct error card (C5
-  // storefront idiom) on the initial load, and as an inline banner
-  // when a refresh of an already-rendered list fails.
-  const [loadError, setLoadError] = useState<string | null>(null);
-  // 94-C2 (A2 P1-1): load-more accumulation state (frozen
-  // `?page=&limit=` contract) + in-flight abort controller so a fast
-  // status-tab switch can't let a stale response overwrite the newest
-  // (A2 P3-11).
-  const [ticketPage, setTicketPage] = useState(1);
-  const [ticketsHasMore, setTicketsHasMore] = useState(false);
-  const [loadingMoreTickets, setLoadingMoreTickets] = useState(false);
-  const ticketsAbortRef = useRef<AbortController | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [selected, setSelected] = useState<TicketDetail | null>(null);
@@ -147,18 +134,37 @@ export default function AdminTicketsPage() {
     return `/api/admin/tickets?${qs.toString()}`;
   };
 
-  const fetchTickets = async () => {
-    if (!adminToken) return;
-    // 94-C2 (A2 P3-11): abort the in-flight list request — rapid
-    // status-tab switches previously let an older response land last
-    // and overwrite the newest.
-    ticketsAbortRef.current?.abort();
-    const controller = new AbortController();
-    ticketsAbortRef.current = controller;
-    try {
-      const r = await fetch(ticketsUrl(1, statusFilter), {
+  // R120-B5 (A2-F9): the hand-rolled fetch/page/abort state machine is
+  // replaced by the orders.tsx useInfiniteQuery idiom (94-C2 A2 P1-1):
+  // page accumulation + append-in-place load-more, AbortSignal via the
+  // queryFn (React Query cancels the in-flight request on unmount and on
+  // queryKey change — the manual ticketsAbortRef controller is gone),
+  // and the 401/500/network failure surfaces through `isError` instead
+  // of a local loadError string (B5-04's outage-≠-empty contract is
+  // unchanged: a failed first load renders the error card, a failed
+  // refresh of an already-rendered list keeps the stale cards + inline
+  // banner).
+  const listParams = { status: statusFilter || undefined, limit: TICKETS_PAGE_SIZE };
+  const {
+    data: ticketsPages,
+    isLoading: loading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage: loadingMoreTickets,
+  } = useInfiniteQuery<TicketSummary[], Error>({
+    // Key keeps the "/api/admin/tickets" prefix so any future
+    // invalidation family (socket pushes, reply mutations) still finds
+    // this query; `statusFilter` in the key restarts at page 1 and
+    // aborts the in-flight request via the queryFn's AbortSignal (the
+    // 94-C2 debounce + abort lesson — no manual controller needed).
+    queryKey: ["/api/admin/tickets", "load-more", listParams],
+    queryFn: async ({ pageParam, signal }) => {
+      const r = await fetch(ticketsUrl(pageParam as number, statusFilter), {
         headers,
-        signal: controller.signal,
+        signal,
       });
       if (!r.ok) {
         const body = (await r.json().catch(() => null)) as {
@@ -169,54 +175,40 @@ export default function AdminTicketsPage() {
         throw new Error(getErrorMessage(body) || `فشل تحميل التذاكر (HTTP ${r.status})`);
       }
       const d = await r.json();
-      const rows = Array.isArray(d) ? d : [];
-      setTickets(rows);
-      // 94-C2 (A2 P1-1): a full page means the next page MIGHT exist.
-      setTicketsHasMore(rows.length === TICKETS_PAGE_SIZE);
-      setTicketPage(1);
-      setLoadError(null);
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      setLoadError(err instanceof Error ? err.message : "تعذّر تحميل التذاكر");
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  };
+      return Array.isArray(d) ? (d as TicketSummary[]) : [];
+    },
+    initialPageParam: 1,
+    // Frozen contract (backend returns a plain array with no total
+    // meta): a full page means the next page MIGHT exist; the first
+    // short/empty page is the definite end.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === TICKETS_PAGE_SIZE ? allPages.length + 1 : undefined,
+    enabled: !!adminToken,
+  });
 
-  // 94-C2 (A2 P1-1): "load more" appends the next page in place (dedup
-  // by id — new arrivals at the top can shift offset boundaries between
-  // requests). The button hides once a short page arrives.
-  const loadMoreTickets = async () => {
-    if (!adminToken || loadingMoreTickets) return;
-    const nextPage = ticketPage + 1;
-    setLoadingMoreTickets(true);
-    try {
-      const r = await fetch(ticketsUrl(nextPage, statusFilter), { headers });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل تحميل المزيد (HTTP ${r.status})`);
+  // Accumulated queue — dedup by id (the previous loadMoreTickets guard,
+  // kept): new arrivals at the top shift offset boundaries between page
+  // requests, so a row can legitimately repeat across pages.
+  const tickets = useMemo(() => {
+    const seen = new Set<number>();
+    const rows: TicketSummary[] = [];
+    for (const page of ticketsPages?.pages ?? []) {
+      for (const t of page) {
+        if (seen.has(t.id)) continue;
+        seen.add(t.id);
+        rows.push(t);
       }
-      const d = await r.json();
-      const rows = Array.isArray(d) ? d : [];
-      setTickets((prev) => {
-        const seen = new Set(prev.map((t) => t.id));
-        return [...prev, ...rows.filter((t) => !seen.has(t.id))];
-      });
-      setTicketsHasMore(rows.length === TICKETS_PAGE_SIZE);
-      setTicketPage(nextPage);
-    } catch (err) {
-      toast({
-        title: "تعذّر تحميل المزيد",
-        description: err instanceof Error ? err.message : "خطأ غير معروف",
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingMoreTickets(false);
     }
-  };
+    return rows;
+  }, [ticketsPages]);
+
+  const loadError = isError ? getErrorMessage(error) || "تعذّر تحميل التذاكر" : null;
+
+  // A single short page is the only case where the total is provably
+  // known — otherwise the honest count is «عرض N» (orders.tsx wording,
+  // 94-C2 A2 P1-1: never a grand total the plain-array contract can't
+  // know).
+  const knownTotal = (ticketsPages?.pages.length ?? 0) <= 1 && tickets.length < TICKETS_PAGE_SIZE;
 
   // B5-14 (round-92 audit, P2): openTicket had no `res.ok` check and
   // was invoked unawaited from onClick — a 401/500 detail fetch became
@@ -244,13 +236,14 @@ export default function AdminTicketsPage() {
     }
   };
 
-  useEffect(() => {
-    fetchTickets();
-  }, [adminToken, statusFilter]);
-
+  // R120-B5 (A2-F9): the dependency array previously keyed ONLY on
+  // `selected?.replies?.length` — opening a DIFFERENT ticket with the
+  // same reply count (1 ↔ 1, extremely common: opener + one user reply)
+  // never re-fired the scroll-to-bottom, landing the pane mid-thread.
+  // The ticket id joins the key so every switch scrolls to the newest.
   useEffect(() => {
     if (selected) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [selected?.replies?.length]);
+  }, [selected?.id, selected?.replies?.length]);
 
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
@@ -272,7 +265,7 @@ export default function AdminTicketsPage() {
       if (!res.ok) throw new Error(d.error);
       setReplyText("");
       await openTicket(selected.id);
-      fetchTickets();
+      void refetch();
     } catch (err: unknown) {
       toast({
         title: "خطأ",
@@ -297,7 +290,7 @@ export default function AdminTicketsPage() {
       });
       if (!res.ok) throw new Error((await res.json()).error);
       if (selected?.id === id) await openTicket(id);
-      fetchTickets();
+      void refetch();
       toast({
         title: status === "closed" ? "تم إغلاق التذكرة" : "تمت إعادة فتح التذكرة",
         variant: "success",
@@ -323,7 +316,7 @@ export default function AdminTicketsPage() {
   });
 
   return (
-    <AdminLayout onRefresh={() => void fetchTickets()} badges={{ openTickets: openCount }}>
+    <AdminLayout onRefresh={() => void refetch()} badges={{ openTickets: openCount }}>
       <div className="space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -337,10 +330,14 @@ export default function AdminTicketsPage() {
               )}
             </div>
             <p className="text-muted-foreground text-xs mt-0.5">
-              {/* 94-C2 (A2 P1-1): honest count — «عرض N» over the
-                  accumulated queue, never a false total. */}
-              عرض {formatCount(tickets.length, TICKET_COUNT_FORMS)}
-              {ticketsHasMore ? " · الأسفل قد يحوي المزيد" : ""}
+              {/* 94-C2 (A2 P1-1) + R120-B5 (A2-F9): honest count in the
+                  orders.tsx wording — «إجمالاً» only when the whole queue
+                  provably fits one page (a single short page), otherwise
+                  «عرض N» over the accumulated pages, never a false
+                  total the plain-array contract can't know. */}
+              {knownTotal
+                ? `${formatCount(tickets.length, TICKET_COUNT_FORMS)} إجمالاً`
+                : `عرض ${formatCount(tickets.length, TICKET_COUNT_FORMS)} (الأحدث أولاً)`}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -391,7 +388,7 @@ export default function AdminTicketsPage() {
                 <span>{loadError}</span>
                 <button
                   type="button"
-                  onClick={() => void fetchTickets()}
+                  onClick={() => void refetch()}
                   className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
                 >
                   إعادة المحاولة
@@ -399,12 +396,10 @@ export default function AdminTicketsPage() {
               </div>
             )}
             {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-card border border-border/60 rounded-2xl h-20 skeleton-shimmer"
-                />
-              ))
+              /* R120-B5 (A2-F9): the shared admin TableSkeleton replaces
+                 the five hand-rolled h-20 shimmer cards — same console
+                 idiom as orders/users/coupons. */
+              <TableSkeleton rows={5} cells={["w-10 rounded-xl", "flex-1", "w-16 rounded-full"]} />
             ) : loadError && tickets.length === 0 ? (
               /* Distinct from "no data": an outage/expired session previously
                  masqueraded as the empty state below (B5-04). Same
@@ -420,7 +415,7 @@ export default function AdminTicketsPage() {
                   حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
                 </p>
                 <Button
-                  onClick={() => void fetchTickets()}
+                  onClick={() => void refetch()}
                   className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
                 >
                   إعادة المحاولة
@@ -494,15 +489,17 @@ export default function AdminTicketsPage() {
                   the frozen `?page=N+1&limit=` contract in place — the
                   support queue's history past the silent 100-row cap
                   becomes reachable. The button hides once a short page
-                  arrives. */}
-                {ticketsHasMore && (
+                  arrives. R120-B5 (A2-F9): fetchNextPage replaces the
+                  hand-rolled page counter — React Query tracks the
+                  pages, the fetching flag, and the has-more verdict. */}
+                {hasNextPage && (
                   <div className="flex justify-center pt-1">
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-9 gap-1.5"
                       disabled={loadingMoreTickets}
-                      onClick={() => void loadMoreTickets()}
+                      onClick={() => void fetchNextPage()}
                     >
                       {loadingMoreTickets ? (
                         <>

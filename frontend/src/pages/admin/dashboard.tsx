@@ -2,7 +2,7 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useChartColors } from "@/lib/chart-theme";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
-import { formatCurrency, formatDate, statusLabel } from "@/lib/utils";
+import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient } from "@tanstack/react-query";
@@ -58,6 +58,17 @@ interface ChartDay {
 }
 
 const CURRENCY_KEYS = new Set(["الإيرادات", "الخصومات"]);
+
+/** R120-B5 (A5-F13): the money columns in the CSV export render in
+ *  formatCurrency's underlying en-US 2-decimal shape — but WITHOUT the
+ *  " د.ل" suffix (CSV cells stay numeric) and WITHOUT grouping: the
+ *  rows join on ",", so a grouped "1,234.50" would split into two
+ *  columns. Same digits as every money tile, CSV-parse-safe. */
+const CSV_DECIMAL_FORMATTER = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+});
 
 interface ChartTooltipProps {
   active?: boolean;
@@ -187,8 +198,8 @@ function exportChartCSV(data: ChartDay[], days: number) {
   const rows = data.map((d) => [
     d.date,
     d.orders,
-    (d.revenue ?? 0).toFixed(2),
-    ((d.discounts ?? 0) || 0).toFixed(2),
+    CSV_DECIMAL_FORMATTER.format(d.revenue ?? 0),
+    CSV_DECIMAL_FORMATTER.format((d.discounts ?? 0) || 0),
     d.coupon_orders || 0,
     d.users,
   ]);
@@ -319,6 +330,16 @@ export default function AdminDashboardPage() {
     else setGranularity("weekly");
   };
 
+  // R120-B5 (A2-F15): the users card used to repeat the WALLET card's
+  // number (total_wallet_balance) as its sub-line — the same figure twice
+  // within one glance. The wallet card stays the number's single home;
+  // the users card now surfaces NEW USERS TODAY, already loaded in the
+  // chart data (computeChartData's LAST bucket is anchored on the
+  // Tripoli "today" — backend routes/admin/stats.ts). Null while the
+  // chart fetch is still in flight (the sub-line renders conditionally).
+  const newUsersToday =
+    chartData.length > 0 ? Number(chartData[chartData.length - 1]?.users ?? 0) : null;
+
   const METRIC_CARDS = stats
     ? [
         {
@@ -362,7 +383,19 @@ export default function AdminDashboardPage() {
         {
           label: "المستخدمون",
           value: stats.total_users,
-          sub: `${formatCurrency(stats.total_wallet_balance ?? 0)} رصيد كلي`,
+          /* R120-B5 (A2-F15): new-users-today replaces the duplicated
+             wallet-balance sub-line (see newUsersToday above) — a
+             distinct, non-overlapping signal for the same tile. */
+          sub:
+            newUsersToday == null
+              ? undefined
+              : `${formatCount(newUsersToday, {
+                  one: "مستخدم جديد",
+                  two: "مستخدمان جديدان",
+                  few: "مستخدمين جدد",
+                  many: "مستخدماً جديداً",
+                  other: "مستخدم جديد",
+                })} اليوم`,
           icon: Users,
           color: "text-blue-400",
           bg: "bg-blue-400/10",

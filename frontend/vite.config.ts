@@ -13,6 +13,15 @@ import { injectGoogleSiteVerification } from "./src/lib/seo";
  * - Exits non-zero if size > 56320 bytes (55 KiB)
  * - Warns if 47120 < size ≤ 56320 bytes
  * - Exits 0 silently if size ≤ 47120 bytes
+ *
+ * R120-B5 (A5-F3): the entry gate above is kept, but it only measured
+ * ONE file of the eager path. This plugin now ADDITIONALLY gates the
+ * FULL eager set resolved from dist/public/index.html — every
+ * `rel="modulepreload"` JS chunk, the module-entry script, and the
+ * stylesheet(s) — summing their gzip sizes: hard-fail > 160 KiB, warn
+ * > 145 KiB. (At R120 the entry chunk is ~27 KiB gz of a ~149 KiB gz
+ * eager path — the old gate watched 18% of the bytes a cold visitor
+ * downloads before first paint.)
  */
 function bundleBudgetPlugin(): Plugin {
   return {
@@ -76,7 +85,67 @@ function bundleBudgetPlugin(): Plugin {
           `[bundle-budget] WARNING: Gzip size ${gzipSize} bytes is close to limit of ${GZIP_LIMIT_ERROR} bytes (55 KiB)`,
         );
       }
-      // Otherwise exit 0 silently
+      // Otherwise exit 0 silently for the entry chunk.
+
+      // ── R120-B5 (A5-F3): the FULL eager-path SUM gate ──────────────
+      //
+      // The entry check above certifies ONE file; a cold visit downloads
+      // the whole eager graph the HTML declares before first paint:
+      // every modulepreload chunk Vite emits for the entry's static
+      // imports, the module-entry script itself, and the entry
+      // stylesheet(s). Resolve the set from the HTML (the same ground
+      // truth as the entry lookup), sum their gzip sizes, and gate the
+      // SUM: hard-fail above 160 KiB, warn above 145 KiB.
+      const eagerFiles = new Set<string>([indexFile]);
+      for (const tagMatch of html.matchAll(/<link\b[^>]*>/g)) {
+        const tag = tagMatch[0];
+        const rel = tag.match(/\brel="([^"]*)"/)?.[1] ?? "";
+        const href = tag.match(/\bhref="([^"]*)"/)?.[1];
+        if (!href) continue;
+        const file = path.basename(href);
+        if (rel === "modulepreload" && /\.js$/.test(file)) eagerFiles.add(file);
+        else if (rel === "stylesheet" && /\.css$/.test(file)) eagerFiles.add(file);
+      }
+
+      let eagerGzipSum = 0;
+      const breakdown: string[] = [];
+      for (const file of eagerFiles) {
+        const eagerPath = path.join(outDir, file);
+        // Containment guard: every scanned file must resolve inside outDir.
+        if (path.relative(outDir, eagerPath).startsWith("..")) {
+          console.error("[bundle-budget] Resolved path escapes outDir:", eagerPath);
+          process.exit(1);
+        }
+        if (!existsSync(eagerPath)) {
+          console.error(
+            "[bundle-budget] Eager-path file referenced by index.html not found:",
+            eagerPath,
+          );
+          process.exit(1);
+        }
+        const fileGzip = gzipSync(readFileSync(eagerPath)).length;
+        breakdown.push(`${file}=${fileGzip}`);
+        eagerGzipSum += fileGzip;
+      }
+
+      const EAGER_GZIP_LIMIT_ERROR = 160 * 1024; // 160 KiB hard fail
+      const EAGER_GZIP_LIMIT_WARN = 145 * 1024; // 145 KiB warning threshold
+
+      console.log(
+        `[bundle-budget] eager path (${eagerFiles.size} files: ${breakdown.join(" + ")}): ` +
+          `${eagerGzipSum} bytes (gzip)`,
+      );
+
+      if (eagerGzipSum > EAGER_GZIP_LIMIT_ERROR) {
+        console.error(
+          `[bundle-budget] ERROR: Eager-path gzip size ${eagerGzipSum} bytes exceeds limit of ${EAGER_GZIP_LIMIT_ERROR} bytes (160 KiB)`,
+        );
+        process.exit(1);
+      } else if (eagerGzipSum > EAGER_GZIP_LIMIT_WARN) {
+        console.warn(
+          `[bundle-budget] WARNING: Eager-path gzip size ${eagerGzipSum} bytes is close to limit of ${EAGER_GZIP_LIMIT_ERROR} bytes (160 KiB)`,
+        );
+      }
     },
   };
 }

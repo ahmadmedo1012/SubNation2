@@ -22,6 +22,7 @@
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
@@ -68,10 +69,15 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 const fetchMock = vi.fn();
 
 function renderPage() {
+  // R120-B5 (A2-F9): the queue rides useInfiniteQuery now — a fresh
+  // client per render (retry: false) per the page-test convention.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <Router>
-      <AdminTicketsPage />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminTicketsPage />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 

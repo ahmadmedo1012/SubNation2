@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { formatCount, formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey, getGetWalletQueryKey } from "@workspace/api-client-react";
 import {
   AlertCircle,
@@ -23,7 +23,7 @@ import {
   WifiOff,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 interface LoyaltyData {
@@ -112,26 +112,111 @@ function clearStoredConvertKey(): void {
   }
 }
 
+// ── R120-B5 (A5-F4/F5/F6): ONE cache identity for GET /api/loyalty ─────────
+//
+// The key below is SHARED with pages/referrals.tsx (its overview query
+// reads the same endpoint). Before R120 the loyalty page kept its own
+// raw-fetch + useState copy while referrals used
+// ["loyalty-overview", token] — two caches for one endpoint, so a points
+// conversion invalidated neither the twin it didn't know about, leaving
+// /referrals showing a stale balance for up to the 60 s staleTime. The
+// key deliberately carries NO token (F6, the app-wide convention —
+// generated getGetMeQueryKey-style keys are token-less and auth.tsx
+// clears the whole cache on logout, so cross-account bleed cannot
+// happen). If this tuple ever changes, change referrals.tsx with it —
+// pinned by loyalty-referrals-shared-cache.test.tsx.
+const LOYALTY_OVERVIEW_QUERY_KEY = ["loyalty", "overview"] as const;
+// The points-history twin (GET /api/loyalty/ledger) — same family prefix
+// so a family-wide invalidation catches both.
+const LOYALTY_LEDGER_QUERY_KEY = ["loyalty", "ledger"] as const;
+
+/** Payload shape guard (B4 P1-3): a 5xx {error} envelope or a malformed
+ * 200 must never reach `data.points.toLocaleString()` — the queryFn
+ * throws it into the error state, and the render branch below re-checks
+ * so even a cross-page cached entry (referrals' queryFn has no guard)
+ * degrades to the error card instead of the ErrorBoundary. */
+function isLoyaltyPayload(d: unknown): d is LoyaltyData {
+  return (
+    !!d &&
+    typeof (d as LoyaltyData).points === "number" &&
+    typeof (d as LoyaltyData).points_rate === "object" &&
+    (d as LoyaltyData).points_rate !== null
+  );
+}
+
 export default function LoyaltyPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [data, setData] = useState<LoyaltyData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // R120-B5 (A5-F4): the page data now rides react-query — the SAME
+  // ["loyalty","overview"] cache entry referrals.tsx reads (see the
+  // key's docblock above). This replaces the raw fetch + useState copy
+  // that went stale on the twin page after a conversion. Error/empty
+  // semantics are preserved verbatim: a failed first load (no cached
+  // data) renders the error card; a background-refetch failure with
+  // stale data still on screen is NOT an error screen.
+  const overviewQ = useQuery<LoyaltyData>({
+    queryKey: LOYALTY_OVERVIEW_QUERY_KEY,
+    queryFn: async ({ signal }) => {
+      const r = await fetch("/api/loyalty", {
+        headers: { Authorization: token ? `Bearer ${token}` : "" },
+        // React Query's signal aborts on unmount/cancel — the raw fetch
+        // below used to run to completion even after the page died.
+        signal,
+      });
+      // res.ok check: a 5xx arrives as an {error} envelope, and the
+      // render path dereferences d.points/d.tier directly — without
+      // this gate the old code fed the envelope into the UI (B4 P1-3).
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = (await r.json()) as unknown;
+      // Payload shape guard: don't let a malformed 200 reach
+      // `data.points.toLocaleString()` — render the error state
+      // instead of crashing into the ErrorBoundary.
+      if (!isLoyaltyPayload(d)) throw new Error("bad payload");
+      return d;
+    },
+    enabled: !!token,
+    // 60 s matches the app-wide default (App.tsx) and referrals.tsx.
+    staleTime: 60_000,
+  });
+
+  const data = overviewQ.data ?? null;
+  const loading = overviewQ.isLoading;
   // Distinct from "no data": an API outage / 5xx envelope previously
   // rendered a blank page under the header (data=null, no error branch)
   // or crashed the render via `data.points.toLocaleString()` when the
   // body was an error envelope instead of the loyalty payload (B4 P1-3).
-  const [loadError, setLoadError] = useState(false);
+  const loadError =
+    (overviewQ.isError && data == null) || (data != null && !isLoyaltyPayload(data));
+
+  // R115 (A8 P2): the POINTS HISTORY — GET /api/loyalty/ledger. Kept as
+  // a separate query from the page data: a failed history fetch must
+  // never blank the stats/conversion cards above (and vice versa).
+  const ledgerQ = useQuery<PointsLedgerEntry[]>({
+    queryKey: LOYALTY_LEDGER_QUERY_KEY,
+    queryFn: async ({ signal }) => {
+      const r = await fetch("/api/loyalty/ledger", {
+        headers: { Authorization: token ? `Bearer ${token}` : "" },
+        signal,
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = (await r.json()) as unknown;
+      // Array shape guard → distinct error state, never a fake
+      // "no history yet".
+      if (!Array.isArray(d)) throw new Error("bad payload");
+      return d;
+    },
+    enabled: !!token,
+    staleTime: 60_000,
+  });
+
+  const history = ledgerQ.data ?? [];
+  const historyLoading = ledgerQ.isLoading;
+  const historyError = ledgerQ.isError && ledgerQ.data == null;
+
   const [convertPoints, setConvertPoints] = useState("");
   const [converting, setConverting] = useState(false);
-  // R115 (A8 P2): the POINTS HISTORY — GET /api/loyalty/ledger. Kept as a
-  // separate state machine from the page data: a failed history fetch must
-  // never blank the stats/conversion cards above (and vice versa).
-  const [history, setHistory] = useState<PointsLedgerEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState(false);
   // Conversion failures used to be toast-only (4 s) — a money-critical
   // error must stay visible until the next attempt clears it (B4 P1-7).
   const [convertError, setConvertError] = useState<string | null>(null);
@@ -157,71 +242,11 @@ export default function LoyaltyPage() {
 
   const headers = { Authorization: token ? `Bearer ${token}` : "" };
 
-  const fetchData = useCallback(() => {
-    if (!token) return;
-    const headers = { Authorization: token ? `Bearer ${token}` : "" };
-    setLoading(true);
-    setLoadError(false);
-    fetch("/api/loyalty", { headers })
-      .then(async (r) => {
-        // res.ok check: a 5xx arrives as an {error} envelope, and the
-        // render path dereferences d.points/d.tier directly — without
-        // this gate the old code fed the envelope into the UI.
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d: LoyaltyData) => {
-        // Payload shape guard: don't let a malformed 200 reach
-        // `data.points.toLocaleString()` — render the error state
-        // instead of crashing into the ErrorBoundary.
-        if (!d || typeof d.points !== "number" || !d.points_rate) {
-          throw new Error("bad payload");
-        }
-        setData(d);
-      })
-      .catch(() => {
-        setData(null);
-        setLoadError(true);
-      })
-      .finally(() => setLoading(false));
-  }, [token]);
-
+  // Login redirect (unchanged): the queries above are gated on
+  // `enabled: !!token`, so an unauthenticated visit never fetches.
   useEffect(() => {
-    if (!token) {
-      navigate("/login");
-      return;
-    }
-    fetchData();
-  }, [token, navigate, fetchData]);
-
-  // R115 (A8 P2): the points-history fetcher — same resilience contract
-  // as fetchData (res.ok gate + array shape guard → distinct error state,
-  // never a fake "no history yet").
-  const fetchHistory = useCallback(() => {
-    if (!token) return;
-    const headers = { Authorization: token ? `Bearer ${token}` : "" };
-    setHistoryLoading(true);
-    setHistoryError(false);
-    fetch("/api/loyalty/ledger", { headers })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((d: PointsLedgerEntry[]) => {
-        if (!Array.isArray(d)) throw new Error("bad payload");
-        setHistory(d);
-      })
-      .catch(() => {
-        setHistory([]);
-        setHistoryError(true);
-      })
-      .finally(() => setHistoryLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) return;
-    fetchHistory();
-  }, [token, fetchHistory]);
+    if (!token) navigate("/login");
+  }, [token, navigate]);
 
   // R115 (A12 de-hardcode / A8 #8+#10): EVERY conversion gate on this
   // page (min, multiples, step, max, placeholder, copy) derives from
@@ -300,10 +325,16 @@ export default function LoyaltyPage() {
       // invalidation pair as checkout/product after a purchase (B4 P1-7).
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
-      fetchData();
-      // R115: the conversion just appended a conversion_out row — refresh
-      // the history list with the same refetch.
-      fetchHistory();
+      // R120-B5 (A5-F4/F5): the SHARED loyalty cache identity — the same
+      // ["loyalty","overview"] entry referrals.tsx renders from. The
+      // old local-only refetch left /referrals showing the pre-convert
+      // points for up to 60 s after money moved. Both queries on this
+      // page are active observers, so this single call refreshes the
+      // stats tiles here AND arms the twin page's entry for its next
+      // mount; the ledger refetch also pulls the conversion_out row the
+      // mutation just appended (R115).
+      queryClient.invalidateQueries({ queryKey: LOYALTY_OVERVIEW_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: LOYALTY_LEDGER_QUERY_KEY });
     } catch (err: unknown) {
       // R111-F2 Q1 (same family as the throw above): actionable fallback
       // instead of the vague «فشلت العملية».
@@ -421,13 +452,13 @@ export default function LoyaltyPage() {
             حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
           </p>
           <Button
-            onClick={() => fetchData()}
+            onClick={() => void overviewQ.refetch()}
             className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
           >
             إعادة المحاولة
           </Button>
         </div>
-      ) : data ? (
+      ) : data && isLoyaltyPayload(data) ? (
         <div className="space-y-4">
           {/* Stats Row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -771,7 +802,7 @@ export default function LoyaltyPage() {
                   حدث خطأ في الاتصال — أعد المحاولة لعرض حركات نقاطك
                 </p>
                 <Button
-                  onClick={() => fetchHistory()}
+                  onClick={() => void ledgerQ.refetch()}
                   size="sm"
                   className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl h-9"
                 >

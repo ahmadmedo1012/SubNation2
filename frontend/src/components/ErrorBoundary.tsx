@@ -96,7 +96,14 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
       return (
-        <div className="min-h-screen bg-background flex items-center justify-center px-4" dir="rtl">
+        <div
+          // R120-B5 (A3-F7): dvh straggler — the project's viewport-fill
+          // convention is min-h-[100dvh] (home.tsx:416 documents it);
+          // 100vh over-scrolls under mobile browser chrome, clipping the
+          // reload/home actions on the crash screen of all places.
+          className="min-h-[100dvh] bg-background flex items-center justify-center px-4"
+          dir="rtl"
+        >
           <div className="text-center max-w-sm w-full space-y-7">
             {/* Icon — 94-C3 (A3 P2-1): raw red-500/400 hues → the shared
                 --status-error family (same tone AuthErrorBanner/StatusBadge
