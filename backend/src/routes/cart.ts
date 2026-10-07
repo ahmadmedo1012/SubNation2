@@ -3,6 +3,7 @@ import { db, cartItemsTable, productVariantsTable, productsTable } from "@worksp
 import { and, eq, inArray } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { intParam } from "../lib/http";
 import { applyFlashSale, type FlashSaleStage } from "../lib/pricing";
 
 const router = Router();
@@ -253,11 +254,15 @@ router.post("/items", requireUser, async (req, res) => {
 // PATCH /api/cart/items/:id — update quantity
 router.patch("/items/:id", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
-  const idParam = req.params.id;
-  const id = parseInt(Array.isArray(idParam) ? (idParam[0] ?? "") : (idParam ?? ""), 10);
+  // R122 (A3-P2-3): the lenient `parseInt` accepted "12abc" → 12 (silent
+  // truncation — a contract-400 mutated a different resource id) and
+  // "-5" → -5 (wasted query → misleading 404). Every other :id route in
+  // the repo funnels through the digit-exact intParam (A5-14); cart now
+  // does too — well-formed ids behave identically.
+  const id = intParam(req, "id");
   const { quantity } = req.body ?? {};
 
-  if (isNaN(id))
+  if (id === null)
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
   if (typeof quantity !== "number" || quantity < 1 || !Number.isInteger(quantity))
     return res
@@ -298,10 +303,11 @@ router.patch("/items/:id", requireUser, async (req, res) => {
 // DELETE /api/cart/items/:id — remove item
 router.delete("/items/:id", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
-  const idParam = req.params.id;
-  const id = parseInt(Array.isArray(idParam) ? (idParam[0] ?? "") : (idParam ?? ""), 10);
+  // R122 (A3-P2-3): intParam — same digit-exact contract as PATCH above
+  // ("12abc"/"-5" are 400s now, not silent truncation / wasted queries).
+  const id = intParam(req, "id");
 
-  if (isNaN(id))
+  if (id === null)
     return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [existing] = await db

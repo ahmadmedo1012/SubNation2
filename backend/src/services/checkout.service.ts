@@ -679,7 +679,18 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       throw err;
     });
 
-  if (!order) return { ok: false, reason: "INVENTORY_CLAIMED" };
+  // R122 (A3-P2-5): the old `if (!order) return { ok: false, reason:
+  // "INVENTORY_CLAIMED" }` fallback was DEAD — the transaction callback
+  // either returns the inserted order row or throws (which the catch above
+  // maps to a {failure} object or rethrows), so `order` is never
+  // null/undefined. Worse, it was DISHONEST: if a future refactor ever made
+  // it reachable, the retryable "someone else claimed the stock" 409 would
+  // mask the real defect. Assertion-style guard instead — a logic
+  // regression now fails loudly (500 via the global handler, caught by
+  // tests) with an error that names the actual invariant.
+  if (!order) {
+    throw new Error("checkout: transaction resolved without an order or a failure reason");
+  }
   if (typeof order === "object" && "failure" in order) {
     if (order.failure === "PRODUCT_STALE") {
       // F4 — internal marker → stable retryable envelope (see comments at

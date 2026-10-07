@@ -54,9 +54,24 @@ export function limitParam(req: Request, def: number, max: number): number {
 /**
  * R120-B6/A6-F1: clamp helper for user-facing list `?page=` params — the
  * exact admin/orders.ts:213-217 idiom (page ≥ 1; NaN/garbage/0 → 1).
+ *
+ * R122 (A3-P2-2): the clamp previously had NO ceiling — `?page=100000000`
+ * multiplied by the route's limit into an OFFSET of ~2×10⁷ rows (sequential
+ * scan + discard per request; userLimiter allows 1200/min). Deep paging is
+ * now bounded at MAX_PAGE (10 000 pages × the largest per-route limit of
+ * 200 = ≤ 2M offset — far beyond any legitimate user history in this
+ * storefront, while capping the abuse shape by two orders of magnitude).
+ * Clamping (not 400ing) keeps this helper's documented garbage-in-clamped
+ * contract and every consumer route's signature unchanged; Postgres also
+ * stops scanning once the underlying (userId-filtered) row set is
+ * exhausted, so the real cost stays bounded by the user's own history.
  */
+const MAX_PAGE = 10_000;
+
 export function pageParam(req: Request): number {
-  return Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
+  const parsed = Number.parseInt(queryString(req, "page", "1"), 10) || 1;
+  // R122 (A3-P2-2): floor at 1, ceiling at MAX_PAGE (see above).
+  return Math.min(Math.max(parsed, 1), MAX_PAGE);
 }
 
 /**

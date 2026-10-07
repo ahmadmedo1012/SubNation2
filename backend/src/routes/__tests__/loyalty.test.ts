@@ -512,3 +512,163 @@ describe("GET /api/loyalty", () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ── R122 (A3-P2-1): exact referral totals + /referrals pagination ────────────
+
+/**
+ * R122 (A3-P2-1): the summary counts were computed over a `.limit(200)`
+ * page — a heavy referrer saw referrals_total=200 forever and
+ * referrals_credited / referrals_pending were clamped to the newest 200
+ * rows. The list itself was also hard-capped at 200 with no way to reach
+ * older referrals (the same gap the R120 A6-F1 fix closed for orders /
+ * wallet topups / the ledgers). Both are fixed: exact COUNT(+FILTER)
+ * aggregates for the summary, additive ?page= for the list.
+ */
+describe("R122 (A3-P2-1) — GET /api/loyalty referral totals are exact beyond 200", () => {
+  const TOTAL = 205; // 120 credited + 85 pending
+
+  it("referrals_total/credited/pending count ALL rows, not the newest 200", async () => {
+    const referrer = await seedUser();
+    // Bulk-seed 205 referee users + events (mixed statuses so the FILTER
+    // counts are exercised, not just count(*)).
+    const referees = await db
+      .insert(usersTable)
+      .values(
+        Array.from({ length: TOTAL }, (_, i) => ({
+          phone: `9130${String(i).padStart(6, "0")}`,
+        })),
+      )
+      .returning();
+    await db.insert(referralEventsTable).values(
+      referees.map((referee, i) => ({
+        referrerId: referrer.id,
+        refereeId: referee.id,
+        status: i < 120 ? ("credited" as const) : ("pending" as const),
+        creditedAt: i < 120 ? new Date(Date.now() - (TOTAL - i) * 1000) : null,
+        createdAt: new Date(Date.now() - (TOTAL - i) * 1000),
+      })),
+    );
+    const token = signUserToken({ userId: referrer.id });
+
+    const res = await call<{
+      referrals_total: number;
+      referrals_credited: number;
+      referrals_pending: number;
+    }>(app, "GET", "/api/loyalty", { token });
+
+    expect(res.status).toBe(200);
+    // The old shape read referrals_total: 200 (the page cap), with
+    // credited/pending computed over only the newest 200 rows.
+    expect(res.body.referrals_total).toBe(TOTAL);
+    expect(res.body.referrals_credited).toBe(120);
+    expect(res.body.referrals_pending).toBe(85);
+  });
+
+  it("a referrer with zero events keeps the zero shape", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ referrals_total: number }>(app, "GET", "/api/loyalty", { token });
+    expect(res.body.referrals_total).toBe(0);
+  });
+});
+
+describe("R122 (A3-P2-1) — GET /api/loyalty/referrals pagination (pageParam idiom)", () => {
+  const TOTAL = 205;
+
+  /** Deterministic descending-by-created_at history: oldest row is 1000ms ago. */
+  const createdAtFor = (i: number): Date => new Date(Date.now() - (TOTAL - i) * 1000);
+
+  async function seedReferrals(referrerId: number): Promise<void> {
+    const referees = await db
+      .insert(usersTable)
+      .values(
+        Array.from({ length: TOTAL }, (_, i) => ({ phone: `9131${String(i).padStart(6, "0")}` })),
+      )
+      .returning();
+    await db.insert(referralEventsTable).values(
+      referees.map((referee, i) => ({
+        referrerId,
+        refereeId: referee.id,
+        status: "pending" as const,
+        createdAt: createdAtFor(i),
+      })),
+    );
+  }
+
+  it("default page=1 → 200 rows (cap unchanged); ?page=2 exposes the 5 oldest beyond it", async () => {
+    const referrer = await seedUser();
+    await seedReferrals(referrer.id);
+    const token = signUserToken({ userId: referrer.id });
+
+    const allIds = (await call<{ id: number }[]>(app, "GET", "/api/loyalty/referrals", { token }))
+      .body;
+    expect(allIds).toHaveLength(200); // the per-page cap is unchanged
+
+    const page2 = await callWithQuery<{ id: number }[]>(
+      app,
+      "/api/loyalty/referrals?page=2",
+      token,
+    );
+    expect(page2.status).toBe(200);
+    expect(page2.body).toHaveLength(5); // rows 201..205 — the unreachable tail
+    // Newest-first: none of the page-2 rows appeared on page 1.
+    expect(page2.body[0].id).not.toBe(allIds[0].id);
+    expect(allIds).not.toContainEqual(page2.body[0].id);
+
+    // page=1 explicit is byte-identical to the default.
+    const explicit = await callWithQuery<{ id: number }[]>(
+      app,
+      "/api/loyalty/referrals?page=1",
+      token,
+    );
+    expect(explicit.body).toStrictEqual(allIds);
+
+    // Beyond the end → empty array, not an error.
+    const beyond = await callWithQuery<unknown[]>(app, "/api/loyalty/referrals?page=99", token);
+    expect(beyond.status).toBe(200);
+    expect(beyond.body).toStrictEqual([]);
+
+    // The clamp idiom: garbage / 0 / negative page → page 1.
+    for (const q of ["?page=abc", "?page=0", "?page=-3"]) {
+      const clamped = await callWithQuery<{ id: number }[]>(
+        app,
+        `/api/loyalty/referrals${q}`,
+        token,
+      );
+      expect(clamped.body).toStrictEqual(allIds);
+    }
+  });
+});
+
+/** Route-suite helper variant that carries the query string in the path
+ * (the local `call` helper in this file hard-builds the path without query
+ * params in its signature — thin wrapper, same fetch discipline). */
+async function callWithQuery<T = unknown>(
+  app: express.Express,
+  pathWithQuery: string,
+  token?: string,
+): Promise<{ status: number; body: T }> {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        reject(new Error("no address"));
+        return;
+      }
+      try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers.Cookie = `auth_token=${token}`;
+        const res = await fetch(`http://127.0.0.1:${addr.port}${pathWithQuery}`, {
+          headers,
+        });
+        const text = await res.text();
+        const body = text ? (JSON.parse(text) as unknown) : null;
+        resolve({ status: res.status, body: body as T });
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}

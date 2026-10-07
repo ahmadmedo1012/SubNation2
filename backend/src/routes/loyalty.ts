@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable, referralEventsTable, pointsLedgerTable } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { pageParam } from "../lib/http";
 import { idempotency } from "../middlewares/idempotency";
@@ -51,15 +51,22 @@ router.get("/", requireUser, async (req, res) => {
       .status(401)
       .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
 
-  const referrals = await db
-    .select()
+  // R122 (A3-P2-1): the totals were computed over a `.limit(200)` page — a
+  // heavy referrer saw referrals_total=200 forever and referrals_credited /
+  // referrals_pending were clamped to the newest 200 rows. One exact
+  // aggregate (COUNT + FILTER per status) replaces the capped row fetch;
+  // the numbers are now true for any history size.
+  const [referralCounts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      credited: sql<number>`(count(*) filter (where ${referralEventsTable.status} = 'credited'))::int`,
+      pending: sql<number>`(count(*) filter (where ${referralEventsTable.status} = 'pending'))::int`,
+    })
     .from(referralEventsTable)
-    .where(eq(referralEventsTable.referrerId, userId))
-    .orderBy(desc(referralEventsTable.createdAt))
-    .limit(200);
-
-  const creditedCount = referrals.filter((r) => r.status === "credited").length;
-  const pendingCount = referrals.filter((r) => r.status === "pending").length;
+    .where(eq(referralEventsTable.referrerId, userId));
+  const referralsTotal = referralCounts?.total ?? 0;
+  const creditedCount = referralCounts?.credited ?? 0;
+  const pendingCount = referralCounts?.pending ?? 0;
 
   const nextTierInfo = nextTier(parseFloat(String(user.lifetimeSpend)));
 
@@ -70,7 +77,7 @@ router.get("/", requireUser, async (req, res) => {
     referral_code: user.referralCode ?? "",
     referral_link: `${process.env.APP_URL ?? ""}/register?ref=${user.referralCode ?? ""}`,
     referred_by: user.referredBy,
-    referrals_total: referrals.length,
+    referrals_total: referralsTotal,
     referrals_credited: creditedCount,
     referrals_pending: pendingCount,
     points_value_lyd: (user.loyaltyPoints / POINTS_PER_LYD).toFixed(2),
@@ -324,6 +331,14 @@ router.get("/ledger", requireUser, async (req, res) => {
 router.get("/referrals", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
+  // R122 (A3-P2-1): the list was hard-capped at the first 200 rows with no
+  // way to reach older referrals (the same gap the R120 A6-F1 fix closed
+  // for orders / wallet topups / the ledgers). Additive ?page= (the R120
+  // idiom, offset=(page-1)*200; pageParam clamps garbage/0/negative → 1
+  // and, since R122, caps absurd deep pages at 10 000) — default page=1 →
+  // offset 0 → byte-identical response for every existing caller.
+  const offset = (pageParam(req) - 1) * 200;
+
   const events = await db
     .select({
       id: referralEventsTable.id,
@@ -336,7 +351,8 @@ router.get("/referrals", requireUser, async (req, res) => {
     .innerJoin(usersTable, eq(usersTable.id, referralEventsTable.refereeId))
     .where(eq(referralEventsTable.referrerId, userId))
     .orderBy(desc(referralEventsTable.createdAt))
-    .limit(200);
+    .limit(200)
+    .offset(offset);
 
   const maskPhone = (p: string) => (p.length >= 7 ? p.slice(0, 3) + "****" + p.slice(-3) : p);
 

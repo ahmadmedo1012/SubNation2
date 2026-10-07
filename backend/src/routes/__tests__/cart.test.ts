@@ -313,6 +313,43 @@ describe("PATCH /api/cart/items/:id", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  // R122 (A3-P2-3): the route used a lenient parseInt, so "12abc" silently
+  // truncated to 12 (mutating a different resource id than the contract
+  // names) and "-5" reached the DB as a negative PK (wasted query → 404).
+  // intParam makes the digit-exact 400 the contract documents.
+  it('rejects a garbage-suffixed id ("12abc") with 400 — no silent truncation', async () => {
+    const token = signUserToken({ userId: userA.id });
+    const created = await call<{ id: number }>(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: product1.id, quantity: 1 },
+    });
+    expect(created.status).toBe(201);
+    // A well-formed id still passes through intParam unchanged.
+    const ok = await call<{ id: number }>(app, "PATCH", `/api/cart/items/${created.body.id}`, {
+      token,
+      body: { quantity: 2 },
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.body.id).toBe(created.body.id);
+
+    const bad = await call<{ code: string }>(app, "PATCH", `/api/cart/items/12abc`, {
+      token,
+      body: { quantity: 2 },
+    });
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe("INVALID_DATA");
+  });
+
+  it('rejects a negative id ("-5") with 400 — the documented shape, not a 404 from a wasted query', async () => {
+    const token = signUserToken({ userId: userA.id });
+    const res = await call<{ code: string }>(app, "PATCH", "/api/cart/items/-5", {
+      token,
+      body: { quantity: 2 },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_DATA");
+  });
 });
 
 describe("DELETE /api/cart/items/:id", () => {
@@ -345,6 +382,18 @@ describe("DELETE /api/cart/items/:id", () => {
       token: tokenB,
     });
     expect(res.status).toBe(404);
+  });
+
+  // R122 (A3-P2-3): same digit-exact intParam contract as PATCH above —
+  // "12abc" used to delete item 12 (silent truncation).
+  it('rejects a garbage-suffixed id ("12abc") with 400 — DELETE no longer truncates', async () => {
+    const token = signUserToken({ userId: userA.id });
+    const res = await call<{ code: string }>(app, "DELETE", "/api/cart/items/12abc", { token });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_DATA");
+    // Nothing was deleted by the truncated id.
+    const rows = await db.select().from(cartItemsTable);
+    expect(rows).toHaveLength(0);
   });
 });
 

@@ -1,4 +1,5 @@
 import express, { type Express, type Request, type RequestHandler } from "express";
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getRedisClient } from "../../lib/redis-client";
 import { idempotency } from "../idempotency";
@@ -743,6 +744,183 @@ describe("idempotency middleware — F-3 (R118-A1): the same-tick concurrent-arr
       expect(replay.status).toBe(201);
       expect(replay.headers.get("Idempotent-Replayed")).toBe("true");
       expect(handler).toHaveBeenCalledTimes(1);
+    } finally {
+      close();
+    }
+  });
+});
+
+// ── R122 (A3-P2-4): canonical (key-order-insensitive) body hashing ──────────
+
+/**
+ * R122 (A3-P2-4): bodyHash hashed raw JSON.stringify — key-order
+ * sensitive. The header comment's "the admin UI is the only sender"
+ * assumption stopped holding when the middleware was mounted on the USER
+ * routes (orders / wallet topups / loyalty convert), so a non-UI client
+ * (or a client-library upgrade that changes key order) retrying a
+ * semantically identical body got a false 409 IDEMPOTENCY_KEY_REUSE
+ * instead of the replay. The hash now covers the CANONICAL form
+ * (recursively key-sorted); a transition window additionally accepts the
+ * LEGACY hash so claims cached by a pre-R122 deploy keep replaying for
+ * byte-identical retries until the 24 h TTL ages them out.
+ */
+describe("idempotency middleware — R122 (A3-P2-4): canonical body hash", () => {
+  it("a reordered-but-equivalent body REPLAYS (was a false 409 IDEMPOTENCY_KEY_REUSE)", async () => {
+    const double = installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true, n: 1 });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const key = "canonical key one";
+      const headers = { "Idempotency-Key": key };
+
+      const first = await post(url, { amount: 50, coupon_code: "SAVE10" }, headers);
+      expect(first.status).toBe(201);
+      await settle();
+
+      // Same values, different key order — a client-library upgrade or a
+      // hand-rolled sender produces exactly this shape on retry.
+      const retry = await post(url, { coupon_code: "SAVE10", amount: 50 }, headers);
+      expect(retry.status).toBe(201);
+      expect(retry.headers.get("Idempotent-Replayed")).toBe("true");
+      expect(retry.body).toEqual(first.body);
+      expect(handler).toHaveBeenCalledTimes(1);
+    } finally {
+      close();
+    }
+  });
+
+  it("reordering is canonicalized RECURSIVELY (nested objects), arrays keep their order", async () => {
+    const double = installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const key = "canonical nested one";
+      const headers = { "Idempotency-Key": key };
+
+      const first = await post(
+        url,
+        { outer: { b: 2, a: { z: 1, y: 2 } }, list: [1, 2, 3] },
+        headers,
+      );
+      expect(first.status).toBe(201);
+      await settle();
+
+      // Nested keys reordered → same canonical form → replay.
+      const nested = await post(
+        url,
+        { list: [1, 2, 3], outer: { a: { y: 2, z: 1 }, b: 2 } },
+        headers,
+      );
+      expect(nested.headers.get("Idempotent-Replayed")).toBe("true");
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // Array ORDER is semantic — a re-ordered array is a different intent.
+      const reorderedArray = await post(
+        url,
+        { outer: { b: 2, a: { z: 1, y: 2 } }, list: [3, 2, 1] },
+        headers,
+      );
+      expect(reorderedArray.status).toBe(409);
+      expect(reorderedArray.body).toMatchObject({ code: "IDEMPOTENCY_KEY_REUSE" });
+      expect(handler).toHaveBeenCalledTimes(1);
+    } finally {
+      close();
+    }
+  });
+
+  it("a genuinely different body still 409s (the reuse guard is not weakened)", async () => {
+    installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const key = "canonical diff one";
+      const headers = { "Idempotency-Key": key };
+      const first = await post(url, { amount: 50 }, headers);
+      expect(first.status).toBe(201);
+      await settle();
+
+      const conflict = await post(url, { amount: 900 }, headers);
+      expect(conflict.status).toBe(409);
+      expect(conflict.body).toMatchObject({ code: "IDEMPOTENCY_KEY_REUSE" });
+      expect(handler).toHaveBeenCalledTimes(1);
+    } finally {
+      close();
+    }
+  });
+
+  it("transition window: a claim cached with the OLD order-sensitive hash still replays a byte-identical retry (no false 409 across the deploy)", async () => {
+    const double = installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true, n: 7 });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const key = "legacy hash one";
+      const headers = { "Idempotency-Key": key };
+      const body = { amount: 50, coupon_code: "SAVE10" };
+
+      // Seed the double EXACTLY as a pre-R122 deploy would have: the cached
+      // payload's hash is the legacy JSON.stringify-based digest.
+      const legacyHash = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+      const cacheKey = cacheKeyFor(key);
+      await double.client.set(
+        cacheKey,
+        JSON.stringify({
+          hash: legacyHash,
+          status: 201,
+          body: { ok: true, n: 7 },
+          completedAt: new Date().toISOString(),
+        }),
+        { EX: 24 * 60 * 60 },
+      );
+
+      // The new code computes the CANONICAL hash — a strict comparison
+      // would 409 here. The transition window also accepts the legacy
+      // digest of the incoming body, so the retry still replays.
+      const retry = await post(url, body, headers);
+      expect(retry.status).toBe(201);
+      expect(retry.headers.get("Idempotent-Replayed")).toBe("true");
+      expect(retry.body).toEqual({ ok: true, n: 7 });
+      expect(handler).toHaveBeenCalledTimes(0); // served from the claim
+    } finally {
+      close();
+    }
+  });
+
+  it("transition window is not a bypass: a legacy-hash claim still 409s a DIFFERENT body", async () => {
+    const double = installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const key = "legacy hash diff";
+      const headers = { "Idempotency-Key": key };
+
+      const legacyHash = createHash("sha256")
+        .update(JSON.stringify({ amount: 50 }))
+        .digest("hex");
+      await double.client.set(
+        cacheKeyFor(key),
+        JSON.stringify({
+          hash: legacyHash,
+          status: 201,
+          body: { ok: true },
+          completedAt: new Date().toISOString(),
+        }),
+        { EX: 24 * 60 * 60 },
+      );
+
+      const conflict = await post(url, { amount: 900 }, headers);
+      expect(conflict.status).toBe(409);
+      expect(conflict.body).toMatchObject({ code: "IDEMPOTENCY_KEY_REUSE" });
+      expect(handler).toHaveBeenCalledTimes(0);
     } finally {
       close();
     }

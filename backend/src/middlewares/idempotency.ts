@@ -97,10 +97,61 @@ interface SubjectAttachedRequest extends Request {
   userId?: number;
 }
 
+/**
+ * R122 (A3-P2-4): canonical JSON serializer — recursively sorts object keys
+ * so `bodyHash` is keyed on the VALUE of the body, not the byte order a
+ * particular client's serializer happened to emit. Mirrors JSON.stringify
+ * semantics for everything else (arrays keep their order — order is
+ * semantic there; object keys whose value is `undefined` are dropped;
+ * non-JSON primitives stringify to "null"), so the canonical form of a
+ * body equals its JSON.stringify form whenever key order already agrees.
+ */
+function canonicalJsonStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    // Primitives (and functions/symbols, which JSON.stringify cannot
+    // represent): delegate — undefined serializes to "null" in arrays and
+    // is dropped from objects by the caller's key filter below.
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJsonStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  // Sorted key set, undefined-valued keys dropped (JSON.stringify parity).
+  const keys = Object.keys(record)
+    .filter((key) => record[key] !== undefined)
+    .sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${canonicalJsonStringify(record[key])}`)
+    .join(",")}}`;
+}
+
 function bodyHash(body: unknown): string {
-  // Deterministic enough — JSON.stringify with sorted keys would be
-  // even better, but the admin UI is the only sender so insertion order
-  // is stable.
+  // R122 (A3-P2-4): hash the CANONICAL form. The old raw JSON.stringify
+  // was key-order sensitive — the header comment's "the admin UI is the
+  // only sender" assumption stopped holding when the middleware was
+  // mounted on the USER routes (orders/wallet/loyalty), so a non-UI client
+  // (or a client-library upgrade that changes key order) retrying a
+  // semantically identical body got a false 409 IDEMPOTENCY_KEY_REUSE
+  // instead of the replay. Reordered-but-equal bodies now hash equal.
+  return createHash("sha256")
+    .update(canonicalJsonStringify(body ?? null))
+    .digest("hex");
+}
+
+/**
+ * R122 (A3-P2-4) transition window: claims cached by a pre-R122 deploy
+ * store the OLD order-sensitive hash. A byte-identical retry after the
+ * deploy would otherwise false-409 against those claims for up to one
+ * 24 h TTL cycle. On a canonical-hash mismatch we therefore ALSO compare
+ * the legacy hash of the incoming body — if either matches, the cached
+ * claim was written for this exact intent and the replay proceeds. This
+ * never widens equivalence beyond what either algorithm alone allowed
+ * (legacy equality ⇒ identical JSON.stringify), and it ages out with the
+ * claims themselves; every claim written after this deploy stores the
+ * canonical hash and matches on the first comparison.
+ */
+function legacyBodyHash(body: unknown): string {
   return createHash("sha256")
     .update(JSON.stringify(body ?? null))
     .digest("hex");
@@ -219,7 +270,9 @@ export function idempotency(opts: IdempotencyOptions) {
     }
 
     if (cached) {
-      if (cached.hash !== reqHash) {
+      if (cached.hash !== reqHash && cached.hash !== legacyBodyHash(req.body)) {
+        // R122 (A3-P2-4): the second comparison is the transition window —
+        // see legacyBodyHash. Both mismatch ⇒ a genuinely different intent.
         res.status(409).json({
           success: false,
           // Round-3 envelope drift fix: `message` → `error` (kept).

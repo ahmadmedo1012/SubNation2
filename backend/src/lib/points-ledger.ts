@@ -94,6 +94,17 @@ export async function findRefundReversal(
 }
 
 /**
+ * R122 (A4-P2-6): the FIFO replay window. The replay used to select a
+ * user's ENTIRE points_ledger with no LIMIT — O(lifetime ledger rows) per
+ * refund, unbounded growth per user over years, all while holding the
+ * refund transaction. The bound below keeps the exact replay for any
+ * history that fits (every realistic user: one row per order / referral /
+ * conversion — 5,000 rows is thousands of orders) and degrades to the
+ * bounded-cap fallback beyond it, never to an unbounded scan.
+ */
+export const POINTS_FIFO_REPLAY_BOUND = 5_000;
+
+/**
  * R115 Part 9 — per-source FIFO attribution of a user's point balance.
  *
  * Points are fungible in the balance, but the ledger remembers their
@@ -109,6 +120,16 @@ export async function findRefundReversal(
  * falls back to the bounded cap semantics (revoke at most the award
  * remainder). Returns { precise: false, remaining: awarded - alreadyRevoked }
  * in that case.
+ *
+ * R122 (A4-P2-6): the replay fetches BOUND + 1 rows (oldest first). A
+ * full window (≤ BOUND rows) replays exactly as before — award semantics
+ * unchanged. A truncated window (> BOUND rows) cannot prove the FIFO
+ * state, so it falls back to the SAME bounded-cap semantics as the
+ * attribution-broken path: the order's award + reversal rows are read
+ * exactly (both are order-scoped and served by the
+ * uniq_points_ledger_type_reference partial unique index) and
+ * remaining = max(0, awarded - alreadyRevoked) — never more than the
+ * award remainder, never points from other sources.
  */
 export async function remainingAwardForOrder(
   userId: number,
@@ -125,7 +146,30 @@ export async function remainingAwardForOrder(
     })
     .from(pointsLedgerTable)
     .where(eq(pointsLedgerTable.userId, userId))
-    .orderBy(asc(pointsLedgerTable.createdAt), asc(pointsLedgerTable.id));
+    .orderBy(asc(pointsLedgerTable.createdAt), asc(pointsLedgerTable.id))
+    // R122 (A4-P2-6): +1 detects truncation without a second COUNT query.
+    .limit(POINTS_FIFO_REPLAY_BOUND + 1);
+
+  if (rows.length > POINTS_FIFO_REPLAY_BOUND) {
+    // Truncated window — FIFO state not provable. Bounded-cap fallback
+    // (the pre-R122 attribution-broken semantics): exact order-scoped
+    // reads of the award and any prior reversal, cap at the remainder.
+    const awardRows = await client
+      .select({ pointsDelta: pointsLedgerTable.pointsDelta })
+      .from(pointsLedgerTable)
+      .where(
+        and(
+          eq(pointsLedgerTable.type, "purchase_award"),
+          eq(pointsLedgerTable.referenceType, "order"),
+          eq(pointsLedgerTable.referenceId, orderId),
+        ),
+      )
+      .limit(1);
+    const reversal = await findRefundReversal(orderId, client);
+    const awarded = awardRows[0]?.pointsDelta ?? 0;
+    const alreadyRevoked = reversal ? -reversal.pointsDelta : 0;
+    return { precise: false, remaining: Math.max(0, awarded - alreadyRevoked) };
+  }
 
   let sawAward = false;
   let attributionBroken = false;
