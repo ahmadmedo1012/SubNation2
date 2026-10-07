@@ -399,3 +399,78 @@ describe("zodIssuesToClient — minimal { path, code } pairs only (A8-F3)", () =
     expect(appModule.zodIssuesToClient([])).toEqual([]);
   });
 });
+
+// ── R120 hotfix: comment immunity ───────────────────────────────────────────
+
+describe("applySpaShellMeta — comments that MENTION tags in prose (R120 hotfix)", () => {
+  // The REAL production shell (frontend/dist/public/index.html) carries the
+  // V3-A1 developer note ~2.6 KB before the real <title data-rh> tag:
+  //
+  //   <!-- MetaTags upsert-by-selector — one <title>, one
+  //        description, one og set — so no duplicates ever ship (V3-A1:
+  //        react-helmet tripled titles) -->
+  //
+  // The first shell-rewrite cut paired the COMMENT's "<title>" opener with
+  // the REAL title's closer and replaced the whole span: the canonical
+  // link and every og:/twitter: tag between them was deleted and the
+  // comment was left UNCLOSED (9 `<!--` vs 8 `-->` on /category/*). These
+  // tests pin the fixed contract: rewrites see markup, never comment prose.
+  const SHELL_WITH_TAG_MENTION_COMMENTS = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- MetaTags upsert-by-selector — one <title>, one
+     description, one og set — so no duplicates ever ship (V3-A1:
+     react-helmet tripled titles) -->
+<link rel="canonical" href="https://subnation.ly/">
+<meta property="og:title" content="BASELINE OG TITLE">
+<meta property="og:description" content="BASELINE OG DESCRIPTION">
+<meta name="description" content="BASELINE DESCRIPTION">
+<title data-rh="true">SubNation — سوق الاشتراكات الرقمية</title>
+</head>
+<body><div id="root"></div></body>
+</html>`;
+
+  it("rewrites the REAL title and leaves the comment + canonical + og tags intact", () => {
+    const out = appModule.applySpaShellMeta(SHELL_WITH_TAG_MENTION_COMMENTS, {
+      status: 200,
+      title: "اشتراكات البث المباشر",
+      description: "وصف الفئة",
+      canonical: "https://subnation.ly/category/streaming",
+    });
+    // The REAL title rewritten…
+    expect(out).toContain('<title data-rh="true">اشتراكات البث المباشر</title>');
+    // …the canonical REWRITTEN (was: deleted by the comment-pairing bug)…
+    expect(out).toContain('rel="canonical" href="https://subnation.ly/category/streaming"');
+    // …og tags rewritten in place…
+    expect(out).toContain('property="og:title" content="اشتراكات البث المباشر"');
+    // …and the comment text survives VERBATIM (uncut, still closed).
+    expect(out).toContain("one <title>, one");
+    expect(out).toContain("-->");
+    const opens = (out.match(/<!--/g) ?? []).length;
+    const closes = (out.match(/-->/g) ?? []).length;
+    expect(opens).toBe(closes);
+  });
+
+  it("a comment mentioning <link rel=canonical> prose cannot shield the real canonical from STRIPPING", () => {
+    const shell = `<!DOCTYPE html><html><head>
+<!-- devs: keep exactly one <link rel="canonical" href="..."> in the head -->
+<link rel="canonical" href="https://subnation.ly/">
+<title>X</title></head><body></body></html>`;
+    const out = appModule.applySpaShellMeta(shell, { status: 200, canonical: null });
+    // The REAL canonical is gone…
+    expect(out).not.toContain('<link rel="canonical" href="https://subnation.ly/">');
+    // …but the comment prose survives untouched.
+    expect(out).toContain('one <link rel="canonical" href="..."> in the head');
+  });
+
+  it("the noindex stamp cannot be fooled by a comment quoting the robots meta either", () => {
+    const shell = `<!-- note: <meta name="robots" content="index,follow"> is the shell default -->
+<meta name="robots" content="index,follow">
+<title>X</title>`;
+    const out = appModule.applySpaShellMeta(shell, { status: 200, robots: "noindex,follow" });
+    expect(out).toContain('<meta name="robots" content="noindex,follow">');
+    // Exactly ONE noindex stamp — the comment's quote stays as prose.
+    expect(out.match(/noindex,follow/g)?.length).toBe(1);
+  });
+});

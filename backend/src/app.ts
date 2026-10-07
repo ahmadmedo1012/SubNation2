@@ -1150,28 +1150,55 @@ function rewriteCanonical(html: string, href: string | null): string {
   );
 }
 
-/** Apply resolved meta to the in-memory shell snapshot (exported for tests). */
+/**
+ * Apply `rewrite` only to NON-comment segments of the shell (R120 hotfix
+ * for the R120-B3 shell rewriter). The production shell carries developer
+ * comments that MENTION tag names in prose — e.g. the V3-A1 note
+ * "…upsert-by-selector — one <title>, one description, one og set…" sits
+ * ~2.6 KB BEFORE the real <title data-rh> tag. A naive
+ * /<title\b[^>]*>…<\/title>/ match therefore paired the comment's
+ * "<title>" opener with the REAL title's closer and replaced the entire
+ * span — deleting the canonical link, every og:/twitter: tag in between
+ * and leaving the comment UNCLOSED (9 `<!--` vs 8 `-->` shipped to
+ * /category/*). Splitting on comment boundaries makes every rewriter
+ * structurally unable to see comment prose as markup.
+ */
+function rewriteOutsideComments(html: string, rewrite: (segment: string) => string): string {
+  // Capture group keeps the comment segments in the split output; map
+  // applies the rewriter only to the non-comment parts.
+  return html
+    .split(/(<!--[\s\S]*?-->)/)
+    .map((part) => (part.startsWith("<!--") ? part : rewrite(part)))
+    .join("");
+}
+
+/**
+ * Apply resolved meta to the in-memory shell snapshot (exported for tests).
+ * Every tag surgery runs OUTSIDE comments (see rewriteOutsideComments).
+ */
 export function applySpaShellMeta(html: string, meta: SpaShellMeta): string {
-  let out = html;
-  if (meta.title !== undefined) {
-    out = out.replace(
-      /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i,
-      (_m: string, open: string, _inner: string, close: string) =>
-        open + escapeHtmlAttr(meta.title as string) + close,
-    );
-    out = rewriteMetaTag(out, "property", "og:title", meta.title);
-  }
-  if (meta.description !== undefined) {
-    out = rewriteMetaTag(out, "name", "description", meta.description);
-    out = rewriteMetaTag(out, "property", "og:description", meta.description);
-  }
-  if (meta.robots !== undefined) {
-    out = rewriteMetaTag(out, "name", "robots", meta.robots);
-  }
-  if (meta.canonical !== undefined) {
-    out = rewriteCanonical(out, meta.canonical);
-  }
-  return out;
+  return rewriteOutsideComments(html, (segment) => {
+    let out = segment;
+    if (meta.title !== undefined) {
+      out = out.replace(
+        /(<title\b[^>]*>)([\s\S]*?)(<\/title>)/i,
+        (_m: string, open: string, _inner: string, close: string) =>
+          open + escapeHtmlAttr(meta.title as string) + close,
+      );
+      out = rewriteMetaTag(out, "property", "og:title", meta.title);
+    }
+    if (meta.description !== undefined) {
+      out = rewriteMetaTag(out, "name", "description", meta.description);
+      out = rewriteMetaTag(out, "property", "og:description", meta.description);
+    }
+    if (meta.robots !== undefined) {
+      out = rewriteMetaTag(out, "name", "robots", meta.robots);
+    }
+    if (meta.canonical !== undefined) {
+      out = rewriteCanonical(out, meta.canonical);
+    }
+    return out;
+  });
 }
 
 /**
