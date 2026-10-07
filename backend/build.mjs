@@ -201,7 +201,17 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   // resolves stack traces server-side via the release identifier.
   // R107: neutral release identity — GIT_SHA (Coolify/CI builds) with
   // RENDER_GIT_COMMIT (Render injects it) as the legacy fallback.
-  const release = (process.env.GIT_SHA ?? process.env.RENDER_GIT_COMMIT ?? "unknown").slice(0, 7);
+  // R121: `||` not `??` — Coolify passes GIT_SHA as a DECLARED-but-EMPTY
+  // build arg on some paths, and `"" ?? fallback` keeps the empty string
+  // (?? only skips null/undefined), which slipped a `--release=""` past
+  // the old gate and failed the upload. SOURCE_COMMIT rides last: Coolify
+  // supplies the full sha when include_source_commit_in_build is on.
+  const release = (
+    process.env.GIT_SHA ||
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.SOURCE_COMMIT ||
+    ""
+  ).slice(0, 7);
   if (
     process.env.SENTRY_AUTH_TOKEN &&
     process.env.SENTRY_ORG &&
