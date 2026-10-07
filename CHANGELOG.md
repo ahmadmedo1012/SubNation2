@@ -6,6 +6,63 @@ trail. Rounds before R116 are summarized compactly at the bottom — full
 history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (proposed `docs/archive/`).
 
+## Round R120 — full-spectrum product excellence — 2026-10-07
+
+8 specialist auditors (storefront UX, admin UX, mobile, a11y, frontend
+code/perf, backend/DB, SEO/content, security) → 129 findings; 6 fix
+agents closed ~70 (all P1/P2-actionable + cheap P3s) in 5 commits +
+1 verified-on-production hotfix. Reports: `tool-results/r120-audit-*.md`
+(outside the repo) — headline evidence below.
+
+### Fixed (P1/P2)
+- **SEO money pages were invisible** (`5d2de5b`): category + flash-sales
+  discarded the `useSeo()` element (default title, zero JSON-LD on 8
+  sitemap-promoted pages); `/support` hard-redirected anonymous visitors
+  to /login (11 pre-sale FAQs unreachable); the static shell canonicalized
+  EVERY URL to the homepage for no-JS crawlers. Now: per-route server-side
+  canonical/title/description rewrite, real 404 for dead product slugs,
+  noindex for auth families, public support FAQ with auth-gated inbox.
+  Hotfix `d22f24e` (found verifying production): the rewriter is now
+  comment-blind — the V3-A1 shell comment mentioning `<title>` in prose
+  used to pair with the real title tag and eat the canonical + og set.
+- **Storefront catalog affordance** (`c3965f0`): card surface 1.05:1 →
+  border/shadow chrome; persistent desktop quick-add (was hover-only);
+  available-first ordering (sold-out led the grid); mobile first-card fold
+  915px → ~685px; guest bottom nav + cart tab; sold-out cards navigate
+  again (pointer-dead + aria-disabled lie removed); Button-in-Link
+  nesting eliminated; input borders 1.2→3.5:1; confirm-dialog focus
+  return; OTP auto-submit mid-request edge.
+- **Admin RBAC honesty** (`99ac56e`): coupons nav scope inventory→finance
+  (403 wall), products page honest counts + server-side search (false
+  catalog total), global open-tickets badge, finance-gated money UI,
+  fake security checklist → facts, single-alert delete confirm, error
+  cards on settings integrations, honest last-updated pill.
+- **Data layer** (`4ae5de5`): loyalty/referrals share one cache identity
+  (points conversion left /referrals stale 60s), tickets → the shared
+  infinite-query idiom, bundle gate now covers the FULL eager path
+  (152,460 B gz, warn >145 KiB, fail >160 KiB).
+- **Backend** (`63ae271`): user money-history `page` param (200-row hard
+  caps permanently hid oldest purchases), auth probe fails closed for
+  sid-less tokens in prod, notification + ticket-list indexes (drizzle
+  0017 + boot V1-M24), CreateOrderBody tightened (int/min 1, regenerated
+  zod), admin tail routes zod'd, enrichment final_text 16k cap, OTP
+  global daily send ceiling (OTP_DAILY_SEND_CAP, deduped admin alert),
+  Dockerfile digest-pinned.
+
+### Gates
+Backend 199 files / 1776 tests (+72), frontend 119 / 829 (+59), typecheck
+clean, lint 0 errors / 84 warnings (−6), build in budget, frozen
+lockfile OK, prod audit 9 (unchanged accepted register). Verified live
+on production: category title/description rewrite, dead-slug 404,
+/support 200 anonymous, /login noindex, unknown paths canonical-free.
+
+### Known deferred (documented in round reports)
+www→apex 301 + http→https 301 (edge/Coolify action); `VITE_SENTRY_DSN`
+still unset (frontend telemetry off — operator action; the guard now
+logs once, not 24×/load); GSC verification token unset; component
+extraction of 14 >1,000-line files; CSS admin-share split; CSP img-src
+`https:` register entry; A6-F2 X-Total-Count; A6-F9/F10 migrations.
+
 ## Merge `966d70f` — 2026-10-06 (one main, one production chain)
 
 Unified the R118 audit round with the parallel mission-waves line (below) —

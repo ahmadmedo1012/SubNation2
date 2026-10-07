@@ -132,3 +132,29 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   plans, `source-of-truth.md`): all discrepancies from the merge recorded in
   `docs/project-state/source-of-truth.md` "Known contradictions" #7. Stale `03-deployment.mmd`
   (pre-Wave-1 panel) deleted; `03-deployment-target.mmd` retitled as the CURRENT deployment map.
+- **2026-10-07** **Round R120 — full-spectrum product excellence** (8 auditors → 129 findings; 6 fix
+  agents → ~70 closed). Commits `5d2de5b` (SEO P1 trio: category/flash-sales seoBlock wiring, public
+  /support FAQ, per-route server-side shell canonical/title/description rewrite + dead-slug 404 +
+  auth-family noindex), `c3965f0` (storefront: card chrome 1.05:1→readable + persistent desktop
+  quick-add + available-first grid + mobile fold 915→~685px + guest bottom nav + cart tab +
+  sold-out cards navigate + Button-in-Link nesting eliminated + input border 3:1 + confirm focus
+  return), `99ac56e` (admin: coupons nav scope finance, products honest counts + server search,
+  global open-tickets badge, finance-gated money UI, security-tab facts, alerts delete confirm),
+  `4ae5de5` (loyalty/referrals unified cache identity, tickets infinite-query idiom, eager-path
+  bundle gate 152,460 B gz warn/160 KiB fail), `63ae271` (backend: user money-history pagination,
+  auth-probe fail-closed, indexes drizzle 0017 + boot V1-M24, CreateOrderBody int/min-1 +
+  regenerated zod, admin-tail zod, enrichment 16k cap, OTP daily ceiling, Dockerfile digest pin).
+- **2026-10-07** R120 hotfix `d22f24e` — **found by verifying production post-deploy**: the shell
+  rewriter paired the V3-A1 comment's `<title>` prose with the real `</title>`, eating the canonical
+  + og set and leaving a comment unclosed (9 `<!--` vs 8 `-->` on /category/*). `rewriteOutsideComments()`
+  makes every tag surgery comment-blind; pinned by 3 regression tests; verified against the real
+  dist shell + live. This is the deploy→verify→fix loop working as designed.
+- **R120 gates (full tree):** backend 199 files / 1776 tests PASS (+72); frontend 119 / 829 PASS
+  (+59); typecheck clean; lint 0 errors / 84 warnings (−6); build + both budget gates PASS
+  (entry 27,723 B gz; eager path 152,460 B gz = warn zone, 11.4 KiB headroom); frozen lockfile OK;
+  `pnpm audit --prod` 9 (accepted register unchanged). Live-verified: category title/description
+  rewrite, dead product slug → 404, /support 200 anonymous, /login noindex, unknown paths
+  canonical-free. Round reports + deferred-items ledger: `tool-results/r120-*.md` (session-local,
+  not in the repo) — headline deferred: www→apex 301 + http 301 (edge action), VITE_SENTRY_DSN +
+  VITE_GSC_VERIFICATION unset (operator actions), 14 >1,000-line component extractions, CSS
+  admin-share split, A6-F2/F9/F10.
