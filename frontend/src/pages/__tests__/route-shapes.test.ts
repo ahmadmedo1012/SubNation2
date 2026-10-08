@@ -57,6 +57,18 @@ describe("ROUTE_SHAPES (App.tsx route → skeleton shape map)", () => {
     expect(shapeForRoute("/orders")).toBe("list");
   });
 
+  it("maps the R123-E4b width/archetype corrections (wallet / referrals / profile / flash-sales)", () => {
+    // Wallet's page root is max-w-5xl (wallet.tsx) — the default list
+    // shell at max-w-3xl width-jumped the swap-in.
+    expect(shapeForRoute("/wallet")).toBe("list-wide");
+    // Referrals + profile roots are max-w-2xl.
+    expect(shapeForRoute("/referrals")).toBe("list-narrow");
+    expect(shapeForRoute("/profile")).toBe("list-narrow");
+    // The flash page has NO filter row — the catalog shell painted a
+    // phantom filter bar there.
+    expect(shapeForRoute("/flash-sales")).toBe("grid");
+  });
+
   it("leaves chromeless/unknown routes on the blank fallback", () => {
     expect(shapeForRoute("/status")).toBe("blank");
     expect(shapeForRoute("/auth/callback")).toBe("blank");

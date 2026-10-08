@@ -53,7 +53,9 @@ describe("RouteSkeleton — checkout shape (B4 P1-5 / B6-P1-5)", () => {
 
     const status = screen.getByRole("status");
     expect(status).toHaveAttribute("aria-live", "polite");
-    expect(status).toHaveAttribute("aria-label", "جاري تحميل الصفحة");
+    // R123-E4b (P3-d): «جارٍ» — the tanwīn form, unified with the other
+    // ~70 جارٍ renderings across the app.
+    expect(status).toHaveAttribute("aria-label", "جارٍ تحميل الصفحة");
     expect(status.querySelectorAll(".skeleton-shimmer").length).toBeGreaterThan(0);
   });
 });

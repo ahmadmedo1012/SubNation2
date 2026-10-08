@@ -69,3 +69,56 @@ describe("SupportPage FAQ — the referral answer matches policy B (R115 A8 P1)"
     expect(screen.queryByText(/فور التسجيل/)).not.toBeInTheDocument();
   });
 });
+
+describe("SupportPage FAQ — the login answer is passwordless-truthful (R123-E4b P1)", () => {
+  it("asks how to sign in WITHOUT a password and names Google / Telegram / WhatsApp OTP only", async () => {
+    render(
+      <Router>
+        <SupportPage />
+      </Router>,
+    );
+
+    // The question renders visibly (Google's schema rule: JSON-LD Q&A
+    // must also be visible on the page).
+    expect(await screen.findByText("كيف أسجّل الدخول بدون كلمة مرور؟")).toBeInTheDocument();
+
+    // The answer names the three real methods — WhatsApp OTP included,
+    // which the old answer omitted entirely.
+    expect(
+      screen.getByText(
+        /الدخول عبر Google أو Telegram أو رمز تحقق يُرسل إلى واتساب — لا حاجة لكلمة مرور/,
+      ),
+    ).toBeInTheDocument();
+
+    // The platform has NO email login: the old «البريد الإلكتروني
+    // وGoogle وTelegram» claim must be gone, and so must the
+    // password-recovery framing of the old question (the platform is
+    // passwordless — there is nothing to recover; terms §3/§4 state
+    // the provider/OTP model).
+    expect(screen.queryByText(/البريد الإلكتروني/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/نسيت كلمة المرور/)).not.toBeInTheDocument();
+  });
+
+  it("the FAQPage JSON-LD carries the same corrected Q&A (single-source parity)", async () => {
+    render(
+      <Router>
+        <SupportPage />
+      </Router>,
+    );
+    await screen.findByText("كيف أسجّل الدخول بدون كلمة مرور؟");
+
+    const scripts = Array.from(
+      document.querySelectorAll('script[type="application/ld+json"]'),
+    ) as HTMLScriptElement[];
+    const faqScript = scripts.find((s) => s.textContent?.includes("FAQPage"));
+    expect(faqScript).toBeTruthy();
+
+    const ld = JSON.parse(faqScript!.textContent as string) as {
+      mainEntity: { name: string; acceptedAnswer: { text: string } }[];
+    };
+    const auth = ld.mainEntity.find((q) => q.name.includes("بدون كلمة مرور"));
+    expect(auth).toBeTruthy();
+    expect(auth!.acceptedAnswer.text).toContain("Google أو Telegram أو رمز تحقق يُرسل إلى واتساب");
+    expect(auth!.acceptedAnswer.text).not.toContain("البريد الإلكتروني");
+  });
+});

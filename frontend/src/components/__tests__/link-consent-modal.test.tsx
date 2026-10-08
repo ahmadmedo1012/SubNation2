@@ -28,7 +28,13 @@ function renderModal(over: Partial<Parameters<typeof LinkConsentModal>[0]> = {})
   const onConfirm = vi.fn();
   const onCancel = vi.fn();
   render(
-    <LinkConsentModal hint={HINT} loading={false} onConfirm={onConfirm} onCancel={onCancel} {...over} />,
+    <LinkConsentModal
+      hint={HINT}
+      loading={false}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+      {...over}
+    />,
   );
   return { onConfirm, onCancel };
 }
@@ -133,6 +139,7 @@ describe("LinkConsentModal — guarded dismiss (single-flight loading)", () => {
 
   it("shows the in-flight state on the confirm action while loading", () => {
     renderModal({ loading: true });
-    expect(screen.getByText("جارٍ الربط...")).toBeInTheDocument();
+    // R123-E4b (P3-k): single-glyph ellipsis «…» (was ASCII "...").
+    expect(screen.getByText("جارٍ الربط…")).toBeInTheDocument();
   });
 });

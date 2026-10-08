@@ -202,7 +202,10 @@ function PopularBadge({ count }: { count?: number }) {
       icon={Zap}
       className="absolute top-2.5 left-2.5 z-10 backdrop-blur-md"
     >
-      شائع
+      {/* R123-E4b (P3-a): «رائج» — the commerce-natural term (Netflix
+          AR UI and regional storefronts use it); «شائع» reads as
+          "widespread/common" (questions, issues), not "trending". */}
+      رائج
     </StatusBadge>
   );
 }
@@ -508,13 +511,25 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                   icon={AlertTriangle}
                   aria-label={`مخزون منخفض، متبقٍ ${product.stock_count} فقط`}
                 >
-                  آخر {product.stock_count}
+                  {/* R123-E4b (P3-a): «متبقٍ {n}» — matches this badge's own
+                      aria-label; the old «آخر {n}» was a noun-less fragment
+                      ("last 2") that read as a truncated sentence. */}
+                  متبقٍ {product.stock_count}
                 </StatusBadge>
               ) : (
                 <div
                   className={`flex items-center gap-0.5 text-3xs font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
                 >
-                  {product.stock_count > 99 ? "+99" : product.stock_count}
+                  {/* R123-E4b (P3-a): "99+" — unified with the Navbar /
+                      MobileNav / NotificationBell badge convention. In the
+                      RTL base direction a logical "99+" renders with the
+                      plus on the LEFT of the digits ("+99" visually) —
+                      digits first in Arabic reading order, then the
+                      "or more" qualifier. The old source "+99" rendered
+                      with the plus on the RIGHT — the English visual order
+                      (verified by char-position measurement in Chromium,
+                      dir=rtl). */}
+                  {product.stock_count > 99 ? "99+" : product.stock_count}
                 </div>
               )
             ) : (

@@ -153,3 +153,29 @@ describe("ProductCard — chrome + imagery + type regressions (R120-B1)", () => 
     expect(desc.className).toContain("sm:block");
   });
 });
+
+describe("ProductCard — storefront badge copy (R123-E4b P3-a)", () => {
+  it("the 5–19 order tier reads «رائج», not «شائع»", () => {
+    renderCard({ ...AVAILABLE_PRODUCT, order_count: 7 } as typeof AVAILABLE_PRODUCT);
+    expect(screen.getByText("رائج")).toBeInTheDocument();
+    expect(screen.queryByText("شائع")).not.toBeInTheDocument();
+  });
+
+  it("low stock reads the full phrase «متبقٍ N», matching its own aria-label", () => {
+    renderCard({ ...AVAILABLE_PRODUCT, stock_count: 2 } as typeof AVAILABLE_PRODUCT);
+    const badge = screen.getByText("متبقٍ 2", { exact: false });
+    expect(badge.closest("[aria-label]")).toHaveAttribute("aria-label", "مخزون منخفض، متبقٍ 2 فقط");
+    // The old noun-less fragment «آخر 2» is gone.
+    expect(screen.queryByText(/^آخر 2$/)).not.toBeInTheDocument();
+  });
+
+  it("stock caps at «99+» — the RTL-safe source order (digits, then plus)", () => {
+    renderCard({ ...AVAILABLE_PRODUCT, stock_count: 250 } as typeof AVAILABLE_PRODUCT);
+    // In the RTL base direction a logical "99+" renders with the plus on
+    // the LEFT of the digits (digits first in Arabic reading order) —
+    // the Navbar/MobileNav/NotificationBell badge convention. The old
+    // source "+99" rendered plus-on-the-right (English visual order).
+    expect(screen.getByText("99+")).toBeInTheDocument();
+    expect(screen.queryByText("+99")).not.toBeInTheDocument();
+  });
+});

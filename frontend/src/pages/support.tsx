@@ -76,9 +76,15 @@ const SUPPORT_FAQ: FaqItem[] = [
       "عادةً خلال 15 دقيقة إلى ساعة في أوقات العمل. ستظهر حالة الطلب في صفحة المحفظة، وتصلك إشعارات بالقبول أو الرفض.",
   },
   {
-    question: "نسيت كلمة المرور — كيف أستعيد حسابي؟",
+    /* R123-E4b (P1): the platform is passwordless — Google / Telegram /
+       WhatsApp OTP; there is NO email login. The old answer claimed
+       «الدخول عبر البريد الإلكتروني وGoogle وTelegram» while contradicting
+       itself with «لا حاجة لكلمات مرور تقليدية», omitted WhatsApp OTP
+       entirely, and contradicted terms.tsx §3/§4. The Q&A object feeds
+       BOTH the visible FAQ and the FAQPage JSON-LD (buildFaqLd below). */
+    question: "كيف أسجّل الدخول بدون كلمة مرور؟",
     answer:
-      "يدعم SubNation الدخول عبر البريد الإلكتروني وGoogle وTelegram. اذهب لصفحة الدخول واختر طريقة الدخول التي استخدمتها للتسجيل أصلاً. لا حاجة لكلمات مرور تقليدية.",
+      "الدخول عبر Google أو Telegram أو رمز تحقق يُرسل إلى واتساب — لا حاجة لكلمة مرور. استخدم الطريقة نفسها التي سجّلت بها أصلاً.",
   },
   {
     question: "هل بياناتي الشخصية محمية؟",
@@ -648,7 +654,7 @@ export default function SupportPage() {
                 id="support-ticket-title"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="وصف مختصر للمشكلة..."
+                placeholder="وصف مختصر للمشكلة…"
                 required
                 maxLength={255}
                 className="h-10 rounded-xl border-border/50 focus:border-primary/40 bg-card transition-all"
@@ -666,7 +672,7 @@ export default function SupportPage() {
                 id="support-ticket-message"
                 value={form.message}
                 onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-                placeholder="اشرح المشكلة بالتفصيل لنتمكن من مساعدتك بشكل أسرع..."
+                placeholder="اشرح المشكلة بالتفصيل لنتمكن من مساعدتك بشكل أسرع…"
                 required
                 rows={4}
                 maxLength={4000}
@@ -773,8 +779,13 @@ export default function SupportPage() {
               <Headphones className="w-6 h-6 opacity-25" />
             </div>
             <p className="font-bold text-sm mb-1.5">لا توجد تذاكر دعم</p>
+            {/* R123-E4b (P3-l): the empty state promised «خلال دقائق» while
+                the header above says «15 دقيقة إلى ساعة في أوقات العمل» —
+                two different ticket SLAs on one page. Both mentions now
+                carry the same claim (the topup-approval SLA in the FAQ is
+                a different, topup-specific promise and stays as-is). */}
             <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
-              أنشئ تذكرة جديدة وسيرد فريقنا خلال دقائق
+              أنشئ تذكرة جديدة — نرد عادةً خلال 15 دقيقة إلى ساعة في أوقات العمل
             </p>
             <Button
               onClick={() => setShowCreate(true)}

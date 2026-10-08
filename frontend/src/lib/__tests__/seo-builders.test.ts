@@ -70,4 +70,15 @@ describe("buildProductLd — offers.availability follows real stock (D2-F2)", ()
     expect(offers.itemCondition).toBe("https://schema.org/NewCondition");
     expect(offers.priceValidUntil).toMatch(/^\d{4}-12-31$/);
   });
+
+  it("carries the canonical product URL at the top level (R123-E4b P3-n)", () => {
+    const ld = buildProductLd({ ...BASE });
+    // schema.org/Product.url — pairs with the runtime og:url/og:type=
+    // product the product page's MetaTags emit, so the LD node and the
+    // OG card agree on the canonical URL.
+    expect((ld as Record<string, string>).url).toBe("https://subnation.ly/product/netflix-1m");
+    // Legacy slug-less rows keep the numeric-id canonical form.
+    const legacy = buildProductLd({ ...BASE, slug: null });
+    expect((legacy as Record<string, string>).url).toBe("https://subnation.ly/product/5");
+  });
 });

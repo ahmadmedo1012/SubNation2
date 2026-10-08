@@ -128,6 +128,22 @@ export function useSocket(userId?: number | string) {
           window.dispatchEvent(new CustomEvent(NOTIFICATION_NEW_EVENT, { detail: data }));
         });
 
+        socket.on("connection_limited", (data: { reason?: string; message?: string }) => {
+          // R123-E4b (P3-m): the backend connection caps (R97-06 — 5
+          // concurrent per IP / 2000 total) emit this event and then
+          // hard-disconnect the socket ~250ms later; until now nothing
+          // listened for it, so a capped session's realtime surface
+          // silently went dark. One toast per occurrence — the stable
+          // id refreshes a single notification instead of stacking a
+          // new one for every reconnect attempt that re-hits the cap.
+          toast({
+            title: "عدد الاتصالات مرتفع",
+            description:
+              data.message ?? "سنحاول إعادة الاتصال تلقائياً — أغلق التبويبات الأخرى وحاول مجدداً",
+            id: "socket-connection-limited",
+          });
+        });
+
         socket.on("connect_error", (error: Error) => {
           // Non-critical: Socket.IO retries automatically. Surface in DevTools
           // for debugging without disturbing the user.
@@ -150,6 +166,7 @@ export function useSocket(userId?: number | string) {
         socketRef.current.off("order-updated");
         socketRef.current.off("topup-updated");
         socketRef.current.off("notification-new");
+        socketRef.current.off("connection_limited");
         socketRef.current.off("connect_error");
         socketRef.current.off("error");
       }

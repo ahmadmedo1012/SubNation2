@@ -205,8 +205,17 @@ export function FlashSaleBanner() {
         </div>
 
         {/* Center: title — clickable, goes to the flash-sales page so the
-            trailing "go" arrow delivers the destination it promises */}
-        <Link href="/flash-sales" className="flex-1 min-w-0">
+            trailing "go" arrow delivers the destination it promises.
+            R123-E4b (P3, live-measured 200×16): the link itself is the
+            promo's tap target and it measured 16px tall (padding 0) —
+            under even the WCAG 2.5.8 24px minimum. Same hit-box idiom
+            as the dismiss button beside it: min-h-11 + py-2, with -my-2
+            cancelling the strip's py-2 so the banner's own 44px
+            geometry (BANNER_RESERVED_H) is unchanged. */}
+        <Link
+          href="/flash-sales"
+          className="flex-1 min-w-0 min-h-11 -my-2 py-2 flex items-center justify-center"
+        >
           <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary-text transition-colors flex items-center justify-center gap-1 sm:gap-2">
             <span className="truncate">{flashSale.title}</span>
             <span className="text-primary-text font-bold shrink-0">

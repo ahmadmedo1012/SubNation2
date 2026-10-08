@@ -193,7 +193,8 @@ function ProviderButton({
       }
     >
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Icon />}
-      {loading ? "جارٍ التحقق..." : `المتابعة عبر ${provider.label}`}
+      {/* R123-E4b (P3-k): single-glyph ellipsis «…» (was ASCII "..."). */}
+      {loading ? "جارٍ التحقق…" : `المتابعة عبر ${provider.label}`}
     </button>
   );
 }

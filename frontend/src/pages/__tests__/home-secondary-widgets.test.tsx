@@ -190,3 +190,22 @@ describe("G3 — «آخر الطلبات» strip: skeleton → content / honest 
     expect(shimmerCount(container)).toBe(0);
   });
 });
+
+describe("R123-E4b (P3) — hero prose toggle tap target", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuthMock.mockReturnValue({ token: null });
+    mockHooks();
+  });
+
+  it("the mobile-only «عرض المزيد» toggle is full-width and ≥44px (was 77×19)", () => {
+    renderPage();
+
+    const toggle = screen.getByRole("button", { name: /عرض المزيد|عرض أقل/ });
+    // Live-measured 77×19 (text-2xs, no padding) — under even the WCAG
+    // 2.5.8 24px minimum; now the full-width min-h-11 floor.
+    expect(toggle.className).toContain("w-full");
+    expect(toggle.className).toContain("min-h-11");
+    expect(toggle.className).toContain("sm:hidden");
+  });
+});
