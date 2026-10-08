@@ -635,6 +635,11 @@ router.post("/firebase/session", async (req, res) => {
         // Round-3 envelope drift fix: include the standard `error` field
         // (the consent screen parses `reason` — kept unchanged).
         error: "هذا الحساب مرتبط بمستخدم آخر. أكمل ربط الحسابات للمتابعة.",
+        // R123-E5 (A6 P2-3): the spec ErrorResponse requires {error, code}
+        // — this was the only documented-route envelope violation. The
+        // repo's established conflict-family code (wallet.ts / orders.ts /
+        // loyalty.ts 409s all carry CONFLICT).
+        code: ErrorCode.CONFLICT,
         reason: err.reason,
         link_token: err.linkToken,
         candidate_hint: err.candidateHint,

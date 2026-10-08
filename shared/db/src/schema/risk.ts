@@ -17,6 +17,7 @@
 
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -28,6 +29,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { adminUsersTable } from "./admin_users";
 import { usersTable } from "./users";
@@ -93,12 +95,23 @@ export const riskEventsTable = pgTable(
   (t) => ({
     userCreatedIdx: index("idx_risk_events_user_created").on(t.userId, t.createdAt),
     levelCreatedIdx: index("idx_risk_events_level_created").on(t.level, t.createdAt),
-    createdIdx: index("idx_risk_events_created").on(t.createdAt),
+    // R123-E5 (V1-M27): idx_risk_events_created dropped — a strict prefix
+    // of idx_risk_events_created_id_desc; boot twin: migrate.ts
+    // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
     typeCreatedIdx: index("idx_risk_events_type_created").on(t.eventType, t.createdAt),
     // Round-3 (8-c §4.4): keyset pagination cursor for the admin risk list
     // (ORDER BY created_at DESC, id DESC) — the tiebreaker column makes
     // the cursor stable across same-second events.
     createdIdDescIdx: index("idx_risk_events_created_id_desc").on(t.createdAt.desc(), t.id.desc()),
+    // R123-E5 (V1-M29): the risk engine's score/confidence bounds, what
+    // the DSL validator already enforces at the perimeter; the CHECKs
+    // close the bypass writers. Boot twin: migrate.ts
+    // applyDomainCheckConstraintsStage (probe-gated count-then-add).
+    scoreRangeCheck: check("chk_risk_score_range", sql`score >= 0 AND score <= 100`),
+    confidenceRangeCheck: check(
+      "chk_risk_confidence_range",
+      sql`confidence >= 0 AND confidence <= 1`,
+    ),
   }),
 );
 
@@ -131,7 +144,10 @@ export const riskRulesTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    nameIdx: index("idx_risk_rules_name").on(t.name),
+    // R123-E5 (V1-M27): idx_risk_rules_name dropped — a duplicate of the
+    // risk_rules_name_unique UNIQUE constraint backing index above; boot
+    // twin: migrate.ts applyIndexConsolidationStage (probe-gated DROP
+    // INDEX IF EXISTS).
     enabledIdx: index("idx_risk_rules_enabled").on(t.enabled),
   }),
 );

@@ -86,7 +86,9 @@ export const pointsLedgerTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    userIdx: index("idx_points_ledger_user").on(t.userId),
+    // R123-E5 (V1-M27): idx_points_ledger_user dropped — a strict prefix of
+    // idx_points_ledger_user_created; boot twin: migrate.ts
+    // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
     typeIdx: index("idx_points_ledger_type").on(t.type),
     userCreatedIdx: index("idx_points_ledger_user_created").on(t.userId, t.createdAt),
     // Structural exactly-once per source: one purchase_award / one

@@ -260,3 +260,22 @@ describe("GET /api/admin/pricing/config (R118-A5 #9)", () => {
     }
   });
 });
+
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the
+// pricing rule is the catalog's single source of truth; an operator
+// reading it must never see an intermediary's cached stale rule.
+describe("R123-E5 — no-store on GET /api/admin/pricing/config", () => {
+  it("the config read ships Cache-Control: no-store", async () => {
+    // beforeEach already seeded the fixed-username admin + adminToken.
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/admin/pricing/config`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+});

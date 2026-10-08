@@ -137,3 +137,22 @@ describe("admin flash-sales — discount cap (AUD103-5-F2)", () => {
     }
   });
 });
+
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the
+// flash-sale list feeds operator pricing decisions; an intermediary
+// must never serve it from cache.
+describe("R123-E5 — no-store on GET /api/admin/flash-sales", () => {
+  it("the list response ships Cache-Control: no-store", async () => {
+    const token = await seedAdmin();
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/admin/flash-sales`, {
+        headers: { Cookie: `admin_token=${token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+});

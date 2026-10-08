@@ -179,11 +179,14 @@ describe("initTestDb carries the production money schema (V1-M9 + V1-M10)", () =
     // class — the predicate text pins that it doesn't.
   });
 
-  it("the four V1-M9 composite indexes exist", async () => {
+  it("the three surviving V1-M9 composite indexes exist", async () => {
     expect(await indexDef("idx_orders_status_created")).toContain("ON public.orders");
     expect(await indexDef("idx_topups_status_created")).toContain("ON public.wallet_topups");
     expect(await indexDef("idx_inventory_product_sold")).toContain("ON public.inventory");
-    expect(await indexDef("idx_cart_items_user")).toContain("ON public.cart_items");
+    // R123-E5 (V1-M27): idx_cart_items_user was the fourth B8-10 index —
+    // dropped as a strict prefix of uniq_cart_items_user_product (the
+    // harness DDL no longer carries it; migrate.ts V1-M27 drops it live).
+    expect(await indexDef("idx_cart_items_user")).toBeUndefined();
   });
 });
 

@@ -20,7 +20,11 @@ export const supportTicketsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => ({
-    userIdx: index("idx_tickets_user").on(t.userId),
+    // R123-E5 (V1-M27): idx_tickets_user dropped — superseded by the
+    // (user_id, created_at DESC) composite the user tickets list
+    // (support.ts) sorts on; boot twin: migrate.ts
+    // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
+    userCreatedIdx: index("idx_tickets_user_created").on(t.userId, t.createdAt.desc()),
     // R120-B6/A6-F4: the admin ticket queue filters status and sorts
     // updated_at DESC (routes/admin/tickets.ts GET /tickets) — only the
     // user-side idx_tickets_user existed, so the queue was a seq scan +

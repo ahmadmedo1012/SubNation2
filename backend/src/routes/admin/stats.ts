@@ -13,6 +13,15 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 
 const router = Router();
 
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the
+// dashboard's /stats + /chart-data carry revenue/wallet aggregates and
+// open-ticket counts; an intermediary must never serve them from cache
+// (the 30s server-side cacheWrap is the ONLY caching layer allowed).
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // ── Day boundaries in Libya wall-clock time ──────────────────────────────────
 // Libya = Africa/Tripoli = fixed UTC+2 (no DST since 2013). All "today"/chart
 // buckets must align three layers that previously disagreed (server-local

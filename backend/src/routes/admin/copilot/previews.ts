@@ -28,6 +28,15 @@ import {
 
 const previewsRouter = Router();
 
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — a preview
+// body is a staged mutation payload (prices, stock, copies); an
+// intermediary must never serve it — or a confirm/cancel outcome —
+// from cache.
+previewsRouter.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // ────────────────────────────────────────────────────────────────────────
 // GET /previews/:id
 // ────────────────────────────────────────────────────────────────────────

@@ -273,17 +273,23 @@ export function initCronJobs(): CronJobsHandle {
   // 5. Daily at 03:30 UTC: risk_events 90-day retention (003-anomaly-detection).
   //    Unlabeled events older than 90 days are deleted. Labeled events get
   //    a 97-day grace so retroactive review still resolves the label join.
+  //    R123-E5: risk_labels orphaned by the labeled pass (ON DELETE SET
+  //    NULL) are pruned after a 30-day grace (risk-retention.ts).
   schedule(
     "30 3 * * *",
     async () => {
       try {
         const result = await reapExpiredRiskEvents();
-        if (result.unlabeledDeleted + result.labeledExpiredDeleted > 0) {
+        if (
+          result.unlabeledDeleted + result.labeledExpiredDeleted + result.orphanLabelsDeleted >
+          0
+        ) {
           logger.info(
             {
               category: "risk.retention",
               unlabeled: result.unlabeledDeleted,
               labeled: result.labeledExpiredDeleted,
+              orphanLabels: result.orphanLabelsDeleted,
             },
             "risk-events retention purge complete",
           );

@@ -67,8 +67,11 @@ export const inventoryForecastsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
-    productDateIdx: index("idx_forecasts_product_date").on(t.productId, t.forecastDate.desc()),
+    // R123-E5 (V1-M27): idx_forecasts_product_date dropped — a strict
+    // prefix of uq_forecast_product_date (a DESC btree on the same pair
+    // is served by the unique index scanned backwards); boot twin:
+    // migrate.ts applyIndexConsolidationStage (probe-gated DROP INDEX
+    // IF EXISTS).
     runIdx: index("idx_forecasts_run").on(t.runId),
     productDateUnique: uniqueIndex("uq_forecast_product_date").on(t.productId, t.forecastDate),
     // R98-DB-02: the boot SQL (011 stage) creates this live; mirrored here

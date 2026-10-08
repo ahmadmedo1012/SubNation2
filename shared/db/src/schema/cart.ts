@@ -1,5 +1,5 @@
 import {
-  index,
+  check,
   integer,
   pgTable,
   serial,
@@ -7,6 +7,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { productVariantsTable } from "./product-variants";
 import { productsTable } from "./products";
 import { usersTable } from "./users";
@@ -59,7 +60,14 @@ export const cartItemsTable = pgTable(
     // LOCAL cart (the actual purchase driver) keys lines by
     // productId:variantId and can hold several variants of one product.
     userProductUniqueIdx: uniqueIndex("uniq_cart_items_user_product").on(t.userId, t.productId),
-    userIdx: index("idx_cart_items_user").on(t.userId),
+    // R123-E5 (V1-M27): idx_cart_items_user dropped — a strict prefix of
+    // uniq_cart_items_user_product above; boot twin: migrate.ts
+    // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
+    // R123-E5 (V1-M29): the cart handler has validated quantity >= 1
+    // (and <= MAX) since launch; the CHECK closes the bypass writers.
+    // Boot twin: migrate.ts applyDomainCheckConstraintsStage
+    // (probe-gated count-then-add).
+    quantityPosCheck: check("chk_cart_items_quantity_pos", sql`quantity >= 1`),
   }),
 );
 

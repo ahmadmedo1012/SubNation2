@@ -43,7 +43,9 @@ export const walletLedgerTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    userIdx: index("idx_wallet_ledger_user").on(t.userId),
+    // R123-E5 (V1-M27): idx_wallet_ledger_user dropped — a strict prefix
+    // of idx_wallet_ledger_user_created below; boot twin: migrate.ts
+    // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
     typeIdx: index("idx_wallet_ledger_type").on(t.type),
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
     createdIdx: index("idx_wallet_ledger_created").on(t.createdAt.desc()),

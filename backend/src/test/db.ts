@@ -53,7 +53,8 @@ CREATE TYPE points_ledger_type AS ENUM ('purchase_award','refund_reversal','refe
 
 CREATE TABLE users (
   id serial PRIMARY KEY,
-  organization_id integer,
+  -- R123-E5 (V1-M30): organization_id dropped (dead organizations table
+  -- removed by migrate.ts applyOrganizationsRemovalStage).
   phone varchar(20) NOT NULL UNIQUE,
   google_id varchar(255) UNIQUE,
   telegram_id varchar(255) UNIQUE,
@@ -97,6 +98,9 @@ CREATE TABLE products (
   features jsonb,
   image_url varchar(1000),
   price numeric(10,2) NOT NULL,
+  -- R123-E5 (V1-M29): prod parity — migrate.ts
+  -- applyDomainCheckConstraintsStage applies this live.
+  CONSTRAINT chk_products_price_pos CHECK (price > 0),
   cost_price numeric(10,2),
   category varchar(100),
   is_active boolean NOT NULL DEFAULT true,
@@ -118,7 +122,10 @@ CREATE TABLE product_variants (
   is_active boolean NOT NULL DEFAULT true,
   sort_order integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  -- R123-E5 (V1-M29): prod parity — migrate.ts
+  -- applyDomainCheckConstraintsStage applies this live.
+  CONSTRAINT chk_variant_price_pos CHECK (price_lyd > 0 AND cost_price >= 0)
 );
 -- V1-M16/V1-M17 (migrate.ts applyProductVariantsStage +
 -- applyProductVariantsNullsNotDistinctStage): one (plan, duration) pair per
@@ -207,7 +214,10 @@ CREATE TABLE points_ledger (
   CONSTRAINT chk_points_ledger_balances_nonneg CHECK (points_before >= 0 AND points_after >= 0),
   CONSTRAINT chk_points_ledger_reason_for_manual CHECK (type NOT IN ('admin_set','correction') OR reason IS NOT NULL)
 );
-CREATE INDEX idx_points_ledger_user ON points_ledger (user_id);
+-- R123-E5 (V1-M27): idx_points_ledger_user dropped — a strict prefix of
+-- idx_points_ledger_user_created below (the V1-M21 stage still re-creates
+-- it on a full reconcile; V1-M27 re-drops it at the tail — the frozen-stage
+-- interaction documented in migrate.ts).
 CREATE INDEX idx_points_ledger_type ON points_ledger (type);
 CREATE INDEX idx_points_ledger_user_created ON points_ledger (user_id, created_at);
 CREATE UNIQUE INDEX uniq_points_ledger_type_reference
@@ -286,6 +296,10 @@ CREATE TABLE wallet_topups (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- R123-E5 (V1-M27): prod parity — the composite GET /api/wallet/topups
+-- sorts on (the old idx_topups_user twin was dropped).
+CREATE INDEX idx_topups_user_created
+  ON wallet_topups (user_id, created_at DESC);
 -- V1-M9 (B8-01): one APPROVED topup per non-blank payment_reference — the
 -- authoritative duplicate-transfer guard. Partial predicate copied verbatim
 -- from applyMoneyConstraintStage (blank/NULL refs are the exempt legacy class).
@@ -311,12 +325,21 @@ CREATE TABLE coupons (
 
 CREATE TABLE referral_events (
   id serial PRIMARY KEY,
-  referrer_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  referee_id integer NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  -- R123-E5 (V1-M28): prod parity — migrate.ts applyReferralFksRestrictStage
+  -- rebuilds both FKs ON DELETE RESTRICT (a referee delete must not
+  -- erase the referrer's pending credit claim).
+  referrer_id integer NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  referee_id integer NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
   status varchar(20) NOT NULL DEFAULT 'pending',
+  -- R123-E5 (V1-M29): prod parity — the two-state lifecycle CHECK.
+  CONSTRAINT chk_referral_status CHECK (status IN ('pending','credited')),
   created_at timestamptz NOT NULL DEFAULT now(),
   credited_at timestamptz
 );
+-- R123-E5 (V1-M27): prod parity — the composite the referrals surface
+-- sorts on (the old idx_referral_referrer twin was dropped).
+CREATE INDEX idx_referral_referrer_created
+  ON referral_events (referrer_id, created_at DESC);
 
 CREATE TABLE flash_sales (
   id serial PRIMARY KEY,
@@ -343,6 +366,9 @@ CREATE TABLE cart_items (
   variant_id integer REFERENCES product_variants(id) ON DELETE CASCADE,
   variant_label varchar(240),
   quantity integer NOT NULL DEFAULT 1,
+  -- R123-E5 (V1-M29): prod parity — the cart handler's quantity >= 1
+  -- validation, closed at the DB level.
+  CONSTRAINT chk_cart_items_quantity_pos CHECK (quantity >= 1),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   -- migrate.ts cart_items CREATE TABLE ships this FK live (R98-DB-02
@@ -410,7 +436,10 @@ CREATE TABLE support_tickets (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_tickets_user ON support_tickets (user_id);
+-- R123-E5 (V1-M27): prod parity — the composite the user tickets list
+-- sorts on (the old idx_tickets_user twin was dropped).
+CREATE INDEX idx_tickets_user_created
+  ON support_tickets (user_id, created_at DESC);
 CREATE TABLE ticket_replies (
   id serial PRIMARY KEY,
   ticket_id integer NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
@@ -459,10 +488,13 @@ CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 
 -- V1-M9 (B8-10) composites for the admin "status + newest-first" lists,
 -- declared by the schema TS and created by applyMoneyConstraintStage.
+-- R123-E5 (V1-M27): idx_cart_items_user dropped — a strict prefix of
+-- uniq_cart_items_user_product (the V1-M9 stage still re-creates it on
+-- a full reconcile; V1-M27 re-drops it at the tail — the frozen-stage
+-- interaction documented in migrate.ts).
 CREATE INDEX idx_orders_status_created ON orders(status, created_at);
 CREATE INDEX idx_topups_status_created ON wallet_topups(status, created_at);
 CREATE INDEX idx_inventory_product_sold ON inventory(product_id, is_sold);
-CREATE INDEX idx_cart_items_user ON cart_items(user_id);
 `;
 
 const TABLES = [
