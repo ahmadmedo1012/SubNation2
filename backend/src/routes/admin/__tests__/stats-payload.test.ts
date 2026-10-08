@@ -173,3 +173,38 @@ describe("R120-B4 A6-F5: GET /api/admin/stats — available_stock counts DELIVER
     }
   });
 });
+
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the admin
+// dashboard GETs (stats + chart-data) were the last admin analytics
+// surfaces without Cache-Control: no-store. The 30s server-side
+// cacheWrap is the only caching layer allowed; revenue/wallet
+// aggregates must never be served by an intermediary.
+describe("R123-E5 — no-store on the admin stats GETs", () => {
+  it("GET /api/admin/stats ships Cache-Control: no-store", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdminToken();
+      const res = await fetch(`${url}/api/admin/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+
+  it("GET /api/admin/chart-data ships Cache-Control: no-store", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdminToken();
+      const res = await fetch(`${url}/api/admin/chart-data?days=7`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+});

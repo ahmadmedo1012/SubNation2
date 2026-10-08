@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   db,
   initTestDb,
@@ -94,10 +94,22 @@ describe("CheckoutService — money-integrity gate (round-3 regression, M1)", ()
   // must never transact.
   // (Postgres rejects literal garbage like "not-a-number" at INSERT time,
   // so the storable-but-evil rows below are the real attack surface.)
+  // R123-E5: V1-M29 added chk_products_price_pos (harness parity in
+  // test/db.ts), so the evil rows below are no longer INSERTable while
+  // it stands — exactly the defense-in-depth the stage ships. The
+  // SERVICE gate is still the last line of defense for the one shape the
+  // stage deliberately tolerates: legacy dirty rows (count-then-add
+  // ALERTS + skips a dirty table, so the operator can reconcile — see
+  // migrate.ts applyDomainCheckConstraintsStage). This block simulates
+  // that legacy shape the same way migrate-v1m29.test.ts strips the
+  // harness CHECKs back to the pre-stage state.
   it.each([
     ["negative price (wallet-credit attack)", "-30.00"],
     ["zero price (free goods)", "0.00"],
   ])("returns INVALID_PRICE for %s and writes nothing", async (_label, price) => {
+    await db.execute(
+      sql.raw("ALTER TABLE products DROP CONSTRAINT IF EXISTS chk_products_price_pos"),
+    );
     const user = await seedUser("50.00");
     const product = await seedProductWithStock(1, price);
 

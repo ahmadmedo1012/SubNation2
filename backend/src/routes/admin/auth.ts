@@ -494,6 +494,10 @@ router.get("/probe", async (req, res) => {
 
 router.get("/session", requireAdmin, async (req, res) => {
   const adminId = (req as AdminAuthenticatedRequest).adminId;
+  // R123-E5 (A6 P3): no-store parity with the R122 sessions/providers
+  // pattern — the session echo carries the admin's identity + permission
+  // list; an intermediary must never serve it from cache.
+  res.setHeader("Cache-Control", "no-store");
   const [admin] = await db
     .select({
       id: adminUsersTable.id,

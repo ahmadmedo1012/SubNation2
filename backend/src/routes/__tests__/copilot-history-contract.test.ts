@@ -212,3 +212,27 @@ describe("GET /api/admin/copilot/history — contract (A5-02/A5-06)", () => {
     }
   });
 });
+
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the
+// history feed carries an admin's own action audit (prompts,
+// outcomes); an intermediary must never serve it from cache.
+describe("R123-E5 — no-store on GET /api/admin/copilot/history", () => {
+  it("the history read ships Cache-Control: no-store", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const admin = await seedAdmin("admin_history_nostore");
+      await seedAction(admin.id, new Date());
+
+      // Raw fetch — the `get` helper discards headers, and the header
+      // IS the assertion (the R122 auth-sessions no-store idiom).
+      const res = await fetch(`${url}/api/admin/copilot/history`, {
+        headers: { Authorization: `Bearer ${admin.token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      expect(((await res.json()) as { entries: unknown[] }).entries).toHaveLength(1);
+    } finally {
+      close();
+    }
+  });
+});

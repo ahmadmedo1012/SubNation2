@@ -30,6 +30,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 const router = Router();
 router.use(requireAdmin);
 
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the pricing
+// rule is the catalog's single source of truth; an operator reading it
+// (or saving it) must never see a cached stale rule.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // ── GET /pricing/config ────────────────────────────────────────────────────
 router.get("/pricing/config", async (_req, res) => {
   const config = await getPricingConfig();

@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   index,
   integer,
   numeric,
@@ -9,6 +10,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { productsTable } from "./products";
 
@@ -82,7 +84,10 @@ export const productVariantsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => ({
-    productIdx: index("idx_product_variants_product").on(t.productId),
+    // R123-E5 (V1-M27): idx_product_variants_product dropped — a strict
+    // prefix of idx_product_variants_product_active; boot twin:
+    // migrate.ts applyIndexConsolidationStage (probe-gated DROP INDEX
+    // IF EXISTS).
     productActiveIdx: index("idx_product_variants_product_active").on(t.productId, t.isActive),
     // One row per (plan, duration) pair within a product. The LIVE index
     // (replaced by migrate.ts V1-M17, round-98 F4 / R98-DB-05) is declared
@@ -100,6 +105,11 @@ export const productVariantsTable = pgTable(
       t.planLabel,
       t.durationLabel,
     ),
+    // R123-E5 (V1-M29): retail price strictly positive, supplier cost
+    // non-negative — what the admin/import zod bodies (min 0.01) already
+    // enforce; the CHECK closes the bypass writers. Boot twin:
+    // migrate.ts applyDomainCheckConstraintsStage (probe-gated).
+    pricePosCheck: check("chk_variant_price_pos", sql`price_lyd > 0 AND cost_price >= 0`),
   }),
 );
 

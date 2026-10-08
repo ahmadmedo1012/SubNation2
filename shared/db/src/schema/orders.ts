@@ -98,9 +98,11 @@ export const ordersTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => ({
-    userIdx: index("idx_orders_user").on(t.userId),
     productIdx: index("idx_orders_product").on(t.productId),
-    statusIdx: index("idx_orders_status").on(t.status),
+    // R123-E5 (V1-M27): idx_orders_user + idx_orders_status dropped — strict
+    // prefixes of idx_orders_user_created / idx_orders_status_created; the
+    // boot twin is migrate.ts applyIndexConsolidationStage (probe-gated
+    // DROP INDEX IF EXISTS).
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
     createdIdx: index("idx_orders_created").on(t.createdAt.desc()),
     statusCreatedIdx: index("idx_orders_status_created").on(t.status, t.createdAt),

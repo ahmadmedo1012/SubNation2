@@ -48,8 +48,11 @@ healthz green, CI green.
   65-entry curated brand-alias map from the real catalog, transliteration
   fallback with hard bounds. Pure-English SQL byte-identical to before.
 - **SEO shell** (`6ba4b5e`): the product shell prefers row-level
-  seo_title/seo_description (write paths now wired through admin form +
-  zod + copilot ALLOWED_FIELDS — the columns were write-orphaned); unknown
+  seo_title/seo_description (write paths now wired through zod + copilot
+  ALLOWED_FIELDS — the columns were write-orphaned [corrected R123: the
+  R122 phrasing "through admin form" overclaimed — no admin form existed;
+  copilot (+ the zod/API surface) was the ONLY write path. The admin
+  product form's SEO fields land in R123.]); unknown
   public paths + dead category slugs emit `noindex,follow` (the raw shell
   no longer contradicts the SPA's 404); the uncached `/product/:slug`
   shell lookups ride the catalog cache (they sat outside every rate
@@ -69,8 +72,12 @@ healthz green, CI green.
   honest error state on 403/5xx (was a false "no orders yet"); the
   always-green status pill reflects error/stale; GlobalSearch + money
   KPIs scoped by permission; bulk topup actions take notes; ~30 raw
-  fetches routed through the 401-aware admin-session contract; product
-  form gains the SEO fields.
+  fetches routed through the 401-aware admin-session contract
+  [corrected R123: overcounted — only GlobalSearch (3 sites) was routed
+  in R122; the ~56 remaining raw-fetch sites are converted in R123];
+  product form gains the SEO fields [corrected R123: the form fields did
+  NOT land in R122 — see the SEO shell correction above; they land in
+  R123].
 - **Backend contracts** (`c2f531a`): pageParam capped (unbounded OFFSET
   closed); loyalty referral counts exact past the 200-row limit +
   pagination; cart `intParam` digit-exact; idempotency body-hash

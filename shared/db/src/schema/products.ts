@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   index,
   jsonb,
   numeric,
@@ -10,6 +11,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
 /**
@@ -99,8 +101,11 @@ export const productsTable = pgTable(
   },
   (t) => ({
     categoryIdx: index("idx_products_category").on(t.category),
-    activeIdx: index("idx_products_active").on(t.isActive),
-    archivedIdx: index("idx_products_archived").on(t.isArchived),
+    // R123-E5 (V1-M27): idx_products_active + idx_products_archived dropped
+    // — the active predicate is covered by idx_products_active_category
+    // (strict-prefix redundancy) and is_archived is never a leading
+    // predicate (~zero selectivity); boot twin: migrate.ts
+    // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
     activeCategoryIdx: index("idx_products_active_category").on(t.isActive, t.category),
     // Mirrors boot migration `idx_products_slug_unique` (migrate.ts) — kept
     // in-schema so drizzle-kit introspection doesn't report drift.
@@ -110,6 +115,11 @@ export const productsTable = pgTable(
     // Arabic-English lookup. Previously live-only: a drizzle push would
     // drop it and silently degrade fuzzy search to seq scans.
     nameTrgmIdx: index("idx_products_name_trgm").using("gin", t.name.op("gin_trgm_ops")),
+    // R123-E5 (V1-M29): the zod perimeter (CreateProductBody min 0.01)
+    // already enforces positivity; the CHECK closes the bypass writers
+    // (cron, SQL console, a future service). Boot twin: migrate.ts
+    // applyDomainCheckConstraintsStage, probe-gated count-then-add.
+    pricePosCheck: check("chk_products_price_pos", sql`price > 0`),
   }),
 );
 

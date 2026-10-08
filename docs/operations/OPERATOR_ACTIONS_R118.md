@@ -5,7 +5,9 @@
 > actions 1 & 8 are DONE (R121 — action 8 executed as a 308, see
 > `docs/operations/WWW_TO_APEX_301.md`); actions 2 & 3 unverified (no
 > evidence of stock load / TOTP enrollment through R121); 4–7, 9–10 still
-> open.** Read this first.
+> open.** **R123 (2026-10-08) adds actions 11 (http→https apex redirect is
+> a 302 — one-flag fix to 301) and 12 (copilot_actions retention policy
+> decision — currently unbounded).** Read this first.
 > Every item carries its evidence anchor (`docs/inspection-r118/*` — moved
 > to `docs/history/inspection-r118/` by the R122 docs reorg). Live
 > truth this list was written against (verified R118, 2026-10-06;
@@ -38,6 +40,8 @@ ready-when-you-are.
 | 8 | www→apex 301 at Traefik | 🟡 quick win | S | `WWW_TO_APEX_301.md` |
 | 9 | Mark all alerts read (after stock load) | 🟡 quick win | S | R118-A3 F6 |
 | 10 | Encryption-key rotation readiness (read the pointer) | 🔵 when ready | S (reading) | R118-A4 F2 |
+| 11 | http→https apex redirect is 302 → flip to 301 (`permanent: true`) | 🟡 quick win | S (proxy config) | R123-A8 live probe |
+| 12 | Decide copilot_actions / copilot_action_items retention policy | 🟠 decide | S (decision + SQL) | R123-A7 P3 |
 
 Recommended order: **1 → 2 → 3** (deploy the audited code before loading
 stock, so the live process is the one the R118 findings describe).
@@ -204,3 +208,100 @@ stock, so the live process is the one the R118 findings describe).
   `CHANGELOG.md` — the rotation contract is **`ENCRYPTION_KEY_PREV`**
   (set it to the old key, redeploy, re-encrypt, then drop it; the exact
   procedure and the boot warnings are documented in the source).
+
+## 🟡 11. http→https apex redirect is a 302 — flip it to a 301 (one flag)
+
+- **What:** the plain-HTTP apex (`http://subnation.ly/…`) redirects to
+  `https://subnation.ly/…` with **HTTP 302 (Found / temporary)** —
+  verified live 2026-10-08 (R123-A8 browser audit: `http://subnation.ly/`
+  → `Location: https://subnation.ly/`, status 302, single hop). The
+  redirect comes from the **Traefik entrypoint-level `redirectScheme`
+  middleware Coolify generates in its proxy config**, and that generated
+  rule ships `permanent: false` — a *temporary* redirect. Fix:
+  in Coolify → **Server → Proxy → Configuration**, edit the Traefik
+  static/dynamic config so the http→https redirect middleware carries
+  `permanent: true`, then save (Coolify restarts Traefik and the change
+  takes effect on the next request — no app redeploy, no downtime).
+  The block looks like Coolify's default:
+
+  ```yaml
+  http:
+    middlewares:
+      redirect-to-https:
+        redirectScheme:
+          scheme: https
+          permanent: true   # ← was false → 302; true → 301 Moved Permanently
+  ```
+
+  (Same family as the www→apex 301 record: `docs/operations/WWW_TO_APEX_301.md`
+  §3 — that one is already `permanent: true` and live as 301; this is the
+  *scheme* redirect, not the *host* redirect.)
+- **Why:** every canonical signal (sitemap, robots, og URLs, static +
+  runtime `<link rel=canonical>`) is `https://subnation.ly`. A 302 tells
+  crawlers the http URL is *temporarily* redirected — link equity is not
+  consolidated and some clients re-request the http URL on every visit.
+  A 301 makes the consolidation permanent and shaves a wasteful hop for
+  repeat http traffic. (Low severity: almost no organic traffic arrives
+  over plain http — browsers and most links force https — which is why
+  this is a quick win, not urgent.)
+- **Verify after:** `curl -sI http://subnation.ly/ | head -3` → expect
+  `HTTP/1.1 301 Moved Permanently` + `Location: https://subnation.ly/`
+  (was 302); repeat once with a path+query (`http://subnation.ly/pricing?x=1`)
+  and confirm the path+query survive into the Location header.
+- **Rollback:** revert the proxy-config edit (set `permanent: false` back,
+  save) — the redirect immediately returns to 302. The flag only changes
+  the status code + semantics, never the target, so a mis-flip cannot
+  loop or break TLS (the redirect fires *after* the http request is
+  accepted, *before* any app routing — same layer as action 8).
+- **Effort:** S (one YAML flag in the Coolify proxy config). (Evidence:
+  R123-A8 live probe, 2026-10-08; R123-A6 header audit.)
+
+## 🟠 12. Decide: copilot_actions / copilot_action_items retention policy (currently UNBOUNDED)
+
+- **What (a decision, not a task):** the AI Admin Copilot audit tables —
+  `copilot_actions` (one row per ask/draft/execute: intent text, tool,
+  risk tier, outcome, **`before_state` / `after_state` jsonb snapshots**,
+  model + token counts, correlation id) and `copilot_action_items` (the
+  per-entity rows linking each action to product/inventory/admin ids) —
+  have **no retention job and no policy**. Every other audit-grade table
+  has one: `audit_logs` 180 d, `risk_events` 90/97 d (labels pruned after
+  a 30-day orphan grace, R123-E5), `notifications` 90/180 d,
+  `admin_alerts` 14/30 d, `idempotency_keys` 48 h. The copilot reaper job
+  (`copilot-reaper`) only expires *previews* — it never touches actions.
+- **Why it matters:** the jsonb snapshots duplicate whole catalog entity
+  rows (prices, stock, copy) per action and grow monotonically with copilot
+  usage. Unbounded audit tables on the Neon free/starter tiers eventually
+  cost storage AND slow the admin history feed (it is cursor-paginated on
+  `(created_at, id)`, but the table itself keeps growing). Counterweight:
+  these rows are the *governance record* for AI-assisted mutations — an
+  operator may reasonably want them kept longer than audit_logs.
+- **The decision to make** (pick one, then it becomes code):
+  1. **Align with audit_logs (180 d)** — the governance record rides the
+     same 180-day window as every other admin action; recommended default.
+  2. **Longer window (1–2 y)** — if the AI-governance record is expected
+     to outlive the generic audit trail.
+  3. **Keep unbounded (explicit)** — accepted, but write it down here so
+     the next audit doesn't re-flag it; check table size quarterly
+     (`SELECT pg_size_pretty(pg_total_relation_size('copilot_actions'));`).
+- **Reference prune shape** (when a policy is chosen; ctid-batched like
+  every sibling job, children first — `copilot_action_items` has no
+  FK to actions, it links by `action_id` column reference):
+
+  ```sql
+  -- candidate window check first (children carry no created_at; join):
+  SELECT count(*) FROM copilot_action_items ai
+  JOIN copilot_actions a ON a.id = ai.action_id
+  WHERE a.created_at < NOW() - INTERVAL '180 days';
+  SELECT count(*) FROM copilot_actions
+  WHERE created_at < NOW() - INTERVAL '180 days';
+  ```
+
+  Implementation, once decided, is a small job in
+  `backend/src/jobs/` following `risk-retention.ts` (R123-E5 added the
+  risk_labels orphan prune there — the same ctid-batch pattern) + a cron
+  entry + a retention test; the risk-retention header deliberately points
+  here for this decision.
+- **Effort:** S (the decision) / S-M (the follow-up code job once
+  decided). (Evidence: R123-A7 P3 retention audit — copilot_actions +
+  copilot_action_items unbounded, jsonb snapshots, no policy vs
+  audit_logs' 180 d.)

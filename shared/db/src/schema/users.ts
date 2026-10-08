@@ -14,15 +14,14 @@ import {
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
-import { organizationsTable } from "./organizations";
-
 export const usersTable = pgTable(
   "users",
   {
     id: serial("id").primaryKey(),
-    organizationId: integer("organization_id").references(() => organizationsTable.id, {
-      onDelete: "set null",
-    }),
+    // R123-E5 (V1-M30): organization_id + its FK dropped — organizations
+    // was a dead table (zero readers/writers, no INSERT anywhere, 0 live
+    // rows). Boot twin: migrate.ts applyOrganizationsRemovalStage
+    // (probe-gated drop of any FK on the column + the column + the table).
     phone: varchar("phone", { length: 20 }).notNull().unique(),
     googleId: varchar("google_id", { length: 255 }).unique(),
     telegramId: varchar("telegram_id", { length: 255 }).unique(),

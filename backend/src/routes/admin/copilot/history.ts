@@ -26,6 +26,14 @@ import { ErrorCode, createErrorResponse } from "../../../lib/errors";
 
 const historyRouter = Router();
 
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the
+// history feed carries an admin's own action audit (prompts, outcomes);
+// an intermediary must never serve it from cache.
+historyRouter.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 
@@ -110,8 +118,7 @@ historyRouter.get("/copilot/history", requireAdmin, async (req: Request, res: Re
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
-  const nextCursor =
-    hasMore && last ? `${last.createdAt.toISOString()}:${last.id}` : null;
+  const nextCursor = hasMore && last ? `${last.createdAt.toISOString()}:${last.id}` : null;
 
   return res.json({
     entries: page.map((r) => ({

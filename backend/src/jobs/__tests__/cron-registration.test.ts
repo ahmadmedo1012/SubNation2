@@ -52,7 +52,14 @@ vi.mock("../enrichment-retention", () => ({
   runEnrichmentRetention: vi.fn(async () => undefined),
 }));
 vi.mock("../risk-retention", () => ({
-  reapExpiredRiskEvents: vi.fn(async () => ({ unlabeledDeleted: 0, labeledExpiredDeleted: 0 })),
+  // R123-E5: the orphan-labels prune added the third counter — the mock
+  // mirrors the real RetentionResult shape so the wiring's log fields
+  // never see undefined.
+  reapExpiredRiskEvents: vi.fn(async () => ({
+    unlabeledDeleted: 0,
+    labeledExpiredDeleted: 0,
+    orphanLabelsDeleted: 0,
+  })),
 }));
 vi.mock("../session-prune", () => ({ pruneExpiredSessions: vi.fn(async () => 0) }));
 vi.mock("../../lib/admin-session", () => ({ pruneStaleAdminSessions: vi.fn(async () => 0) }));

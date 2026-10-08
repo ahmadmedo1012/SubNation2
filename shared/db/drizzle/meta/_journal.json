@@ -134,6 +134,13 @@
       "when": 1791412246164,
       "tag": "0018_large_speedball",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791453751572,
+      "tag": "0019_sturdy_omega_red",
+      "breakpoints": true
     }
   ]
 }

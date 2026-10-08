@@ -1661,6 +1661,461 @@ export async function applyMoneyArithmeticChecksStage(
   );
 }
 
+// ── V1-M27 (R123-E5, R123-A7 P2): serving-index consolidation ───────────────
+//
+// Two halves of one cleanup, both verified safe at a474d8c:
+//
+//   (a) THREE missing composites for the user-side "my history, newest
+//       first" reads that sort a user's whole table share:
+//         idx_topups_user_created        (user_id, created_at DESC)
+//           — GET /api/wallet/topups WHERE user_id ORDER BY created_at
+//             DESC LIMIT 200 (wallet.ts) top-N sorts the user's whole
+//             topup history today.
+//         idx_referral_referrer_created  (referrer_id, created_at DESC)
+//           — the referrals surface (loyalty.ts) + the copilot referral
+//             tool read the referrer's events newest-first.
+//         idx_tickets_user_created       (user_id, created_at DESC)
+//           — GET /api/support tickets WHERE user_id ORDER BY created_at
+//             DESC (support.ts).
+//
+//   (b) SIXTEEN now-redundant indexes dropped: 13 prefix-redundant /
+//       zero-reader twins (each is a strict prefix of, a duplicate of,
+//       or has zero readers against a covering sibling) plus the 3
+//       single-column user FK twins superseded by the composites above:
+//         idx_orders_user            prefix of idx_orders_user_created
+//         idx_orders_status          prefix of idx_orders_status_created
+//         idx_wallet_ledger_user     prefix of idx_wallet_ledger_user_created
+//         idx_points_ledger_user     prefix of idx_points_ledger_user_created
+//         idx_topups_status          prefix of idx_topups_status_created
+//         idx_products_active        prefix of idx_products_active_category
+//         idx_products_archived      never a leading predicate (~zero
+//                                    selectivity on a boolean that is
+//                                    almost always false)
+//         idx_product_variants_product  prefix of idx_product_variants_product_active
+//         idx_cart_items_user        prefix of uniq_cart_items_user_product
+//         idx_risk_rules_name        duplicate of the risk_rules_name_unique
+//                                    UNIQUE constraint backing index
+//         idx_risk_events_created    prefix of idx_risk_events_created_id_desc
+//         idx_forecasts_product_date prefix of uq_forecast_product_date
+//         idx_idempotency_keys_order ZERO readers — pure write
+//                                    amplification on the checkout claim
+//                                    path (grep-verified; reference lookups
+//                                    go through the key PK)
+//         idx_topups_user            superseded by idx_topups_user_created
+//         idx_referral_referrer      superseded by idx_referral_referrer_created
+//         idx_tickets_user           superseded by idx_tickets_user_created
+//
+// Stage shape (V1-M24 additive twins + V1-M15 duplicate-index cleanup,
+// the two established idioms):
+//   - the 3 creates are unconditional CREATE INDEX IF NOT EXISTS (V1-M24
+//     additive-twin form — covers fresh installs AND the steady state);
+//   - the 16 drops are PROBE-GATED (V1-M15 form): one pg_indexes read,
+//     then DROP INDEX IF EXISTS only for the names genuinely present —
+//     steady-state boots issue ZERO DDL.
+//
+// Interaction with the earlier creators (the R97-DB-04 / V1-M24
+// precedent): the superseded CREATE INDEX statements that lived in the
+// runMigrations BODY blocks (products / wallet_ledger / missing-indexes
+// / risk / forecast) were REMOVED in the same edit — fresh databases
+// never get the redundant twins. The four creators inside FROZEN
+// numbered stages (V1-M9's idx_cart_items_user, V1-M12's
+// idx_idempotency_keys_order, V1-M16's idx_product_variants_product,
+// V1-M21's idx_points_ledger_user) are deliberately NOT modified (the
+// V1-M25 stage-freeze discipline): on every FULL reconcile those stages
+// re-create their twin and this stage re-drops it a moment later —
+// two brief catalog statements per object, the same accepted cost as
+// V1-M25's V1-M9 interaction note. The end state always converges, and
+// the R104 fingerprint fast-path skips the whole replay on steady-state
+// boots regardless.
+//
+// Drizzle mirror: shared/db/src/schema/*.ts declarations updated +
+// chain 0019 (dropped declarations removed, composites added).
+export async function applyIndexConsolidationStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // (a) The three composites — one statement per execute (pglite).
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_topups_user_created
+      ON wallet_topups (user_id, created_at DESC);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_referral_referrer_created
+      ON referral_events (referrer_id, created_at DESC);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_tickets_user_created
+      ON support_tickets (user_id, created_at DESC);
+  `);
+
+  // (b) The redundant set — probe first (V1-M15 idiom), drop only what
+  // is genuinely present so steady-state boots send no DROP at all.
+  const redundant = [
+    "idx_orders_user",
+    "idx_orders_status",
+    "idx_wallet_ledger_user",
+    "idx_points_ledger_user",
+    "idx_topups_status",
+    "idx_products_active",
+    "idx_products_archived",
+    "idx_product_variants_product",
+    "idx_cart_items_user",
+    "idx_risk_rules_name",
+    "idx_risk_events_created",
+    "idx_forecasts_product_date",
+    "idx_idempotency_keys_order",
+    "idx_topups_user",
+    "idx_referral_referrer",
+    "idx_tickets_user",
+  ];
+  const presentRows = extractRows(
+    await execute(sql`
+      SELECT indexname AS indexname FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND indexname IN (${sql.raw(redundant.map((n) => `'${n}'`).join(", "))})
+    `),
+  );
+  if (presentRows.length > 0) {
+    for (const row of presentRows) {
+      await execute(sql.raw(`DROP INDEX IF EXISTS ${String(row.indexname)}`));
+    }
+    logger.info(
+      { category: "storage", dropped: presentRows.map((r) => String(r.indexname)) },
+      "V1-M27: dropped redundant indexes (prefix/zero-reader twins superseded by composites)",
+    );
+  }
+  logger.info({ category: "storage" }, "V1-M27: serving-index consolidation (idempotent)");
+}
+
+// ── V1-M28 (R123-E5, R123-A7 P2): referral_events FKs CASCADE → RESTRICT ────
+//
+// referral_events.referrer_id + referee_id were created ON DELETE
+// CASCADE (the fkStatements loop) while referral credits are MONEY-
+// ADJACENT ATTRIBUTION: a pending referral_event is the referrer's
+// claim to a future credit, and referee_id is one-to-one (UNIQUE).
+// CASCADE + the R122 anonymization-keeps-rows policy contradict: a
+// manual `DELETE FROM users` for a REFEREE would atomically erase the
+// REFERRER's pending credit claim — the exact history-erasure class
+// V1-M25 closed for the money ledgers. Same boundary here: deleting
+// either user must be refused (RESTRICT) so the operator anonymizes
+// instead.
+//
+// Stage shape is V1-M25 verbatim, per column:
+//   1. orphan probe (count; alert + skip, never delete);
+//   2. definition probe — already RESTRICT under the canonical boot
+//      name → skip, ZERO DDL (the steady-state contract);
+//   3. converge — DROP CONSTRAINT IF EXISTS (canonical name) + the
+//      V1-M20 any-name sweep + DO-block ADD … RESTRICT.
+//
+// Interaction with the fkStatements creator (NOT modified — same
+// stage-freeze reasoning as V1-M25): the loop's ADD
+// fk_referral_referrer / fk_referral_referee raise duplicate_object and
+// are swallowed on every later boot (the names this stage re-adds are
+// byte-identical to the loop's), so both FKs stay RESTRICT with zero
+// DDL after the first post-deploy boot.
+//
+// Drizzle mirror: referral_events.ts onDelete:"restrict" + chain 0019.
+export async function applyReferralFksRestrictStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const targets: Array<{ column: string; constraint: string }> = [
+    { column: "referrer_id", constraint: "fk_referral_referrer" },
+    { column: "referee_id", constraint: "fk_referral_referee" },
+  ];
+
+  for (const { column, constraint } of targets) {
+    // 1. Orphan probe — alert, never delete (V1-M25 short-circuit shape).
+    const orphans = extractCount(
+      await execute(sql`
+        SELECT count(*) AS c
+        FROM referral_events re
+        LEFT JOIN users u ON u.id = re.${sql.raw(column)}
+        WHERE u.id IS NULL
+      `),
+    );
+    if (orphans > 0) {
+      await alertMoneyConstraintIssue(
+        `صفوف إحالات يتيمة (V1-M28)`,
+        `Found ${orphans} referral_events row(s) whose ${column} has no matching users row — the ON DELETE RESTRICT rebuild of ${constraint} was SKIPPED and NOTHING was deleted. Re-link the rows manually, then reboot to apply the constraint.`,
+        `db:fkrestrict:${constraint}`,
+      );
+      continue;
+    }
+
+    // 2. Definition probe — confdeltype 'r' = ON DELETE RESTRICT.
+    const fkRows = extractRows(
+      await execute(sql`
+        SELECT con.conname AS conname, con.confdeltype AS confdeltype
+        FROM pg_constraint con
+        JOIN pg_attribute a
+          ON a.attrelid = con.conrelid
+         AND a.attnum = ANY (con.conkey)
+        WHERE con.contype = 'f'
+          AND con.conrelid = 'referral_events'::regclass
+          AND a.attname = ${column}
+      `),
+    );
+    const alreadyRestrict =
+      fkRows.length === 1 &&
+      String(fkRows[0].conname) === constraint &&
+      String(fkRows[0].confdeltype) === "r";
+    if (alreadyRestrict) continue; // steady state — zero DDL
+
+    // 3. Converge to the canonical boot-named RESTRICT FK.
+    await execute(sql.raw(`ALTER TABLE referral_events DROP CONSTRAINT IF EXISTS ${constraint}`));
+    await execute(
+      sql.raw(`
+      DO $$
+      DECLARE
+        fk_name text;
+      BEGIN
+        FOR fk_name IN
+          SELECT con.conname
+          FROM pg_constraint con
+          JOIN pg_attribute a
+            ON a.attrelid = con.conrelid
+           AND a.attnum = ANY (con.conkey)
+          WHERE con.contype = 'f'
+            AND con.conrelid = 'referral_events'::regclass
+            AND a.attname = '${column}'
+        LOOP
+          EXECUTE format('ALTER TABLE referral_events DROP CONSTRAINT %I', fk_name);
+        END LOOP;
+      END $$;
+    `),
+    );
+    await execute(
+      sql.raw(`
+      DO $$ BEGIN
+        ALTER TABLE referral_events ADD CONSTRAINT ${constraint}
+          FOREIGN KEY (${column}) REFERENCES users(id) ON DELETE RESTRICT;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `),
+    );
+    logger.info(
+      { category: "storage", column, constraint },
+      "V1-M28: referral_events FK rebuilt as ON DELETE RESTRICT (attribution is money-adjacent)",
+    );
+  }
+}
+
+// ── V1-M29 (R123-E5, R123-A7 P3): the domain CHECK batch ────────────────────
+//
+// Eight CHECKs the R118-A3 F3 sweep stopped short of (it pinned the
+// money tables' CHECKs; these are the domain tables' own invariants).
+// Every expression is what the zod perimeter already enforces
+// (CreateProductBody min 0.01, cart quantity >= 1, run outcomes, risk
+// score/confidence bounds) — the CHECK closes the bypass writers (cron,
+// SQL console, a future service) the same way chk_orders_amount_pos
+// does for checkout:
+//   chk_cart_items_quantity_pos   cart_items.quantity >= 1
+//   chk_products_price_pos        products.price > 0
+//   chk_variant_price_pos         product_variants price_lyd > 0 AND
+//                                 cost_price >= 0
+//   chk_referral_status           referral_events.status IN
+//                                 ('pending','credited')
+//   chk_enrichment_runs_outcome   enrichment_runs.outcome IN
+//                                 ('in_flight','success','failure')
+//   chk_forecast_runs_outcome     inventory_forecast_runs.outcome IN
+//                                 (the same set)
+//   chk_risk_score_range          risk_events.score 0..100
+//   chk_risk_confidence_range     risk_events.confidence 0..1
+//
+// Stage shape is the V1-M9/V1-M26 checkConstraints loop verbatim:
+// violation count-probe → deduped admin alert + skip (the operator
+// fixes data, the next boot applies the constraint); otherwise the
+// DO-block ADD swallows duplicate_object on re-runs. All tables exist
+// by the time the stage tail runs (the runMigrations body creates them
+// unconditionally with CREATE TABLE IF NOT EXISTS before the stages).
+//
+// Drizzle mirror: check() declarations in the schema TS + chain 0019.
+export async function applyDomainCheckConstraintsStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const checkConstraints: Array<{
+    name: string;
+    table: string;
+    check: string;
+    violation: string;
+  }> = [
+    {
+      name: "chk_cart_items_quantity_pos",
+      table: "cart_items",
+      check: "quantity >= 1",
+      violation: "quantity < 1",
+    },
+    {
+      name: "chk_products_price_pos",
+      table: "products",
+      check: "price > 0",
+      violation: "price <= 0",
+    },
+    {
+      name: "chk_variant_price_pos",
+      table: "product_variants",
+      check: "price_lyd > 0 AND cost_price >= 0",
+      violation: "price_lyd <= 0 OR cost_price < 0",
+    },
+    {
+      name: "chk_referral_status",
+      table: "referral_events",
+      check: "status IN ('pending','credited')",
+      violation: "status NOT IN ('pending','credited')",
+    },
+    {
+      name: "chk_enrichment_runs_outcome",
+      table: "enrichment_runs",
+      check: "outcome IN ('in_flight','success','failure')",
+      violation: "outcome NOT IN ('in_flight','success','failure')",
+    },
+    {
+      name: "chk_forecast_runs_outcome",
+      table: "inventory_forecast_runs",
+      check: "outcome IN ('in_flight','success','failure')",
+      violation: "outcome NOT IN ('in_flight','success','failure')",
+    },
+    {
+      name: "chk_risk_score_range",
+      table: "risk_events",
+      check: "score >= 0 AND score <= 100",
+      violation: "score < 0 OR score > 100",
+    },
+    {
+      name: "chk_risk_confidence_range",
+      table: "risk_events",
+      check: "confidence >= 0 AND confidence <= 1",
+      violation: "confidence < 0 OR confidence > 1",
+    },
+  ];
+  for (const { name, table, check, violation } of checkConstraints) {
+    const violations = extractCount(
+      await execute(sql.raw(`SELECT count(*) AS c FROM ${table} WHERE ${violation}`)),
+    );
+    if (violations > 0) {
+      await alertMoneyConstraintIssue(
+        `بيانات تخالف قيد ${name} (V1-M29)`,
+        `Found ${violations} existing row(s) violating ${name} on ${table} — constraint NOT added. Fix the data, then reboot to apply it.`,
+        `db:constraint:${name}`,
+      );
+      continue;
+    }
+    await execute(
+      sql.raw(`
+        DO $$ BEGIN
+          ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${check});
+        EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
+      `),
+    );
+  }
+  logger.info({ category: "storage" }, "V1-M29: domain CHECK batch (idempotent)");
+}
+
+// ── V1-M30 (R123-E5, R123-A7 P2): organizations table removal ───────────────
+//
+// organizations is DEAD: zero route/service/job reads or writes, zero
+// frontend references, no INSERT anywhere in the repo (full-repo sweep
+// re-run at implementation time — the only references were this file's
+// own boot DDL, the schema TS, the chain, the pglite fixture, and
+// dated audit docs under docs/history/). Live row count 0 (R118-A3).
+// users.organization_id is its only ever-declared consumer and is
+// equally unreferenced — every users row carries NULL.
+//
+// The R97-DB-04 precedent (applied to the users firebase-uid duplicates
+// in V1-M15): the runMigrations BODY creators were REMOVED in the same
+// edit (fresh databases never get the table), and this stage removes
+// them from already-migrated databases:
+//   1. any-name FK sweep on users.organization_id (V1-M20 idiom — the
+//      live FK name is the chain-era users_organization_id_
+//      organizations_id_fk here in migrate.ts, but hand-provisioned
+//      environments may carry anything);
+//   2. DROP COLUMN organization_id (catalog-probed — the column drop
+//      is itself the second FK belt, and provably NULL-only);
+//   3. DROP TABLE organizations (existence-probed, the V1-M15 otps
+//      idiom) — IF EXISTS as the final belt.
+// Every step is probe-gated: steady-state boots issue ZERO DDL, and on
+// the pglite harness (no organizations table, no organization_id
+// column since the R123 harness parity edit) the whole stage no-ops.
+//
+// Drizzle mirror: organizations.ts deleted, users.ts organizationId
+// removed, chain 0019 emits the DROPs.
+export async function applyOrganizationsRemovalStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // 1. Any-name FK sweep on users.organization_id (V1-M20 shape),
+  //    probe-gated: zero FKs on the column (or the column already gone —
+  //    the pg_attribute join yields nothing) → the DO block is not even
+  //    sent, keeping the steady-state contract at zero DDL.
+  const orgFkCount = extractCount(
+    await execute(sql`
+      SELECT count(*) AS c
+      FROM pg_constraint con
+      JOIN pg_attribute a
+        ON a.attrelid = con.conrelid
+       AND a.attnum = ANY (con.conkey)
+      WHERE con.contype = 'f'
+        AND con.conrelid = 'users'::regclass
+        AND a.attname = 'organization_id'
+    `),
+  );
+  if (orgFkCount > 0) {
+    await execute(sql`
+      DO $$
+      DECLARE
+        fk_name text;
+      BEGIN
+        FOR fk_name IN
+          SELECT con.conname
+          FROM pg_constraint con
+          JOIN pg_attribute a
+            ON a.attrelid = con.conrelid
+           AND a.attnum = ANY (con.conkey)
+          WHERE con.contype = 'f'
+            AND con.conrelid = 'users'::regclass
+            AND a.attname = 'organization_id'
+        LOOP
+          EXECUTE format('ALTER TABLE users DROP CONSTRAINT %I', fk_name);
+        END LOOP;
+      END $$;
+    `);
+    logger.info(
+      { category: "storage", fks: orgFkCount },
+      "V1-M30: swept users.organization_id FK(s) before dropping the dead column",
+    );
+  }
+
+  // 2. The column — catalog probe first (zero-DDL steady state).
+  const orgColumnRows = extractRows(
+    await execute(sql`
+      SELECT 1 AS present FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'users'
+        AND column_name = 'organization_id'
+    `),
+  );
+  if (orgColumnRows.length > 0) {
+    await execute(sql`ALTER TABLE users DROP COLUMN organization_id`);
+    logger.info(
+      { category: "storage" },
+      "V1-M30: dropped dead users.organization_id (zero readers, provably NULL-only)",
+    );
+  }
+
+  // 3. The table — existence probe (V1-M15 otps idiom) + IF EXISTS belt.
+  const orgTableRows = extractRows(
+    await execute(sql`
+      SELECT 1 AS present FROM information_schema.tables
+      WHERE table_schema = current_schema()
+        AND table_name = 'organizations'
+    `),
+  );
+  if (orgTableRows.length > 0) {
+    await execute(sql`DROP TABLE IF EXISTS organizations`);
+    logger.info(
+      { category: "storage" },
+      "V1-M30: dropped dead organizations table (0 rows, zero references)",
+    );
+  }
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -1835,8 +2290,11 @@ export async function runMigrations() {
     // Idempotent — safe to re-run on every cold boot.
     await db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-      CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);
-      CREATE INDEX IF NOT EXISTS idx_products_archived ON products(is_archived);
+      -- R123-E5 (V1-M27): idx_products_active + idx_products_archived no
+      -- longer created — idx_products_active_category covers every active
+      -- predicate (strict-prefix redundancy), and is_archived is never a
+      -- leading predicate (~zero selectivity). V1-M27 drops both on
+      -- already-migrated databases (R97-DB-04 precedent).
       CREATE INDEX IF NOT EXISTS idx_products_active_category ON products(is_active, category);
     `);
 
@@ -2214,7 +2672,10 @@ export async function runMigrations() {
     `);
 
     await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS idx_wallet_ledger_user ON wallet_ledger(user_id);
+      -- R123-E5 (V1-M27): idx_wallet_ledger_user no longer created — a
+      -- strict prefix of idx_wallet_ledger_user_created (created by the
+      -- round-4 block below). V1-M27 drops it on already-migrated
+      -- databases (R97-DB-04 precedent).
       CREATE INDEX IF NOT EXISTS idx_wallet_ledger_type ON wallet_ledger(type);
       CREATE INDEX IF NOT EXISTS idx_wallet_ledger_created ON wallet_ledger(created_at DESC);
     `);
@@ -2279,35 +2740,14 @@ export async function runMigrations() {
     `);
 
     // ── Idempotent column additions (for upgrades on existing DBs) ──────────
-    // Organizations table + users.organization_id (added in drizzle migration 0001)
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS organizations (
-        id         SERIAL PRIMARY KEY,
-        name       VARCHAR(255) NOT NULL,
-        slug       VARCHAR(100) NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        CONSTRAINT organizations_slug_unique UNIQUE (slug)
-      );
-    `);
-
-    await db.execute(sql`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INTEGER;
-    `);
-
-    await db.execute(sql`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conname = 'users_organization_id_organizations_id_fk'
-        ) THEN
-          ALTER TABLE users
-            ADD CONSTRAINT users_organization_id_organizations_id_fk
-            FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL;
-        END IF;
-      END $$;
-    `);
+    // R123-E5 (V1-M30): the organizations table + users.organization_id +
+    // its FK used to be (re-)created here (added by drizzle migration
+    // 0001). organizations is DEAD — zero route/service/job/frontend
+    // references, no INSERT anywhere, 0 live rows (R118-A3) — so nothing
+    // creates it on fresh databases anymore, and applyOrganizations-
+    // RemovalStage (V1-M30, the stage tail) drops the table, the column
+    // and any FK on it from already-migrated databases (the R97-DB-04
+    // precedent applied to V1-M15's firebase-uid duplicates).
 
     // Sessions table (server-side session tracking, referenced by JWT sessionId)
     await db.execute(sql`
@@ -2483,22 +2923,24 @@ export async function runMigrations() {
     }
 
     // ── Missing indexes for common query patterns ───────────────────────────
+    // R123-E5 (V1-M27): idx_orders_user / idx_orders_status / idx_topups_user /
+    // idx_topups_status / idx_tickets_user / idx_referral_referrer are no
+    // longer created — each is a strict prefix of a covering composite
+    // (idx_orders_user_created / idx_orders_status_created /
+    // idx_topups_user_created / idx_topups_status_created /
+    // idx_tickets_user_created / idx_referral_referrer_created, the last
+    // three created by V1-M27 itself). V1-M27 drops the six on
+    // already-migrated databases (R97-DB-04 precedent).
     await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
       CREATE INDEX IF NOT EXISTS idx_orders_product ON orders(product_id);
-      CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
       CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_inventory_product ON inventory(product_id);
       CREATE INDEX IF NOT EXISTS idx_inventory_sold ON inventory(is_sold) WHERE is_sold = false;
-      CREATE INDEX IF NOT EXISTS idx_topups_user ON wallet_topups(user_id);
-      CREATE INDEX IF NOT EXISTS idx_topups_status ON wallet_topups(status);
       -- R120-B6/A6-F3: fresh installs get the bell-sort shape directly
       -- (user_id, created_at DESC). Legacy (user_id, is_read) databases
       -- are converged by the V1-M24 probe-gated swap stage below — same
       -- name, so this IF NOT EXISTS no-ops there.
       CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets(user_id);
-      CREATE INDEX IF NOT EXISTS idx_referral_referrer ON referral_events(referrer_id);
       CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_user_auth_identities_provider_uid ON user_auth_identities(provider, provider_uid);
@@ -3121,8 +3563,10 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_forecasts_at_risk_runout
         ON inventory_forecasts (at_risk, predicted_runout_at)
         WHERE at_risk = true;
-      CREATE INDEX IF NOT EXISTS idx_forecasts_product_date
-        ON inventory_forecasts (product_id, forecast_date DESC);
+      -- R123-E5 (V1-M27): idx_forecasts_product_date no longer created —
+      -- a strict prefix of uq_forecast_product_date above (a DESC btree
+      -- on the same pair is served by the unique index scanned
+      -- backwards). V1-M27 drops it on already-migrated databases.
       CREATE INDEX IF NOT EXISTS idx_forecasts_run
         ON inventory_forecasts (run_id);
     `);
@@ -3230,8 +3674,9 @@ export async function runMigrations() {
         ON risk_events (user_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_risk_events_level_created
         ON risk_events (level, created_at);
-      CREATE INDEX IF NOT EXISTS idx_risk_events_created
-        ON risk_events (created_at);
+      -- R123-E5 (V1-M27): idx_risk_events_created no longer created — a
+      -- strict prefix of idx_risk_events_created_id_desc (round-4 block
+      -- below). V1-M27 drops it on already-migrated databases.
       CREATE INDEX IF NOT EXISTS idx_risk_events_type_created
         ON risk_events (event_type, created_at);
 
@@ -3248,8 +3693,11 @@ export async function runMigrations() {
         updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_risk_rules_name
-        ON risk_rules (name);
+      -- R123-E5 (V1-M27): idx_risk_rules_name no longer created — the
+      -- risk_rules.name UNIQUE constraint backing index
+      -- (risk_rules_name_unique) already serves every name lookup; the
+      -- plain twin only added INSERT-time maintenance. V1-M27 drops it
+      -- on already-migrated databases.
       CREATE INDEX IF NOT EXISTS idx_risk_rules_enabled
         ON risk_rules (enabled);
 
@@ -3491,6 +3939,30 @@ export async function runMigrations() {
     // stopped short of. Probe-gated count-then-add (V1-M9 idiom).
     // See applyMoneyArithmeticChecksStage docs.
     await applyMoneyArithmeticChecksStage();
+
+    // ── V1-M27 (R123-E5, R123-A7 P2): serving-index consolidation — the ──
+    // three user-history composites (topups / referrals / tickets,
+    // (x_id, created_at DESC)) + the sixteen redundant twins dropped,
+    // probe-gated. See applyIndexConsolidationStage docs.
+    await applyIndexConsolidationStage();
+
+    // ── V1-M28 (R123-E5, R123-A7 P2): referral_events referrer/referee ──
+    // FKs rebuilt as ON DELETE RESTRICT — a referee delete must not erase
+    // the referrer's pending credit claim (the V1-M25 boundary extended to
+    // money-adjacent attribution). Probe-gated per column.
+    // See applyReferralFksRestrictStage docs.
+    await applyReferralFksRestrictStage();
+
+    // ── V1-M29 (R123-E5, R123-A7 P3): the domain CHECK batch — quantity ──
+    // >= 1, price > 0, variant price/cost bounds, referral status, run
+    // outcomes ×2, risk score/confidence ranges. Probe-gated count-then-add
+    // (V1-M9 idiom). See applyDomainCheckConstraintsStage docs.
+    await applyDomainCheckConstraintsStage();
+
+    // ── V1-M30 (R123-E5, R123-A7 P2): organizations removal — the dead ──
+    // table + users.organization_id + any FK on it, probe-gated (zero-DDL
+    // steady state). See applyOrganizationsRemovalStage docs.
+    await applyOrganizationsRemovalStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

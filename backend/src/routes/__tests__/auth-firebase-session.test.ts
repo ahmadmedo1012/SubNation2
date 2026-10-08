@@ -166,9 +166,15 @@ async function postSession(
   };
 }
 
-async function countRows(table: Parameters<ReturnType<typeof db.select>["from"]>[0], where?: ReturnType<typeof eq>): Promise<number> {
+async function countRows(
+  table: Parameters<ReturnType<typeof db.select>["from"]>[0],
+  where?: ReturnType<typeof eq>,
+): Promise<number> {
   // Generic table counter (users, sessions, identities, referrals — A5 #2).
-  const q = db.select({ id: sql`1` }).from(table).$dynamic();
+  const q = db
+    .select({ id: sql`1` })
+    .from(table)
+    .$dynamic();
   const rows = where ? await q.where(where) : await q;
   return rows.length;
 }
@@ -295,9 +301,7 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
       expect((second.body.user as { id: number }).id).toBe(firstUserId);
 
       // Exactly ONE user row for the uid — login never duplicates.
-      expect(
-        await countRows(usersTable, eq(usersTable.firebaseUid, "google-uid-111")),
-      ).toBe(1);
+      expect(await countRows(usersTable, eq(usersTable.firebaseUid, "google-uid-111"))).toBe(1);
       // TWO session rows (device list backing store).
       expect(await countRows(sessionsTable, eq(sessionsTable.userId, firstUserId))).toBe(2);
       // The identity upsert keeps ONE (provider, provider_uid) row.
@@ -338,12 +342,16 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
       expect(refused.status).toBe(409);
       expect(refused.body).toMatchObject({
         success: false,
+        // R123-E5 (A6 P2-3): the envelope contract — every documented
+        // route's error body carries the machine-readable {error, code};
+        // the repo's conflict-family code (same as wallet/orders/loyalty).
+        code: "CONFLICT",
         reason: "link_consent_required",
         candidate_hint: { maskedPhone: "9••••••78", maskedEmail: null },
       });
       const linkToken = refused.body.link_token;
       expect(typeof linkToken).toBe("string");
-      expect((linkToken as string)).toMatch(/^[0-9a-f]{64}$/);
+      expect(linkToken as string).toMatch(/^[0-9a-f]{64}$/);
 
       // Nothing was committed by the refusal: no firebaseUid on the
       // candidate, no duplicate user, no session, no identity row.
@@ -367,10 +375,7 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
 
       // The link is committed ONTO the existing user — still no duplicate.
       expect(await countRows(usersTable)).toBe(1);
-      const [linkedUser] = await db
-        .select()
-        .from(usersTable)
-        .where(eq(usersTable.id, existing.id));
+      const [linkedUser] = await db.select().from(usersTable).where(eq(usersTable.id, existing.id));
       expect(linkedUser.firebaseUid).toBe("google-uid-222");
       expect(linkedUser.authProvider).toBe("firebase_google");
       const identities = await db
@@ -406,10 +411,7 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
       expect(newUser.id).not.toBe(referrer.id);
 
       // The new user carries the referral attribution…
-      const [created] = await db
-        .select()
-        .from(usersTable)
-        .where(eq(usersTable.id, newUser.id));
+      const [created] = await db.select().from(usersTable).where(eq(usersTable.id, newUser.id));
       expect(created.referredBy).toBe(referrer.id);
       // …the event is PENDING (credited on first approved topup, not now)…
       const events = await db

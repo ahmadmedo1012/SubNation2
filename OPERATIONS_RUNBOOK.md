@@ -670,7 +670,7 @@ accounts can press them.
 - **Design + rollback record:** `docs/operations/WWW_TO_APEX_301.md`. Rollback
   = remove the file; apex is unaffected.
 
-## 14. Pending operator actions (R122 status)
+## 14. Pending operator actions (R122 status; R123 additions below)
 
 - **GSC verification token** — `VITE_GSC_VERIFICATION` is still unset (the
   `Dockerfile` ARG exists at the build). Paste-and-go: operator pastes the
@@ -681,6 +681,20 @@ accounts can press them.
 - **Stock + TOTP** (unverified since R118): the open items in
   `docs/operations/OPERATOR_ACTIONS_R118.md` — status header refreshed
   R122.
+- **R123 addition — http→https apex redirect is a 302** (verified live
+  2026-10-08, R123-A8): the Traefik entrypoint `redirectScheme` middleware
+  in the Coolify proxy config ships `permanent: false`. Fix = Coolify →
+  Server → Proxy → Configuration, set `permanent: true` on the
+  redirect-to-https middleware → 301 (no app redeploy). Verify:
+  `curl -sI http://subnation.ly/ | head -3` → 301 + apex Location.
+  Rollback = flip the flag back. Full steps: OPERATOR_ACTIONS_R118 #11.
+- **R123 addition — copilot_actions / copilot_action_items retention
+  policy is UNDECIDED** (currently unbounded; the only audit-grade tables
+  without a window — jsonb before/after snapshots grow monotonically with
+  copilot usage). The decision (180 d aligned with audit_logs / longer /
+  keep-unbounded) + reference prune SQL: OPERATOR_ACTIONS_R118 #12. The
+  risk-retention job (R123-E5) deliberately does NOT touch these tables
+  until the policy is chosen.
 
 ## 15. Backups & restore drills (pointer)
 

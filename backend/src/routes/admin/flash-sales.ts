@@ -29,6 +29,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router: IRouter = Router();
 
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the flash-sale
+// list feeds operator pricing decisions; an intermediary must never serve
+// it (or a mutation's response) from cache.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 // ── Validation helpers ─────────────────────────────────────────────────────
 
 const MIN_DURATION_MS = 5 * 60 * 1000; // sale must end at least 5min in the future

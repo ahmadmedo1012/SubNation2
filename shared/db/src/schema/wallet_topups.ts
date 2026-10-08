@@ -53,8 +53,12 @@ export const walletTopupsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => ({
-    userIdx: index("idx_topups_user").on(t.userId),
-    statusIdx: index("idx_topups_status").on(t.status),
+    // R123-E5 (V1-M27): idx_topups_user + idx_topups_status dropped —
+    // prefixes superseded by the composites (status by
+    // idx_topups_status_created, user by idx_topups_user_created — the
+    // (user_id, created_at DESC) shape GET /api/wallet/topups sorts on);
+    // boot twin: migrate.ts applyIndexConsolidationStage.
+    userCreatedIdx: index("idx_topups_user_created").on(t.userId, t.createdAt.desc()),
     statusCreatedIdx: index("idx_topups_status_created").on(t.status, t.createdAt),
     // D8 closure (round-97 F7): mirrors the live partial unique index
     // created by applyMoneyConstraintStage (V1-M9, B8-01) — one APPROVED

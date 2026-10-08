@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -9,6 +10,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Daily catalog-enrichment run record (012-arabic-catalog-enrichment,
@@ -47,5 +49,13 @@ export const enrichmentRunsTable = pgTable(
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
     startedAtIdx: index("idx_enrichment_runs_started_at").on(t.startedAt.desc()),
     outcomeIdx: index("idx_enrichment_runs_outcome").on(t.outcome, t.startedAt.desc()),
+    // R123-E5 (V1-M29): the three-state run lifecycle the runner already
+    // enforces ('in_flight' mutates exactly once to 'success'/'failure');
+    // the CHECK closes the bypass writers. Boot twin: migrate.ts
+    // applyDomainCheckConstraintsStage (probe-gated count-then-add).
+    outcomeCheck: check(
+      "chk_enrichment_runs_outcome",
+      sql`outcome IN ('in_flight','success','failure')`,
+    ),
   }),
 );

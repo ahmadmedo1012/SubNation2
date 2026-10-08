@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -10,6 +11,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 /**
  * Daily inventory-forecast run record (011-inventory-demand-forecast,
@@ -54,5 +56,12 @@ export const inventoryForecastRunsTable = pgTable(
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
     startedAtIdx: index("idx_forecast_runs_started_at").on(t.startedAt.desc()),
     outcomeIdx: index("idx_forecast_runs_outcome").on(t.outcome, t.startedAt.desc()),
+    // R123-E5 (V1-M29): same three-state run lifecycle contract as
+    // enrichment_runs; boot twin: migrate.ts applyDomainCheckConstraintsStage
+    // (probe-gated count-then-add).
+    outcomeCheck: check(
+      "chk_forecast_runs_outcome",
+      sql`outcome IN ('in_flight','success','failure')`,
+    ),
   }),
 );

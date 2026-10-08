@@ -93,6 +93,26 @@ overrides:
   # @opentelemetry/core — GHSA-8988-4f7v-96qf (moderate) via @sentry/node's
   #   telemetry chain; 2.8.0 is inside the accepted peer range.
   "@opentelemetry/core": "^2.8.0"
+  # ── R123-E5 (A5 P3-1): the CVE-2026-104872 / GHSA-qqmp-wf37-98f9 family ──
+  # Six @opentelemetry/instrumentation-* DB drivers (pulled by @sentry/node's
+  # @opentelemetry/instrumentation umbrella) expose the database username as
+  # an unconditional `db.user` span attribute — with telemetry configured
+  # (Sentry is), that ships the DB credential material to the telemetry
+  # backend. Only instrumentation-pg is plausibly ACTIVE in this pg-only app
+  # (the other five drivers never match a `pg`-only runtime), but all six
+  # are pinned defensively per the audit. Fixed versions verified against
+  # the r123-a5 pnpm-audit/trivy/osv artifacts; every pin was published
+  # 2026-07-23, so minimumReleaseAge 1440 is satisfied naturally (no
+  # allowlist entry needed). The two remaining --prod advisories are
+  # accepted and documented: node-forge 1.4.0 CVE-2026-85393 (firebase-admin;
+  # no fixed release exists, reachability verified NIL) and uuid
+  # CVE-2026-41907 (google-gax; vulnerable API unused).
+  "@opentelemetry/instrumentation-knex": "0.65.0"
+  "@opentelemetry/instrumentation-mongoose": "0.67.0"
+  "@opentelemetry/instrumentation-mysql": "0.67.0"
+  "@opentelemetry/instrumentation-mysql2": "0.67.0"
+  "@opentelemetry/instrumentation-pg": "0.73.0"
+  "@opentelemetry/instrumentation-tedious": "0.40.0"
   # ── Mission W7 supply-chain floors (2026-10-05, restored here R119) ──
   # protobufjs 7.6.6 (prototype pollution), ws >=8.21 (DoS),
   # @fastify/busboy ^3.2.1 + form-data ^4.0.6 (multipart parsing),

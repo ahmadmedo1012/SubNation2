@@ -52,12 +52,10 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
   const body = (req.body ?? {}) as Partial<DraftBody>;
   const intentText = typeof body.intent_text === "string" ? body.intent_text.trim() : "";
   if (!intentText || intentText.length > 4000) {
-    res
-      .status(400)
-      .json({
-        error: "intent_text required (1–4000 chars)",
-        code: ErrorCode.COPILOT_INVALID_INPUT,
-      });
+    res.status(400).json({
+      error: "intent_text required (1–4000 chars)",
+      code: ErrorCode.COPILOT_INVALID_INPUT,
+    });
     return;
   }
   if (!copilotLlmAvailable()) {
@@ -131,12 +129,10 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
     });
   } catch (err) {
     logger.error({ err, adminId: adminReq.adminId, correlationId }, "copilot draft: LLM error");
-    res
-      .status(502)
-      .json({
-        error: "حدث خطأ أثناء التواصل مع نموذج اللغة",
-        code: ErrorCode.COPILOT_LLM_ERROR,
-      });
+    res.status(502).json({
+      error: "حدث خطأ أثناء التواصل مع نموذج اللغة",
+      code: ErrorCode.COPILOT_LLM_ERROR,
+    });
     return;
   }
 
@@ -280,6 +276,15 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
 }
 
 export const adminCopilotDraftRouter = Router();
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the draft
+// response carries a staged mutation preview (prices, stock, copies) +
+// the model's assistant text; an intermediary must never store it. The
+// route is POST-only (no GET exists), so this covers the one response
+// shape the surface has — same family as previews/history/settings.
+adminCopilotDraftRouter.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 adminCopilotDraftRouter.post(
   "/copilot/draft",
   requireAdmin,

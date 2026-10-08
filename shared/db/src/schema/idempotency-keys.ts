@@ -1,4 +1,4 @@
-import { index, integer, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 /**
  * Durable idempotency for the customer money path (F10, round-94 A4).
@@ -61,7 +61,10 @@ export const idempotencyKeysTable = pgTable(
     referenceType: varchar("reference_type", { length: 32 }).notNull().default("order"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => ({
-    orderIdx: index("idx_idempotency_keys_order").on(t.orderId),
-  }),
+  // R123-E5 (V1-M27): idx_idempotency_keys_order dropped — ZERO readers
+  // (grep-verified: reference lookups go through the key PK; the column
+  // is a polymorphic reference whose integrity is app-owned since
+  // V1-M20). Pure write amplification on the checkout claim path; boot
+  // twin: migrate.ts applyIndexConsolidationStage (probe-gated DROP
+  // INDEX IF EXISTS).
 );

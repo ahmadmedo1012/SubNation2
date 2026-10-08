@@ -23,6 +23,14 @@ import {
 
 const settingsRouter = Router();
 
+// R123-E5 (A6 P3): no-store parity with the 98-F3 pattern — the phase
+// flags decide which copilot panels render at all; an intermediary must
+// never serve them (or a PATCH result) from cache.
+settingsRouter.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
   // GET is readable by any authenticated admin — the four booleans are
   // not sensitive and the panel needs them on every load to decide
