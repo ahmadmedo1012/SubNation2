@@ -7,6 +7,130 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R123 — the deepest phase: audit octet + six fix waves + codegen pipeline reborn + V1-M27..M30 — 2026-10-08
+
+Eight parallel read-only auditors (A1 money chain · A2 test quality · A3
+storefront RTL/Arabic · A4 admin · A5 security tools · A6 API contracts ·
+A7 database · A8 live-browser on production) over `a474d8c` → **0 P0
+findings, money chain verified hardened**; then six write agents in
+isolated worktrees (E1 money, E2 codegen/contracts/e2e, E3 admin, E4a
+money-frontend, E4b storefront, E5 infra/DB — E5+E2 completed by the
+parent after an infrastructure outage killed the agent launcher) + one
+independent reviewer (verdict SHIP-WITH-FOLLOWUPS, 0 P0/P1). 15 commits
+`952e902`→`27a70dd`, 158 files, +19.1k/−3.5k. Gates on the merged tree:
+typecheck clean, lint 0 errors, build + budget PASS (eager path
+145,510 B gz), backend ~217 files / ~2050 tests PASS (2 contention
+flakes re-verified), frontend 128/884 PASS, frozen lockfile, drizzle
+drift gate, openapi parity 83/83. **Live-verified post-deploy (push
+19:44Z → live 19:53Z, ~9 min): healthz ok (V1-M27..M30 applied on the
+live DB — a failed stage would have aborted boot), passwordless FAQ +
+canonical topup SLA in the live support chunk, old email-login claim
+gone, Arabic search «نتفليكس»→Netflix, unknown-path noindex, sitemap
+200, www→apex 301, CI green on every R123 push incl. the new orval
+drift gate's first run.**
+
+### Security & supply chain
+- **OTel instrumentation family pinned** (CVE-2026-104872 /
+  GHSA-qqmp-wf37-98f9): the six `@opentelemetry/instrumentation-*` DB
+  drivers pulled by @sentry/node's umbrella shipped the DB username as
+  an unconditional `db.user` span attribute; workspace overrides pin
+  the fixed versions — `pnpm audit --prod` 8→2 (both remaining are
+  pre-documented accepted-risks: node-forge no-fix-exists via
+  firebase-admin; uuid unreachable via google-gax).
+- **A5 fresh sweep** (semgrep owasp+secrets+ts, trivy fs, gitleaks full
+  history + no-git, osv-scanner, pnpm audit): ~112 raw findings → **0
+  exploitable** (7 secret fixtures in scanner self-tests, HTML-escaped
+  Telegram bodies, package-manager rule misparses; headers/cookies
+  posture live-verified STRONG).
+
+### Database (probe-gated boot stages + chain mirror 0019)
+- **V1-M27 serving-index consolidation**: 3 user-history composites
+  created (`idx_topups_user_created`, `idx_referral_referrer_created`,
+  `idx_tickets_user_created`) + 16 redundant twins dropped probe-gated
+  (13 prefix/duplicate/zero-reader + 3 superseded single-column FK
+  twins; `idx_idempotency_keys_order` was pure write amplification on
+  the checkout claim path).
+- **V1-M28**: referral_events referrer/referee FKs CASCADE→RESTRICT —
+  deleting a referee no longer erases the referrer's pending credit
+  claim (the V1-M25 boundary extended to money-adjacent attribution).
+- **V1-M29**: eight domain CHECKs (cart quantity ≥ 1, price > 0 ×2,
+  referral status, run outcomes ×2, risk score 0-100, confidence 0-1).
+- **V1-M30**: the dead `organizations` table + `users.organization_id`
+  removed (zero readers/writers verified twice — audit + reviewer
+  independent greps; 0 live rows).
+- **Chain 0008 repaired** (duplicate CREATE INDEX broke fresh
+  chain-apply with 42P07) and the `login_attempts` gap mirrored into
+  the pglite harness.
+
+### Backend & contracts
+- **Codegen pipeline REBORN** (A6-P1): orval 8.40 kept, zod pinned to
+  v3 syntax via `override.zod.version` (the root cause: orval's
+  auto-detection found no zod dep in api-spec and emitted zod-4 syntax
+  against the workspace's zod ^3.25.76) + react-query v5 hook-signature
+  pin; generated clients regenerated and resynced (page params ×4
+  lists, AdminStats fields, CreateProductBody seo fields,
+  ProductRecommendation slug, firebase session 200/201 + 409 code,
+  user_agent, decrypt_failed, maxItems 200).
+- **Response-contract suite** (21 endpoints): the REAL app object over
+  pglite, every documented 2xx body safeParsed against the
+  orval-generated zod schemas — first-run catch: `/api/auth/providers`
+  emitted `whatsapp_status: null` when the OTP channel is unconfigured
+  vs a non-nullable enum (spec fixed to nullable).
+- **Coupon-validate cap parity** (A1-P2): `/api/coupons/validate` now
+  applies the R115 combined cap — the money screen can no longer
+  confirm a discounted total the checkout refuses (flash 45% + coupon
+  10% > 50% cap case).
+- `roundLyd` adopted across the pricing pure-math; topup referral block
+  keys on the in-tx `referredBy` read; reject-path `topup-updated`
+  socket emit carries `amount`; 409 consent body carries the
+  conflict-family code; no-store on the admin GET stragglers;
+  risk_labels orphan prune joins the retention ladder.
+
+### Frontend
+- **Topup funnel truth** (A1-P1): `payment_reference` is now required
+  in the UI on the mobile_transfer flow (backend 400'd it since R111
+  while the label said "optional") — the default Libyana/Madar flow no
+  longer breaks post-submit.
+- **Product-page CLS 0.21 → fixed** (A8-P2): both product skeletons
+  under-reserved height vs the real two-column layout; ProductShell now
+  mirrors the real geometry (lg split + rail + sticky-bar slot) —
+  locally verified zero-pixel swap.
+- **Passwordless FAQ truth** (A3-P1): the support FAQ claimed email
+  login exists and omitted WhatsApp OTP (public + JSON-LD) — rewritten;
+  the topup-approval SLA unified across every surface (30 min).
+- **Admin**: 56 raw-fetch sites → the 401-aware contract (R122's
+  claim was only 3 sites — CHANGELOG corrected in place); the product
+  SEO form landed (R122 claimed it existed — corrected); alerts poll
+  support-scoped; dashboard chart fetch finance-gated; deleteRead
+  confirm; URL-synced filters; aria names; dirty guards.
+- Storefront polish batch: pending-terminology canon (قيد المراجعة /
+  قيد الانتظار), register return-path forwarding, tap targets ≥44px,
+  bidi badge unification, onboarding guest skeleton, status title,
+  `connection_limited` toast, skeleton shapes matched to real layouts.
+
+### Testing & CI
+- **26 new money tests** (checkout points-award triad incl. optimistic-
+  lock interleave, Telegram approval card, coupons-validate matrix,
+  wallet summary, real-service admin approve/reject + audit rows,
+  code-generator properties) + the 21-endpoint contract suite +
+  register-return-path suite; 884 frontend / ~2050 backend total.
+- **Committed e2e smoke** (10 guest read-only Playwright specs,
+  E2E_ENABLED-gated skip-by-default, mobile 390 project) + **CI orval
+  drift gate** (codegen + git diff --exit-code) + manual-first e2e job.
+- Two contention flakes (scheduler timing, one routes test) re-verified
+  green in isolation — documented as 2-CPU container artifacts.
+
+### Deferred (honest ledger, next round)
+strictFunctionTypes (needs its own round) · observability router
+no-store batch (P3) · V1-M27 docblock correction (idx_products_archived
+IS a leading predicate in 3 queries — drop still defensible at current
+cardinality) · coupons.ts toFixed→roundLyd uniformity · orders.tsx
+raw-fetch → generated hook migration · admin SEO editor needs the
+list payload to display existing overrides · copilot_actions retention
+(operator decision) · GSC token + Sentry org:ci swap (operator) ·
+catalog restock (Embronic track — untouched, per standing order) ·
+FlashSaleBanner lazy-mount 44px push (~0.03-0.05 residual CLS).
+
 ## Round R122 — full-spectrum audit quartet + Arabic search + DB safety + docs truth — 2026-10-07
 
 Eleven parallel read-only auditors (storefront UX, admin, backend, database,
