@@ -552,12 +552,18 @@ export default function LoyaltyPage() {
               <div className="text-sm text-muted-foreground">
                 {data.referrals_pending > 0 && (
                   <span className="text-status-warning font-bold ml-1">
+                    {/* R123-E4a (P2): pending-terminology canon — a
+                        pending referral is «قيد الانتظار» (waiting on the
+                        friend's first topup), matching referrals.tsx's
+                        stat tile + row chip; was the «معلق/معلقان/معلقة»
+                        family, a third word for one concept. Noun set
+                        rides formatCount (إحالة/إحالتان/إحالات). */}
                     {formatCount(data.referrals_pending, {
-                      one: "معلق",
-                      two: "معلقان",
-                      few: "معلقة",
-                      many: "معلقة",
-                      other: "معلق",
+                      one: "إحالة قيد الانتظار",
+                      two: "إحالتان قيد الانتظار",
+                      few: "إحالات قيد الانتظار",
+                      many: "إحالة قيد الانتظار",
+                      other: "إحالة قيد الانتظار",
                     })}{" "}
                     ·
                   </span>
@@ -750,7 +756,7 @@ export default function LoyaltyPage() {
                   disabled={converting || !convertPoints}
                   className="bg-primary hover:bg-primary/90 shrink-0 h-11 px-5 font-bold active:scale-95 transition-all"
                 >
-                  {converting ? "جارٍ..." : "تحويل"}
+                  {converting ? "جارٍ…" : "تحويل"}
                 </Button>
               </form>
             )}

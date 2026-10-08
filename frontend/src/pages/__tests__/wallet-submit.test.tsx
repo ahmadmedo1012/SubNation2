@@ -11,6 +11,9 @@
  *      (asserted on the orval mutation's `mutate({ data })` payload —
  *      A10's spec phrases it as the fetch body; the implementation goes
  *      through useCreateTopup, so the payload is the outgoing contract).
+ *      R123-E4a (P1): the reference is now REQUIRED on the
+ *      mobile_transfer flow (backend B4-R1 parity — a blank one is a
+ *      client-side rejection, no request) and still optional on lypay.
  *   2. Client-side rejection of an invalid amount performs no request.
  *   3. A failed /api/wallet probe renders an error state, NOT a
  *      fabricated 0.00-balance card (A10 spec (e), A4 P2 #7).
@@ -137,7 +140,7 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
     renderPage();
 
     // Amount (step 2 of the mobile-transfer flow).
-    fireEvent.change(screen.getByPlaceholderText("أو أدخل مبلغاً آخر..."), {
+    fireEvent.change(screen.getByPlaceholderText("أو أدخل مبلغاً آخر…"), {
       target: { value: "50" },
     });
     // Sender phone (step 4) — 10-digit Libyan format.
@@ -146,8 +149,8 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
     });
     // The receipt reference field (93-C5 / F-03) — typed with padding to
     // prove the trim-at-submit boundary. R116-S2: unified «رمز التحويل»
-    // label (was «رقم مرجع التحويل (اختياري)").
-    fireEvent.change(screen.getByLabelText("رمز التحويل (اختياري)"), {
+    // label. R123-E4a: REQUIRED on the mobile flow (B4-R1 parity).
+    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
       target: { value: "  TRX-9  " },
     });
 
@@ -166,22 +169,48 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
     });
   });
 
-  it("omits payment_reference when the user left it blank (optional field)", async () => {
-    renderPage();
+  it("rejects a blank transfer reference on the mobile_transfer flow — no request (R123-E4a / B4-R1 parity)", async () => {
+    const { container } = renderPage();
 
-    fireEvent.change(screen.getByPlaceholderText("أو أدخل مبلغاً آخر..."), {
+    fireEvent.change(screen.getByPlaceholderText("أو أدخل مبلغاً آخر…"), {
       target: { value: "50" },
     });
     fireEvent.change(screen.getByPlaceholderText("091XXXXXXX"), {
       target: { value: "0912345678" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "إرسال طلب الشحن" }));
+    // The mobile-transfer receipt field is REQUIRED — the backend has
+    // hard-required payment_reference there since B4-R1 (backend
+    // wallet.ts:380-389, 400 «مرجع التحويل … مطلوب»); the UI said
+    // «اختياري» and users who skipped it hit a post-submit 400. This
+    // FLIPS the pre-R123 pin ("omits payment_reference when blank —
+    // optional field"). fireEvent.submit bypasses jsdom's constraint
+    // validation (the field is `required`) — the amount tests' idiom —
+    // so handleSubmit's OWN guard is what's exercised here.
+    fireEvent.submit(container.querySelector("form")!);
+
+    expect(await screen.findByText("يرجى إدخال رمز التحويل من رسالة التحويل")).toBeInTheDocument();
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the reference genuinely optional on the lypay flow — omitted when blank", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByText("تحويل مصرفي"));
+    fireEvent.change(screen.getByLabelText("المبلغ بالدينار الليبي"), {
+      target: { value: "50" },
+    });
+    fireEvent.change(screen.getByLabelText("رقم حسابك (المُرسل)"), {
+      target: { value: "0028776630001" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "تأكيد طلب الشحن" }));
 
     await waitFor(() => {
       expect(mutateMock).toHaveBeenCalledTimes(1);
     });
     const body = mutateMock.mock.calls[0][0].data as Record<string, unknown>;
+    expect(body.payment_method).toBe("lypay");
     expect(body.payment_reference).toBeUndefined();
   });
 
@@ -192,7 +221,7 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
     // amount input is `required`) AND the input's onBlur re-rounding
     // (which would coerce a typed 0 to 1) — this exercises handleSubmit's
     // OWN guard: a non-positive amount never reaches the network.
-    fireEvent.change(screen.getByPlaceholderText("أو أدخل مبلغاً آخر..."), {
+    fireEvent.change(screen.getByPlaceholderText("أو أدخل مبلغاً آخر…"), {
       target: { value: "0" },
     });
     fireEvent.submit(container.querySelector("form")!);
@@ -266,7 +295,9 @@ describe("WalletPage — form labels + live validation a11y (96-F6 / R96 A6 #2 +
     renderPage();
     fireEvent.click(screen.getByText("تحويل مصرفي"));
 
-    expect(screen.getByLabelText("المبلغ المحوّل (د.ل)")).toHaveAttribute("inputmode", "decimal");
+    // R123-E4a (P3-b): the lypay amount label is unified with the mobile
+    // flow's «المبلغ بالدينار الليبي» (was «المبلغ المحوّل (د.ل)»).
+    expect(screen.getByLabelText("المبلغ بالدينار الليبي")).toHaveAttribute("inputmode", "decimal");
     expect(screen.getByLabelText("رقم حسابك (المُرسل)")).toHaveAttribute(
       "id",
       "topup-sender-account",
@@ -337,6 +368,11 @@ describe("WalletPage — topup Idempotency-Key reset semantics (96-F6 / R96 §5.
     fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
       target: { value: "0912345678" },
     });
+    // R123-E4a: the mobile-flow receipt is required — fill it so the
+    // submit reaches the mutation (the key-rotation contract under test).
+    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
+      target: { value: "TRX-96" },
+    });
 
     const intentKey = lastKey();
     expect(intentKey).toBeTruthy();
@@ -374,6 +410,10 @@ describe("WalletPage — topup Idempotency-Key reset semantics (96-F6 / R96 §5.
     });
     fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
       target: { value: "0912345678" },
+    });
+    // R123-E4a: required receipt on the mobile flow (see above).
+    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
+      target: { value: "TRX-70" },
     });
     const intentKey = lastKey();
 

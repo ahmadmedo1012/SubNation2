@@ -4,10 +4,10 @@ import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { useOnScreen } from "@/hooks/use-on-screen";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, sanitizeInternalPath } from "@/lib/utils";
 import { CheckCircle, Gift } from "lucide-react";
-import { useMemo } from "react";
-import { Link } from "wouter";
+import { useCallback, useMemo } from "react";
+import { Link, useLocation } from "wouter";
 
 /**
  * Public register page — passwordless.
@@ -31,6 +31,21 @@ function readReferralFromUrl(): string {
 
 export default function RegisterPage() {
   const referral = useMemo(() => readReferralFromUrl(), []);
+  /* R123-E4a (P2 — the register half of the funnel return path): the
+     login page forwards its SANITIZED ?redirect= here when a guest on
+     /login?redirect=/checkout (or a product buy-intent link) switches
+     to «حساب جديد». Read it with the SAME guard (lib/utils
+     sanitizeInternalPath — slash-prefix + //reject + same-origin) and
+     thread it to every auth surface, so registering (not just logging
+     in) returns the user to the checkout/product they came for. */
+  const redirectTarget = useMemo(
+    () => sanitizeInternalPath(new URLSearchParams(window.location.search).get("redirect")),
+    [],
+  );
+  const [, navigate] = useLocation();
+  const handleRegisterSuccess = useCallback(() => {
+    if (redirectTarget) navigate(redirectTarget);
+  }, [redirectTarget, navigate]);
   const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
   // R115-A10: pause the ambient blobs when the auth card scrolls away.
   const glow = useOnScreen<HTMLDivElement>();
@@ -65,7 +80,9 @@ export default function RegisterPage() {
             (the strip measured 172×40 live on /login). */}
         <div className="grid grid-cols-2 gap-1 p-1 bg-muted/30 border border-border/40 rounded-2xl mb-5 reveal-up stagger-1">
           <Link
-            href="/login"
+            href={
+              redirectTarget ? `/login?redirect=${encodeURIComponent(redirectTarget)}` : "/login"
+            }
             className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
           >
             تسجيل الدخول
@@ -143,15 +160,26 @@ export default function RegisterPage() {
 
           {/* PRIMARY: One-click providers (Google + Telegram when enabled).
               Each is fully independent — no shared state, no shared form,
-              no implicit dependency on the phone OTP path below. */}
-          <AuthProviders />
+              no implicit dependency on the phone OTP path below.
+              R123-E4a (P2): onSuccess threads the sanitized ?redirect=
+              target (login.tsx's idiom) — without it a funnel register
+              always landed on "/" and lost the checkout/product return
+              path. */}
+          <AuthProviders onSuccess={redirectTarget ? handleRegisterSuccess : undefined} />
 
           {/* WhatsApp — peer of Google + Telegram. Pristine button →
               expands inline. Backend handles new + returning users
-              identically (findOrCreateWhatsAppUser). No divider. */}
+              identically (findOrCreateWhatsAppUser). No divider.
+              R123-E4a (P2): same onSuccess threading as AuthProviders
+              above — the phone-first path (the majority provider in
+              Libya) is exactly where the funnel return path used to
+              die for registrants. */}
           {whatsappEnabled && (
             <div className="mt-2.5">
-              <WhatsAppPhoneSignIn channelStatus={whatsappStatus} />
+              <WhatsAppPhoneSignIn
+                channelStatus={whatsappStatus}
+                onSuccess={redirectTarget ? handleRegisterSuccess : undefined}
+              />
             </div>
           )}
 
@@ -164,7 +192,9 @@ export default function RegisterPage() {
         <p className="mt-5 text-center text-sm text-muted-foreground reveal-up stagger-3">
           لديك حساب بالفعل؟{" "}
           <Link
-            href="/login"
+            href={
+              redirectTarget ? `/login?redirect=${encodeURIComponent(redirectTarget)}` : "/login"
+            }
             className="text-primary font-bold hover:text-primary/80 transition-colors"
           >
             تسجيل الدخول

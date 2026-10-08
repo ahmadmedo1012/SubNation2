@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
@@ -6,8 +6,6 @@ import { useLocation, Link } from "wouter";
 import { copyToClipboard, formatRelativeTime } from "@/lib/utils";
 import {
   Users,
-  Copy,
-  Check,
   Gift,
   Star,
   Clock,
@@ -19,10 +17,10 @@ import {
   Trophy,
   UserPlus,
   WifiOff,
-  XCircle,
   ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/CopyButton";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 
@@ -42,60 +40,6 @@ interface ReferralEvent {
   created_at: string;
   credited_at: string | null;
   points_earned: number;
-}
-
-function CopyBtn({
-  text,
-  label,
-  size = "md",
-}: {
-  text: string;
-  label: string;
-  size?: "sm" | "md";
-}) {
-  const [copied, setCopied] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const copy = async () => {
-    // Shared helper (secure-context check + execCommand fallback +
-    // boolean result) — the previous raw `navigator.clipboard.writeText`
-    // rejected silently on non-secure contexts / strict Firefox,
-    // leaving the button dead with an unhandled rejection (B4 P1-2).
-    const ok = await copyToClipboard(text);
-    if (!ok) {
-      setFailed(true);
-      setTimeout(() => setFailed(false), 2000);
-      return;
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-  return (
-    <button
-      onClick={copy}
-      className={`
-        flex items-center gap-1.5 rounded-xl font-bold transition-all active:scale-95 press-spring shrink-0
-        ${
-          failed
-            ? "bg-status-error/12 text-status-error border border-status-error/30"
-            : copied
-              ? "bg-status-success/15 text-status-success border border-status-success/25"
-              : "bg-primary/10 hover:bg-primary/18 text-primary border border-primary/15 hover:border-primary/30"
-        }
-        ${size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2 text-sm"}
-      `}
-    >
-      {failed ? (
-        <XCircle className="w-3.5 h-3.5" />
-      ) : copied ? (
-        <Check className="w-3.5 h-3.5" />
-      ) : (
-        <Copy className="w-3.5 h-3.5" />
-      )}
-      {/* R111-F2 Q2: canonical copy-failure label (CopyButton.tsx:62) —
-          was «فشل النسخ», a duplicate verb form for the same action. */}
-      {failed ? "تعذّر النسخ" : copied ? "تم النسخ!" : label}
-    </button>
-  );
 }
 
 function SkeletonRow() {
@@ -400,7 +344,7 @@ export default function ReferralsPage() {
                   )}
                 </div>
                 {!loading && overview && (
-                  <CopyBtn text={overview.referral_code} label="نسخ الرمز" />
+                  <CopyButton text={overview.referral_code} label="نسخ الرمز" size="md" />
                 )}
               </div>
 
@@ -413,7 +357,7 @@ export default function ReferralsPage() {
                   >
                     {referralLink}
                   </div>
-                  <CopyBtn text={referralLink} label="نسخ" size="sm" />
+                  <CopyButton text={referralLink} label="نسخ" size="sm" />
                 </div>
               )}
 
@@ -520,7 +464,12 @@ export default function ReferralsPage() {
                         className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
                           credited
                             ? "bg-status-success/10 border-status-success/20"
-                            : "bg-yellow-500/10 border-yellow-500/20"
+                            : /* R123-E4a (P3-h): token-based status-warning
+                                  family — was the raw bg-yellow-500/10
+                                  border-yellow-500/20 palette while the
+                                  icon inside already used
+                                  text-status-warning. */
+                              "bg-status-warning/10 border-status-warning/20"
                         }`}
                       >
                         {credited ? (

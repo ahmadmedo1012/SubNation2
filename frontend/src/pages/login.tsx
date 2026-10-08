@@ -4,6 +4,7 @@ import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { useOnScreen } from "@/hooks/use-on-screen";
+import { sanitizeInternalPath } from "@/lib/utils";
 import { Gift, ShieldCheck, ShoppingBag } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
@@ -53,24 +54,20 @@ function readLoginIntent(): LoginIntent {
  * the user had to find their way back. Honor it now: same-origin internal
  * paths only (slash-prefixed, no protocol/host) so the param can't be
  * abused as an open redirect.
+ *
+ * R123-E4a (P2): the guard itself moved to lib/utils as
+ * sanitizeInternalPath (shared with register.tsx + the wallet page's
+ * ?return=) — it was module-private here, so the register half of the
+ * funnel had no way to reuse it and dropped the return path entirely.
  */
-function readRedirectTarget(): string | null {
-  if (typeof window === "undefined") return null;
-  const target = new URLSearchParams(window.location.search).get("redirect");
-  if (!target || !target.startsWith("/") || target.startsWith("//")) return null;
-  try {
-    const url = new URL(target, window.location.origin);
-    if (url.origin !== window.location.origin) return null;
-    return url.pathname + url.search;
-  } catch {
-    return null;
-  }
-}
 
 export default function LoginPage() {
   const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
   const intent = useMemo(() => readLoginIntent(), []);
-  const redirectTarget = useMemo(() => readRedirectTarget(), []);
+  const redirectTarget = useMemo(
+    () => sanitizeInternalPath(new URLSearchParams(window.location.search).get("redirect")),
+    [],
+  );
   const [, navigate] = useLocation();
   // R115-A10: pause the ambient blobs when the auth card scrolls away.
   const glow = useOnScreen<HTMLDivElement>();
@@ -117,7 +114,16 @@ export default function LoginPage() {
             تسجيل الدخول
           </button>
           <Link
-            href="/register"
+            /* R123-E4a (P2): the register tab forwards the SANITIZED
+                redirect — a guest on /login?redirect=/checkout (or a
+                product buy-intent link) who switches to «حساب جديد»
+                used to lose the return path; register.tsx now reads
+                the same param and threads it to its auth surfaces. */
+            href={
+              redirectTarget
+                ? `/register?redirect=${encodeURIComponent(redirectTarget)}`
+                : "/register"
+            }
             className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
           >
             حساب جديد
@@ -193,7 +199,11 @@ export default function LoginPage() {
         <p className="mt-5 text-center text-sm text-muted-foreground reveal-up stagger-3">
           ليس لديك حساب؟{" "}
           <Link
-            href="/register"
+            href={
+              redirectTarget
+                ? `/register?redirect=${encodeURIComponent(redirectTarget)}`
+                : "/register"
+            }
             className="text-primary font-bold hover:text-primary/80 transition-colors"
           >
             إنشاء حساب جديد
