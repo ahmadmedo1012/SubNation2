@@ -35,6 +35,7 @@
  */
 import { eq } from "drizzle-orm";
 import { db, systemSettingsTable } from "@workspace/db";
+import { roundLyd } from "./money";
 
 // ── Defaults (the operator's official numbers) ─────────────────────────────
 
@@ -92,8 +93,18 @@ export function computeRetailUSD(costUsd: number, config: PricingConfig): number
   return round2(costUsd * (1 + config.markupPercent / 100));
 }
 
+/**
+ * R123 (E1, P3): round2 now delegates to lib/money.roundLyd — the
+ * canonical epsilon-corrected half-up idiom — instead of a bare
+ * `Math.round(value * 100) / 100`. Identical for every input outside
+ * the 1e-9 binary-dust zone around an exact half cent, where the bare
+ * form rounds the STORED DOUBLE down (e.g. intended 2.675, stored as
+ * 2.67499999…, → 2.67) while Postgres numeric semantics round the
+ * intended decimal half-up (→ 2.68). Pricing is money: it uses the
+ * money rounding (docs/pricing/PRICING_ECONOMICS.md §1).
+ */
 export function round2(value: number): number {
-  return Math.round(value * 100) / 100;
+  return roundLyd(value);
 }
 
 // ── Settings-backed config (cache + safe fallback) ─────────────────────────
