@@ -307,6 +307,19 @@ jobs:
             exit 1
           fi
 
+      - name: Orval generated-code drift gate
+        # R123-E2 (A6 P1): the codegen pipeline is reproducible again
+        # (orval 8.40 + zod version:3 pin). The generated clients are
+        # COMMITTED, so "edit openapi.yaml, forget codegen" must fail
+        # CI exactly like the drizzle mirror above fails schema edits.
+        run: |
+          set -euo pipefail
+          pnpm --filter @workspace/api-spec run codegen
+          if ! git diff --exit-code -- shared/api-zod/src shared/api-client-react/src; then
+            echo "::error::Orval drift detected. Run \`pnpm --filter @workspace/api-spec run codegen\` locally and commit the regenerated clients."
+            exit 1
+          fi
+
       - name: Backend unit tests
         run: pnpm --filter @workspace/api-server exec vitest run
 
@@ -322,3 +335,31 @@ jobs:
         # `pnpm --dir .. --filter @workspace/subnation run build`,
         # so this single command builds the full deployable artifact.
         run: pnpm --filter @workspace/api-server run build
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # E2E smoke (manual-first) — R123-E2: the committed guest read-only
+  # Playwright suite (frontend/e2e/*). Opt-in by design: the specs need a
+  # RUNNING stack (E2E_BASE_URL), so this job runs on workflow_dispatch
+  # only — an operator (or a future staging job) points it at a real
+  # environment. Guest journeys only: no purchases, no topups, no
+  # logins, no OTP, no admin.
+  # ─────────────────────────────────────────────────────────────────────────
+  e2e:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter @workspace/subnation exec playwright install --with-deps chromium
+      - name: Run the guest smoke suite
+        env:
+          E2E_ENABLED: "1"
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL || 'http://localhost:8080' }}
+        run: pnpm --filter @workspace/subnation run test:e2e

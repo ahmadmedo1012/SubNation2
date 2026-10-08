@@ -875,7 +875,9 @@ export default function WalletPage() {
     isLoading: topupsLoading,
     isError: topupsError,
     refetch: refetchTopups,
-  } = useListTopups({
+  } = useListTopups(undefined, {
+    // R123-E2: params arg added by the codegen regen (R120 page param) —
+    // undefined = page 1, byte-identical to the pre-regen request.
     query: { enabled: !!token, queryKey: getListTopupsQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
