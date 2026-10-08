@@ -249,6 +249,12 @@ export class TopupService {
     // approve of a referred user's topup, even with no award).
     let referralCredited = false;
     let welcomeGranted = false;
+    // R123 (E1, P3): the FRESH in-tx referredBy read carried out of the
+    // transaction — the referral block + the post-tx referrer
+    // notification must key on the same value the welcome-bonus block
+    // already uses (freshUser.referredBy), not the pre-tx outer read
+    // (user.referredBy) which can be stale across the tx boundary.
+    let freshReferredBy: number | null = null;
 
     try {
       await db.transaction(async (tx) => {
@@ -403,6 +409,7 @@ export class TopupService {
             .where(eq(usersTable.id, user.id))
             .limit(1);
           if (!freshUser) throw new ServiceError(404, "المستخدم غير موجود");
+          freshReferredBy = freshUser.referredBy;
 
           const balanceBefore = parseFloat(String(freshUser.walletBalance));
           const topupAmount = parseFloat(String(topup.amount));
@@ -435,8 +442,11 @@ export class TopupService {
             tx as unknown as typeof db,
           );
 
-          // Referral credit
-          if (user.referredBy) {
+          // Referral credit — R123 (E1, P3): keyed on the FRESH in-tx
+          // referredBy read (parity with the welcome-bonus block below);
+          // the pre-tx outer `user.referredBy` read is only used for the
+          // topup.userId lookup above.
+          if (freshUser.referredBy) {
             const [existingCredit] = await tx
               .select()
               .from(referralEventsTable)
@@ -468,7 +478,7 @@ export class TopupService {
                 const [referrer] = await tx
                   .select()
                   .from(usersTable)
-                  .where(eq(usersTable.id, user.referredBy))
+                  .where(eq(usersTable.id, freshUser.referredBy))
                   .limit(1);
                 if (referrer) {
                   // Atomic SQL increment — prevents lost-update race when two
@@ -560,12 +570,13 @@ export class TopupService {
       // B2-04: only notify the referrer when THIS approval actually awarded
       // the bonus (a subsequent topup approval, or one that lost the
       // guarded flip, must not re-announce a 50-point award that did not
-      // happen).
-      if (referralCredited && user.referredBy) {
+      // happen). R123 (E1): keyed on the fresh in-tx read the award itself
+      // used — never the stale pre-tx outer value.
+      if (referralCredited && freshReferredBy) {
         const [referrer] = await db
           .select()
           .from(usersTable)
-          .where(eq(usersTable.id, user.referredBy))
+          .where(eq(usersTable.id, freshReferredBy))
           .limit(1);
         if (referrer) {
           await createNotification(
@@ -661,7 +672,16 @@ export class TopupService {
         "تواصل مع الدعم إذا كنت ترى أن هذا خطأ",
         "/support",
       );
-      emitToUser(rejUser.id, "topup-updated", { id: topup.id, status: "rejected" });
+      // R123 (E1, P3): amount rides the reject payload too (approve-parity
+      // field set) — the frontend reject-toast dedupe key is
+      // `topup-${amount}-rejected`; without it every rejection shared the
+      // single `topup-undefined-rejected` id and the second distinct
+      // rejection toast was silently deduped away.
+      emitToUser(rejUser.id, "topup-updated", {
+        id: topup.id,
+        status: "rejected",
+        amount: topup.amount,
+      });
       emitToAdmins("admin-stats-update", { type: "topup-rejected" });
     }
 

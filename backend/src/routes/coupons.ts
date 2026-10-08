@@ -5,7 +5,13 @@ import { eq, desc } from "drizzle-orm";
 import { intParam } from "../lib/http";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { checkExpiringCoupons } from "../jobs/couponWatcher";
-import { computeCouponDiscount, type CouponType } from "../lib/pricing";
+import {
+  computeCouponDiscount,
+  evaluateTotalDiscountCap,
+  getActiveFlashSale,
+  totalDiscountCapMessage,
+} from "../lib/pricing";
+import { getPricingConfig } from "../lib/pricing-config";
 import { requireUser } from "../middlewares/requireUser";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { requirePermission } from "../lib/permissions";
@@ -166,6 +172,52 @@ router.post("/validate", requireUser, async (req, res) => {
       );
   }
 
+  // R123 (E1, P2): combined-cap parity with checkout. The R115 cap
+  // (pricing.max_total_discount_pct) lived ONLY in lib/pricing's
+  // resolveCoupon — the checkout path — so /validate computed the
+  // coupon in isolation: an active flash sale + coupon crossing the
+  // cap (flash 45% + coupon 10% on a 59.80 item ⇒ base 32.89,
+  // discount 3.29 ⇒ 45 + 5.5 = 50.5% combined) validated green here
+  // with a total the money screen confirmed, and checkout then
+  // refused the purchase with total_discount_cap. The client sends
+  // the EFFECTIVE price (sale_price ?? price — openapi
+  // ValidateCouponBody), so the flash stage is resolved HERE and the
+  // list price reconstructed for the shared evaluation
+  // (lib/pricing.evaluateTotalDiscountCap + totalDiscountCapMessage —
+  // ONE source of truth for the decision and the Arabic message;
+  // the reconstruction is exact to the cent because sale_price is
+  // itself computeFlashSalePrice(list, pct)). With no active sale the
+  // evaluation degenerates to the coupon-alone percentage vs the cap
+  // — exactly what checkout computes — so a coupon that checkout
+  // would refuse no longer validates green either. Every other
+  // branch above (and every below-cap response) is byte-identical.
+  const flashSale = await getActiveFlashSale();
+  const flashPct = flashSale?.discountPercent ?? 0;
+  const flashDivisor = 1 - flashPct / 100;
+  // Degenerate sale rows (discount ≥ 100%) cannot reconstruct a list
+  // price; evaluate against the effective price directly — the flash
+  // percent alone already crosses any configured cap, so the coupon
+  // is honestly rejected (fail-closed).
+  const listPriceForCap =
+    flashPct > 0 && flashDivisor > 0 ? order_amount / flashDivisor : order_amount;
+  const { maxTotalDiscountPct } = await getPricingConfig();
+  const cap = evaluateTotalDiscountCap({
+    listPrice: listPriceForCap,
+    flashDiscountPct: flashPct,
+    couponDiscountAmount: discountAmount,
+    maxTotalDiscountPct,
+  });
+  if (cap.capped) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          totalDiscountCapMessage(cap.combinedPct, maxTotalDiscountPct),
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
+
   return res.json({
     valid: true,
     code: coupon.code,
@@ -180,6 +232,13 @@ router.post("/validate", requireUser, async (req, res) => {
 // ── Admin: list ───────────────────────────────────────────────────────────────
 
 router.get("/admin", requireAdmin, requirePermission("finance"), async (_req, res) => {
+  // R123 (E1, P3): no-store parity with the admin-list pattern (98-F3 /
+  // AUD103-4-F13 — admin/orders, admin/topups, admin/users…) — the
+  // coupon list is a finance surface behind requireAdmin + finance
+  // scope; an intermediary must never serve it from cache. Inline
+  // (auth.ts / admin/observability.ts idiom) because this router also
+  // mounts the public /validate route, so a router.use would reach it.
+  res.setHeader("Cache-Control", "no-store");
   // 2026-09-20: operator intent — the panel view triggers the expiry
   // sweep (was an hourly interval timer) so the list it renders is
   // already clean of expired-but-active rows.

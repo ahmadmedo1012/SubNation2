@@ -31,6 +31,7 @@
 
 import { couponsTable, db, flashSalesTable } from "@workspace/db";
 import { and, eq, gt } from "drizzle-orm";
+import { roundLyd } from "./money";
 import { getPricingConfig } from "./pricing-config";
 
 // ── Public types ───────────────────────────────────────────────────────────
@@ -100,6 +101,36 @@ export function isInvalidCoupon(c: AppliedCoupon | InvalidCoupon | null): c is I
 // ── Stage 1: flash sale ────────────────────────────────────────────────────
 
 /**
+ * The currently-active flash sale (if any), WITHOUT any price math.
+ *
+ * R123 (E1): extracted from applyFlashSale so consumers that need the
+ * sale METADATA only — routes/coupons.ts /validate, which receives the
+ * post-flash effective price and reconstructs the list price for the
+ * combined-cap evaluation — share the exact same lookup (ONE source of
+ * truth: same predicate, same parsing) as the checkout pipeline.
+ *
+ * At most one active row exists: uniq_flash_sales_active_singleton
+ * (partial unique index, migrate.ts). Read-only.
+ */
+export async function getActiveFlashSale(): Promise<AppliedFlashSale | null> {
+  const now = new Date();
+  const [row] = await db
+    .select()
+    .from(flashSalesTable)
+    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now)))
+    .limit(1);
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    title: row.title,
+    discountPercent: parseFloat(String(row.discountPercent)),
+    endsAt: row.endsAt.toISOString(),
+  };
+}
+
+/**
  * Look up the currently-active flash sale (if any) and return the
  * post-flash-sale base price. Used standalone by routes/products.ts
  * (catalog + product detail need just this stage).
@@ -108,27 +139,13 @@ export function isInvalidCoupon(c: AppliedCoupon | InvalidCoupon | null): c is I
  * no sale is active.
  */
 export async function applyFlashSale(listPrice: number): Promise<FlashSaleStage> {
-  const now = new Date();
-  const [row] = await db
-    .select()
-    .from(flashSalesTable)
-    .where(and(eq(flashSalesTable.isActive, true), gt(flashSalesTable.endsAt, now)))
-    .limit(1);
-
-  if (!row) {
+  const flashSale = await getActiveFlashSale();
+  if (!flashSale) {
     return { flashSale: null, basePrice: listPrice };
   }
-
-  const discountPercent = parseFloat(String(row.discountPercent));
-  const basePrice = computeFlashSalePrice(listPrice, discountPercent);
   return {
-    flashSale: {
-      id: row.id,
-      title: row.title,
-      discountPercent,
-      endsAt: row.endsAt.toISOString(),
-    },
-    basePrice,
+    flashSale,
+    basePrice: computeFlashSalePrice(listPrice, flashSale.discountPercent),
   };
 }
 
@@ -218,13 +235,17 @@ async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | Invali
   // liabilities are deliberately NOT part of this cap: they are program
   // costs, not transactional discounts (see docs/pricing/PRICING_ECONOMICS.md).
   const { maxTotalDiscountPct } = await getPricingConfig();
-  const combinedDiscountPct =
-    input.listPrice > 0 ? input.flashDiscountPct + (appliedAmount / input.listPrice) * 100 : 0;
-  if (combinedDiscountPct > maxTotalDiscountPct + 1e-9) {
+  const cap = evaluateTotalDiscountCap({
+    listPrice: input.listPrice,
+    flashDiscountPct: input.flashDiscountPct,
+    couponDiscountAmount: appliedAmount,
+    maxTotalDiscountPct,
+  });
+  if (cap.capped) {
     return {
       code,
       reason: "total_discount_cap",
-      reasonAr: `الخصم المجمّع (تخفيضات + كوبون) سيبلغ ${combinedDiscountPct.toFixed(0)}% ويتجاوز الحد الأقصى المسموح ${maxTotalDiscountPct}% — استخدم أحدهما فقط`,
+      reasonAr: totalDiscountCapMessage(cap.combinedPct, maxTotalDiscountPct),
       record: row,
     };
   }
@@ -279,11 +300,20 @@ export async function computePricing(input: ComputePricingInput): Promise<Pricin
 
 // ── Pure math (DB-free, side-effect-free) — single source for the
 //    discount arithmetic so it can be unit-tested in isolation. The
-//    DB-backed functions above delegate to these. ──────────────────────────
+//    DB-backed functions above delegate to these.
+//
+//    R123 (E1, P3): both functions round through lib/money.roundLyd —
+//    the canonical epsilon-corrected half-up idiom (docs/pricing/
+//    PRICING_ECONOMICS.md §1) already used at the topup boundaries —
+//    instead of +toFixed(2). toFixed rounds the STORED DOUBLE, so an
+//    intended exact half-cent (e.g. 89.99 × 50% = 44.995, stored as
+//    44.994999…) rounded DOWN to 44.99 while Postgres numeric semantics
+//    round the intended decimal half-UP to 45.00. Values outside the
+//    1e-9 binary-dust zone are unchanged.
 
 /** Apply a flash-sale percentage to a list price. Clamped to ≥ 0. */
 export function computeFlashSalePrice(listPrice: number, discountPercent: number): number {
-  return +Math.max(0, listPrice * (1 - discountPercent / 100)).toFixed(2);
+  return roundLyd(Math.max(0, listPrice * (1 - discountPercent / 100)));
 }
 
 /**
@@ -293,6 +323,45 @@ export function computeFlashSalePrice(listPrice: number, discountPercent: number
  */
 export function computeCouponDiscount(type: CouponType, value: number, basePrice: number): number {
   return type === "percentage"
-    ? +((basePrice * value) / 100).toFixed(2)
-    : +Math.min(value, basePrice).toFixed(2);
+    ? roundLyd((basePrice * value) / 100)
+    : roundLyd(Math.min(value, basePrice));
+}
+
+// ── R115 combined-cap evaluation — shared by resolveCoupon (checkout)
+//    and routes/coupons.ts /validate (R123-E1 parity fix), so the
+//    decision AND the operator-facing message have ONE source of truth.
+
+export interface TotalDiscountCapOutcome {
+  /** flash% + coupon% expressed against the LIST price (the R115 figure). */
+  combinedPct: number;
+  /** true ⇒ the stack crosses max_total_discount_pct — reject the coupon. */
+  capped: boolean;
+}
+
+/**
+ * Promotion-stacking guardrail math (R115 Part 14): flash sale percent +
+ * coupon discount expressed as a percent of the list price, compared
+ * against pricing.max_total_discount_pct. Pure; callers own the config
+ * read (resolveCoupon) or supply their own (validate).
+ */
+export function evaluateTotalDiscountCap(input: {
+  listPrice: number;
+  flashDiscountPct: number;
+  couponDiscountAmount: number;
+  maxTotalDiscountPct: number;
+}): TotalDiscountCapOutcome {
+  const combinedPct =
+    input.listPrice > 0
+      ? input.flashDiscountPct + (input.couponDiscountAmount / input.listPrice) * 100
+      : 0;
+  return { combinedPct, capped: combinedPct > input.maxTotalDiscountPct + 1e-9 };
+}
+
+/**
+ * The shared Arabic message for a capped stack — resolveCoupon's reasonAr
+ * and /coupons/validate's 400 body use the same text, so the money screen
+ * and the checkout refusal can never disagree on the WHY either.
+ */
+export function totalDiscountCapMessage(combinedPct: number, maxTotalDiscountPct: number): string {
+  return `الخصم المجمّع (تخفيضات + كوبون) سيبلغ ${combinedPct.toFixed(0)}% ويتجاوز الحد الأقصى المسموح ${maxTotalDiscountPct}% — استخدم أحدهما فقط`;
 }
