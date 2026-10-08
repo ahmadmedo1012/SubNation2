@@ -41,8 +41,10 @@ info:
     coordination) fronts the same durable guard; without it, dedup
     relies on the DB-level claim alone (correct, marginally slower on
     the conflict path). /auth/me and /auth/probe send
-    `Cache-Control: private, max-age=30`; catalog routes send
-    `public, max-age=0, s-maxage=60, stale-while-revalidate=300`.
+    `Cache-Control: no-store` (R116 A7-1 — parity with /api/wallet;
+    authenticated user GETs are never intermediary-cacheable).
+    Catalog routes send `public, max-age=0, s-maxage=60,
+    stale-while-revalidate=300`.
 servers:
   - url: /api
     description: Base API path
@@ -466,17 +468,55 @@ paths:
                   description: One-time consent token from a prior 409 account-link response.
       responses:
         "200":
-          description: "Session minted — returns token sentinel + is_new_user"
+          description: |
+            Session minted for an EXISTING user (is_new_user false).
+            R120 session-honesty: the body carries the full serialized
+            user (formatUser) plus provider / needs_phone so the client
+            hydrates without a second /auth/me round-trip.
           content:
             application/json:
               schema:
                 type: object
-                required: [token, is_new_user]
+                required: [user, token, provider, is_new_user, needs_phone]
                 properties:
+                  user:
+                    $ref: "#/components/schemas/User"
                   token:
                     type: string
-                    description: The "__cookie_session__" sentinel.
+                    description: |
+                      The "__cookie_session__" sentinel (98-F3) — the
+                      httpOnly cookie is the sole session transport.
+                  provider:
+                    type: string
+                    description: The provider that resolved the session (e.g. google).
                   is_new_user:
+                    type: boolean
+                  needs_phone:
+                    type: boolean
+                    description: True while the account has no verified phone (onboarding gate).
+        "201":
+          description: |
+            NEW user — the account was provisioned by this request
+            (is_new_user true). Same body as 200, distinguished by the
+            status code: the frontend treats a first login differently
+            from a returning one (welcome flow, onboarding).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, token, provider, is_new_user, needs_phone]
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                  token:
+                    type: string
+                    description: The "__cookie_session__" sentinel (98-F3).
+                  provider:
+                    type: string
+                  is_new_user:
+                    type: boolean
+                    enum: [true]
+                  needs_phone:
                     type: boolean
         "401":
           description: Invalid/expired ID token
@@ -485,11 +525,43 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Google identity already linked to another account (link_consent_token flow)
+          description: |
+            Google identity already linked to another account — the
+            link_consent_token flow (F-003). The consent screen parses
+            `reason` + `candidate_hint`; `link_token` is the one-time
+            token to replay the request with. Carries the standard
+            envelope `error` + `code: CONFLICT` (R123 spec-truth: the
+            handler is being aligned to always emit `code` — this
+            schema documents the aligned shape).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                type: object
+                required: [success, error, code, reason, link_token, candidate_hint]
+                properties:
+                  success:
+                    type: boolean
+                    enum: [false]
+                  error:
+                    type: string
+                    description: Arabic human-readable message.
+                  code:
+                    type: string
+                    enum: [CONFLICT]
+                  reason:
+                    type: string
+                    enum: [link_consent_required]
+                  link_token:
+                    type: string
+                    description: One-time consent token — resend as link_consent_token.
+                  candidate_hint:
+                    type: object
+                    description: Redacted hint of the existing account (never both fully null).
+                    properties:
+                      maskedEmail:
+                        type: ["string", "null"]
+                      maskedPhone:
+                        type: ["string", "null"]
 
   /auth/firebase/refresh:
     post:
@@ -509,16 +581,21 @@ paths:
                   type: string
       responses:
         "200":
-          description: "Session rotated — returns token sentinel"
+          description: |
+            Session rotated — body carries the rotated user (formatUser)
+            plus the token sentinel (R120+: `user` rides the response so
+            the silent-rotation path refreshes client state in one call).
           content:
             application/json:
               schema:
                 type: object
-                required: [token]
+                required: [user, token]
                 properties:
+                  user:
+                    $ref: "#/components/schemas/User"
                   token:
                     type: string
-                    description: The "__cookie_session__" sentinel.
+                    description: The "__cookie_session__" sentinel (98-F3).
         "401":
           description: Invalid token / no existing bound session
           content:
@@ -1584,7 +1661,18 @@ paths:
     get:
       operationId: listReferrals
       tags: [loyalty]
-      summary: List the current user's referral events (≤200, newest first)
+      summary: List the current user's referral events (200-row pages, newest first)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            1-based page number (default 1; fixed 200-row pages,
+            offset = (page-1)*200). R122 (A3-P2-1): additive — referrals
+            past the first 200 were unreachable before; page=1 is
+            byte-identical to the old response. Deep pages are capped at
+            offset 10 000.
       responses:
         "200":
           description: Referral events with masked referee phones
@@ -4356,9 +4444,16 @@ components:
 
     ProductRecommendation:
       type: object
+      description: |
+        Same-category recommendation rail (max 4, active + unarchived
+        peers). R122 (A1-P2): `slug` rides the DTO so the rail links
+        /product/<slug ?? id> directly — same nullable contract as every
+        other product surface (present post-backfill).
       properties:
         id:
           type: integer
+        slug:
+          type: ["string", "null"]
         name:
           type: string
         image_url:
@@ -4485,6 +4580,14 @@ components:
           type: number
         created_at:
           type: string
+        decrypt_failed:
+          type: boolean
+          description: |
+            R117 (A1-P6) shape, carried into the user-facing Order DTO:
+            present ONLY on a completed, credential-bearing row whose
+            raw credential columns are populated but every decrypt
+            returned null (ENCRYPTION_KEY mismatch) — the honest
+            "decryption failed" signal instead of silent nulls.
       required: [id, order_code, product_id, product_name, amount, status, created_at]
 
     UserSession:
@@ -4494,6 +4597,14 @@ components:
           type: string
         device:
           type: string
+          description: Arabic device description derived from the raw user-agent.
+        user_agent:
+          type: ["string", "null"]
+          maxLength: 120
+          description: |
+            Raw user-agent (first 120 chars) written at login — R122:
+            emitted alongside `device` so the sessions UI can show the
+            verbatim string; null when the login carried no UA header.
         ip:
           type: ["string", "null"]
         created_at:
@@ -5720,6 +5831,12 @@ components:
         ids:
           type: array
           minItems: 1
+          maxItems: 200
+          description: |
+            Capped at 200 (the admin orders page size — BULK_STATUS_MAX_IDS):
+            a ~90k-id batch built a giant IN(...) plus a per-id refund
+            loop, an easy accidental self-DoS; larger batches 400
+            INVALID_DATA explicitly.
           items:
             oneOf:
               - type: integer

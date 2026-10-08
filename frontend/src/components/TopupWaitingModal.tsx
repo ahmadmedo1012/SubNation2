@@ -82,7 +82,10 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
   const [timedOut, setTimedOut] = useState(false);
 
   // Poll the user's topups while the modal is open AND no decision yet.
-  const { data: topups = [] } = useListTopups({
+  // R123-E2: first arg (params) is undefined — GET /wallet/topups gained
+  // page/limit query params in the R120 spec; the regen made the hook
+  // two-argument. Page 1 is the byte-identical default.
+  const { data: topups = [] } = useListTopups(undefined, {
     query: {
       enabled: open && !!token,
       queryKey: getListTopupsQueryKey(),
