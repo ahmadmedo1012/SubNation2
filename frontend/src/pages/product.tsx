@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { CopyButton } from "@/components/CopyButton";
 import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/use-toast";
@@ -780,24 +781,16 @@ export default function ProductPage() {
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
-  if (isLoading)
-    return (
-      <div className="max-w-xl mx-auto px-4 py-8 sm:py-10">
-        <div className="h-4 bg-muted skeleton-shimmer rounded w-28 mb-6" />
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <div className="aspect-[16/9] skeleton-shimmer" />
-          <div className="p-6 space-y-4">
-            <div className="h-7 bg-muted skeleton-shimmer rounded-lg w-3/5" />
-            <div className="space-y-2">
-              <div className="h-3.5 bg-muted skeleton-shimmer rounded w-full" />
-              <div className="h-3.5 bg-muted skeleton-shimmer rounded w-4/5" />
-            </div>
-            <div className="h-20 bg-muted skeleton-shimmer rounded-xl" />
-            <div className="h-12 bg-muted skeleton-shimmer rounded-xl" />
-          </div>
-        </div>
-      </div>
-    );
+  // R123-E4b (CLS, live-measured 0.21 on the OOS product page): the old
+  // in-page skeleton was a max-w-xl single-column stack while the real
+  // page is max-w-xl lg:max-w-6xl with the R116-S2 desktop split — the
+  // data-arrival swap made the container jump 576px→1152px wide at
+  // ≥1024px (0.176 layout-shift entry). Rendering the SAME "product"
+  // shape the route-level Suspense fallback uses kills both the
+  // chunk-skeleton→page-skeleton drift and the skeleton→content width
+  // jump (the shape mirrors the two-column split + recommendations rail
+  // + mobile sticky-bar slot — see route-skeleton.tsx ProductShell).
+  if (isLoading) return <RouteSkeleton shape="product" />;
 
   if (isError && !isLoading && !isNotFoundError)
     /* Distinguish a network/server failure from a real 404 — both used to
@@ -1137,7 +1130,10 @@ export default function ProductPage() {
               {categoryLabel(product.category)}
             </div>
             {product.discount_percent && (
-              <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
+              /* R123-E4b (P3-h): text-primary-foreground — the shared token
+                 every other primary-surface badge rides; raw text-white
+                 broke the theme-tinted primary of the R115 palette. */
+              <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
                 <Tag className="w-3 h-3" />
                 خصم {product.discount_percent}%
               </div>
@@ -2095,8 +2091,11 @@ function VariantSelector({
                 <span className="text-sm font-bold text-foreground leading-tight">
                   {v.duration_label ?? v.plan_label ?? v.label}
                 </span>
+                {/* R123-E4b (P3-h): text-xs — the type-scale token (12px)
+                    nearest the one-off 13px; the pill's label above is
+                    text-sm so the price keeps its subordinate step. */}
                 <span
-                  className={`text-[13px] font-bold tabular-nums leading-none ${
+                  className={`text-xs font-bold tabular-nums leading-none ${
                     isSelected ? "text-primary" : "text-foreground/75"
                   }`}
                 >

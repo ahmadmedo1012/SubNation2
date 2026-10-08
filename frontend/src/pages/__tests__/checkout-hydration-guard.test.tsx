@@ -105,8 +105,9 @@ describe("checkout cart-hydration guard (R111-F1 G1)", () => {
     mockCartState({ isLoaded: false, items: FULL_CART });
     const { container } = renderPage();
 
-    // The checkout-shaped RouteSkeleton (role=status, page-loading label).
-    expect(screen.getByRole("status")).toHaveAttribute("aria-label", "جاري تحميل الصفحة");
+    // The checkout-shaped RouteSkeleton (role=status, page-loading label —
+    // R123-E4b P3-d: «جارٍ» tanwīn form).
+    expect(screen.getByRole("status")).toHaveAttribute("aria-label", "جارٍ تحميل الصفحة");
     // The false-empty flash and the real page chrome are both absent.
     expect(screen.queryByText("سلتك فارغة")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "إتمام الطلب" })).not.toBeInTheDocument();

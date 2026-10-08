@@ -276,3 +276,23 @@ describe("FlashSaleBanner — R104 adaptive cadence (free-tier sleep economics)"
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("FlashSaleBanner — promo link tap target (R123-E4b P3, live-measured 200×16)", () => {
+  it("the /flash-sales link carries min-h-11 + py-2 with -my-2 keeping the strip's own 44px geometry", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ flash_sale: SALE }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderBanner();
+    await flushInitialLoad();
+
+    const link = screen.getByText("عرض نهاية الأسبوع").closest("a")!;
+    expect(link.getAttribute("href")).toBe("/flash-sales");
+    // The promo link itself is the tap target — it measured 16px tall
+    // (padding 0). Same hit-box idiom as the dismiss button beside it:
+    // min-h-11 + py-2, with -my-2 cancelling the strip's py-2 so the
+    // strip stays min-h-[44px] (the BANNER_RESERVED_H swap stays 1:1).
+    expect(link.className).toContain("min-h-11");
+    expect(link.className).toContain("py-2");
+    expect(link.className).toContain("-my-2");
+  });
+});

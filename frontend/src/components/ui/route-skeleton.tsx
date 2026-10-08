@@ -8,8 +8,18 @@ import { cn } from "@/lib/utils";
  *
  * `shape` picks the broad page archetype:
  *   • catalog — hero band + filter row + product grid (home)
- *   • list    — header + stacked rows (orders / wallet ledger / referrals)
- *   • detail  — hero card + body sections (product / order-detail)
+ *   • list    — header + stacked rows (orders / cart / support)
+ *   • list-wide / list-narrow — the list archetype at the wallet
+ *     (max-w-5xl) and referrals/profile (max-w-2xl) page widths
+ *     (R123-E4b: ROUTE_SHAPES used to shove all of them into the
+ *     default max-w-3xl list — a width jump on every swap)
+ *   • grid    — centered header + responsive card grid, NO filter row
+ *     (flash-sales — the page has no filters; the catalog shell's
+ *     filter row was a phantom bar there)
+ *   • detail  — hero card + body sections (loyalty)
+ *   • product — the product page's own shell: max-w-xl below lg, the
+ *     R116-S2 lg:max-w-6xl two-column split, recommendations rail and
+ *     the mobile sticky buy-bar slot (see ProductShell below)
  *   • form    — narrow card with stacked fields (login / register / onboarding)
  *   • admin   — sidebar-aware shell with table-style rows
  *   • blank   — flat background only (chromeless callback pages)
@@ -27,6 +37,9 @@ import { cn } from "@/lib/utils";
 export type RouteSkeletonShape =
   | "catalog"
   | "list"
+  | "list-wide"
+  | "list-narrow"
+  | "grid"
   | "detail"
   | "form"
   | "admin"
@@ -46,10 +59,16 @@ export function RouteSkeleton({ shape = "blank", className }: RouteSkeletonProps
       className={cn("min-h-[60vh]", className)}
       role="status"
       aria-live="polite"
-      aria-label="جاري تحميل الصفحة"
+      /* R123-E4b (P3-d): «جارٍ» — the only non-tanwīn rendering among
+         ~70 correct جارٍ/أثناء strings (index.css micro-type sweep left
+         this one behind). */
+      aria-label="جارٍ تحميل الصفحة"
     >
       {shape === "catalog" && <CatalogShell />}
       {shape === "list" && <ListShell />}
+      {shape === "list-wide" && <ListShell container="max-w-5xl" />}
+      {shape === "list-narrow" && <ListShell container="max-w-2xl" />}
+      {shape === "grid" && <GridShell />}
       {shape === "detail" && <DetailShell />}
       {shape === "form" && <FormShell />}
       {shape === "admin" && <AdminShell />}
@@ -121,9 +140,9 @@ export function ProductCardShell() {
   );
 }
 
-function ListShell() {
+function ListShell({ container = "max-w-3xl" }: { container?: string }) {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-7">
+    <div className={`${container} mx-auto px-4 py-7`}>
       <div className="h-7 w-40 skeleton-shimmer rounded-lg mb-5" />
       <div className="space-y-2.5">
         {Array.from({ length: 5 }).map((_, i) => (
@@ -159,35 +178,126 @@ function DetailShell() {
 
 /**
  * Product-page shell. Mirrors pages/product.tsx exactly — max-w-xl
- * container, 16:9 media area inside a card, price/CTA row, then the
- * trust/sections stack — so the chunk-load swap causes zero horizontal
- * reflow (the generic DetailShell at max-w-4xl used to shift the layout
- * by 256px on this highest-traffic page).
+ * container below lg, the R116-S2 max-w-6xl two-column desktop split
+ * at lg (START = media + content card; END = the sticky buy panel),
+ * then the recommendations rail and the mobile sticky buy-bar slot —
+ * so the chunk-load/data-load swaps cause zero horizontal reflow.
+ *
+ * R123-E4b (CLS, live-measured 0.21 on the OOS product page): the old
+ * single-column max-w-xl shell made the real page's container jump
+ * 576px→1152px wide at ≥1024px on the skeleton→content swap (a 0.176
+ * layout-shift entry, source DIV.max-w-xl.lg:max-w-6xl), and its short
+ * stack (~625px) left the footer in-viewport on mobile, so the taller
+ * real content pushed it out with a further ~0.12 shift. The shell now
+ * mirrors the real page's geometry — including the recommendations
+ * block, which is what pushes the skeleton past one viewport height so
+ * below-fold furniture never jumps. The in-page isLoading skeleton in
+ * product.tsx renders this same shape (no drift between the two
+ * skeleton phases).
  */
 function ProductShell() {
   return (
-    <div className="max-w-xl mx-auto px-4 py-6">
-      <div className="h-5 w-28 skeleton-shimmer rounded-lg mb-5" />
-      <div className="bg-card border border-border/55 rounded-2xl overflow-hidden">
-        <div className="aspect-[16/9] skeleton-shimmer" />
-        <div className="p-5 space-y-3">
-          <div className="h-6 skeleton-shimmer rounded-lg w-3/4" />
-          <div className="h-4 skeleton-shimmer rounded w-full" />
-          <div className="h-4 skeleton-shimmer rounded w-2/3" />
-          <div className="pt-4 mt-2 flex justify-between items-center border-t border-border/25">
-            <div className="h-7 w-24 skeleton-shimmer rounded-lg" />
-            <div className="h-11 w-36 skeleton-shimmer rounded-xl" />
+    <div className="max-w-xl lg:max-w-6xl mx-auto px-4 py-6 sm:py-8">
+      {/* Back-link row — the real page reserves a min-h-11 row + mb-4. */}
+      <div className="min-h-11 mb-4 flex items-center">
+        <div className="h-4 w-28 skeleton-shimmer rounded" />
+      </div>
+
+      {/* The R116-S2 split mirrored: below lg the two <section>s dissolve
+          (max-lg:contents) into one stacked flow; at lg they materialize
+          as the grid columns — same wrapper classes as the real page. */}
+      <div className="flex flex-col max-lg:gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
+        {/* START column — media + title/description/features */}
+        <section className="max-lg:contents lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
+          <div className="aspect-[16/9] skeleton-shimmer" />
+          <div className="max-lg:px-5 max-lg:pt-5 lg:p-5 space-y-4">
+            <div className="h-7 skeleton-shimmer rounded-lg w-3/4" />
+            <div className="h-4 skeleton-shimmer rounded w-full" />
+            <div className="h-4 skeleton-shimmer rounded w-2/3" />
+            {/* Feature checklist grid */}
+            <div className="grid sm:grid-cols-2 gap-2">
+              <div className="h-12 rounded-xl skeleton-shimmer" />
+              <div className="h-12 rounded-xl skeleton-shimmer" />
+            </div>
           </div>
+        </section>
+
+        {/* END column — the sticky buy panel (variant pills → price box
+            → trust grid → FAQ row → desktop CTA) */}
+        <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
+          <div className="max-lg:px-5 lg:p-5 space-y-4">
+            <div className="flex gap-2">
+              <div className="min-h-11 w-24 rounded-xl skeleton-shimmer" />
+              <div className="min-h-11 w-28 rounded-xl skeleton-shimmer" />
+            </div>
+            <div className="h-20 rounded-xl skeleton-shimmer" />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="h-20 rounded-xl skeleton-shimmer" />
+              <div className="h-20 rounded-xl skeleton-shimmer" />
+              <div className="h-20 rounded-xl skeleton-shimmer" />
+            </div>
+            <div className="h-12 rounded-xl skeleton-shimmer" />
+            <div className="hidden sm:block h-12 rounded-xl skeleton-shimmer" />
+          </div>
+        </section>
+      </div>
+
+      {/* Recommendations rail — same mt-8 + h2 + grid-cols-2 footprint
+          the real section holds (it renders its own shimmer while its
+          query loads; holding the block here keeps the footer below the
+          fold for the whole skeleton phase). */}
+      <div className="mt-8 space-y-4">
+        <div className="h-7 w-36 skeleton-shimmer rounded-lg" />
+        <div className="grid grid-cols-2 gap-3">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={i}
+              className="bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 skeleton-shimmer"
+            >
+              <div className="aspect-[4/3] rounded-xl" />
+              <div className="h-4 w-3/4 rounded-md" />
+              <div className="h-3 w-1/2 rounded-md" />
+            </div>
+          ))}
         </div>
       </div>
-      <div className="mt-6 space-y-2.5">
-        <div className="h-4 w-40 skeleton-shimmer rounded-lg" />
-        {Array.from({ length: 3 }).map((_, i) => (
+
+      {/* Mobile sticky buy-bar slot (the guest bar is in-flow at <sm). */}
+      <div className="sm:hidden h-[72px] mt-3 skeleton-shimmer" />
+    </div>
+  );
+}
+
+/**
+ * Filter-less responsive card grid (flash-sales). Mirrors
+ * pages/flash-sales.tsx — max-w-6xl root, centered icon/title/subtitle
+ * header, then grid-cols-2 md:grid-cols-3 lg:grid-cols-4 cards. No
+ * filter row: the flash page has none (R123-E4b — the catalog shell
+ * mapped there painted a phantom filter bar).
+ */
+function GridShell() {
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      {/* Centered header */}
+      <div className="flex flex-col items-center gap-3 mb-9">
+        <div className="w-16 h-16 rounded-2xl skeleton-shimmer" />
+        <div className="h-8 w-40 skeleton-shimmer rounded-lg" />
+        <div className="h-3.5 w-64 skeleton-shimmer rounded" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
-            className="h-16 rounded-2xl skeleton-shimmer"
+            className="bg-card border border-border/60 rounded-2xl overflow-hidden"
             style={{ animationDelay: `${i * 40}ms` }}
-          />
+          >
+            <div className="aspect-[4/3] skeleton-shimmer" />
+            <div className="p-4 space-y-2">
+              <div className="h-3 skeleton-shimmer rounded w-1/3" />
+              <div className="h-4 skeleton-shimmer rounded w-2/3" />
+              <div className="h-5 skeleton-shimmer rounded w-1/2" />
+            </div>
+          </div>
         ))}
       </div>
     </div>

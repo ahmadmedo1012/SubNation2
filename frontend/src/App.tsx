@@ -108,11 +108,17 @@ const ROUTE_SHAPES: Array<[RegExp, RouteSkeletonShape]> = [
   [/^\/product\//, "product"],
   [/^\/orders\/[^/]+/, "order"],
   [/^\/orders$/, "list"],
-  [/^\/wallet/, "list"],
+  // R123-E4b (P3-c): width/archetype corrections measured against the
+  // real page roots — wallet is max-w-5xl (list-wide), referrals and
+  // profile are max-w-2xl (list-narrow; the old default list shell is
+  // max-w-3xl — a 128px width jump on every swap), and flash-sales has
+  // NO filter row (the "grid" shell drops the catalog's filter bar the
+  // flash page never renders).
+  [/^\/wallet/, "list-wide"],
   [/^\/loyalty/, "detail"],
-  [/^\/referrals/, "list"],
+  [/^\/referrals/, "list-narrow"],
   [/^\/support/, "list"],
-  [/^\/profile/, "form"],
+  [/^\/profile/, "list-narrow"],
   [/^\/login/, "form"],
   [/^\/register/, "form"],
   // B6 P2-17a: previously unmapped → blank flash before the lazy
@@ -127,7 +133,9 @@ const ROUTE_SHAPES: Array<[RegExp, RouteSkeletonShape]> = [
   // now exists in route-skeleton (same max-w-5xl + grid geometry) —
   // wired here for a zero-jump skeleton→content transition.
   [/^\/checkout/, "checkout"],
-  [/^\/flash-sales/, "catalog"],
+  // R123-E4b (P3-c): the flash page is a filter-less card grid — see
+  // the comment block at the wallet entry above.
+  [/^\/flash-sales/, "grid"],
   // B6 P2-17a: long content page — its max-w-2xl root is matched
   // exactly by the "order" shell (header + strip + stacked rows).
   [/^\/terms/, "order"],

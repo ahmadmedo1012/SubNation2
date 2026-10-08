@@ -722,12 +722,15 @@ export default function HomePage() {
                     شات جي بي تي — كلّها بالدينار الليبي مع تسليم فوري بعد الدفع.
                   </p>
                   {/* R120-B1 (A1-F3): expand toggle for the collapsed prose
-                      (mobile only — ≥sm shows the full paragraph). */}
+                      (mobile only — ≥sm shows the full paragraph).
+                      R123-E4b (P3, live-measured 77×19): the text-2xs
+                      inline toggle was the site's only sub-24px button —
+                      full-width + the min-h-11 floor now. */}
                   <button
                     type="button"
                     onClick={() => setHeroProseOpen((v) => !v)}
                     aria-expanded={heroProseOpen}
-                    className="sm:hidden inline-flex items-center gap-1 text-2xs font-bold text-primary-text hover:text-primary-text/80 transition-colors press-spring mb-3 sm:mb-0"
+                    className="sm:hidden w-full min-h-11 inline-flex items-center justify-center gap-1 text-2xs font-bold text-primary-text hover:text-primary-text/80 transition-colors press-spring mb-3 sm:mb-0"
                   >
                     {heroProseOpen ? "عرض أقل" : "عرض المزيد"}
                     <ChevronDown
@@ -1183,8 +1186,28 @@ export default function HomePage() {
             <div className="w-14 h-14 rounded-2xl bg-muted/60 mx-auto mb-4 flex items-center justify-center">
               <PackageSearch className="w-6 h-6 opacity-35" />
             </div>
-            <p className="font-bold text-base mb-1.5">لا توجد منتجات تطابق بحثك</p>
-            <p className="text-sm text-muted-foreground mb-5">جرب تغيير الفلتر أو كلمة البحث</p>
+            {/* R123-E4b (P3-b): the empty grid used to assume a
+                filter/search was active («تطابق بحثك» + «غيّر الفلتر»)
+                even when activeFilterCount === 0 — i.e. when the CATALOG
+                itself is momentarily empty (a sold-out catalog is a
+                business state; the empty state must describe it honestly
+                instead of telling the shopper to fix a search they never
+                made). Also «جرّب» with shadda. */}
+            {activeFilterCount > 0 ? (
+              <>
+                <p className="font-bold text-base mb-1.5">لا توجد منتجات تطابق بحثك</p>
+                <p className="text-sm text-muted-foreground mb-5">
+                  جرّب تغيير الفلتر أو كلمة البحث
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-bold text-base mb-1.5">لا توجد منتجات معروضة حالياً</p>
+                <p className="text-sm text-muted-foreground mb-5">
+                  يُحدَّث الكتالوج باستمرار — تفضّل بزيارتنا لاحقاً
+                </p>
+              </>
+            )}
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}

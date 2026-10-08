@@ -102,6 +102,12 @@ export function buildProductLd(p: ProductLdInput) {
     "@context": "https://schema.org",
     "@type": "Product",
     "@id": productUrl,
+    // R123-E4b (P3-n): schema.org/Product.url — the canonical product
+    // URL at the TOP level of the Product node (only @id and offers.url
+    // carried it before). The page's runtime og:url/og:type=product
+    // (MetaTags) and this LD url now agree; Google's Product rich-result
+    // docs list url among the recommended product-snippet properties.
+    url: productUrl,
     name: p.name,
     description: (p.descriptionLong ?? p.description ?? p.name).slice(0, 5000),
     // AUD103-6-F1 (r103): Google's Product rich-result validator (and

@@ -167,7 +167,8 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
       aria-label="المتابعة عبر Telegram"
     >
       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TelegramIcon />}
-      {loading ? "جارٍ التحويل..." : "المتابعة عبر Telegram"}
+      {/* R123-E4b (P3-k): single-glyph ellipsis «…» (was ASCII "..."). */}
+      {loading ? "جارٍ التحويل…" : "المتابعة عبر Telegram"}
     </button>
   );
 }

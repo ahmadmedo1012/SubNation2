@@ -83,7 +83,10 @@ export default function NotFound() {
               { href: "/support", label: "الدعم" },
             ].map((l) => (
               <Link key={l.href} href={l.href}>
-                <span className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg border border-border/50 hover:border-border bg-secondary/30 hover:bg-secondary/60 transition-all cursor-pointer">
+                {/* R123-E4b (P3-f): inline-flex + min-h-11 — the old
+                    px-3 py-1.5 chip measured ≈30px, well under the 44px
+                    touch floor (WCAG 2.5.8 / the app's min-h-11 idiom). */}
+                <span className="inline-flex items-center min-h-11 text-xs text-muted-foreground hover:text-foreground px-3 rounded-lg border border-border/50 hover:border-border bg-secondary/30 hover:bg-secondary/60 transition-all cursor-pointer">
                   {l.label}
                 </span>
               </Link>

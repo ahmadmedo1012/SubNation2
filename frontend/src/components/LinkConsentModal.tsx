@@ -79,7 +79,8 @@ export function LinkConsentModal({ hint, loading, onConfirm, onCancel }: LinkCon
             ) : (
               <Link2 className="w-4 h-4" aria-hidden="true" />
             )}
-            {loading ? "جارٍ الربط..." : "تأكيد الربط"}
+            {/* R123-E4b (P3-k): single-glyph ellipsis «…» (was ASCII "..."). */}
+            {loading ? "جارٍ الربط…" : "تأكيد الربط"}
           </button>
         </div>
       }

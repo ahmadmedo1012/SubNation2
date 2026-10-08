@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
@@ -77,7 +78,12 @@ export function OnboardingPage() {
     }
   };
 
-  if (!token) return null;
+  /* R123-E4b (P3-e): the guest guard used to `return null` — a blank
+     flash between the lazy chunk's "form" skeleton swapping out and
+     the login-redirect effect ticking, on the only guarded page that
+     lacked a guest skeleton (checkout/wallet/profile/orders all render
+     one). Same "form" shape ROUTE_SHAPES maps /onboarding to. */
+  if (!token) return <RouteSkeleton shape="form" />;
   if (user && (user as { onboarded_at?: string }).onboarded_at) return null;
 
   return (

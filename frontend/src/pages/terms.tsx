@@ -46,8 +46,14 @@ function TermsContent() {
 
       <Section title="2. طبيعة الخدمة">
         <p>
-          SubNation هي منصة لبيع الاشتراكات الرقمية في ليبيا. نوفر اشتراكات خدمات مثل Netflix
-          وSpotify وPS Plus وغيرها بالدينار الليبي عبر وسائل الدفع المحلية.
+          {/* R123-E4b (P3-i): PS Plus removed — the gaming category was
+              archived 2026-09-19 (R120/R122 scrubbed it from the rest of
+              the app) and a terms page must not promise a category the
+              live catalog no longer sells. Windows is live
+              (windows-8 / windows-10-pro / windows-10-home — verified
+              against the production sitemap). */}
+          SubNation هي منصة لبيع الاشتراكات والتراخيص الرقمية في ليبيا. نوفر خدمات مثل Netflix
+          وSpotify وتراخيص مثل Windows وغيرها بالدينار الليبي عبر وسائل الدفع المحلية.
         </p>
         <p>
           جميع المنتجات رقمية ويتم تسليمها فورياً أو خلال 24 ساعة بعد تأكيد الدفع. لا تنطبق سياسة
@@ -240,7 +246,10 @@ export default function TermsPage() {
           <button
             key={id}
             onClick={() => handleTabClick(id)}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
+            /* R123-E4b (P3-f): min-h-11 — the old px-4 py-2.5 chip measured
+                ≈40px, under the 44px touch floor the app enforces on every
+                other control. */
+            className={`min-h-11 flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
               tab === id
                 ? "bg-card shadow-sm text-foreground font-bold"
                 : "text-muted-foreground hover:text-foreground"

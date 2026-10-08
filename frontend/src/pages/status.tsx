@@ -1,5 +1,6 @@
 import { fetchHealthzSummary, type CheckStatus, type HealthzSummary } from "@/lib/healthz";
 import { formatTime } from "@/lib/utils";
+import { useSeo } from "@/hooks/useSeo";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
@@ -99,9 +100,23 @@ export default function StatusPage(): ReactElement {
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
   const lastUpdatedLabel = lastUpdated ? formatTime(lastUpdated) : "—";
 
+  // R123-E4b (P3-j, live-verified): the page never set document.title —
+  // the tab kept the previous route's title (or the SPA default) and
+  // the R123-A8 audit confirmed /status ships no per-page title.
+  // noindex,follow mirrors robots.txt (which disallows /status) — same
+  // pairing every other noindex surface uses.
+  const seoBlock = useSeo({
+    title: "حالة المنصة — SubNation",
+    description: "حالة خدمات منصة SubNation المجمّعة، مع تحديث تلقائي دوري.",
+    path: "/status",
+    locale: "ar",
+    robots: "noindex,follow",
+  });
+
   return (
     <div className="min-h-[100dvh] bg-background">
       <div className="max-w-xl mx-auto px-4 py-16">
+        {seoBlock}
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
           <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">

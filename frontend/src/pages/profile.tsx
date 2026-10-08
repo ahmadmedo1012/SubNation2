@@ -202,9 +202,10 @@ export default function ProfilePage() {
   // R122 (A1-P2): guests get the form-shaped RouteSkeleton instead of a
   // bare null — checkout.tsx's R115-I1 guard (the white frame between
   // the lazy-skeleton swap-out and the redirect tick read as a blank
-  // page on slow links). Same "form" shape ROUTE_SHAPES maps /profile
-  // to, so the swap-in is a content-fill, not a layout jump.
-  if (!token) return <RouteSkeleton shape="form" />;
+  // page on slow links). Same "list-narrow" shape ROUTE_SHAPES maps
+  // /profile to (R123-E4b: the page root is max-w-2xl), so the swap-in
+  // is a content-fill, not a layout jump.
+  if (!token) return <RouteSkeleton shape="list-narrow" />;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
@@ -275,11 +276,17 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0">
                 {/* Tier badge */}
                 <div className="mb-2">
+                  {/* R123-E4b (P3-g): the dead `style={{ color: "inherit" }}`
+                      is gone — it overrode the tierColor class on the
+                      OUTER span, so bg-current/8 + border-current/18
+                      rendered with the INHERITED (neutral) currentColor
+                      and the tier tint only ever reached the label text.
+                      The class now drives currentColor for the whole
+                      badge: tinted text + tinted bg/border. */}
                   <span
                     className={`text-2xs font-bold px-2.5 py-1 rounded-full border ${tierColor(tier)} bg-current/8 border-current/18`}
-                    style={{ color: "inherit" }}
                   >
-                    <span className={tierColor(tier)}>{tierLabel(tier)}</span>
+                    {tierLabel(tier)}
                   </span>
                 </div>
 
