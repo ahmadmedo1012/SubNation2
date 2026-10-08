@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
-import { intParam, queryString } from "../../lib/http";
+import { intParam, pageParam, queryString } from "../../lib/http";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { mapServiceErrorToCode } from "../../lib/service-error";
 import { idempotency } from "../../middlewares/idempotency";
@@ -81,7 +81,9 @@ router.get("/topups", requireAdmin, async (req, res) => {
     Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
     200,
   );
-  const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
+  // R123 (E3 item 6): shared pageParam() — the R122 MAX_PAGE ceiling
+  // joins this money queue (same rationale as admin/orders.ts).
+  const page = pageParam(req);
 
   const topups = await db
     .select({

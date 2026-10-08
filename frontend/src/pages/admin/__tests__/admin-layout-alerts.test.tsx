@@ -267,6 +267,9 @@ describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourc
     // to finance-OR-support (the openTickets badge rides the same
     // payload). The R115 premise — finance=false ⇒ no poll — is now
     // finance=false AND support=false ⇒ no poll.
+    // R123 (E3 item 4): the alerts badge machinery (unread-count query +
+    // 5-min poll) is support-scoped now too — a scope-less admin fires
+    // NEITHER the stats poll NOR the alerts endpoints.
     authState.finance = false;
     authState.support = false;
     fetchMock.mockImplementation(
@@ -275,17 +278,43 @@ describe("AdminLayout pendingTopups badge — stable on EVERY page, server-sourc
 
     renderLayout();
 
-    // The other badge endpoints fire; stats never does.
     await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/alerts/unread-count")),
-      ).toBe(true);
+      expect(screen.getByText("page-body")).toBeInTheDocument();
     });
+    // Give the disabled queries/polls a beat to (not) fire, then pin
+    // the full no-poll contract.
+    await new Promise((r) => setTimeout(r, 600));
+    const allUrls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(allUrls.some((u) => u.includes("/api/admin/stats"))).toBe(false);
+    expect(allUrls.some((u) => u.includes("/api/admin/alerts/unread-count"))).toBe(false);
+    expect(allUrls.some((u) => u.includes("/api/admin/alerts/new"))).toBe(false);
+  });
+
+  it("a finance-only admin polls stats but NEVER the alerts endpoints (support-scoped badge machinery)", async () => {
+    // R123 (E3 item 4): the unread-count query + the 5-min
+    // /alerts/new poll gate on the support scope exactly like the
+    // التنبيهات nav item — a finance-only operator must stop 403-ing
+    // silently every 5 minutes for a badge whose page they cannot
+    // open. The finance badge (stats poll) keeps working for them.
+    authState.finance = true;
+    authState.support = false;
+    fetchMock.mockImplementation(
+      routeFetch({ stats: () => resLike({ body: { pending_topups: 3 } }) }),
+    );
+
+    renderLayout();
+
+    // Positive signal the layout is alive and the finance badge fed…
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/stats"))).toBe(
-        false,
+        true,
       );
     });
+    await new Promise((r) => setTimeout(r, 600));
+    // …while the alerts machinery stays dark for the whole window.
+    const allUrls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(allUrls.some((u) => u.includes("/api/admin/alerts/unread-count"))).toBe(false);
+    expect(allUrls.some((u) => u.includes("/api/admin/alerts/new"))).toBe(false);
   });
 });
 

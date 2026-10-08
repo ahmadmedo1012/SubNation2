@@ -81,7 +81,12 @@ function renderPage() {
 }
 
 async function openEditModal() {
-  fireEvent.click(await screen.findByRole("button", { name: /تعديل المستخدم 0913456789/ }));
+  // R123 (E3 P3b): the mobile edit button now carries the same
+  // accessible name as its desktop twin — both render in jsdom (the
+  // md:hidden/hid CSS classes do not unmount either), so scope by
+  // all-matches and click the first (desktop) one.
+  const editButtons = await screen.findAllByRole("button", { name: /تعديل المستخدم 0913456789/ });
+  fireEvent.click(editButtons[0]);
   return screen.findByRole("dialog");
 }
 

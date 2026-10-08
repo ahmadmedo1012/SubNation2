@@ -2,7 +2,7 @@ import { db, ordersTable, usersTable } from "@workspace/db";
 import { and, count, desc, eq, inArray, like } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
-import { escapeLikeTerm, intParam, queryString } from "../../lib/http";
+import { escapeLikeTerm, intParam, pageParam, queryString } from "../../lib/http";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
@@ -34,7 +34,9 @@ router.get("/users", requireAdmin, async (req, res) => {
     Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
     200,
   );
-  const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
+  // R123 (E3 item 6): shared pageParam() — the R122 MAX_PAGE ceiling
+  // joins the users directory (same rationale as admin/orders.ts).
+  const page = pageParam(req);
 
   const users =
     search && typeof search === "string"
@@ -188,14 +190,12 @@ router.patch(
     const MAX_ADMIN_SET_LOYALTY_POINTS = 10_000_000;
     let loyaltyApplied: { before: number; after: number } | null = null;
     if (loyalty_points !== undefined) {
-      if (
-        !(
-          typeof loyalty_points === "number" &&
-          Number.isInteger(loyalty_points) &&
-          loyalty_points >= 0 &&
-          loyalty_points <= MAX_ADMIN_SET_LOYALTY_POINTS
-        )
-      ) {
+      if (!(
+        typeof loyalty_points === "number" &&
+        Number.isInteger(loyalty_points) &&
+        loyalty_points >= 0 &&
+        loyalty_points <= MAX_ADMIN_SET_LOYALTY_POINTS
+      )) {
         return res
           .status(400)
           .json(

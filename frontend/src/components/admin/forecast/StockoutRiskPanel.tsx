@@ -15,6 +15,11 @@
  */
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+// R123 (E3 item 1): the two raw fetches ride the session-aware wrapper —
+// a mid-work 401 gets the global «انتهت الجلسة» toast + redirect (the
+// panel's null-on-error renders stay intact for real failures), with
+// adminFetchJson owning the ok-guard + safe parse.
+import { adminFetchJson } from "@/lib/admin-session";
 import { Button } from "@/components/ui/button";
 // 93-C7 / C-UX2 (A12 B14): forecast-confidence pills migrate from raw
 // emerald/yellow/orange hues to the canonical StatusBadge on the
@@ -120,11 +125,8 @@ export function StockoutRiskPanel() {
   const headers = useAdminHeaders();
   const query = useQuery<AtRiskResponse>({
     queryKey: ["admin-forecast-at-risk"],
-    queryFn: async () => {
-      const resp = await fetch("/api/admin/forecast/at-risk?limit=10", { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+    queryFn: async () =>
+      adminFetchJson<AtRiskResponse>("/api/admin/forecast/at-risk?limit=10", { headers }),
     refetchInterval: 5 * 60 * 1000, // 5 min
     retry: false,
   });
@@ -205,11 +207,10 @@ function RiskRow({ row }: { row: AtRiskRow }) {
 
   const detail = useQuery<ProductDetailResponse>({
     queryKey: ["admin-forecast-product", row.product_id],
-    queryFn: async () => {
-      const resp = await fetch(`/api/admin/forecast/products/${row.product_id}`, { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+    queryFn: async () =>
+      adminFetchJson<ProductDetailResponse>(`/api/admin/forecast/products/${row.product_id}`, {
+        headers,
+      }),
     enabled: open,
     staleTime: 5 * 60 * 1000,
   });

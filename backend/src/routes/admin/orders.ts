@@ -5,7 +5,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
-import { escapeLikeTerm, intParam, queryString } from "../../lib/http";
+import { escapeLikeTerm, intParam, pageParam, queryString } from "../../lib/http";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
@@ -214,7 +214,14 @@ router.get("/orders", requireAdmin, async (req, res) => {
     Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
     200,
   );
-  const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
+  // R123 (E3 item 6): the shared pageParam() — same floor idiom the
+  // inline clamp implemented, plus the R122 MAX_PAGE=10 000 ceiling the
+  // three admin lists (orders/topups/users) were the last to lack
+  // (backend/lib/http.ts:69; admin surface rides the 600/min-IP
+  // envelope, so an uncapped ?page=100000000 × limit 200 was the same
+  // ~2×10⁷-row sequential-scan abuse shape R122 closed on the user
+  // lists). Behavior for every legitimate value is unchanged.
+  const page = pageParam(req);
 
   // V4: the admin command palette sends ?search= — previously ignored
   // (silently unfiltered results). Match order code, user phone/email/

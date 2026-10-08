@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth";
 // R122 (A2-P2): GlobalSearch's three raw fetches ride the session-aware
 // wrapper (401 → global toast + redirect instead of a silent "no
 // results").
-import { adminFetchJson } from "@/lib/admin-session";
+import { adminFetch, adminFetchJson } from "@/lib/admin-session";
 import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
@@ -650,6 +650,14 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const { adminToken, adminLogout, hasAdminPermission } = useAuth();
   const headers = useAdminHeaders();
   const { theme, toggleTheme } = useTheme();
+  // R123 (E3 item 4): the alerts badge + poll machinery is support-
+  // scoped — the التنبيهات nav item already gates on "support"
+  // (NAV_SECTIONS above), but the unread-count query and the 5-min
+  // /alerts/new poll below ran for EVERY admin, so a finance-only
+  // operator silently 403-ed every 5 minutes for a badge whose nav
+  // item they cannot even see. Declared up here so both the query and
+  // the poll effect share one source of truth.
+  const canSeeSupportBadge = hasAdminPermission("support");
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -678,6 +686,14 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // (data undefined ⇒ badge hides / falls back to the page-passed
   // count) instead of lying with a zero. 401/500/503 are "unknown",
   // never "0"; the next socket event or 5-min fallback refetch recovers.
+  //
+  // R123 (E3 items 1+4): the ok-guard + safe parse now ride the
+  // session-aware adminFetchJson wrapper (a mid-work 401 throws
+  // AdminSessionExpiredError after the global toast + redirect — a
+  // non-JSON 502 body no longer surfaces an English SyntaxError), and
+  // the query is gated on the support scope exactly like its nav item:
+  // a scope-less admin has no badge to feed, and a disabled query
+  // never errors (the "last updated" pill stays honest).
   const {
     data: alertCountData,
     dataUpdatedAt: alertsUpdatedAt,
@@ -687,9 +703,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   } = useQuery<{ count: number }>({
     queryKey: ["admin-alerts-unread-count"],
     queryFn: async () => {
-      const r = await fetch("/api/admin/alerts/unread-count", { headers });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const body = (await r.json().catch(() => null)) as { count?: unknown } | null;
+      const body = await adminFetchJson<{ count?: unknown }>("/api/admin/alerts/unread-count", {
+        headers,
+      });
       if (typeof body?.count !== "number") {
         // 200 with a non-numeric count is a contract break — same honest
         // error path as non-OK (never coerce undefined into 0).
@@ -699,7 +715,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     },
     refetchInterval: 300_000,
     refetchIntervalInBackground: false,
-    enabled: !!adminToken,
+    enabled: !!adminToken && canSeeSupportBadge,
     staleTime: 15_000,
   });
 
@@ -719,7 +735,6 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // badge-owning nav scope is visible (finance → topups, support →
   // tickets), mirroring pendingTopups' finance gating.
   const canSeeFinanceBadge = hasAdminPermission("finance");
-  const canSeeSupportBadge = hasAdminPermission("support");
   const {
     data: layoutStats,
     dataUpdatedAt: statsUpdatedAt,
@@ -842,8 +857,14 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // inserted (jobs/alertLogger emits on insert) — poll() runs immediately
   // and toasts land at alert time. The 5-minute interval is only a
   // socket-dropout fallback (was 30 s).
+  // R123 (E3 items 1+4): the poll rides the session-aware adminFetch
+  // wrapper (a mid-work 401 → AdminSessionExpiredError, swallowed by the
+  // existing catch — the global toast + redirect already fired) AND is
+  // gated on the support scope like the alerts nav item: a finance-only
+  // admin no longer 403-silently every 5 minutes for toasts whose page
+  // they cannot open.
   useEffect(() => {
-    if (!adminToken) return;
+    if (!adminToken || !canSeeSupportBadge) return;
 
     const ALERT_LABELS: Record<string, string> = {
       coupon_maxed: "كوبون استُنفد",
@@ -863,7 +884,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       // socket is parked-then-revived.
       if (document.visibilityState === "hidden") return;
       const lastId = Number(localStorage.getItem("sn_last_alert_id") ?? "0");
-      fetch(`/api/admin/alerts/new?since=${lastId}`, {
+      adminFetch(`/api/admin/alerts/new?since=${lastId}`, {
         headers,
       })
         .then((r) => (r.ok ? r.json() : { alerts: [] }))
@@ -896,7 +917,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       window.removeEventListener(ADMIN_ALERT_NEW_EVENT, onSocketAlert);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [adminToken, headers]);
+    // Scopes are fixed for the session (AuthProvider re-reads them only
+    // on re-login) — see the canGlobalSearch effect above.
+  }, [adminToken, headers, canSeeSupportBadge]);
 
   const refreshLabel =
     secondsAgo < 10

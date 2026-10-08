@@ -121,6 +121,28 @@ describe("handleAdminUnauthorized — expired session mid-work (F-07/S-3)", () =
     expect(handleAdminUnauthorized("https://api.example.com/api/admin/orders")).toBe(true);
     expect(window.location.pathname).toBe("/admin/login");
   });
+
+  // R123 (E3 item 1): the admin coupon surface lives OUTSIDE the
+  // /api/admin/ tree (backend routes/coupons.ts mounts it at
+  // /api/coupons/admin with requireAdmin + finance scope). The
+  // isAdminApiUrl extension was dormant until the coupons-page fetches
+  // rode adminFetch/adminFetchJson — now a finance cookie expiring
+  // mid-coupon-work reaches the global handler instead of a per-action
+  // retry-loop toast. Pin BOTH sides of the coupling: the admin prefix
+  // matches, the public /api/coupons/validate surface does not.
+  it("handles 401s on /api/coupons/admin (the now-live coupon-surface extension) but not storefront coupon endpoints", () => {
+    simulateAdminSession(vi.fn());
+
+    expect(handleAdminUnauthorized("/api/coupons/admin")).toBe(true);
+    expect(handleAdminUnauthorized("/api/coupons/admin/42")).toBe(true);
+    expect(window.location.pathname).toBe("/admin/login");
+    expect(toastMock).toHaveBeenCalledTimes(1);
+
+    // The storefront validate endpoint is public — its 401s stay C5's
+    // domain (prefix-precise match, never a /api/coupons/ blanket).
+    expect(handleAdminUnauthorized("/api/coupons/validate")).toBe(false);
+    expect(toastMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("isAdminUnauthorized — raw-fetch call-site helper", () => {

@@ -7,7 +7,12 @@
  */
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { getErrorMessage } from "@/lib/errors";
+// R123 (E3 item 1): the two raw fetches ride the session-aware wrapper
+// — a users-scope cookie expiring mid-investigation now gets the global
+// «انتهت الجلسة» toast + redirect; the label mutation's inline error
+// line shows the sentinel's Arabic message (truthful) instead of a raw
+// `HTTP 401`, and adminFetchJson owns the ok-guard + safe parse.
+import { adminFetchJson } from "@/lib/admin-session";
 import { Button } from "@/components/ui/button";
 // 93-C7 / C-UX2 (A12 B4): risk-event level + label pills migrate from
 // raw emerald/yellow/amber/red hues to the canonical StatusBadge on the
@@ -87,29 +92,18 @@ export default function AdminRiskEventPage() {
 
   const query = useQuery<RiskEventDetail>({
     queryKey: ["admin-risk-event", id],
-    queryFn: async () => {
-      const resp = await fetch(`/api/admin/risk/events/${id}`, { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+    queryFn: async () =>
+      adminFetchJson<RiskEventDetail>(`/api/admin/risk/events/${id}`, { headers }),
     enabled: !!id,
   });
 
   const labelMut = useMutation({
-    mutationFn: async (label: LabelKind) => {
-      const resp = await fetch(`/api/admin/risk/events/${id}/label`, {
+    mutationFn: async (label: LabelKind) =>
+      adminFetchJson(`/api/admin/risk/events/${id}/label`, {
         method: "POST",
         headers: headersJson,
         body: JSON.stringify({ label, notes: notes.trim() || undefined }),
-      });
-      if (!resp.ok) {
-        const body = (await resp.json().catch(() => null)) as { error?: string } | null;
-        // Round-4 (org §6a): map the backend `code` to Arabic via
-        // getErrorMessage; the raw `error` string stays the fallback.
-        throw new Error(getErrorMessage(body) || `HTTP ${resp.status}`);
-      }
-      return resp.json();
-    },
+      }),
     onSuccess: () => {
       setNotes("");
       qc.invalidateQueries({ queryKey: ["admin-risk-event", id] });

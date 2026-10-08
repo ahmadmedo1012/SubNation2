@@ -134,7 +134,12 @@ function renderPage() {
 /** Opens the AppDialog edit shell for the first user row (94-C2: the
  *  rows arrive asynchronously; the dialog is the Radix AppDialog). */
 async function openEditModal() {
-  fireEvent.click(await screen.findByRole("button", { name: /تعديل المستخدم 0913456789/ }));
+  // R123 (E3 P3b): the mobile edit button now carries the same
+  // accessible name as its desktop twin — both render in jsdom (the
+  // md:hidden/hid CSS classes do not unmount either), so scope by
+  // all-matches and click the first (desktop) one.
+  const editButtons = await screen.findAllByRole("button", { name: /تعديل المستخدم 0913456789/ });
+  fireEvent.click(editButtons[0]);
   const dialog = await screen.findByRole("dialog");
   // 94-C2 (A2 P2-5): the shared shell — dialog semantics, not a bare
   // fixed overlay.

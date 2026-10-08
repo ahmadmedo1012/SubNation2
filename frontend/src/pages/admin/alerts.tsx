@@ -2,6 +2,13 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
+// R123 (E3 item 1): the five mutation fetches ride the session-aware
+// wrapper — a support cookie expiring mid-work now gets the global
+// «انتهت الجلسة» toast + redirect instead of a per-action failure toast
+// (the optimistic rollback still runs first, so the cache stays
+// truthful), and adminFetchJson owns the ok-guard + safe error-body
+// parse the inline copies hand-rolled.
+import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatDate, formatRelativeTime } from "@/lib/utils";
@@ -25,12 +32,7 @@ import { useState } from "react";
 import { AdminLayout } from "./layout";
 
 type AlertType =
-  | "coupon_maxed"
-  | "coupon_expiring"
-  | "low_stock"
-  | "no_stock"
-  | "system"
-  | "forecast_stockout";
+  "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system" | "forecast_stockout";
 
 interface AdminAlertItem {
   id: number;
@@ -101,6 +103,17 @@ const ALERTS_PAGE_SIZE = 50;
 /** Query key — keeps the "admin-alerts" prefix so the existing
  *  invalidations (`["admin-alerts"]`) refresh the accumulated pages. */
 const ALERTS_LIST_KEY = ["admin-alerts", "inbox"] as const;
+
+/** Arabic plural forms for تنبيه (formatCount) — shared by the footer's
+ *  «عرض N» counter and the R123 deleteRead confirm's count copy. */
+const ALERT_COUNT_FORMS = {
+  zero: "تنبيهات",
+  one: "تنبيه",
+  two: "تنبيهان",
+  few: "تنبيهات",
+  many: "تنبيهًا",
+  other: "تنبيه",
+};
 
 /** 94-C2 (A2 P2-11): the inbox mutations get the same error surface as
  *  every other admin action (r.ok + parsed envelope + onError toast) —
@@ -225,17 +238,12 @@ export default function AdminAlertsPage() {
     // 94-C2 (A2 P2-11): r.ok + parsed envelope — a failed PATCH used to
     // "succeed" (fetch resolves on HTTP errors), invalidate, and
     // silently resurrect the unread dot.
-    mutationFn: async (id: number) => {
-      const r = await fetch(`/api/admin/alerts/${id}/read`, { method: "PATCH", headers });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل تعيين التنبيه كمقروء (HTTP ${r.status})`);
-      }
-      return r.json().catch(() => null);
-    },
+    // R123 (E3 item 1): adminFetchJson owns that contract now.
+    mutationFn: async (id: number) =>
+      adminFetchJson<{ success?: boolean }>(`/api/admin/alerts/${id}/read`, {
+        method: "PATCH",
+        headers,
+      }),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
       const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
@@ -255,23 +263,21 @@ export default function AdminAlertsPage() {
     },
     onError: (err, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
+      // R123 (E3 item 1): session expiry already toasted + redirected
+      // globally — the rollback above keeps the cache truthful, but no
+      // local failure toast on top.
+      if (err instanceof AdminSessionExpiredError) return;
       toast(alertActionToast("فشل تعيين التنبيه كمقروء", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const markAllRead = useMutation({
-    mutationFn: async () => {
-      const r = await fetch("/api/admin/alerts/read-all", { method: "PATCH", headers });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل تعيين الكل كمقروء (HTTP ${r.status})`);
-      }
-      return r.json().catch(() => null);
-    },
+    mutationFn: async () =>
+      adminFetchJson<{ success?: boolean }>("/api/admin/alerts/read-all", {
+        method: "PATCH",
+        headers,
+      }),
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
       const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
@@ -285,23 +291,18 @@ export default function AdminAlertsPage() {
     },
     onError: (err, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
+      if (err instanceof AdminSessionExpiredError) return;
       toast(alertActionToast("فشل تعيين الكل كمقروء", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const deleteAlert = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await fetch(`/api/admin/alerts/${id}`, { method: "DELETE", headers });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل حذف التنبيه (HTTP ${r.status})`);
-      }
-      return r.json().catch(() => null);
-    },
+    mutationFn: async (id: number) =>
+      adminFetchJson<{ success?: boolean }>(`/api/admin/alerts/${id}`, {
+        method: "DELETE",
+        headers,
+      }),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
       const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
@@ -316,44 +317,39 @@ export default function AdminAlertsPage() {
     },
     onError: (err, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
+      if (err instanceof AdminSessionExpiredError) return;
       toast(alertActionToast("فشل حذف التنبيه", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const deleteRead = useMutation({
-    mutationFn: async () => {
-      const r = await fetch("/api/admin/alerts/read", { method: "DELETE", headers });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل حذف المقروءة (HTTP ${r.status})`);
-      }
-      return r.json().catch(() => null);
-    },
+    mutationFn: async () =>
+      adminFetchJson<{ success?: boolean; deleted?: number }>("/api/admin/alerts/read", {
+        method: "DELETE",
+        headers,
+      }),
     onSuccess: () => invalidateAll(),
-    onError: (err) => toast(alertActionToast("فشل حذف التنبيهات المقروءة", getErrorMessage(err))),
+    onError: (err) => {
+      if (err instanceof AdminSessionExpiredError) return;
+      toast(alertActionToast("فشل حذف التنبيهات المقروءة", getErrorMessage(err)));
+    },
   });
 
   const deleteAll = useMutation({
-    mutationFn: async () => {
-      const r = await fetch("/api/admin/alerts", { method: "DELETE", headers });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل حذف كل التنبيهات (HTTP ${r.status})`);
-      }
-      return r.json().catch(() => null);
-    },
+    mutationFn: async () =>
+      adminFetchJson<{ success?: boolean }>("/api/admin/alerts", {
+        method: "DELETE",
+        headers,
+      }),
     onSuccess: () => {
       setConfirmDeleteAll(false);
       invalidateAll();
     },
-    onError: (err) => toast(alertActionToast("فشل حذف كل التنبيهات", getErrorMessage(err))),
+    onError: (err) => {
+      if (err instanceof AdminSessionExpiredError) return;
+      toast(alertActionToast("فشل حذف كل التنبيهات", getErrorMessage(err)));
+    },
   });
 
   const alerts = data?.pages.flatMap((p) => p.alerts) ?? [];
@@ -376,6 +372,23 @@ export default function AdminAlertsPage() {
     });
     if (!confirmed) return;
     deleteAlert.mutate(alert.id);
+  };
+
+  // R123 (E3 item 3): «حذف المقروءة» was the LAST one-tap destructive
+  // bulk action on the page — the single-alert delete (R120-B4 A2-F6)
+  // and حذف الكل (inline نعم/لا) both have confirmation friction, but
+  // deleteRead fired immediately on tap. The mounted styled confirm
+  // now names the read-count the button itself displays, in the same
+  // copy style as the single-delete dialog above.
+  const confirmDeleteRead = async () => {
+    const confirmed = await confirm({
+      title: "حذف التنبيهات المقروءة؟",
+      description: `سيتم حذف ${formatCount(readCount, ALERT_COUNT_FORMS)} مقروء نهائياً — لا يمكن التراجع عن الحذف. التنبيهات غير المقروءة لن تُمس.`,
+      confirmLabel: "حذف",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    deleteRead.mutate();
   };
 
   const displayed = alerts.filter((a) => {
@@ -402,6 +415,7 @@ export default function AdminAlertsPage() {
               onClick={() => refetch()}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
               title="تحديث"
+              aria-label="تحديث التنبيهات"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -423,7 +437,7 @@ export default function AdminAlertsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => deleteRead.mutate()}
+                onClick={() => void confirmDeleteRead()}
                 disabled={deleteRead.isPending}
                 className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive hover:border-destructive/30"
               >
@@ -682,6 +696,7 @@ export default function AdminAlertsPage() {
                               }}
                               className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
                               title="تعيين كمقروء"
+                              aria-label={`تعيين تنبيه «${alert.title}» كمقروء`}
                             >
                               <CheckCheck className="w-3.5 h-3.5" />
                             </button>
@@ -693,6 +708,7 @@ export default function AdminAlertsPage() {
                             }}
                             className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
                             title="حذف"
+                            aria-label={`حذف تنبيه «${alert.title}»`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -710,15 +726,7 @@ export default function AdminAlertsPage() {
             <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
               <Inbox className="w-3.5 h-3.5" />
               <span>
-                عرض{" "}
-                {formatCount(alerts.length, {
-                  zero: "تنبيهات",
-                  one: "تنبيه",
-                  two: "تنبيهان",
-                  few: "تنبيهات",
-                  many: "تنبيهًا",
-                  other: "تنبيه",
-                })}
+                عرض {formatCount(alerts.length, ALERT_COUNT_FORMS)}
                 {typeof totalAlerts === "number" && totalAlerts > alerts.length
                   ? ` من ${totalAlerts}`
                   : ""}{" "}

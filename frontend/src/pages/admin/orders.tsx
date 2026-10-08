@@ -507,7 +507,13 @@ export default function AdminOrdersPage() {
   const searchParam = useSearch();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState("");
+  // R123 (E3 P3a): two-way URL filter sync (?status= / ?days=) — the
+  // settings.tsx ?tab= idiom: URL → state on mount/param change, state
+  // → URL via replaceState (filter flips don't spam the history stack).
+  // A shared orders link can now pin a status/date view.
+  const [statusFilter, setStatusFilter] = useState(
+    () => new URLSearchParams(window.location.search).get("status") ?? "",
+  );
   // 94-C2 (A2 P2-2): search is SERVER-side (?search= LIKE) — the raw
   // input state feeds a 300ms debounce below; only the debounced value
   // enters the query key, so one request per typing pause.
@@ -516,7 +522,10 @@ export default function AdminOrdersPage() {
   );
   const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
-  const [dateRange, setDateRange] = useState(0);
+  const [dateRange, setDateRange] = useState(() => {
+    const raw = Number.parseInt(new URLSearchParams(window.location.search).get("days") ?? "0", 10);
+    return DATE_RANGES.some((d) => d.days === raw) ? raw : 0;
+  });
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showStats, setShowStats] = useState(true);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
@@ -871,10 +880,31 @@ export default function AdminOrdersPage() {
   // 94-C2 (A2 P2-3): GlobalSearch deep-links (?search=…) — sync the box
   // when the URL search changes without clobbering local typing (the
   // operator may have edited the box after arriving).
+  // R123 (E3 P3a): ?status= / ?days= land the same way — without
+  // clobbering a filter the operator already picked locally.
   useEffect(() => {
-    const q = new URLSearchParams(searchParam).get("search") ?? "";
-    setSearch((prev) => (prev === q ? prev : q));
+    const q = new URLSearchParams(searchParam);
+    const s = q.get("search") ?? "";
+    setSearch((prev) => (prev === s ? prev : s));
+    const st = q.get("status") ?? "";
+    if (STATUS_FILTERS.some((x) => x.value === st)) {
+      setStatusFilter((prev) => (prev === st ? prev : st));
+    }
+    const rawDays = Number.parseInt(q.get("days") ?? "0", 10);
+    const days = DATE_RANGES.some((d) => d.days === rawDays) ? rawDays : 0;
+    setDateRange((prev) => (prev === days ? prev : days));
   }, [searchParam]);
+
+  // R123 (E3 P3a): filters → URL (replaceState — flips don't spam the
+  // history stack; empty/zero values drop the param entirely).
+  const syncFilterParams = (status: string, days: number) => {
+    const url = new URL(window.location.href);
+    if (status) url.searchParams.set("status", status);
+    else url.searchParams.delete("status");
+    if (days > 0) url.searchParams.set("days", String(days));
+    else url.searchParams.delete("days");
+    window.history.replaceState(null, "", url.toString());
+  };
 
   // Redirect effect AFTER all hooks so hook order is identical every
   // render (rules-of-hooks). The null return below keeps the guard
@@ -1297,7 +1327,10 @@ export default function AdminOrdersPage() {
               return (
                 <button
                   key={s.value}
-                  onClick={() => setStatusFilter(s.value)}
+                  onClick={() => {
+                    setStatusFilter(s.value);
+                    syncFilterParams(s.value, dateRange);
+                  }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                     active
                       ? "bg-card shadow-sm text-foreground font-bold"
@@ -1323,7 +1356,10 @@ export default function AdminOrdersPage() {
             {DATE_RANGES.map((dr) => (
               <button
                 key={dr.days}
-                onClick={() => setDateRange(dr.days)}
+                onClick={() => {
+                  setDateRange(dr.days);
+                  syncFilterParams(statusFilter, dr.days);
+                }}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                   dateRange === dr.days
                     ? "bg-card shadow-sm text-foreground font-bold"
@@ -1341,6 +1377,8 @@ export default function AdminOrdersPage() {
                 setSearch("");
                 setStatusFilter("");
                 setDateRange(0);
+                // R123 (E3 P3a): the clear-all also clears the URL params.
+                syncFilterParams("", 0);
               }}
               className="text-xs text-muted-foreground hover:text-primary transition-colors"
             >
@@ -1434,6 +1472,8 @@ export default function AdminOrdersPage() {
                       setSearch("");
                       setStatusFilter("");
                       setDateRange(0);
+                      // R123 (E3 P3a): the clear-all also clears the URL params.
+                      syncFilterParams("", 0);
                     }}
                     className="text-xs text-primary hover:underline mt-1.5"
                   >
@@ -1453,6 +1493,8 @@ export default function AdminOrdersPage() {
                       setSearch("");
                       setStatusFilter("");
                       setDateRange(0);
+                      // R123 (E3 P3a): the clear-all also clears the URL params.
+                      syncFilterParams("", 0);
                     }}
                     className="text-xs text-primary hover:underline mt-1"
                   >

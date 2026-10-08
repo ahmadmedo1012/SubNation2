@@ -1,6 +1,22 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
-import { isAdminUnauthorized } from "@/lib/admin-session";
+// R123 (E3 item 1): the seven raw fetches ride the session-aware
+// wrappers — a settings cookie expiring mid-work now gets the global
+// «انتهت الجلسة» toast + redirect instead of a per-form error line,
+// and adminFetchJson owns the ok-guard + safe error-body parse (the
+// 2FA paths previously did an unguarded r.json() BEFORE the !res.ok
+// check — a non-JSON 502 threw an English SyntaxError into the Arabic
+// error line). /api/admin/session below stays response-exempt by
+// design (App.tsx owns its 401) — adminFetch passes it through
+// untouched, so the .then chain's reject-on-!ok semantics are
+// preserved. fetchJsonOrNull keeps its R120-B4 isAdminUnauthorized
+// guard (already 401-aware).
+import {
+  AdminSessionExpiredError,
+  adminFetch,
+  adminFetchJson,
+  isAdminUnauthorized,
+} from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/errors";
@@ -68,6 +84,15 @@ const TABS = [
   { id: "notifications", label: "الإشعارات", icon: Bell },
   { id: "security", label: "الأمان", icon: Shield },
 ];
+
+/** R123 (E3 P3f): المصادقة + التكاملات manage settings-scoped backend
+ *  surfaces — this pure module-level gate (the tab bar filter, the ?tab=
+ *  sync and the deep-link initializer all share it) keeps its only
+ *  per-session input a parameter, so the URL→tab effect below can list
+ *  that input in its deps instead of a per-render closure. */
+function tabAllowed(id: string, canManageSettings: boolean): boolean {
+  return id === "auth" || id === "integrations" ? canManageSettings : true;
+}
 
 // ── Provider Icon SVGs ────────────────────────────────────────────────────────
 
@@ -144,17 +169,15 @@ function ProviderCard({
       ...(overrides?.config ?? config),
     };
     try {
-      const res = await fetch(`/api/admin/settings/auth/${provider.id}`, {
-        method: "PATCH",
-        headers: jsonHeaders,
-        body: JSON.stringify(body),
-      });
-      const data = (await res.json()) as {
-        error?: string;
-        enabled?: boolean;
-        config?: Record<string, string>;
-      };
-      if (!res.ok) throw new Error(getErrorMessage(data) || "فشل الحفظ");
+      const data = await adminFetchJson<{ enabled?: boolean; config?: Record<string, string> }>(
+        `/api/admin/settings/auth/${provider.id}`,
+        {
+          method: "PATCH",
+          headers: jsonHeaders,
+          body: JSON.stringify(body),
+        },
+        { fallbackError: "فشل الحفظ" },
+      );
       const nextConfig = data.config ?? config;
       const nextEnabled = data.enabled ?? enabled;
       setConfig(nextConfig);
@@ -162,12 +185,16 @@ function ProviderCard({
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: unknown) {
+      // Roll the optimistic toggle back first (state stays truthful),
+      // then stay quiet on session expiry — the global handler already
+      // toasted + redirected.
+      setEnabled(provider.enabled);
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "فشلت العملية",
         variant: "destructive",
       });
-      setEnabled(provider.enabled);
     } finally {
       setSaving(false);
     }
@@ -204,6 +231,8 @@ function ProviderCard({
           disabled={saving}
           className="shrink-0 transition-opacity disabled:opacity-50"
           title={enabled ? "تعطيل المزود" : "تفعيل المزود"}
+          aria-label={enabled ? `تعطيل مزود ${provider.label}` : `تفعيل مزود ${provider.label}`}
+          aria-pressed={enabled}
         >
           {enabled ? (
             <ToggleRight className="w-8 h-8 text-primary" />
@@ -216,6 +245,10 @@ function ProviderCard({
         <button
           onClick={() => setExpanded((v) => !v)}
           className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground shrink-0"
+          aria-label={
+            expanded ? `إخفاء إعدادات ${provider.label}` : `إظهار إعدادات ${provider.label}`
+          }
+          aria-expanded={expanded}
         >
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
@@ -258,6 +291,11 @@ function ProviderCard({
                         setShowSecret((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
                       }
                       className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground transition-colors"
+                      aria-label={
+                        showSecret[field.key]
+                          ? `إخفاء قيمة حقل ${field.label}`
+                          : `إظهار قيمة حقل ${field.label}`
+                      }
                     >
                       {showSecret[field.key] ? (
                         <EyeOff className="w-3.5 h-3.5" />
@@ -343,12 +381,13 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/2fa/setup", {
+      const data = await adminFetchJson<{
+        secret: string;
+        otpauth_url: string;
+      }>("/api/admin/2fa/setup", {
         method: "POST",
         headers,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(getErrorMessage(data) || "حدث خطأ أثناء الإعداد");
 
       import("qrcode").then((QRCode) => {
         QRCode.default.toDataURL(data.otpauth_url, (err: Error | null, url: string) => {
@@ -356,6 +395,7 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
         });
       });
     } catch (err: unknown) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "حدث خطأ");
     } finally {
       setLoading(false);
@@ -366,17 +406,16 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/2fa/verify-setup", {
+      await adminFetchJson("/api/admin/2fa/verify-setup", {
         method: "POST",
         headers: jsonHeaders,
         body: JSON.stringify({ code }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(getErrorMessage(data) || "رمز التحقق غير صحيح");
 
       setSuccess(true);
       setSetupData(null);
     } catch (err: unknown) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "حدث خطأ");
     } finally {
       setLoading(false);
@@ -500,7 +539,10 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
   const headers = useAdminHeaders({ json: true });
 
   useEffect(() => {
-    fetch("/api/admin/session", { credentials: "include", headers })
+    // R123 (E3 item 1): adminFetch for uniformity — the session endpoint
+    // is response-exempt in the global 401 handler, so behavior is
+    // byte-identical to the raw fetch (reject-on-!ok → null session).
+    adminFetch("/api/admin/session", { credentials: "include", headers })
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))
       .then(setSession)
       .catch(() => setSession(null))
@@ -528,26 +570,25 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
     }
     setProfileSaving(true);
     try {
-      const res = await fetch("/api/admin/profile", {
-        method: "PATCH",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({
-          username: profileUsername.trim(),
-          display_name: profileDisplayName.trim(),
-          current_password: profilePassword,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // Round-4 (org §6a): getErrorMessage maps the backend `code`
-        // (INVALID_PASSWORD_LENGTH…) to Arabic; raw `error` is fallback.
-        throw new Error(getErrorMessage(body) || "فشل التحديث");
-      }
+      const body = await adminFetchJson<Partial<AdminSession>>(
+        "/api/admin/profile",
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({
+            username: profileUsername.trim(),
+            display_name: profileDisplayName.trim(),
+            current_password: profilePassword,
+          }),
+        },
+        { fallbackError: "فشل التحديث" },
+      );
       setSession((s) => (s ? { ...s, ...body } : s));
       setProfilePassword("");
       toast({ title: "تم تحديث بيانات الحساب" });
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: err instanceof Error ? err.message : "فشل التحديث",
         variant: "destructive",
@@ -592,19 +633,22 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
     }
     setPwSaving(true);
     try {
-      const res = await fetch("/api/admin/change-password", {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(getErrorMessage(body) || "فشل تغيير كلمة المرور");
+      await adminFetchJson(
+        "/api/admin/change-password",
+        {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+        },
+        { fallbackError: "فشل تغيير كلمة المرور" },
+      );
       setPwCurrent("");
       setPwNew("");
       setPwConfirm("");
       toast({ title: "تم تغيير كلمة المرور بنجاح" });
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: err instanceof Error ? err.message : "فشل تغيير كلمة المرور",
         variant: "destructive",
@@ -838,7 +882,7 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminSettingsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
   const adminHeaders = useAdminHeaders();
   const [, navigate] = useLocation();
   const [settings, setSettings] = useState<TelegramSettings | null>(null);
@@ -850,13 +894,22 @@ export default function AdminSettingsPage() {
   // surface. The failure is now first-class: the card below carries the
   // Arabic reason + retry.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // R123 (E3 P3f): المصادقة + التكاملات manage settings-scoped backend
+  // surfaces (PUT /api/admin/settings*, PATCH /api/admin/settings/auth/*)
+  // — every admin could see the tabs and 403 on first save. The
+  // canEditMoney idiom (users.tsx A2-F4): scope-honest UI up front —
+  // the two tabs hide for scope-less admins (account/notifications/
+  // security are self-service and stay for everyone), the URL ?tab=
+  // sync respects the scope, and a scope-less ?tab=auth deep link lands
+  // on the honest reason instead of a 403 wall.
+  const canManageSettings = hasAdminPermission("settings");
   // R120-B4 (A2-F20): activeTab is URL-addressable (?tab=) — deep
   // links survive refresh/share, and tab clicks update the address
   // (two-way sync, the orders ?search= idiom).
   const searchParam = useSearch();
   const [activeTab, setActiveTab] = useState(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    return t && TABS.some((x) => x.id === t) ? t : "account";
+    return t && TABS.some((x) => x.id === t) && tabAllowed(t, canManageSettings) ? t : "account";
   });
 
   // Telegram diagnostic-ping state. Operator hits the "اختبار" button →
@@ -876,29 +929,27 @@ export default function AdminSettingsPage() {
     if (!adminToken) return;
     setTgTesting(true);
     try {
-      const res = await fetch("/api/admin/diagnostics/telegram-test", {
+      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse
+      // — a non-JSON 502 no longer fabricates a structured result.
+      const body = await adminFetchJson<{
+        configured: boolean;
+        delivered: boolean;
+        attempts: number;
+        errorMessage: string | null;
+        hint: string | null;
+      }>("/api/admin/diagnostics/telegram-test", {
         method: "POST",
         headers: adminHeaders,
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok || !body) {
-        setTgTestResult({
-          configured: false,
-          delivered: false,
-          attempts: 0,
-          errorMessage: `HTTP ${res.status}`,
-          hint: "تعذّر الوصول إلى نقطة الاختبار. تأكّد من جلسة الإدارة.",
-        });
-      } else {
-        setTgTestResult(body);
-      }
+      setTgTestResult(body);
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       setTgTestResult({
         configured: false,
         delivered: false,
         attempts: 0,
         errorMessage: err instanceof Error ? err.message : String(err),
-        hint: "تعذّر الاتصال بالخادم.",
+        hint: "تعذّر الوصول إلى نقطة الاختبار — تحقّق من الشبكة وجلسة الإدارة.",
       });
     } finally {
       setTgTesting(false);
@@ -955,12 +1006,14 @@ export default function AdminSettingsPage() {
 
   // R120-B4 (A2-F20): URL → tab (a ?tab= change lands without
   // clobbering a tab the operator already picked locally).
+  // R123 (E3 P3f): the scope gate rides along — a scope-less deep
+  // link to ?tab=auth stays on the honest-reason fallback below.
   useEffect(() => {
     const t = new URLSearchParams(searchParam).get("tab");
-    if (t && TABS.some((x) => x.id === t)) {
+    if (t && TABS.some((x) => x.id === t) && tabAllowed(t, canManageSettings)) {
       setActiveTab((prev) => (prev === t ? prev : t));
     }
-  }, [searchParam]);
+  }, [searchParam, canManageSettings]);
 
   // R120-B4 (A2-F20): tab → URL (replaceState — tab flips don't spam
   // the history stack).
@@ -991,7 +1044,9 @@ export default function AdminSettingsPage() {
 
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1 w-fit">
-          {TABS.map((tab) => (
+          {/* R123 (E3 P3f): auth + integrations render only for
+              settings-scoped admins (the tabAllowed gate above). */}
+          {TABS.filter((tab) => tabAllowed(tab.id, canManageSettings)).map((tab) => (
             <button
               key={tab.id}
               onClick={() => selectTab(tab.id)}
@@ -1003,11 +1058,20 @@ export default function AdminSettingsPage() {
           ))}
         </div>
 
+        {/* R123 (E3 P3f): the scope-honest fallback (canEditMoney idiom)
+            — only reachable via a stale local activeTab, never via the
+            tab bar or a deep link (both respect tabAllowed). */}
+        {(activeTab === "auth" || activeTab === "integrations") && !canManageSettings && (
+          <p className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2">
+            إدارة المصادقة والتكاملات تتطلب صلاحية الإعدادات — تواصل مع مسؤول النظام
+          </p>
+        )}
+
         {/* ── Account Tab ─────────────────────────────────────────────── */}
         {activeTab === "account" && adminToken && <AccountTab adminToken={adminToken} />}
 
         {/* ── Auth Providers Tab ─────────────────────────────────────────── */}
-        {activeTab === "auth" && (
+        {activeTab === "auth" && canManageSettings && (
           <div className="space-y-5">
             {/* Summary banner */}
             <div className="flex items-center gap-3 px-5 py-3.5 bg-card border border-border/60 rounded-2xl float-in">
@@ -1092,7 +1156,7 @@ export default function AdminSettingsPage() {
         )}
 
         {/* ── Integrations Tab ──────────────────────────────────────────── */}
-        {activeTab === "integrations" && (
+        {activeTab === "integrations" && canManageSettings && (
           <div className="space-y-5">
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
               <div className="flex items-center gap-2.5 mb-5">

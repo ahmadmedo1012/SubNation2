@@ -15,6 +15,14 @@ import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // --status-* tokens (low→success, medium→warning, high→low-stock —
 // the orange token, critical→error).
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
+// R123 (E3 item 1 + P3g): the three raw fetches ride the session-aware
+// adminFetchJson wrapper (ok-guard + safe error-body parse + the global
+// 401 toast/redirect on expiry), and all three queries gain
+// `enabled: !!adminToken` — every other admin poller already gates on
+// the token, so a logged-out render of this page (post-redirect flash)
+// fired unauthenticated 401s into the console.
+import { adminFetchJson } from "@/lib/admin-session";
+import { useAuth } from "@/lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -84,21 +92,21 @@ const TONE_CHIP: Record<StatusBadgeVariant, string> = {
 
 export default function AdminRiskPage() {
   const headers = useAdminHeaders();
+  const { adminToken } = useAuth();
   const [filter, setFilter] = useState<"all" | RiskLevel>("all");
 
   const dashboard = useQuery<DashboardResponse>({
     queryKey: ["admin-risk-dashboard"],
-    queryFn: async () => {
-      const resp = await fetch(`/api/admin/risk/dashboard?hours=24`, { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+    queryFn: async () =>
+      adminFetchJson<DashboardResponse>(`/api/admin/risk/dashboard?hours=24`, { headers }),
     refetchInterval: 30_000,
     // 96-F7 (R96 M11): 30s polling must pause when the tab is hidden —
     // an idle risk-monitor tab on a phone burned 2 requests/minute on
     // mobile data. Every other admin poller (orders/products/alerts)
     // already sets this to false.
     refetchIntervalInBackground: false,
+    // R123 (E3 P3g): no token ⇒ no fetch (see header comment).
+    enabled: !!adminToken,
   });
 
   const query = useQuery<ListResponse>({
@@ -107,10 +115,11 @@ export default function AdminRiskPage() {
       const params = new URLSearchParams();
       params.set("limit", "100");
       if (filter !== "all") params.set("level", filter);
-      const resp = await fetch(`/api/admin/risk/events?${params.toString()}`, { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
+      return adminFetchJson<ListResponse>(`/api/admin/risk/events?${params.toString()}`, {
+        headers,
+      });
     },
+    enabled: !!adminToken,
   });
 
   // 94-C2 (A2 P3-1): the chip counters were computed from the FILTERED
@@ -121,11 +130,9 @@ export default function AdminRiskPage() {
   // now feeds the counters so they stay level-agnostic.
   const allEventsQuery = useQuery<ListResponse>({
     queryKey: ["admin-risk-events", "all"],
-    queryFn: async () => {
-      const resp = await fetch(`/api/admin/risk/events?limit=100`, { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+    queryFn: async () =>
+      adminFetchJson<ListResponse>(`/api/admin/risk/events?limit=100`, { headers }),
+    enabled: !!adminToken,
   });
 
   const events = useMemo(() => query.data?.events ?? [], [query.data]);

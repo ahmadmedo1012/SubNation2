@@ -17,7 +17,12 @@ import { StatusBadge } from "@/components/ui/status-badge";
 // replaced by the shared styled confirm.
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
-import { isAdminUnauthorized } from "@/lib/admin-session";
+// R123 (E3 item 1): the inline stock edit rides the session-aware wrapper
+// (a 401 mid-save now gets the global «انتهت الجلسة» toast + redirect
+// instead of a per-row failure toast); the two bulk loops keep their
+// mid-loop isAdminUnauthorized shape but now break + try/finally (P3h)
+// so the bulk-processing flag always resets.
+import { AdminSessionExpiredError, adminFetchJson, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
@@ -62,6 +67,13 @@ const EMPTY_FORM = {
   cost_price: "",
   category: "",
   usage_terms: "",
+  // R123 (E3 item 2): the operator SEO overrides (backend columns
+  // seo_title ≤200 / seo_description ≤320). Empty-by-default — the
+  // submit path omits UNTOUCHED fields (see handleSubmit), so an
+  // untouched editor never clears an existing override it cannot see
+  // (the admin list payload doesn't carry the current values).
+  seo_title: "",
+  seo_description: "",
   is_active: true,
 };
 
@@ -154,24 +166,24 @@ function InlineStockEdit({
     try {
       // Stock edits are money-adjacent: a silent catch() here meant a
       // failed save looked identical to a successful one.
-      const res = await fetch(`/api/admin/products/${productId}/inventory/set-count`, {
+      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse.
+      await adminFetchJson(`/api/admin/products/${productId}/inventory/set-count`, {
         method: "POST",
         headers: jsonHeaders,
         body: JSON.stringify({ count: n }),
       });
-      if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-        // Round-4 (org §6a): route through getErrorMessage so the
-        // backend `code` maps to Arabic; raw error/message stay fallback.
-        throw new Error(getErrorMessage(err) || `فشل الحفظ (${res.status})`);
-      }
       toast({ title: "تم تحديث المخزون", variant: "success" });
     } catch (e) {
-      toast({
-        title: "تعذّر تحديث المخزون",
-        description: e instanceof Error ? e.message : "خطأ غير معروف",
-        variant: "destructive",
-      });
+      // Session expiry already toasted + redirected globally — the
+      // finally still closes the inline editor; every other failure
+      // keeps its per-row destructive toast.
+      if (!(e instanceof AdminSessionExpiredError)) {
+        toast({
+          title: "تعذّر تحديث المخزون",
+          description: e instanceof Error ? e.message : "خطأ غير معروف",
+          variant: "destructive",
+        });
+      }
     } finally {
       setSaving(false);
       onDone();
@@ -239,6 +251,19 @@ export default function AdminProductsPage() {
   // Powers the dirty flag below (form vs baseline, cheap JSON compare —
   // the form is flat strings + one bool).
   const [formBaseline, setFormBaseline] = useState({ ...EMPTY_FORM });
+  // R123 (E3 item 2): per-field "the operator edited this SEO field"
+  // flags. The pristine-baseline compare CANNOT distinguish a
+  // typed-then-fully-cleared field from an untouched one — both are ""
+  // while the editor is open, because the admin list payload does not
+  // carry the current overrides — and the backend PATCH contract needs
+  // exactly that distinction (untouched → omit, cleared → explicit
+  // null). The first change event per field sets its flag; every editor
+  // re-seed resets both. (The reset rides the stable setState directly —
+  // a per-render wrapper fn would make openCreateFromHash/cancelForm
+  // non-stable and re-flag the two pre-existing mount effects for
+  // react-hooks/exhaustive-deps.)
+  const [seoTouched, setSeoTouched] = useState({ title: false, description: false });
+
   const [inventoryDialogProduct, setInventoryDialogProduct] = useState<{
     id: number;
     name: string;
@@ -282,6 +307,7 @@ export default function AdminProductsPage() {
     setForm({ ...EMPTY_FORM });
     // 98-F7 (R98-05): fresh create session starts pristine.
     setFormBaseline({ ...EMPTY_FORM });
+    setSeoTouched({ title: false, description: false });
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
   };
   useEffect(() => {
@@ -362,6 +388,7 @@ export default function AdminProductsPage() {
         invalidate();
         setShowForm(false);
         setForm({ ...EMPTY_FORM });
+        setSeoTouched({ title: false, description: false });
         toast({ title: "تمت الإضافة" });
       },
       onError(err: unknown) {
@@ -381,6 +408,7 @@ export default function AdminProductsPage() {
         setEditingId(null);
         setForm({ ...EMPTY_FORM });
         setShowForm(false);
+        setSeoTouched({ title: false, description: false });
         toast({ title: "تم التحديث" });
       },
       onError(err: unknown) {
@@ -462,6 +490,20 @@ export default function AdminProductsPage() {
       cost_price: form.cost_price ? parseFloat(form.cost_price) : undefined,
       category: form.category || undefined,
       usage_terms: form.usage_terms || undefined,
+      // R123 (E3 item 2): SEO overrides mirror the backend PATCH contract
+      // (admin/products.ts:329-333 — explicit-null-clears), keyed on the
+      // per-field touched flags (NOT the pristine baseline — the admin
+      // list payload does not carry the current overrides, so a
+      // typed-then-fully-cleared field is byte-identical to an untouched
+      // one): send the trimmed value when the operator set one; send
+      // null when the operator edited AND cleared (explicit clear → the
+      // product page falls back to the name/description-based meta, the
+      // exact behavior the field's hint copy promises); OMIT when the
+      // operator never touched the field, so opening + saving changes
+      // nothing SEO-wise. The generated zod carries the column-aligned
+      // caps (200/320) server-side.
+      seo_title: seoTouched.title ? form.seo_title.trim() || null : undefined,
+      seo_description: seoTouched.description ? form.seo_description.trim() || null : undefined,
       is_active: form.is_active,
     };
     if (editingId) updateMutation.mutate({ id: editingId, data });
@@ -481,11 +523,17 @@ export default function AdminProductsPage() {
           : "",
       category: product.category ?? "",
       usage_terms: product.usage_terms ?? "",
+      // R123 (E3 item 2): the admin list row does not carry the current
+      // SEO overrides — seed empty and OMIT on submit while untouched
+      // (see handleSubmit), so opening + saving changes nothing SEO-wise.
+      seo_title: "",
+      seo_description: "",
       is_active: product.is_active,
     };
     // 98-F7 (R98-05): the loaded values double as the pristine baseline.
     setForm(next);
     setFormBaseline(next);
+    setSeoTouched({ title: false, description: false });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -494,6 +542,7 @@ export default function AdminProductsPage() {
     setShowForm(false);
     setEditingId(null);
     setForm({ ...EMPTY_FORM });
+    setSeoTouched({ title: false, description: false });
   };
 
   // R120-B4 (A2-F2): the search ran on the SERVER (?search= covers the
@@ -561,68 +610,91 @@ export default function AdminProductsPage() {
     if (!confirmed) return;
     setBulkProcessing(true);
     const failures: Array<{ id: number; reason: string }> = [];
-    for (const id of selectedIds) {
-      const url = `/api/admin/products/${id}`;
-      try {
-        const r = await fetch(url, { method: "DELETE", headers });
-        // 94-C2 (A2 P2-14): 401 mid-loop = session expiry — stop the
-        // loop; the global handler has toasted + redirected.
-        if (isAdminUnauthorized(r, url)) return;
-        if (!r.ok) {
-          const body = (await r.json().catch(() => null)) as {
-            error?: string;
-            code?: string;
-          } | null;
-          failures.push({
-            id,
-            reason: body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
-          });
-          continue;
+    // R123 (E3 P3h): the mid-loop session-expiry exit now breaks +
+    // returns INSIDE try/finally — the old bare `return` skipped
+    // setBulkProcessing(false) and left the bulk buttons permanently
+    // disabled after a 401 redirect round-trip.
+    let sessionExpired = false;
+    try {
+      for (const id of selectedIds) {
+        const url = `/api/admin/products/${id}`;
+        try {
+          const r = await fetch(url, { method: "DELETE", headers });
+          // 94-C2 (A2 P2-14): 401 mid-loop = session expiry — stop the
+          // loop; the global handler has toasted + redirected.
+          if (isAdminUnauthorized(r, url)) {
+            sessionExpired = true;
+            break;
+          }
+          if (!r.ok) {
+            const body = (await r.json().catch(() => null)) as {
+              error?: string;
+              code?: string;
+            } | null;
+            failures.push({
+              id,
+              reason:
+                body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+            });
+            continue;
+          }
+        } catch (e) {
+          failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
         }
-      } catch (e) {
-        failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
       }
+      if (sessionExpired) return;
+      summarizeBulk("تمت الأرشفة", selectedIds.size, failures);
+      setSelectedIds(new Set());
+      invalidate();
+    } finally {
+      setBulkProcessing(false);
     }
-    summarizeBulk("تمت الأرشفة", selectedIds.size, failures);
-    setSelectedIds(new Set());
-    invalidate();
-    setBulkProcessing(false);
   };
 
   const bulkToggleActive = async (active: boolean) => {
     if (!selectedIds.size) return;
     setBulkProcessing(true);
     const failures: Array<{ id: number; reason: string }> = [];
-    for (const id of selectedIds) {
-      const p = products.find((pr) => pr.id === id);
-      if (!p) continue;
-      const url = `/api/admin/products/${id}`;
-      try {
-        const r = await fetch(url, {
-          method: "PATCH",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify({ is_active: active }),
-        });
-        // 94-C2 (A2 P2-14): same mid-loop session-expiry guard.
-        if (isAdminUnauthorized(r, url)) return;
-        if (!r.ok) {
-          const body = (await r.json().catch(() => null)) as {
-            error?: string;
-            code?: string;
-          } | null;
-          failures.push({
-            id,
-            reason: body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+    // R123 (E3 P3h): same break + try/finally as bulkDelete.
+    let sessionExpired = false;
+    try {
+      for (const id of selectedIds) {
+        const p = products.find((pr) => pr.id === id);
+        if (!p) continue;
+        const url = `/api/admin/products/${id}`;
+        try {
+          const r = await fetch(url, {
+            method: "PATCH",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: active }),
           });
+          // 94-C2 (A2 P2-14): same mid-loop session-expiry guard.
+          if (isAdminUnauthorized(r, url)) {
+            sessionExpired = true;
+            break;
+          }
+          if (!r.ok) {
+            const body = (await r.json().catch(() => null)) as {
+              error?: string;
+              code?: string;
+            } | null;
+            failures.push({
+              id,
+              reason:
+                body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+            });
+          }
+        } catch (e) {
+          failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
         }
-      } catch (e) {
-        failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
       }
+      if (sessionExpired) return;
+      summarizeBulk(active ? "تم التفعيل" : "تم الإخفاء", selectedIds.size, failures);
+      setSelectedIds(new Set());
+      invalidate();
+    } finally {
+      setBulkProcessing(false);
     }
-    summarizeBulk(active ? "تم التفعيل" : "تم الإخفاء", selectedIds.size, failures);
-    setSelectedIds(new Set());
-    invalidate();
-    setBulkProcessing(false);
   };
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
@@ -669,6 +741,7 @@ export default function AdminProductsPage() {
               setForm({ ...EMPTY_FORM });
               // 98-F7 (R98-05): fresh create session starts pristine.
               setFormBaseline({ ...EMPTY_FORM });
+              setSeoTouched({ title: false, description: false });
             }}
             className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 h-9 active:scale-[0.97] transition-transform"
           >
@@ -908,6 +981,49 @@ export default function AdminProductsPage() {
                   onChange={(e) => setForm((f) => ({ ...f, usage_terms: e.target.value }))}
                   placeholder="ملاحظات مهمة تظهر بعد الشراء…"
                 />
+              </div>
+              {/* R123 (E3 item 2): the SEO override fields the CHANGELOG
+                  claimed existed — they feed the product page's meta tags
+                  (seo-builders consume the overrides; empty falls back to
+                  name/description). Column-aligned caps: 200/320. */}
+              <div className="md:col-span-2">
+                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  عنوان SEO (اختياري)
+                </Label>
+                <Input
+                  value={form.seo_title}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, seo_title: e.target.value }));
+                    setSeoTouched((t) => (t.title ? t : { ...t, title: true }));
+                  }}
+                  maxLength={200}
+                  placeholder="عنوان مخصص لنتائج البحث — يُترك فارغاً لاستخدام اسم المنتج"
+                />
+                <p className="text-3xs mt-1 text-muted-foreground">
+                  يظهر كعنوان صفحة المنتج في محركات البحث ومشاركات الروابط — فارغ يعني العنوان
+                  الافتراضي ({200 - form.seo_title.length} حرف متبقٍ).
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  وصف SEO (اختياري)
+                </Label>
+                <textarea
+                  value={form.seo_description}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, seo_description: e.target.value }));
+                    setSeoTouched((t) => (t.description ? t : { ...t, description: true }));
+                  }}
+                  maxLength={320}
+                  rows={3}
+                  dir="rtl"
+                  placeholder="وصف مخصص يظهر تحت عنوان الصفحة في نتائج البحث…"
+                  className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+                />
+                <p className="text-3xs mt-1 text-muted-foreground">
+                  يظهر كوصف صفحة المنتج في محركات البحث — فارغ يعني الوصف الافتراضي ({" "}
+                  {form.seo_description.length}/320).
+                </p>
               </div>
               <div className="md:col-span-2 flex items-center gap-3 py-1">
                 <input

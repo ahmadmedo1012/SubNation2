@@ -1,7 +1,15 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
-import { getErrorMessage } from "@/lib/errors";
+// R123 (E3 item 1): the six raw fetches ride the session-aware wrapper
+// — a settings cookie expiring mid-work now gets the global «انتهت
+// الجلسة» toast + redirect instead of an inline banner on a page the
+// operator is already leaving, and adminFetchJson owns the ok-guard +
+// safe error-body parse the local responseError helper hand-rolled
+// (same Arabic mapping via getErrorMessage inside the wrapper). Pure
+// UI-path change: the endpoints stay the app's own diagnostics proxy,
+// and nothing here auto-triggers session operations.
+import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,13 +79,6 @@ function statusMeta(status: string) {
   return STATUS_META[status] ?? { label: status, tone: "neutral" as const };
 }
 
-async function responseError(response: Response): Promise<string> {
-  const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
-  // Round-4 (org §6a): getErrorMessage maps the backend `code` to Arabic
-  // when present, else falls back to the raw `error` string / HTTP text.
-  return getErrorMessage(body) || `فشلت العملية (${response.status})`;
-}
-
 export default function AdminWhatsAppPage() {
   const headers = useAdminHeaders();
   const jsonHeaders = useAdminHeaders({ json: true });
@@ -103,11 +104,13 @@ export default function AdminWhatsAppPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/admin/diagnostics/whatsapp/sessions", { headers });
-      if (!response.ok) throw new Error(await responseError(response));
-      const body = (await response.json()) as SessionsResponse;
+      const body = await adminFetchJson<SessionsResponse>(
+        "/api/admin/diagnostics/whatsapp/sessions",
+        { headers },
+      );
       setSessions(Array.isArray(body.sessions) ? body.sessions : []);
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "تعذر جلب جلسات واتساب");
     } finally {
       setLoading(false);
@@ -123,15 +126,15 @@ export default function AdminWhatsAppPage() {
     setBusy("create");
     setError(null);
     try {
-      const response = await fetch("/api/admin/diagnostics/whatsapp/sessions", {
+      await adminFetchJson("/api/admin/diagnostics/whatsapp/sessions", {
         method: "POST",
         headers: jsonHeaders,
         body: JSON.stringify({ name }),
       });
-      if (!response.ok) throw new Error(await responseError(response));
       toast({ title: "تم إنشاء الجلسة", variant: "success" });
       await loadSessions();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "تعذر إنشاء الجلسة");
     } finally {
       setBusy(null);
@@ -142,14 +145,14 @@ export default function AdminWhatsAppPage() {
     setBusy(`${session.id}:start`);
     setError(null);
     try {
-      const response = await fetch(
+      await adminFetchJson(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}/start`,
         { method: "POST", headers },
       );
-      if (!response.ok) throw new Error(await responseError(response));
       toast({ title: "بدأ تشغيل الجلسة", description: "يمكنك طلب QR أو رمز الاقتران الآن" });
       await loadSessions();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "تعذر تشغيل الجلسة");
     } finally {
       setBusy(null);
@@ -164,7 +167,7 @@ export default function AdminWhatsAppPage() {
     setPairCode(null);
     setPairCopied(false);
     try {
-      const response = await fetch(
+      const body = await adminFetchJson<PairCodeResponse>(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(pairTarget)}/pair-code`,
         {
           method: "POST",
@@ -172,8 +175,6 @@ export default function AdminWhatsAppPage() {
           body: JSON.stringify({ phone }),
         },
       );
-      if (!response.ok) throw new Error(await responseError(response));
-      const body = (await response.json()) as PairCodeResponse;
       setPairCode(body.code);
       toast({
         title: "تم إصدار رمز الاقتران",
@@ -181,6 +182,7 @@ export default function AdminWhatsAppPage() {
       });
       await loadSessions();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "تعذر إصدار رمز الاقتران");
     } finally {
       setBusy(null);
@@ -195,17 +197,16 @@ export default function AdminWhatsAppPage() {
     setPairCode(null);
     setPairCopied(false);
     try {
-      const response = await fetch(
+      const body = await adminFetchJson<{ qrImage?: string | null }>(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}/qr`,
         { headers },
       );
-      if (!response.ok) throw new Error(await responseError(response));
-      const body = (await response.json()) as { qrImage?: string | null };
       if (!body.qrImage) {
         throw new Error("لا يوجد QR حالياً؛ شغّل الجلسة وانتظر حالتها");
       }
       setQrImage(body.qrImage);
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "تعذر جلب QR");
     } finally {
       setBusy(null);
@@ -223,11 +224,10 @@ export default function AdminWhatsAppPage() {
     setBusy(`${session.id}:delete`);
     setError(null);
     try {
-      const response = await fetch(
+      await adminFetchJson(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}`,
         { method: "DELETE", headers },
       );
-      if (!response.ok) throw new Error(await responseError(response));
       if (pairTarget === session.id) {
         setPairTarget(null);
         setPairCode(null);
@@ -237,6 +237,7 @@ export default function AdminWhatsAppPage() {
       toast({ title: "تم حذف الجلسة", variant: "success" });
       await loadSessions();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "تعذر حذف الجلسة");
     } finally {
       setBusy(null);

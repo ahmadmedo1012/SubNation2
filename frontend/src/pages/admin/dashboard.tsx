@@ -293,6 +293,24 @@ export default function AdminDashboardPage() {
 
   const fetchChart = (days = chartDays) => {
     if (!adminToken) return;
+    // R123 (E3 item 5): the chart-data payload carries the revenue +
+    // discount series in the SAME response as the users series (one
+    // computeChartData over orders+users, backend routes/admin/stats.ts)
+    // — canSeeMoney previously gated only the RENDERING/export, so a
+    // non-finance operator's network tab received the full daily money
+    // series on every dashboard visit. The fetch now gates on the scope:
+    // no revenue/discount bytes reach a non-finance admin at all.
+    // RESIDUAL (documented): the new-users chart rides the same payload,
+    // so it goes dark for non-finance operators too — restoring it needs
+    // a backend split (a ?series=users param or a users-only endpoint on
+    // stats.ts), which is outside this round's admin-frontend file
+    // ownership. The users TILE (total_users) keeps loading for everyone
+    // via the stats query below.
+    if (!canSeeMoney) {
+      setChartData([]);
+      setChartError(null);
+      return;
+    }
     setChartLoading(true);
     const url = `/api/admin/chart-data?days=${days}`;
     fetch(url, { headers })
@@ -348,9 +366,12 @@ export default function AdminDashboardPage() {
   // to make the whole charts column vanish silently — an honest empty
   // block renders instead. The column also hides for a failed load
   // with no stale data (the error banner above is the honest state
-  // then).
+  // then). R123 (E3 item 5): a non-finance operator never fetches the
+  // chart payload (see fetchChart) — the column hides entirely instead
+  // of rendering the misleading «لا توجد بيانات بعد» empty block for
+  // what is really a scope gate.
   const chartEmpty = !chartLoading && !chartError && chartData.length === 0;
-  const showChartsColumn = chartData.length > 0 || chartLoading || chartEmpty;
+  const showChartsColumn = canSeeMoney && (chartData.length > 0 || chartLoading || chartEmpty);
   // R115 (A5 P3-7, skipped by design): loyalty/referral liability
   // widgets need Σ points / outstanding referral rewards — the stats
   // endpoint does not expose them and adding one is out of scope for
