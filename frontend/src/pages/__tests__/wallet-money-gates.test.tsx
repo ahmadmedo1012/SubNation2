@@ -127,6 +127,12 @@ function fillValidForm(amount: string) {
   fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
     target: { value: "0912345678" },
   });
+  // R123-E4a (P1): the mobile-transfer receipt is REQUIRED — fill it so
+  // the submit reaches the mutation (the money gates under test are the
+  // amount/pending ones, not the reference guard).
+  fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
+    target: { value: "TRX-GATE" },
+  });
 }
 
 async function submitFromForm() {
@@ -166,7 +172,9 @@ describe("WalletPage — MAX_PENDING=3 gate (T2: dead under the static data:[] m
     const { container } = renderPage();
 
     // The persistent warning banner…
-    expect(await screen.findByText("طلبات الشحن موقوفة مؤقتاً")).toBeInTheDocument();
+    // R123-E4a (P3-a): the headline no longer reads as a platform
+    // outage — the user is queued behind their own review requests.
+    expect(await screen.findByText("وصلت للحد الأقصى من طلبات المراجعة")).toBeInTheDocument();
     // …with the live count and the cap.
     expect(screen.getByText(/قيد المراجعة/)).toBeInTheDocument();
 
@@ -188,9 +196,11 @@ describe("WalletPage — MAX_PENDING=3 gate (T2: dead under the static data:[] m
     mockTopups([pendingTopup(21, 15), pendingTopup(22, 5)]);
     renderPage();
 
-    // The live "2/3 معلق" chip, not the blocked banner.
-    expect(await screen.findByText("2/3 معلق")).toBeInTheDocument();
-    expect(screen.queryByText("طلبات الشحن موقوفة مؤقتاً")).not.toBeInTheDocument();
+    // The live formatCount chip (R123-E4a P2: canonical pending
+    // terminology — «قيد المراجعة» + proper noun set), not the blocked
+    // banner.
+    expect(await screen.findByText("2 طلبان قيد المراجعة من 3")).toBeInTheDocument();
+    expect(screen.queryByText("وصلت للحد الأقصى من طلبات المراجعة")).not.toBeInTheDocument();
 
     fillValidForm("50");
     await clickSubmit();

@@ -88,6 +88,32 @@ export function formatTime(date: Date): string {
   return date.toLocaleTimeString(AR_DATE_LOCALE, { hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * R123-E4a: the sanitized internal-path guard behind login.tsx's
+ * readRedirectTarget — previously module-private, so register.tsx
+ * couldn't reuse it (its auth surfaces had no onSuccess at all) and the
+ * wallet page's ?return= guard had drifted to a startsWith("/")-only
+ * check (a protocol-relative `//evil.com` passed). Semantics, identical
+ * to the login guard the commerce funnel already trusts:
+ *   • slash-prefixed (never a scheme/host),
+ *   • no protocol-relative `//`,
+ *   • resolves to the SAME origin as the running app,
+ *   • returns path + search so the result is always a relative target.
+ * Returns null for anything else — the param can't be abused as an
+ * open redirect.
+ */
+export function sanitizeInternalPath(target: string | null | undefined): string | null {
+  if (typeof window === "undefined") return null;
+  if (!target || !target.startsWith("/") || target.startsWith("//")) return null;
+  try {
+    const url = new URL(target, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return url.pathname + url.search;
+  } catch {
+    return null;
+  }
+}
+
 export function tierLabel(tier: string): string {
   const labels: Record<string, string> = {
     bronze: "برونزي",

@@ -56,7 +56,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { formatCount } from "@/lib/utils";
+import { formatCount, sanitizeInternalPath } from "@/lib/utils";
 
 const MAX_PENDING = 3;
 
@@ -631,28 +631,39 @@ function TransferCodePanel({
 }
 
 /**
- * 93-C5 / F-03 (A2 P1 #2): optional transfer-receipt reference field,
- * rendered under the amount in BOTH topup flows. Programmatic label +
- * htmlFor (A4 P3 #37 — placeholder-only names), dir="ltr" + font-mono
- * for the receipt/reference runs (typically Latin digits), maxLength 100
+ * 93-C5 / F-03 (A2 P1 #2): transfer-receipt reference field, rendered
+ * under the amount in BOTH topup flows. Programmatic label + htmlFor
+ * (A4 P3 #37 — placeholder-only names), dir="ltr" + font-mono for the
+ * receipt/reference runs (typically Latin digits), maxLength 100
  * matching the backend's boundary.
+ *
+ * R123-E4a (P1): the mobile_transfer flow passes required — the backend
+ * has hard-required the reference there since B4-R1 (backend
+ * wallet.ts:380-389, 400 «مرجع التحويل (رقم العملية من إيصال التحويل)
+ * مطلوب…») while this field said «اختياري», so users on the
+ * Libyana/Madar flow who skipped the receipt hit a post-submit 400.
+ * lypay keeps it genuinely optional (gateway receipts are not
+ * consistently exposed to users).
  */
 function PaymentReferenceField({
   value,
   onChange,
   id,
+  required,
 }: {
   value: string;
   onChange: (v: string) => void;
   id: string;
+  required: boolean;
 }) {
   return (
     <div className="mt-3">
       <Label htmlFor={id} className="text-xs font-bold text-muted-foreground mb-2 block">
         {/* R116-S2: unified «رمز» family (رمز التحويل above, رمز الكوبون)
             — was «رقم مرجع التحويل», the only «رقم مرجع» outlier on the
-            topup money flow. */}
-        رمز التحويل <span className="font-semibold">(اختياري)</span>
+            topup money flow. R123-E4a: (مطلوب) on the mobile flow — the
+            backend rejects a blank reference there (B4-R1). */}
+        رمز التحويل <span className="font-semibold">{required ? "(مطلوب)" : "(اختياري)"}</span>
       </Label>
       <Input
         id={id}
@@ -662,16 +673,37 @@ function PaymentReferenceField({
         placeholder="رقم إيصال التحويل كما ورد في رسالة التحويل"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        required={required}
         dir="ltr"
         autoComplete="off"
         className="text-left font-mono h-11 rounded-xl border-border/50 focus:border-primary/45 bg-card"
       />
       <p className="text-2xs text-muted-foreground mt-1.5 leading-relaxed">
-        يساعد هذا المرجع فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين.
+        {required
+          ? "مطلوب للتحقق من تحويلك ومنع احتسابه مرتين."
+          : "يساعد هذا المرجع فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين."}
       </p>
     </div>
   );
 }
+
+// R123-E4a (P3-d): the balance card's tier accents. The TEXT tone is the
+// shared tierColor() (lib/utils) — these two maps only carry the
+// bg/border variants tierColor doesn't express, keyed ONCE so the two
+// inline conditional ladders below (dot + badge) can't drift apart
+// again (they had already drifted from tierColor's palette).
+const TIER_DOT_BG: Record<string, string> = {
+  bronze: "bg-amber-500",
+  silver: "bg-slate-500",
+  gold: "bg-status-warning",
+  platinum: "bg-cyan-600",
+};
+const TIER_BADGE_BORDER: Record<string, string> = {
+  bronze: "border-amber-500/25",
+  silver: "border-slate-500/25",
+  gold: "border-status-warning/25",
+  platinum: "border-cyan-600/25",
+};
 
 export default function WalletPage() {
   const { token } = useAuth();
@@ -723,13 +755,18 @@ export default function WalletPage() {
   const [returnTo, setReturnTo] = useState<string | null>(null);
   useEffect(() => {
     const STORAGE_KEY = "subnation_topup_return";
-    const fromUrl = new URLSearchParams(window.location.search).get("return");
-    if (fromUrl && fromUrl.startsWith("/")) {
+    // R123-E4a (P3-c): the guard now mirrors login.tsx's ?redirect=
+    // sanitizer (slash-prefix + //reject + same-origin) — the old
+    // startsWith("/")-only check let a protocol-relative //evil.com
+    // through. The restored value is sanitized too: entries written
+    // before R123 passed only the weak check.
+    const fromUrl = sanitizeInternalPath(new URLSearchParams(window.location.search).get("return"));
+    if (fromUrl) {
       sessionStorage.setItem(STORAGE_KEY, fromUrl);
       setReturnTo(fromUrl);
       return;
     }
-    setReturnTo(sessionStorage.getItem(STORAGE_KEY));
+    setReturnTo(sanitizeInternalPath(sessionStorage.getItem(STORAGE_KEY)));
   }, []);
 
   // ── 96-F6 (R96 §5.1 — frontend half of topup idempotency) ─────────
@@ -1043,6 +1080,14 @@ export default function WalletPage() {
         setError("رقم هاتف المُرسل غير صالح. يجب أن يبدأ بـ 091 أو 092 أو 093 أو 094");
         return;
       }
+      // R123-E4a (P1): the backend hard-requires payment_reference for
+      // mobile_transfer (B4-R1, backend wallet.ts:380-389) — the receipt
+      // is both the dedup key and the reviewer's evidence. Same
+      // error-toast idiom as the sender-phone guard above.
+      if (!paymentReference.trim()) {
+        setError("يرجى إدخال رمز التحويل من رسالة التحويل");
+        return;
+      }
     }
 
     if (method === "lypay" && !senderAccount.trim()) {
@@ -1147,15 +1192,7 @@ export default function WalletPage() {
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
                       <div
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          tier === "bronze"
-                            ? "bg-amber-500"
-                            : tier === "silver"
-                              ? "bg-slate-500"
-                              : tier === "gold"
-                                ? "bg-status-warning"
-                                : "bg-cyan-600"
-                        }`}
+                        className={`w-1.5 h-1.5 rounded-full ${TIER_DOT_BG[tier] ?? "bg-muted-foreground"}`}
                       />
                       <span className="text-muted-foreground text-xs">المستوى:</span>
                       <span className={`font-bold text-xs ${tierColor(tier)}`}>
@@ -1172,15 +1209,10 @@ export default function WalletPage() {
                   </div>
                 </div>
                 <div
-                  className={`shrink-0 px-3 py-2 rounded-xl border text-2xs font-bold bg-background/30 ${
-                    tier === "bronze"
-                      ? "border-amber-500/25 text-amber-600"
-                      : tier === "silver"
-                        ? "border-slate-500/25 text-slate-500"
-                        : tier === "gold"
-                          ? "border-status-warning/25 text-status-warning"
-                          : "border-cyan-600/25 text-cyan-600"
-                  }`}
+                  /* R123-E4a (P3-d): border from the shared tier map, text
+                      tone from tierColor() — was a second inline ladder
+                      duplicating the helper's palette. */
+                  className={`shrink-0 px-3 py-2 rounded-xl border text-2xs font-bold bg-background/30 ${TIER_BADGE_BORDER[tier] ?? "border-border/40"} ${tierColor(tier)}`}
                 >
                   {tierLabel(tier)}
                 </div>
@@ -1193,7 +1225,12 @@ export default function WalletPage() {
             <div className="flex items-start gap-3 p-4 bg-status-warning/8 border border-status-warning/22 rounded-2xl float-in">
               <Lock className="w-4.5 h-4.5 text-status-warning shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold text-sm text-status-warning">طلبات الشحن موقوفة مؤقتاً</p>
+                <p className="font-bold text-sm text-status-warning">
+                  {/* R123-E4a (P3-a): «طلبات الشحن موقوفة مؤقتاً» read as a
+                      platform outage — the user is only queued behind their
+                      own earlier review requests. */}
+                  وصلت للحد الأقصى من طلبات المراجعة
+                </p>
                 {/* 96-F6 (R96 A6 #4 P1): /75 → full token — the translucent
                     warning text measured ≈2.07:1 on white in light mode
                     (AA fail). Background tints stay as-is. */}
@@ -1214,7 +1251,7 @@ export default function WalletPage() {
                         (this line, TopupWaitingModal, support FAQ) — the
                         old «30 دقيقة» here vs «ثوانٍ» in the waiting modal
                         contradicted each other on the same money flow. */}
-                    أقدم طلب: {formatRelativeTime(oldestPending)} — عادة خلال دقائق، وبحد أقصى 30
+                    أقدم طلب: {formatRelativeTime(oldestPending)} — عادةً خلال دقائق، وبحد أقصى 30
                     دقيقة خلال ساعات العمل.
                   </p>
                 )}
@@ -1267,7 +1304,23 @@ export default function WalletPage() {
               <h2 className="font-bold">شحن المحفظة</h2>
               {pendingCount > 0 && !pendingBlocked && (
                 <span className="mr-auto text-xs text-status-warning bg-status-warning/8 border border-status-warning/22 px-2 py-0.5 rounded-full">
-                  {pendingCount}/{MAX_PENDING} معلق
+                  {/* R123-E4a (P2): pending terminology — a topup pending is
+                      «قيد المراجعة» (an admin action), not «معلق»; the
+                      row badges say statusLabel("pending") = «قيد
+                      الانتظار»… which on THIS page denotes the same
+                      admin-reviewed state, so the chip joins the banner
+                      above on the canonical «قيد المراجعة». The count
+                      rides formatCount with full noun phrases
+                      (طلب/طلبان/طلبات قيد المراجعة), the same idiom as
+                      the banner's «لديك … قيد المراجعة». */}
+                  {formatCount(pendingCount, {
+                    one: "طلب قيد المراجعة",
+                    two: "طلبان قيد المراجعة",
+                    few: "طلبات قيد المراجعة",
+                    many: "طلباً قيد المراجعة",
+                    other: "طلب قيد المراجعة",
+                  })}{" "}
+                  من {MAX_PENDING}
                 </span>
               )}
             </div>
@@ -1408,7 +1461,7 @@ export default function WalletPage() {
                     min="1"
                     max="10000"
                     step={1}
-                    placeholder="أو أدخل مبلغاً آخر..."
+                    placeholder="أو أدخل مبلغاً آخر…"
                     value={amount}
                     onChange={handleAmountChange}
                     onBlur={(e) => {
@@ -1427,12 +1480,13 @@ export default function WalletPage() {
                     dir="ltr"
                     className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 bg-card"
                   />
-                  {/* 93-C5 / F-03: optional receipt reference — arms the
-                      backend's duplicate-credit dedup. */}
+                  {/* 93-C5 / F-03: the transfer receipt — REQUIRED on this
+                      flow since R123-E4a (see PaymentReferenceField). */}
                   <PaymentReferenceField
                     id="topup-payment-reference-mobile"
                     value={paymentReference}
                     onChange={handlePaymentReferenceChange}
+                    required
                   />
                 </div>
 
@@ -1597,7 +1651,7 @@ export default function WalletPage() {
                     className="w-full cta-glow rounded-xl"
                     disabled={submitting || topupMutation.isPending}
                   >
-                    {submitting || topupMutation.isPending ? "جارٍ الإرسال..." : "إرسال طلب الشحن"}
+                    {submitting || topupMutation.isPending ? "جارٍ الإرسال…" : "إرسال طلب الشحن"}
                   </Button>
                 </div>
               </form>
@@ -1640,7 +1694,12 @@ export default function WalletPage() {
                     {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
                     <StepDot
                       n={2}
-                      label="المبلغ المحوّل (د.ل)"
+                      /* R123-E4a (P3-b): unified with the mobile flow's
+                          «المبلغ بالدينار الليبي» — was «المبلغ المحوّل
+                          (د.ل)», a second phrasing for the same money
+                          datum one tab away (the input's own placeholder
+                          already said this). */
+                      label="المبلغ بالدينار الليبي"
                       active
                       htmlFor="topup-amount-lypay"
                     />
@@ -1689,12 +1748,13 @@ export default function WalletPage() {
                       dir="ltr"
                       className="text-left h-11 rounded-xl bg-card"
                     />
-                    {/* 93-C5 / F-03: optional receipt reference — arms the
-                        backend's duplicate-credit dedup (bank-transfer flow). */}
+                    {/* 93-C5 / F-03: optional receipt reference (bank-transfer
+                        flow) — lypay keeps it optional (B4-R1 backend note). */}
                     <PaymentReferenceField
                       id="topup-payment-reference-lypay"
                       value={paymentReference}
                       onChange={handlePaymentReferenceChange}
+                      required={false}
                     />
                   </div>
 
@@ -1754,9 +1814,7 @@ export default function WalletPage() {
                       className="w-full cta-glow rounded-xl"
                       disabled={submitting || topupMutation.isPending}
                     >
-                      {submitting || topupMutation.isPending
-                        ? "جارٍ الإرسال..."
-                        : "تأكيد طلب الشحن"}
+                      {submitting || topupMutation.isPending ? "جارٍ الإرسال…" : "تأكيد طلب الشحن"}
                     </Button>
                   </div>
                 </form>

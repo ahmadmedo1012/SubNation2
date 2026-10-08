@@ -188,10 +188,12 @@ describe("ReferralsPage — outage ≠ empty, copy + points contracts (R118-A5 #
       // The link field shows the full deep link…
       const link = `${window.location.origin}/register?ref=SNXYZ99`;
       expect(screen.getByText(link)).toBeInTheDocument();
-      // …and its CopyBtn (the sm «نسخ», not «نسخ الرمز») pushes exactly
-      // that string to the clipboard, flipping to the copied label.
+      // …and its copy button (the sm «نسخ», not «نسخ الرمز») pushes
+      // exactly that string to the clipboard, flipping to the copied
+      // label. R123-E4a (P3-g): the shared CopyButton (components/
+      // CopyButton.tsx) — the sm variant announces «تم».
       fireEvent.click(screen.getByRole("button", { name: "نسخ" }));
-      expect(await screen.findByRole("button", { name: "تم النسخ!" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "تم" })).toBeInTheDocument();
       expect(writeText).toHaveBeenCalledTimes(1);
       expect(writeText).toHaveBeenCalledWith(link);
     } finally {

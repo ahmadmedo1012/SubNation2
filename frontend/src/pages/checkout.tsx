@@ -1531,7 +1531,18 @@ export default function CheckoutPage() {
                   )}
                 </Button>
                 <p className="text-2xs text-muted-foreground text-center mt-3">
-                  بالنقر على «إتمام الطلب» فإنك توافق على شروط الاستخدام
+                  {/* R123-E4a (P3-e): the legal surface + nav call it
+                      «الشروط والأحكام» — this consent line said «شروط
+                      الاستخدام» (a different term for the same document)
+                      and wasn't linked. Hyperlinked to /terms so the
+                      buyer can read what they're agreeing to. */}
+                  بالنقر على «إتمام الطلب» فإنك توافق على{" "}
+                  <Link
+                    href="/terms"
+                    className="text-primary font-bold hover:text-primary/80 transition-colors"
+                  >
+                    الشروط والأحكام
+                  </Link>
                 </p>
               </>
             )}
