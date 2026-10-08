@@ -1,5 +1,11 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useToast } from "@/hooks/use-toast";
+// R123 (E3 item 1): the two raw fetches ride the session-aware wrappers
+// — a 401 mid-upload gets the global «انتهت الجلسة» toast + redirect
+// instead of a «فشل الرفع» toast on a dialog being torn down, and the
+// soft-fail dedup probe keeps its tolerant semantics (adminFetch
+// returns the Response untouched on non-401 paths).
+import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
 // 93-C7 / C-UX3 (A12 §11.2, H7): migrated from the hand-rolled fixed
 // overlay to the shared AppDialog (size="wide") — gains focus trap,
 // scroll-lock, role="dialog"/aria-modal and the Radix animation family.
@@ -64,7 +70,7 @@ export function InventoryUploadDialog({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/admin/products/${productId}/inventory`, {
+        const res = await adminFetch(`/api/admin/products/${productId}/inventory`, {
           headers: jsonHeaders,
         });
         if (!res.ok) {
@@ -91,7 +97,8 @@ export function InventoryUploadDialog({
         );
         setFetchedCount(data.total);
       } catch {
-        // Network error → soft-fail (same rationale as above).
+        // Network error or session expiry (global handler already
+        // toasted + redirected) → soft-fail (same rationale as above).
       } finally {
         if (!cancelled) setLoadingExisting(false);
       }
@@ -148,37 +155,36 @@ export function InventoryUploadDialog({
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/admin/products/${productId}/inventory`, {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify({
-          // Send the structured shape so the backend can validate
-          // per-row and dedup against existing inventory.
-          entries: parsed.entries.map((e) => ({
-            kind: e.kind,
-            email: e.email,
-            password: e.password,
-            extra: e.extra,
-          })),
-        }),
-      });
-      // 94-C2 (A2 P3-19): parse AFTER the ok check — an HTML error page
-      // (proxy 502) used to throw an opaque English SyntaxError before
-      // the real error path could run.
-      const data = (await res.json().catch(() => null)) as {
-        error?: string;
-        message?: string;
-        added?: number;
-      } | null;
-      if (!res.ok) {
-        throw new Error(data?.error ?? `فشل الرفع (HTTP ${res.status})`);
-      }
+      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse
+      // (an HTML error page from a proxy 502 no longer throws an opaque
+      // English SyntaxError — the wrapper's fallback carries the status).
+      const data = await adminFetchJson<{ message?: string; added?: number }>(
+        `/api/admin/products/${productId}/inventory`,
+        {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            // Send the structured shape so the backend can validate
+            // per-row and dedup against existing inventory.
+            entries: parsed.entries.map((e) => ({
+              kind: e.kind,
+              email: e.email,
+              password: e.password,
+              extra: e.extra,
+            })),
+          }),
+        },
+        { fallbackError: "فشل الرفع" },
+      );
       toast({
         title: "تم الرفع",
         description: data?.message ?? `تم إضافة ${data?.added ?? 0} عنصر`,
       });
       onUploaded();
     } catch (err) {
+      // Session expiry already toasted + redirected — the pasted text
+      // survives in the textarea for the post-login round-trip.
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "فشل الرفع",
         description: err instanceof Error ? err.message : "خطأ غير متوقع",

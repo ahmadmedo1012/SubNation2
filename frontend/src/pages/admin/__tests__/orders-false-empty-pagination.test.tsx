@@ -201,9 +201,14 @@ describe("AdminOrdersPage — accumulating load-more past the 100-row cap (O-1)"
 describe("AdminOrdersPage — honest partial-empty over paged data (R115 A9 P2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // R123 (E3 P3a): the status/date tabs are URL-synced (?status=/
+    // ?days= write-back) — reset between tests so a tab clicked in one
+    // test cannot pre-filter the next render's useState initializer.
+    window.history.replaceState({}, "", "/");
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    window.history.replaceState({}, "", "/");
   });
 
   it("a status tab with 0 matches while more pages exist keeps load-more + the incompleteness hint — never the hard empty claim", async () => {

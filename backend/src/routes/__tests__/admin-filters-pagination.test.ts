@@ -16,6 +16,7 @@ import {
 import { signAdminToken } from "../../lib/jwt";
 import { adminTopupsRouter } from "../admin/topups";
 import { adminOrdersRouter } from "../admin/orders";
+import { adminUsersRouter } from "../admin/users";
 import { adminTicketsRouter } from "../admin/tickets";
 
 /**
@@ -69,7 +70,11 @@ async function seedUser(): Promise<number> {
   return u.id;
 }
 
-async function seedTopup(userId: number, status: "pending" | "approved" | "rejected", amount = "20.00") {
+async function seedTopup(
+  userId: number,
+  status: "pending" | "approved" | "rejected",
+  amount = "20.00",
+) {
   const [t] = await db
     .insert(walletTopupsTable)
     .values({ userId, amount, paymentMethod: "mobile_transfer", status })
@@ -81,7 +86,13 @@ async function seedOrder(userId: number, status: "pending" | "completed" | "fail
   const [p] = await db.insert(productsTable).values({ name: "P", price: "5.00" }).returning();
   const [o] = await db
     .insert(ordersTable)
-    .values({ orderCode: `SN${Math.floor(Math.random() * 1e9)}`, userId, productId: p.id, amount: "5.00", status })
+    .values({
+      orderCode: `SN${Math.floor(Math.random() * 1e9)}`,
+      userId,
+      productId: p.id,
+      amount: "5.00",
+      status,
+    })
     .returning();
   return o;
 }
@@ -94,7 +105,10 @@ const call = async (
 ): Promise<{ status: number; body: unknown }> => {
   const res = await fetch(`${url}${path}`, {
     ...init,
-    headers: { Authorization: `Bearer ${token}`, ...((init.headers as Record<string, string>) ?? {}) },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...((init.headers as Record<string, string>) ?? {}),
+    },
   });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : null };
@@ -198,6 +212,39 @@ describe("GET /api/admin/orders — pg-enum status filter (A5-03)", () => {
       close();
     }
   });
+});
+
+describe("GET /api/admin/{orders,topups,users} — deep-paging ceiling (R123 E3 item 6)", () => {
+  // R123 (E3 item 6): the three admin lists were the LAST routes with an
+  // uncapped inline page clamp — `?page=100000000&limit=200` multiplied
+  // into a ~2×10⁷-row OFFSET on the admin surface (the exact abuse shape
+  // R122 closed on the user lists via the shared pageParam MAX_PAGE
+  // ceiling, backend/lib/http.ts:69). The routes now ride pageParam();
+  // an absurd page clamps to 10 000 and answers 200 [] instead of a
+  // multi-second sequential scan.
+  it.each([
+    { path: "/api/admin/orders", router: adminOrdersRouter, seed: "order" },
+    { path: "/api/admin/topups", router: adminTopupsRouter, seed: "topup" },
+    { path: "/api/admin/users", router: adminUsersRouter, seed: "user" },
+  ])(
+    "clamps ?page=100000000 to MAX_PAGE on $path (200 empty, no unbounded OFFSET)",
+    async ({ path, router, seed }) => {
+      const app = buildApp(router);
+      const { url, close } = await listen(app);
+      try {
+        const token = await seedAdmin();
+        const userId = await seedUser();
+        if (seed === "order") await seedOrder(userId, "completed");
+        if (seed === "topup") await seedTopup(userId, "pending");
+
+        const res = await call(url, `${path}?page=100000000&limit=200`, token);
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([]);
+      } finally {
+        close();
+      }
+    },
+  );
 });
 
 describe("GET /api/admin/tickets — pg-enum status filter + pagination (A5-03/A2)", () => {

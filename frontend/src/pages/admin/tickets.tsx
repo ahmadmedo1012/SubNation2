@@ -15,6 +15,13 @@ import {
   type SemanticStatus,
 } from "@/components/ui/status-badge";
 import { useToast } from "@/hooks/use-toast";
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+// R123 (E3 item 1): the four raw fetches ride the session-aware wrapper
+// — a support cookie expiring mid-work now gets the global «انتهت
+// الجلسة» toast + redirect instead of a per-action retry-loop toast, and
+// adminFetchJson's safe error-body parse kills the unguarded r.json()
+// (English SyntaxError on a non-JSON 502) the reply/status paths had.
+import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatDate, formatRelativeTime, statusLabel } from "@/lib/utils";
@@ -35,7 +42,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 
 // Ticket status rendering now derives from the shared canonical maps:
@@ -113,6 +120,11 @@ export default function AdminTicketsPage() {
 
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
+  // R123 (E3 P3a): two-way URL filter sync (?status= / ?category=) —
+  // follows the settings.tsx ?tab= idiom: URL → state on mount/param
+  // change, state → URL via replaceState (filter flips don't spam the
+  // history stack). A shared support queue link can now pin a filter.
+  const searchParam = useSearch();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +133,11 @@ export default function AdminTicketsPage() {
   const [selected, setSelected] = useState<TicketDetail | null>(null);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
+
+  // R123 (E3 P3c): a drafted reply is un-submitted work — the same
+  // beforeunload guard the long admin forms ride (the reply box resets
+  // only on submit/success or opening another ticket).
+  useDirtyGuard(!!replyText.trim());
 
   const headers = useAdminHeaders();
 
@@ -162,19 +179,12 @@ export default function AdminTicketsPage() {
     // 94-C2 debounce + abort lesson — no manual controller needed).
     queryKey: ["/api/admin/tickets", "load-more", listParams],
     queryFn: async ({ pageParam, signal }) => {
-      const r = await fetch(ticketsUrl(pageParam as number, statusFilter), {
+      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe
+      // error-body parse; the AbortSignal still rides init untouched.
+      const d = await adminFetchJson<unknown>(ticketsUrl(pageParam as number, statusFilter), {
         headers,
         signal,
       });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        // getErrorMessage maps the backend `code` to Arabic when present.
-        throw new Error(getErrorMessage(body) || `فشل تحميل التذاكر (HTTP ${r.status})`);
-      }
-      const d = await r.json();
       return Array.isArray(d) ? (d as TicketSummary[]) : [];
     },
     initialPageParam: 1,
@@ -213,21 +223,16 @@ export default function AdminTicketsPage() {
   // B5-14 (round-92 audit, P2): openTicket had no `res.ok` check and
   // was invoked unawaited from onClick — a 401/500 detail fetch became
   // an unhandled promise rejection with zero UI feedback.
+  // R123 (E3 item 1): the ok-guard rides adminFetchJson now.
   const openTicket = async (id: number) => {
     try {
-      const res = await fetch(`/api/admin/tickets/${id}`, { headers });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل فتح التذكرة (HTTP ${res.status})`);
-      }
-      const d = await res.json();
+      const d = await adminFetchJson<TicketDetail>(`/api/admin/tickets/${id}`, { headers });
       setSelected(d);
       setReplyText("");
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (err) {
+      // Session expiry already toasted + redirected — stay quiet.
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "تعذّر فتح التذكرة",
@@ -249,6 +254,33 @@ export default function AdminTicketsPage() {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
 
+  // R123 (E3 P3a): URL → filters (a ?status=/?category= change lands
+  // without clobbering a filter the operator already picked locally —
+  // the settings.tsx ?tab= contract). Deliberately BEFORE the early
+  // return below: a logged-out render must not skip a hook.
+  useEffect(() => {
+    const q = new URLSearchParams(searchParam);
+    const s = q.get("status");
+    if (s && STATUS_FILTERS.some((x) => x.value === s)) {
+      setStatusFilter((prev) => (prev === s ? prev : s));
+    }
+    const c = q.get("category");
+    if (c && CATEGORY_FILTERS.some((x) => x.value === c)) {
+      setCategoryFilter((prev) => (prev === c ? prev : c));
+    }
+  }, [searchParam]);
+
+  // R123 (E3 P3a): filters → URL (replaceState — filter flips don't
+  // spam the history stack; empty values drop the param entirely).
+  const syncFilterParams = (status: string, category: string) => {
+    const url = new URL(window.location.href);
+    if (status) url.searchParams.set("status", status);
+    else url.searchParams.delete("status");
+    if (category) url.searchParams.set("category", category);
+    else url.searchParams.delete("category");
+    window.history.replaceState(null, "", url.toString());
+  };
+
   if (!adminToken) return null;
 
   const handleReply = async (e: React.FormEvent) => {
@@ -256,17 +288,19 @@ export default function AdminTicketsPage() {
     if (!selected || !replyText.trim()) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/admin/tickets/${selected.id}/reply`, {
+      await adminFetchJson(`/api/admin/tickets/${selected.id}/reply`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ message: replyText }),
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error);
       setReplyText("");
       await openTicket(selected.id);
       void refetch();
     } catch (err: unknown) {
+      // Session expiry already toasted + redirected — keep the drafted
+      // reply in the box (it survives the redirect round-trip) and stay
+      // quiet instead of layering a «فشلت العملية» toast on top.
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "فشلت العملية",
@@ -283,12 +317,11 @@ export default function AdminTicketsPage() {
     if (statusBusy !== null) return;
     setStatusBusy(id);
     try {
-      const res = await fetch(`/api/admin/tickets/${id}/status`, {
+      await adminFetchJson(`/api/admin/tickets/${id}/status`, {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
       if (selected?.id === id) await openTicket(id);
       void refetch();
       toast({
@@ -296,6 +329,7 @@ export default function AdminTicketsPage() {
         variant: "success",
       });
     } catch (err: unknown) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
@@ -345,7 +379,10 @@ export default function AdminTicketsPage() {
               {STATUS_FILTERS.map((s) => (
                 <button
                   key={s.value}
-                  onClick={() => setStatusFilter(s.value)}
+                  onClick={() => {
+                    setStatusFilter(s.value);
+                    syncFilterParams(s.value, categoryFilter);
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   {s.label}
@@ -360,7 +397,10 @@ export default function AdminTicketsPage() {
           {CATEGORY_FILTERS.map((c) => (
             <button
               key={c.value}
-              onClick={() => setCategoryFilter(c.value)}
+              onClick={() => {
+                setCategoryFilter(c.value);
+                syncFilterParams(statusFilter, c.value);
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                 categoryFilter === c.value
                   ? "bg-primary/10 border-primary/30 text-primary font-bold"
@@ -657,6 +697,7 @@ export default function AdminTicketsPage() {
                   <Button
                     type="submit"
                     size="icon"
+                    aria-label="إرسال الرد"
                     className="bg-primary hover:bg-primary/90 h-10 w-10 shrink-0 active:scale-90 transition-transform"
                     disabled={sending || !replyText.trim() || selected.status === "closed"}
                   >

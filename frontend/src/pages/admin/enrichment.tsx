@@ -12,8 +12,17 @@
  */
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { getErrorMessage } from "@/lib/errors";
+// R123 (E3 item 1): the three raw fetches ride the session-aware
+// adminFetchJson wrapper — an inventory cookie expiring mid-review now
+// gets the global «انتهت الجلسة» toast + redirect, and the card's inline
+// error line shows the sentinel's Arabic message instead of a raw
+// `HTTP 401`; the ok-guard + safe error-body parse move into the
+// wrapper too.
+import { adminFetchJson } from "@/lib/admin-session";
 import { Button } from "@/components/ui/button";
+// R123 (E3 P3d): the publish action gains the shared styled confirm —
+// it overwrites the product's LIVE catalog content in one tap.
+import { useConfirm } from "@/hooks/use-confirm";
 // 93-C7 / C-UX3 (A12 §1.3 + §11.2): the enrichment reject reason was
 // collected via native window.prompt — English browser chrome inside an
 // Arabic RTL admin, no validation, ambiguous "" vs null semantics. It
@@ -74,13 +83,10 @@ export default function AdminEnrichmentPage() {
 
   const query = useQuery<ListResponse>({
     queryKey: ["admin-enrichment-list", "drafted"],
-    queryFn: async () => {
-      const resp = await fetch("/api/admin/enrichment/list?state=drafted&limit=25", {
+    queryFn: async () =>
+      adminFetchJson<ListResponse>("/api/admin/enrichment/list?state=drafted&limit=25", {
         headers,
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+      }),
   });
 
   const drafts = useMemo(() => query.data?.drafts ?? [], [query.data]);
@@ -168,22 +174,16 @@ function DraftCard({
   // 93-C7 / C-UX3: reject-reason dialog state (replaces window.prompt).
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
+  // R123 (E3 P3d): the styled confirm mount for the publish action.
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const publish = useMutation({
-    mutationFn: async (override?: string | null) => {
-      const resp = await fetch(`/api/admin/enrichment/${draft.id}/publish`, {
+    mutationFn: async (override?: string | null) =>
+      adminFetchJson(`/api/admin/enrichment/${draft.id}/publish`, {
         method: "POST",
         headers: headersJson,
         body: JSON.stringify({ final_text: override ?? null }),
-      });
-      if (!resp.ok) {
-        const body = (await resp.json().catch(() => null)) as { error?: string } | null;
-        // Round-4 (org §6a): map the backend `code` to Arabic via
-        // getErrorMessage; the raw `error` string stays the fallback.
-        throw new Error(getErrorMessage(body) || `HTTP ${resp.status}`);
-      }
-      return resp.json();
-    },
+      }),
     onSuccess: () => {
       setEditing(false);
       onMutate();
@@ -192,25 +192,31 @@ function DraftCard({
   });
 
   const reject = useMutation({
-    mutationFn: async (reason: string | null) => {
-      const resp = await fetch(`/api/admin/enrichment/${draft.id}/reject`, {
+    mutationFn: async (reason: string | null) =>
+      adminFetchJson(`/api/admin/enrichment/${draft.id}/reject`, {
         method: "POST",
         headers: headersJson,
         body: JSON.stringify({ reason }),
-      });
-      if (!resp.ok) {
-        const body = (await resp.json().catch(() => null)) as { error?: string } | null;
-        // Round-4 (org §6a): map the backend `code` to Arabic via
-        // getErrorMessage; the raw `error` string stays the fallback.
-        throw new Error(getErrorMessage(body) || `HTTP ${resp.status}`);
-      }
-      return resp.json();
-    },
+      }),
     onSuccess: () => onMutate(),
     onError: (e: Error) => setError(e.message),
   });
 
   const busy = publish.isPending || reject.isPending;
+
+  // R123 (E3 P3d): publishing REPLACES the product's live catalog
+  // content in one tap — the confirm names the product + the field it
+  // overwrites (the same context the card header carries), in the
+  // styled-confirm idiom the destructive admin actions use.
+  const confirmPublish = async () => {
+    const confirmed = await confirm({
+      title: "نشر المسودة على المنتج؟",
+      description: `سيتم استبدال ${FIELD_LABEL[draft.field_name]} الحالي للمنتج «${draft.product_name}» بهذا النص المنشور — يظهر فوراً للعملاء في المتجر.`,
+      confirmLabel: "نشر",
+    });
+    if (!confirmed) return;
+    publish.mutate(null);
+  };
 
   return (
     <div className="border border-border/40 rounded-2xl bg-card/60 overflow-hidden">
@@ -258,7 +264,7 @@ function DraftCard({
             <Button
               size="sm"
               disabled={busy}
-              onClick={() => publish.mutate(null)}
+              onClick={() => void confirmPublish()}
               className="gap-2"
             >
               <Check className="w-3.5 h-3.5" /> تطبيق
@@ -373,6 +379,8 @@ function DraftCard({
             </p>
           </div>
         </AppDialog>
+        {/* R123 (E3 P3d): the publish confirm's dialog mount. */}
+        <ConfirmDialog />
       </div>
     </div>
   );

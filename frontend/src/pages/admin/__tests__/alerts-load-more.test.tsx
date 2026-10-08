@@ -20,7 +20,7 @@
  * toast hook are mocked at the module boundary (vitest-config pattern).
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -60,7 +60,10 @@ const ALERT = (i: number, isRead = false) => ({
 
 /** 30 unread + 20 read = a full 50-row page with a server-known total. */
 const PAGE_ONE = {
-  alerts: [...Array.from({ length: 30 }, (_, i) => ALERT(i, false)), ...Array.from({ length: 20 }, (_, i) => ALERT(100 + i, true))],
+  alerts: [
+    ...Array.from({ length: 30 }, (_, i) => ALERT(i, false)),
+    ...Array.from({ length: 20 }, (_, i) => ALERT(100 + i, true)),
+  ],
   unreadCount: 30,
   total: 62,
   page: 1,
@@ -168,7 +171,7 @@ describe("AdminAlertsPage — mutations surface failures instead of silently res
     vi.unstubAllGlobals();
   });
 
-  it("a FAILED delete-read toasts the error (was: silent invalidate + rows return)", async () => {
+  it("a FAILED delete-read toasts the error after the confirm (was: one-tap + silent)", async () => {
     fetchMock.mockResolvedValue(
       resLike({ ok: false, status: 500, body: { error: "خطأ في الخادم" } }),
     );
@@ -177,6 +180,16 @@ describe("AdminAlertsPage — mutations surface failures instead of silently res
 
     const btn = await screen.findByRole("button", { name: /حذف المقروءة/ });
     fireEvent.click(btn);
+
+    // R123 (E3 item 3): «حذف المقروءة» now routes through the mounted
+    // styled confirm (it was the last one-tap destructive bulk action on
+    // the page) — the dialog names the read-count the button itself
+    // displays (PAGE_ONE carries 20 read rows).
+    const title = await screen.findByText("حذف التنبيهات المقروءة؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    if (!dialog) throw new Error("delete-read confirm dialog not rendered");
+    expect((dialog as HTMLElement).textContent).toContain("20");
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "حذف" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     const toastArg = toastMock.mock.calls[0][0];

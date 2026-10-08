@@ -45,7 +45,11 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
+// R123 (E3 P3a): two-way URL filter sync follows the settings.tsx ?tab=
+// idiom — useSearch re-renders on ?tier=/?sort=/?filters= changes.
+import { useLocation, useSearch } from "wouter";
+// R123 (E3 P3c): the wallet-edit dialog's dirty guard (below).
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { AdminLayout } from "./layout";
 
 interface EditUserForm {
@@ -177,6 +181,9 @@ export default function AdminUsersPage() {
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
+  // R123 (E3 P3a): the URL is the second source of truth for the filter
+  // panel (see the sync effects below).
+  const searchParam = useSearch();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [search, setSearch] = useState(
@@ -186,9 +193,20 @@ export default function AdminUsersPage() {
     () => new URLSearchParams(window.location.search).get("search") ?? "",
   );
   const [debouncedSearch, setDebouncedSearch] = useState(search);
-  const [tierFilter, setTierFilter] = useState("");
-  const [sortBy, setSortBy] = useState("wallet_desc");
-  const [showFilters, setShowFilters] = useState(false);
+  // R123 (E3 P3a): tier/sort/panel state initializes from the URL
+  // (validated against the real option values; garbage falls back to
+  // the defaults) so a shared directory link can pin a view.
+  const [tierFilter, setTierFilter] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get("tier") ?? "";
+    return TIER_FILTERS.some((x) => x.value === t) ? t : "";
+  });
+  const [sortBy, setSortBy] = useState(() => {
+    const s = new URLSearchParams(window.location.search).get("sort") ?? "";
+    return SORT_OPTIONS.some((x) => x.value === s) ? s : "wallet_desc";
+  });
+  const [showFilters, setShowFilters] = useState(
+    () => new URLSearchParams(window.location.search).get("filters") === "1",
+  );
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [saving, setSaving] = useState(false);
   // 99-M3 (R99-A2 P1 — money): ONE Idempotency-Key per SAVE INTENT, not per
@@ -216,12 +234,61 @@ export default function AdminUsersPage() {
   // preview (same useConfirm idiom as the orders bulk refund).
   const { confirm, ConfirmDialog } = useConfirm();
 
+  // R123 (E3 P3c): an open wallet-edit dialog with a typed amount, an
+  // edited points value, or a drafted note is un-submitted MONEY work
+  // — the same beforeunload guard the other long admin forms ride
+  // (openEdit re-seeds the form, so "unchanged" flips back to clean).
+  // Sits ABOVE the logged-out early return like every other hook, and
+  // mirrors the pointsChangedNow derivation below (kept local here —
+  // that const is declared after the return, so the hook cannot
+  // reference it without a TDZ crash).
+  const draftPointsChanged =
+    editingUser != null &&
+    form.loyalty_points.trim() !== "" &&
+    Math.max(0, parseInt(form.loyalty_points) || 0) !==
+      (Number(editingUser.loyalty_points ?? 0) || 0);
+  useDirtyGuard(
+    editingUser != null &&
+      (form.wallet_value.trim() !== "" || form.note.trim() !== "" || draftPointsChanged),
+  );
+
   // 300ms debounce (same pattern as admin/referrals) so the users
   // query doesn't fire per keystroke.
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  // R123 (E3 P3a): URL → filters (a ?tier=/?sort=/?filters= change lands
+  // without clobbering a filter the operator already picked locally —
+  // the settings.tsx ?tab= contract). Deliberately BEFORE the early
+  // return below: a logged-out render must not skip a hook.
+  useEffect(() => {
+    const q = new URLSearchParams(searchParam);
+    const t = q.get("tier");
+    if (t && TIER_FILTERS.some((x) => x.value === t)) {
+      setTierFilter((prev) => (prev === t ? prev : t));
+    }
+    const s = q.get("sort");
+    if (s && SORT_OPTIONS.some((x) => x.value === s)) {
+      setSortBy((prev) => (prev === s ? prev : s));
+    }
+    const open = q.get("filters") === "1";
+    setShowFilters((prev) => (prev === open ? prev : open));
+  }, [searchParam]);
+
+  // R123 (E3 P3a): filters → URL (replaceState — flips don't spam the
+  // history stack; default/hidden values drop the param entirely).
+  const syncFilterParams = (tier: string, sort: string, filtersOpen: boolean) => {
+    const url = new URL(window.location.href);
+    if (tier) url.searchParams.set("tier", tier);
+    else url.searchParams.delete("tier");
+    if (sort && sort !== "wallet_desc") url.searchParams.set("sort", sort);
+    else url.searchParams.delete("sort");
+    if (filtersOpen) url.searchParams.set("filters", "1");
+    else url.searchParams.delete("filters");
+    window.history.replaceState(null, "", url.toString());
+  };
 
   const {
     data: usersPages,
@@ -578,7 +645,14 @@ export default function AdminUsersPage() {
               />
             </div>
             <button
-              onClick={() => setShowFilters((v) => !v)}
+              onClick={() => {
+                // R123 (E3 P3a): the panel toggle is URL-synced (?filters=).
+                setShowFilters((v) => {
+                  syncFilterParams(tierFilter, sortBy, !v);
+                  return !v;
+                });
+              }}
+              aria-expanded={showFilters}
               className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-semibold transition-all ${
                 hasFilters || showFilters
                   ? "bg-primary/10 border-primary/30 text-primary"
@@ -613,7 +687,11 @@ export default function AdminUsersPage() {
                   {TIER_FILTERS.map((t) => (
                     <button
                       key={t.value}
-                      onClick={() => setTierFilter(t.value)}
+                      onClick={() => {
+                        // R123 (E3 P3a): tier flips write ?tier= back.
+                        setTierFilter(t.value);
+                        syncFilterParams(t.value, sortBy, showFilters);
+                      }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         tierFilter === t.value
                           ? "bg-primary/10 border-primary/30 text-primary font-bold"
@@ -637,7 +715,11 @@ export default function AdminUsersPage() {
                   {SORT_OPTIONS.map((s) => (
                     <button
                       key={s.value}
-                      onClick={() => setSortBy(s.value)}
+                      onClick={() => {
+                        // R123 (E3 P3a): sort flips write ?sort= back.
+                        setSortBy(s.value);
+                        syncFilterParams(tierFilter, s.value, showFilters);
+                      }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         sortBy === s.value
                           ? "bg-primary/10 border-primary/30 text-primary font-bold"
@@ -655,6 +737,8 @@ export default function AdminUsersPage() {
                     onClick={() => {
                       setTierFilter("");
                       setSortBy("wallet_desc");
+                      // R123 (E3 P3a): the reset clears the URL params too.
+                      syncFilterParams("", "wallet_desc", showFilters);
                     }}
                     className="text-xs text-muted-foreground hover:text-destructive transition-colors"
                   >
@@ -1197,6 +1281,10 @@ export default function AdminUsersPage() {
                   </div>
                   <button
                     onClick={() => openEdit(user)}
+                    /* R123 (E3 P3b): the mobile twin of the desktop edit
+                       button — same accessible name so screen readers
+                       announce the same action in both layouts. */
+                    aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
                     className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
                   >
                     <Edit2 className="w-4 h-4" />

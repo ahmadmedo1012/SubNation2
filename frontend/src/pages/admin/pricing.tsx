@@ -1,5 +1,12 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useConfirm } from "@/hooks/use-confirm";
+// R123 (E3 item 1): the dry-run preview fetch rides the session-aware
+// wrapper — a mid-work 401 now gets the global «انتهت الجلسة» toast +
+// redirect instead of a local «تعذّرت المعاينة» on a page the operator
+// is leaving, and adminFetchJson owns the ok-guard + safe parse.
+import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
+// R123 (E3 P3c): see the configDirty guard below.
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
@@ -337,6 +344,13 @@ export default function AdminPricingPage() {
       capNum !== pricingConfig.max_total_discount_pct);
   const canSaveConfig = configDirty && rateValid && markupValid && capValid;
 
+  // R123 (E3 P3c): an edited-but-unsaved pricing RULE is the highest-
+  // impact dirty form in the admin (it prices the whole catalog) — the
+  // same beforeunload guard the other long admin forms ride. configDirty
+  // is exact: it compares the parsed inputs against the loaded rule, and
+  // a successful save re-seeds the inputs (dirty flips false).
+  useDirtyGuard(configDirty);
+
   // Live formula example — falls back to the loaded rule while a field is
   // empty/invalid so the explainer never shows nonsense numbers.
   const exampleFactor = markupValid
@@ -419,22 +433,14 @@ export default function AdminPricingPage() {
   const previewRecompute = async () => {
     setDryRunLoading(true);
     try {
-      const res = await fetch("/api/admin/pricing/recompute?dry_run=true", {
-        method: "POST",
-        headers,
-      });
-      const data = (await res.json().catch(() => null)) as
-        | (RecomputeDryRun & { error?: string; code?: string })
-        | null;
-      if (!res.ok) {
-        toast({
-          title: "تعذّرت المعاينة",
-          description: getErrorMessage(data) || "فشل طلب المعاينة",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!data || typeof data.variants_drifted !== "number" || !Array.isArray(data.sample)) {
+      const data = await adminFetchJson<RecomputeDryRun>(
+        "/api/admin/pricing/recompute?dry_run=true",
+        {
+          method: "POST",
+          headers,
+        },
+      );
+      if (typeof data.variants_drifted !== "number" || !Array.isArray(data.sample)) {
         toast({
           title: "تعذّرت المعاينة",
           description: "استجابة غير متوقعة من الخادم",
@@ -444,6 +450,8 @@ export default function AdminPricingPage() {
       }
       setDryRun(data);
     } catch (err) {
+      // Session expiry already toasted + redirected — stay quiet.
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّرت المعاينة",
         description: err instanceof Error ? err.message : "تعذّر الاتصال بالخادم",

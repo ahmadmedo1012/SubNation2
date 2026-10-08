@@ -7,7 +7,15 @@ import { Button } from "@/components/ui/button";
 import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
-import { isAdminUnauthorized } from "@/lib/admin-session";
+// R123 (E3 item 1): the four raw fetches ride the session-aware
+// wrappers — the inline isAdminUnauthorized checks fold into
+// adminFetch's AdminSessionExpiredError sentinel, and adminFetchJson
+// owns the ok-guard + safe error-body parse the hand-rolled copies
+// had. /api/admin/session stays raw-handler-exempt by design (App.tsx
+// owns its 401) — the wrapper only acts on it via non-OK errors.
+import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
+// R123 (E3 P3c): the create/edit dialogs' dirty guards (below).
+import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -69,13 +77,10 @@ export default function AdminAdminsPage() {
   const reload = async () => {
     try {
       const [listRes, scopesRes, sessionRes] = await Promise.all([
-        fetch("/api/admin/admins", { credentials: "include", headers }),
-        fetch("/api/admin/admins/scopes", { credentials: "include", headers }),
-        fetch("/api/admin/session", { credentials: "include", headers }),
+        adminFetch("/api/admin/admins", { credentials: "include", headers }),
+        adminFetch("/api/admin/admins/scopes", { credentials: "include", headers }),
+        adminFetch("/api/admin/session", { credentials: "include", headers }),
       ]);
-      // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast +
-      // redirect); not a "failed load" card.
-      if (isAdminUnauthorized(listRes, "/api/admin/admins")) return;
       if (!listRes.ok) {
         const body = (await listRes.json().catch(() => null)) as {
           error?: string;
@@ -94,6 +99,9 @@ export default function AdminAdminsPage() {
       setCurrentAdminId(sessionJson?.id ?? null);
       setLoadError(null);
     } catch (err) {
+      // 93-C6 / F-07 (A5 S-3): expired session → the wrapper already
+      // toasted + redirected; not a "failed load" card.
+      if (err instanceof AdminSessionExpiredError) return;
       const message = getErrorMessage(err);
       setLoadError(message);
       toast({
@@ -130,19 +138,15 @@ export default function AdminAdminsPage() {
     });
     if (!ok) return;
     try {
-      const res = await fetch(`/api/admin/admins/${admin.id}/${action}`, {
+      await adminFetchJson(`/api/admin/admins/${admin.id}/${action}`, {
         method: "POST",
         credentials: "include",
         headers,
       });
-      const body = await res.json().catch(() => ({}));
-      // Round-4 (org §6a): route through getErrorMessage so the backend
-      // `code` (RATE_LIMITED, ALREADY_EXISTS…) maps to its Arabic message
-      // instead of the raw English `error` string leaking into the toast.
-      if (!res.ok) throw new Error(getErrorMessage(body) || `فشل ${verb} الحساب`);
       toast({ title: `تم ${verb} المسؤول @${admin.username}` });
       void reload();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: err instanceof Error ? err.message : "فشل العملية",
         variant: "destructive",
@@ -339,6 +343,16 @@ function CreateAdminDialog({
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // R123 (E3 P3c): a half-filled admin-creation form (password + scopes)
+  // is un-submitted work — the same beforeunload guard the other long
+  // admin forms ride.
+  useDirtyGuard(
+    username.trim() !== "" ||
+      displayName.trim() !== "" ||
+      password !== "" ||
+      selectedScopes.length > 0,
+  );
+
   const toggleScope = (id: string) => {
     setSelectedScopes((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   };
@@ -351,22 +365,25 @@ function CreateAdminDialog({
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/admins", {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({
-          username: username.trim(),
-          password,
-          display_name: displayName.trim() || username.trim(),
-          permissions: selectedScopes,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(getErrorMessage(body) || "فشل الإنشاء");
+      await adminFetchJson(
+        "/api/admin/admins",
+        {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({
+            username: username.trim(),
+            password,
+            display_name: displayName.trim() || username.trim(),
+            permissions: selectedScopes,
+          }),
+        },
+        { fallbackError: "فشل الإنشاء" },
+      );
       toast({ title: "تم إنشاء حساب المسؤول" });
       onCreated();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: err instanceof Error ? err.message : "فشل الإنشاء",
         variant: "destructive",
@@ -480,6 +497,17 @@ function EditAdminDialog({
   );
   const [saving, setSaving] = useState(false);
 
+  // R123 (E3 P3c): the edit dialog's dirty guard — compares against the
+  // admin's CURRENT persisted values (super-admins have no editable
+  // scope set, so display-name is their only dirty axis).
+  const initialScopes = isSuper ? [] : (admin.permissions ?? []);
+  useDirtyGuard(
+    displayName.trim() !== admin.display_name.trim() ||
+      (!isSuper &&
+        (selectedScopes.length !== initialScopes.length ||
+          selectedScopes.some((s) => !initialScopes.includes(s)))),
+  );
+
   const toggleScope = (id: string) => {
     setSelectedScopes((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
   };
@@ -492,20 +520,23 @@ function EditAdminDialog({
     }
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/admins/${admin.id}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({
-          display_name: displayName.trim(),
-          permissions: isSuper ? ["all"] : selectedScopes,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(getErrorMessage(body) || "فشل التحديث");
+      await adminFetchJson(
+        `/api/admin/admins/${admin.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({
+            display_name: displayName.trim(),
+            permissions: isSuper ? ["all"] : selectedScopes,
+          }),
+        },
+        { fallbackError: "فشل التحديث" },
+      );
       toast({ title: "تم تحديث الحساب" });
       onSaved();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: err instanceof Error ? err.message : "فشل التحديث",
         variant: "destructive",
@@ -633,6 +664,12 @@ function ScopeCheckboxGrid({
             type="button"
             key={scope.id}
             onClick={() => onToggle(scope.id)}
+            // R123 (E3 P3b): the visual checkbox is a real button —
+            // role/aria-checked expose the checked state to screen
+            // readers (the checkbox role's Space activation rides the
+            // button's native keyboard handling).
+            role="checkbox"
+            aria-checked={checked}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-right text-sm border transition-colors ${
               checked
                 ? "bg-primary/10 border-primary/40 text-foreground"

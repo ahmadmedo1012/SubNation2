@@ -41,6 +41,14 @@ import {
   History,
 } from "lucide-react";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+// R123 (E3 item 1): the copilot's six raw fetches ride the session-aware
+// adminFetch wrapper. NOTE the SSE site (ask): adminFetch returns the
+// Response UNTOUCHED on every non-401 path, so the streaming reader +
+// content-type JSON fallback below keep working byte-for-byte; a 401
+// mid-conversation throws AdminSessionExpiredError after the global
+// «انتهت الجلسة» toast + redirect (the caller's catch closes the turn
+// quietly — no fake "request failed" bubble on a page being left).
+import { AdminSessionExpiredError, adminFetch } from "@/lib/admin-session";
 import { getErrorMessage } from "@/lib/errors";
 import { copyToClipboard } from "@/lib/utils";
 // 93-C7 / C-UX2 (A12 B13): the copilot phase pill migrates from raw
@@ -468,7 +476,10 @@ export function CopilotPanel() {
   // Probe phase flags once.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/admin/copilot/settings", { headers })
+    // R123 (E3 item 1): adminFetch adds the 401 conversion on top of the
+    // tolerant null-on-any-failure semantics (the probe stays quiet —
+    // the panel simply hides when flags are unknown).
+    adminFetch("/api/admin/copilot/settings", { headers })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: PhaseFlags | null) => {
         if (cancelled) return;
@@ -557,7 +568,7 @@ export function CopilotPanel() {
     const history = buildHistory();
     try {
       if (wantsChange) {
-        const resp = await fetch("/api/admin/copilot/draft", {
+        const resp = await adminFetch("/api/admin/copilot/draft", {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -607,6 +618,12 @@ export function CopilotPanel() {
         await runAsk(turn.id, text, history);
       }
     } catch (err) {
+      // R123 (E3 item 1): session expiry already toasted + redirected —
+      // close the turn quietly instead of a fake failure bubble.
+      if (err instanceof AdminSessionExpiredError) {
+        patchTurn(turn.id, { loading: false });
+        return;
+      }
       const msg = err instanceof Error ? err.message : "حدث خطأ";
       patchTurn(turn.id, { error: msg, loading: false });
     }
@@ -617,7 +634,12 @@ export function CopilotPanel() {
     text: string,
     history: Array<{ role: "user" | "assistant"; content: string }>,
   ) {
-    const resp = await fetch("/api/admin/copilot/ask", {
+    // R123 (E3 item 1): adminFetch returns the Response untouched on
+    // every non-401 path — the SSE reader + the JSON-fallback branch
+    // below are byte-for-byte unchanged. Only a session-expired 401
+    // behaves differently (AdminSessionExpiredError into the caller's
+    // catch, after the global toast + redirect).
+    const resp = await adminFetch("/api/admin/copilot/ask", {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -726,7 +748,16 @@ export function CopilotPanel() {
         progress: [],
       });
     } else {
-      patchTurn(turnId, { loading: false });
+      // R123 (E3 P3e): the stream ended WITHOUT a `final` event (proxy
+      // cut the connection, server crash mid-answer) — the old bare
+      // loading:false patch left a turn that looked "answered" with no
+      // answer and no error: a silent dead end. The operator now gets
+      // an honest retryable error on the turn itself.
+      patchTurn(turnId, {
+        error: "لم يصل رد من المساعد — انقطع البث قبل اكتمال الإجابة، أعد المحاولة.",
+        loading: false,
+        progress: [],
+      });
     }
   }
 
@@ -768,7 +799,7 @@ export function CopilotPanel() {
     if (!turn.preview) return;
     patchTurn(turn.id, { previewState: "confirming", error: null });
     try {
-      const resp = await fetch(`/api/admin/copilot/previews/${turn.preview.id}/confirm`, {
+      const resp = await adminFetch(`/api/admin/copilot/previews/${turn.preview.id}/confirm`, {
         method: "POST",
         headers,
       });
@@ -797,6 +828,12 @@ export function CopilotPanel() {
         resultUrl: data.result_url ?? null,
       });
     } catch (err) {
+      // Session expiry already toasted + redirected — park the preview
+      // quietly (the redirect unmounts the panel anyway).
+      if (err instanceof AdminSessionExpiredError) {
+        patchTurn(turn.id, { previewState: "pending", loading: false });
+        return;
+      }
       const msg = err instanceof Error ? err.message : "حدث خطأ";
       patchTurn(turn.id, { previewState: "pending", error: msg });
     }
@@ -806,10 +843,13 @@ export function CopilotPanel() {
     if (!turn.preview) return;
     patchTurn(turn.id, { previewState: "double_confirming", error: null });
     try {
-      const resp = await fetch(`/api/admin/copilot/previews/${turn.preview.id}/double-confirm`, {
-        method: "POST",
-        headers,
-      });
+      const resp = await adminFetch(
+        `/api/admin/copilot/previews/${turn.preview.id}/double-confirm`,
+        {
+          method: "POST",
+          headers,
+        },
+      );
       if (!resp.ok) {
         const body = (await resp.json().catch(() => null)) as {
           error?: string;
@@ -827,6 +867,10 @@ export function CopilotPanel() {
         resultUrl: data.result_url ?? null,
       });
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) {
+        patchTurn(turn.id, { previewState: "awaiting_double_confirm", loading: false });
+        return;
+      }
       const msg = err instanceof Error ? err.message : "حدث خطأ";
       patchTurn(turn.id, { previewState: "awaiting_double_confirm", error: msg });
     }
@@ -835,12 +879,13 @@ export function CopilotPanel() {
   async function cancelPreview(turn: ConversationTurn) {
     if (!turn.preview) return;
     try {
-      await fetch(`/api/admin/copilot/previews/${turn.preview.id}/cancel`, {
+      await adminFetch(`/api/admin/copilot/previews/${turn.preview.id}/cancel`, {
         method: "POST",
         headers,
       });
     } catch {
-      // Ignore — backend audit will still record if reachable.
+      // Ignore — backend audit will still record if reachable (a 401
+      // here rides the global handler; the cancel is fire-and-forget).
     }
     patchTurn(turn.id, { previewState: "cancelled", error: null });
   }

@@ -11,6 +11,14 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { useToast } from "@/hooks/use-toast";
+// R123 (E3 item 1): the four raw fetches ride the session-aware wrapper
+// — this is the page that made admin-session.ts's /api/coupons/admin
+// 401 extension (isAdminApiUrl) LIVE: a finance cookie expiring mid-work
+// now gets the global «انتهت الجلسة» toast + redirect instead of a
+// per-action «فشلت العملية» retry-loop toast. adminFetchJson also owns
+// the ok-guard + safe error-body parse, so the old unguarded r.json()
+// on error paths (English SyntaxError on a non-JSON 502) is gone.
+import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatDate, formatCurrency, localDateTimeToUtcIso } from "@/lib/utils";
@@ -140,24 +148,17 @@ export default function AdminCouponsPage() {
       if (!adminToken) return;
       if (!silent) setLoading(true);
       try {
-        const r = await fetch("/api/coupons/admin", { headers });
-        if (!r.ok) {
-          const body = (await r.json().catch(() => null)) as {
-            error?: string;
-            code?: string;
-          } | null;
-          // getErrorMessage maps the backend `code` to Arabic.
-          const msg = getErrorMessage(body) || `فشل تحميل الكوبونات (HTTP ${r.status})`;
-          setLoadError(msg);
-          if (!silent) {
-            toast({ title: "تعذّر تحميل الكوبونات", description: msg, variant: "destructive" });
-          }
-          return;
-        }
+        // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe
+        // error-body parse (the old unguarded error-path r.json() threw
+        // an English SyntaxError into an Arabic toast on a non-JSON 502).
+        const list = await adminFetchJson<Coupon[]>("/api/coupons/admin", { headers });
         setLoadError(null);
-        setCoupons(await r.json());
+        setCoupons(list);
       } catch (err) {
-        // Network-level failure (offline/DNS) — same surfacing.
+        // Session expiry already toasted + redirected — no noise on top.
+        if (err instanceof AdminSessionExpiredError) return;
+        // Network-level failure (offline/DNS) or a non-OK envelope —
+        // same surfacing the inline !r.ok path had.
         const msg = getErrorMessage(err);
         setLoadError(msg);
         if (!silent) {
@@ -224,13 +225,11 @@ export default function AdminCouponsPage() {
         expires_at: localDateTimeToUtcIso(form.expires_at),
         description: form.description || null,
       };
-      const r = await fetch("/api/coupons/admin", {
+      const result = await adminFetchJson<{ code: string }>("/api/coupons/admin", {
         method: "POST",
         headers,
         body: JSON.stringify(body),
       });
-      const result = await r.json();
-      if (!r.ok) throw new Error(result.error);
       toast({ title: "تم إنشاء الكوبون", description: `رمز: ${result.code}` });
       setShowCreate(false);
       // Form resets ONLY on success (93-C7 / C-UX3): previously every
@@ -243,6 +242,9 @@ export default function AdminCouponsPage() {
       setValueError(null);
       fetchCoupons(true);
     } catch (err: unknown) {
+      // R123 (E3 item 1): 401 = session expiry — the global handler
+      // already toasted + redirected; no generic error toast on top.
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "فشلت العملية",
@@ -256,14 +258,14 @@ export default function AdminCouponsPage() {
   const handleToggle = async (coupon: Coupon) => {
     setToggling(coupon.id);
     try {
-      const r = await fetch(`/api/coupons/admin/${coupon.id}`, {
+      await adminFetchJson(`/api/coupons/admin/${coupon.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ is_active: !coupon.is_active }),
       });
-      if (!r.ok) throw new Error((await r.json()).error);
       fetchCoupons(true);
     } catch (err: unknown) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "فشلت العملية",
@@ -288,11 +290,11 @@ export default function AdminCouponsPage() {
     });
     if (!confirmed) return;
     try {
-      const r = await fetch(`/api/coupons/admin/${coupon.id}`, { method: "DELETE", headers });
-      if (!r.ok) throw new Error((await r.json()).error);
+      await adminFetchJson(`/api/coupons/admin/${coupon.id}`, { method: "DELETE", headers });
       fetchCoupons(true);
       toast({ title: "تم تعطيل الكوبون" });
     } catch (err: unknown) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
@@ -681,6 +683,12 @@ export default function AdminCouponsPage() {
                             onClick={() => handleToggle(coupon)}
                             disabled={toggling === coupon.id}
                             title={coupon.is_active ? "تعطيل" : "تفعيل"}
+                            aria-label={
+                              coupon.is_active
+                                ? `تعطيل الكوبون ${coupon.code}`
+                                : `تفعيل الكوبون ${coupon.code}`
+                            }
+                            aria-pressed={coupon.is_active}
                             className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                           >
                             {toggling === coupon.id ? (
@@ -694,6 +702,7 @@ export default function AdminCouponsPage() {
                           <button
                             onClick={() => handleDelete(coupon)}
                             title="حذف"
+                            aria-label={`حذف الكوبون ${coupon.code}`}
                             className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

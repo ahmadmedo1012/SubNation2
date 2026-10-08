@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { isAdminUnauthorized } from "@/lib/admin-session";
+// R123 (E3 item 1): load/create/delete ride the session-aware wrappers
+// (a 401 mid-work gets the global «انتهت الجلسة» toast + redirect);
+// toggleActive keeps its R122 isAdminUnauthorized shape.
+import {
+  AdminSessionExpiredError,
+  adminFetch,
+  adminFetchJson,
+  isAdminUnauthorized,
+} from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
@@ -99,20 +107,15 @@ export default function AdminPromotionsPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const r = await fetch("/api/admin/flash-sales", { headers });
-      // 94-C2 (A2 P2-9): an error envelope (401/500) used to parse as
-      // JSON with no `flash_sales` key ⇒ [] ⇒ the «لا توجد عروض بعد»
-      // empty state masquerading as a clean history during an outage.
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل تحميل العروض (HTTP ${r.status})`);
-      }
-      const d = await r.json();
+      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse
+      // (the old inline path parsed the error envelope by hand).
+      const d = await adminFetchJson<{ flash_sales?: FlashSale[] }>("/api/admin/flash-sales", {
+        headers,
+      });
       setSales(Array.isArray(d?.flash_sales) ? d.flash_sales : []);
     } catch (err) {
+      // Session expiry already toasted + redirected — not a load error.
+      if (err instanceof AdminSessionExpiredError) return;
       const message = err instanceof Error ? err.message : "خطأ غير معروف";
       setLoadError(message);
       toast({
@@ -145,7 +148,11 @@ export default function AdminPromotionsPage() {
 
     setSubmitting(true);
     try {
-      const r = await fetch("/api/admin/flash-sales", {
+      // R123 (E3 item 1): adminFetch keeps the Response (the 409-specific
+      // title below needs the status) while adding the 401 conversion —
+      // a session expiry throws AdminSessionExpiredError after the global
+      // toast + redirect.
+      const r = await adminFetch("/api/admin/flash-sales", {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -154,7 +161,11 @@ export default function AdminPromotionsPage() {
           ends_at: endsAt.toISOString(),
         }),
       });
-      const body = await r.json();
+      // Safe error-body parse (E3 item 1 note, promotions.tsx:157): a
+      // non-JSON 502 must not throw an English SyntaxError into the
+      // Arabic toast — getErrorMessage maps the envelope when present,
+      // else the HTTP status carries below.
+      const body = (await r.json().catch(() => ({}))) as Parameters<typeof getErrorMessage>[0];
       if (!r.ok) {
         toast({
           title: r.status === 409 ? "يوجد عرض نشط بالفعل" : "تعذّر الإنشاء",
@@ -170,6 +181,7 @@ export default function AdminPromotionsPage() {
       setForm(EMPTY_FORM);
       void load();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّر الإنشاء",
         description: err instanceof Error ? err.message : "خطأ غير معروف",
@@ -204,7 +216,10 @@ export default function AdminPromotionsPage() {
       // 94-C2 (A2 P2-14): 401 mid-work = session expiry — the global
       // handler toasts + redirects; no misleading local toast on top.
       if (isAdminUnauthorized(r, `/api/admin/flash-sales/${sale.id}`)) return;
-      const body = await r.json();
+      // Safe error-body parse (same promotions.tsx:157 class): a
+      // non-JSON 502 must not throw an English SyntaxError into the
+      // Arabic toast.
+      const body = (await r.json().catch(() => ({}))) as Parameters<typeof getErrorMessage>[0];
       if (!r.ok) {
         toast({
           title: r.status === 409 ? "يوجد عرض نشط آخر" : "تعذّر التحديث",
@@ -234,19 +249,14 @@ export default function AdminPromotionsPage() {
     });
     if (!ok) return;
     try {
-      const r = await fetch(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });
-      if (!r.ok) {
-        const body = await r.json().catch(() => null);
-        toast({
-          title: "تعذّر الإيقاف",
-          description: getErrorMessage(body) || undefined,
-          variant: "destructive",
-        });
-        return;
-      }
+      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse
+      // — the failure toast keeps its Arabic envelope mapping via the
+      // wrapper's getErrorMessage.
+      await adminFetchJson(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });
       toast({ title: "تم الإيقاف" });
       void load();
     } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّر الإيقاف",
         description: err instanceof Error ? err.message : "خطأ غير معروف",
@@ -525,6 +535,7 @@ export default function AdminPromotionsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDelete(s)}
+                        aria-label={`إيقاف وحذف عرض «${s.title}»`}
                         className="gap-1.5 text-destructive hover:text-destructive"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

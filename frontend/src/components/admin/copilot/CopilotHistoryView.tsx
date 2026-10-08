@@ -7,6 +7,12 @@
  */
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+// R123 (E3 item 1): the history query rides the session-aware wrapper —
+// a mid-work 401 gets the global «انتهت الجلسة» toast + redirect and the
+// query lands in its error state (the inline «فشل تحميل السجل» banner
+// only fires for real failures), with adminFetchJson owning the
+// ok-guard + safe parse.
+import { adminFetchJson } from "@/lib/admin-session";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -72,11 +78,8 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
   const headers = useAdminHeaders();
   const query = useQuery<HistoryResponse>({
     queryKey: ["admin-copilot-history"],
-    queryFn: async () => {
-      const resp = await fetch(`/api/admin/copilot/history?limit=25`, { headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    },
+    queryFn: async () =>
+      adminFetchJson<HistoryResponse>(`/api/admin/copilot/history?limit=25`, { headers }),
   });
 
   return (

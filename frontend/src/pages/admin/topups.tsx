@@ -695,77 +695,92 @@ export default function AdminTopupsPage() {
     const ids = Array.from(selectedIds);
     let successCount = 0;
     const failures: Array<{ id: number; reason: string }> = [];
-    // 93-C6 / F-07 (A5 T-2): the selected-bulk loop now parses each
-    // failure body (approveAll, one function below, already did) —
-    // count-only feedback ("فشل 2 من 5") hid the 409
-    // DUPLICATE_PAYMENT_REFERENCE / CONFLICT reasons behind a generic
-    // toast while the adjacent approveAll summarized them properly.
+    // R123 (E3 P3h): the session-expiry exit breaks and returns INSIDE
+    // try/finally — the old fallthrough also reset the flags, but only
+    // after firing invalidate() + a per-failure toast into the redirect
+    // (noise on top of the global «انتهت الجلسة» toast).
+    let sessionExpired = false;
+    try {
+      // 93-C6 / F-07 (A5 T-2): the selected-bulk loop now parses each
+      // failure body (approveAll, one function below, already did) —
+      // count-only feedback ("فشل 2 من 5") hid the 409
+      // DUPLICATE_PAYMENT_REFERENCE / CONFLICT reasons behind a generic
+      // toast while the adjacent approveAll summarized them properly.
 
-    // F-008 (security audit 004): one Idempotency-Key per topup, NOT
-    // one for the whole bulk. The backend dedup is per-(admin, route,
-    // key); a single key shared across N approvals would let only the
-    // first call commit and the next N-1 would replay the first
-    // response, leaving the rest of the topups untouched. Each topup
-    // is its own logical action — generate a fresh key per iteration.
-    for (const id of ids) {
-      const url = `/api/admin/topups/${id}/${action}`;
-      try {
-        const r = await fetch(url, {
-          method: "POST",
-          headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-          body: JSON.stringify({
-            admin_note:
-              note.trim() || (action === "approve" ? "تمت الموافقة الجماعية" : "مرفوض جماعياً"),
-          }),
-        });
-        // 93-C6 / F-07 (A5 S-3): session expired mid-loop — stop the
-        // money loop; the global handler has toasted + redirected.
-        if (isAdminUnauthorized(r, url)) break;
-        if (!r.ok) {
-          const body = (await r.json().catch(() => null)) as {
-            error?: string;
-            code?: string;
-          } | null;
+      // F-008 (security audit 004): one Idempotency-Key per topup, NOT
+      // one for the whole bulk. The backend dedup is per-(admin, route,
+      // key); a single key shared across N approvals would let only the
+      // first call commit and the next N-1 would replay the first
+      // response, leaving the rest of the topups untouched. Each topup
+      // is its own logical action — generate a fresh key per iteration.
+      for (const id of ids) {
+        const url = `/api/admin/topups/${id}/${action}`;
+        try {
+          const r = await fetch(url, {
+            method: "POST",
+            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
+            body: JSON.stringify({
+              admin_note:
+                note.trim() || (action === "approve" ? "تمت الموافقة الجماعية" : "مرفوض جماعياً"),
+            }),
+          });
+          // 93-C6 / F-07 (A5 S-3): session expired mid-loop — stop the
+          // money loop; the global handler has toasted + redirected.
+          if (isAdminUnauthorized(r, url)) {
+            sessionExpired = true;
+            break;
+          }
+          if (!r.ok) {
+            const body = (await r.json().catch(() => null)) as {
+              error?: string;
+              code?: string;
+            } | null;
+            failures.push({
+              id,
+              reason:
+                body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+            });
+            continue;
+          }
+          successCount++;
+        } catch (e) {
           failures.push({
             id,
-            reason: body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+            reason: e instanceof Error ? e.message : "خطأ غير معروف",
           });
-          continue;
         }
-        successCount++;
-      } catch (e) {
-        failures.push({
-          id,
-          reason: e instanceof Error ? e.message : "خطأ غير معروف",
+      }
+
+      if (sessionExpired) return;
+      setSelectedIds(new Set());
+      invalidate();
+      if (failures.length > 0) {
+        toast({
+          title:
+            successCount > 0
+              ? `${action === "approve" ? "تمت الموافقة الجماعية" : "تم الرفض الجماعي"} — ${successCount} من ${ids.length}`
+              : "خطأ",
+          description: `فشلت ${failures.length} من ${ids.length} — ${failures
+            .map((f) => `#${f.id}: ${f.reason}`)
+            .join("، ")}`,
+          variant: "destructive",
         });
       }
-    }
-
-    setSelectedIds(new Set());
-    setBulkAction(null);
-    setIsBulkProcessing(false);
-    invalidate();
-    if (failures.length > 0) {
-      toast({
-        title:
-          successCount > 0
-            ? `${action === "approve" ? "تمت الموافقة الجماعية" : "تم الرفض الجماعي"} — ${successCount} من ${ids.length}`
-            : "خطأ",
-        description: `فشلت ${failures.length} من ${ids.length} — ${failures
-          .map((f) => `#${f.id}: ${f.reason}`)
-          .join("، ")}`,
-        variant: "destructive",
-      });
-    }
-    // Only announce success when at least one item actually succeeded —
-    // the unconditional toast used to show "✓ تمت الموافقة 0/N" right
-    // after the failure toast on a total failure.
-    if (successCount > 0 && failures.length === 0) {
-      toast({
-        title: action === "approve" ? "تمت الموافقة الجماعية" : "تم الرفض الجماعي",
-        description: `${successCount}/${ids.length} طلب تمت معالجته`,
-        variant: "success",
-      });
+      // Only announce success when at least one item actually succeeded —
+      // the unconditional toast used to show "✓ تمت الموافقة 0/N" right
+      // after the failure toast on a total failure.
+      if (successCount > 0 && failures.length === 0) {
+        toast({
+          title: action === "approve" ? "تمت الموافقة الجماعية" : "تم الرفض الجماعي",
+          description: `${successCount}/${ids.length} طلب تمت معالجته`,
+          variant: "success",
+        });
+      }
+    } finally {
+      // R123 (E3 P3h): the flags reset on EVERY exit path — including
+      // the session-expiry return above.
+      setBulkAction(null);
+      setIsBulkProcessing(false);
     }
   };
 
@@ -788,68 +803,78 @@ export default function AdminTopupsPage() {
     setApproveAllProgress({ done: 0, total: pending.length });
     let approvedCount = 0;
     const failures: Array<{ id: number; reason: string }> = [];
-    for (const [index, t] of pending.entries()) {
-      try {
-        const url = `/api/admin/topups/${t.id}/approve`;
-        const r = await fetch(url, {
-          method: "POST",
-          // Same per-iteration key generation as handleBulkAction above.
-          headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-          body: JSON.stringify({
-            // R122 (A2-P2): the operator's bulk-confirm note rides every
-            // row — empty keeps the boilerplate fallback (see
-            // handleBulkAction).
-            admin_note: note.trim() || "تمت الموافقة الجماعية",
-          }),
+    // R123 (E3 P3h): the session-expiry exit rides the same
+    // sessionExpired + try/finally shape as handleBulkAction above —
+    // the flags reset on EVERY exit path and no summary toast/
+    // invalidate fires into the redirect.
+    let sessionExpired = false;
+    try {
+      for (const [index, t] of pending.entries()) {
+        try {
+          const url = `/api/admin/topups/${t.id}/approve`;
+          const r = await fetch(url, {
+            method: "POST",
+            // Same per-iteration key generation as handleBulkAction above.
+            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
+            body: JSON.stringify({
+              // R122 (A2-P2): the operator's bulk-confirm note rides every
+              // row — empty keeps the boilerplate fallback (see
+              // handleBulkAction).
+              admin_note: note.trim() || "تمت الموافقة الجماعية",
+            }),
+          });
+          // 93-C6 / F-07 (A5 S-3): session expired mid-loop — abort the
+          // money loop (the global handler has toasted + redirected);
+          // nothing further is submitted or summarized.
+          if (isAdminUnauthorized(r, url)) {
+            sessionExpired = true;
+            break;
+          }
+          if (!r.ok) {
+            const body = (await r.json().catch(() => null)) as {
+              error?: string;
+              code?: string;
+            } | null;
+            throw new Error(
+              body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+            );
+          }
+          approvedCount++;
+        } catch (e) {
+          failures.push({
+            id: t.id,
+            reason: e instanceof Error ? e.message : "خطأ غير معروف",
+          });
+        }
+        setApproveAllProgress({ done: index + 1, total: pending.length });
+      }
+      if (sessionExpired) return;
+      invalidate();
+      // Summary toast: "X نجحت / Y فشلت" + per-item failure reasons.
+      if (failures.length === 0) {
+        toast({
+          title: `تمت الموافقة على ${approvedCount} طلب`,
+          variant: "success",
         });
-        // 93-C6 / F-07 (A5 S-3): session expired mid-loop — abort the
-        // money loop (the global handler has toasted + redirected);
-        // nothing further is submitted or summarized.
-        if (isAdminUnauthorized(r, url)) {
-          setBulkAction(null);
-          setIsApproveAllBusy(false);
-          setApproveAllProgress(null);
-          setSelectedIds(new Set());
-          return;
-        }
-        if (!r.ok) {
-          const body = (await r.json().catch(() => null)) as {
-            error?: string;
-            code?: string;
-          } | null;
-          throw new Error(
-            body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
-          );
-        }
-        approvedCount++;
-      } catch (e) {
-        failures.push({
-          id: t.id,
-          reason: e instanceof Error ? e.message : "خطأ غير معروف",
+      } else {
+        toast({
+          title:
+            approvedCount > 0
+              ? `تمت الموافقة على ${approvedCount} من ${pending.length} طلب`
+              : "خطأ",
+          description: `نجحت ${approvedCount} · فشلت ${failures.length} — ${failures
+            .map((f) => `#${f.id}: ${f.reason}`)
+            .join("، ")}`,
+          variant: "destructive",
         });
       }
-      setApproveAllProgress({ done: index + 1, total: pending.length });
-    }
-    setBulkAction(null);
-    setIsApproveAllBusy(false);
-    setApproveAllProgress(null);
-    setSelectedIds(new Set());
-    invalidate();
-    // Summary toast: "X نجحت / Y فشلت" + per-item failure reasons.
-    if (failures.length === 0) {
-      toast({
-        title: `تمت الموافقة على ${approvedCount} طلب`,
-        variant: "success",
-      });
-    } else {
-      toast({
-        title:
-          approvedCount > 0 ? `تمت الموافقة على ${approvedCount} من ${pending.length} طلب` : "خطأ",
-        description: `نجحت ${approvedCount} · فشلت ${failures.length} — ${failures
-          .map((f) => `#${f.id}: ${f.reason}`)
-          .join("، ")}`,
-        variant: "destructive",
-      });
+    } finally {
+      // R123 (E3 P3h): the flags reset on EVERY exit path — including
+      // the session-expiry return above (previously duplicated inline).
+      setBulkAction(null);
+      setIsApproveAllBusy(false);
+      setApproveAllProgress(null);
+      setSelectedIds(new Set());
     }
   };
 
@@ -998,7 +1023,17 @@ export default function AdminTopupsPage() {
                 return (
                   <button
                     key={s.value}
-                    onClick={() => setStatusFilter(s.value)}
+                    onClick={() => {
+                      setStatusFilter(s.value);
+                      // R123 (E3 P3a): write-back — the deep-link param
+                      // the initializer reads stays truthful after the
+                      // operator flips the tab (replaceState: flips
+                      // don't spam the history stack).
+                      const url = new URL(window.location.href);
+                      if (s.value) url.searchParams.set("status", s.value);
+                      else url.searchParams.delete("status");
+                      window.history.replaceState(null, "", url.toString());
+                    }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                       active
                         ? "bg-card shadow-sm text-foreground font-bold"
