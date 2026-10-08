@@ -194,8 +194,16 @@ export const ListPublicAuthProvidersResponse = zod.object({
     }),
   ),
   whatsapp_status: zod
-    .enum(["ready", "settling", "unavailable"])
-    .describe("Live OTP channel readiness (round-96/97 settling contract)."),
+    .union([
+      zod.literal("ready"),
+      zod.literal("settling"),
+      zod.literal("unavailable"),
+      zod.literal(null),
+    ])
+    .nullable()
+    .describe(
+      "Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.",
+    ),
 });
 
 /**

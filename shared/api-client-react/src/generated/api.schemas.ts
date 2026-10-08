@@ -1990,10 +1990,12 @@ export type ListPublicAuthProviders200ProvidersItem = {
 };
 
 /**
- * Live OTP channel readiness (round-96/97 settling contract).
+ * Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.
+ * @nullable
  */
 export type ListPublicAuthProviders200WhatsappStatus =
-  (typeof ListPublicAuthProviders200WhatsappStatus)[keyof typeof ListPublicAuthProviders200WhatsappStatus];
+  | (typeof ListPublicAuthProviders200WhatsappStatus)[keyof typeof ListPublicAuthProviders200WhatsappStatus]
+  | null;
 
 export const ListPublicAuthProviders200WhatsappStatus = {
   ready: "ready",
@@ -2003,7 +2005,10 @@ export const ListPublicAuthProviders200WhatsappStatus = {
 
 export type ListPublicAuthProviders200 = {
   providers: ListPublicAuthProviders200ProvidersItem[];
-  /** Live OTP channel readiness (round-96/97 settling contract). */
+  /**
+   * Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.
+   * @nullable
+   */
   whatsapp_status: ListPublicAuthProviders200WhatsappStatus;
 };
 

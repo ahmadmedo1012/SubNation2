@@ -426,6 +426,19 @@ CREATE TABLE admin_sessions (
 );
 CREATE INDEX idx_admin_sessions_admin ON admin_sessions (admin_id);
 
+-- R123-E2 (A2 harness-parity gap): login_attempts was missing from the
+-- harness — the real-app admin login path (checkLockout) 500s on the
+-- missing relation. No suite manages this table ad hoc, so mirroring the
+-- boot DDL (migrate.ts) is the safe parity fix.
+CREATE TABLE login_attempts (
+  id SERIAL PRIMARY KEY,
+  identifier VARCHAR(100) NOT NULL,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  last_attempt TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_login_attempts_identifier ON login_attempts(identifier);
+
 CREATE TYPE ticket_status AS ENUM ('open','in_progress','closed');
 CREATE TABLE support_tickets (
   id serial PRIMARY KEY,
@@ -502,6 +515,7 @@ const TABLES = [
   "sessions",
   "admin_users",
   "admin_sessions",
+  "login_attempts",
   "wallet_ledger",
   "orders",
   "inventory",

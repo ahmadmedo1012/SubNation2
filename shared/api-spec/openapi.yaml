@@ -334,9 +334,12 @@ paths:
                           type: ["string", "null"]
                           description: Numeric Telegram bot id (parsed server-side; the token never leaves the DB).
                   whatsapp_status:
-                    type: string
-                    enum: [ready, settling, unavailable]
-                    description: Live OTP channel readiness (round-96/97 settling contract).
+                    # R123 (contract-suite finding): the handler emits null when the
+                    # WhatsApp OTP channel is not configured — the enum covers the
+                    # CONFIGURED states only. Nullable so the contract matches reality.
+                    type: ["string", "null"]
+                    enum: [ready, settling, unavailable, null]
+                    description: Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.
 
   /auth/telegram:
     post:
