@@ -9,6 +9,17 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
 
 const router: IRouter = Router();
 
+// R125-I6 (A8 B-8): no-store lifted to the router — previously only
+// /metrics set it; /summary, /alerts/recent, /deploys/recent,
+// /sentry/summary and /scheduler (polled every 15 s by the System tab)
+// were cacheable by any intermediary. Same router.use idiom as every
+// other admin file (risk/security/referrals/diagnostics, 98-F3 pattern)
+// — and it now covers the /metrics 500 envelope too.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 const SENTRY_DASHBOARD_URL = process.env.SENTRY_DASHBOARD_URL ?? null;
 const RENDER_DASHBOARD_URL = process.env.RENDER_DASHBOARD_URL ?? null;
 const NEON_DASHBOARD_URL = process.env.NEON_DASHBOARD_URL ?? null;
@@ -160,7 +171,8 @@ router.get("/sentry/summary", requireAdmin, (_req, res) => {
 router.get("/metrics", requireAdmin, async (_req, res) => {
   try {
     const snapshot = await metricsSnapshotCache.get();
-    res.set("Cache-Control", "no-store");
+    // R125-I6 (A8 B-8): header now comes from the router-level no-store
+    // middleware above (covers all six GETs + error envelopes).
     res.json(snapshot);
   } catch (err) {
     res.status(500).json({

@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import type { Request, Response } from "express";
 import { Router } from "express";
 import { logger } from "../../../lib/logger";
+import { ErrorCode, createErrorResponse } from "../../../lib/errors";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import { requireCopilotPhase } from "../../../middlewares/requireCopilotPhase";
@@ -45,15 +46,25 @@ previewsRouter.get("/copilot/previews/:id", requireAdmin, async (req: Request, r
   const id = String(req.params.id ?? "");
   const row = await getOwnedPreview(id, adminReq.adminId);
   if (!row) {
-    res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+    // R125-I6 (A8 B-2): createErrorResponse swap — response bytes are
+    // identical (the helper's `details: undefined` is dropped by JSON
+    // serialization); the ErrorCode member replaces the string literal so
+    // a typo compiles instead of shipping.
+    res
+      .status(404)
+      .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
     return;
   }
   if (row.consumedAt) {
-    res.status(410).json({ error: "المعاينة استُهلكت بالفعل", code: "COPILOT_PREVIEW_CONSUMED" });
+    res
+      .status(410)
+      .json(createErrorResponse("المعاينة استُهلكت بالفعل", ErrorCode.COPILOT_PREVIEW_CONSUMED));
     return;
   }
   if (row.expiresAt < new Date()) {
-    res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+    res
+      .status(410)
+      .json(createErrorResponse("انتهت صلاحية المعاينة", ErrorCode.COPILOT_PREVIEW_EXPIRED));
     return;
   }
   res.json({
@@ -85,7 +96,9 @@ previewsRouter.post(
     const id = String(req.params.id ?? "");
     const row = await getOwnedPreview(id, adminReq.adminId);
     if (!row) {
-      res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+      res
+        .status(404)
+        .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
       return;
     }
     const ok = await cancelPreview(id, adminReq.adminId);
@@ -93,7 +106,9 @@ previewsRouter.post(
       // Already consumed.
       res
         .status(409)
-        .json({ error: "تعذّر إلغاء معاينة مستهلكة", code: "COPILOT_PREVIEW_CONSUMED" });
+        .json(
+          createErrorResponse("تعذّر إلغاء معاينة مستهلكة", ErrorCode.COPILOT_PREVIEW_CONSUMED),
+        );
       return;
     }
     await recordNonExecute({
@@ -127,22 +142,31 @@ previewsRouter.post(
     // claim. Without this we couldn't return the right HTTP code.
     const peek = await getOwnedPreview(id, adminReq.adminId);
     if (!peek) {
-      res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+      res
+        .status(404)
+        .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
       return;
     }
     if (peek.consumedAt) {
-      res.status(409).json({ error: "المعاينة استُهلكت بالفعل", code: "COPILOT_PREVIEW_CONSUMED" });
+      res
+        .status(409)
+        .json(createErrorResponse("المعاينة استُهلكت بالفعل", ErrorCode.COPILOT_PREVIEW_CONSUMED));
       return;
     }
     if (peek.expiresAt < new Date()) {
-      res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+      res
+        .status(410)
+        .json(createErrorResponse("انتهت صلاحية المعاينة", ErrorCode.COPILOT_PREVIEW_EXPIRED));
       return;
     }
     if (peek.riskTier === "no_execute") {
-      // Wallet/refund — handoff URL only.
+      // Wallet/refund — handoff URL only. The extra `handoff` field rides
+      // the envelope via spread (R125-I6: bytes unchanged).
       res.status(403).json({
-        error: "هذا النوع من العمليات لا يُنفَّذ من المساعد.",
-        code: "COPILOT_HANDOFF_REQUIRED",
+        ...createErrorResponse(
+          "هذا النوع من العمليات لا يُنفَّذ من المساعد.",
+          ErrorCode.COPILOT_HANDOFF_REQUIRED,
+        ),
         handoff: {
           target_url: "/admin/topups",
           rationale: "Wallet/refund operations are not executable from the copilot.",
@@ -153,20 +177,23 @@ previewsRouter.post(
     if (peek.riskTier === "high") {
       const flags = await getPhaseFlags();
       if (!flags.phase3_high_risk_enabled) {
-        res.status(403).json({
-          error: "هذه العملية عالية الخطورة وتتطلب تأكيداً ثانياً (لم يُفعَّل بعد).",
-          code: "COPILOT_HIGH_RISK_DISABLED",
-        });
+        res
+          .status(403)
+          .json(
+            createErrorResponse(
+              "هذه العملية عالية الخطورة وتتطلب تأكيداً ثانياً (لم يُفعَّل بعد).",
+              ErrorCode.COPILOT_HIGH_RISK_DISABLED,
+            ),
+          );
         return;
       }
       // Stamp first-confirm + cooldown clock; client must call /double-confirm
       // after 3 seconds elapse on the returned cooldown_starts_at.
       const stamped = await markFirstConfirmHighRisk(id, adminReq.adminId);
       if (!stamped) {
-        res.status(409).json({
-          error: "تعذّر بدء التأكيد الأول",
-          code: "COPILOT_PREVIEW_CONSUMED",
-        });
+        res
+          .status(409)
+          .json(createErrorResponse("تعذّر بدء التأكيد الأول", ErrorCode.COPILOT_PREVIEW_CONSUMED));
         return;
       }
       res.json({
@@ -194,40 +221,57 @@ previewsRouter.post(
         return;
       case "stale":
         res.status(409).json({
-          error: "تم تعديل البيانات بعد إنشاء المعاينة",
-          code: "COPILOT_STALE_RECORD",
+          ...createErrorResponse(
+            "تم تعديل البيانات بعد إنشاء المعاينة",
+            ErrorCode.COPILOT_STALE_RECORD,
+          ),
           stale_ids: outcome.staleIds,
         });
         return;
       case "expired":
-        res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+        res
+          .status(410)
+          .json(createErrorResponse("انتهت صلاحية المعاينة", ErrorCode.COPILOT_PREVIEW_EXPIRED));
         return;
       case "consumed":
-        res.status(409).json({ error: "المعاينة استُهلكت", code: "COPILOT_PREVIEW_CONSUMED" });
+        res
+          .status(409)
+          .json(createErrorResponse("المعاينة استُهلكت", ErrorCode.COPILOT_PREVIEW_CONSUMED));
         return;
       case "wrong_tier":
-        res.status(403).json({
-          error: "هذه العملية تتطلب تأكيداً ثانياً (Phase 4)",
-          code: "COPILOT_HIGH_RISK_DISABLED",
-        });
+        res
+          .status(403)
+          .json(
+            createErrorResponse(
+              "هذه العملية تتطلب تأكيداً ثانياً (Phase 4)",
+              ErrorCode.COPILOT_HIGH_RISK_DISABLED,
+            ),
+          );
         return;
       case "not_found":
-        res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+        res
+          .status(404)
+          .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
         return;
       case "first_confirm_missing":
       case "cooldown_not_elapsed":
         // Not reachable from the low-risk path, but the shared ExecuteOutcome
         // union covers them — surface a generic 409 instead of falling through.
-        res.status(409).json({
-          error: "حالة غير متوقعة من منفّذ التأكيد",
-          code: "COPILOT_UNEXPECTED_STATE",
-        });
+        res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "حالة غير متوقعة من منفّذ التأكيد",
+              ErrorCode.COPILOT_UNEXPECTED_STATE,
+            ),
+          );
         return;
       case "failure":
         logger.error({ outcome, previewId: id }, "copilot execute failure");
-        res
-          .status(500)
-          .json({ error: "فشل التنفيذ", code: "COPILOT_EXECUTE_FAILED", reason: outcome.reason });
+        res.status(500).json({
+          ...createErrorResponse("فشل التنفيذ", ErrorCode.COPILOT_EXECUTE_FAILED),
+          reason: outcome.reason,
+        });
         return;
     }
   },
@@ -247,31 +291,45 @@ previewsRouter.post(
 
     const flags = await getPhaseFlags();
     if (!flags.phase3_high_risk_enabled) {
-      res.status(403).json({
-        error: "تنفيذ العمليات عالية الخطورة غير مُفعَّل.",
-        code: "COPILOT_HIGH_RISK_DISABLED",
-      });
+      res
+        .status(403)
+        .json(
+          createErrorResponse(
+            "تنفيذ العمليات عالية الخطورة غير مُفعَّل.",
+            ErrorCode.COPILOT_HIGH_RISK_DISABLED,
+          ),
+        );
       return;
     }
 
     const peek = await getOwnedPreview(id, adminReq.adminId);
     if (!peek) {
-      res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+      res
+        .status(404)
+        .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
       return;
     }
     if (peek.consumedAt) {
-      res.status(409).json({ error: "المعاينة استُهلكت بالفعل", code: "COPILOT_PREVIEW_CONSUMED" });
+      res
+        .status(409)
+        .json(createErrorResponse("المعاينة استُهلكت بالفعل", ErrorCode.COPILOT_PREVIEW_CONSUMED));
       return;
     }
     if (peek.expiresAt < new Date()) {
-      res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+      res
+        .status(410)
+        .json(createErrorResponse("انتهت صلاحية المعاينة", ErrorCode.COPILOT_PREVIEW_EXPIRED));
       return;
     }
     if (peek.riskTier !== "high") {
-      res.status(409).json({
-        error: "هذه المعاينة لا تتطلب تأكيداً ثانياً.",
-        code: "COPILOT_NOT_HIGH_RISK",
-      });
+      res
+        .status(409)
+        .json(
+          createErrorResponse(
+            "هذه المعاينة لا تتطلب تأكيداً ثانياً.",
+            ErrorCode.COPILOT_NOT_HIGH_RISK,
+          ),
+        );
       return;
     }
 
@@ -289,16 +347,22 @@ previewsRouter.post(
         });
         return;
       case "first_confirm_missing":
-        res.status(409).json({
-          error: "يجب تأكيد المعاينة أولاً قبل التأكيد الثاني.",
-          code: "COPILOT_FIRST_CONFIRM_MISSING",
-        });
+        res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "يجب تأكيد المعاينة أولاً قبل التأكيد الثاني.",
+              ErrorCode.COPILOT_FIRST_CONFIRM_MISSING,
+            ),
+          );
         return;
       case "cooldown_not_elapsed": {
         const remainingMs = outcome.cooldownStartsAt.getTime() + 3000 - Date.now();
         res.status(425).json({
-          error: "لم تنقضِ مدة الانتظار 3 ثوانٍ بعد.",
-          code: "COPILOT_COOLDOWN_NOT_ELAPSED",
+          ...createErrorResponse(
+            "لم تنقضِ مدة الانتظار 3 ثوانٍ بعد.",
+            ErrorCode.COPILOT_COOLDOWN_NOT_ELAPSED,
+          ),
           cooldown_starts_at: outcome.cooldownStartsAt.toISOString(),
           remaining_ms: Math.max(0, remainingMs),
         });
@@ -306,31 +370,44 @@ previewsRouter.post(
       }
       case "stale":
         res.status(409).json({
-          error: "تم تعديل البيانات بعد إنشاء المعاينة",
-          code: "COPILOT_STALE_RECORD",
+          ...createErrorResponse(
+            "تم تعديل البيانات بعد إنشاء المعاينة",
+            ErrorCode.COPILOT_STALE_RECORD,
+          ),
           stale_ids: outcome.staleIds,
         });
         return;
       case "expired":
-        res.status(410).json({ error: "انتهت صلاحية المعاينة", code: "COPILOT_PREVIEW_EXPIRED" });
+        res
+          .status(410)
+          .json(createErrorResponse("انتهت صلاحية المعاينة", ErrorCode.COPILOT_PREVIEW_EXPIRED));
         return;
       case "consumed":
-        res.status(409).json({ error: "المعاينة استُهلكت", code: "COPILOT_PREVIEW_CONSUMED" });
+        res
+          .status(409)
+          .json(createErrorResponse("المعاينة استُهلكت", ErrorCode.COPILOT_PREVIEW_CONSUMED));
         return;
       case "wrong_tier":
-        res.status(409).json({
-          error: "هذه المعاينة لا تتطلب تأكيداً ثانياً.",
-          code: "COPILOT_NOT_HIGH_RISK",
-        });
+        res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "هذه المعاينة لا تتطلب تأكيداً ثانياً.",
+              ErrorCode.COPILOT_NOT_HIGH_RISK,
+            ),
+          );
         return;
       case "not_found":
-        res.status(404).json({ error: "المعاينة غير موجودة", code: "COPILOT_PREVIEW_NOT_FOUND" });
+        res
+          .status(404)
+          .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
         return;
       case "failure":
         logger.error({ outcome, previewId: id }, "copilot high-risk execute failure");
-        res
-          .status(500)
-          .json({ error: "فشل التنفيذ", code: "COPILOT_EXECUTE_FAILED", reason: outcome.reason });
+        res.status(500).json({
+          ...createErrorResponse("فشل التنفيذ", ErrorCode.COPILOT_EXECUTE_FAILED),
+          reason: outcome.reason,
+        });
         return;
     }
   },

@@ -12,7 +12,7 @@ import {
   markAlertRead,
   markAllAlertsRead,
 } from "../../jobs/alertLogger";
-import { intParam, queryString } from "../../lib/http";
+import { intParam, limitParam, pageParam, queryString } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { dispatchTestAlert, type ChannelDeliveryResult } from "../../services/alerting.service";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -31,13 +31,13 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
 function parsePagination(req: Parameters<typeof queryString>[0]) {
-  const rawLimit = Number.parseInt(queryString(req, "limit", String(DEFAULT_LIMIT)), 10);
-  const rawPage = Number.parseInt(queryString(req, "page", "1"), 10);
-  const limit = Math.min(
-    Math.max(Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT, 1),
-    MAX_LIMIT,
-  );
-  const page = Math.max(Number.isFinite(rawPage) ? rawPage : 1, 1);
+  // R125-I6 (A8 B-5): the shared clamps — limitParam() is byte-identical
+  // to the previous Number.isFinite ternary for every input (NaN → def,
+  // clamp [1, max]); pageParam() adds the R122 MAX_PAGE ceiling the
+  // orders/topups/users lists already ride (`?page=100000000` × limit
+  // 200 was an unbounded ~2×10¹⁰ OFFSET here).
+  const limit = limitParam(req, DEFAULT_LIMIT, MAX_LIMIT);
+  const page = pageParam(req);
   return { limit, page, offset: (page - 1) * limit };
 }
 

@@ -1688,9 +1688,23 @@ export async function applyMoneyArithmeticChecksStage(
 //         idx_points_ledger_user     prefix of idx_points_ledger_user_created
 //         idx_topups_status          prefix of idx_topups_status_created
 //         idx_products_active        prefix of idx_products_active_category
-//         idx_products_archived      never a leading predicate (~zero
-//                                    selectivity on a boolean that is
-//                                    almost always false)
+//         idx_products_archived      dropped on SELECTIVITY grounds, not
+//                                    leading-predicate absence — R125-I6
+//                                    (A8 B-10) corrects the original V1-M27
+//                                    rationale here: is_archived IS the
+//                                    sole/leading predicate in 3 live queries
+//                                    (routes/admin/products.ts:117 no-search
+//                                    branch, copilot/tools/read.ts
+//                                    status==="archived" filter, jobs/
+//                                    stockWatcher.ts orphaned-units sweep) and
+//                                    appears as a predicate in ~20 more. The
+//                                    drop stays correct because the column is
+//                                    an almost-always-false boolean with ~zero
+//                                    selectivity — an index on it selects nearly
+//                                    the whole table, so a seq scan is never
+//                                    worse — but the stated reason is
+//                                    selectivity, NOT "never a leading
+//                                    predicate".
 //         idx_product_variants_product  prefix of idx_product_variants_product_active
 //         idx_cart_items_user        prefix of uniq_cart_items_user_product
 //         idx_risk_rules_name        duplicate of the risk_rules_name_unique
@@ -2292,9 +2306,15 @@ export async function runMigrations() {
       CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
       -- R123-E5 (V1-M27): idx_products_active + idx_products_archived no
       -- longer created — idx_products_active_category covers every active
-      -- predicate (strict-prefix redundancy), and is_archived is never a
-      -- leading predicate (~zero selectivity). V1-M27 drops both on
-      -- already-migrated databases (R97-DB-04 precedent).
+      -- predicate (strict-prefix redundancy). is_archived is dropped on
+      -- SELECTIVITY grounds (an almost-always-false boolean indexes to
+      -- ~zero selectivity — a seq scan is never worse), NOT because it is
+      -- never a leading predicate: it IS the leading/sole predicate in 3
+      -- live queries (admin/products.ts no-search branch, copilot
+      -- search_products status="archived", stockWatcher orphan sweep) —
+      -- R125-I6 (A8 B-10) docblock truth-up; the drop itself is unchanged.
+      -- V1-M27 drops both on already-migrated databases (R97-DB-04
+      -- precedent).
       CREATE INDEX IF NOT EXISTS idx_products_active_category ON products(is_active, category);
     `);
 

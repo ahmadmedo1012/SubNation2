@@ -2145,6 +2145,18 @@ export const ListAdminProductsResponseItem = zod.object({
   stock_count: zod.number().int(),
   order_count: zod.number().int(),
   usage_terms: zod.string().nullish(),
+  seo_title: zod
+    .string()
+    .nullish()
+    .describe(
+      "Operator's meta-title override (≤200 chars). Null = no\noverride (the product page falls back to the name-based\ndefault). Nullable for products created before this field\nexisted.\n",
+    ),
+  seo_description: zod
+    .string()
+    .nullish()
+    .describe(
+      "Operator's meta-description override (≤320 chars). Null = no\noverride (falls back to the description-based default).\n",
+    ),
   created_at: zod.string(),
   variants: zod
     .array(
@@ -2233,6 +2245,18 @@ export const CreateProductResponse = zod.object({
   stock_count: zod.number().int(),
   order_count: zod.number().int(),
   usage_terms: zod.string().nullish(),
+  seo_title: zod
+    .string()
+    .nullish()
+    .describe(
+      "Operator's meta-title override (≤200 chars). Null = no\noverride (the product page falls back to the name-based\ndefault). Nullable for products created before this field\nexisted.\n",
+    ),
+  seo_description: zod
+    .string()
+    .nullish()
+    .describe(
+      "Operator's meta-description override (≤320 chars). Null = no\noverride (falls back to the description-based default).\n",
+    ),
   created_at: zod.string(),
   variants: zod
     .array(
@@ -2324,6 +2348,18 @@ export const UpdateProductResponse = zod.object({
   stock_count: zod.number().int(),
   order_count: zod.number().int(),
   usage_terms: zod.string().nullish(),
+  seo_title: zod
+    .string()
+    .nullish()
+    .describe(
+      "Operator's meta-title override (≤200 chars). Null = no\noverride (the product page falls back to the name-based\ndefault). Nullable for products created before this field\nexisted.\n",
+    ),
+  seo_description: zod
+    .string()
+    .nullish()
+    .describe(
+      "Operator's meta-description override (≤320 chars). Null = no\noverride (falls back to the description-based default).\n",
+    ),
   created_at: zod.string(),
   variants: zod
     .array(

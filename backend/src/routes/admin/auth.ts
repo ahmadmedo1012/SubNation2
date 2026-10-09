@@ -795,13 +795,16 @@ router.patch("/profile", requireAdmin, async (req, res) => {
  *   - TOTP currently disabled (fresh enrollment):
  *       `current_password` optional — if PRESENT it is verified (a
  *       wrong password is rejected); if absent the enrollment proceeds.
- *       The current admin UI (settings.tsx, security tab) sends no
- *       body, so requiring it would break the operator's only 2FA
- *       enablement flow — the disable case above is the actual S5
- *       persistence vector (enrollment cannot lock the real admin out
- *       of anything an attacker gains). Frontend follow-up: send
- *       `current_password` here too, then tighten this branch to
- *       require it (see worklog 93-C2).
+ *       The admin UI's fresh-enrollment CTA sends no body (enrollment
+ *       cannot lock the real admin out of anything an attacker gains,
+ *       so the S5 persistence vector is the disable case above, not
+ *       this one). Since R125-I5 the UI's RE-ENROLL path knows the
+ *       enrollment state and sends `current_password` — it always
+ *       lands in the enabled branch above. Keeping the optional branch
+ *       here preserves the API's existing contract (the no-body
+ *       enrollment test pins it); requiring it would be a breaking
+ *       change for zero additional security (fresh enrollment gains
+ *       the attacker nothing the session cookie doesn't already give).
  */
 router.post("/2fa/setup", requireAdmin, async (req, res) => {
   const adminId = (req as AdminAuthenticatedRequest).adminId;
@@ -858,8 +861,10 @@ router.post("/2fa/setup", requireAdmin, async (req, res) => {
     }
     await resetAttempts(lockoutKey);
   } else if (typeof current_password === "string" && current_password) {
-    // Fresh enrollment: optional today (the admin UI sends no body), but
-    // a caller that DOES present a password gets it verified — never
+    // Fresh enrollment: optional (the admin UI's fresh-enrollment CTA
+    // sends no body — since R125-I5 its re-enroll path DOES send the
+    // password and always lands in the wasEnabled branch above), but a
+    // caller that DOES present a password gets it verified — never
     // accept a silently-wrong credential.
     const { valid } = await verifyPassword(current_password, admin.passwordHash);
     if (!valid) {

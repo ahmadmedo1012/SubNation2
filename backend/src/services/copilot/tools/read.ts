@@ -67,6 +67,13 @@ export const searchProducts: CopilotTool = {
       );
     }
     if (category) conditions.push(eq(productsTable.category, category));
+    // R125-I6 (A8 B-10) site note: this is one of the queries where
+    // is_archived IS the sole predicate (status="archived", no other
+    // filter) — it seq-scans BY DESIGN and correctly so: the column is an
+    // almost-always-false boolean (~zero selectivity; V1-M27 dropped
+    // idx_products_archived on those grounds, not on predicate absence —
+    // see the corrected docblock in migrate.ts). The archived catalog is
+    // tiny; do NOT "optimize" this into an index re-create.
     if (status === "archived") conditions.push(eq(productsTable.isArchived, true));
     else if (status === "draft")
       conditions.push(and(eq(productsTable.isActive, false), eq(productsTable.isArchived, false)));
@@ -598,8 +605,7 @@ export const queryEnrichmentDraftsTool: CopilotTool = {
   },
   handler: async (input) => {
     const state =
-      typeof input.state === "string" &&
-      ["drafted", "published", "rejected"].includes(input.state)
+      typeof input.state === "string" && ["drafted", "published", "rejected"].includes(input.state)
         ? (input.state as DraftState)
         : "drafted";
     const limit = Math.max(1, Math.min(50, Number(input.limit ?? 10)));

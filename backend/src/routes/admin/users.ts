@@ -2,6 +2,7 @@ import { db, ordersTable, usersTable } from "@workspace/db";
 import { and, count, desc, eq, inArray, like } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
+import { logger } from "../../lib/logger";
 import { escapeLikeTerm, intParam, pageParam, queryString } from "../../lib/http";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -403,6 +404,19 @@ router.patch(
           }
         : {}),
     });
+
+    // R125-I6 (I4 cross-lane handoff): mirror the orders-bulk emit — a
+    // wallet/loyalty edit moves the dashboard's total_wallet_balance
+    // stat; other open admin tabs refresh on event instead of waiting
+    // out their staleTime. Same room/payload shape as admin/orders.ts;
+    // fire-and-forget, never blocks the response (and fires only on the
+    // paths that reached a real mutation — the no-change 400 above
+    // returns before this line).
+    import("../../lib/socket")
+      .then(({ emitToAdmins }) => {
+        emitToAdmins("admin-stats-update", { type: "user-update" });
+      })
+      .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
 
     return res.json({
       id: updated.id,

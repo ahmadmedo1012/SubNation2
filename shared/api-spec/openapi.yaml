@@ -5452,6 +5452,21 @@ components:
           type: integer
         usage_terms:
           type: ["string", "null"]
+        # R125-I3 (A4 B-2 / A2-3): the operator's SEO overrides now ride
+        # the admin list projection — the editor seeds its fields from the
+        # row's LIVE values instead of write-only blanks.
+        seo_title:
+          type: ["string", "null"]
+          description: |
+            Operator's meta-title override (≤200 chars). Null = no
+            override (the product page falls back to the name-based
+            default). Nullable for products created before this field
+            existed.
+        seo_description:
+          type: ["string", "null"]
+          description: |
+            Operator's meta-description override (≤320 chars). Null = no
+            override (falls back to the description-based default).
         created_at:
           type: string
         variants:

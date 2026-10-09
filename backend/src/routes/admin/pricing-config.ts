@@ -162,36 +162,46 @@ router.post("/pricing/recompute", async (req, res) => {
     before: number;
     after: number;
   }> = [];
-  for (const c of changes) {
-    const [updated] = await db
-      .update(productVariantsTable)
-      .set({ priceLyd: String(c.computed) })
-      .where(eq(productVariantsTable.id, c.id))
-      .returning({ id: productVariantsTable.id });
-    if (updated) {
-      variantsUpdated += 1;
-      appliedChanges.push({ variant_id: c.id, before: c.current, after: c.computed });
+  // R125-I6 (A8 B-3): the per-variant UPDATE loop + the products.price
+  // refresh now ride ONE db.transaction. Previously a mid-loop failure
+  // (connection drop, constraint) left k of N variants at the NEW prices
+  // while the rest stayed old — the storefront serves MIN(active variant
+  // price) from that mixed set until a retry self-healed via the drift
+  // filter (shopper-visible intermediate state). Per-row logic is
+  // byte-preserved inside the tx; the sequential round-trip shape is
+  // deliberately kept (a set-based VALUES rewrite is a separate change).
+  // The audit row + bumpCatalogCache stay POST-commit — neither may land
+  // (or advertise a fresh generation) for a rolled-back recompute.
+  const productsUpdatedCount = await db.transaction(async (tx) => {
+    for (const c of changes) {
+      const [updated] = await tx
+        .update(productVariantsTable)
+        .set({ priceLyd: String(c.computed) })
+        .where(eq(productVariantsTable.id, c.id))
+        .returning({ id: productVariantsTable.id });
+      if (updated) {
+        variantsUpdated += 1;
+        appliedChanges.push({ variant_id: c.id, before: c.current, after: c.computed });
+      }
     }
-  }
 
-  // Refresh every product's display price (= MIN active variant price) in
-  // ONE statement; products without variants keep their stored price.
-  const productsUpdated = await db.execute(sql`
-    UPDATE products p
-    SET price = sub.min_price
-    FROM (
-      SELECT product_id, MIN(price_lyd) AS min_price
-      FROM product_variants
-      WHERE is_active = TRUE
-      GROUP BY product_id
-    ) AS sub
-    WHERE p.id = sub.product_id
-      AND p.price <> sub.min_price
-    RETURNING p.id
-  `);
-  const productsUpdatedCount = Array.isArray(productsUpdated.rows)
-    ? productsUpdated.rows.length
-    : 0;
+    // Refresh every product's display price (= MIN active variant price) in
+    // ONE statement; products without variants keep their stored price.
+    const productsUpdated = await tx.execute(sql`
+      UPDATE products p
+      SET price = sub.min_price
+      FROM (
+        SELECT product_id, MIN(price_lyd) AS min_price
+        FROM product_variants
+        WHERE is_active = TRUE
+        GROUP BY product_id
+      ) AS sub
+      WHERE p.id = sub.product_id
+        AND p.price <> sub.min_price
+      RETURNING p.id
+    `);
+    return Array.isArray(productsUpdated.rows) ? productsUpdated.rows.length : 0;
+  });
 
   await writeAuditLog(req, "pricing.recompute", "pricing_config", null, {
     usd_to_lyd: config.usdToLyd,

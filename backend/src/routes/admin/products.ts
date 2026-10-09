@@ -103,6 +103,14 @@ router.get("/products", requireAdmin, async (req, res) => {
       isActive: productsTable.isActive,
       isArchived: productsTable.isArchived,
       usageTerms: productsTable.usageTerms,
+      // R125-I3 (A4 B-2 / A2-3): the operator's SEO overrides join the
+      // list projection — the editor was write-only (startEdit seeded ""
+      // because the payload carried no current values), so an operator
+      // editing an already-optimized product saw a misleading blank SEO
+      // editor and could null an override they were never shown. The
+      // seoTouched omit-guard stays as belt-and-suspenders.
+      seoTitle: productsTable.seoTitle,
+      seoDescription: productsTable.seoDescription,
       createdAt: productsTable.createdAt,
     })
     .from(productsTable)
@@ -188,6 +196,11 @@ router.get("/products", requireAdmin, async (req, res) => {
       stock_count: stockMap.get(p.id) ?? 0,
       order_count: orderMap.get(p.id) ?? 0,
       usage_terms: p.usageTerms,
+      // R125-I3 (A4 B-2 / A2-3): round-trip the overrides so startEdit
+      // seeds the editor with the LIVE values (null = no override — the
+      // client maps null → "" for its string form fields).
+      seo_title: p.seoTitle ?? null,
+      seo_description: p.seoDescription ?? null,
       created_at: p.createdAt?.toISOString(),
       variants: variantsByProduct.get(p.id) ?? [],
     })),

@@ -1238,6 +1238,20 @@ export interface AdminProduct {
   order_count: number;
   /** @nullable */
   usage_terms?: string | null;
+  /**
+   * Operator's meta-title override (≤200 chars). Null = no
+   * override (the product page falls back to the name-based
+   * default). Nullable for products created before this field
+   * existed.
+   * @nullable
+   */
+  seo_title?: string | null;
+  /**
+   * Operator's meta-description override (≤320 chars). Null = no
+   * override (falls back to the description-based default).
+   * @nullable
+   */
+  seo_description?: string | null;
   created_at: string;
   /** ADMIN-ONLY variant rows (incl. cost_price + sku). Never serialize to public APIs. */
   variants: AdminProductVariant[];

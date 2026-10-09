@@ -2,7 +2,8 @@ import { db, supportTicketsTable, ticketRepliesTable, usersTable } from "@worksp
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
-import { intParam, queryString } from "../../lib/http";
+import { intParam, pageParam, queryString } from "../../lib/http";
+import { logger } from "../../lib/logger";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -47,9 +48,7 @@ router.get("/tickets", requireAdmin, async (req, res) => {
       );
   }
   const conditions =
-    statusParse.data !== undefined
-      ? [eq(supportTicketsTable.status, statusParse.data)]
-      : [];
+    statusParse.data !== undefined ? [eq(supportTicketsTable.status, statusParse.data)] : [];
 
   // A2 (round-94): ?page=&limit= — same clamp pattern as the admin orders
   // list. Previously fixed at the newest 100 rows; older tickets were
@@ -58,7 +57,14 @@ router.get("/tickets", requireAdmin, async (req, res) => {
     Math.max(Number.parseInt(queryString(req, "limit", "100"), 10) || 100, 1),
     200,
   );
-  const page = Math.max(Number.parseInt(queryString(req, "page", "1"), 10) || 1, 1);
+  // R125-I6 (A8 B-5): shared pageParam() — same floor idiom the inline
+  // clamp implemented, plus the R122 MAX_PAGE=10 000 ceiling the orders/
+  // topups/users lists already ride (`?page=100000000` × limit 200 was an
+  // unbounded ~2×10¹⁰ OFFSET here). The limit clamp stays inline: its
+  // `|| 100` fallback maps ?limit=0 to 100 where limitParam() would map
+  // it to 1 — not byte-identical, so per http.ts's adoption rule it is
+  // deliberately NOT swapped.
+  const page = pageParam(req);
 
   const tickets = await db
     .select({
@@ -111,10 +117,7 @@ router.get("/tickets", requireAdmin, async (req, res) => {
     WHERE ticket_id IN (${sql.join(ticketIds, sql`, `)})
     ORDER BY ticket_id, created_at DESC
   `);
-  const lastReplyMap = new Map<
-    number,
-    { authorType: string; createdAt: Date }
-  >();
+  const lastReplyMap = new Map<number, { authorType: string; createdAt: Date }>();
   for (const r of latestReplies.rows ?? []) {
     lastReplyMap.set(r.ticket_id, {
       authorType: r.author_type,
@@ -151,7 +154,8 @@ router.get("/tickets", requireAdmin, async (req, res) => {
 
 router.get("/tickets/:id", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const [row] = await db
     .select({
@@ -169,7 +173,8 @@ router.get("/tickets/:id", requireAdmin, async (req, res) => {
     .where(eq(supportTicketsTable.id, id))
     .limit(1);
 
-  if (!row) return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
+  if (!row)
+    return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
 
   const replies = await db
     .select()
@@ -202,13 +207,16 @@ router.get("/tickets/:id", requireAdmin, async (req, res) => {
 
 router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   // A5-04: schema-validated body — non-string message previously hit
   // `message?.trim()` TypeError → 500.
   const parse = AdminReplyBody.safeParse(req.body ?? {});
   if (!parse.success)
-    return res.status(400).json(createErrorResponse("الرسالة مطلوبة (نص حتى 4000 حرف)", ErrorCode.INVALID_DATA));
+    return res
+      .status(400)
+      .json(createErrorResponse("الرسالة مطلوبة (نص حتى 4000 حرف)", ErrorCode.INVALID_DATA));
   const { message } = parse.data;
 
   const [ticket] = await db
@@ -216,7 +224,8 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
     .from(supportTicketsTable)
     .where(eq(supportTicketsTable.id, id))
     .limit(1);
-  if (!ticket) return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
+  if (!ticket)
+    return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
 
   const [reply] = await db
     .insert(ticketRepliesTable)
@@ -240,6 +249,17 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
     `/support`,
   );
 
+  // R125-I6 (I4 cross-lane handoff): mirror the orders-bulk emit — an
+  // admin reply flips the ticket to in_progress (moves the dashboard's
+  // open_tickets stat); other open admin tabs refresh on event instead
+  // of waiting out their staleTime. Same room/payload shape as
+  // admin/orders.ts; fire-and-forget, never blocks the response.
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", { type: "ticket-reply" });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+
   return res.status(201).json({
     id: reply.id,
     author_type: reply.authorType,
@@ -250,7 +270,8 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
 
 router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
   const id = intParam(req, "id");
-  if (id === null) return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
+  if (id === null)
+    return res.status(400).json(createErrorResponse("معرف غير صالح", ErrorCode.INVALID_DATA));
 
   const { status } = req.body ?? {};
   if (!["open", "in_progress", "closed"].includes(status))
@@ -265,6 +286,18 @@ router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
     .returning({ id: supportTicketsTable.id });
   if (updated.length === 0)
     return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
+
+  // R125-I6 (I4 cross-lane handoff): mirror the orders-bulk emit — a
+  // status flip (open/in_progress ↔ closed) moves the dashboard's
+  // open_tickets stat; other open admin tabs refresh on event. Same
+  // room/payload shape as admin/orders.ts (status rides the payload,
+  // exactly like order-bulk-update).
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", { type: "ticket-status-update", status });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+
   return res.json({ success: true });
 });
 

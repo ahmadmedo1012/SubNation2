@@ -13,6 +13,7 @@ import {
   totalDiscountCapMessage,
 } from "../lib/pricing";
 import { getPricingConfig } from "../lib/pricing-config";
+import { roundLyd } from "../lib/money";
 import { requireUser } from "../middlewares/requireUser";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { requirePermission } from "../lib/permissions";
@@ -170,7 +171,13 @@ router.post("/validate", requireUser, async (req, res) => {
     discountAmount = computeCouponDiscount("fixed", toNumber(coupon.value), order_amount);
   }
 
-  const finalAmount = +(order_amount - discountAmount).toFixed(2);
+  // R125-I6 (A8 B-9): roundLyd is the pinned LYD rounding idiom
+  // (lib/money.ts — Postgres numeric(10,2) semantics; wallet/pricing/
+  // topup/pricing-config all use it). `+x.toFixed(2)` rounds the binary
+  // float, so the half-cent dust zone (10.555 stored as 10.55499…) sat
+  // one cent off the numeric(10,2) the checkout path rounds to —
+  // identical for every finite value outside that 1e-9 zone.
+  const finalAmount = roundLyd(order_amount - discountAmount);
 
   // r4 red-team F-3: legacy 100% coupons (created before the create-side
   // bound) and over-discount fixed coupons (min(value, basePrice) ==
@@ -252,8 +259,10 @@ router.get("/admin", requireAdmin, requirePermission("finance"), async (_req, re
   // AUD103-4-F13 — admin/orders, admin/topups, admin/users…) — the
   // coupon list is a finance surface behind requireAdmin + finance
   // scope; an intermediary must never serve it from cache. Inline
-  // (auth.ts / admin/observability.ts idiom) because this router also
-  // mounts the public /validate route, so a router.use would reach it.
+  // (the auth.ts idiom) because this router also mounts the public
+  // /validate route, so a router.use would reach it — unlike
+  // admin/observability.ts, whose R125-I6 lift to router.use is safe
+  // exactly because it has no public routes.
   res.setHeader("Cache-Control", "no-store");
   // 2026-09-20: operator intent — the panel view triggers the expiry
   // sweep (was an hourly interval timer) so the list it renders is

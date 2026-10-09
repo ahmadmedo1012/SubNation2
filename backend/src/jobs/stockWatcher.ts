@@ -134,6 +134,12 @@ export const runStockSweep = checkLowStock;
  */
 export async function reportOrphanInventory(): Promise<void> {
   try {
+    // R125-I6 (A8 B-10) site note: products.is_archived IS a leading
+    // predicate here (archived-products sweep, joined to is_sold=false) —
+    // one of the three live queries the corrected V1-M27 docblock in
+    // migrate.ts cites. No index wanted: the boolean is almost-always
+    // false (~zero selectivity), the archived set is tiny, and the sweep
+    // runs as a boot one-shot — a seq scan is the right shape.
     const rows = await db
       .select({
         productId: productsTable.id,

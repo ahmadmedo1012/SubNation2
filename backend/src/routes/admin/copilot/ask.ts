@@ -24,7 +24,7 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 import { Counter } from "prom-client";
 import { logger } from "../../../lib/logger";
-import { ErrorCode } from "../../../lib/errors";
+import { ErrorCode, createErrorResponse } from "../../../lib/errors";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";
 import { scanForSecrets } from "../../../lib/copilot/secret-scan";
 import { getRegistry } from "../../../lib/metrics";
@@ -132,20 +132,25 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   if (!intentText || intentText.length > 4000) {
     // AUD103-4-F16 (r103): Arabic like every other message (the envelope
     // language contract) — this surfaces in the admin copilot toasts.
-    res.status(400).json({
-      error: "النص مطلوب (بين حرف و4000 حرف)",
-      code: ErrorCode.COPILOT_INVALID_INPUT,
-    });
+    // R125-I6 (A8 B-2): createErrorResponse swap — bytes identical
+    // (`details: undefined` is dropped by JSON serialization).
+    res
+      .status(400)
+      .json(createErrorResponse("النص مطلوب (بين حرف و4000 حرف)", ErrorCode.COPILOT_INVALID_INPUT));
     return;
   }
   const history = sanitizeHistory(body.history);
   const wantsStream = body.stream === true;
 
   if (!copilotLlmAvailable()) {
-    res.status(503).json({
-      error: "خدمة المساعد غير متاحة (مفتاح المزوّد غير مضبوط)",
-      code: ErrorCode.COPILOT_LLM_UNAVAILABLE,
-    });
+    res
+      .status(503)
+      .json(
+        createErrorResponse(
+          "خدمة المساعد غير متاحة (مفتاح المزوّد غير مضبوط)",
+          ErrorCode.COPILOT_LLM_UNAVAILABLE,
+        ),
+      );
     return;
   }
 
@@ -167,10 +172,14 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   ];
 
   if (tools.length === 0) {
-    res.status(403).json({
-      error: "ليس لديك أي صلاحية تخوّلك استخدام المساعد",
-      code: ErrorCode.COPILOT_OUT_OF_SCOPE,
-    });
+    res
+      .status(403)
+      .json(
+        createErrorResponse(
+          "ليس لديك أي صلاحية تخوّلك استخدام المساعد",
+          ErrorCode.COPILOT_OUT_OF_SCOPE,
+        ),
+      );
     return;
   }
 
@@ -302,10 +311,11 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       res.end();
       return;
     }
-    res.status(502).json({
-      error: "حدث خطأ أثناء التواصل مع نموذج اللغة",
-      code: ErrorCode.COPILOT_LLM_ERROR,
-    });
+    res
+      .status(502)
+      .json(
+        createErrorResponse("حدث خطأ أثناء التواصل مع نموذج اللغة", ErrorCode.COPILOT_LLM_ERROR),
+      );
     return;
   }
 
@@ -337,10 +347,14 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       res.end();
       return;
     }
-    res.status(502).json({
-      error: "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
-      code: ErrorCode.COPILOT_SECRET_LEAK,
-    });
+    res
+      .status(502)
+      .json(
+        createErrorResponse(
+          "تم إيقاف الرد لأن النموذج حاول إرجاع معلومات حساسة. سُجِّل الحدث للمراجعة.",
+          ErrorCode.COPILOT_SECRET_LEAK,
+        ),
+      );
     return;
   }
 

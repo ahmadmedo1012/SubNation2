@@ -1,5 +1,6 @@
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { Router, type IRouter, type Request, type Response } from "express";
+import { z } from "zod";
 import { getRedisClient } from "../../lib/redis-client";
 // R108 (FH-A4 F-1): neutral release identity — GIT_SHA (Coolify/CI/Docker) with
 // RENDER_GIT_COMMIT as the LEGACY fallback. Direct env reads here showed
@@ -321,6 +322,26 @@ function sessionIdParam(req: Request): string {
   return typeof value === "string" ? value : "";
 }
 
+// R125-I6 (A8 B-4): the last raw `req.body` typeof-guards in the routes
+// tree (the pattern risk.ts:81 documents as eliminated). Behavior is
+// byte-preserved for EVERY input: the schema-level `.catch({})` swallows
+// non-object bodies (a JSON array used to read as `body.name ===
+// undefined` → "") and the field-level `.catch(undefined)` swallows
+// wrong-typed fields — both collapse to "" exactly like the old
+// ternaries, NOT a 400, so no session/gateway response changes.
+// Display/observability surface only — no WhatsApp/OpenWA session,
+// pairing or restart logic touched.
+const SessionNameBody = z
+  .object({
+    name: z.string().optional().catch(undefined),
+  })
+  .catch({});
+const PairCodeBody = z
+  .object({
+    phone: z.string().optional().catch(undefined),
+  })
+  .catch({});
+
 router.get("/whatsapp/sessions", requireAdmin, async (_req, res) => {
   try {
     return res.json({ sessions: await listWhatsAppSessions() });
@@ -331,8 +352,9 @@ router.get("/whatsapp/sessions", requireAdmin, async (_req, res) => {
 
 router.post("/whatsapp/sessions", requireAdmin, async (req, res) => {
   try {
-    const name = typeof req.body?.name === "string" ? req.body.name : "";
-    const session = await createWhatsAppSession(name);
+    // R125-I6 (A8 B-4): zod perimeter (behavior-preserving — see above).
+    const { name } = SessionNameBody.parse(req.body ?? {});
+    const session = await createWhatsAppSession(name ?? "");
     void writeAuditLog(req, "whatsapp.session_create", "whatsapp_session", null, {
       sessionId: session.id,
       name: session.name,
@@ -357,8 +379,9 @@ router.post("/whatsapp/sessions/:id/start", requireAdmin, async (req, res) => {
 
 router.post("/whatsapp/sessions/:id/pair-code", requireAdmin, async (req, res) => {
   try {
-    const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
-    const result = await requestWhatsAppPairCode(sessionIdParam(req), phone);
+    // R125-I6 (A8 B-4): zod perimeter (behavior-preserving — see above).
+    const { phone } = PairCodeBody.parse(req.body ?? {});
+    const result = await requestWhatsAppPairCode(sessionIdParam(req), phone ?? "");
     void writeAuditLog(req, "whatsapp.session_pair_code", "whatsapp_session", null, {
       sessionId: result.session.id,
     });

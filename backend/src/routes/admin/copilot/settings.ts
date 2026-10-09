@@ -12,6 +12,7 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { logger } from "../../../lib/logger";
+import { ErrorCode, createErrorResponse } from "../../../lib/errors";
 import { hasScope } from "../../../middlewares/requireCopilotPermission";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../../middlewares/requireAdmin";
 import {
@@ -43,7 +44,10 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
   if (req.query.debug === "1") {
     const adminReq = req as AdminAuthenticatedRequest;
     if (!hasScope(adminReq.adminPermissions ?? [], ["admins", "settings"])) {
-      res.status(403).json({ error: "غير مصرح", code: "FORBIDDEN" });
+      // R125-I6 (A8 B-2): createErrorResponse swap — bytes identical
+      // (`details: undefined` is dropped by JSON serialization); the
+      // ErrorCode member replaces the string literal so a typo compiles.
+      res.status(403).json(createErrorResponse("غير مصرح", ErrorCode.FORBIDDEN));
       return;
     }
     clearPhaseFlagsCache();
@@ -90,6 +94,10 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
       });
       return;
     } catch (err) {
+      // A8 B-2 documented exception: the debug-only 500 keeps its
+      // {error, message} shape — it is a diagnostics payload (the raw
+      // failure reason IS the point), not the standard envelope; forcing
+      // it through createErrorResponse would change the response bytes.
       res.status(500).json({
         error: "debug failed",
         message: err instanceof Error ? err.message : String(err),
@@ -105,7 +113,7 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
 settingsRouter.patch("/copilot/settings", requireAdmin, async (req: Request, res: Response) => {
   const adminReq = req as AdminAuthenticatedRequest;
   if (!hasScope(adminReq.adminPermissions ?? [], ["admins", "settings"])) {
-    res.status(403).json({ error: "غير مصرح", code: "FORBIDDEN" });
+    res.status(403).json(createErrorResponse("غير مصرح", ErrorCode.FORBIDDEN));
     return;
   }
   const body = (req.body ?? {}) as Partial<CopilotPhaseFlags>;
@@ -126,7 +134,7 @@ settingsRouter.patch("/copilot/settings", requireAdmin, async (req: Request, res
     await setPhaseFlags(next);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "invalid flags";
-    res.status(400).json({ error: msg, code: "COPILOT_INVALID_FLAGS" });
+    res.status(400).json(createErrorResponse(msg, ErrorCode.COPILOT_INVALID_FLAGS));
     return;
   }
 

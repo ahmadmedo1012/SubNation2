@@ -31,6 +31,7 @@ import { and, desc, eq, gte, inArray, lt, lte, or, sql, type SQL } from "drizzle
 import { Router } from "express";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit";
+import { logger } from "../../lib/logger";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { parseDsl } from "../../lib/risk-dsl";
 import { recordLabel } from "../../lib/risk-metrics";
@@ -346,6 +347,17 @@ router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
     notes_len: notes?.length ?? 0,
   });
 
+  // R125-I6 (I4 cross-lane handoff): mirror the orders-bulk emit — a
+  // label changes the event's review state on every open risk queue;
+  // other open admin tabs refresh on event instead of waiting out their
+  // staleTime. Same room/payload shape as admin/orders.ts; fire-and-
+  // forget, never blocks the response.
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", { type: "risk-label" });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+
   res.json({ id: row?.id, success: true });
 });
 
@@ -417,6 +429,15 @@ router.post("/risk/events/bulk-label", requireAdmin, async (req, res) => {
     targetId: null,
     metadata: JSON.stringify({ label, count: valid.length, ids: valid }),
   });
+
+  // R125-I6 (I4 cross-lane handoff): mirror the orders-bulk emit — the
+  // bulk variant carries the applied count (same extra-field style as
+  // order-bulk-update's succeeded/failed counts).
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", { type: "risk-bulk-label", applied: valid.length });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
 
   res.json({
     applied: valid.length,

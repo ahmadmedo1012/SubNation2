@@ -5,6 +5,7 @@ import {
   adminUsersTable,
   auditLogsTable,
   db,
+  execTestSql,
   initTestDb,
   productVariantsTable,
   productsTable,
@@ -135,7 +136,10 @@ async function seedCatalog(): Promise<{
   return { productA, productB };
 }
 
-async function recompute(url: string, dryRun = false): Promise<{
+async function recompute(
+  url: string,
+  dryRun = false,
+): Promise<{
   status: number;
   body: Record<string, unknown>;
 }> {
@@ -291,6 +295,148 @@ describe("POST /api/admin/pricing/recompute — bulk price rewrite (R118-A5 #1)"
       const res = await fetch(`${url}/api/admin/pricing/recompute`, { method: "POST" });
       expect(res.status).toBe(401);
     } finally {
+      close();
+    }
+  });
+});
+
+// ── R125-I6 (A8 B-3): transactional recompute — mid-failure rollback pins ────
+//
+// The per-variant UPDATE loop + the products.price refresh now ride ONE
+// db.transaction. Both pins inject a REAL mid-transaction failure at the
+// Postgres level (a trigger that raises) — no mocks, so the assertion
+// covers the actual BEGIN/ROLLBACK semantics of the route:
+//
+//   1. the 2nd variant UPDATE raises  → variant #1's already-applied
+//      write must roll back with it (previously: mixed prices persisted,
+//      no audit, no cache bump — shopper-visible MIN() drift);
+//   2. the products.price refresh raises AFTER the whole loop finished →
+//      every variant write must roll back too.
+//
+// Trigger + counter table live only in this file's pglite instance; both
+// are torn down after each scenario (the counter is reset, the trigger
+// dropped) so the earlier scenarios stay independent.
+describe("POST /api/admin/pricing/recompute — atomicity (R125-I6, A8 B-3)", () => {
+  const INJECT_TABLE = `
+    CREATE TABLE IF NOT EXISTS recompute_inject (n integer NOT NULL DEFAULT 0);
+    TRUNCATE recompute_inject;
+    INSERT INTO recompute_inject DEFAULT VALUES;
+  `;
+
+  async function armVariantTrigger(): Promise<void> {
+    // execTestSql, not db.execute — the harness's prepared-query path
+    // rejects multi-statement strings (the round-94 C5 rule).
+    await execTestSql(`
+      CREATE OR REPLACE FUNCTION recompute_fail_on_second() RETURNS trigger AS $$
+      BEGIN
+        UPDATE recompute_inject SET n = n + 1;
+        IF (SELECT n FROM recompute_inject LIMIT 1) >= 2 THEN
+          RAISE EXCEPTION 'injected mid-recompute failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS trg_recompute_inject ON product_variants;
+      CREATE TRIGGER trg_recompute_inject BEFORE UPDATE ON product_variants
+        FOR EACH ROW EXECUTE FUNCTION recompute_fail_on_second();
+    `);
+  }
+
+  async function armProductTrigger(): Promise<void> {
+    await execTestSql(`
+      CREATE OR REPLACE FUNCTION recompute_fail_on_product_price() RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'injected products-price failure';
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS trg_recompute_products ON products;
+      CREATE TRIGGER trg_recompute_products BEFORE UPDATE ON products
+        FOR EACH ROW EXECUTE FUNCTION recompute_fail_on_product_price();
+    `);
+  }
+
+  async function disarmTriggers(): Promise<void> {
+    await execTestSql(`
+      DROP TRIGGER IF EXISTS trg_recompute_inject ON product_variants;
+      DROP TRIGGER IF EXISTS trg_recompute_products ON products;
+    `);
+  }
+
+  /** Raw fetch — the injected failures surface as the express default
+   * error handler's HTML 500 (no JSON envelope), which the shared
+   * `recompute` helper would choke parsing. Status + body text only. */
+  async function recomputeRaw(url: string): Promise<{ status: number; text: string }> {
+    const res = await fetch(`${url}/api/admin/pricing/recompute`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    return { status: res.status, text: await res.text() };
+  }
+
+  it("a mid-loop variant failure rolls back EVERY variant write (no mixed prices)", async () => {
+    // Two drifted variants (stored 250/500 vs engine 200/1000) on two
+    // products — whichever order the loop visits them, the second UPDATE
+    // raises and the first must not survive.
+    const { productA } = await seedCatalog();
+    const second = await seedProductPair(
+      "Second Drifted Product",
+      { cost: "50.00", stored: "500.00" },
+      { cost: "60.00", stored: "600.00" },
+      "500.00",
+    );
+    const { url, close } = await listen(buildApp());
+    try {
+      await execTestSql(INJECT_TABLE);
+      await armVariantTrigger();
+
+      const res = await recomputeRaw(url);
+      expect(res.status).toBe(500);
+      // (pglite's drizzle layer wraps the trigger's RAISE in a "Failed
+      // query" message, so only the status + DB state are asserted.)
+
+      // BOTH drifted variants keep their OLD prices — the update that
+      // succeeded before the raise is rolled back with the failed one.
+      expect(String((await variantRow(productA.v1Id)).priceLyd)).toBe("250.00");
+      expect(String((await variantRow(second.v1Id)).priceLyd)).toBe("500.00");
+      // Neither product's display price moved (the refresh never ran).
+      expect(String((await productRow(productA.productId)).price)).toBe("400.00");
+      expect(String((await productRow(second.productId)).price)).toBe("500.00");
+
+      // No audit row for a rolled-back recompute.
+      const audits = await db
+        .select({ id: auditLogsTable.id })
+        .from(auditLogsTable)
+        .where(eq(auditLogsTable.action, "pricing.recompute"));
+      expect(audits).toHaveLength(0);
+    } finally {
+      await disarmTriggers();
+      close();
+    }
+  });
+
+  it("a failure in the products.price refresh (after the loop) rolls the variant writes back too", async () => {
+    const { productA } = await seedCatalog();
+    const { url, close } = await listen(buildApp());
+    try {
+      await armProductTrigger();
+
+      const res = await recomputeRaw(url);
+      expect(res.status).toBe(500);
+      // (same pglite wrapper note as the mid-loop scenario)
+
+      // The loop finished (variant updated to the engine price inside the
+      // tx), but the display-price refresh raised — the variant write must
+      // roll back with the transaction, leaving NO mixed state.
+      expect(String((await variantRow(productA.v1Id)).priceLyd)).toBe("250.00");
+      expect(String((await productRow(productA.productId)).price)).toBe("400.00");
+
+      const audits = await db
+        .select({ id: auditLogsTable.id })
+        .from(auditLogsTable)
+        .where(eq(auditLogsTable.action, "pricing.recompute"));
+      expect(audits).toHaveLength(0);
+    } finally {
+      await disarmTriggers();
       close();
     }
   });

@@ -81,38 +81,33 @@ router.get("/auth-stats", requireAdmin, async (req, res) => {
 });
 
 router.get("/auth-stats/summary", requireAdmin, async (req, res) => {
-  const totalResult = await db
+  // R125-I6 (A8 B-11): the four full-table count(*) round-trips (total,
+  // success, failure, last24h) collapsed into ONE aggregate — FILTER
+  // clauses compute the same numbers over a single scan, so the System
+  // page's summary is 4 DB round-trips cheaper. The predicates mirror the
+  // old queries exactly (success = true / success = false / created_at >=
+  // cutoff); the response shape and value types are unchanged.
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [summary] = await db
     .select({
-      count: sql<number>`count(*)`.as("count"),
+      total: sql<number>`count(*)`.as("total"),
+      success: sql<number>`count(*) filter (where ${authActivityTable.success} = true)`.as(
+        "success",
+      ),
+      failure: sql<number>`count(*) filter (where ${authActivityTable.success} = false)`.as(
+        "failure",
+      ),
+      last24h: sql<number>`count(*) filter (where ${authActivityTable.createdAt} >= ${cutoff})`.as(
+        "last24h",
+      ),
     })
     .from(authActivityTable);
 
-  const successResult = await db
-    .select({
-      count: sql<number>`count(*)`.as("count"),
-    })
-    .from(authActivityTable)
-    .where(eq(authActivityTable.success, true));
-
-  const failureResult = await db
-    .select({
-      count: sql<number>`count(*)`.as("count"),
-    })
-    .from(authActivityTable)
-    .where(eq(authActivityTable.success, false));
-
-  const last24h = await db
-    .select({
-      count: sql<number>`count(*)`.as("count"),
-    })
-    .from(authActivityTable)
-    .where(gte(authActivityTable.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)));
-
   return res.json({
-    total: totalResult[0]?.count ?? 0,
-    success: successResult[0]?.count ?? 0,
-    failure: failureResult[0]?.count ?? 0,
-    last24h: last24h[0]?.count ?? 0,
+    total: summary?.total ?? 0,
+    success: summary?.success ?? 0,
+    failure: summary?.failure ?? 0,
+    last24h: summary?.last24h ?? 0,
   });
 });
 

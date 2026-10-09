@@ -212,6 +212,47 @@ describe("POST /api/admin/2fa/setup — disabling an ENABLED 2FA (the S5 vector)
     }
   });
 
+  // R125-I5 (A3-1): the frontend re-enroll flow now sends current_password
+  // on the rotate path — these two pin the gate's VALUE discipline so a
+  // present-but-empty or wrong-typed field can never slip past the 400
+  // (both must land on the same gate as a missing body).
+  it("an EMPTY-STRING current_password is treated as missing → 400, row untouched", async () => {
+    const admin = await seedAdmin({
+      totpEnabled: true,
+      totpSecret: "enabled-fake-secret",
+    });
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status, body } = await postSetup(url, admin.token, { current_password: "" });
+      expect(status).toBe(400);
+      expect(body.code).toBe("INVALID_DATA");
+
+      const row = await fetchRow(admin.adminId);
+      expect(row.totpEnabled).toBe(true);
+      expect(row.totpSecret).toBe("enabled-fake-secret");
+    } finally {
+      close();
+    }
+  });
+
+  it("a NON-STRING current_password is treated as missing → 400 (typeof gate)", async () => {
+    const admin = await seedAdmin({
+      totpEnabled: true,
+      totpSecret: "enabled-fake-secret",
+    });
+    const { url, close } = await listen(buildApp());
+    try {
+      const { status } = await postSetup(url, admin.token, { current_password: 12345678 });
+      expect(status).toBe(400);
+
+      const row = await fetchRow(admin.adminId);
+      expect(row.totpEnabled).toBe(true);
+      expect(row.totpSecret).toBe("enabled-fake-secret");
+    } finally {
+      close();
+    }
+  });
+
   it("wrong current_password → 401, row untouched", async () => {
     const admin = await seedAdmin({
       totpEnabled: true,

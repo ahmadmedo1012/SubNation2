@@ -881,6 +881,11 @@ authProviderPublicRouter.post("/telegram", async (req, res) => {
     if (!result.ok) {
       // Round-3 envelope drift fix: `reason` → `code` (keep `reason` for
       // backward compatibility with any client reading the old field).
+      // R125-I6 (A8 B-2 documented outlier): this telegram-callback shape
+      // deliberately does NOT use createErrorResponse — `code` carries a
+      // DYNAMIC service reason (not an ErrorCode member) and the legacy
+      // twin `reason` field must stay for old clients; the helper would
+      // change the response bytes.
       return res
         .status(result.status)
         .json({ error: result.error, code: result.reason, reason: result.reason });
@@ -932,6 +937,9 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
     const result = await handleTelegramWebAppAuth(initData, referralCode, getClientInfo(req));
     if (!result.ok) {
       // Round-3 envelope drift fix: `reason` → `code` (old field kept).
+      // R125-I6 (A8 B-2 documented outlier): same as the /telegram
+      // callback above — dynamic service reason in `code` + the legacy
+      // twin `reason` field; createErrorResponse would change bytes.
       return res
         .status(result.status)
         .json({ error: result.error, code: result.reason, reason: result.reason });
