@@ -58,7 +58,7 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
     res
       .status(400)
       .json(
-        createErrorResponse("intent_text required (1–4000 chars)", ErrorCode.COPILOT_INVALID_INPUT),
+        createErrorResponse("نص الأمر مطلوب (من 1 إلى 4000 حرف)", ErrorCode.COPILOT_INVALID_INPUT),
       );
     return;
   }

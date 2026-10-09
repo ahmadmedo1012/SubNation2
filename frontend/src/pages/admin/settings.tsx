@@ -312,11 +312,15 @@ function ProviderCard({
           </div>
 
           {/* Callback URL hint for OAuth providers */}
+          {/* R126-L5 (A3-4): ink+tint pair on the --status-info token —
+              raw blue-400 measured ≈2.9:1 on the light theme (A3);
+              --status-info is AA-tuned both themes (6.48:1 on white,
+              5.43:1 on its /12 tint — index.css R116-S1 figures). */}
           {provider.auth_type === "oauth_redirect" && (
-            <div className="flex items-start gap-2 p-3 bg-blue-500/5 border border-blue-500/15 rounded-lg">
-              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 p-3 bg-status-info/5 border border-status-info/15 rounded-lg">
+              <Info className="w-3.5 h-3.5 text-status-info shrink-0 mt-0.5" />
               <div className="text-xs text-muted-foreground space-y-1">
-                <p className="font-bold text-blue-400">Callback URL للإعداد في لوحة المطور</p>
+                <p className="font-bold text-status-info">Callback URL للإعداد في لوحة المطور</p>
                 <code className="block font-mono text-2xs bg-background/60 px-2 py-1 rounded border border-border/40 text-foreground/80 break-all">
                   {window.location.origin}/api/auth/{provider.id}/callback
                 </code>
@@ -497,11 +501,15 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
   };
 
   if (success) {
+    // R126-L5 (A3-4): the success card rides the --status-success
+    // ink+tint pair — raw emerald-500 on its /10 tint measured ≈2.4:1
+    // on the light theme (A3); the token measures 5.90:1 on white /
+    // 4.98:1 on the /12 tint light and ≥9:1 dark (index.css F3-06).
     return (
-      <div className="flex flex-col items-center justify-center py-6 px-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-        <CheckCircle className="w-12 h-12 text-emerald-500 mb-3" />
-        <h3 className="font-bold text-emerald-500">تم تفعيل المصادقة الثنائية بنجاح</h3>
-        <p className="text-sm text-emerald-500/80 mt-1">حسابك الآن محمي بطبقة إضافية من الأمان.</p>
+      <div className="flex flex-col items-center justify-center py-6 px-4 bg-status-success/10 border border-status-success/20 rounded-xl">
+        <CheckCircle className="w-12 h-12 text-status-success mb-3" />
+        <h3 className="font-bold text-status-success">تم تفعيل المصادقة الثنائية بنجاح</h3>
+        <p className="text-sm text-status-success mt-1">حسابك الآن محمي بطبقة إضافية من الأمان.</p>
       </div>
     );
   }
@@ -682,7 +690,10 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
       <button
         onClick={startSetup}
         disabled={loading}
-        className="flex items-center gap-2 h-10 px-5 rounded-xl bg-primary/10 text-primary font-bold text-sm hover:bg-primary/20 transition-all border border-primary/20"
+        /* R126-L5 (A3-4): the fresh-enrollment CTA joins its :645 twin
+            (fixed R125) on text-primary-text — raw text-primary on the
+            /10 tint is 3.56:1 dark (A6-B6's measured figure). */
+        className="flex items-center gap-2 h-10 px-5 rounded-xl bg-primary/10 text-primary-text font-bold text-sm hover:bg-primary/20 transition-all border border-primary/20"
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
         إعداد المصادقة الثنائية
@@ -701,6 +712,16 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
 // even though the request itself is already cookie-authenticated. This is
 // the standard "sudo" pattern for high-leverage credential changes.
 
+/**
+ * R126-L2 (A3-1): the success copy for a password change — mirrors the
+ * backend's own message (auth.ts /change-password: «تم تغيير كلمة
+ * المرور بنجاح — سيتم تسجيل خروجك من كل الجلسات»). Only used when the
+ * 200 body somehow lacks its `message`; the backend's wording is the
+ * source of truth.
+ */
+const PASSWORD_CHANGED_LOGOUT_MESSAGE =
+  "تم تغيير كلمة المرور بنجاح — سيتم تسجيل خروجك من كل الجلسات";
+
 interface AdminSession {
   id: number;
   username: string;
@@ -712,6 +733,12 @@ interface AdminSession {
 
 function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
   const { toast } = useToast();
+  // R126-L2 (A3-1 P1): the password-change success path clears the
+  // dead session + lands on /admin/login (the backend revoked this
+  // session server-side) — the same hooks the main page carries,
+  // scoped to the tab that performs the change.
+  const { setAdminToken } = useAuth();
+  const [, navigate] = useLocation();
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(true);
   const headers = useAdminHeaders({ json: true });
@@ -812,7 +839,7 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
     }
     setPwSaving(true);
     try {
-      await adminFetchJson(
+      const res = await adminFetchJson<{ message?: string }>(
         "/api/admin/change-password",
         {
           method: "POST",
@@ -825,8 +852,18 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
       setPwCurrent("");
       setPwNew("");
       setPwConfirm("");
+      // R126-L2 (A3-1 P1): the backend revokes EVERY session on success
+      // — including THIS one (auth.ts /change-password). Surface its
+      // honest message (the sessions-end consequence), clear the dead
+      // in-memory session, and land on the admin login deliberately
+      // instead of waiting for the next 401 to bounce the operator.
       // R124-I5 (A6 F1): success variant.
-      toast({ title: "تم تغيير كلمة المرور بنجاح", variant: "success" });
+      toast({
+        title: res?.message ?? PASSWORD_CHANGED_LOGOUT_MESSAGE,
+        variant: "success",
+      });
+      setAdminToken(null);
+      navigate("/admin/login");
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
@@ -986,8 +1023,13 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
       >
         <div>
           <h3 className="font-bold text-base mb-1">تغيير كلمة المرور</h3>
+          {/* R126-L2 (A3-1 P1): the old hint promised «لن يتم إنهاء
+              الجلسات الحالية الأخرى» while the backend revokes EVERY
+              session (auth.ts A8-01) — the promise was inverted. State
+              the truth: all sessions end + re-login required. */}
           <p className="text-xs text-muted-foreground">
-            8 أحرف على الأقل. لن يتم إنهاء الجلسات الحالية الأخرى.
+            8 أحرف على الأقل. سيتم إنهاء جميع الجلسات عند التغيير — بما فيها الجلسة الحالية —
+            وستحتاج إلى تسجيل الدخول مجدداً.
           </p>
         </div>
         <div>
@@ -1259,8 +1301,13 @@ export default function AdminSettingsPage() {
         {/* R123 (E3 P3f): the scope-honest fallback (canEditMoney idiom)
             — only reachable via a stale local activeTab, never via the
             tab bar or a deep link (both respect tabAllowed). */}
+        {/* R126-L5 (A3-4): the scope-gate banner rides the
+            --status-warning ink+tint pair — raw amber-500 on its /10
+            tint measured 1.99:1 on the light theme (A6-B4's figure);
+            the token measures 6.04:1 on white / 5.09:1 on the /12 tint
+            light and ≥9:1 dark (index.css F3-06). */}
         {(activeTab === "auth" || activeTab === "integrations") && !canManageSettings && (
-          <p className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2">
+          <p className="text-xs text-status-warning bg-status-warning/10 border border-status-warning/25 rounded-xl px-3 py-2">
             إدارة المصادقة والتكاملات تتطلب صلاحية الإعدادات — تواصل مع مسؤول النظام
           </p>
         )}
@@ -1293,8 +1340,11 @@ export default function AdminSettingsPage() {
                     : `${enabledCount} طريقة مفعّلة إضافةً إلى الدخول برقم الهاتف (رمز تحقق)`}
                 </div>
               </div>
+              {/* R126-L5 (A3-4): the auth-summary pill joins the :889
+                  role-badge idiom on text-primary-text (raw text-primary
+                  on the /10 tint is 3.56:1 dark). */}
               <span
-                className={`text-xs font-bold px-2.5 py-1 rounded-full border ${enabledCount > 0 ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border"}`}
+                className={`text-xs font-bold px-2.5 py-1 rounded-full border ${enabledCount > 0 ? "bg-primary/10 text-primary-text border-primary/20" : "bg-muted text-muted-foreground border-border"}`}
               >
                 {enabledCount}/{providers.length}
               </span>
@@ -1442,8 +1492,12 @@ export default function AdminSettingsPage() {
                         <row.icon className="w-4 h-4 text-muted-foreground" />
                         <span className="font-mono text-xs">{row.label}</span>
                       </div>
+                      {/* R126-L5 (A3-4): integrations status text on the
+                          --status-success / --status-error ink+tint pair —
+                          raw emerald-400 / red-400 measured 1.92 / 2.77:1
+                          on the light theme (R125-A3 #8's figures). */}
                       <div
-                        className={`flex items-center gap-1.5 text-xs font-bold ${row.ok ? "text-emerald-400" : "text-red-400"}`}
+                        className={`flex items-center gap-1.5 text-xs font-bold ${row.ok ? "text-status-success" : "text-status-error"}`}
                       >
                         {row.ok ? (
                           <CheckCircle className="w-3.5 h-3.5" />
@@ -1534,19 +1588,23 @@ export default function AdminSettingsPage() {
                   {[
                     <>
                       أنشئ بوت تيليجرام عبر{" "}
-                      <span className="font-mono text-primary">@BotFather</span> واحصل على التوكن
+                      {/* R126-L5 (A3-4): inline code tokens on
+                          text-primary-text — raw text-primary is 3.76:1
+                          on the dark card (A6-B6). */}
+                      <span className="font-mono text-primary-text">@BotFather</span> واحصل على
+                      التوكن
                     </>,
                     <>
                       أرسل رسالة للبوت ثم افتح{" "}
-                      <span className="font-mono text-3xs text-primary">
+                      <span className="font-mono text-3xs text-primary-text">
                         api.telegram.org/bot&#123;TOKEN&#125;/getUpdates
                       </span>{" "}
                       للحصول على Chat ID
                     </>,
                     <>
-                      أضف <span className="font-mono text-primary">TELEGRAM_BOT_TOKEN</span> و{" "}
-                      <span className="font-mono text-primary">TELEGRAM_CHAT_ID</span> في متغيرات
-                      البيئة (Secrets)
+                      أضف <span className="font-mono text-primary-text">TELEGRAM_BOT_TOKEN</span> و{" "}
+                      <span className="font-mono text-primary-text">TELEGRAM_CHAT_ID</span> في
+                      متغيرات البيئة (Secrets)
                     </>,
                     <>أعد تشغيل السيرفر</>,
                   ].map((step, i) => (

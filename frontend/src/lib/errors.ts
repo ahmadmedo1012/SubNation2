@@ -145,10 +145,41 @@ function trustedServerMessage(raw: string): string {
   return ARABIC_SCRIPT_RE.test(raw) ? raw : GENERIC_SERVER_ERROR_AR;
 }
 
+// ── R126-L2 (A3-3): specific-server-message priority ───────────────────────
+// The backend pairs a SPECIFIC Arabic message with a generic code on its
+// re-auth surfaces (wrong current-password on /change-password,
+// /profile and /2fa/setup → 401 «كلمة المرور الحالية غير صحيحة» +
+// UNAUTHORIZED). The code map used to win that pairing, rendering the
+// map's «غير مصرح — سجّل دخولك مرة أخرى وحاول» — actively misleading:
+// the session was valid, the typed password was wrong. The server's own
+// wording now outranks the map whenever it is present and Arabic-script
+// (the 96-F7 leak guard still gates what counts as "the server's
+// wording" — middleware English never passes); the code map stays the
+// fallback for message-less and technical (non-Arabic) bodies. Same
+// direction the hand-rolled funnels already chose (users.tsx R115
+// describeSaveError, WhatsAppPhoneSignIn 96-F2).
+function arabicServerMessage(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed && ARABIC_SCRIPT_RE.test(trimmed) ? trimmed : null;
+}
+
 // Helper function to get error message from error code
 export function getErrorMessage(error: unknown): string {
   const err = asErrorLike(error);
   if (!err) return "حدث خطأ. حاول مرة أخرى";
+
+  // R126-L2 (A3-3): a specific, Arabic-script server message (the
+  // route's own wording — body `error`, ApiError `.data.error`, or the
+  // axios-style `response.data.error`) outranks the generic per-code
+  // map below. The map remains the fallback for message-less bodies,
+  // and a non-Arabic (middleware/technical) message falls through to it
+  // instead of collapsing to the network-generic copy.
+  const specificServerMessage =
+    arabicServerMessage(err.error) ??
+    arabicServerMessage(err.data?.error) ??
+    arabicServerMessage(err.response?.data?.error);
+  if (specificServerMessage) return specificServerMessage;
 
   // If error has a code, map it to Arabic message
   if (err.code && errorMessages[err.code as ErrorCode]) {

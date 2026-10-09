@@ -488,7 +488,10 @@ describe("POST /api/wallet/topups — B4-R1 reference requirement (mobile_transf
       });
       expect(res.status).toBe(400);
       expect(res.body.code).toBe("INVALID_DATA");
-      expect(res.body.error).toContain("مرجع التحويل");
+      // R126-L2 (A8 F4): the 400 mirrors the storefront's «رمز التحويل»
+      // label canon (was «مرجع التحويل» — A8's terminology table).
+      expect(res.body.error).toContain("رمز التحويل");
+      expect(res.body.error).not.toContain("مرجع التحويل");
       // Nothing was written.
       expect(await db.select().from(walletTopupsTable)).toHaveLength(0);
     },

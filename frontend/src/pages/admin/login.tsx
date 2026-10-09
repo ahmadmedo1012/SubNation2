@@ -92,7 +92,15 @@ export default function AdminLoginPage() {
         })();
       },
       onError(err: unknown) {
-        setError(err instanceof Error ? err.message : "حدث خطأ");
+        // R126-L2 (A3-2): the orval mutation rejects with customFetch's
+        // ApiError, whose .message carries the technical English prefix
+        // («HTTP 401 Unauthorized: …») — it used to leak verbatim into
+        // this banner. Route through getErrorMessage (the R96 2FA-path
+        // idiom in verify2FA below): the parsed body rides .data, so the
+        // server's Arabic message surfaces with no prefix, a code-only
+        // body maps through the shared Arabic table, and network-level
+        // failures speak Arabic too.
+        setError(getErrorMessage(err));
       },
     },
   });

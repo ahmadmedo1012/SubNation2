@@ -378,14 +378,15 @@ router.post(
     // pre-existing blank-ref rows (live: 2 pending) stay approvable via
     // TopupService.approve untouched.
     if (method === "mobile_transfer" && paymentReference === null) {
-      return res
-        .status(400)
-        .json(
-          createErrorResponse(
-            "مرجع التحويل (رقم العملية من إيصال التحويل) مطلوب لطلبات شحن المحفظة",
-            ErrorCode.INVALID_DATA,
-          ),
-        );
+      return res.status(400).json(
+        createErrorResponse(
+          // R126-L2 (A8 F4): «رمز التحويل» — the storefront field label
+          // (wallet.tsx PaymentReferenceField) and the R116-S2 «رمز»
+          // terminology canon; was «مرجع التحويل».
+          "رمز التحويل (رقم العملية من إيصال التحويل) مطلوب لطلبات شحن المحفظة",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
     }
 
     if (method === "mobile_transfer" && sender_phone) {

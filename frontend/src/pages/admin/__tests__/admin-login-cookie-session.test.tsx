@@ -134,6 +134,31 @@ async function settleLoginSuccess(body: unknown) {
   });
 }
 
+/**
+ * R126-L2 (A3-2): Simulates the orval mutation REJECTING — the real
+ * client rejects with customFetch's ApiError (technical English prefix
+ * on .message, the parsed body on .data).
+ */
+async function settleLoginError(err: unknown) {
+  await act(async () => {
+    lastLoginConfig()?.mutation?.onError?.(err);
+  });
+}
+
+/** The customFetch ApiError shape for a JSON error body. */
+function apiErrorLike(status: number, statusText: string, data: unknown) {
+  const body = data as { error?: string } | null;
+  const message = body?.error
+    ? `HTTP ${status} ${statusText}: ${body.error}`
+    : `HTTP ${status} ${statusText}`;
+  return Object.assign(new Error(message), {
+    name: "ApiError",
+    status,
+    statusText,
+    data,
+  });
+}
+
 beforeEach(() => {
   mutateMock.mockReset();
   vi.mocked(useAdminLogin).mockClear();
@@ -143,6 +168,70 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("AdminLoginPage — password-step error banner speaks Arabic only (R126-L2 / A3-2)", () => {
+  it("a 401 ApiError renders the server's Arabic message with NO English HTTP prefix", async () => {
+    renderLogin();
+    await waitFor(() => expect(screen.getByText("لوحة الإدارة")).toBeInTheDocument());
+
+    fillCredentials();
+    submitForm();
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+
+    // The real mutation's rejection shape: .message carries customFetch's
+    // technical prefix, .data carries the parsed backend body. The old
+    // code read .message verbatim → «HTTP 401 Unauthorized: اسم المستخدم
+    // أو كلمة المرور غير صحيحة» in the banner.
+    await settleLoginError(
+      apiErrorLike(401, "Unauthorized", {
+        error: "اسم المستخدم أو كلمة المرور غير صحيحة",
+        code: "UNAUTHORIZED",
+      }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("اسم المستخدم أو كلمة المرور غير صحيحة");
+    expect(alert.textContent).not.toContain("HTTP");
+    expect(alert.textContent).not.toContain("Unauthorized");
+  });
+
+  it("a 429 lockout ApiError keeps the server's minutes — no «Too Many Requests»", async () => {
+    renderLogin();
+    await waitFor(() => expect(screen.getByText("لوحة الإدارة")).toBeInTheDocument());
+
+    fillCredentials();
+    submitForm();
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+
+    await settleLoginError(
+      apiErrorLike(429, "Too Many Requests", {
+        error: "الحساب مقفل بسبب محاولات فاشلة. حاول بعد 5 دقيقة.",
+        code: "ACCOUNT_LOCKED",
+      }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("الحساب مقفل بسبب محاولات فاشلة. حاول بعد 5 دقيقة.");
+    expect(alert.textContent).not.toContain("HTTP");
+    expect(alert.textContent).not.toContain("Too Many Requests");
+  });
+
+  it("a network-level failure (non-ApiError) speaks the shared Arabic network copy", async () => {
+    renderLogin();
+    await waitFor(() => expect(screen.getByText("لوحة الإدارة")).toBeInTheDocument());
+
+    fillCredentials();
+    submitForm();
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+
+    // The old code surfaced this verbatim («Failed to fetch»).
+    await settleLoginError(new TypeError("Failed to fetch"));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("تعذّر الاتصال بالخدمة");
+    expect(alert.textContent).not.toContain("Failed to fetch");
+  });
 });
 
 describe("AdminLoginPage — cookie-only session bootstrap (97-F5 / R97-02)", () => {

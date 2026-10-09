@@ -20,8 +20,12 @@
  *      there means a middleware/proxy string by construction.
  *   3. Known network-failure shapes ("Failed to fetch"…) keep their
  *      Arabic wording (round-3 behavior pinned).
- *   4. The `code` mapping (round-3/93) is untouched — first branch,
- *      unchanged semantics.
+ *   4. The `code` mapping (round-3/93) stays intact — but as the
+ *      FALLBACK, not the winner: R126-L2 (A3-3) flipped the priority so
+ *      a present, Arabic-script server message outranks the generic
+ *      per-code map (the re-auth surfaces pair a specific message with
+ *      a generic UNAUTHORIZED code); message-less and technical
+ *      (non-Arabic) bodies still map by code.
  */
 
 import { describe, expect, it } from "vitest";
@@ -104,8 +108,54 @@ describe("getErrorMessage — network-failure shapes keep the round-3 wording", 
   });
 });
 
+describe("getErrorMessage — specific server message outranks the code map (R126-L2 A3-3)", () => {
+  it("a 401 body pairing UNAUTHORIZED with a specific Arabic message surfaces the server's wording", () => {
+    // The backend's re-auth shape (wrong current-password on
+    // /change-password, /profile and /2fa/setup — auth.ts): a SPECIFIC
+    // message with a GENERIC code. The map's «سجّل دخولك مرة أخرى» used
+    // to win — actively misleading: the session was valid, the typed
+    // password was wrong.
+    const out = getErrorMessage({ error: "كلمة المرور الحالية غير صحيحة", code: "UNAUTHORIZED" });
+    expect(out).toBe("كلمة المرور الحالية غير صحيحة");
+    expect(out).not.toContain("غير مصرح");
+  });
+
+  it("an ApiError shape (the message riding .data) prefers the specific message too", () => {
+    const out = getErrorMessage({
+      name: "ApiError",
+      status: 401,
+      message: "HTTP 401 Unauthorized: كلمة المرور الحالية غير صحيحة",
+      data: { error: "كلمة المرور الحالية غير صحيحة", code: "UNAUTHORIZED" },
+    });
+    expect(out).toBe("كلمة المرور الحالية غير صحيحة");
+    expect(out).not.toContain("HTTP");
+  });
+
+  it("a message-less body still maps through the code table", () => {
+    expect(getErrorMessage({ code: "UNAUTHORIZED" })).toBe("غير مصرح — سجّل دخولك مرة أخرى وحاول");
+    expect(getErrorMessage({ data: { code: "UNAUTHORIZED" } })).toBe(
+      "غير مصرح — سجّل دخولك مرة أخرى وحاول",
+    );
+  });
+
+  it("a technical (non-Arabic) message falls back to the code map — never the generic network copy", () => {
+    expect(getErrorMessage({ error: "Unauthorized", code: "UNAUTHORIZED" })).toBe(
+      "غير مصرح — سجّل دخولك مرة أخرى وحاول",
+    );
+  });
+
+  it("the 429 lockout keeps its minute count (the map no longer shadows it)", () => {
+    // The sudo gates' lockout body (auth.ts admin-pwchange /
+    // admin-2fasetup): the server's wording carries the wait time the
+    // generic ACCOUNT_LOCKED map entry drops.
+    expect(
+      getErrorMessage({ error: "محاولات كثيرة. حاول بعد 15 دقيقة.", code: "ACCOUNT_LOCKED" }),
+    ).toBe("محاولات كثيرة. حاول بعد 15 دقيقة.");
+  });
+});
+
 describe("getErrorMessage — code mapping and shape guards (regression pins)", () => {
-  it("mapped codes still resolve to their Arabic message first", () => {
+  it("mapped codes still resolve to their Arabic message when no server message is present", () => {
     expect(getErrorMessage({ code: ErrorCode.INVALID_OTP })).toBe(
       "رمز التحقق غير صحيح أو منتهي الصلاحية",
     );
