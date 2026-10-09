@@ -67,13 +67,22 @@ import type {
   AddCartItemBody,
   AdminAlertsDeleteReadResult,
   AdminAlertsPage,
+  AdminAuditLogsPage,
   AdminAuthResponse,
   AdminAuthSettings,
   AdminAuthStatsSummary,
   AdminChartDay,
+  AdminDiagnostics,
   AdminFlashSale,
+  AdminForecastAtRisk,
+  AdminForecastProduct,
   AdminInventoryHealthReport,
   AdminLoginBody,
+  AdminNewAlerts,
+  AdminObservabilityAlertsRecent,
+  AdminObservabilityMetrics,
+  AdminObservabilityScheduler,
+  AdminObservabilitySummary,
   AdminOrder,
   AdminPricingCalculate200,
   AdminPricingCalculateBody,
@@ -81,6 +90,8 @@ import type {
   AdminProductVariant,
   AdminReferralsResponse,
   AdminReplyTicketBody,
+  AdminRiskDashboard,
+  AdminRiskEventsResponse,
   AdminSettings,
   AdminStats,
   AdminTicketStatusBody,
@@ -131,7 +142,9 @@ import type {
   FlashSaleResponse,
   GetAdminAlertsUnreadCount200,
   GetAdminChartDataParams,
+  GetAdminObservabilityMetrics500,
   GetAdminOrderCredentials200,
+  GetAdminRiskDashboardParams,
   GetCart200,
   GetLoyaltyLedger200Item,
   GetLoyaltyLedgerParams,
@@ -140,12 +153,16 @@ import type {
   HealthStatus,
   IdempotencyConflictResponse,
   ListAdminAlertsParams,
+  ListAdminAuditLogsParams,
   ListAdminAuthActivity200,
   ListAdminAuthActivityParams,
   ListAdminFlashSales200,
+  ListAdminForecastAtRiskParams,
+  ListAdminNewAlertsParams,
   ListAdminOrdersParams,
   ListAdminProductsParams,
   ListAdminReferralsParams,
+  ListAdminRiskEventsParams,
   ListAdminTicketsParams,
   ListAdminTopupsParams,
   ListAdminUsersParams,
@@ -10255,6 +10272,150 @@ export function useListAdminAuthActivity<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+export const getListAdminAuditLogsUrl = (params?: ListAdminAuditLogsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/audit-logs?${stringifiedParams}`
+    : `/api/admin/audit-logs`;
+};
+
+/**
+ * R127-L5 (B15-1): the audit_logs reader — every consequential
+ * admin action is written to audit_logs by 6+ writers; this
+ * endpoint is the operator-facing view of that trail (the
+ * security page's «إجراءات المسؤولين» tab). Rows carry
+ * actor/action/target/ip — that is the point of the feature.
+ * Ordered created_at DESC (id DESC tiebreaker for stable
+ * offset pages). Cache-Control: no-store.
+ * @summary Admin audit-trail page (requireAdmin + admins scope)
+ */
+export const listAdminAuditLogs = async (
+  params?: ListAdminAuditLogsParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminAuditLogsPage> => {
+  return customFetch<AdminAuditLogsPage>(getListAdminAuditLogsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminAuditLogsQueryKey = (params?: ListAdminAuditLogsParams) => {
+  return [`/api/admin/audit-logs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminAuditLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminAuditLogs>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuditLogsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminAuditLogsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminAuditLogs>>> = ({ signal }) =>
+    listAdminAuditLogs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminAuditLogs>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminAuditLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminAuditLogs>>
+>;
+export type ListAdminAuditLogsQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminAuditLogs<
+  TData = Awaited<ReturnType<typeof listAdminAuditLogs>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminAuditLogsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminAuditLogs>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminAuditLogs>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminAuditLogs<
+  TData = Awaited<ReturnType<typeof listAdminAuditLogs>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuditLogsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminAuditLogs>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminAuditLogs>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminAuditLogs<
+  TData = Awaited<ReturnType<typeof listAdminAuditLogs>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuditLogsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Admin audit-trail page (requireAdmin + admins scope)
+ */
+
+export function useListAdminAuditLogs<
+  TData = Awaited<ReturnType<typeof listAdminAuditLogs>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuditLogsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAuditLogs>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminAuditLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
 export const getListAdminReferralsUrl = (params?: ListAdminReferralsParams) => {
   const normalizedParams = new URLSearchParams();
 
@@ -11364,6 +11525,1404 @@ export function useAdminDiagnosticsInventoryHealth<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getAdminDiagnosticsInventoryHealthQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminObservabilityMetricsUrl = () => {
+  return `/api/admin/observability/metrics`;
+};
+
+/**
+ * The System tab's 15 s poll (the highest-cadence admin endpoint).
+ * The live prom registry is re-shaped into a bounded JSON snapshot
+ * (lib/metrics-snapshot.ts) behind a 10 s server cache; the
+ * response is the last-known-good envelope — when a snapshot
+ * build fails, the previous value rides back with stale=true.
+ * Per-route p95Ms in http.topRoutes is always null today (kept in
+ * the shape to stay forward-compatible with a per-route
+ * histogram). Cache-Control: no-store (router-level, R125-I6).
+ * @summary Prometheus registry snapshot (requireAdmin + settings scope) — LKG envelope
+ */
+export const getAdminObservabilityMetrics = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminObservabilityMetrics> => {
+  return customFetch<AdminObservabilityMetrics>(getGetAdminObservabilityMetricsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminObservabilityMetricsQueryKey = () => {
+  return [`/api/admin/observability/metrics`] as const;
+};
+
+export const getGetAdminObservabilityMetricsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+  TError = ErrorType<ErrorResponse | GetAdminObservabilityMetrics500>,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityMetrics>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminObservabilityMetricsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminObservabilityMetrics>>> = ({
+    signal,
+  }) => getAdminObservabilityMetrics({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminObservabilityMetricsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminObservabilityMetrics>>
+>;
+export type GetAdminObservabilityMetricsQueryError = ErrorType<
+  ErrorResponse | GetAdminObservabilityMetrics500
+>;
+
+export function useGetAdminObservabilityMetrics<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+  TError = ErrorType<ErrorResponse | GetAdminObservabilityMetrics500>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityMetrics>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilityMetrics>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilityMetrics<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+  TError = ErrorType<ErrorResponse | GetAdminObservabilityMetrics500>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityMetrics>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilityMetrics>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilityMetrics<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+  TError = ErrorType<ErrorResponse | GetAdminObservabilityMetrics500>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityMetrics>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Prometheus registry snapshot (requireAdmin + settings scope) — LKG envelope
+ */
+
+export function useGetAdminObservabilityMetrics<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityMetrics>>,
+  TError = ErrorType<ErrorResponse | GetAdminObservabilityMetrics500>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityMetrics>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminObservabilityMetricsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminObservabilitySummaryUrl = () => {
+  return `/api/admin/observability/summary`;
+};
+
+/**
+ * The System tab's 60 s poll — release identity (7-char GIT_SHA,
+ * "unknown" when unset), uptime, Redis availability, the worker
+ * heartbeat age from the Redis key (null when no Redis / no key),
+ * the alerts cache LKG stamp + recent count, and the three
+ * dashboard deep-links (env URLs, null when unset).
+ * Cache-Control: no-store.
+ * @summary System summary card (requireAdmin + settings scope)
+ */
+export const getAdminObservabilitySummary = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminObservabilitySummary> => {
+  return customFetch<AdminObservabilitySummary>(getGetAdminObservabilitySummaryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminObservabilitySummaryQueryKey = () => {
+  return [`/api/admin/observability/summary`] as const;
+};
+
+export const getGetAdminObservabilitySummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilitySummary>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminObservabilitySummaryQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminObservabilitySummary>>> = ({
+    signal,
+  }) => getAdminObservabilitySummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminObservabilitySummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminObservabilitySummary>>
+>;
+export type GetAdminObservabilitySummaryQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminObservabilitySummary<
+  TData = Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilitySummary>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilitySummary>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilitySummary<
+  TData = Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilitySummary>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilitySummary>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilitySummary<
+  TData = Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilitySummary>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary System summary card (requireAdmin + settings scope)
+ */
+
+export function useGetAdminObservabilitySummary<
+  TData = Awaited<ReturnType<typeof getAdminObservabilitySummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilitySummary>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminObservabilitySummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminObservabilitySchedulerUrl = () => {
+  return `/api/admin/observability/scheduler`;
+};
+
+/**
+ * The System tab's 90 s poll — the real scheduler topology
+ * (embedded / single / dedicated / disabled) with the Redis
+ * heartbeat framed by mode. heartbeat.expected is false when no
+ * Redis client exists (R108 FH-A1 P2 F4 — the heartbeat is inert
+ * by design on no-Redis deployments) and the optional note says
+ * so; description is the operator-facing Arabic line.
+ * Cache-Control: no-store.
+ * @summary Scheduler runtime state (requireAdmin + settings scope)
+ */
+export const getAdminObservabilityScheduler = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminObservabilityScheduler> => {
+  return customFetch<AdminObservabilityScheduler>(getGetAdminObservabilitySchedulerUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminObservabilitySchedulerQueryKey = () => {
+  return [`/api/admin/observability/scheduler`] as const;
+};
+
+export const getGetAdminObservabilitySchedulerQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityScheduler>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminObservabilitySchedulerQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminObservabilityScheduler>>> = ({
+    signal,
+  }) => getAdminObservabilityScheduler({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminObservabilitySchedulerQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminObservabilityScheduler>>
+>;
+export type GetAdminObservabilitySchedulerQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminObservabilityScheduler<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityScheduler>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilityScheduler>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilityScheduler<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityScheduler>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilityScheduler>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilityScheduler<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityScheduler>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Scheduler runtime state (requireAdmin + settings scope)
+ */
+
+export function useGetAdminObservabilityScheduler<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityScheduler>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityScheduler>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminObservabilitySchedulerQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminObservabilityAlertsRecentUrl = () => {
+  return `/api/admin/observability/alerts/recent`;
+};
+
+/**
+ * The System tab's 90 s poll — the newest 50 admin_alerts rows
+ * behind a 60 s server cache, in the last-known-good envelope (a
+ * cache build failure serves the previous page with stale=true;
+ * alerts is [] when no LKG exists). Cache-Control: no-store.
+ * @summary Recent alerts (requireAdmin + settings scope) — LKG envelope
+ */
+export const getAdminObservabilityAlertsRecent = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminObservabilityAlertsRecent> => {
+  return customFetch<AdminObservabilityAlertsRecent>(getGetAdminObservabilityAlertsRecentUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminObservabilityAlertsRecentQueryKey = () => {
+  return [`/api/admin/observability/alerts/recent`] as const;
+};
+
+export const getGetAdminObservabilityAlertsRecentQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminObservabilityAlertsRecentQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>> = ({
+    signal,
+  }) => getAdminObservabilityAlertsRecent({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminObservabilityAlertsRecentQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>
+>;
+export type GetAdminObservabilityAlertsRecentQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminObservabilityAlertsRecent<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilityAlertsRecent<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminObservabilityAlertsRecent<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Recent alerts (requireAdmin + settings scope) — LKG envelope
+ */
+
+export function useGetAdminObservabilityAlertsRecent<
+  TData = Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminObservabilityAlertsRecent>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminObservabilityAlertsRecentQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminDiagnosticsUrl = () => {
+  return `/api/admin/diagnostics`;
+};
+
+/**
+ * The System tab's 60 s poll — node/runtime identity, memory +
+ * CPU usage, event-loop lag percentiles (null until the 5 s
+ * monitor interval produces a histogram), dependency states, and
+ * the four env-flag strings verbatim (including the handler's
+ * "true"/"false" fallbacks when unset).
+ * Cache-Control: no-store.
+ * @summary Runtime diagnostics snapshot (requireAdmin + settings scope)
+ */
+export const getAdminDiagnostics = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminDiagnostics> => {
+  return customFetch<AdminDiagnostics>(getGetAdminDiagnosticsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminDiagnosticsQueryKey = () => {
+  return [`/api/admin/diagnostics`] as const;
+};
+
+export const getGetAdminDiagnosticsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminDiagnostics>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminDiagnostics>>, TError, TData>>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminDiagnosticsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminDiagnostics>>> = ({ signal }) =>
+    getAdminDiagnostics({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminDiagnostics>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminDiagnosticsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminDiagnostics>>
+>;
+export type GetAdminDiagnosticsQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminDiagnostics<
+  TData = Awaited<ReturnType<typeof getAdminDiagnostics>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminDiagnostics>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminDiagnostics>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminDiagnostics>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminDiagnostics<
+  TData = Awaited<ReturnType<typeof getAdminDiagnostics>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminDiagnostics>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminDiagnostics>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminDiagnostics>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminDiagnostics<
+  TData = Awaited<ReturnType<typeof getAdminDiagnostics>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminDiagnostics>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Runtime diagnostics snapshot (requireAdmin + settings scope)
+ */
+
+export function useGetAdminDiagnostics<
+  TData = Awaited<ReturnType<typeof getAdminDiagnostics>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminDiagnostics>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminDiagnosticsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getListAdminNewAlertsUrl = (params?: ListAdminNewAlertsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/alerts/new?${stringifiedParams}`
+    : `/api/admin/alerts/new`;
+};
+
+/**
+ * The 5-min fallback poll behind every admin page's alert drawer
+ * (layout.tsx) plus the socket-triggered immediate refetch. The
+ * since filter runs SQL-side (WHERE id > since ORDER BY id DESC
+ * LIMIT 50, R96-A5 M15) — id is the serial PK, monotonic with
+ * insert order. No envelope: just {alerts}. Cache-Control:
+ * no-store.
+ * @summary New-alerts polling delta (requireAdmin + support scope)
+ */
+export const listAdminNewAlerts = async (
+  params?: ListAdminNewAlertsParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminNewAlerts> => {
+  return customFetch<AdminNewAlerts>(getListAdminNewAlertsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminNewAlertsQueryKey = (params?: ListAdminNewAlertsParams) => {
+  return [`/api/admin/alerts/new`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminNewAlertsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminNewAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminNewAlertsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminNewAlerts>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminNewAlertsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminNewAlerts>>> = ({ signal }) =>
+    listAdminNewAlerts(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminNewAlerts>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminNewAlertsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminNewAlerts>>
+>;
+export type ListAdminNewAlertsQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminNewAlerts<
+  TData = Awaited<ReturnType<typeof listAdminNewAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminNewAlertsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminNewAlerts>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminNewAlerts>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminNewAlerts>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminNewAlerts<
+  TData = Awaited<ReturnType<typeof listAdminNewAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminNewAlertsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminNewAlerts>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminNewAlerts>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminNewAlerts>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminNewAlerts<
+  TData = Awaited<ReturnType<typeof listAdminNewAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminNewAlertsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminNewAlerts>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary New-alerts polling delta (requireAdmin + support scope)
+ */
+
+export function useListAdminNewAlerts<
+  TData = Awaited<ReturnType<typeof listAdminNewAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminNewAlertsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminNewAlerts>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminNewAlertsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminRiskDashboardUrl = (params?: GetAdminRiskDashboardParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/risk/dashboard?${stringifiedParams}`
+    : `/api/admin/risk/dashboard`;
+};
+
+/**
+ * The risk page's 30 s poll — three concurrent aggregates over the
+ * lookback window: by-level counts, the unresolved backlog
+ * (events with no risk_labels row), and the top-5 fired rules
+ * (flattened out of the rule_fired text[] column), plus the
+ * pipeline flag (RISK_PIPELINE_ENABLED). Cache-Control: no-store.
+ * @summary Risk review-queue header metrics (requireAdmin + users scope)
+ */
+export const getAdminRiskDashboard = async (
+  params?: GetAdminRiskDashboardParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminRiskDashboard> => {
+  return customFetch<AdminRiskDashboard>(getGetAdminRiskDashboardUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminRiskDashboardQueryKey = (params?: GetAdminRiskDashboardParams) => {
+  return [`/api/admin/risk/dashboard`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAdminRiskDashboardQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminRiskDashboardParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminRiskDashboard>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminRiskDashboardQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminRiskDashboard>>> = ({ signal }) =>
+    getAdminRiskDashboard(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminRiskDashboardQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminRiskDashboard>>
+>;
+export type GetAdminRiskDashboardQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminRiskDashboard<
+  TData = Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | GetAdminRiskDashboardParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminRiskDashboard>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminRiskDashboard>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminRiskDashboard<
+  TData = Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminRiskDashboardParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminRiskDashboard>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminRiskDashboard>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminRiskDashboard<
+  TData = Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminRiskDashboardParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminRiskDashboard>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Risk review-queue header metrics (requireAdmin + users scope)
+ */
+
+export function useGetAdminRiskDashboard<
+  TData = Awaited<ReturnType<typeof getAdminRiskDashboard>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminRiskDashboardParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminRiskDashboard>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminRiskDashboardQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getListAdminRiskEventsUrl = (params?: ListAdminRiskEventsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/risk/events?${stringifiedParams}`
+    : `/api/admin/risk/events`;
+};
+
+/**
+ * The risk page's queue + load-more. Keyset cursor (opaque
+ * "<isoCreatedAt>:<id>") over (created_at DESC, id DESC);
+ * next_cursor is null on the last page. The LEFT JOIN enriches
+ * each row with the user's phone/email (nullable — user_id is
+ * ON DELETE SET NULL). Cache-Control: no-store.
+ * @summary Risk events review queue (requireAdmin + users scope) — keyset cursor pagination
+ */
+export const listAdminRiskEvents = async (
+  params?: ListAdminRiskEventsParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminRiskEventsResponse> => {
+  return customFetch<AdminRiskEventsResponse>(getListAdminRiskEventsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminRiskEventsQueryKey = (params?: ListAdminRiskEventsParams) => {
+  return [`/api/admin/risk/events`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminRiskEventsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminRiskEvents>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminRiskEventsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminRiskEvents>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminRiskEventsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminRiskEvents>>> = ({ signal }) =>
+    listAdminRiskEvents(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminRiskEvents>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminRiskEventsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminRiskEvents>>
+>;
+export type ListAdminRiskEventsQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminRiskEvents<
+  TData = Awaited<ReturnType<typeof listAdminRiskEvents>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminRiskEventsParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminRiskEvents>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminRiskEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminRiskEvents>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminRiskEvents<
+  TData = Awaited<ReturnType<typeof listAdminRiskEvents>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminRiskEventsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminRiskEvents>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminRiskEvents>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminRiskEvents>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminRiskEvents<
+  TData = Awaited<ReturnType<typeof listAdminRiskEvents>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminRiskEventsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminRiskEvents>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Risk events review queue (requireAdmin + users scope) — keyset cursor pagination
+ */
+
+export function useListAdminRiskEvents<
+  TData = Awaited<ReturnType<typeof listAdminRiskEvents>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminRiskEventsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminRiskEvents>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminRiskEventsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getListAdminForecastAtRiskUrl = (params?: ListAdminForecastAtRiskParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/forecast/at-risk?${stringifiedParams}`
+    : `/api/admin/forecast/at-risk`;
+};
+
+/**
+ * The products page's 5-min StockoutRiskPanel poll — the newest
+ * forecast per product where at_risk + predicted_runout_at are
+ * set (non-archived, active products only), ordered by earliest
+ * predicted runout. pipeline_state is honest about the cron:
+ * fresh / stale (>24 h) / uninitialized (no successful run) /
+ * calibrating (alerting paused by the capture-rate job).
+ * Cache-Control: no-store.
+ * @summary Stockout-risk panel rows (requireAdmin + inventory scope)
+ */
+export const listAdminForecastAtRisk = async (
+  params?: ListAdminForecastAtRiskParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminForecastAtRisk> => {
+  return customFetch<AdminForecastAtRisk>(getListAdminForecastAtRiskUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminForecastAtRiskQueryKey = (params?: ListAdminForecastAtRiskParams) => {
+  return [`/api/admin/forecast/at-risk`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminForecastAtRiskQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminForecastAtRiskParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminForecastAtRisk>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminForecastAtRiskQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminForecastAtRisk>>> = ({
+    signal,
+  }) => listAdminForecastAtRisk(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminForecastAtRiskQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminForecastAtRisk>>
+>;
+export type ListAdminForecastAtRiskQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminForecastAtRisk<
+  TData = Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminForecastAtRiskParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminForecastAtRisk>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminForecastAtRisk>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminForecastAtRisk<
+  TData = Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminForecastAtRiskParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminForecastAtRisk>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminForecastAtRisk>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminForecastAtRisk<
+  TData = Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminForecastAtRiskParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminForecastAtRisk>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Stockout-risk panel rows (requireAdmin + inventory scope)
+ */
+
+export function useListAdminForecastAtRisk<
+  TData = Awaited<ReturnType<typeof listAdminForecastAtRisk>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminForecastAtRiskParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminForecastAtRisk>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminForecastAtRiskQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminForecastProductUrl = (id: number) => {
+  return `/api/admin/forecast/products/${id}`;
+};
+
+/**
+ * The panel's on-demand drawer — the newest forecast row for one
+ * product plus the explanation block (avg daily sales, DoW blend,
+ * distinct days of order history, run completion stamp).
+ * forecast is null when no row exists (the honest «no forecast
+ * yet» drawer). Cache-Control: no-store.
+ * @summary Per-product forecast detail (requireAdmin + inventory scope)
+ */
+export const getAdminForecastProduct = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminForecastProduct> => {
+  return customFetch<AdminForecastProduct>(getGetAdminForecastProductUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminForecastProductQueryKey = (id: number) => {
+  return [`/api/admin/forecast/products/${id}`] as const;
+};
+
+export const getGetAdminForecastProductQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminForecastProduct>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminForecastProduct>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminForecastProductQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminForecastProduct>>> = ({
+    signal,
+  }) => getAdminForecastProduct(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: id !== null && id !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getAdminForecastProduct>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetAdminForecastProductQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminForecastProduct>>
+>;
+export type GetAdminForecastProductQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminForecastProduct<
+  TData = Awaited<ReturnType<typeof getAdminForecastProduct>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminForecastProduct>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminForecastProduct>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminForecastProduct>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminForecastProduct<
+  TData = Awaited<ReturnType<typeof getAdminForecastProduct>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminForecastProduct>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminForecastProduct>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminForecastProduct>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminForecastProduct<
+  TData = Awaited<ReturnType<typeof getAdminForecastProduct>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminForecastProduct>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Per-product forecast detail (requireAdmin + inventory scope)
+ */
+
+export function useGetAdminForecastProduct<
+  TData = Awaited<ReturnType<typeof getAdminForecastProduct>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminForecastProduct>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminForecastProductQueryOptions(id, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

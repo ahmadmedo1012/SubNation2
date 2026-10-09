@@ -6,11 +6,27 @@ import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSk
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
-import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatCurrency, formatRelativeTime } from "@/lib/utils";
+// R127-L1 (B1 §3.3): the list + credit ride the generated client from
+// the batch-1 spec exposure — useListAdminReferrals (params in the
+// queryKey) + creditReferral. The R98-02 seq/abort state machine and
+// the 300ms debounce's AbortController are now TanStack-native: a
+// filter/keystroke flip swaps queries and the stale response can only
+// land in the OLD key's cache — last-REQUEST wins (the security.tsx
+// R126-L8b template, 1:1). customFetch owns the ok-guard + the global
+// 401 observer, and the error paths speak getErrorMessage (ApiError
+// fluently — Arabic body first, HTTP-prefix stripped).
+import {
+  creditReferral,
+  getListAdminReferralsQueryKey,
+  useListAdminReferrals,
+  type AdminReferralEventRow,
+  type ListAdminReferralsStatus,
+} from "@workspace/api-client-react";
+import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle,
@@ -24,39 +40,24 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
-interface ReferralStats {
-  total: number;
-  credited: number;
-  pending: number;
-  total_points: number;
-}
+// R127-L1: the hand-rolled row interface is the generated
+// AdminReferralEventRow (field-identical — the batch-1 contract row
+// pins the shape); aliased so the render code keeps its local name.
+// (The old ReferralData/TopReferrer interfaces had no remaining
+// references once the list rode useListAdminReferrals — deleted.)
+type ReferralRow = AdminReferralEventRow;
 
-interface TopReferrer {
-  id: number;
-  phone: string;
-  credited_count: number;
-  total_count: number;
-}
-
-interface ReferralRow {
-  id: number;
-  status: "pending" | "credited";
-  created_at: string;
-  credited_at: string | null;
-  referrer_phone: string;
-  referrer_id: number;
-  referee_phone: string;
-  points_earned: number;
-}
-
-interface ReferralData {
-  stats: ReferralStats;
-  top_referrers: TopReferrer[];
-  list: ReferralRow[];
+/** R127-L1 (B1 §3.3): a 401 from the generated fetcher is the global
+ * admin-session handler's business (toast + redirect fired inside
+ * customFetch) — the error card + the credit catch below stay quiet on
+ * it. ApiError is type-only from the package, so the check duck-types
+ * `status` (the alerts.tsx R126-L8b idiom). */
+function isSessionExpiredError(err: unknown): boolean {
+  return (err as { status?: unknown } | null | undefined)?.status === 401;
 }
 
 const STATUS_FILTERS = [
@@ -228,18 +229,19 @@ export default function AdminReferralsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const [data, setData] = useState<ReferralData | null>(null);
-  const [loading, setLoading] = useState(true);
-  // B5-03 (round-92 audit): fetchData had a bare `catch {}` — a failed
-  // /api/admin/referrals load rendered the misleading "لا توجد إحالات"
-  // empty state and "—" stat cards with zero error signal. The failure
-  // now surfaces as the distinct error card (C5 storefront idiom) on
-  // the initial load, and as an inline banner when a refresh of an
-  // already-rendered list fails.
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
+  // R127-L1 (B1 §3.3): the 300ms debounce survives as the topups.tsx
+  // idiom (search → debouncedSearch → params) — keystroke PAUSES drive
+  // the refetch, and the params-in-key swap kills the in-flight
+  // predecessor request structurally (no manual AbortController).
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [crediting, setCrediting] = useState<number | null>(null);
 
   // 93-C6 / F-07 (A5 RE-1): the credit action gets a confirmation
@@ -248,164 +250,76 @@ export default function AdminReferralsPage() {
 
   const headers = useAdminHeaders();
 
-  // 98-F7 (R98-02): monotonic request sequence — every fetchData call
-  // takes the next number, and only the LATEST call may write
-  // data/loadError/loading. A slow "abc" response that lands AFTER the
-  // "abcd" response used to overwrite the newer list/stat cards with
-  // results for a query nobody is looking at (the page had no AbortController
-  // and no seq guard — the r97 race audit covered home/GlobalSearch/orders/
-  // users, referrals slipped through). Belt to the AbortController below
-  // (suspenders): the seq guard also protects the non-debounced paths
-  // (refresh button, status-filter change, post-credit refetch).
-  const fetchSeqRef = useRef(0);
-
-  const fetchData = useCallback(
-    async (silent = false, opts?: { signal?: AbortSignal }) => {
-      if (!adminToken) return;
-      const seq = ++fetchSeqRef.current;
-      if (!silent) setLoading(true);
-      try {
-        const params = new URLSearchParams();
-        if (statusFilter) params.set("status", statusFilter);
-        if (search.trim()) params.set("search", search.trim());
-        const url = `/api/admin/referrals?${params}`;
-        const r = await fetch(url, {
-          headers,
-          // 98-F7 (R98-02): abort support for the debounced search path —
-          // mirrors the GlobalSearch controller pattern (admin/layout.tsx).
-          signal: opts?.signal,
-        });
-        // R126-L3 (A4-B-1): an expired session on the LIST fetch was the
-        // console's last silent-401 — it fell into the !ok branch below
-        // and rendered an Arabic error card the operator could hammer
-        // «إعادة المحاولة» on forever, instead of the uniform global
-        // «انتهت الجلسة» toast + login redirect. Same guard the credit
-        // POST 100 lines below has had since R123.
-        if (isAdminUnauthorized(r, url)) return;
-        if (!r.ok) {
-          // A newer request owns the state — drop the stale error.
-          if (seq !== fetchSeqRef.current) return;
-          const body = (await r.json().catch(() => null)) as {
-            error?: string;
-            code?: string;
-          } | null;
-          // getErrorMessage maps the backend `code` to Arabic when present.
-          const msg = getErrorMessage(body) || `فشل تحميل الإحالات (HTTP ${r.status})`;
-          setLoadError(msg);
-          return;
-        }
-        const payload = (await r.json()) as ReferralData;
-        // Late stale response arrives last → must NOT overwrite the newer
-        // results (the abort above usually kills it; this is the guarantee
-        // when the runtime/mock ignores the signal).
-        if (seq !== fetchSeqRef.current) return;
-        setLoadError(null);
-        setData(payload);
-      } catch (err) {
-        // Our own debounce abort (next keystroke) — not a real failure;
-        // the newer request owns the state and the loading flag.
-        if (opts?.signal?.aborted) return;
-        if (seq !== fetchSeqRef.current) return;
-        // Network-level failure (offline/DNS) — same surfacing.
-        setLoadError(getErrorMessage(err));
-      } finally {
-        if (!silent && seq === fetchSeqRef.current) setLoading(false);
-      }
+  // R127-L1 (B1 §3.3): the list rides useListAdminReferrals — the
+  // filters sit in the queryKey, so every status/keystroke flip is a
+  // fresh query and the stale response can only land in the OLD key's
+  // cache (the R98-02 last-REQUEST-wins contract, now structural). The
+  // B5-03 contract is preserved: a failed load surfaces as the error
+  // card (never the false «لا توجد إحالات» empty state), and a 401 is
+  // the global handler's business — quiet locally.
+  const referralsParams = {
+    status: (statusFilter || undefined) as ListAdminReferralsStatus | undefined,
+    search: debouncedSearch.trim() || undefined,
+  };
+  const listQuery = useListAdminReferrals(referralsParams, {
+    query: {
+      queryKey: getListAdminReferralsQueryKey(referralsParams),
+      enabled: !!adminToken,
+      // Old-rows-stay parity: while a flipped filter's window is in
+      // flight, the PREVIOUS rows keep rendering — no skeleton flash,
+      // no false «لا توجد إحالات» between filters (security.tsx:87).
+      placeholderData: keepPreviousData,
     },
-    [adminToken, statusFilter, search, headers],
-  );
+    request: { headers },
+  });
 
-  // 98-F7 (R98-02): fetchDataRef — the debounced effect below depends on
-  // `search` ONLY (a dep on fetchData would re-arm the 300ms timer on every
-  // statusFilter/token/headers identity change and fire a redundant request
-  // next to the immediate one from the effect below); the ref keeps the
-  // latest closure without widening the effect's deps.
-  const fetchDataRef = useRef(fetchData);
-  useEffect(() => {
-    fetchDataRef.current = fetchData;
-  }, [fetchData]);
+  // B5-03 (round-92 audit) preserved: the distinct error surface — the
+  // initial load renders the error card, a refresh of an
+  // already-rendered list keeps the stale rows + the inline banner.
+  // The first-load skeleton stands only while no window has settled
+  // (isPending; the placeholder above covers later flips).
+  const data = listQuery.data ?? null;
+  const loading = listQuery.isPending;
+  const loadError =
+    listQuery.isError && !isSessionExpiredError(listQuery.error)
+      ? getErrorMessage(listQuery.error)
+      : null;
 
   useEffect(() => {
-    if (!adminToken) {
-      navigate("/admin/login");
-      return;
-    }
-    fetchData();
-  }, [adminToken, statusFilter]);
-
-  // R125-I3 (A2-13): the mount double-fetch — the [adminToken,
-  // statusFilter] effect fires fetchData() immediately AND the [search]
-  // debounce effect schedules the SAME fetch 300ms later on mount (two
-  // identical GETs + a loading→rows→skeleton→rows flash). The debounce
-  // effect now skips its first run (the status effect already fetched);
-  // every LATER search change still debounces normally.
-  const searchEffectFirstRunRef = useRef(true);
-  useEffect(() => {
-    if (searchEffectFirstRunRef.current) {
-      searchEffectFirstRunRef.current = false;
-      return;
-    }
-    // 98-F7 (R98-02): every keystroke change aborts the previous in-flight
-    // debounced request (GlobalSearch pattern — clearTimeout alone left the
-    // request running; its response could still land and race the newer one).
-    const controller = new AbortController();
-    const t = setTimeout(
-      () => void fetchDataRef.current(false, { signal: controller.signal }),
-      300,
-    );
-    return () => {
-      clearTimeout(t);
-      controller.abort();
-    };
-  }, [search]);
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
 
   // R124-I5 (A6 F4 — R118-B2): useCallback-stable so the memoized
-  // ReferralRowItem rows bail out on search keystrokes. The post-credit
-  // refresh rides fetchDataRef (the ref the debounce effect already
-  // updates on every fetchData identity change) instead of a direct
-  // fetchData call — a direct dep would re-mint this callback per
-  // keystroke (fetchData's deps include `search`).
+  // ReferralRowItem rows bail out on search keystrokes. R127-L1: the
+  // credit POST rides the generated creditReferral fetcher (body-less
+  // POST, byte-compatible with the old hand-rolled call) — the
+  // idempotency key rides options.headers exactly like topups/users.
   const handleCredit = useCallback(
     async (row: ReferralRow) => {
       // 93-C6 / F-07 (A5 S-1/RE-1): points are LYD-convertible money
       // (100:1 via /loyalty/convert-points) — the credit POST now
       // requires an explicit confirmation instead of firing on the
       // first tap, matching the topups/orders money-action bar.
+      // R127-L1 (B1 B15-3): the confirm previews the LYD equivalent too
+      // (the users.tsx R126 points-preview idiom — «كل 100 نقطة = 1 د.ل»)
+      // so both currencies are named honestly before the mint.
       const ok = await confirm({
         title: "تأكيد منح النقاط",
-        description: `سيتم قيد ${row.points_earned} نقطة ولاء للمُحيل ${row.referrer_phone} (إحالة ${row.referee_phone}).`,
+        description: `سيتم قيد ${row.points_earned} نقطة ولاء للمُحيل ${row.referrer_phone} (إحالة ${row.referee_phone}) — القيمة بالدينار عند التحويل: ${formatCurrency(row.points_earned / 100)} (كل 100 نقطة = 1 د.ل).`,
         confirmLabel: "منح النقاط",
       });
       if (!ok) return;
       setCrediting(row.id);
       try {
-        const url = `/api/admin/referrals/${row.id}/credit`;
-        const r = await fetch(url, {
-          method: "POST",
-          // 93-C6 / F-07 (A5 RE-1): parity with topups/users/orders — the
-          // backend idempotency middleware
-          // (admin.referrals.credit) currently logs a warning and passes
-          // through when the header is missing; a follow-up makes it
-          // REQUIRED. Sending the key now closes that gap (a network
-          // retry / double-click replays the cached response instead of
-          // surfacing 409 noise).
+        // 93-C6 / F-07 (A5 RE-1): parity with topups/users/orders — the
+        // backend idempotency middleware (admin.referrals.credit)
+        // currently logs a warning and passes through when the header
+        // is missing; a follow-up makes it REQUIRED. Sending the key now
+        // closes that gap (a network retry / double-click replays the
+        // cached response instead of surfacing 409 noise).
+        const result = await creditReferral(row.id, {
           headers: withIdempotencyKey(headers, generateIdempotencyKey()),
         });
-        // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast
-        // + redirect); not a "فشلت العملية" toast.
-        if (isAdminUnauthorized(r, url)) return;
-        const result = (await r.json().catch(() => null)) as {
-          points_credited?: number;
-          error?: string;
-          code?: string;
-        } | null;
-        if (!r.ok || !result) {
-          // 93-C6 / F-07: envelope-parsed Arabic reasons (already-credited
-          // 400, points-race 409 CONFLICT).
-          throw new Error(
-            (result && getErrorMessage(result)) || `فشل منح النقاط (HTTP ${r.status})`,
-          );
-        }
         // R124-I5 (A6 F1): success variant — points are LYD-convertible
         // money; the confirmation rides the green success treatment like
         // every other money action.
@@ -414,8 +328,13 @@ export default function AdminReferralsPage() {
           description: `تم قيد ${result.points_credited} نقطة للمُحيل`,
           variant: "success",
         });
-        fetchDataRef.current(true);
+        // R127-L1: the base-key invalidate replaces fetchDataRef's silent
+        // refetch — every status/search variant of the list refreshes.
+        void queryClient.invalidateQueries({ queryKey: getListAdminReferralsQueryKey() });
       } catch (err: unknown) {
+        // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast
+        // + redirect); not a "فشلت العملية" toast.
+        if (isSessionExpiredError(err)) return;
         toast({
           title: "خطأ",
           description: getErrorMessage(err),
@@ -425,7 +344,7 @@ export default function AdminReferralsPage() {
         setCrediting(null);
       }
     },
-    [confirm, headers, toast],
+    [confirm, headers, toast, queryClient],
   );
 
   const stats = data?.stats;
@@ -447,7 +366,7 @@ export default function AdminReferralsPage() {
   const canCredit = hasAdminPermission("finance");
 
   return (
-    <AdminLayout onRefresh={() => fetchData()}>
+    <AdminLayout onRefresh={() => void listQuery.refetch()}>
       <div className="space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
@@ -463,7 +382,7 @@ export default function AdminReferralsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => fetchData()}
+            onClick={() => void listQuery.refetch()}
             className="gap-1.5 text-xs"
           >
             <RefreshCw className="w-3 h-3" />
@@ -587,7 +506,7 @@ export default function AdminReferralsPage() {
             <span>{loadError}</span>
             <button
               type="button"
-              onClick={() => fetchData()}
+              onClick={() => void listQuery.refetch()}
               className="ms-auto text-xs underline underline-offset-2 hover:opacity-80 press-spring"
             >
               إعادة المحاولة
@@ -607,7 +526,7 @@ export default function AdminReferralsPage() {
             retryIcon={RefreshCw}
             title="تعذّر تحميل الإحالات"
             description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
-            onRetry={() => fetchData()}
+            onRetry={() => void listQuery.refetch()}
           />
         ) : list.length === 0 ? (
           <EmptyState

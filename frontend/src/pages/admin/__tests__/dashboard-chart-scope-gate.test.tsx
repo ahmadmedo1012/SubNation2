@@ -14,11 +14,18 @@
  *      revenue/discount bytes leave the server for them at all — and
  *      the charts column hides entirely instead of rendering the
  *      misleading «لا توجد بيانات بعد» empty block for a scope gate.
+ *   3. (R127-L11, B2 §D.3) A non-finance admin's dashboard also NEVER
+ *      requests /api/admin/stats — the R126 zombie-polling close
+ *      (enabled: adminToken && canSeeMoney) had a direct pin only for
+ *      the chart query and the layout's stats instance, never for the
+ *      dashboard's own stats observer (a scoped session 403-polling
+ *      every 5 min).
  *
- * Module-boundary mocks follow admin-layout-alerts.test.tsx (the stats
- * + recent-orders generated hooks are stubbed; only fetchChart's raw
- * fetch rides the stubbed global — it answers `[]` so no recharts
- * surface mounts, keeping the test scoped to the gate).
+ * Module-boundary mocks follow admin-layout-alerts.test.tsx — R127-L1
+ * (B1 §3.1): the importActual spread keeps only the stats/orders hooks
+ * stubbed, so the REAL useGetAdminChartData runs against the stubbed
+ * global fetch (the gate is pinned at the fetch level: `enabled: false`
+ * sends no bytes at all — exactly the R123 zero-bytes contract).
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -29,13 +36,26 @@ import { type ReactNode } from "react";
 import AdminDashboardPage from "@/pages/admin/dashboard";
 import { useGetAdminStats, useListAdminOrders } from "@workspace/api-client-react";
 
-vi.mock("@workspace/api-client-react", () => ({
-  useGetAdminStats: vi.fn(),
-  useListAdminOrders: vi.fn(),
-  getGetAdminStatsQueryKey: () => ["/api/admin/stats"],
-  getListAdminOrdersQueryKey: (params?: unknown) => ["/api/admin/orders", params ?? null],
-  setUnauthorizedHandler: vi.fn(),
+// B2 §D.3 (R127-L11): the REAL useGetAdminStats is captured here so the
+// stats-gate test can restore it per-test — the file-level mockReturnValue
+// bypasses `enabled` entirely (a mocked hook never reaches react-query, so
+// it can fetch nothing), and the zombie-polling close can only be pinned
+// with the real hook running against the stubbed global fetch. Holder is an
+// OBJECT (not destructured) so the vi.mock factory can assign into it.
+const apiReactReal = vi.hoisted(() => ({
+  useGetAdminStats:
+    undefined as unknown as (typeof import("@workspace/api-client-react"))["useGetAdminStats"],
 }));
+
+vi.mock("@workspace/api-client-react", async (importOriginal) => {
+  // R127-L1 (B1 §3.1 importActual-spread idiom): only the stats +
+  // orders hooks stay stubbed — the REAL useGetAdminChartData runs
+  // against the stubbed global fetch so the scope gate keeps its
+  // fetch-level assertion surface.
+  const actual = await importOriginal<typeof import("@workspace/api-client-react")>();
+  apiReactReal.useGetAdminStats = actual.useGetAdminStats;
+  return { ...actual, useGetAdminStats: vi.fn(), useListAdminOrders: vi.fn() };
+});
 
 // R122 (A2-P2): the finance scope flips per test — the auth mock reads
 // from hoisted mutable state (the admin-layout-alerts idiom).
@@ -71,6 +91,8 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   return {
     ok,
     status,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -116,8 +138,10 @@ describe("AdminDashboardPage — the chart payload is finance-scoped at the FETC
     });
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
-    // fetchChart's answer is an empty series — the honest no-data-yet
-    // block renders (no recharts), keeping the test scoped to the gate.
+    // The chart query's answer is an empty series — the honest
+    // no-data-yet block renders (no recharts), keeping the test scoped
+    // to the gate (resLike carries the headers/text() the REAL
+    // customFetch parses with — R127-L1).
     fetchMock.mockResolvedValue(resLike({ body: [] }));
     authState.finance = true;
   });
@@ -162,5 +186,35 @@ describe("AdminDashboardPage — the chart payload is finance-scoped at the FETC
     await waitFor(() => {
       expect(screen.getByText("لا توجد بيانات بعد")).toBeInTheDocument();
     });
+  });
+
+  it("a non-finance admin's dashboard NEVER requests /api/admin/stats either (R126 zombie-polling close, B2 §D.3)", async () => {
+    // The stats query's `enabled: !!adminToken && canSeeMoney` gate
+    // (dashboard.tsx ~:434) mirrors the chart gate below it, but only
+    // the chart side + the LAYOUT's stats instance were pinned. Here
+    // the REAL stats hook is restored (mockImplementation over the
+    // beforeEach mockReturnValue) so `enabled: false` is exercised by
+    // react-query itself: a disabled observer sends no bytes — the
+    // exact zero-bytes contract the chart test above pins for
+    // chart-data, now for the 5-min stats poll a scoped support/admin
+    // session used to fire into a guaranteed 403.
+    (useGetAdminStats as ReturnType<typeof vi.fn>).mockImplementation(
+      apiReactReal.useGetAdminStats,
+    );
+    authState.finance = false;
+    renderPage();
+
+    // Positive signal the dashboard is alive: the recent-orders stream's
+    // section header renders off the (mocked) orders subscription — the
+    // gate is the stats observer, not a dead page.
+    await waitFor(() => {
+      expect(screen.getByText("آخر الطلبات")).toBeInTheDocument();
+    });
+    // …then give both gated fetches a beat to (not) fire.
+    await new Promise((r) => setTimeout(r, 600));
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/stats"))).toBe(false);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/chart-data"))).toBe(
+      false,
+    );
   });
 });

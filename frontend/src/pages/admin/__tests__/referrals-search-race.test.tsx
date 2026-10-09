@@ -34,6 +34,7 @@
  */
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
@@ -82,16 +83,30 @@ const FRESH = "0955555555"; // the "abcd" (newer) result
 const STALE = "0944444444"; // the "abc" (older) result
 
 function resLike(body: unknown) {
-  return { ok: true, status: 200, json: () => Promise.resolve(body) } as unknown as Response;
+  // R127-L1: the page rides the generated client now (useListAdminReferrals
+  // → real customFetch) — the stub carries the headers/text() it parses
+  // with (the security-error-state pattern).
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
 }
 
 const fetchMock = vi.fn();
 
 function renderPage() {
+  // R127-L1: the list rides useListAdminReferrals — fresh client per
+  // render (retry: false; fake timers must not arm retry backoffs).
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <Router>
-      <AdminReferralsPage />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminReferralsPage />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 
@@ -132,7 +147,8 @@ describe("AdminReferralsPage — debounced search races (R98-02)", () => {
       if (url.includes("search=abc")) {
         // The older query answers SLOWLY (700ms) — the fetch mock
         // deliberately IGNORES init.signal so the abort cannot save us:
-        // only the seq guard can keep this response out of the state.
+        // R127-L1: the response lands in the OLD key's cache (params in
+        // the queryKey — the R98-02 seq guard, now structural).
         return new Promise<Response>((resolve) => {
           setTimeout(() => resolve(resLike(payloadFor(STALE))), 700);
         });
@@ -178,14 +194,16 @@ describe("AdminReferralsPage — debounced search races (R98-02)", () => {
     const calls = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/api/admin/referrals?"),
     );
-    // The debounced (300ms) request carries a signal — mount + debounced
-    // both fire here, at least one of them (the debounce) with a signal.
+    // R127-L1: the query's signal rides customFetch into fetch — the
+    // debounced (300ms) request carries one (React Query hands every
+    // active queryFn an AbortSignal; the mount fetch's URL carries no
+    // "?" and is excluded by the filter above).
     const withSignal = calls.filter(
       (c) => (c[1] as { signal?: AbortSignal } | undefined)?.signal instanceof AbortSignal,
     );
     expect(withSignal.length).toBeGreaterThanOrEqual(1);
-    // Only search-typed requests get the signal (mount fetch keeps its
-    // legacy no-signal shape — the refresh button / status-filter path).
+    // The second search's request carries a signal too (key swap →
+    // fresh queryFn → fresh signal).
     fireEvent.change(input, { target: { value: "abcd" } });
     await advance(320);
     const afterSecond = fetchMock.mock.calls.filter((c) => String(c[0]).includes("search=abcd"));

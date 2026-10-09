@@ -18,17 +18,31 @@ import {
 } from "@/components/ui/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
-// R123 (E3 item 1): the four raw fetches ride the session-aware wrapper
-// — a support cookie expiring mid-work now gets the global «انتهت
-// الجلسة» toast + redirect instead of a per-action retry-loop toast, and
-// adminFetchJson's safe error-body parse kills the unguarded r.json()
-// (English SyntaxError on a non-JSON 502) the reply/status paths had.
-import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatDate, formatRelativeTime, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+// R127-L1 (B1 §3.4 / A4 §C batch-A): the four adminFetchJson calls ride
+// the generated client (batch-1 spec exposure) — listAdminTickets inside
+// the existing useInfiniteQuery, getAdminTicket / replyAdminTicket /
+// updateAdminTicketStatus for the detail actions. customFetch owns the
+// ok-guard + the safe error-body parse (the R123 E3 contract) AND fires
+// the registered global 401 handler (useAdminHeaders registers it) before
+// throwing ApiError — a support cookie expiring mid-work still gets the
+// global «انتهت الجلسة» toast + redirect, and the catches below stay
+// quiet on the ApiError shape (alerts.tsx's `err.status === 401`
+// duck-type).
+import {
+  getAdminTicket,
+  listAdminTickets,
+  replyAdminTicket,
+  updateAdminTicketStatus,
+  type AdminTicketStatusBodyStatus,
+  type AdminTicketSummary,
+  type AdminTicketThread,
+  type ListAdminTicketsStatus,
+} from "@workspace/api-client-react";
 import {
   AlertCircle,
   CheckCircle,
@@ -89,27 +103,20 @@ const TICKET_COUNT_FORMS = {
   other: "تذكرة",
 };
 
-interface TicketSummary {
-  id: number;
-  user_phone: string;
-  user_display_name?: string | null;
-  user_email?: string | null;
-  user_auth_provider?: string | null;
-  user_has_google?: boolean;
-  user_has_telegram?: boolean;
-  user_has_firebase?: boolean;
-  user_has_whatsapp?: boolean;
-  title: string;
-  category: string | null;
-  status: string;
-  created_at: string;
-  reply_count: number;
-  last_reply_at: string | null;
-  has_unread_admin: boolean;
-}
+// R127-L1: the hand-rolled row/thread interfaces are the generated
+// AdminTicketSummary / AdminTicketThread (field-identical — the batch-1
+// contract row pins the shapes); aliased so the file's render code keeps
+// its local names.
+type TicketSummary = AdminTicketSummary;
+type TicketDetail = AdminTicketThread;
 
-interface TicketDetail extends TicketSummary {
-  replies: { id: number; author_type: string; message: string; created_at: string }[];
+/** R127-L1 (B1 §3.4 step 5): a 401 from the generated fetcher is the
+ * global admin-session handler's business (toast + redirect fired inside
+ * customFetch) — the catches below stay quiet on it. ApiError is
+ * type-only from the package, so the check duck-types `status` (the
+ * alerts.tsx R126-L8b idiom). */
+function isSessionExpiredError(err: unknown): boolean {
+  return (err as { status?: unknown } | null | undefined)?.status === 401;
 }
 
 export default function AdminTicketsPage() {
@@ -152,16 +159,6 @@ export default function AdminTicketsPage() {
 
   const headers = useAdminHeaders();
 
-  /** Builds the queue URL for the frozen pagination contract. */
-  const ticketsUrl = (page: number, status: string) => {
-    const qs = new URLSearchParams({
-      page: String(page),
-      limit: String(TICKETS_PAGE_SIZE),
-    });
-    if (status) qs.set("status", status);
-    return `/api/admin/tickets?${qs.toString()}`;
-  };
-
   // R120-B5 (A2-F9): the hand-rolled fetch/page/abort state machine is
   // replaced by the orders.tsx useInfiniteQuery idiom (94-C2 A2 P1-1):
   // page accumulation + append-in-place load-more, AbortSignal via the
@@ -185,19 +182,26 @@ export default function AdminTicketsPage() {
   } = useInfiniteQuery<TicketSummary[], Error>({
     // Key keeps the "/api/admin/tickets" prefix so any future
     // invalidation family (socket pushes, reply mutations) still finds
-    // this query; `statusFilter` in the key restarts at page 1 and
+    // this query (the R127-L1 flip keeps this HAND key verbatim — the
+    // SocketInitializer + the stats co-invalidation below ride the
+    // "/api/admin/tickets" prefix, the alerts.tsx ALERTS_LIST_KEY
+    // precedent); `statusFilter` in the key restarts at page 1 and
     // aborts the in-flight request via the queryFn's AbortSignal (the
     // 94-C2 debounce + abort lesson — no manual controller needed).
     queryKey: ["/api/admin/tickets", "load-more", listParams],
-    queryFn: async ({ pageParam, signal }) => {
-      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe
-      // error-body parse; the AbortSignal still rides init untouched.
-      const d = await adminFetchJson<unknown>(ticketsUrl(pageParam as number, statusFilter), {
-        headers,
-        signal,
-      });
-      return Array.isArray(d) ? (d as TicketSummary[]) : [];
-    },
+    queryFn: ({ pageParam, signal }) =>
+      // R127-L1: the generated fetcher — the URL builder emits the same
+      // frozen `?page=&limit=&status=` contract; customFetch owns the
+      // ok-guard + the safe error-body parse (the Array.isArray guard
+      // retires — the contract suite pins the plain-array shape).
+      listAdminTickets(
+        {
+          page: pageParam as number,
+          limit: TICKETS_PAGE_SIZE,
+          status: (statusFilter || undefined) as ListAdminTicketsStatus | undefined,
+        },
+        { signal, headers },
+      ),
     initialPageParam: 1,
     // Frozen contract (backend returns a plain array with no total
     // meta): a full page means the next page MIGHT exist; the first
@@ -235,18 +239,23 @@ export default function AdminTicketsPage() {
   // was invoked unawaited from onClick — a 401/500 detail fetch became
   // an unhandled promise rejection with zero UI feedback.
   // R123 (E3 item 1): the ok-guard rides adminFetchJson now.
+  // R127-L1: getAdminTicket (customFetch owns the ok-guard; AdminTicketThread
+  // is field-superset-compatible with the old hand parse).
   const openTicket = async (id: number) => {
     try {
-      const d = await adminFetchJson<TicketDetail>(`/api/admin/tickets/${id}`, { headers });
+      const d = await getAdminTicket(id, { headers });
       setSelected(d);
       setReplyText("");
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     } catch (err) {
       // Session expiry already toasted + redirected — stay quiet.
-      if (err instanceof AdminSessionExpiredError) return;
+      if (isSessionExpiredError(err)) return;
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "تعذّر فتح التذكرة",
+        // R127-L1 (B1 F-3): getErrorMessage strips ApiError's English
+        // "HTTP <n>" prefix and keeps the Arabic suffix — the Arabic-toast
+        // discipline survives the generated-client flip.
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     }
@@ -299,11 +308,9 @@ export default function AdminTicketsPage() {
     if (!selected || !replyText.trim()) return;
     setSending(true);
     try {
-      await adminFetchJson(`/api/admin/tickets/${selected.id}/reply`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: replyText }),
-      });
+      // R127-L1: the generated fetcher sets Content-Type itself and
+      // serializes the body (the manual header merge retires).
+      await replyAdminTicket(selected.id, { message: replyText }, { headers });
       setReplyText("");
       await openTicket(selected.id);
       void refetch();
@@ -315,10 +322,10 @@ export default function AdminTicketsPage() {
       // Session expiry already toasted + redirected — keep the drafted
       // reply in the box (it survives the redirect round-trip) and stay
       // quiet instead of layering a «فشلت العملية» toast on top.
-      if (err instanceof AdminSessionExpiredError) return;
+      if (isSessionExpiredError(err)) return;
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        description: getErrorMessage(err), // R127-L1 (B1 F-3): Arabic-first
         variant: "destructive",
       });
     } finally {
@@ -332,11 +339,13 @@ export default function AdminTicketsPage() {
     if (statusBusy !== null) return;
     setStatusBusy(id);
     try {
-      await adminFetchJson(`/api/admin/tickets/${id}/status`, {
-        method: "PATCH",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
+      // R127-L1: the FE only ever sends the three filter values
+      // (STATUS_FILTERS / TICKET_STATUSES), so the enum cast is total.
+      await updateAdminTicketStatus(
+        id,
+        { status: status as AdminTicketStatusBodyStatus },
+        { headers },
+      );
       if (selected?.id === id) await openTicket(id);
       void refetch();
       // R125-I4 (A4-B-3): a status flip changes open_tickets — refresh
@@ -347,10 +356,10 @@ export default function AdminTicketsPage() {
         variant: "success",
       });
     } catch (err: unknown) {
-      if (err instanceof AdminSessionExpiredError) return;
+      if (isSessionExpiredError(err)) return;
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
+        description: getErrorMessage(err), // R127-L1 (B1 F-3): Arabic-first
         variant: "destructive",
       });
     } finally {

@@ -27,12 +27,16 @@ import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminTopupsPage from "@/pages/admin/topups";
-import { customFetch } from "@workspace/api-client-react";
+import { approveTopup, customFetch } from "@workspace/api-client-react";
 
 vi.mock("@workspace/api-client-react", () => ({
   // 94-C2 (A2 P1-1): the queue moved from useListAdminTopups to a
   // useInfiniteQuery over the frozen `?page=&limit=` contract via
-  // customFetch — the mock follows the new module surface.
+  // customFetch — the mock follows the new module surface. R127-L1
+  // (B1 §3.2): both money loops ride the generated approveTopup/
+  // rejectTopup fetchers now, so the loop assertions moved from the
+  // fetchMock call surface to the fetcher mock (same numbers — one
+  // call per pending row).
   customFetch: vi.fn(),
   getListAdminTopupsQueryKey: () => ["admin-topups"],
   approveTopup: vi.fn(),
@@ -89,6 +93,10 @@ function mockTopupsResult(data: unknown[]) {
   (customFetch as unknown as Mock).mockResolvedValue(data);
 }
 
+/** The generated fetcher's SuccessResponse shape (R127-L1: the loops
+ * ride approveTopup now). */
+const APPROVED = { success: true };
+
 /** Minimal Response-like object — avoids depending on a global Response. */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
@@ -133,6 +141,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
   beforeEach(() => {
     vi.clearAllMocks();
     mockTopupsResult(PENDING);
+    (approveTopup as unknown as Mock).mockResolvedValue(APPROVED);
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -157,22 +166,23 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
   });
 
   it("busy state blocks re-click (no second parallel loop) and renders live progress", async () => {
-    // Gate items 11 + 12 so the loop is observably paused mid-flight.
-    const gate11 = deferred<Response>();
-    const gate12 = deferred<Response>();
-    fetchMock.mockImplementation(async (input: unknown) => {
-      const url = String(input);
-      if (url.includes("/api/admin/topups/11/approve")) return gate11.promise;
-      if (url.includes("/api/admin/topups/12/approve")) return gate12.promise;
-      return resLike({ ok: true });
+    // Gate items 11 + 12 so the loop is observably paused mid-flight
+    // (R127-L1: the gate rides the generated fetcher mock — the loop
+    // calls approveTopup directly now, no global fetch involved).
+    const gate11 = deferred<unknown>();
+    const gate12 = deferred<unknown>();
+    (approveTopup as unknown as Mock).mockImplementation(async (id: number) => {
+      if (id === 11) return gate11.promise;
+      if (id === 12) return gate12.promise;
+      return APPROVED;
     });
 
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /موافقة الكل/ }));
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
-    // The first loop item is in flight: exactly ONE approve request.
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    // The first loop item is in flight: exactly ONE approve call.
+    await waitFor(() => expect(approveTopup).toHaveBeenCalledTimes(1));
 
     // Busy: the modal confirm AND the header trigger are disabled…
     // F3-03 (R111): the modal now rides AppDialog/Radix, which marks the
@@ -192,27 +202,33 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
 
     // …and hammering them again starts no second loop.
     for (const btn of [...busyButtons, ...busyTriggers]) fireEvent.click(btn);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(approveTopup).toHaveBeenCalledTimes(1);
 
     // Live progress counter renders (modal subtitle/button + trigger).
     expect(screen.getAllByText("جاري 0/3...").length).toBeGreaterThan(0);
 
-    gate11.resolve(resLike({ ok: true }));
+    gate11.resolve(APPROVED);
     await waitFor(() => expect(screen.getAllByText("جاري 1/3...").length).toBeGreaterThan(0));
-    gate12.resolve(resLike({ ok: true }));
+    gate12.resolve(APPROVED);
 
     // Loop completes → single summary toast.
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(approveTopup).toHaveBeenCalledTimes(3);
   });
 
   it("summarizes mixed results in ONE toast: X نجحت / Y فشلت + per-item reasons", async () => {
-    fetchMock.mockImplementation(async (input: unknown) => {
-      const url = String(input);
-      if (url.includes("/api/admin/topups/13/approve")) {
-        return resLike({ ok: false, status: 409, body: { error: "الطلب قيد المعالجة" } });
+    // R127-L1: the failure surfaces as the generated fetcher's ApiError
+    // shape (customFetch builds "HTTP 409 …: <Arabic>" + data.error) —
+    // the loop's getErrorMessage catch maps it back to the Arabic body.
+    (approveTopup as unknown as Mock).mockImplementation(async (id: number) => {
+      if (id === 13) {
+        throw Object.assign(new Error("HTTP 409 Conflict: الطلب قيد المعالجة"), {
+          name: "ApiError",
+          status: 409,
+          data: { error: "الطلب قيد المعالجة" },
+        });
       }
-      return resLike({ ok: true });
+      return APPROVED;
     });
 
     renderPage();
@@ -231,8 +247,6 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
   });
 
   it("a full-success run gets a single success summary toast", async () => {
-    fetchMock.mockResolvedValue(resLike({ ok: true }));
-
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /موافقة الكل/ }));
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));

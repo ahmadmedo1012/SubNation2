@@ -14,7 +14,6 @@ import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
-import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
@@ -55,6 +54,16 @@ import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
 type AdminTopupRow = AdminTopup & { payment_method?: string; sender_account?: string };
+
+/** R127-L1 (B1 §3.2): a 401 from the generated fetcher is the global
+ * admin-session handler's business (toast + redirect fired inside
+ * customFetch) — the money loops below break on it quietly. ApiError
+ * is type-only from the package, so the check duck-types `status` (the
+ * alerts.tsx R126-L8b idiom; replaces the raw loops' isAdminUnauthorized
+ * Response check). */
+function isSessionExpiredError(err: unknown): boolean {
+  return (err as { status?: unknown } | null | undefined)?.status === 401;
+}
 
 function MethodBadge({ method }: { method: string }) {
   if (method === "lypay")
@@ -967,45 +976,40 @@ export default function AdminTopupsPage() {
       // first call commit and the next N-1 would replay the first
       // response, leaving the rest of the topups untouched. Each topup
       // is its own logical action — generate a fresh key per iteration.
+      // R127-L1 (B1 §3.2): the loop rides the GENERATED fetchers now
+      // (approveTopup/rejectTopup — the same calls the single-item
+      // mutations above make). The per-iteration key survives verbatim
+      // via fetcher options.headers (customFetch merges it after its own
+      // Content-Type); the !r.ok hand-parse + the network catch COLLAPSE
+      // into one catch — getErrorMessage already speaks ApiError fluently
+      // (data.error Arabic-first, code map, HTTP-prefix strip), so the
+      // R126-L3 Arabic-reason routing is preserved by construction.
+      const fetcher = action === "approve" ? approveTopup : rejectTopup;
+      const fallbackNote =
+        note.trim() || (action === "approve" ? "تمت الموافقة الجماعية" : "مرفوض جماعياً");
       for (const id of ids) {
-        const url = `/api/admin/topups/${id}/${action}`;
         try {
-          const r = await fetch(url, {
-            method: "POST",
-            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-            body: JSON.stringify({
-              admin_note:
-                note.trim() || (action === "approve" ? "تمت الموافقة الجماعية" : "مرفوض جماعياً"),
-            }),
-          });
-          // 93-C6 / F-07 (A5 S-3): session expired mid-loop — stop the
-          // money loop; the global handler has toasted + redirected.
-          if (isAdminUnauthorized(r, url)) {
+          await fetcher(
+            id,
+            { admin_note: fallbackNote },
+            {
+              headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
+            },
+          );
+          successCount++;
+        } catch (e) {
+          // 93-C6 / F-07 (A5 S-3): session expired mid-loop — customFetch
+          // has already toasted + redirected; stop the money loop quietly.
+          if (isSessionExpiredError(e)) {
             sessionExpired = true;
             break;
           }
-          if (!r.ok) {
-            const body = (await r.json().catch(() => null)) as {
-              error?: string;
-              code?: string;
-            } | null;
-            failures.push({
-              id,
-              // R126-L3 (A2/A8): route through getErrorMessage — the
-              // Arabic guard maps the body's code/error to Arabic and
-              // collapses message-less bodies (proxy 502s) to the
-              // generic Arabic line instead of a bare English
-              // "HTTP 502" inside the Arabic summary toast.
-              reason: getErrorMessage(body),
-            });
-            continue;
-          }
-          successCount++;
-        } catch (e) {
-          // R126-L3 (A2/A8): network-level failures speak Arabic too —
-          // "Failed to fetch" used to land raw in the summary toast.
           failures.push({
             id,
+            // R126-L3 (A2/A8) preserved: the Arabic guard maps the
+            // ApiError body's code/error to Arabic and collapses
+            // message-less bodies (proxy 502s) to the generic Arabic
+            // line instead of a bare English "HTTP 502".
             reason: getErrorMessage(e),
           });
         }
@@ -1032,7 +1036,14 @@ export default function AdminTopupsPage() {
       if (successCount > 0 && failures.length === 0) {
         toast({
           title: action === "approve" ? "تمت الموافقة الجماعية" : "تم الرفض الجماعي",
-          description: `${successCount}/${ids.length} طلب تمت معالجته`,
+          // B14-5 / A8-F19 (R127-L11, the held site): the count rides
+          // formatCount + this file's own TOPUP_COUNT_FORMS — the frozen
+          // «N طلب» read «3 طلب تمت معالجته». The X/Y prefix is dropped:
+          // this arm only fires with failures.length === 0, i.e.
+          // successCount === ids.length, so «N/N» carried no extra
+          // information (the partial-failure toast above keeps the
+          // honest «N من M» shape).
+          description: `تمت معالجة ${formatCount(successCount, TOPUP_COUNT_FORMS)}`,
           variant: "success",
         });
       }
@@ -1069,41 +1080,37 @@ export default function AdminTopupsPage() {
     // invalidate fires into the redirect.
     let sessionExpired = false;
     try {
+      // R127-L1 (B1 §3.2): the approveAll loop rides the generated
+      // approveTopup fetcher — same shape as handleBulkAction above
+      // (per-iteration idempotency key via options.headers, 401 break
+      // via the ApiError duck-type, one getErrorMessage catch).
       for (const [index, t] of pending.entries()) {
         try {
-          const url = `/api/admin/topups/${t.id}/approve`;
-          const r = await fetch(url, {
-            method: "POST",
-            // Same per-iteration key generation as handleBulkAction above.
-            headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
-            body: JSON.stringify({
+          await approveTopup(
+            t.id,
+            {
               // R122 (A2-P2): the operator's bulk-confirm note rides every
               // row — empty keeps the boilerplate fallback (see
               // handleBulkAction).
               admin_note: note.trim() || "تمت الموافقة الجماعية",
-            }),
-          });
+            },
+            {
+              // Same per-iteration key generation as handleBulkAction above.
+              headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
+            },
+          );
+          approvedCount++;
+        } catch (e) {
           // 93-C6 / F-07 (A5 S-3): session expired mid-loop — abort the
           // money loop (the global handler has toasted + redirected);
           // nothing further is submitted or summarized.
-          if (isAdminUnauthorized(r, url)) {
+          if (isSessionExpiredError(e)) {
             sessionExpired = true;
             break;
           }
-          if (!r.ok) {
-            const body = (await r.json().catch(() => null)) as {
-              error?: string;
-              code?: string;
-            } | null;
-            // R126-L3 (A2/A8): same Arabic guard as handleBulkAction —
-            // no bare "HTTP 502" fragments in the money summary toast.
-            throw new Error(getErrorMessage(body));
-          }
-          approvedCount++;
-        } catch (e) {
-          // R126-L3 (A2/A8): the thrown reason above is already Arabic
-          // (getErrorMessage is idempotent on its own output); network
-          // TypeErrors collapse to the Arabic connection line.
+          // R126-L3 (A2/A8) preserved: getErrorMessage maps the ApiError
+          // body to Arabic — no bare "HTTP 502" fragments in the money
+          // summary toast.
           failures.push({
             id: t.id,
             reason: getErrorMessage(e),

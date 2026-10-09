@@ -43,14 +43,23 @@ import AdminUsersPage from "@/pages/admin/users";
 import AdminTicketsPage from "@/pages/admin/tickets";
 import { customFetch } from "@workspace/api-client-react";
 
-vi.mock("@workspace/api-client-react", () => ({
-  // The users directory rides a useInfiniteQuery over customFetch —
-  // the mock follows the module surface the page graph imports (the
-  // tickets page does not use it).
-  customFetch: vi.fn(),
-  getListAdminUsersQueryKey: (params?: unknown) => ["/api/admin/users", params ?? null],
-  setUnauthorizedHandler: vi.fn(),
-}));
+vi.mock("@workspace/api-client-react", async (importOriginal) => {
+  // R127-L1 (importActual spread, B1 §3.1 pattern): the users arm keeps
+  // its customFetch/listKey stubs (the users directory rides a
+  // useInfiniteQuery over customFetch), while the tickets page's
+  // generated fetchers (listAdminTickets / getAdminTicket /
+  // replyAdminTicket / updateAdminTicketStatus) run REAL against the
+  // stubbed global fetch — the module-internal customFetch binding the
+  // fetchers call is the real one, so the fetch-level assertions
+  // (PATCH method, exact URLs) keep working.
+  const actual = await importOriginal<typeof import("@workspace/api-client-react")>();
+  return {
+    ...actual,
+    customFetch: vi.fn(),
+    getListAdminUsersQueryKey: (params?: unknown) => ["/api/admin/users", params ?? null],
+    setUnauthorizedHandler: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
@@ -79,12 +88,17 @@ const USER = {
   created_at: "2026-08-01T10:00:00.000Z",
 };
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** Minimal Response-like object — avoids depending on a global Response.
+ * R127-L1: the tickets page rides the generated fetchers now (real
+ * customFetch via the importActual spread) — the stubs need
+ * headers + text() for the parse. */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
   return {
     ok,
     status,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }

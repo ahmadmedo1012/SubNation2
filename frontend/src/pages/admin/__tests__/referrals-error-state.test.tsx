@@ -20,6 +20,7 @@
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
@@ -77,12 +78,16 @@ const emptyPayload = {
   list: [],
 };
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** Minimal Response-like object — avoids depending on a global Response.
+ * R127-L1: the page rides the generated client now, so the REAL
+ * customFetch parses these stubs — it needs headers + text(). */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
   return {
     ok,
     status,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -90,10 +95,16 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 const fetchMock = vi.fn();
 
 function renderPage() {
+  // R127-L1: the list rides useListAdminReferrals — a fresh client per
+  // render (retry: false so the error-surface tests assert the FIRST
+  // failure, not a retried one).
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <Router>
-      <AdminReferralsPage />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminReferralsPage />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 

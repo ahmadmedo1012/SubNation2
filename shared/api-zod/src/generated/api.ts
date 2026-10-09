@@ -3270,6 +3270,99 @@ export const ListAdminAuthActivityResponse = zod.object({
 });
 
 /**
+ * R127-L5 (B15-1): the audit_logs reader — every consequential
+ * admin action is written to audit_logs by 6+ writers; this
+ * endpoint is the operator-facing view of that trail (the
+ * security page's «إجراءات المسؤولين» tab). Rows carry
+ * actor/action/target/ip — that is the point of the feature.
+ * Ordered created_at DESC (id DESC tiebreaker for stable
+ * offset pages). Cache-Control: no-store.
+ * @summary Admin audit-trail page (requireAdmin + admins scope)
+ */
+export const ListAdminAuditLogsQueryParams = zod.object({
+  action: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      'Exact action filter ("topup.approve", "user.update", … —\nfree `<resource>.<verb>` varchar; "all" or empty means no\nfilter). Array-valued params are ignored (round-94 A5-09\nsingle-string guard).\n',
+    ),
+  actor: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe(
+      "Exact admin id filter (actor_id). Digit-exact positive\ninteger; anything else is 400 INVALID_DATA.\n",
+    ),
+  target: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe(
+      "Exact target row id filter (target_id, across target\ntypes). Digit-exact positive integer; anything else is 400\nINVALID_DATA.\n",
+    ),
+  startDate: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      "Inclusive lower bound on created_at — any Date-parseable\nstring; invalid values are 400 INVALID_DATA (round-94\nA5-09, the auth-activity idiom).\n",
+    ),
+  endDate: zod.coerce
+    .string()
+    .nullish()
+    .describe("Inclusive upper bound (same validation as startDate)."),
+  page: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("1-based page number (default 1, ceiling 10 000)."),
+  limit: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Page size, clamped to [1, 200] (default 50)."),
+});
+
+export const ListAdminAuditLogsResponse = zod
+  .object({
+    logs: zod.array(
+      zod
+        .object({
+          id: zod.number().int(),
+          actorId: zod
+            .number()
+            .int()
+            .nullable()
+            .describe(
+              "admin_users id when the writer rode an admin session; null for the Telegram webhook path (the actor lives in metadata).",
+            ),
+          actorType: zod.enum(["user", "admin", "system"]),
+          actorUsername: zod.string().nullable(),
+          action: zod
+            .string()
+            .describe("Stable `<resource>.<verb>` string (topup.approve, user.update, …)."),
+          targetType: zod.string().nullable(),
+          targetId: zod.number().int().nullable(),
+          metadata: zod
+            .string()
+            .nullable()
+            .describe("Raw JSON-stringified metadata (≤2 KB per writeAuditLog)."),
+          ip: zod.string().nullable(),
+          createdAt: zod.coerce.date(),
+        })
+        .describe(
+          'R127-L5 (B15-1): one audit_logs row — the WHO did WHAT WHEN\nanswer for every consequential admin action. `metadata` is the\nwriter\'s raw JSON string (writeAuditLog safeMetadata, ≤2 KB);\ne.g. the Telegram webhook path carries\n`{"source":"telegram_webhook","actor":"@ops","from_id":111111}`\n(B11-F1). `actorUsername` is the LEFT-JOINed admin_users\nusername for the actor id (null for system/telegram actors).\n',
+        ),
+    ),
+    total: zod.number().int(),
+    page: zod.number().int(),
+    limit: zod.number().int(),
+    hasMore: zod.boolean(),
+  })
+  .describe(
+    "The audit-trail page envelope (the alerts-inbox shape): one\npage of rows + the honest total + page/limit + hasMore (offset\n+ page length < total).\n",
+  );
+
+/**
  * Three payloads in one response: the newest-200 list (LEFT JOIN
  * referrer/referee users), the all-time stats block, and the top
  * 10 referrers by credited count. KNOWN WINDOW (B-7): the
@@ -3755,6 +3848,646 @@ export const AdminDiagnosticsInventoryHealthResponse = zod.object({
   ),
   checked_at: zod.coerce.date(),
 });
+
+/**
+ * The System tab's 15 s poll (the highest-cadence admin endpoint).
+ * The live prom registry is re-shaped into a bounded JSON snapshot
+ * (lib/metrics-snapshot.ts) behind a 10 s server cache; the
+ * response is the last-known-good envelope — when a snapshot
+ * build fails, the previous value rides back with stale=true.
+ * Per-route p95Ms in http.topRoutes is always null today (kept in
+ * the shape to stay forward-compatible with a per-route
+ * histogram). Cache-Control: no-store (router-level, R125-I6).
+ * @summary Prometheus registry snapshot (requireAdmin + settings scope) — LKG envelope
+ */
+export const GetAdminObservabilityMetricsResponse = zod
+  .object({
+    value: zod
+      .union([
+        zod
+          .object({
+            timestamp: zod.coerce.date(),
+            uptimeSec: zod.number().int(),
+            http: zod.object({
+              totalRequests: zod.number(),
+              requestsByStatusClass: zod.object({
+                "2xx": zod.number(),
+                "3xx": zod.number(),
+                "4xx": zod.number(),
+                "5xx": zod.number(),
+                other: zod.number(),
+              }),
+              errorRate: zod.number().describe("5xx / total (0–1)."),
+              latency: zod.object({
+                p50Ms: zod.number().nullable(),
+                p95Ms: zod.number().nullable(),
+                p99Ms: zod.number().nullable(),
+                meanMs: zod.number().nullable(),
+              }),
+              topRoutes: zod
+                .array(
+                  zod.object({
+                    route: zod.string(),
+                    method: zod.string(),
+                    count: zod.number(),
+                    errorCount: zod.number(),
+                    p95Ms: zod
+                      .number()
+                      .nullable()
+                      .describe("Always null today (kept for a future per-route histogram)."),
+                  }),
+                )
+                .describe("Top 8 routes by request count."),
+            }),
+            auth: zod.object({
+              outcomes: zod
+                .record(zod.string(), zod.number())
+                .describe('"method:outcome" → count (joined-string keys).'),
+              totalAttempts: zod.number(),
+              failureRate: zod.number(),
+            }),
+            redis: zod.object({
+              available: zod.boolean(),
+              opsTotal: zod.record(zod.string(), zod.number()).describe('"op:status" → count.'),
+              errorsTotal: zod.record(zod.string(), zod.number()).describe("reason → count."),
+              pingLatencyMs: zod.object({
+                p50: zod.number().nullable(),
+                p95: zod.number().nullable(),
+                p99: zod.number().nullable(),
+              }),
+              degradedEvents: zod.number(),
+            }),
+            socket: zod.object({
+              connectedClients: zod.number(),
+              eventsTotal: zod
+                .record(zod.string(), zod.number())
+                .describe('"event:direction" → count.'),
+            }),
+            worker: zod.object({
+              jobsTotal: zod.record(zod.string(), zod.number()).describe('"job:status" → count.'),
+            }),
+            cwv: zod.object({
+              samples: zod
+                .record(zod.string(), zod.number())
+                .describe("metric name → sample count."),
+              p75: zod
+                .record(zod.string(), zod.number().nullable())
+                .describe("metric name → p75 (ms for timings, unit-less for CLS)."),
+            }),
+            alerts: zod.object({
+              dispatchedTotal: zod
+                .record(zod.string(), zod.number())
+                .describe('"rule:severity:outcome" → count.'),
+            }),
+            monitoringErrors: zod.number(),
+            scheduler: zod
+              .object({
+                mode: zod.enum(["embedded", "dedicated", "single", "disabled"]),
+                active: zod.boolean().describe("Whether the scheduler loops run in THIS process."),
+                isLeader: zod
+                  .boolean()
+                  .describe("Whether this process holds the Redis-backed leader lock."),
+                instanceId: zod
+                  .string()
+                  .nullable()
+                  .describe("Stable process id (host + pid + uuid) — null before boot decides."),
+                reason: zod.enum([
+                  "active",
+                  "disabled_by_env",
+                  "not_leader",
+                  "redis_unavailable",
+                  "unknown",
+                ]),
+                startedAt: zod.coerce.date().nullable(),
+              })
+              .describe(
+                "The scheduler singleton's state (lib/scheduler-state.ts) — what\nthis process believes the topology is.\n",
+              ),
+          })
+          .describe(
+            'The prom registry re-shaped (lib/metrics-snapshot.ts) — bounded\ntop-N route aggregation, interpolated histogram percentiles,\n"key:status"-joined record counters.\n',
+          ),
+        zod.null(),
+      ])
+      .describe("Null only before the first successful build AND a failed recompute."),
+    lastKnownGoodAt: zod.coerce.date().nullable(),
+    stale: zod.boolean(),
+  })
+  .describe(
+    "GET /admin/observability/metrics — the last-known-good envelope\naround the snapshot (10 s server cache).\n",
+  );
+
+/**
+ * The System tab's 60 s poll — release identity (7-char GIT_SHA,
+ * "unknown" when unset), uptime, Redis availability, the worker
+ * heartbeat age from the Redis key (null when no Redis / no key),
+ * the alerts cache LKG stamp + recent count, and the three
+ * dashboard deep-links (env URLs, null when unset).
+ * Cache-Control: no-store.
+ * @summary System summary card (requireAdmin + settings scope)
+ */
+export const GetAdminObservabilitySummaryResponse = zod
+  .object({
+    server: zod.object({
+      version: zod
+        .string()
+        .describe('7-char release SHA (GIT_SHA / RENDER_GIT_COMMIT, "unknown" when unset).'),
+      uptimeSec: zod.number().int(),
+      nodeVersion: zod.string(),
+    }),
+    redis: zod.object({
+      available: zod.boolean(),
+    }),
+    worker: zod.object({
+      heartbeat: zod.union([
+        zod.object({
+          ageSec: zod.number().int().nullable(),
+          ts: zod.coerce.date().nullable(),
+        }),
+        zod.null(),
+      ]),
+    }),
+    alerts: zod.object({
+      lastKnownGoodAt: zod.coerce.date().nullable(),
+      stale: zod.boolean(),
+      recentCount: zod.number().int(),
+    }),
+    dashboards: zod.object({
+      render: zod.string().nullable(),
+      sentry: zod.string().nullable(),
+      neon: zod.string().nullable(),
+    }),
+  })
+  .describe("GET /admin/observability/summary — the System tab summary card.");
+
+/**
+ * The System tab's 90 s poll — the real scheduler topology
+ * (embedded / single / dedicated / disabled) with the Redis
+ * heartbeat framed by mode. heartbeat.expected is false when no
+ * Redis client exists (R108 FH-A1 P2 F4 — the heartbeat is inert
+ * by design on no-Redis deployments) and the optional note says
+ * so; description is the operator-facing Arabic line.
+ * Cache-Control: no-store.
+ * @summary Scheduler runtime state (requireAdmin + settings scope)
+ */
+export const GetAdminObservabilitySchedulerResponse = zod
+  .object({
+    mode: zod.enum(["embedded", "dedicated", "single", "disabled"]),
+    active: zod.boolean(),
+    isLeader: zod.boolean(),
+    instanceId: zod.string().nullable(),
+    reason: zod.enum(["active", "disabled_by_env", "not_leader", "redis_unavailable", "unknown"]),
+    startedAt: zod.coerce.date().nullable(),
+    heartbeat: zod.object({
+      ageSec: zod.number().int().nullable(),
+      ts: zod.coerce.date().nullable(),
+      healthy: zod.boolean(),
+      expected: zod
+        .boolean()
+        .describe(
+          "False whenever no Redis client exists (the heartbeat is\ninert by design on no-Redis deployments — R108).\n",
+        ),
+      note: zod
+        .string()
+        .optional()
+        .describe(
+          'Present only when no Redis client exists ("no Redis — heartbeat inert by design").',
+        ),
+    }),
+    description: zod.string().describe("Operator-facing Arabic line (mode-dependent)."),
+  })
+  .describe(
+    "GET /admin/observability/scheduler — the topology state plus the\nmode-framed Redis heartbeat.\n",
+  );
+
+/**
+ * The System tab's 90 s poll — the newest 50 admin_alerts rows
+ * behind a 60 s server cache, in the last-known-good envelope (a
+ * cache build failure serves the previous page with stale=true;
+ * alerts is [] when no LKG exists). Cache-Control: no-store.
+ * @summary Recent alerts (requireAdmin + settings scope) — LKG envelope
+ */
+export const GetAdminObservabilityAlertsRecentResponse = zod
+  .object({
+    alerts: zod.array(
+      zod
+        .object({
+          id: zod.number().int(),
+          type: zod
+            .string()
+            .describe(
+              "varchar(30) — known values: system, low_stock, no_stock,\nforecast_stockout, coupon_maxed, coupon_expiring. Kept an\nopen string (not an enum) so a new producer cannot break\nthe contract.\n",
+            ),
+          title: zod.string(),
+          message: zod.string().nullable(),
+          isRead: zod.boolean(),
+          dedupeKey: zod
+            .string()
+            .nullable()
+            .describe("Dedupe key for repeated operational alerts; null for one-offs."),
+          createdAt: zod.coerce.date(),
+        })
+        .describe(
+          "A raw admin_alerts row (drizzle select() — every column rides\nthe JSON, dedupeKey included).\n",
+        ),
+    ),
+    lastKnownGoodAt: zod.coerce.date().nullable(),
+    stale: zod.boolean(),
+  })
+  .describe(
+    "GET /admin/observability/alerts/recent — the newest 50\nadmin_alerts rows in the last-known-good envelope.\n",
+  );
+
+/**
+ * The System tab's 60 s poll — node/runtime identity, memory +
+ * CPU usage, event-loop lag percentiles (null until the 5 s
+ * monitor interval produces a histogram), dependency states, and
+ * the four env-flag strings verbatim (including the handler's
+ * "true"/"false" fallbacks when unset).
+ * Cache-Control: no-store.
+ * @summary Runtime diagnostics snapshot (requireAdmin + settings scope)
+ */
+export const GetAdminDiagnosticsResponse = zod
+  .object({
+    node: zod.object({
+      version: zod.string(),
+      platform: zod.string(),
+      arch: zod.string(),
+      pid: zod.number().int(),
+    }),
+    runtime: zod.object({
+      uptimeSec: zod.number().int(),
+      version: zod.string().describe('The 7-char release SHA ("unknown" when unset).'),
+      env: zod.string(),
+      service: zod.string().describe('RENDER_SERVICE_NAME or the "web" fallback.'),
+    }),
+    memory: zod.object({
+      rssMb: zod.number().int(),
+      heapUsedMb: zod.number().int(),
+      heapTotalMb: zod.number().int(),
+      externalMb: zod.number().int(),
+    }),
+    cpu: zod.object({
+      userMs: zod.number().int(),
+      systemMs: zod.number().int(),
+    }),
+    eventLoop: zod
+      .union([
+        zod.object({
+          meanMs: zod.number(),
+          p50Ms: zod.number(),
+          p95Ms: zod.number(),
+          p99Ms: zod.number(),
+          maxMs: zod.number(),
+        }),
+        zod.null(),
+      ])
+      .describe("Null until the 5 s monitor interval produces a histogram."),
+    deps: zod.object({
+      redis: zod.object({
+        connected: zod.boolean(),
+      }),
+      socket: zod.object({
+        initialized: zod.boolean(),
+      }),
+    }),
+    flags: zod
+      .object({
+        ALERTING_ENABLED: zod.string(),
+        METRICS_ENABLED: zod.string(),
+        NEW_HEALTH_CHECKS_ENABLED: zod.string(),
+        FIREBASE_AUTH_ENABLED: zod.string(),
+      })
+      .describe("The four env-flag strings verbatim (fallbacks included)."),
+  })
+  .describe("GET /admin/diagnostics — the runtime diagnostics snapshot.");
+
+/**
+ * The 5-min fallback poll behind every admin page's alert drawer
+ * (layout.tsx) plus the socket-triggered immediate refetch. The
+ * since filter runs SQL-side (WHERE id > since ORDER BY id DESC
+ * LIMIT 50, R96-A5 M15) — id is the serial PK, monotonic with
+ * insert order. No envelope: just {alerts}. Cache-Control:
+ * no-store.
+ * @summary New-alerts polling delta (requireAdmin + support scope)
+ */
+export const ListAdminNewAlertsQueryParams = zod.object({
+  since: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Last-seen alert id (default 0 → the newest 50)."),
+});
+
+export const ListAdminNewAlertsResponse = zod
+  .object({
+    alerts: zod.array(
+      zod
+        .object({
+          id: zod.number().int(),
+          type: zod
+            .string()
+            .describe(
+              "varchar(30) — known values: system, low_stock, no_stock,\nforecast_stockout, coupon_maxed, coupon_expiring. Kept an\nopen string (not an enum) so a new producer cannot break\nthe contract.\n",
+            ),
+          title: zod.string(),
+          message: zod.string().nullable(),
+          isRead: zod.boolean(),
+          dedupeKey: zod
+            .string()
+            .nullable()
+            .describe("Dedupe key for repeated operational alerts; null for one-offs."),
+          createdAt: zod.coerce.date(),
+        })
+        .describe(
+          "A raw admin_alerts row (drizzle select() — every column rides\nthe JSON, dedupeKey included).\n",
+        ),
+    ),
+  })
+  .describe(
+    "GET /admin/alerts/new — the drawer's polling delta; plain\nadmin_alerts rows (drizzle select(), camelCase keys), newest\nfirst, ≤50.\n",
+  );
+
+/**
+ * The risk page's 30 s poll — three concurrent aggregates over the
+ * lookback window: by-level counts, the unresolved backlog
+ * (events with no risk_labels row), and the top-5 fired rules
+ * (flattened out of the rule_fired text[] column), plus the
+ * pipeline flag (RISK_PIPELINE_ENABLED). Cache-Control: no-store.
+ * @summary Risk review-queue header metrics (requireAdmin + users scope)
+ */
+export const GetAdminRiskDashboardQueryParams = zod.object({
+  hours: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Lookback window in hours, clamped to [1, 720] (default 24)."),
+});
+
+export const GetAdminRiskDashboardResponse = zod
+  .object({
+    window_hours: zod.number().int().describe("The clamped lookback (1–720)."),
+    total: zod.number().int().describe("Sum of the by_level counts."),
+    by_level: zod.object({
+      low: zod.number().int(),
+      medium: zod.number().int(),
+      high: zod.number().int(),
+      critical: zod.number().int(),
+    }),
+    unresolved: zod
+      .number()
+      .int()
+      .describe("Events in the window with no risk_labels row (the backlog)."),
+    top_rules: zod
+      .array(
+        zod.object({
+          rule: zod.string(),
+          count: zod.number().int(),
+        }),
+      )
+      .describe("Top ≤5 fired rules, count-descending."),
+    pipeline: zod.object({
+      enabled: zod.boolean().describe('RISK_PIPELINE_ENABLED === "true".'),
+    }),
+  })
+  .describe("GET /admin/risk/dashboard — the review-queue header aggregates.");
+
+/**
+ * The risk page's queue + load-more. Keyset cursor (opaque
+ * "<isoCreatedAt>:<id>") over (created_at DESC, id DESC);
+ * next_cursor is null on the last page. The LEFT JOIN enriches
+ * each row with the user's phone/email (nullable — user_id is
+ * ON DELETE SET NULL). Cache-Control: no-store.
+ * @summary Risk events review queue (requireAdmin + users scope) — keyset cursor pagination
+ */
+export const ListAdminRiskEventsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Page size, clamped to [1, 200] (default 50)."),
+  level: zod
+    .union([
+      zod.literal("low"),
+      zod.literal("medium"),
+      zod.literal("high"),
+      zod.literal("critical"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe("Exact level filter (out-of-enum values are ignored, not 400)."),
+  eventType: zod
+    .union([
+      zod.literal("login_attempt"),
+      zod.literal("login_success"),
+      zod.literal("login_failure"),
+      zod.literal("otp_request"),
+      zod.literal("otp_verify"),
+      zod.literal("topup_attempt"),
+      zod.literal("topup_success"),
+      zod.literal("order_create"),
+      zod.literal("order_deliver"),
+      zod.literal("coupon_apply"),
+      zod.literal("referral_event"),
+      zod.literal("admin_force_reauth"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe(
+      "Exact event-type filter — camelCase query name (matches the\nFE caller). Unlike level, an out-of-enum value here IS 400\nINVALID_DATA.\n",
+    ),
+  userId: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Exact user filter (ignored when unparseable)."),
+  from: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      "Inclusive lower bound (any Date-parseable string; unparseable values are silently ignored).",
+    ),
+  to: zod.coerce.string().nullish().describe("Inclusive upper bound (same semantics as from)."),
+  cursor: zod.coerce
+    .string()
+    .nullish()
+    .describe("Opaque keyset cursor from a previous page's next_cursor."),
+});
+
+export const ListAdminRiskEventsResponse = zod
+  .object({
+    events: zod.array(
+      zod
+        .object({
+          id: zod.number().int(),
+          user_id: zod
+            .number()
+            .int()
+            .nullable()
+            .describe("Null when the user was deleted (ON DELETE SET NULL)."),
+          user_phone: zod.string().nullable(),
+          user_email: zod.string().nullable(),
+          event_type: zod.enum([
+            "login_attempt",
+            "login_success",
+            "login_failure",
+            "otp_request",
+            "otp_verify",
+            "topup_attempt",
+            "topup_success",
+            "order_create",
+            "order_deliver",
+            "coupon_apply",
+            "referral_event",
+            "admin_force_reauth",
+          ]),
+          score: zod.number().int().describe("0–100 (the V1-M29 CHECK bounds)."),
+          level: zod.enum(["low", "medium", "high", "critical"]),
+          confidence: zod.number().describe("numeric(4,3) → number, 0–1."),
+          rule_fired: zod.array(zod.string()),
+          action_taken: zod.enum(["none", "log", "soft_block", "hard_block", "alert"]),
+          ip_address: zod.string().nullable(),
+          created_at: zod.coerce.date(),
+          shown_at: zod.coerce
+            .date()
+            .nullable()
+            .describe("First investigation-view open (SC-004 triage timer); null until then."),
+        })
+        .describe(
+          "One risk_events review-queue row, LEFT-JOIN enriched with the\nuser's phone/email.\n",
+        ),
+    ),
+    next_cursor: zod
+      .string()
+      .nullable()
+      .describe('Opaque "<isoCreatedAt>:<id>" — null on the last page.'),
+  })
+  .describe("GET /admin/risk/events — one keyset page.");
+
+/**
+ * The products page's 5-min StockoutRiskPanel poll — the newest
+ * forecast per product where at_risk + predicted_runout_at are
+ * set (non-archived, active products only), ordered by earliest
+ * predicted runout. pipeline_state is honest about the cron:
+ * fresh / stale (>24 h) / uninitialized (no successful run) /
+ * calibrating (alerting paused by the capture-rate job).
+ * Cache-Control: no-store.
+ * @summary Stockout-risk panel rows (requireAdmin + inventory scope)
+ */
+export const ListAdminForecastAtRiskQueryParams = zod.object({
+  limit: zod.coerce.number().int().nullish().describe("Max rows, clamped to [1, 50] (default 10)."),
+});
+
+export const ListAdminForecastAtRiskResponse = zod
+  .object({
+    pipeline_state: zod.enum(["fresh", "stale", "uninitialized", "calibrating"]),
+    last_successful_run_at: zod.coerce.date().nullable(),
+    data_freshness_hours: zod
+      .number()
+      .int()
+      .nullable()
+      .describe("Hours since the last successful run (null when none)."),
+    rows: zod.array(
+      zod
+        .object({
+          product_id: zod.number().int(),
+          product_name: zod.string(),
+          product_image_url: zod.string().nullable(),
+          product_slug: zod.string().nullable(),
+          category: zod.string().nullable(),
+          current_stock_on_hand: zod.number().int(),
+          avg_daily_sales: zod
+            .number()
+            .nullable()
+            .describe("Trailing 14-day mean (numeric → number)."),
+          predicted_demand_7d: zod.number().int().nullable(),
+          predicted_demand_30d: zod.number().int().nullable(),
+          predicted_runout_at: zod
+            .string()
+            .nullable()
+            .describe('RAW calendar date ("2026-10-01"), clamped to +90 days.'),
+          recommended_reorder_qty: zod.number().int().nullable(),
+          confidence: zod.enum(["high", "medium", "low", "insufficient_data"]),
+          forecast_date: zod.string().describe("RAW calendar date the forecast represents."),
+          panel_url: zod
+            .string()
+            .describe("APP_ORIGIN-joined admin products link (?highlight=<id>)."),
+        })
+        .describe(
+          "One at-risk inventory_forecasts row joined with its product.\nPrediction fields are null when confidence='insufficient_data'\n(the pipeline refuses to fabricate without ≥14 days of history).\n",
+        ),
+    ),
+  })
+  .describe("GET /admin/forecast/at-risk — the stockout-risk panel feed.");
+
+/**
+ * The panel's on-demand drawer — the newest forecast row for one
+ * product plus the explanation block (avg daily sales, DoW blend,
+ * distinct days of order history, run completion stamp).
+ * forecast is null when no row exists (the honest «no forecast
+ * yet» drawer). Cache-Control: no-store.
+ * @summary Per-product forecast detail (requireAdmin + inventory scope)
+ */
+export const GetAdminForecastProductParams = zod.object({
+  id: zod.coerce.number().int().describe("Product id."),
+});
+
+export const GetAdminForecastProductResponse = zod
+  .object({
+    pipeline_state: zod.enum(["fresh", "stale", "uninitialized", "calibrating"]),
+    forecast: zod
+      .union([
+        zod
+          .object({
+            product_id: zod.number().int(),
+            product_name: zod.string(),
+            product_image_url: zod.string().nullable(),
+            product_slug: zod.string().nullable(),
+            category: zod.string().nullable(),
+            current_stock_on_hand: zod.number().int(),
+            avg_daily_sales: zod
+              .number()
+              .nullable()
+              .describe("Trailing 14-day mean (numeric → number)."),
+            predicted_demand_7d: zod.number().int().nullable(),
+            predicted_demand_30d: zod.number().int().nullable(),
+            predicted_runout_at: zod
+              .string()
+              .nullable()
+              .describe('RAW calendar date ("2026-10-01"), clamped to +90 days.'),
+            recommended_reorder_qty: zod.number().int().nullable(),
+            confidence: zod.enum(["high", "medium", "low", "insufficient_data"]),
+            forecast_date: zod.string().describe("RAW calendar date the forecast represents."),
+            panel_url: zod
+              .string()
+              .describe("APP_ORIGIN-joined admin products link (?highlight=<id>)."),
+          })
+          .describe(
+            "One at-risk inventory_forecasts row joined with its product.\nPrediction fields are null when confidence='insufficient_data'\n(the pipeline refuses to fabricate without ≥14 days of history).\n",
+          )
+          .and(
+            zod.object({
+              explanation: zod.object({
+                avg_daily_sales: zod.number().nullable(),
+                dow_blend_7d: zod
+                  .number()
+                  .nullable()
+                  .describe("Avg day-of-week multiplier across the next 7 days."),
+                days_of_history_available: zod
+                  .number()
+                  .int()
+                  .describe("Distinct days of order history (the ≥14-day hint)."),
+                run_completed_at: zod.coerce.date().nullable(),
+              }),
+            }),
+          ),
+        zod.null(),
+      ])
+      .describe("Null when no forecast row exists for the product."),
+  })
+  .describe(
+    "GET /admin/forecast/products/{id} — the per-product drawer; the\nrow plus the explanation block.\n",
+  );
 
 /**
  * Telegram's server-to-server callback endpoint. Mounted at

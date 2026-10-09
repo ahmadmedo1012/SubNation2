@@ -23,7 +23,9 @@
  *
  * `@/lib/auth`, the admin shell and the toast hook are mocked at the
  * module boundary (tickets-error-state.test.tsx pattern); the category
- * filter is pinned via ?category= (the deep-link contract).
+ * filter is pinned via ?category= (the deep-link contract). R127-L1:
+ * the queue rides the generated listAdminTickets now — the stubs
+ * carry the headers/text() the REAL customFetch parses with.
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -67,6 +69,18 @@ const PAGE_ONE = Array.from({ length: 100 }, (_, i) => ticketSummary(i + 1, "bil
 /** The short page 2 carries the one technical ticket. */
 const TECHNICAL = ticketSummary(999, "technical");
 
+/** Minimal Response-like object — the REAL customFetch (generated
+ * client, R127-L1) parses it: headers + text() required. */
+function resLike(body: unknown) {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}
+
 const fetchMock = vi.fn();
 
 function renderPage() {
@@ -95,11 +109,7 @@ describe("AdminTicketsPage — category-empty over a partial window stays honest
   });
 
   it("a zero-match category over loaded pages shows the incompleteness block, never the hard empty claim", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(PAGE_ONE),
-    } as unknown as Response);
+    fetchMock.mockResolvedValue(resLike(PAGE_ONE));
 
     renderPage();
 
@@ -118,16 +128,8 @@ describe("AdminTicketsPage — category-empty over a partial window stays honest
     fetchMock.mockImplementation(async (input: unknown) =>
       // The frozen ?page=&limit= contract — page 2 carries the match.
       String(input).includes("page=2")
-        ? Promise.resolve({
-            ok: true,
-            status: 200,
-            json: () => Promise.resolve([TECHNICAL]),
-          } as unknown as Response)
-        : Promise.resolve({
-            ok: true,
-            status: 200,
-            json: () => Promise.resolve(PAGE_ONE),
-          } as unknown as Response),
+        ? Promise.resolve(resLike([TECHNICAL]))
+        : Promise.resolve(resLike(PAGE_ONE)),
     );
 
     renderPage();
@@ -149,11 +151,7 @@ describe("AdminTicketsPage — category-empty over a partial window stays honest
     // A single SHORT page (no hasNextPage) — the emptiness is real, and
     // the hard state names the CATEGORY instead of claiming the whole
     // queue is empty (the users tier-empty wording).
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve([ticketSummary(1, "billing")]),
-    } as unknown as Response);
+    fetchMock.mockResolvedValue(resLike([ticketSummary(1, "billing")]));
 
     renderPage();
 

@@ -21,7 +21,7 @@ import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminTopupsPage from "@/pages/admin/topups";
-import { customFetch } from "@workspace/api-client-react";
+import { approveTopup, customFetch } from "@workspace/api-client-react";
 
 vi.mock("@workspace/api-client-react", () => ({
   customFetch: vi.fn(),
@@ -99,6 +99,10 @@ describe("AdminTopupsPage — BulkConfirmModal note rides the money loop (R122 A
   beforeEach(() => {
     vi.clearAllMocks();
     (customFetch as unknown as Mock).mockResolvedValue(PENDING);
+    // R127-L1 (B1 §3.2): the approveAll loop rides the generated
+    // approveTopup fetcher — the body assertions moved to the fetcher
+    // mock's call surface (id, {admin_note}, options).
+    (approveTopup as unknown as Mock).mockResolvedValue({ success: true });
     fetchMock.mockReset();
     fetchMock.mockResolvedValue(resLike());
     vi.stubGlobal("fetch", fetchMock);
@@ -116,13 +120,25 @@ describe("AdminTopupsPage — BulkConfirmModal note rides the money loop (R122 A
     fireEvent.change(noteField, { target: { value: "مطابقة كشف حسابات المساء" } });
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    for (const call of fetchMock.mock.calls) {
-      const body = JSON.parse(String((call[1] as RequestInit).body)) as {
-        admin_note?: string;
-      };
+    await waitFor(() => expect(approveTopup).toHaveBeenCalledTimes(2));
+    for (const call of (approveTopup as unknown as Mock).mock.calls) {
+      const [id, body] = call as [number, { admin_note?: string }, unknown];
+      expect([21, 22]).toContain(id);
       expect(body.admin_note).toBe("مطابقة كشف حسابات المساء");
     }
+    // R127-L1 (B1 §3.2 + A4 B-13): the per-item Idempotency-Key pin —
+    // one FRESH key per row (F-008), never one key for the whole bulk
+    // (the backend dedupe is per-(admin, route, key); a shared key
+    // would let only the first call commit).
+    const keys = (approveTopup as unknown as Mock).mock.calls.map(
+      (call) =>
+        ((call[2] as { headers?: Record<string, string> } | undefined)?.headers ?? {})[
+          "Idempotency-Key"
+        ],
+    );
+    expect(keys).toHaveLength(2);
+    expect(keys.every((k: unknown) => typeof k === "string" && k.length > 0)).toBe(true);
+    expect(new Set(keys).size).toBe(2); // distinct per row
   });
 
   it("an empty note keeps the boilerplate fallback (the ledger never goes blank)", async () => {
@@ -132,11 +148,9 @@ describe("AdminTopupsPage — BulkConfirmModal note rides the money loop (R122 A
     // Leave the optional field untouched.
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    for (const call of fetchMock.mock.calls) {
-      const body = JSON.parse(String((call[1] as RequestInit).body)) as {
-        admin_note?: string;
-      };
+    await waitFor(() => expect(approveTopup).toHaveBeenCalledTimes(2));
+    for (const call of (approveTopup as unknown as Mock).mock.calls) {
+      const [, body] = call as [number, { admin_note?: string }, unknown];
       expect(body.admin_note).toBe("تمت الموافقة الجماعية");
     }
   });

@@ -5,7 +5,6 @@ import { useChartColors } from "@/lib/chart-theme";
 // idiom) — vendor-charts is a post-deploy-stale-chunk risk like any
 // other, and lazyWithRetry's one-reload recovery covers it.
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
-import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 // R122 (A2-P1): the recent-orders error state surfaces the backend's
 // Arabic envelope (403 permission body / 5xx) via the shared mapper.
@@ -14,12 +13,22 @@ import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/util
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, keepPreviousData } from "@tanstack/react-query";
+// R127-L1 (B1 §3.1): the chart-data series rides the generated client
+// from the batch-1 spec exposure — useGetAdminChartData (days in the
+// queryKey). The R125-I2 abort-guard/stale-drop/fake-idle-guard state
+// machine is now TanStack-native: a chip flip swaps queries and the
+// stale response can only land in the OLD key's cache; customFetch owns
+// the ok-guard + the global 401 observer (isSessionExpiredError below
+// keeps the banner quiet on it).
 import {
+  getGetAdminChartDataQueryKey,
   getGetAdminStatsQueryKey,
   getListAdminOrdersQueryKey,
+  useGetAdminChartData,
   useGetAdminStats,
   useListAdminOrders,
+  type AdminChartDay,
 } from "@workspace/api-client-react";
 import {
   AlertTriangle,
@@ -40,7 +49,7 @@ import {
   WifiOff,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, Suspense, type ReactNode } from "react";
+import { useEffect, useMemo, useState, Suspense, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -171,14 +180,10 @@ function ChartPickers({
   );
 }
 
-interface ChartDay {
-  date: string;
-  orders: number;
-  revenue: number;
-  users: number;
-  discounts: number;
-  coupon_orders: number;
-}
+// R127-L1: the hand-rolled ChartDay interface is the generated
+// AdminChartDay (field-identical — the batch-1 contract row pins the
+// shape); aliased so the aggregation/export helpers keep local names.
+type ChartDay = AdminChartDay;
 
 const CURRENCY_KEYS = new Set(["الإيرادات", "الخصومات"]);
 
@@ -386,6 +391,15 @@ function exportChartCSV(data: ChartDay[], days: number) {
   URL.revokeObjectURL(url);
 }
 
+/** R127-L1 (B1 §3.1): a 401 from the generated chart fetcher is the
+ * global admin-session handler's business (toast + redirect fired
+ * inside customFetch) — the chart error banner below stays quiet on
+ * it. ApiError is type-only from the package, so the check duck-types
+ * `status` (the alerts.tsx R126-L8b idiom). */
+function isSessionExpiredError(err: unknown): boolean {
+  return (err as { status?: unknown } | null | undefined)?.status === 401;
+}
+
 export default function AdminDashboardPage() {
   const { adminToken, hasAdminPermission } = useAuth();
   const [, navigate] = useLocation();
@@ -393,13 +407,7 @@ export default function AdminDashboardPage() {
   // R115-A6 #7: every series/axis/grid color rides the theme tokens
   // (see lib/chart-theme.ts) — recharts no longer hardcodes hexes.
   const chart = useChartColors();
-  const [chartData, setChartData] = useState<ChartDay[]>([]);
   const [chartDays, setChartDays] = useState(7);
-  const [chartLoading, setChartLoading] = useState(false);
-  // 93-C6 / F-07 (A5 DA-1): the chart fetch failure was swallowed
-  // (`.catch(() => {})`) — the whole charts section silently vanished
-  // with zero signal while the page around it looked healthy.
-  const [chartError, setChartError] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<"daily" | "weekly" | "monthly">("daily");
 
   const headers = useAdminHeaders();
@@ -421,7 +429,7 @@ export default function AdminDashboardPage() {
       // R126 (R1-P3): /api/admin/stats is finance-gated server-side
       // since this round — a scoped support/admin-session polling it
       // every 5 min is a guaranteed 403 zombie. The scope-honest gate
-      // mirrors chart-data's fetchChart early-return above (the
+      // mirrors the chart query's `enabled` arm below (the
       // non-finance dashboard renders only its scope-safe tiles).
       enabled: !!adminToken && canSeeMoney,
       // Round-4 (perf P1-3): the admin-room socket listener invalidates
@@ -461,79 +469,59 @@ export default function AdminDashboardPage() {
     },
   );
 
-  // R125-I2 (A5-F1 / A1-3): the chart fetch race — the GlobalSearch
-  // recipe (layout.tsx:94-C2 A2 P2-3). The period chips fire a new
-  // fetch per flip; two rapid flips (7d → 90d) previously left two
-  // un-ordered fetches in flight, and a slow OLD response landing after
-  // the new one silently fed the KPI Sparklines / TrendBadge /
-  // new-users-today tile the wrong period's series (A1's deepened blast
-  // radius) while its .finally cleared chartLoading early (fake-idle
-  // skeleton gap). Every call now aborts the previous controller and
-  // every state write (incl. the finally) is guarded — last call wins.
-  const chartAbortRef = useRef<AbortController | null>(null);
-
-  const fetchChart = useCallback(
-    (days = chartDays) => {
-      if (!adminToken) return;
-      // R123 (E3 item 5): the chart-data payload carries the revenue +
-      // discount series in the SAME response as the users series (one
-      // computeChartData over orders+users, backend routes/admin/stats.ts)
-      // — canSeeMoney previously gated only the RENDERING/export, so a
-      // non-finance operator's network tab received the full daily money
-      // series on every dashboard visit. The fetch now gates on the scope:
-      // no revenue/discount bytes reach a non-finance admin at all.
-      // RESIDUAL (documented): the new-users chart rides the same payload,
-      // so it goes dark for non-finance operators too — restoring it needs
-      // a backend split (a ?series=users param or a users-only endpoint on
-      // stats.ts), which is outside this round's admin-frontend file
-      // ownership. The users TILE (total_users) keeps loading for everyone
-      // via the stats query below.
-      if (!canSeeMoney) {
-        setChartData([]);
-        setChartError(null);
-        return;
-      }
-      // Abort the still-in-flight predecessor — its response (however it
-      // resolves) is stale for the chips the operator now sees.
-      chartAbortRef.current?.abort();
-      const controller = new AbortController();
-      chartAbortRef.current = controller;
-      setChartLoading(true);
-      const url = `/api/admin/chart-data?days=${days}`;
-      fetch(url, { headers, signal: controller.signal })
-        .then(async (r) => {
-          // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast
-          // + redirect); not a chart error banner.
-          if (isAdminUnauthorized(r, url)) return null;
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return (await r.json()) as unknown;
-        })
-        .then((d) => {
-          if (controller.signal.aborted) return; // stale — last call wins
-          if (d === null) return; // session-expiry path — redirect in flight
-          setChartData(Array.isArray(d) ? d : []);
-          setChartError(null);
-        })
-        .catch(() => {
-          if (controller.signal.aborted) return; // the abort is not a failure
-          // 93-C6 / F-07 (A5 DA-1): surface the failure with a retry
-          // instead of silently dropping the section.
-          setChartError("تعذّر تحميل بيانات الرسوم البيانية — تحقّق من الشبكة ثم أعد المحاولة");
-        })
-        .finally(() => {
-          // The aborted (older) fetch must not fake-idle the newer one.
-          if (!controller.signal.aborted) setChartLoading(false);
-        });
+  // R127-L1 (B1 §3.1 — the R126-L8b deferral lifted): the chart series
+  // rides useGetAdminChartData, mirroring the stats sibling above.
+  // Guard-by-guard migration from the retired raw fetch:
+  //   • `!adminToken` + the canSeeMoney zero-bytes scope gate (R123 E3
+  //     item 5) → `enabled` — a disabled query sends NO bytes at all
+  //     (strictly better than fetch-then-error for a scoped admin).
+  //   • predecessor abort + stale-drop + fake-idle guard (R125-I2)
+  //     → structural: `days` sits in the queryKey, a chip flip swaps
+  //     queries and RQ aborts the old observer's signal; a late
+  //     response can only land in the OLD key's cache; isFetching
+  //     belongs to the ACTIVE key only.
+  //   • 401 quiet-return → customFetch fires the registered global
+  //     handler then throws ApiError; chartError suppresses it locally.
+  //   • unmount abort → structural (observer removal cancels).
+  const chartQuery = useGetAdminChartData(
+    { days: chartDays },
+    {
+      query: {
+        queryKey: getGetAdminChartDataQueryKey({ days: chartDays }),
+        enabled: !!adminToken && canSeeMoney,
+        // F-4 (B1): never serve data staler than the backend's own
+        // window — stats.ts wraps chart-data in a 30 s server cache
+        // (cacheWrap), so a remount/flip-back within 30 s serving the
+        // RQ cache is EXACTLY as fresh as a re-GET would be.
+        staleTime: 30_000,
+        // R125-I2 (A5-F8) parity: a period flip keeps the previous
+        // series mounted + dimmed while the new one loads (the
+        // first-load skeleton still gates on chartData.length === 0).
+        placeholderData: keepPreviousData,
+        // Current semantics preserved: a 5xx banners immediately, no
+        // retry — the App.tsx default (1 retry on 5xx) would add one
+        // hidden request behind the banner.
+        retry: false,
+      },
+      request: { headers },
     },
-    [adminToken, canSeeMoney, chartDays, headers],
   );
+  // useMemo keeps the fallback identity STABLE across renders (the raw
+  // `?? []` re-minted a fresh array every render while data was still
+  // undefined, tripping the displayData memo below — the R125-I2 A5-F7
+  // recharts-reconciliation guard this flip must preserve).
+  const chartData = useMemo(() => chartQuery.data ?? [], [chartQuery.data]);
+  // Covers initial load AND refetch (the dim) — the old setChartLoading
+  // pairs, minus the fake-idle hazard the abort guard used to patch.
+  const chartLoading = chartQuery.isFetching;
+  // 93-C6 / F-07 (A5 DA-1) preserved: the fetch failure surfaces as the
+  // explicit error banner with retry (never a silently-vanished
+  // section) — except a 401, which the global handler owns.
+  const chartError =
+    chartQuery.isError && !isSessionExpiredError(chartQuery.error)
+      ? "تعذّر تحميل بيانات الرسوم البيانية — تحقّق من الشبكة ثم أعد المحاولة"
+      : null;
 
-  useEffect(() => {
-    if (adminToken) fetchChart(chartDays);
-  }, [adminToken, chartDays, fetchChart]);
-  // Unmount (or admin-token drop): the in-flight chart request dies with
-  // the page — its setState writes would land on an unmounted component.
-  useEffect(() => () => chartAbortRef.current?.abort(), []);
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
@@ -559,7 +547,10 @@ export default function AdminDashboardPage() {
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: getGetAdminStatsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getListAdminOrdersQueryKey({ limit: 8 }) });
-    fetchChart(chartDays);
+    // R127-L1: the base key prefix-matches every days-variant and
+    // refetches only the ACTIVE one (single fire — the old direct
+    // fetchChart call is the invalidate's replacement).
+    queryClient.invalidateQueries({ queryKey: getGetAdminChartDataQueryKey() });
   };
 
   // R122 (A2-P2): the layout merges this page-passed fallback with its
@@ -576,10 +567,10 @@ export default function AdminDashboardPage() {
   // to make the whole charts column vanish silently — an honest empty
   // block renders instead. The column also hides for a failed load
   // with no stale data (the error banner above is the honest state
-  // then). R123 (E3 item 5): a non-finance operator never fetches the
-  // chart payload (see fetchChart) — the column hides entirely instead
-  // of rendering the misleading «لا توجد بيانات بعد» empty block for
-  // what is really a scope gate.
+  // then). R123 (E3 item 5) → R127-L1: a non-finance operator's query
+  // never fires at all (the `enabled` scope gate) — the column hides
+  // entirely instead of rendering the misleading «لا توجد بيانات بعد»
+  // empty block for what is really a scope gate.
   const chartEmpty = !chartLoading && !chartError && chartData.length === 0;
   const showChartsColumn = canSeeMoney && (chartData.length > 0 || chartLoading || chartEmpty);
   // R115 (A5 P3-7, skipped by design): loyalty/referral liability
@@ -734,7 +725,18 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="font-bold text-sm text-status-warning">
-                  {stats!.pending_topups} طلب شحن بانتظار المراجعة
+                  {/* B14-5 / A8-F19 (R127-L11, the held site): formatCount
+                      plural routing — the frozen singular rendered
+                      «2 طلب شحن بانتظار المراجعة» / «3 طلب شحن…» for the
+                      dual/plural counts. Same full-noun-phrase idiom as
+                      wallet.tsx's «قيد المراجعة» banner counter. */}
+                  {formatCount(stats!.pending_topups, {
+                    one: "طلب شحن بانتظار المراجعة",
+                    two: "طلبان شحن بانتظار المراجعة",
+                    few: "طلبات شحن بانتظار المراجعة",
+                    many: "طلباً شحن بانتظار المراجعة",
+                    other: "طلب شحن بانتظار المراجعة",
+                  })}
                 </p>
                 <p className="text-xs text-muted-foreground">يحتاج إلى موافقة يدوية فورية</p>
               </div>
@@ -857,7 +859,7 @@ export default function AdminDashboardPage() {
               <span className="min-w-0">{chartError}</span>
               <button
                 type="button"
-                onClick={() => fetchChart(chartDays)}
+                onClick={() => void chartQuery.refetch()}
                 className="ms-auto flex items-center gap-1 text-xs underline underline-offset-2 hover:opacity-80"
               >
                 <RefreshCw className="w-3 h-3" />

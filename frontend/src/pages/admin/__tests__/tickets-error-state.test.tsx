@@ -18,7 +18,10 @@
  *      unhandled rejection, and the detail pane stays closed.
  *
  * `@/lib/auth`, the admin shell and the toast hook are mocked at the
- * module boundary (vitest-config pattern).
+ * module boundary (vitest-config pattern). R127-L1: the page rides the
+ * generated client now, so the REAL customFetch + fetchers run against
+ * the stubbed global fetch (resLike carries the headers/text() it
+ * parses with — the security-error-state pattern).
  */
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -56,12 +59,17 @@ const ticketSummary = {
   has_unread_admin: false,
 };
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** Minimal Response-like object — avoids depending on a global Response.
+ * R127-L1: the page rides the generated client now, so the REAL
+ * customFetch parses these stubs — it needs headers + text() (it no
+ * longer goes through a res.json() shortcut). */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
   return {
     ok,
     status,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }

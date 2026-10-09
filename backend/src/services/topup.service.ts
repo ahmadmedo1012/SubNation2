@@ -62,11 +62,16 @@ export class TopupService {
       throw new ServiceError(400, "مبلغ الشحن التلقائي غير صالح (يجب أن يكون بين 0.01 و 5000 د.ل)");
     }
     const cleanRef = typeof ref === "string" ? ref.trim() : "";
+    // L8a residual (R127-L11, B14 §1): the reference now speaks the
+    // storefront's «رمز التحويل» field-label canon on every BE
+    // user-visible string in this service (wallet.tsx:597-599 family;
+    // wallet.ts:383-386 documents the rename) — the old payment-source
+    // wording is gone.
     if (!cleanRef) {
-      throw new ServiceError(400, "مرجع الدفع مطلوب للشحن التلقائي");
+      throw new ServiceError(400, "رمز التحويل مطلوب للشحن التلقائي");
     }
     if (cleanRef.length > 255) {
-      throw new ServiceError(400, "مرجع الدفع طويل جداً");
+      throw new ServiceError(400, "رمز التحويل طويل جداً");
     }
     // All money writes go through 2-dp rounding — numeric(10,2) parity.
     // AUD103 (r103): roundLyd instead of +toFixed(2) — the binary float
@@ -105,7 +110,7 @@ export class TopupService {
         if (dup.length > 0) {
           throw new ServiceError(
             409,
-            "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
+            "رمز التحويل مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
           );
         }
 
@@ -149,7 +154,7 @@ export class TopupService {
           )
           .returning({ id: usersTable.id });
         if (updated.length !== 1) {
-          throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الشحن. حاول مرة أخرى.");
+          throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الشحن. حاول مجدداً.");
         }
 
         // Atomic ledger entry — rolls back with the rest if it fails.
@@ -179,7 +184,7 @@ export class TopupService {
       if (isDuplicatePaymentReferenceViolation(err)) {
         throw new ServiceError(
           409,
-          "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
+          "رمز التحويل مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
         );
       }
       throw err;
@@ -299,7 +304,7 @@ export class TopupService {
           if (dup.length > 0) {
             throw new ServiceError(
               409,
-              "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
+              "رمز التحويل مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
             );
           }
         }
@@ -355,7 +360,7 @@ export class TopupService {
             const siblingIds = suspiciousSiblings.map((s) => `#${s.id}`).join("، ");
             throw new ServiceError(
               409,
-              `رمز تحويل مكرر: يوجد طلب شحن معتمد مطابق لنفس المبلغ والشبكة والمُرسل خلال 24 ساعة — تحقق من التحويل قبل إعادة المحاولة (الطلبات: ${siblingIds})`,
+              `رمز تحويل مكرر: يوجد طلب شحن معتمد مطابق لنفس المبلغ والشبكة والمُرسل خلال 24 ساعة — تحقق من التحويل قبل أن تحاول مجدداً (الطلبات: ${siblingIds})`,
               "DUPLICATE_PAYMENT_REFERENCE",
             );
           }
@@ -424,7 +429,7 @@ export class TopupService {
             )
             .returning({ id: usersTable.id });
           if (updated.length !== 1) {
-            throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الموافقة. حاول مرة أخرى.");
+            throw new ServiceError(409, "تغيّر رصيد المستخدم أثناء الموافقة. حاول مجدداً.");
           }
 
           // Atomic ledger entry — rolls back if anything below fails.
@@ -541,7 +546,7 @@ export class TopupService {
                   balanceAfter: String(balanceAfterWelcome),
                   referenceId: topup.id,
                   referenceType: "welcome_bonus",
-                  description: "مكافأة ترحيبية — أول شحن معتمد (كود إحالة)",
+                  description: "مكافأة ترحيبية — أول شحن معتمد (رمز إحالة)",
                 },
                 tx as unknown as typeof db,
               );
@@ -558,7 +563,7 @@ export class TopupService {
       if (isDuplicatePaymentReferenceViolation(err)) {
         throw new ServiceError(
           409,
-          "مرجع الدفع مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
+          "رمز التحويل مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
         );
       }
       throw err;
@@ -595,7 +600,7 @@ export class TopupService {
           user.id,
           "loyalty",
           `وصلتك مكافأة الترحيب ${WELCOME_BONUS_LYD.toFixed(2)} د.ل`,
-          "أُضيفت مكافأة كود الإحالة إلى محفظتك مع أول شحن معتمد",
+          "أُضيفت مكافأة رمز الإحالة إلى محفظتك مع أول شحن معتمد",
           "/wallet",
         );
       }
