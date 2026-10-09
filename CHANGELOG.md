@@ -7,6 +7,113 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R127 — the deepest fleet yet: 2 research + 15 auditors (7 dimensions no prior round ran) + 12 implementation lanes + tool adoptions (impeccable gate · actionlint · zizmor · Knip) — 2026-10-09
+
+The round after "المرحلة التالية الأدق والأعمق والأكثر شمولا". Pushed
+R126 live first (10 commits, `186b131..f53a886`) and verified it with
+the full guest e2e against production (**40/40**, console clean) — then
+ran the largest fleet so far: **17 read-only agents** — 2 tool-research
+(ponytail/impeccable verdicts + gstack deep-dive → methodology harvest)
+and **15 auditors** covering R126's eleven dimensions deeper PLUS seven
+no-prior-round dimensions: live Lighthouse measurement · PWA/service-
+worker update-flow · socket.io full-stack · cron/scheduler · database
+live-read-only (Neon) · CI/CD supply-chain (zizmor/actionlint) ·
+Docker/build shadow-surface · git-history security archaeology · SEO
+live · impeccable UI-anti-pattern detection · admin full-journey walk
+(19 surfaces). Findings: **0 P0 · 0 P1**, ~12 P2, ~40 P3
+(docs/inspection-r127/). Twelve implementation lanes + parent picks
+closed every P2 and the high-value P3s; adversarial reviewer R127-R1:
+**SHIP — 0 P0/P1/P2** (1 P3, closed pre-push).
+
+### Backend/infra hardening (P2s)
+- **`statement_timeout` was a NO-OP on Neon** (startup packet ignored
+  server-side; R4's pool-pin defense inert since forever) — now `SET`
+  on every pool connect, both pools (B8; probe-verified through the
+  pooler).
+- **Retention/prune predicates had no index support** (7 audited gaps;
+  `login_attempts` was the credential-stuffing incident amplifier) —
+  migration **0020** adds 8 partial/covering indexes (schema twins +
+  drizzle SQL + V1-M31 boot stage; CONCURRENTLY documented-absent with
+  the 10⁵-row trigger on record). Drift check green.
+- **Boot one-shots lied on failure** ("will run again at its cron slot"
+  — false for 7/17) + were Sentry-invisible — now classified per-kind
+  with truthful messages + `captureSchedulerFailure`. Sentry denylist
+  gains phone/initdata/tokens **before** any DSN ever activates.
+- **Sockets**: the alert-room scope reconciliation was dead code after
+  an early return (a revoked `support` scope kept streaming admin-alert
+  PII) — moved + 6 tests; `SOCKET_RESYNC_EVENT` was a no-op regression
+  (R96-M5 money-screen reconnect recovery) — restored via
+  SessionActivityManager + token gating; admin park→revive now resyncs
+  the zero-poll admin keys; admin logout disconnects the zombie
+  admin-room; topup toasts dedupe on id not amount; `connection_limited`
+  surfaced for CGNAT users.
+- **Supply-chain**: zizmor 13→0 (3 unpinned e2e refs → in-file SHAs,
+  docker.yml packages:write → job-level, persist-credentials:false ×6);
+  quality job split (−4-8 min/push), arm64 QEMU leg dropped (−15-25
+  min/publish); Dockerfile −60MB (corepack cache + no tests/srcs/worker
+  in runtime + manifest-first install); Coolify stop-grace truth
+  documented (compose's 40s never applied on the Coolify path).
+- **impeccable detector** (pbakaus/impeccable, researched this round)
+  now gates `frontend/src` in CI (exit 2 blocks; 5 documented waivers;
+  proven exit-0 on this tree).
+
+### Admin console (the operator's explicit focus)
+- **The audit trail finally exists as a UI**: `GET /api/admin/audit-logs`
+  (triple-gated, PII-lean, LEFT-JOINed actor attribution, auth-activity
+  filter idioms) + a «إجراءات المسؤولين» tab on security.tsx (generated
+  client, action/actor/date filters, honest pagination) — WHO approved
+  money actions is visible for the first time. Telegram-path topup
+  approvals now write audit rows (they moved money silently before).
+- **OpenAPI batch-2**: 10 highest-cadence ops exposed handler-faithfully
+  (metrics · dashboard/risk summaries · diagnostics · scheduler ·
+  alerts recent/new · forecast ×3) — admin family 52→62; contract suite
+  38→49 rows. The 4 deferred flips landed: dashboard chart-data,
+  topups bulk/approve-all (per-item idempotency keys pinned), referrals
+  (params-in-key + credit LYD preview), tickets (getErrorMessage truth).
+- **Data honesty residue**: products.tsx select-all membership fix (the
+  last repo-wide instance) + 2 tests; SessionManager /profile outage
+  honesty (r.ok guard + logout-all failure surfaced); points→LYD
+  preview made universal; formatCount plurals ×4; provider-card dead
+  error span wired; dead code removed (trust-card.tsx, 7 dead exports,
+  2 broken scripts fixed).
+
+### Storefront / performance / SEO
+- **Mobile card titles stopped clipping mid-glyph** (impeccable K1:
+  16/45 titles starved to 20-50px by a shrink-0 badge — now wrap/truncate
+  cleanly; browser-verified 0/12 clipped at 390px, no shift on good
+  cards). Toaster respects the notch (safe-area offset); home's last
+  two sub-44px controls reach the target; skeleton radii unified.
+- **Boot perf** (live LCP was POOR 4.2-4.3s mobile on all 4 routes):
+  the budget gate now measures a DSN-shaped build (was 2.3KB blind);
+  vendor-sentry (111KB br, 70% unused, 221ms LCP-phase long task)
+  defers to first interaction with the early-crash guarantee preserved;
+  exact-`/login` boots render optimistically through the 0.6-0.9s auth
+  probe (money-page splash contract intact, 12 pins); first-4 card
+  images warmed at catalog-prefetch resolve + LCP-card fetchpriority.
+- **SEO shell truth**: `/` never reached the meta rewriter (express.static
+  directory-index served it first — `index:false` on the static mount)
+  — home shell now carries the keyword-forward Arabic copy; flash-sales
+  description de-staled; new route-parity suite (6 tests) drift-proofs
+  every static baseline against its runtime builder.
+- **Arabic copy batch** (~60 strings): رمز/كود الإحالة unified on the
+  registration conversion path; «رمز التحويل» canon ×7; wallet allowlist
+  copy now lists all 4 methods (was 2-of-4); «لوحة الإدارة» ×4; retry
+  canon ×16; مزود spelling unified; 2FA term unified; the enrichment
+  prompts now mandate western digits (kills the ٠-٩ leak path); A8's
+  residue one-liners closed.
+
+### Round record
+- Gates: typecheck 4/4 programs · ESLint 0 errors · backend **2,221/2,221**
+  (240 files, 4 batches) · frontend **1,159/1,159** (168 files) · build +
+  budget (146.7KB no-DSN / 147.4KB DSN-shaped vs 148.5KB warn) + CSP gate
+  (0 inline scripts) + PWA precache green · orval regen pure-additive ·
+  drizzle drift green ×2.
+- Held open (R128 pointers, auditors' ledgers): retry-verb/fallback
+  cross-repo canon (F18 policy), copilot 403 wording, dashboard
+  chart-race stragglers, image srcset/sizing variants, alert-dedupe
+  restart persistence, catalog data P3s (naming tier convention,
+  windows-8 mixed pills, Headspace category — operator decisions).
+
 ## Round R126 — deeper than R125 on every axis: 13-agent audit (2 new dimensions) + 10 implementation lanes + test-inclusion widening + splits + live-CSP hotfix — 2026-10-09
 
 The round the operator asked to be "أعمق وأشمل وأقوى وأدق من السابقة بكل
