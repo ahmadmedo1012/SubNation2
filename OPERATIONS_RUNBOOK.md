@@ -456,7 +456,11 @@ curl -X POST -H "Content-Type: application/json" \
 >   live probes on 2026-10-07 23:30Z (HTTP/2 + HTTP/1.1, bare root + path +
 >   query, full header inspection — no intermediate hops) return **HTTP/2
 >   301**. The redirect WORKS exactly as intended; only the status-code digit
->   in the record was wrong. Rollback/verify:
+>   in the record was wrong. **R124 update (2026-10-09):** the digit is
+>   Traefik-regen-dependent — live probes returned **308 before the R124
+>   redeploy and 301 after it** (verified stable ×3, commit `09857fc`);
+>   both records were real observations. Record both states with
+>   timestamps, never a bare digit. Rollback/verify:
 >   `docs/operations/WWW_TO_APEX_301.md` (§4/§5). The dead v2-syntax `subnation.yml` that
 >   poisoned the whole dynamic dir was archived to `dynamic-archive/`
 >   (§13).
@@ -640,15 +644,16 @@ synthetic alert test exercises the same delivery path.
 Mimosa scan: no command-injection path). Only `TELEGRAM_ADMIN_IDS`
 accounts can press them.
 
-## 13. Edge canonicalization — www→apex 301 (LIVE since R121, 2026-10-07)
+## 13. Edge canonicalization — www→apex permanent single-hop (LIVE since R121; **301 since the R124 redeploy 2026-10-09, 308 before it**)
 
 - **What is live:** `/data/coolify/proxy/dynamic/www-redirect.yml` — a
   standalone Traefik file-provider router at **priority 1000**; every
   `https://www.subnation.ly/<path>?<query>` → **301** → the apex (path +
-  query preserved); the apex serves 200 untouched. (R122 correction: the
-  R121 record said 308 — live probes return 301 on both HTTP/2 and
-  HTTP/1.1; either way it is a single-hop, method-preserving permanent
-  redirect, which is the required behavior.)
+  query preserved); the apex serves 200 untouched. (The status digit is
+  Traefik-regen-dependent — R121 308 → R122 probe 301 → R124 pre-redeploy
+  308 → post-redeploy 301, stable ×3, commit `09857fc`; either way it is a
+  single-hop, method-preserving permanent redirect, which is the required
+  behavior.)
 - **The poisoning lesson:** the dead v2-syntax `subnation.yml` (plus 4
   backup variants) errored on every watcher callback and **blocked the
   whole dynamic directory**. They were quarantined to
@@ -670,7 +675,7 @@ accounts can press them.
 - **Design + rollback record:** `docs/operations/WWW_TO_APEX_301.md`. Rollback
   = remove the file; apex is unaffected.
 
-## 14. Pending operator actions (R122 status; R123 additions below)
+## 14. Pending operator actions (R122 status; R123/R124 additions below)
 
 - **GSC verification token** — `VITE_GSC_VERIFICATION` is still unset (the
   `Dockerfile` ARG exists at the build). Paste-and-go: operator pastes the
@@ -695,6 +700,15 @@ accounts can press them.
   keep-unbounded) + reference prune SQL: OPERATOR_ACTIONS_R118 #12. The
   risk-retention job (R123-E5) deliberately does NOT touch these tables
   until the policy is chosen.
+- **R124 — delete the live «تجربة» test flash sale** (admin → promotions;
+  `docs/inspection-r124/A1` §ops — the site-wide banner renders the
+  literal word «تجربة» + «خصم 20%» on every storefront page; delete or
+  rename the promotion row, no code change).
+- **R124 — post-deploy replay canary check**: `window.__sentryTest('replay-canary')`
+  in a production tab → confirm the event arrives in Sentry (org
+  `subnation`, project `javascript-react` — §11) with a replay or a
+  10%-roll session recorded (`frontend/src/instrument.ts:264-271`;
+  `docs/inspection-r124/R1` #8).
 
 ## 15. Backups & restore drills (pointer)
 

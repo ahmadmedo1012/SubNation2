@@ -25,7 +25,7 @@ It is **passwordless** for customers — sign in with **Google**, **Telegram**, 
 credentials instantly after purchase. A full **admin panel** manages products,
 inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 
-> ✅ **Status (R124, 2026-10-09): production is LIVE at
+> ✅ **Status (R125, 2026-10-09): production is LIVE at
 > <https://subnation.ly>** — self-hosted Docker on Coolify (Contabo VPS) since
 > the 2026-10 cutover, with Neon Postgres staying external. Deployment chain:
 > GitHub `main` → Coolify (git-source dockerfile build, push-to-deploy webhook)
@@ -53,12 +53,16 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 - 🔒 Hardened security — Helmet/CSP, CORS allow-list, CSRF checks, multi-tier rate-limiting
   (Redis-backed when provisioned; in-process fallbacks in the no-Redis target topology), admin 2FA.
 
-## Performance (live-measured, R124)
+## Performance (live-measured, R124–R125)
 
 - **Lazy Sentry Session Replay** — the rrweb recorder (126 KB) is fetched
   only for recorded sessions (sticky 10% roll / first error) behind a real
   dynamic-import boundary; the idle-loaded vendor chunk shrank
   469,777 → 328,652 B raw (−30%).
+- **Lazy admin charts (R125)** — recharts (vendor-charts, 134.7 KB gz)
+  loads on demand via a dynamic-import bridge; the admin dashboard/system
+  route chunks paint their KPI tiles without it, and admin boots no longer
+  pre-fetch the storefront home chunk (~8.5 KB gz saved per admin session).
 - **Catalog list projection** — `GET /api/products?fields=list` omits the
   variant tree (62.6% of the catalog wire bytes) and usage terms; grids read
   `price` + `variant_count` instead.
@@ -93,7 +97,7 @@ A **pnpm monorepo** — pnpm is enforced (installs via npm/yarn fail fast):
 backend/    Express 5 API — routes, services, jobs, middlewares, idempotent boot migrations (src/migrate.ts)
 frontend/   Vite + React 19 SPA (Arabic RTL) — pages, components, hooks; vitest suites + Playwright e2e
 shared/     db (Drizzle schema + SQL mirror) · api-spec (OpenAPI) · api-zod + api-client-react (orval-generated) · error-codes
-docs/       docs index (README.md) + 4-bucket tree (CURRENT/HISTORY/DEPRECATED/PENDING) + inspection-r124/ round reports
+docs/       docs index (README.md) + 4-bucket tree (CURRENT/HISTORY/DEPRECATED/PENDING) + inspection-r###/ round reports (r124, r125, …)
 deploy/     env.compose.example — full-stack Docker Compose contract (app + WhatsApp gateway)
 scripts/    local orchestration (dev, seed, backup), cutover preflight, docker-verify
 config/     env.example — the fully annotated environment reference
@@ -216,11 +220,20 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   removed from the repo on 2026-10-05 (dated migration-era evidence remains in
   `docs/history/`: `free-tier-optimization-2026-09-20.md`,
   `final-audit-2026-09-20.md`, `RENDER_LEGACY_FALLBACK.md`).
+- **R125 (2026-10-09) — the deepest round:** a 12-agent admin-focused
+  audit (3 P1 + ~30 P2 + ~85 P3 — reports in
+  [`docs/inspection-r125/`](./docs/inspection-r125/)) + 8 implementation
+  lanes + an adversarial reviewer (verdict SHIP, 0 P0/P1/P2): admin
+  a11y/data-layer/memoization fixes, lazy admin charts, 2FA rotate flow,
+  pricing recompute transaction, **strictFunctionTypes enabled**, first
+  live guest-e2e run in rounds (40/40 — and it caught 2 stale spec
+  contracts); round entry at the top of
+  [`CHANGELOG.md`](./CHANGELOG.md).
 - **R124 (2026-10-09) — the biggest round:** a 10-agent audit (93 findings,
   0 P0 — reports in [`docs/inspection-r124/`](./docs/inspection-r124/)) drove
   ~60 fixes: performance, storefront UX/a11y, admin, code organization
   (headline: lazy Sentry Session Replay, `?fields=list` catalog projection,
-  route-chunk warm-up — see [Performance](#performance-live-measured-r124));
+  route-chunk warm-up — see [Performance](#performance-live-measured-r124r125));
   round entry at the top of [`CHANGELOG.md`](./CHANGELOG.md).
 - **R121 (2026-10-07) — edge canonicalization + full observability:**
   `www.subnation.ly` permanently redirects to the apex in a single hop
@@ -231,9 +244,11 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   remains the one edge polish item; runbook §13);
   **Sentry live both sides** (org `subnation`, release-pinned source maps — runbook §11);
   **Telegram ops channel** for alerts + topup approvals (runbook §12).
-- **Repo state (as of R124):** typecheck clean (FE + BE), lint 0 errors,
-  build + budget PASS in both DSN modes; **frontend 131 files / 908 tests**,
-  **backend ~199 files / ~2050 tests** green. The repo is **public**; GitHub
+- **Repo state (as of R125):** typecheck clean (FE + BE, under the
+  newly-enabled `strictFunctionTypes`), lint 0 errors, build + budget PASS
+  in both DSN modes; **frontend 148 files / 996 tests**, **backend 227
+  test files / 2101 tests** green; guest-only e2e 40/40 vs live production.
+  The repo is **public**; GitHub
   Actions CI is green on every push ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
   secret scan, lint, typecheck, OpenAPI parity, migration + orval drift
   gates, both unit suites, production build).
@@ -288,7 +303,7 @@ and kept drift-free by CI.
 | Document                                                   | What it covers                                                                                                  |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **[`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)**     | 📌 **Start here** — on-call playbook: alert triage, dashboards, rollback, Sentry/Telegram/edge (§11–§13), backups |
-| **[`CHANGELOG.md`](./CHANGELOG.md)**                       | Round-by-round release ledger, newest first (R124 at top)                                                          |
+| **[`CHANGELOG.md`](./CHANGELOG.md)**                       | Round-by-round release ledger, newest first (R125 at top)                                                          |
 | **[`docs/README.md`](./docs/README.md)**                   | 📚 **Docs index** — CURRENT / HISTORY / DEPRECATED / PENDING for every doc (R122 reorg; R124 round note)            |
 | [`docs/history/PROJECT_OVERVIEW.md`](./docs/history/PROJECT_OVERVIEW.md) · [`docs/history/PLATFORM.md`](./docs/history/PLATFORM.md) | Historical architecture snapshots (2026-08-25 Arabic · 2026-09-02) |
 | [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery                                                                             |

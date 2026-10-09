@@ -162,7 +162,9 @@ decision — not needed for this cutover.
 ## 8. R117 canonical-host addendum (observed 2026-10-05)
 
 > **2026-10-07 (R121) update — the recommendation below is EXECUTED:**
-> www→apex is LIVE as a **308** at the Traefik file-provider layer
+> www→apex is LIVE as a **permanent single-hop** at the Traefik
+> file-provider layer (**301 since the R124 redeploy 2026-10-09, 308
+> before it**)
 > (`/data/coolify/proxy/dynamic/www-redirect.yml`, priority 1000; the
 > dead v2-syntax `subnation.yml` + 4 backups quarantined to
 > `dynamic-archive/`). Design/rollback record:

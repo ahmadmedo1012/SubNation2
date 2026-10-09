@@ -142,3 +142,6 @@ frontend/.mimosa/
 # never commit). The contract file `.hermes.md` at the repo root stays
 # TRACKED; only the directory is ignored.
 .hermes/
+# (R125-R1) Playwright's post-run state dir — `frontend/test-results/`
+# appeared untracked after the live guest-suite run; ignore the class.
+frontend/test-results/

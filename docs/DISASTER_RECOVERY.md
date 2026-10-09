@@ -10,7 +10,8 @@
 
 **Scope (current stack):** the Coolify deployment on the self-hosted VM
 (observed live host, R117: a Contabo VPS — not Oracle; canonical
-at `https://subnation.ly` — www 308→apex since R121) backed by Neon
+at `https://subnation.ly` — www permanently redirected to apex since R121
+(301 since the R124 redeploy 2026-10-09, 308 before it)) backed by Neon
 Postgres (project calm-art-99771185, us-east-1). No Redis is provisioned
 (anywhere — the optional Redis tier on paper is retired; see
 `NEON_IDLE_ECONOMICS.md` §7).

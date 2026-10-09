@@ -7,6 +7,122 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R125 — the deepest round: 12-agent admin-focused audit + 8 implementation lanes + strictFunctionTypes enabled + live e2e — 2026-10-09
+
+The round the operator asked to be "أعمق وأشمل وأقوى وأدق" with the whole
+project and **the admin console in all its details** under the microscope.
+Twelve parallel read-only auditors (A1 money-pages UX · A2 catalog/pricing ·
+A3 ops/security · A4 data layer · A5 performance (built + measured) ·
+A6 a11y/RTL · A7 storefront follow-up · A8 backend · A9 strictFunctionTypes
+feasibility · A10 test quality · A11 live smoke · A12 docs truth) produced
+**3 P1 + ~30 P2 + ~85 P3, every finding file:line-evidenced**
+(docs/inspection-r125/). Eight implementation lanes executed (I1 shell/a11y ·
+I2 money dashboards · I3 catalog vertical + SEO payload · I4 users/tickets/risk
+· I5 ops pages + 2FA · I6 backend · I7 storefront · I8 docs truth sweep);
+six lanes hit infra context-deadlines AFTER completing their work — the parent
+closed their gaps (3 syntax/type errors, 9 drifted test expectations), verified
+everything via full gates + diff forensics, and reconstructed their worklog
+records. An adversarial reviewer (R1) then tried to break the whole round:
+**verdict SHIP — 0 P0/P1/P2**, every money/auth hunk challenged and cleared.
+
+### Admin console (the round's focus — all 21 pages)
+- **[P1] Per-route document.title** — admin navigation is announced
+  (RouteAnnouncer was silent on every admin page; PAGE_TITLES now feeds it).
+- **[P1] alerts hover-only row actions** now reveal on keyboard focus;
+  **[P1] topups bulk-approve** left the 2.57:1 emerald-on-pink (outline
+  variant) and row-approve cleared 3.77:1 — the money path's buttons.
+- **2FA re-enroll dead-end killed**: rotating an enabled secret now presents
+  a labeled current-password re-auth gate — the backend VERIFIES it with the
+  change-password lockout before minting (fresh enrollment stays bodyless;
+  both paths pinned by the page's first real test suite).
+- **Data layer**: `/admin/stats` co-invalidation after tickets/users/risk/
+  products mutations (4 frontend + 5 backend `admin-stats-update` emits,
+  byte-matching the orders idiom); risk events honor the `hasMore` cursor
+  envelope (events #101+ were unreachable); the SEO editor finally DISPLAYS
+  existing overrides (backend list projection +2 props → spec → orval regen
+  — drift-free → startEdit seeds); tickets' shipped-but-never-rendered
+  `has_unread_admin` surfaces as «بانتظار ردك».
+- **Money console**: topups queue memoization (the missed mirror of the
+  orders R118 pattern); dashboard chart fetch abort-guarded (stale 7d
+  responses could overwrite 90d money series AND feed TrendBadge/sparklines)
+  + refresh single-fire + memoized chart data; orders footer partial-window
+  sum honestly labeled «مجموع المعروض».
+- **A11y/RTL batch**: skip-link for admin; role=status/alert on the shared
+  TableSkeleton/EmptyState/FetchErrorCard; GlobalSearch palette focus trap +
+  return; aria-pressed on every chip bar + row selectors + select-all;
+  hamburger/collapse sr-only names + aria-current; ~25 text-primary + raw
+  -400 hue sites token-swept to both-theme-safe inks; security timeline
+  honest «عرض N» + filter race guard; bare-loading pages got skeletons.
+
+### Performance (built + dist-verified)
+- **vendor-charts (514.75 KB raw / 134.74 KB gz) off the admin landing
+  paint**: dashboard + system's only recharts reference is now a lazy
+  ChartsLoader bridge — dist-verified `import("./vendor-charts-*.js")`
+  dynamic boundaries, zero entry references, KPI tiles paint on the route
+  chunk alone with height-reserved Suspense fallbacks (no CLS).
+- **Admin boots no longer pay the home-chunk modulepreload** (~8.5 KB gz ×
+  every admin session): the inject is runtime-gated on `!pathname.
+  startsWith("/admin")` — storefront behavior byte-identical.
+- Eager path 145,709 B gz (no-DSN) / 146,096 B gz (DSN) — under the 145 KiB
+  gate both ways; sentry-replay boundary intact (40.58 KB gz, dynamic-only).
+
+### Type safety (the R123-deferred "own round" item — closed)
+- **strictFunctionTypes ENABLED** (tsconfig.base.json): the probe measured
+  11 errors, all mechanical parameter-contravariance annotations — fixed
+  via the four standard idiom widenings (lazyWithRetry `ComponentType<any>`
+  — which also unlocked the recharts bridge's typing —, isolate
+  `(...args: any[]) => any`, the test router double typed as `Router[]`,
+  qrcode callback `Error | null | undefined`). FE+BE typecheck clean under
+  the flag. FE test-inclusion (49 pre-existing errors under current flags)
+  documented with a staged T1-T3 plan (A9 report §6.2) — next round's item.
+
+### Backend
+- **Pricing recompute is now transactional** (mid-failure can't leave mixed
+  prices; the rollback test drives REAL pglite failures and asserts
+  row-invariance + zero audit rows). Copilot's 47 hand-rolled error
+  envelopes consolidated onto the shared shape (byte-identical). pageParam
+  ceilings on tickets/alerts; observability no-store lift; coupons
+  toFixed→roundLyd; security summary 4× count(*) → 1 FILTER; V1-M27
+  docblock truth-ups.
+
+### Tests (the round's quiet doubling-down)
+- FE suite 131 → **148 files / 908 → 996 tests** (risk, risk-event,
+  enrichment, admins, settings get their FIRST render suites); BE
+  ~199-files-claim corrected to the true count → **227 files / 2101 tests**
+  (3 chunks). The A10 audit's premise correction documented: no memoization
+  pin existed anywhere — topups/dashboard memo + chart-abort + refresh
+  single-fire are now pinned.
+- **Live guest e2e executed for the first time in rounds** (the CI job is
+  workflow_dispatch-only): 40/40 green — and it caught 2 contract drifts
+  in the specs themselves (catalog/stats `available_products`, auth
+  providers `{providers: [...]}` wrapper), both corrected to the shipped
+  contract.
+
+### Docs truth (I8 — 35 rows, 0 skipped)
+- The stale-308 cluster corrected across 7 ops files + source-of-truth (the
+  both-states 301/308 convention with timestamps); the «تجربة» flash-sale
+  deletion handoff recorded as OPEN where it belongs (CHANGELOG Deferred +
+  runbook §14); the progress ledger's missing R124 entry appended; backend
+  test-count claims corrected; 3 justified 308 survivors documented.
+
+### Deferred (documented, not forgotten)
+FE test tsconfig inclusion (A9 staged plan) · OpenAPI exposure of the 70
+admin endpoints absent from the spec (A8 §C list) · toNumber 70-site
+consolidation · auth-settings 1,267-line split · settings.tsx 1,493-line
+split · raw-fetch migration remainder (A4 B-1: 18→~11 sites after this
+round) · FlashSaleBanner lazy-mount CLS residual · raw-hue long tail
+(alerts/system documented residuals) · GSC verification token (ops) ·
+«تجربة» flash-sale deletion (ops) · http→https 301 + gzip exclusions
+(Traefik/Coolify edge, ops) · inventory loading runbook (operator decision,
+Embronic track untouched per standing order).
+
+### Gates on the merged tree
+typecheck clean FE+BE under strictFunctionTypes · lint 0 errors (30 BE +
+14 FE warnings, pre-existing class) · build + budget PASS both DSN modes ·
+frontend 148 files/996 tests PASS · backend 227 files/2101 tests PASS
+(3 chunks) · e2e guest-only 40/40 vs LIVE production · orval regen
+drift-free · adversarial review verdict SHIP (0 P0/P1/P2).
+
 ## Round R124 — the biggest round: impeccable/ponytail-driven 10-agent audit + 7-lane implementation + replay byte-gate + catalog projection — 2026-10-09
 
 The round the operator asked to be "أعمق وأشمل وأدق" with the largest
@@ -113,7 +229,7 @@ adversarial independent reviewer (verdict FIX-FIRST → both P1s fixed +
 ### Gates on the merged tree
 typecheck clean (FE+BE) · lint 0 errors (85 pre-existing warnings) ·
 frontend build + budget PASS (both DSN modes) · frontend 131 files /
-908 tests PASS · backend ~199 files / ~2050 tests PASS (3 chunks) ·
+908 tests PASS · backend 227 test files / ~2050 tests PASS (3 chunks) ·
 contract suite 21/21 · spa-shell parity 8/8 · replay-lazy 18/18.
 Independent review verdict: no P0; both P1s (description projection
 regression + build marker) fixed and re-verified with dist forensics.
@@ -122,7 +238,9 @@ regression + build marker) fixed and re-verified with dist forensics.
 A9's bigger refactors (copilot error envelope ×47, diagnostics.ts
 modernization, toNumber consolidation, auth-settings split) · A8's
 tsconfig test-inclusion · FlashSaleBanner light-wash contrast token ·
-post-deploy `window.__sentryTest` replay canary (ops) · GSC verification
+delete the live «تجربة» test flash sale (admin → promotions —
+`docs/inspection-r124/A1` §ops) · post-deploy `window.__sentryTest` replay
+canary (ops) · GSC verification
 token (ops) · inventory loading runbook (operator decision — store is
 browse-only with 1 sellable product) · http→https 301 + origin gzip
 exclusions (Traefik/Coolify edge, ops).

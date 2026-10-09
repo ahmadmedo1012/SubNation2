@@ -9,7 +9,7 @@
 
 ## Roles & Permissions (RBAC)
 
-- Access is scope-based (`all`, `orders`, `finance`, `inventory`, `support`, `users`, `admins`, `settings` — see `shared/permissions.ts` and `docs/API.md` §RBAC for the authoritative list). There is **no tenant/organization scoping** (r99 — the previous "Manager (tenant-scoped)" wording described a model that was never implemented).
+- Access is scope-based (`all`, `orders`, `finance`, `inventory`, `support`, `users`, `admins`, `settings` — see `backend/src/lib/permissions.ts` and `docs/API.md` §RBAC for the authoritative list). There is **no tenant/organization scoping** (r99 — the previous "Manager (tenant-scoped)" wording described a model that was never implemented).
 
 ## Backup Policies
 

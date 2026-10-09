@@ -7,7 +7,11 @@
 > live probes (HTTP/2 + HTTP/1.1, bare root + path + query, full header
 > inspection) return **HTTP/2 301** with path+query preserved — the R121
 > record's "308" digit was wrong; behavior is exactly as required either
-> way. This doc is preserved as the design + rollback record.
+> way. This doc is preserved as the design + rollback record. **R124
+> update (2026-10-09):** the digit is Traefik-regen-dependent — **308
+> before the R124 redeploy, 301 after it** (stable ×3, commit `09857fc`).
+> Both earlier records were real observations. §3's comment below explains
+> the 308: Traefik `redirectRegex` + `permanent: true` emits 308 by design.
 > Decision + evidence recorded in
 > `docs/deployment/CLOUDFLARE_FINAL_CUTOVER.md` §8 (R117 addendum, observed
 > 2026-10-05); this doc adds the paste-able config it asked for
@@ -27,7 +31,9 @@ observations, 2026-10-05):
   baked into `frontend/index.html:63` since R117 (verified present in the
   build output by R117-V2).
 
-Executed 2026-10-07: www → apex **308** (path + query preserved); apex 200.
+Executed 2026-10-07: www → apex **308** (path + query preserved — the R121
+regen state; **301 since the R124 redeploy 2026-10-09**, see the header
+note); apex 200.
 (Pre-R121 both hostnames answered 200 byte-identical — R118 record,
 verified `R118-A7-docs.md` §1.) A single live hostname per site is what
 the canonical signals below were aiming at; the redirect is now in force
@@ -65,11 +71,12 @@ http:
       redirectRegex:
         regex: '^https://www\.subnation\.ly/(.*)'
         replacement: 'https://subnation.ly/${1}'
-        permanent: true   # 301 Moved Permanently
+        permanent: true   # permanent redirect — Traefik redirectRegex emits 308 for this shape (the R121/R124-pre-redeploy live answer); the 301s observed post-redeploy come from the regen state
 ```
 
 This is the whole rule: any `https://www.subnation.ly/<anything>` →
-`https://subnation.ly/<anything>` with HTTP 301. The `(.*)` capture
+`https://subnation.ly/<anything>` as a permanent single-hop (301 or 308
+depending on Traefik regen state). The `(.*)` capture
 carries the path **and query string** through to the replacement, so URLs
 like `/product/x?ref=y` redirect losslessly.
 

@@ -28,6 +28,12 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R125 (2026-10-09) — round record:** the 12-audit + 8-lane + adversarial-review
+> round (3 P1 + ~30 P2 + ~85 P3; admin console focus, strictFunctionTypes
+> enabled, live guest-e2e executed) is documented in
+> `docs/inspection-r125/` (A1–A12 audit reports + the R1 adversarial review)
+> with the round entry at the top of `CHANGELOG.md`.
+
 > **R124 (2026-10-09) — round record:** the 10-audit + 7-lane +
 > independent-review round (93 findings, 0 P0) is documented in
 > `docs/inspection-r124/` (A1–A10 audit reports + the R1 adversarial review)
@@ -54,8 +60,8 @@
 
 Not an incident but "what do I do next?" →
 **`docs/operations/OPERATOR_ACTIONS_R118.md`** (status refreshed R122:
-actions 1 & 8 DONE — 8 executed as the 308; 2/3 unverified; 4–7, 9–10
-open).
+actions 1 & 8 DONE — 8: permanent redirect live, **301 since the R124
+redeploy, was 308**; 2/3 unverified; 4–7, 9–12 open).
 
 ## Pointer hierarchy (of record)
 
@@ -71,10 +77,10 @@ ledger; `docs/API.md` owns the API surface.
 
 | File | What it covers | Status |
 |---|---|---|
-| `operations/OPERATOR_ACTIONS_R118.md` | The ordered operator action list | status header refreshed R122 (1 & 8 DONE; 2/3 unverified; 4–7, 9–10 open) |
-| `operations/CONTABO_COOLIFY_OPERATIONS.md` | Day-2 ops for the live Contabo host + Coolify + Traefik | §5 updated R122 (www→apex 308 LIVE); Oracle-guide refs repointed to `docs/deprecated/` |
-| `operations/NEON_COLD_START_RUNBOOK.md` | Neon auto-suspend: symptoms, checks, when to panic, mitigation menu | §6 updated R122 (live 308, not planned 301) |
-| `operations/WWW_TO_APEX_301.md` | The canonical-host change | **EXECUTED 2026-10-07 (R121)** — live as a **308** via `www-redirect.yml`; preserved as the design + rollback record |
+| `operations/OPERATOR_ACTIONS_R118.md` | The ordered operator action list | status header refreshed R122; R123 added actions 11–12; R124 added the «تجربة» flash-sale deletion + replay-canary check (1 & 8 DONE; 2/3 unverified; 4–12 open) |
+| `operations/CONTABO_COOLIFY_OPERATIONS.md` | Day-2 ops for the live Contabo host + Coolify + Traefik | §5 updated R125 (www→apex permanent single-hop — 301 since the R124 redeploy, was 308); Oracle-guide refs repointed to `docs/deprecated/` |
+| `operations/NEON_COLD_START_RUNBOOK.md` | Neon auto-suspend: symptoms, checks, when to panic, mitigation menu | §6 updated R125 (live permanent redirect; digit regen-dependent — 301 since the R124 redeploy, was 308) |
+| `operations/WWW_TO_APEX_301.md` | The canonical-host change | **EXECUTED 2026-10-07 (R121)** — live via `www-redirect.yml` (301 since the R124 redeploy 2026-10-09, 308 before it); preserved as the design + rollback record |
 | `operations/FINAL_INVENTORY_LOADING.md` | How sellable stock is loaded/verified/rolled back — the #1 operator runbook | CURRENT (stock items 2/3 still open — see OPERATOR_ACTIONS) |
 | `operations/FINAL_ADMIN_TOTP_SETUP.md` | TOTP enrollment on `ahmadmedo` | CURRENT (enrollment still unverified through R121) |
 | `operations/FINAL_MONITORING.md` | What to watch, cron slots, healthz family, alerting | CURRENT (Oracle refs repointed to `docs/deprecated/` R122) |
@@ -84,7 +90,7 @@ ledger; `docs/API.md` owns the API surface.
 
 | File | Covers | Status |
 |---|---|---|
-| `architecture/FINAL_PRODUCTION_TOPOLOGY.md` | THE topology source of truth | §1 diagram updated R122 (www 308 at Traefik) |
+| `architecture/FINAL_PRODUCTION_TOPOLOGY.md` | THE topology source of truth | §1 diagram updated R125 (www permanent→apex at Traefik; 301 since the R124 redeploy, was 308) |
 | `architecture/PRODUCTION_ARCHITECTURE.md` | Data-path + migration-chain detail | CURRENT (history refs repointed to `docs/history/` R122) |
 
 ### deployment/
@@ -106,13 +112,13 @@ ledger; `docs/API.md` owns the API surface.
 
 | File | Covers | Status |
 |---|---|---|
-| `DISASTER_RECOVERY.md` | THE DR source of truth | canonical-host line updated R122 (www 308→apex) |
+| `DISASTER_RECOVERY.md` | THE DR source of truth | canonical-host line updated R125 (www permanently→apex; 301 since the R124 redeploy, was 308) |
 | `WHATSAPP_OPERATIONS.md` | WhatsApp gateway ops | CURRENT (R117 rewrite verified) |
 | `API.md` | Rate limits + surface (operator reference) | CURRENT |
 | `COMPLIANCE.md` | Data-retention/backup compliance claims | CURRENT (R118-B4a corrections) |
 | `FINAL_MONEY_INVARIANTS.md` | M1–M14 money invariants | CURRENT |
 | `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
-| `SEO_PRODUCTS.json` | The 37 curated Arabic product entries (R116) | CURRENT |
+| `SEO_PRODUCTS.json` | The 45 curated Arabic product entries (8 original + 37 added R116) | CURRENT |
 | `loyalty/FINAL_LOYALTY_POLICY.md` · `loyalty/LOYALTY_ECONOMICS.md` | Loyalty policy + economics | CURRENT |
 | `pricing/PRICING_ECONOMICS.md` | Pricing/margin model | CURRENT |
 | `ux/FINAL_UX_SYSTEM.md` | UX/design-system policy | CURRENT |
@@ -129,7 +135,7 @@ ledger; `docs/API.md` owns the API surface.
 
 | Bucket | Files | Location |
 |---|---|---|
-| **CURRENT** | 48 (33 md + 13 mmd + 1 json) | in place (this index's tables above) |
+| **CURRENT** | 48 (34 md incl. this index + 13 mmd + 1 json) | in place (this index's tables above) |
 | **HISTORY** | 74 (incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r118, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit` |
 | **DEPRECATED** | 16 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set |
 | **PENDING** | 1 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design; `FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands) |

@@ -93,9 +93,11 @@ resource's **Domains** config: `https://subnation.ly` **and**
 Let's Encrypt production certs cover both (COOLIFY_FINAL_SETUP §6; both
 hosts must also appear in `APP_ORIGINS`).
 
-Since R121 (2026-10-07) www → apex is a **live 308** at this Traefik layer
-(`/data/coolify/proxy/dynamic/www-redirect.yml`, priority 1000); only the
-apex serves the app. Design/rollback record:
+Since R121 (2026-10-07) www → apex is a **live permanent single-hop** at
+this Traefik layer (`/data/coolify/proxy/dynamic/www-redirect.yml`, priority
+1000) — **301 since the R124 redeploy (2026-10-09), 308 before it** (the
+status digit is Coolify-Traefik-regen-dependent); only the apex serves the
+app. Design/rollback record:
 `docs/operations/WWW_TO_APEX_301.md` (operator summary:
 `OPERATIONS_RUNBOOK.md` §13). **Never** implement that redirect
 in the app (the R116 Cloudflare-loop incident is why the in-app redirect

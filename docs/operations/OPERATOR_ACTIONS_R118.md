@@ -2,7 +2,8 @@
 
 > Status: CURRENT @ 2026-10-06 (R118; supply-chain + rotation follow-ups
 > re-dated R119, 2026-10-07) — **status refreshed R122 (2026-10-07):
-> actions 1 & 8 are DONE (R121 — action 8 executed as a 308, see
+> actions 1 & 8 are DONE (R121 — action 8 executed; **301 since the R124
+> redeploy 2026-10-09, 308 before it** — see
 > `docs/operations/WWW_TO_APEX_301.md`); actions 2 & 3 unverified (no
 > evidence of stock load / TOTP enrollment through R121); 4–7, 9–10 still
 > open.** **R123 (2026-10-08) adds actions 11 (http→https apex redirect is
@@ -15,13 +16,16 @@
 > production **LIVE** at https://subnation.ly (Contabo VM + Coolify +
 > Traefik + Let's Encrypt at origin; Neon Postgres 17 us-east-1, pooled;
 > Cloudflare DNS-only) · single admin `ahmadmedo` (username login + argon2,
-> TOTP implemented but **not enrolled**) · sellable stock = **3 placeholder
-> units** (inventory rows 79/80/81 — `extra_details` only, uploaded
-> 2026-10-05) + 42 active products with zero stock · ~~**`main` is now ahead
+> TOTP implemented but **not enrolled**) · sellable stock = **R118-era
+> figures: 3 placeholder units (rows 79/80/81) + 42 zero-stock actives —
+> superseded by freshest live observations (R122: 44/45 sold out; R124:
+> 45 products / 1 sellable — `docs/inspection-r124/A1:144`)** ·
+> ~~**`main` is now ahead
 > again**~~ (DONE — the R118 chain + the waves merge (966d70f) + the R120/R121
 > chains all deployed via the push-to-deploy webhook since 2026-10-06) ·
 > ~~www and apex both serve 200 (301 www→apex recommended)~~ (DONE —
-> **www → apex 308 LIVE since R121**, 2026-10-07).
+> **www → apex permanently redirected since R121**, 2026-10-07; **301
+> since the R124 redeploy 2026-10-09, 308 before it**).
 
 **Launch blockers: actions 1–3.** The store cannot sell safely, and the
 admin account is single-factor, until those three are done. 4–5 are
@@ -180,11 +184,12 @@ stock, so the live process is the one the R118 findings describe).
   (Evidence: R118-A6 F-6; `docs/operations/NEON_COLD_START_RUNBOOK.md`
   §"Related env knob".) Effort: S.
 
-## 🟡 8. www→apex 301 at Traefik — ✅ DONE (R121, executed as 308)
+## 🟡 8. www→apex 301 at Traefik — ✅ DONE (R121; live 301 since the R124 redeploy, was 308)
 
-- **Executed 2026-10-07 (R121):** live as a **308** via the standalone
-  dynamic router `/data/coolify/proxy/dynamic/www-redirect.yml`
-  (priority 1000). Design/rollback record:
+- **Executed 2026-10-07 (R121):** live via the standalone dynamic router
+  `/data/coolify/proxy/dynamic/www-redirect.yml` (priority 1000) —
+  permanent single-hop; **301 since the R124 redeploy (2026-10-09), 308
+  before it** (the status digit is Coolify-Traefik-regen-dependent). Design/rollback record:
   **`docs/operations/WWW_TO_APEX_301.md`** (its §3 "Alternative" shape is
   what shipped); operator summary: `OPERATIONS_RUNBOOK.md` §13. Never
   in-app (R116 loop lesson). (Evidence: R118-A7 F34(c);
