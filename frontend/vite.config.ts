@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import react from "@vitejs/plugin-react";
+import { createHash } from "crypto";
 import { existsSync, readdirSync, readFileSync, rmSync } from "fs";
 import { createRequire } from "module";
 import path from "path";
@@ -56,6 +57,30 @@ function bundleBudgetPlugin(): Plugin {
         process.exit(1);
       }
       const html = readFileSync(htmlPath, "utf8");
+
+      // ── R126-L1 (A11-F1): CSP-cleanliness gate on the BUILT shell ──
+      //
+      // helmet's script-src has no 'unsafe-inline', so ANY src-less
+      // <script> in the built index.html is a guaranteed CSP violation
+      // on 100% of boots (the R125 inline preload gate shipped exactly
+      // this way: live e2e "no console errors" failures + a dead
+      // optimization). This is the mechanical acceptance rule for the
+      // external-gate mechanism (and any future head injection): the
+      // build FAILS the moment an inline script reappears. HTML
+      // comments are stripped first so a commented-out example can't
+      // false-positive. (The <style> in body is irrelevant — helmet's
+      // style-src carries 'unsafe-inline'.)
+      const inlineScriptTag = html
+        .replace(/<!--[\s\S]*?-->/g, "")
+        .match(/<script\b(?![^>]*[\s"']src[\s]*=)[^>]*>/i);
+      if (inlineScriptTag) {
+        console.error(
+          "[bundle-budget] ERROR: src-less inline <script> in the built index.html — helmet CSP blocks it on every boot (A11-F1):",
+          inlineScriptTag[0],
+        );
+        process.exit(1);
+      }
+
       const entryMatch = html.match(
         /<script[^>]*type="module"[^>]*src="[^"]*\/(index-[A-Za-z0-9-_]+\.js)"/,
       );
@@ -208,6 +233,105 @@ function seoHeadInject(): Plugin {
 }
 
 /**
+ * ── R126-L1 (A11-F1): the EXTERNAL home-chunk preload gate ────────
+ *
+ * R125 shipped the admin home-preload gate as an INLINE <script>
+ * injected right after <head> — helmet's CSP (backend/src/app.ts
+ * script-src) has no 'unsafe-inline', so the browser blocked it on
+ * 100% of boots: a CSP console error on every storefront visit, the
+ * 2 deterministic live e2e failures (home.spec.ts "no console errors",
+ * desktop + mobile-390), and a fully inert optimization. The mechanism
+ * is now CSP-clean end to end:
+ *
+ *   - the gate CODE is the asset below — an external same-origin
+ *     classic script ('self' passes helmet), content-hashed by us and
+ *     emitted under assets/, so the backend's /assets rule serves it
+ *     with `max-age=31536000, immutable` (app.ts:1449-1456): one tiny
+ *     fetch on a visitor's FIRST boot, disk/memory cache after (plus
+ *     the SW's same-origin JS CacheFirst rule).
+ *   - the per-build hashed home-chunk URL(s) ride a data-* attribute on
+ *     the script tag — data attributes are plain HTML, invisible to
+ *     CSP. No JSON manifest fetch, no inline JS, ever.
+ *   - the tag sits exactly where the R125 inline gate sat (right after
+ *     <head> opens, BEFORE the Vite-injected stylesheet links) and is
+ *     a PARSER-BLOCKING classic script ON PURPOSE. `defer` was
+ *     considered and rejected: deferred scripts execute after document
+ *     parse, by which time the entry chunk (fetched during parse) is
+ *     already downloaded — the home fetch would no longer overlap the
+ *     entry/vendor/CSS downloads and the preload would be inert again,
+ *     the same silent no-op class as the CSP bug. Blocking costs one
+ *     same-origin fetch on the first visit only; the preload scanner
+ *     still discovers the CSS/entry/vendor/font fetches in parallel
+ *     while the gate downloads.
+ *
+ * The runtime semantics are byte-identical to R125-I2's inline gate:
+ * non-admin paths get the <link rel="modulepreload"> append during
+ * head parse; /admin paths never see the link at all (conditional-CREATE
+ * — a static link cannot be removed reliably because the preload
+ * scanner starts its fetch from the raw bytes before any script runs).
+ *
+ * Exported (+ buildPreloadGateTag / injectPreloadGate) for the unit
+ * tests that pin the tag shape, the injection anchor and the runtime
+ * gating (src/lib/__tests__/preload-gate.test.ts — the seo-head-inject
+ * test idiom: pure transform + real index.html fixture).
+ */
+export const PRELOAD_GATE_SOURCE = `(function () {
+  try {
+    if (location.pathname.startsWith("/admin")) return;
+    var el = document.querySelector("script[data-home-chunk]");
+    var urls = (el && el.getAttribute("data-home-chunk")) || "";
+    var parts = urls.split(/\\s+/);
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i]) continue;
+      var link = document.createElement("link");
+      link.rel = "modulepreload";
+      link.href = parts[i];
+      document.head.appendChild(link);
+    }
+  } catch (e) {
+    /* a preload hint must never break (or console-noise) the boot */
+  }
+})();
+`;
+
+// Content-addressed asset name: a deterministic hash OF THE SOURCE, not
+// of the build — the file is genuinely immutable per content, and the
+// reference injected into index.html is computable at config load
+// (both the buildStart emitter and the transformIndexHtml injector use
+// this same constant; the charset matches Vite's own asset hashes).
+export const PRELOAD_GATE_ASSET_FILE = `assets/preload-gate-${createHash("sha256")
+  .update(PRELOAD_GATE_SOURCE)
+  .digest("base64url")
+  .slice(0, 8)}.js`;
+
+/**
+ * Build the external gate <script> tag. `homeChunks` are rollup bundle
+ * keys ("assets/home-*.js") — plural-proof like the R125 loop, joined
+ * space-separated in the single data attribute (chunk hashes are
+ * [A-Za-z0-9_-], so no escaping concerns).
+ */
+export function buildPreloadGateTag(homeChunks: string[]): string {
+  const hrefs = homeChunks.map((name) => `/${name}`).join(" ");
+  return `<script src="/${PRELOAD_GATE_ASSET_FILE}" data-home-chunk="${hrefs}"></script>`;
+}
+
+/**
+ * Inject the gate tag right after <head> opens — BEFORE the
+ * Vite-injected stylesheet links (a classic script that FOLLOWS a
+ * pending stylesheet waits for that stylesheet, which would push the
+ * home fetch behind the CSS on cold storefront boots). Returns the
+ * input unchanged when there is no home chunk (nothing to gate) or no
+ * <head> to anchor against. The $$ escaping neutralizes any `$` in the
+ * tag for String.replace (belt-and-suspenders — hash chars are
+ * [A-Za-z0-9_-]).
+ */
+export function injectPreloadGate(html: string, homeChunks: string[]): string {
+  if (homeChunks.length === 0) return html;
+  const tag = buildPreloadGateTag(homeChunks);
+  return html.replace(/(<head[^>]*>)/, `$1\n    ${tag.replace(/\$/g, "$$$$")}`);
+}
+
+/**
  * Inject <link rel="preload"> for the critical Readex Pro woff2 fonts
  * (Arabic 400/600/700 + Latin 400 — the LCP-text faces).
  *
@@ -251,6 +375,17 @@ function criticalPreloadInject(): Plugin {
     name: "critical-preload-inject",
     apply: "build",
     enforce: "post",
+    buildStart() {
+      // R126-L1 (A11-F1): emit the external gate script with an explicit
+      // content-hashed fileName so it lands under assets/ (immutable
+      // 1y cache on the backend's /assets rule) and can never be served
+      // stale after a content change — a new source mints a new hash.
+      this.emitFile({
+        type: "asset",
+        fileName: PRELOAD_GATE_ASSET_FILE,
+        source: PRELOAD_GATE_SOURCE,
+      });
+    },
     transformIndexHtml: {
       order: "post",
       handler(html, ctx) {
@@ -274,19 +409,20 @@ function criticalPreloadInject(): Plugin {
           );
         }
 
-        // A2 F7 (R124) + R125-I2 (A5-F4): modulepreload the HOME route
-        // chunk — NON-ADMIN BOOTS ONLY. Vite only modulepreloads the
-        // entry's STATIC imports (the vendor chunks); the home chunk —
-        // the money page, warmed on EVERY non-admin boot by the boot
-        // head-start's module-eval import() (App.tsx, leg (a)) —
-        // previously started fetching only AFTER the entry chunk had
-        // downloaded AND parsed (~150-300 ms on 4G). The link moves the
-        // fetch to HTML-parse time, in parallel with the entry +
-        // vendors. Net-new bytes: zero — every non-admin boot fetches
-        // this exact chunk at module-eval time regardless of entry
-        // path; the browser dedupes the module map entry. (The
-        // bundle-budget plugin deliberately skipped the old static
-        // link — see its comment.)
+        // A2 F7 (R124) + R125-I2 (A5-F4) + R126-L1 (A11-F1): modulepreload
+        // the HOME route chunk — NON-ADMIN BOOTS ONLY, via the EXTERNAL
+        // gate script (PRELOAD_GATE_SOURCE below). Vite only
+        // modulepreloads the entry's STATIC imports (the vendor chunks);
+        // the home chunk — the money page, warmed on EVERY non-admin
+        // boot by the boot head-start's module-eval import() (App.tsx,
+        // leg (a)) — previously started fetching only AFTER the entry
+        // chunk had downloaded AND parsed (~150-300 ms on 4G). The link
+        // moves the fetch to HTML-parse time, in parallel with the
+        // entry + vendors. Net-new bytes: zero — every non-admin boot
+        // fetches this exact chunk at module-eval time regardless of
+        // entry path; the browser dedupes the module map entry. (The
+        // bundle-budget plugin deliberately skips the home link — see
+        // its comment.)
         //
         // R125-I2 (A5-F4) — the ADMIN gate. The built HTML is a SINGLE
         // SPA shell served for every route (storefront paths AND the
@@ -303,32 +439,37 @@ function criticalPreloadInject(): Plugin {
         // script (init.js at index.html:120, or any remover we could
         // inject) executes — so removal cannot reliably cancel the
         // fetch. Creating the link only on non-admin paths is the
-        // reliable gate. The script is injected right after <head>
-        // opens — BEFORE the stylesheet links (a classic inline script
-        // that follows a pending stylesheet waits for that stylesheet
-        // to load, which would push the home fetch behind the CSS on
-        // cold storefront boots). Storefront behavior is otherwise
-        // unchanged from the static link: the append runs during head
-        // parse, in the same first-HTML-chunk discovery window, in
-        // parallel with the CSS/entry/vendor fetches. Admin boots
-        // append nothing.
+        // reliable gate. Admin boots append nothing.
+        //
+        // R126-L1 (A11-F1) — CSP: R125 shipped this gate as an INLINE
+        // <script> right after <head>; helmet's script-src
+        // (backend/src/app.ts) carries no 'unsafe-inline', so the
+        // browser blocked it on 100% of boots — a CSP console error on
+        // every storefront visit, 2 deterministic live e2e failures,
+        // and a fully inert optimization. The gate is now an EXTERNAL,
+        // content-hashed classic script (see PRELOAD_GATE_SOURCE):
+        // same placement (right after <head> opens, BEFORE the
+        // stylesheet links — a classic script that follows a pending
+        // stylesheet waits for it, which would push the home fetch
+        // behind the CSS), same conditional-create semantics, same
+        // predicate — but 'self'-clean and with the per-build hashed
+        // home-chunk URL(s) delivered via a data-* attribute (plain
+        // HTML, invisible to CSP).
         const homeChunks = Object.keys(bundle).filter((name) =>
           /^assets\/home-[A-Za-z0-9_-]+\.js$/.test(name),
         );
         if (homeChunks.length > 0) {
-          const homePreloadCalls = homeChunks
-            .map(
-              (name) =>
-                `document.head.appendChild(Object.assign(document.createElement("link"),{rel:"modulepreload",href:"/${name}"}));`,
-            )
-            .join("");
-          const gate = `<script>if(!location.pathname.startsWith("/admin")){${homePreloadCalls}}</script>`;
-          // Inject immediately after <head> opens — see the comment
-          // above for why this must precede the stylesheet links. The
-          // $$ escaping neutralizes any `$` in the replacement string
-          // for String.replace (chunk hashes are [A-Za-z0-9_-] so this
-          // is belt-and-suspenders).
-          html = html.replace(/(<head[^>]*>)/, `$1\n    ${gate.replace(/\$/g, "$$$$")}`);
+          // Belt & suspenders: the shell must never reference a script
+          // the build did not emit (a 404 script = a console error on
+          // every boot — the exact bug class this refactor fixes).
+          if (!bundle[PRELOAD_GATE_ASSET_FILE]) {
+            throw new Error(
+              "[critical-preload-inject] preload-gate asset missing from the bundle — refusing to emit a shell that references a 404 script",
+            );
+          }
+          // Inject the EXTERNAL gate (R126-L1) — see the
+          // PRELOAD_GATE_SOURCE block above for the CSP/defer story.
+          html = injectPreloadGate(html, homeChunks);
         }
 
         if (tags.length === 0) return html;
