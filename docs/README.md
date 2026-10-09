@@ -28,15 +28,21 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
-> **R126 (2026-10-09) — round record (docs/presentation lanes):** this index
-> gained the developer onboarding layer (`docs/ONBOARDING.md`), the
-> performance record (`docs/PERFORMANCE.md`), and a `specs/` visibility row;
-> `project-graph/` 00 + 12 were refreshed (00 drew the deleted app-2, 12
-> named a machine-specific clone path). Repo root gained the OSS trust
-> surface: `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`,
-> `.github/ISSUE_TEMPLATE/` + PR template, CI badge in the README.
-> (`ONBOARDING` / `PERFORMANCE` intentionally sit outside the `FINAL_*`
-> pattern — front-door entry docs in the `API.md` family.)
+> **R126 (2026-10-09) — round record:** the 13-audit + 10-lane round (3 P1 +
+> ~14 P2 + ~90 P3, two NEW audit dimensions — Arabic language quality +
+> real-browser a11y vs live production; the live CSP P1 hotfix, stats RBAC
+> scope, OpenAPI batch-1 ×17, test-inclusion widening T1-T3, settings +
+> auth-settings splits, adversarial review SHIP 0 P0/P1/P2) is documented in
+> `CHANGELOG.md` §Round R126 + `docs/inspection-r126/` (13 auditor reports +
+> the independent review). Docs-presentation lanes: this index gained the
+> developer onboarding layer (`docs/ONBOARDING.md`), the performance record
+> (`docs/PERFORMANCE.md`), and a `specs/` visibility row; `project-graph/` 00
+> + 12 were refreshed (00 drew the deleted app-2, 12 named a machine-specific
+> clone path). Repo root gained the OSS trust surface: `LICENSE` (MIT),
+> `CONTRIBUTING.md`, `SECURITY.md`, `.github/ISSUE_TEMPLATE/` + PR template,
+> CI badge in the README. (`ONBOARDING` / `PERFORMANCE` intentionally sit
+> outside the `FINAL_*` pattern — front-door entry docs in the `API.md`
+> family.)
 
 > **R125 (2026-10-09) — round record:** the 12-audit + 8-lane + adversarial-review
 > round (3 P1 + ~30 P2 + ~85 P3; admin console focus, strictFunctionTypes

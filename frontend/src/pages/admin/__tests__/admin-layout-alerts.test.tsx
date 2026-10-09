@@ -81,11 +81,16 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 
 const fetchMock = vi.fn();
 
-function renderLayout() {
+function renderLayout(
+  // R126: optional page-passed badges — the support-scope test pins the
+  // fallback path (stats is finance-gated; the tickets page's local
+  // count rides this prop).
+  badges?: { pendingTopups?: number; openTickets?: number; unreadAlerts?: number },
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <AdminLayout>
+      <AdminLayout badges={badges}>
         <div>page-body</div>
       </AdminLayout>
     </QueryClientProvider>,
@@ -341,36 +346,37 @@ describe("AdminLayout openTickets badge — server-sourced, support-gated (R120-
     authState.support = true;
   });
 
-  it("a support-scoped admin gets the server open_tickets count on the tickets chip", async () => {
+  it("a support-scoped admin rides the page-passed tickets count — stats is finance-gated (R126)", async () => {
     authState.finance = false;
     fetchMock.mockImplementation(
       routeFetch({
+        // /api/admin/stats requires the finance scope server-side since
+        // R126 (R1-P3): a support-only session must NOT poll it at all
+        // (was a guaranteed-403 zombie every 5 min). The tickets chip
+        // falls back to the page-passed badges count — the honest
+        // fallback the R120-B4 design already kept for stats errors.
         stats: () =>
           resLike({
-            body: {
-              total_users: 3,
-              total_orders: 1,
-              total_revenue: 25,
-              pending_topups: 0,
-              today_orders: 0,
-              today_revenue: 0,
-              available_stock: 4,
-              total_wallet_balance: 0,
-              open_tickets: 5,
-            },
+            body: {},
           }),
       }),
     );
 
-    renderLayout();
-
+    renderLayout({ openTickets: 5 });
+    // The page-passed count wins — and /api/admin/stats is never hit.
     await waitFor(async () => {
       expect(await ticketsBadgeChip()).toContain("5");
     });
+    expect(
+      fetchMock.mock.calls.find((c) => String(c[0]).includes("/api/admin/stats")),
+    ).toBeUndefined();
   });
 
-  it("a stats failure renders NO tickets chip digit (error = unknown, never 0)", async () => {
-    authState.finance = false;
+  it("a finance-scoped stats failure renders NO tickets chip digit (error = unknown, never 0)", async () => {
+    // R126: flipped to a finance-scoped session — the only scope that
+    // still polls stats. The no-lying-0 contract is unchanged: a
+    // failed stats fetch leaves the digit absent, not a fake 0.
+    authState.finance = true;
     fetchMock.mockImplementation(
       routeFetch({
         stats: () => resLike({ ok: false, status: 500, body: { error: "x", code: "Y" } }),

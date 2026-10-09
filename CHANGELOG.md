@@ -7,6 +7,133 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R126 — deeper than R125 on every axis: 13-agent audit (2 new dimensions) + 10 implementation lanes + test-inclusion widening + splits + live-CSP hotfix — 2026-10-09
+
+The round the operator asked to be "أعمق وأشمل وأقوى وأدق من السابقة بكل
+المعايير" over **the whole project + the admin console in all its
+details**. Thirteen parallel read-only auditors — ELEVEN going deeper
+than R125's twelve (admin money pages · catalog/customers ·
+ops/security/settings · data-layer/contracts · FE perf (built+measured)
+· BE perf/DB (39-index matrix) · security red-team (116/116 RBAC
+matrix) · storefront UX · test quality · live verification ·
+docs/repo) plus **TWO dimensions no prior round ran**: Arabic
+language-quality sweep (terminology canon + grammar + English leaks)
+and a **real-browser accessibility/mobile pass against live
+production**. Findings: 3 P1 + ~14 P2 + ~90 P3, every one
+file:line-evidenced (docs/inspection-r126/). Ten implementation lanes
++ the parent closed everything P1/P2 and the high-value P3s; an
+adversarial reviewer returned **SHIP — 0 P0/P1/P2** (5 P3, all closed
+before push).
+
+### The live P1 (found by R126-A11's live e2e — R125's own fix was the bug)
+- **The R125 inline admin-preload gate script was blocked by helmet's
+  CSP** on 100% of storefront boots: console error + 2 live e2e
+  failures + the optimization fully inert. Now an **external
+  content-addressed asset** (`assets/preload-gate-*.js`, sha256-named,
+  immutable) referenced CSP-clean via `<script src … data-home-chunk>`;
+  a **new build-time gate fails the build** if any src-less `<script>`
+  ever reappears in the built shell; 19 unit tests pin tag/anchor/
+  gating; dist-verified 0 inline scripts, eager path under budget.
+
+### Honesty P1s (admin trust surfaces)
+- **Password-change copy promised sessions survive; the backend revokes
+  every one** — the hint now states the truth, success surfaces the
+  backend's message, clears the dead session and lands deliberately on
+  /admin/login. `errors.ts` priority fix: the server's specific Arabic
+  message beats the generic code-map (wrong current-password reads
+  «كلمة المرور الحالية غير صحيحة», not «غير مصرح»). Login 401 English
+  prefix gone.
+- **Telegram money alerts labeled every non-madar network «ليبيانا»** —
+  full allowlist map (LyPay now «LyPay (تحويل مصرفي)»), plus the A8
+  copy sweep: طريقة الدخول, اعتماد canon, security-advisory fusha
+  rewrite, Arabized internal errors (8 backend findings).
+
+### Security (A7 red-team: 116/116 routes, zero gaps — one real fix)
+- **`/api/admin/stats` + `/chart-data` sat before the scope-gated
+  router** — a support-only session could read total revenue + wallet
+  balances; both now `requirePermission("finance")`, with the frontend
+  polling gates matched (no zombie 403s — R1's P3 closed). Ticket
+  reply/status mutations write audit rows; adminAuth 401s gain no-store
+  at both producers; the products family finally emits
+  `admin-stats-update` (8 sites — the emit R125's changelog claimed);
+  stats summary folded 10 aggregates → 5 FILTER scans.
+
+### Admin console (the operator's named focus — all 21 pages + seams)
+- Socket invalidation keys extended to tickets + risk (the emits R125
+  shipped were landing nowhere); topups status-tabs ride the backend
+  `?status=` param (no more hard-empty over a partial window); users
+  CSV export RFC-4180-quoted (columns no longer shift ≥1,000 LYD);
+  points-only wallet edits pass the money confirm; whatsapp load
+  failure is an alert + retry (not a false «لا يوجد جلسات»); referrals
+  list joins the 401-aware family; products mutations co-invalidate
+  stats; bulk toasts route through the Arabic error guard; select-all
+  membership, coupons aria-pressed, pricing stale-keep fixed.
+
+### Storefront (money-path mobile fixes from the real-browser pass)
+- **The mobile sticky purchase bar now carries the guarded
+  add-to-cart** (the mobile-majority market could not complete a
+  variant add from the PDP — live-verified at 390px); sold-out beats
+  the login CTA (guests see «نفد المخزون», never «تسجيل الدخول
+  للشراء»); guest drawer closes on Escape with dialog semantics +
+  focus trap; safe-area insets land on the sticky chrome
+  (viewport-fit=cover was declared but env() never used); touch
+  devices ride 16px inputs (no iOS zoom-on-focus, iPads included);
+  sale-price badge + checkout/pricing inks tokenized; ticket
+  notifications deep-link `?ticket=`; orders/wallet filters mirror
+  into the URL; `/products` 301 double-hop gone; product shells serve
+  real og:image; sitemap lastmod per-entity.
+
+### Contracts (A4's batch-1)
+- **OpenAPI batch-1: 17 admin endpoints exposed** (alerts ×7, tickets
+  ×4, settings ×2, chart-data, auth-stats ×2, referrals) — all
+  handler-faithful, the response-contract suite 21→38 rows (every new
+  endpoint safeParse-pinned against the real app), orval regen
+  drift-free, alerts + security pages flipped to the generated client.
+
+### Type safety + test infrastructure (A10's staged plan executed)
+- **T1**: backend tests/ + frontend e2e/ + configs join the
+  typechecked programs (0 errors). **T2**: the three frontend test
+  excludes dropped; all errors fixed fresh-measured (the widened gate
+  also caught @sentry/vite-plugin@4's dead `deleteSourcemapsAfterUpload`
+  option — maps were never plugin-deleted; `filesToDeleteAfterUpload`
+  is real). **T3**: ops-suite fetches gain real timeouts
+  (AbortSignal.timeout on validate.ts ×2 + the presigned-PUT full-DB
+  backup upload that had none); scripts join the typechecked program.
+  search-arabic e2e rewritten from false-passable (swallowed nav
+  timeouts, mangled `aref=` selectors) to API-ground-truth pins; the
+  retired real-sleep race pattern fully retired (referrals + topups
+  suites on fake timers).
+
+### Structure (A3's execution-ready plans, zero behavior change)
+- settings.tsx 1,736L → 4 modules; backend auth-settings.ts 1,276L →
+  4 modules (the 4 `as any` casts dead). Byte-identical moves
+  (spot-verified by the adversarial reviewer).
+
+### Repo presentation (the operator's standing order — A12's plan)
+- OSS trust surface: LICENSE (MIT, as package.json declared),
+  SECURITY.md, CONTRIBUTING.md, issue/PR templates, CI badge. README
+  restamped + simplified (Arabic product intro, live screenshots,
+  project-graph links finally referenced); docs/ONBOARDING.md +
+  docs/PERFORMANCE.md layer the developer journey; project-graph 00/12
+  truth-ups; API.md documents `?fields=list`.
+
+### Gates on the merged tree
+typecheck clean FE+BE+scripts+libs under the WIDENED programs · lint
+0 errors · build + budget + **CSP gate** PASS (0 inline scripts) ·
+frontend **159 files / 1,076 tests** PASS · backend **234 files /
+2,148 tests** PASS (3 chunks) · contract suite 38/38 · adversarial
+review **SHIP**.
+
+### Deferred (documented, not forgotten)
+Dashboard/system chart-data + remaining raw-fetch flips (batch-2 with
+the OpenAPI 53-endpoint remainder) · admin/auth ×8 + observability +
+diagnostics spec exposure · toNumber 70-site consolidation (A6's 3-PR
+plan) · notifications full-history page (needs backend `?page=`) ·
+GSC verification token (ops) · «تجربة» flash-sale deletion (ops —
+re-flagged by A9 one round later) · http→https 301 + gzip exclusions
+(Traefik/Coolify edge, ops) · inventory loading runbook (operator
+decision, Embronic track untouched per standing order).
+
 ## Round R125 — the deepest round: 12-agent admin-focused audit + 8 implementation lanes + strictFunctionTypes enabled + live e2e — 2026-10-09
 
 The round the operator asked to be "أعمق وأشمل وأقوى وأدق" with the whole

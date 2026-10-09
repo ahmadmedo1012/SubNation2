@@ -889,7 +889,13 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   } = useGetAdminStats({
     query: {
       queryKey: getGetAdminStatsQueryKey(),
-      enabled: !!adminToken && (canSeeFinanceBadge || canSeeSupportBadge),
+      // R126 (R1-P3): /api/admin/stats is finance-gated server-side
+      // since this round — a support-only session polling it every 5
+      // min is a guaranteed 403 zombie. Finance-scope admins keep the
+      // server-sourced pendingTopups + openTickets pair; support-only
+      // sessions ride the page-passed badge fallback (the documented
+      // L4 residual — never a lying 0, the tickets page's count wins).
+      enabled: !!adminToken && canSeeFinanceBadge,
       refetchInterval: 300_000,
       refetchIntervalInBackground: false,
     },

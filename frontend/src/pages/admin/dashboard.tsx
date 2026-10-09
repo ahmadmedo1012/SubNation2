@@ -418,7 +418,12 @@ export default function AdminDashboardPage() {
   const { data: stats, isLoading: statsLoading } = useGetAdminStats({
     query: {
       queryKey: getGetAdminStatsQueryKey(),
-      enabled: !!adminToken,
+      // R126 (R1-P3): /api/admin/stats is finance-gated server-side
+      // since this round — a scoped support/admin-session polling it
+      // every 5 min is a guaranteed 403 zombie. The scope-honest gate
+      // mirrors chart-data's fetchChart early-return above (the
+      // non-finance dashboard renders only its scope-safe tiles).
+      enabled: !!adminToken && canSeeMoney,
       // Round-4 (perf P1-3): the admin-room socket listener invalidates
       // stats/orders on every `admin-stats-update` push (topup approve/
       // reject, order bulk updates) — this 5-min interval is only a

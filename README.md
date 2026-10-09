@@ -150,10 +150,10 @@ pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright s
 ```
 
 Current suite (file counts verified at HEAD, R126; CI runs both unit suites
-on every push): **frontend 148 test files / 996 tests** · **backend 231 test
-files / ~2.1k tests** (227 under `backend/src/**` + 4 under `backend/tests/`;
-2,101 at the R125 full run) · guest-only e2e **40/40** against live
-production (20 spec flows × desktop + mobile-390 projects).
+on every push): **frontend 159 test files / 1,076 tests** · **backend 234 test
+files / 2,148 tests** (230 under `backend/src/**` + 4 under `backend/tests/`;
+full-suite runs green in the R126 gates) · guest-only e2e **40/40** against
+live production (20 spec flows × desktop + mobile-390 projects).
 
 > **Schema note:** schema changes flow exclusively through the idempotent
 > boot migrations (`backend/src/migrate.ts`), which the dev server runs
