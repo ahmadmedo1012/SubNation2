@@ -29,8 +29,9 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 > <https://subnation.ly>** — self-hosted Docker on Coolify (Contabo VPS) since
 > the 2026-10 cutover, with Neon Postgres staying external. Deployment chain:
 > GitHub `main` → Coolify (git-source dockerfile build, push-to-deploy webhook)
-> → Traefik → `subnation.ly`. **www→apex is a 308 permanent single-hop at the
-> edge** (re-verified live by direct curl, R124), **Sentry is live both sides**, and the
+> → Traefik → `subnation.ly`. **www→apex is a 301 permanent single-hop at the
+> edge** (re-verified live by direct curl, R124; the pre-R124-redeploy
+> answer was 308 — Coolify's Traefik regen now emits 301), **Sentry is live both sides**, and the
 > **Telegram ops channel** delivers alerts + topup approvals. Vercel/Render are
 > fully retired — pre-cutover records live under `docs/history/`. Current truth:
 > [`docs/project-state/source-of-truth.md`](./docs/project-state/source-of-truth.md);
@@ -222,12 +223,12 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   route-chunk warm-up — see [Performance](#performance-live-measured-r124));
   round entry at the top of [`CHANGELOG.md`](./CHANGELOG.md).
 - **R121 (2026-10-07) — edge canonicalization + full observability:**
-  `www.subnation.ly` **308-redirects (permanent, method-preserving) to the
-  apex in a single hop** at the Traefik file-provider layer
-  (`www-redirect.yml`, priority 1000, path+query preserved — re-verified
-  live by direct curl in R124: all four scheme/host variants collapse to
-  `https://subnation.ly` in one hop; the http→https hop on the apex is a
-  temporary 307 and remains the one edge polish item; runbook §13);
+  `www.subnation.ly` permanently redirects to the apex in a single hop
+  at the Traefik file-provider layer (`www-redirect.yml`, priority 1000,
+  path+query preserved — 301 as of the R124 redeploy, 308 before it;
+  re-verified live by direct curl in R124. The apex's own http→https hop
+  is a temporary redirect (302/307 depending on Traefik regen state) and
+  remains the one edge polish item; runbook §13);
   **Sentry live both sides** (org `subnation`, release-pinned source maps — runbook §11);
   **Telegram ops channel** for alerts + topup approvals (runbook §12).
 - **Repo state (as of R124):** typecheck clean (FE + BE), lint 0 errors,

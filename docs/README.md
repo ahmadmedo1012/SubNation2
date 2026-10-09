@@ -19,10 +19,11 @@
 > Live baseline for every "current state" claim: `https://subnation.ly`
 > 200 (Contabo VM + Coolify + Traefik + Let's Encrypt at origin, Neon
 > Postgres 17 us-east-1 pooled, Cloudflare **DNS-only grey**),
-> **www→apex 308 (permanent) LIVE at the Traefik layer since R121**
-> (`www-redirect.yml` priority 1000, path+query preserved — re-verified
-> by direct curl in R124; the apex's own http→https hop is a temporary
-> 307, the one remaining edge polish item), **Sentry LIVE both sides since R121-B** (org `subnation`
+> **www→apex permanent single-hop LIVE at the Traefik layer since R121**
+> (`www-redirect.yml` priority 1000, path+query preserved — 301 as of
+> the R124 redeploy (2026-10-09), 308 before it; the apex's own
+> http→https hop is a temporary redirect, the one remaining edge polish
+> item), **Sentry LIVE both sides since R121-B** (org `subnation`
 > EU/de, projects `javascript-react` + `subnation-backend`),
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
