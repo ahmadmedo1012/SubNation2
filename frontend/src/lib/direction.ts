@@ -32,7 +32,6 @@ export type AppLanguage = "ar" | "en";
 export type Direction = "rtl" | "ltr";
 
 export const DEFAULT_LANG: AppLanguage = "ar";
-export const DEFAULT_DIR: Direction = "rtl";
 
 /** Resolve the canonical direction for a language. */
 export function directionFor(lang: AppLanguage): Direction {

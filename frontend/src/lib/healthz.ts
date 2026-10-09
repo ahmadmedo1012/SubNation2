@@ -65,14 +65,3 @@ export interface HealthzReadyResponse {
   version: string;
   uptimeSec: number;
 }
-
-/**
- * True iff the user has at least one critical subsystem down. Keeps the
- * "should I scream at the user" decision in one place.
- */
-export function hasCriticalFailure(data: HealthzReadyResponse): boolean {
-  if (data.status !== "failing") return false;
-  return Object.values(data.checks).some(
-    (check) => check.status === "failing" && check.optional !== true,
-  );
-}

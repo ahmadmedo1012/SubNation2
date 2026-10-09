@@ -222,10 +222,3 @@ export function getErrorMessage(error: unknown): string {
   // Fallback to generic error
   return "حدث خطأ. حاول مرة أخرى";
 }
-
-// Helper function to check if error is a specific type
-export function isErrorCode(error: unknown, code: ErrorCode): boolean {
-  const err = asErrorLike(error);
-  if (!err) return false;
-  return err.code === code || err.response?.data?.code === code || err.data?.code === code;
-}
