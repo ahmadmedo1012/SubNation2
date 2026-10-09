@@ -209,3 +209,46 @@ describe("R123-E4b (P3) — hero prose toggle tap target", () => {
     expect(toggle.className).toContain("sm:hidden");
   });
 });
+
+describe("products-grid error — the shared FetchErrorCard (R125-I7 / A7 B-4)", () => {
+  /** R125-I7 (A7 B-4): the grid's outage card converged on the shared
+   *  FetchErrorCard (the orders/flash-sales page-family idiom) — the
+   *  hand-rolled card shipped a rounded-3xl shell + a native ~37px
+   *  retry under the app-wide 44px tap floor. */
+  const refetchProductsMock = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuthMock.mockReturnValue({ token: null });
+    mockHooks();
+    // mockHooks pins the products hook at isError:false — override for
+    // this describe (the harness only exposes stats/orders/me knobs).
+    vi.mocked(useListProducts).mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: true,
+      isPlaceholderData: false,
+      refetch: refetchProductsMock,
+    } as unknown as ReturnType<typeof useListProducts>);
+  });
+
+  it("an outage renders the shared card (role=alert, rounded-2xl) with a 44px retry — never the empty state", async () => {
+    renderPage();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("تعذّر تحميل المنتجات");
+    // The shared page-family card (the old hand-rolled shell was
+    // rounded-3xl — the craft-floor + convergence fix both land here).
+    expect(alert.className).toContain("rounded-2xl");
+
+    const retry = screen.getByRole("button", { name: "إعادة المحاولة" });
+    expect(retry.className).toContain("min-h-11");
+
+    // An outage must never read as "no products match" (the old defect:
+    // the error branch rendered the empty-search state).
+    expect(screen.queryByText(/لا توجد منتجات/)).not.toBeInTheDocument();
+
+    fireEvent.click(retry);
+    expect(refetchProductsMock).toHaveBeenCalledTimes(1);
+  });
+});

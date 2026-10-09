@@ -274,22 +274,61 @@ function criticalPreloadInject(): Plugin {
           );
         }
 
-        // A2 F7 (R124): modulepreload the HOME route chunk. Vite only
-        // modulepreloads the entry's STATIC imports (the vendor chunks);
-        // the home chunk — the money page, warmed on EVERY non-admin boot
-        // by the boot head-start's module-eval import() (App.tsx, leg
-        // (a)) — previously started fetching only AFTER the entry chunk
-        // had downloaded AND parsed (~150-300 ms on 4G). The link moves
-        // the fetch to HTML-parse time, in parallel with the entry +
+        // A2 F7 (R124) + R125-I2 (A5-F4): modulepreload the HOME route
+        // chunk — NON-ADMIN BOOTS ONLY. Vite only modulepreloads the
+        // entry's STATIC imports (the vendor chunks); the home chunk —
+        // the money page, warmed on EVERY non-admin boot by the boot
+        // head-start's module-eval import() (App.tsx, leg (a)) —
+        // previously started fetching only AFTER the entry chunk had
+        // downloaded AND parsed (~150-300 ms on 4G). The link moves the
+        // fetch to HTML-parse time, in parallel with the entry +
         // vendors. Net-new bytes: zero — every non-admin boot fetches
-        // this exact chunk at module-eval time regardless of entry path;
-        // the browser dedupes the module map entry. (The bundle-budget
-        // plugin deliberately skips this one link — see its comment.)
+        // this exact chunk at module-eval time regardless of entry
+        // path; the browser dedupes the module map entry. (The
+        // bundle-budget plugin deliberately skipped the old static
+        // link — see its comment.)
+        //
+        // R125-I2 (A5-F4) — the ADMIN gate. The built HTML is a SINGLE
+        // SPA shell served for every route (storefront paths AND the
+        // /admin/* fallback), so a build-time gate is impossible. The
+        // old unconditional static <link> made every /admin/* boot
+        // fetch (+ per spec parse) 8.53 KB gz of home-*.js that an
+        // admin session NEVER executes — the only storefront waste on
+        // the admin path (App.tsx:310-312 already skips the boot
+        // head-start and route warm-up for /admin).
+        //
+        // Why a conditional-create script and not A5's init.js
+        // removal sketch: the preload scanner discovers a static link
+        // in the RAW MARKUP as the bytes arrive — before any later
+        // script (init.js at index.html:120, or any remover we could
+        // inject) executes — so removal cannot reliably cancel the
+        // fetch. Creating the link only on non-admin paths is the
+        // reliable gate. The script is injected right after <head>
+        // opens — BEFORE the stylesheet links (a classic inline script
+        // that follows a pending stylesheet waits for that stylesheet
+        // to load, which would push the home fetch behind the CSS on
+        // cold storefront boots). Storefront behavior is otherwise
+        // unchanged from the static link: the append runs during head
+        // parse, in the same first-HTML-chunk discovery window, in
+        // parallel with the CSS/entry/vendor fetches. Admin boots
+        // append nothing.
         const homeChunks = Object.keys(bundle).filter((name) =>
           /^assets\/home-[A-Za-z0-9_-]+\.js$/.test(name),
         );
-        for (const name of homeChunks) {
-          tags.push(`<link rel="modulepreload" href="/${name}" />`);
+        if (homeChunks.length > 0) {
+          const homePreloadCalls = homeChunks
+            .map(
+              (name) =>
+                `document.head.appendChild(Object.assign(document.createElement("link"),{rel:"modulepreload",href:"/${name}"}));`,
+            )
+            .join("");
+          const gate = `<script>if(!location.pathname.startsWith("/admin")){${homePreloadCalls}}</script>`;
+          // Inject immediately after <head> opens — see the comment
+          // above for why this must precede the stylesheet links. The
+          // $$ escaping neutralizes any `$` in the replacement string
+          // for String.replace (chunk hashes are [A-Za-z0-9_-] so this
+          // is belt-and-suspenders).
+          html = html.replace(/(<head[^>]*>)/, `$1\n    ${gate.replace(/\$/g, "$$$$")}`);
         }
 
         if (tags.length === 0) return html;

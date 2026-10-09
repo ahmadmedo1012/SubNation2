@@ -296,3 +296,47 @@ describe("FlashSaleBanner — promo link tap target (R123-E4b P3, live-measured 
     expect(link.className).toContain("-my-2");
   });
 });
+
+describe("FlashSaleBanner — wash-aware promo ink (R125-I7 / A7 B-1, WCAG 1.4.3)", () => {
+  /**
+   * The measured contract lives in the BANNER_INK docblock in the
+   * source (computed WCAG ratios, the R116-S1/R124-A3 method): on the
+   * banner's OWN wash, light-theme text-primary-text measures
+   * 3.19–4.24:1 (AA fail for 11–12px bold copy) while dark passes
+   * (5.02–5.83:1) — so the ink is theme-scoped: the base token in
+   * dark, a foreground tier under `.light`. The DOM pin: BOTH promo
+   * spans (the «عرض محدود» label on the strong from-wash + the
+   * «— خصم N%» span mid-wash) carry the base token AND the
+   * .light-scoped override, in both urgency modes — a regression to
+   * the unscoped token (or raw text-primary) goes red here.
+   */
+  const expectWashAwareInk = (el: HTMLElement) => {
+    expect(el.className).toContain("text-primary-text");
+    expect(el.className).toContain("[.light_&]:text-foreground/90");
+    // The pre-R124 raw surface token must not ride the promo copy.
+    expect(el.className).not.toMatch(/(^|\s)text-primary(\s|$)/);
+  };
+
+  it("non-urgent: both promo spans carry the base token + the .light-scoped foreground tier", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ flash_sale: SALE }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderBanner();
+    await flushInitialLoad();
+
+    expectWashAwareInk(screen.getByText("عرض محدود"));
+    expectWashAwareInk(screen.getByText("— خصم 25%"));
+  });
+
+  it("urgent (≤1h): the same ink survives the urgent re-render of the strip", async () => {
+    vi.useFakeTimers();
+    const urgentSale = { ...SALE, ends_at: new Date(Date.now() + 30 * 60 * 1000).toISOString() };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ flash_sale: urgentSale }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderBanner();
+    await flushInitialLoad();
+
+    expectWashAwareInk(screen.getByText("عرض محدود"));
+    expectWashAwareInk(screen.getByText("— خصم 25%"));
+  });
+});

@@ -1,9 +1,9 @@
 import { ProductCard } from "@/components/ProductCard";
 import { buttonVariants } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Input } from "@/components/ui/input";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
-import { TrustCard } from "@/components/ui/trust-card";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -475,14 +475,19 @@ export default function HomePage() {
             <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg">
               {/* Background gradient layers */}
               <div className="absolute inset-0 bg-gradient-to-l from-primary/12 via-transparent to-transparent pointer-events-none" />
-              <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary/60 via-primary/20 to-transparent" />
+              {/* R125-I7 (A7 B-12 / R124-A3 #12): the hero accent stripe
+                  was w-[2px] — the craft-floor cap for colored side
+                  stripes is 1px. */}
+              <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-primary/60 via-primary/20 to-transparent" />
               <div className="absolute top-[-30px] right-[10%] w-48 h-48 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
 
               <div className="relative px-4 py-4 sm:px-6 sm:py-5 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-muted-foreground text-xs mb-0.5 font-semibold">
-                    مرحباً بك مجدداً
-                  </p>
+                  {/* R125-I7 (A7 B-12 / R124-A3 #13): the «مرحباً بك
+                      مجدداً» eyebrow above the h2 is deleted — the
+                      craft-floor bans kickers/eyebrows over headings
+                      ("let the h1 speak"); the greeting carried no
+                      information the h2 doesn't. */}
                   {/* R124 (A5-F8 + A3-F7): h1 → h2 — a greeting is a
                       section heading, not the page's topic (the guest
                       SEO hero below owns the page's h1 identity; these
@@ -651,12 +656,17 @@ export default function HomePage() {
              ~230px. ≥sm (and the desktop hero) are untouched. */
           <div
             ref={guestHeroRef}
-            className="relative overflow-hidden rounded-3xl border border-border/40 mb-4 sm:mb-6 bg-card page-in shadow-xl"
+            /* R125-I7 (A7 B-12 / R124-A3 #11): rounded-3xl (24px) is over
+               the craft-floor's 12–16px card-radius band — the guest hero
+               now matches the authed hero + every catalog card (16px). */
+            className="relative overflow-hidden rounded-2xl border border-border/40 mb-4 sm:mb-6 bg-card page-in shadow-xl"
           >
             {/* Background layers */}
             <div className="absolute inset-0 dot-grid pointer-events-none opacity-60" />
             <div className="absolute inset-0 bg-gradient-to-l from-primary/10 via-transparent to-transparent pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-[2.5px] bg-gradient-to-b from-primary/80 via-primary/30 to-transparent" />
+            {/* R125-I7 (A7 B-12 / R124-A3 #12): w-[2.5px] → 1px (same
+                craft-floor stripe cap as the authed hero above). */}
+            <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-primary/80 via-primary/30 to-transparent" />
 
             {/* Ambient glow blobs — 96-F5 (R96 F-4b): animation-play-state
                 flips to paused when the hero leaves the viewport (IO above);
@@ -673,17 +683,12 @@ export default function HomePage() {
             <div className="relative px-4 py-5 sm:px-9 sm:py-10">
               <div className="flex flex-wrap items-start justify-between gap-5">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2.5 sm:mb-3.5">
-                    <span className="inline-flex items-center gap-1 text-3xs font-bold bg-primary/12 text-primary-text border border-primary/25 px-2.5 py-1 rounded-full">
-                      ليبيا #1
-                    </span>
-                    {/* Hidden below sm (R120-B1 / A1-F3) — it duplicates the
-                        h1's first line word-for-word; mobile keeps the
-                        «ليبيا #1» pill only. */}
-                    <span className="hidden sm:inline text-2xs text-muted-foreground font-semibold">
-                      سوق الاشتراكات الرقمية
-                    </span>
-                  </div>
+                  {/* R125-I7 (A7 B-12 / R124-A3 #13): the eyebrow row above
+                      the h1 — the «ليبيا #1» pill + a tagline that
+                      duplicated the h1's first line word-for-word — is
+                      deleted (the craft-floor ban on kickers/eyebrows
+                      over headings: "let the h1 speak"). The h1 and the
+                      SEO prose below carry the same claims honestly. */}
                   <h1 className="text-fluid-3xl font-bold mb-2.5 sm:mb-3">
                     {/*
                       Single contiguous phrase for Google's NLU. Visual
@@ -849,7 +854,13 @@ export default function HomePage() {
                     (no pop-in CLS); an error hides the column (decorative
                     data — documented deliberate degrade, see the query). */}
                 {stats ? (
-                  <div className="hidden sm:flex flex-col gap-2 shrink-0">
+                  /* R125-I7 (A7 B-12 / R124-A3 #14): the side column was
+                     three big-number/small-label accent CHIPS (the
+                     craft-floor REFUSE "hero-metric template") — the
+                     same figures now render as plain inline figure rows
+                     (value + count-aware label, no chip chrome), the
+                     inline form the mobile strip below already had. */
+                  <div className="hidden sm:flex flex-col gap-2.5 shrink-0">
                     {[
                       {
                         // R94-A1 #11 (P3): count-aware Arabic labels
@@ -864,15 +875,11 @@ export default function HomePage() {
                         }),
                         value: stats.available_products,
                         color: "text-status-success",
-                        border: "border-status-success/18",
-                        bg: "bg-status-success/7",
                       },
                       {
                         label: "أقل سعر",
                         value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
                         color: "text-primary-text",
-                        border: "border-primary/18",
-                        bg: "bg-primary/7",
                       },
                       {
                         label: formatCount(stats.total_units, {
@@ -884,31 +891,21 @@ export default function HomePage() {
                         }),
                         value: stats.total_units,
                         color: "text-status-info",
-                        border: "border-status-info/18",
-                        bg: "bg-status-info/7",
                       },
-                    ].map((s, i) => (
-                      <div
-                        key={s.label}
-                        className={`${s.bg} border ${s.border} rounded-2xl px-4 py-3 text-right min-w-[116px] float-in stagger-${i + 1} hover:brightness-105 transition-all duration-200`}
-                      >
-                        <div
-                          className={`font-bold text-2xl leading-none mb-1 tabular-nums num-pop ${s.color}`}
-                        >
+                    ].map((s) => (
+                      <div key={s.label} className="flex items-baseline justify-end gap-1.5">
+                        <span className={`font-bold text-xl leading-none tabular-nums ${s.color}`}>
                           {s.value}
-                        </div>
-                        <div className="text-xs text-muted-foreground">{s.label}</div>
+                        </span>
+                        <span className="text-2xs text-muted-foreground">{s.label}</span>
                       </div>
                     ))}
                   </div>
                 ) : statsPending ? (
-                  <div className="hidden sm:flex flex-col gap-2 shrink-0" aria-hidden="true">
+                  <div className="hidden sm:flex flex-col gap-2.5 shrink-0" aria-hidden="true">
                     {Array.from({ length: 3 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="bg-muted/30 border border-border/40 rounded-2xl px-4 py-3 min-w-[116px]"
-                      >
-                        <div className="h-7 w-14 skeleton-shimmer rounded mb-1.5" />
+                      <div key={i} className="flex items-center justify-end gap-1.5">
+                        <div className="h-6 w-14 skeleton-shimmer rounded" />
                         <div className="h-3 w-24 skeleton-shimmer rounded" />
                       </div>
                     ))}
@@ -1178,24 +1175,20 @@ export default function HomePage() {
         ) : productsError ? (
           /* Distinct from "no results": a failed products API previously
              rendered the empty-search state — an outage read as "no products
-             match your search", which is actively misleading. */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-3xl float-in shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-status-error/8 border border-status-error/20 mx-auto mb-4 flex items-center justify-center">
-              <WifiOff className="w-6 h-6 text-status-error/70" />
-            </div>
-            <p className="font-bold text-base mb-1.5 text-foreground">تعذّر تحميل المنتجات</p>
-            <p className="text-sm text-muted-foreground mb-5">
-              حدث خطأ في الاتصال بالخدمة — تحقّق من شبكتك ثم أعد المحاولة
-            </p>
-            <button
-              onClick={() => refetchProducts()}
-              className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
+             match your search", which is actively misleading.
+             R125-I7 (A7 B-4): converged on the shared FetchErrorCard (the
+             orders/flash-sales page-family idiom) — deletes the hand-rolled
+             card and lifts its ~37px native retry onto the 44px floor. */
+          <FetchErrorCard
+            size="page"
+            className="py-16 float-in"
+            title="تعذّر تحميل المنتجات"
+            description="حدث خطأ في الاتصال بالخدمة — تحقّق من شبكتك ثم أعد المحاولة"
+            retryClassName="min-h-11 gap-2"
+            onRetry={() => refetchProducts()}
+          />
         ) : products.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/40 rounded-3xl float-in shadow-sm">
+          <div className="text-center py-16 text-muted-foreground bg-card border border-border/40 rounded-2xl float-in shadow-sm">
             <div className="w-14 h-14 rounded-2xl bg-muted/60 mx-auto mb-4 flex items-center justify-center">
               <PackageSearch className="w-6 h-6 opacity-35" />
             </div>
@@ -1261,28 +1254,32 @@ export default function HomePage() {
           /* R120-B1 (A3-F12): tighter post-grid spacing below sm — the
              ~405px of dead space between the last card and the footer
              was mostly this block's mt-10/pt-8 + the stacked trust
-             cards' own padding. ≥sm keeps the original rhythm. */
+             cards' own padding. ≥sm keeps the original rhythm.
+             R125-I7 (A7 B-12 / R124-A3 #14): the closing 3-up grid of
+             icon+title+description tiles was the craft-floor REFUSE
+             template ("same-size cards of icon plus heading plus text")
+             — now one inline strip (icon + short claim per item), same
+             three promises, same status tones, zero card chrome. The
+             TrustCard component is left with zero consumers — deleting
+             it is a follow-up outside this page's file list. */
           <div className="mt-6 pt-5 sm:mt-10 sm:pt-8 border-t border-border/25">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <TrustCard
-                icon={Truck}
-                tone="warning"
-                title="تسليم فوري"
-                description="في أغلب الحالات تصلك بيانات الاشتراك فور تأكيد الدفع، وخلال 24 ساعة كحد أقصى"
-              />
-              <TrustCard
-                icon={ShieldCheck}
-                tone="success"
-                title="دفع آمن"
-                description="محفظتك محمية بالكامل وجميع عملياتك موثقة"
-              />
-              <TrustCard
-                icon={Headphones}
-                tone="info"
-                title="دعم سريع"
-                description="فريقنا يرد خلال ساعات العمل — عادةً خلال 15 دقيقة إلى ساعة"
-              />
-            </div>
+            <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
+              <li className="inline-flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-status-warning shrink-0" aria-hidden="true" />
+                تسليم فوري بعد الدفع — وبحد أقصى 24 ساعة
+              </li>
+              <li className="inline-flex items-center gap-1.5">
+                <ShieldCheck
+                  className="w-3.5 h-3.5 text-status-success shrink-0"
+                  aria-hidden="true"
+                />
+                دفع آمن — محفظتك محمية وعملياتك موثّقة
+              </li>
+              <li className="inline-flex items-center gap-1.5">
+                <Headphones className="w-3.5 h-3.5 text-status-info shrink-0" aria-hidden="true" />
+                دعم محلي — يرد عادةً خلال 15 دقيقة إلى ساعة
+              </li>
+            </ul>
           </div>
         )}
 

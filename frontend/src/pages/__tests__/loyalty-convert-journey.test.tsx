@@ -213,7 +213,11 @@ describe("LoyaltyPage — convert-points SUCCESS journey (T2: only the error ban
     expect(storedConvertEntry()?.t).toBeGreaterThan(Date.now() - 60_000);
 
     // Persistent failure banner (not just the 4s toast).
-    expect(await screen.findByRole("alert")).toHaveTextContent("تعذّر التحويل");
+    // R125: FetchErrorCard now also carries role="alert" (A6-B8 a11y
+    // fix) — a bare findByRole("alert") matches BOTH the convert-error
+    // banner and any co-rendered error card. Query by the banner's own
+    // text instead (unique to the convert intent).
+    expect(await screen.findByText(/تعذّر التحويل/)).toBeInTheDocument();
 
     // Retry of the SAME intent (the input still holds 300)…
     convertQueue.push(() => {
@@ -245,7 +249,9 @@ describe("LoyaltyPage — convert-points SUCCESS journey (T2: only the error ban
 
     // Unlike a definitive rejection, the in-flight 409 keeps the key…
     expect(storedConvertEntry()?.k).toBe(key1);
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/طلب سابق بنفس المعرف لا يزال قيد المعالجة/),
+    ).toBeInTheDocument();
 
     // …so the retry lands on the SAME key and this time replays success.
     clickConvert();
@@ -268,7 +274,7 @@ describe("LoyaltyPage — convert-points SUCCESS journey (T2: only the error ban
     clickConvert();
     await waitFor(() => expect(convertCalls).toHaveLength(1));
     const key1 = convertKeyOf(0);
-    expect(await screen.findByRole("alert")).toHaveTextContent("رصيد النقاط غير كافٍ");
+    expect(await screen.findByText(/رصيد النقاط غير كاف/)).toBeInTheDocument();
 
     // Definitive failure resolved the intent — the slot is empty…
     expect(localStorage.getItem(CONVERT_SLOT)).toBeNull();

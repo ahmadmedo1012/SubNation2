@@ -228,11 +228,14 @@ export default function OrderDetailPage() {
           حدث خطأ في الاتصال — تحقّق من اتصالك ثم أعد المحاولة. إن استمرت المشكلة تواصل مع الدعم.
         </p>
         <div className="flex items-center justify-center gap-2.5">
+          {/* R125-I7 (A7 B-4): both recovery buttons ride the 44px tap
+              floor (min-h-11; Button's default size is min-h-9 = 36px).
+              The two-button row stays bespoke per the R124-I8 ledger. */}
           <Button
             onClick={() =>
               queryClient.invalidateQueries({ queryKey: getGetOrderQueryKey(orderCode ?? "") })
             }
-            className="gap-1.5 rounded-xl"
+            className="gap-1.5 rounded-xl min-h-11"
           >
             <Clock className="w-4 h-4" />
             إعادة المحاولة
@@ -240,7 +243,7 @@ export default function OrderDetailPage() {
           <Button
             onClick={() => navigate("/orders")}
             variant="outline"
-            className="gap-2 rounded-xl"
+            className="gap-2 rounded-xl min-h-11"
           >
             <ArrowRight className="w-4 h-4" />
             العودة للطلبات
@@ -330,8 +333,12 @@ export default function OrderDetailPage() {
                     />
                   </div>
                 ) : (
+                  /* R125-I7 (A7 B-6 class, computed): sibling of the cart
+                     fallback — text-primary/45 measured 1.62:1 dark /
+                     2.11:1 light on the primary/8 tile; full
+                     --muted-foreground: 7.69:1 / 5.90:1. */
                   <div className="w-12 h-12 rounded-xl bg-primary/8 border border-primary/15 flex items-center justify-center shrink-0">
-                    <span className="text-xl font-bold text-primary/45 select-none">
+                    <span className="text-xl font-bold text-muted-foreground select-none">
                       {(order.product_name ?? "؟")[0]}
                     </span>
                   </div>
@@ -511,8 +518,15 @@ export default function OrderDetailPage() {
                 <Clock className="w-5 h-5 text-muted-foreground pulse-dot" />
               </div>
               <p className="font-bold text-sm mb-1">قيد الإعداد</p>
+              {/* R125-I7 (A7 B-8): the delivery window is UNIFIED with the
+                  storefront's dominant honest promise — «فور تأكيد الدفع،
+                  وخلال 24 ساعة كحد أقصى» (home's trust strip,
+                  onboarding's feature row, terms §2). The drifted
+                  «عادةً خلال 5 إلى 15 دقيقة» figure appeared nowhere
+                  else and «ستصلك إشعار» presumed a notification path a
+                  completed order never fires. */}
               <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto">
-                سيتم تسليم بيانات الحساب فور اكتمال الطلب — عادةً خلال 5 إلى 15 دقيقة. ستصلك إشعار
+                سيتم تسليم بيانات الحساب فور اكتمال الطلب — عادةً فوراً، وبحد أقصى 24 ساعة. سنُشعرك
                 عند الجاهزية.
               </p>
             </div>

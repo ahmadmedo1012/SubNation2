@@ -193,3 +193,54 @@ describe("OrderDetailPage — the refund card is an honest receipt (R115-I1 / A8
     expect(screen.getByText(/خُصمت نقاط الشراء المستردة/)).toBeInTheDocument();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// R125-I7 (A7 B-8) — the pending card's delivery window joins the
+// storefront's ONE honest promise (فوري + 24 ساعة), killing the
+// drifted «عادةً خلال 5 إلى 15 دقيقة» figure that appeared nowhere
+// else (home's trust strip, onboarding's feature row and terms §2 all
+// say «فور تأكيد الدفع، وخلال 24 ساعة كحد أقصى»).
+// ─────────────────────────────────────────────────────────────────────
+
+const PENDING_ORDER = {
+  ...REFUNDED_ORDER,
+  id: 42,
+  order_code: "SNDB42PND",
+  status: "pending",
+};
+
+describe("OrderDetailPage — pending card copy is the unified delivery promise (R125-I7 / A7 B-8)", () => {
+  function renderPending() {
+    vi.mocked(useGetOrder).mockReturnValue({
+      data: PENDING_ORDER,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useGetOrder>);
+
+    window.history.pushState({}, "", `/orders/${PENDING_ORDER.order_code}`);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <OrderDetailPage />
+        </Router>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("names the dominant window — instant typically, 24h cap — never the drifted 5–15 min figure", () => {
+    renderPending();
+
+    expect(screen.getByText("قيد الإعداد")).toBeInTheDocument();
+    expect(screen.getByText(/بحد أقصى 24 ساعة/)).toBeInTheDocument();
+    // The lone backwards figure is gone, and the notification promise
+    // no longer presumes a path a completed order never fires
+    // («ستصلك إشعار» → «سنُشعرك»).
+    expect(screen.queryByText(/5 إلى 15 دقيقة/)).not.toBeInTheDocument();
+    expect(screen.getByText(/سنُشعرك عند الجاهزية/)).toBeInTheDocument();
+  });
+});

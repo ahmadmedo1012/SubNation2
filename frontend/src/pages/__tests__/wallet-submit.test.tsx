@@ -204,7 +204,9 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
       target: { value: "0028776630001" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "تأكيد طلب الشحن" }));
+    // R125-I7 (A7 B-9): the lypay CTA joined the mobile flow's unified
+    // verb (was «تأكيد طلب الشحن»).
+    fireEvent.click(screen.getByRole("button", { name: "إرسال طلب الشحن" }));
 
     await waitFor(() => {
       expect(mutateMock).toHaveBeenCalledTimes(1);
@@ -431,5 +433,34 @@ describe("WalletPage — topup Idempotency-Key reset semantics (96-F6 / R96 §5.
     expect(nextKey).not.toBe(intentKey);
     // The form reset alongside the rotation.
     expect((screen.getByLabelText("المبلغ بالدينار الليبي") as HTMLInputElement).value).toBe("");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// R125-I7 (A7 B-9) — one verb pair for one action: submitting a topup
+// for admin review read «إرسال طلب الشحن / أرسل الطلب» on the mobile
+// tab but «تأكيد طلب الشحن / تأكيد الإرسال» on the lypay tab (the
+// R111-F2 N1 drift class). Unified on the mobile pair — the lypay
+// variants are deleted.
+// ─────────────────────────────────────────────────────────────────────
+
+describe("WalletPage — unified topup submit verbs (R125-I7 / A7 B-9)", () => {
+  it("the mobile flow's step legend + CTA read «أرسل الطلب» / «إرسال طلب الشحن»", () => {
+    renderPage();
+
+    expect(screen.getByText("أرسل الطلب")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "إرسال طلب الشحن" })).toBeInTheDocument();
+    expect(screen.queryByText("تأكيد طلب الشحن")).not.toBeInTheDocument();
+    expect(screen.queryByText("تأكيد الإرسال")).not.toBeInTheDocument();
+  });
+
+  it("the lypay flow carries the SAME verb pair after the method switch", () => {
+    renderPage();
+    fireEvent.click(screen.getByText("تحويل مصرفي"));
+
+    expect(screen.getByText("أرسل الطلب")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "إرسال طلب الشحن" })).toBeInTheDocument();
+    expect(screen.queryByText("تأكيد طلب الشحن")).not.toBeInTheDocument();
+    expect(screen.queryByText("تأكيد الإرسال")).not.toBeInTheDocument();
   });
 });

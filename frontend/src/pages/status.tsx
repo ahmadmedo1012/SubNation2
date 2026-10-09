@@ -73,6 +73,14 @@ export default function StatusPage(): ReactElement {
     const t = setInterval(() => setTick((n) => n + 1), 30_000);
     return () => clearInterval(t);
   }, []);
+  // R125-I7 (A7 B-5): the tick is NOT dead — `lastUpdatedLabel` renders
+  // formatTime(dataUpdatedAt) (an absolute HH:MM string) computed at
+  // render time, so between the query's 5-minute refetches the label
+  // would sit up to 5 minutes stale on a minute boundary without these
+  // re-renders. 30s bounds the staleness at half a minute for a
+  // minute-granularity label (a 60s tick would allow a full minute of
+  // drift). Cheap: one tiny page, twice a minute, only while the tab
+  // is open.
   void tick;
 
   const { data, isLoading, refetch, dataUpdatedAt } = useQuery<HealthzSummary>({
@@ -160,7 +168,12 @@ export default function StatusPage(): ReactElement {
             <button
               type="button"
               onClick={() => refetch()}
-              className="p-2 rounded-lg hover:bg-card transition-colors text-muted-foreground hover:text-foreground"
+              /* R125-I7 (A7 B-5): the page's only interactive control was
+                 p-2 + w-4 icon ≈ 32px — under the app-wide 44px tap
+                 floor (WCAG 2.5.8's 24px would pass, the repo's bar
+                 doesn't). Fixed h-11 w-11 box (banner-less page — no
+                 negative-margin trick needed). */
+              className="h-11 w-11 flex items-center justify-center rounded-lg hover:bg-card transition-colors text-muted-foreground hover:text-foreground"
               aria-label="تحديث"
               title="تحديث"
             >

@@ -23,9 +23,9 @@ function tabFromHash(hash: string): Tab {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-base font-bold text-foreground border-r-2 border-primary pr-3">
-        {title}
-      </h2>
+      {/* R125-I7 (A7 B-12 / R124-A3 #12): border-r-2 → border-r — 1px is
+          the craft-floor cap for colored heading stripes. */}
+      <h2 className="text-base font-bold text-foreground border-r border-primary pr-3">{title}</h2>
       <div className="text-sm text-muted-foreground leading-7 space-y-2">{children}</div>
     </section>
   );
@@ -112,8 +112,14 @@ function TermsContent() {
         </p>
       </Section>
 
+      {/* R125-I7 (A7 B-13): the stamp now names the TRUE last-revision
+          month — the copy was edited in the October-2026 rounds (LyPay
+          label R120-B5 5d2de5b, passwordless rewrite + PS-Plus scrub
+          R123-E4b 72f977f, R124 craft sweep 76a4547) while claiming
+          «مايو 2026»; a legal page whose freshness stamp contradicts its
+          own git history erodes the trust the stamp exists to build. */}
       <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
-        آخر تحديث: مايو 2026
+        آخر تحديث: أكتوبر 2026
       </p>
     </div>
   );
@@ -172,8 +178,11 @@ function PrivacyContent() {
         </p>
       </Section>
 
+      {/* R125-I7 (A7 B-13): same truth-up as the terms tab — the privacy
+          copy's last substantive revision is October 2026 (git history:
+          5d2de5b → 76a4547), not May. */}
       <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
-        آخر تحديث: مايو 2026
+        آخر تحديث: أكتوبر 2026
       </p>
     </div>
   );
@@ -233,8 +242,13 @@ export default function TermsPage() {
         <Link href="/">
           <span className="hover:text-foreground cursor-pointer transition-colors">الرئيسية</span>
         </Link>
-        {/* RTL breadcrumb separator points right (unified icon-direction decision) */}
-        <ChevronLeft className="w-3 h-3 rotate-180 opacity-50" />
+        {/* R125-I7 (A7 B-3): the separator denotes traversal FORWARD
+            (parent → current), so in RTL it points LEFT — the unified
+            forward=left chevron rule (product.tsx's breadcrumb documents
+            it; category.tsx's was fixed in R124 A1-F6). The stray
+            rotate-180 made this the storefront's lone backwards
+            exception. */}
+        <ChevronLeft className="w-3 h-3 opacity-50" />
         <span className="text-foreground/70">{TABS.find((t) => t.id === tab)?.label}</span>
       </div>
 
@@ -270,9 +284,16 @@ export default function TermsPage() {
       </div>
 
       {/* Content */}
+      {/* R125-I7 (A7 B-13): the prose column is capped at ~65ch (the
+          card keeps its max-w-2xl width; only the reading measure
+          narrows) — the full-width column measured ~90 Arabic
+          chars/line at 14px, over the craft-floor's 65–75ch long-form
+          band, fatiguing the one page users read under refund-stress. */}
       <div className="bg-card border border-border rounded-2xl p-6 md:p-8">
-        {tab === "terms" && <TermsContent />}
-        {tab === "privacy" && <PrivacyContent />}
+        <div className="max-w-[65ch]">
+          {tab === "terms" && <TermsContent />}
+          {tab === "privacy" && <PrivacyContent />}
+        </div>
       </div>
 
       {/* Footer note */}

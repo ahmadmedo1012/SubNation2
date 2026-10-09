@@ -243,7 +243,16 @@ export default function CartPage() {
                             className="w-full h-full object-contain p-1.5"
                           />
                         ) : (
-                          <span className="text-lg font-bold text-primary/50 select-none">
+                          /* R125-I7 (A7 B-6, computed): the first-letter
+                             fallback rode text-primary/50 — 1.65:1 dark /
+                             2.35:1 light on the bg-muted/60 tile (A7
+                             measured the dark figure). Full
+                             --muted-foreground measures 7.44:1 dark /
+                             6.09:1 light — the honest letter. (The full
+                             CATEGORY_ICON idiom needs `category` on
+                             LocalCartItem — deliberately deferred with
+                             the stock-snapshot work, A7 B-11.) */
+                          <span className="text-lg font-bold text-muted-foreground select-none">
                             {(it.name ?? "?")[0]}
                           </span>
                         )}

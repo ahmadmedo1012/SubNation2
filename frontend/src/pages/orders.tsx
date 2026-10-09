@@ -145,7 +145,10 @@ function FilterChip({
 
 function OrderCardSkeleton() {
   return (
-    <div className="bg-card border border-border border-r-2 border-r-border/30 rounded-xl p-4">
+    /* R125-I7 (A7 B-12 / R124-A3 #12): the skeleton row rode a 2px
+       border-r accent stripe — the craft-floor cap for colored side
+       stripes is 1px (the plain border already provides the edge). */
+    <div className="bg-card border border-border rounded-xl p-4">
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 rounded-xl bg-muted skeleton-shimmer shrink-0" />
         <div className="flex-1 space-y-2">
@@ -462,8 +465,12 @@ export default function OrdersPage() {
             <button
               onClick={() => setFilter("all")}
               /* R122 (A1 P2-7): py-1.5 was ~30px tall — min-h-11 rides the
-                 44px tap-target floor. */
-              className="text-xs font-bold text-primary-text hover:text-primary border border-primary/22 px-4 min-h-11 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+                 44px tap-target floor.
+                 R125-I7 (A7 B-2): the hover tint rode raw text-primary
+                 (3.76:1 on the dark card) — the text-safe token keeps
+                 the hover state AA; hover:bg-primary/8 still carries the
+                 hover feedback. */
+              className="text-xs font-bold text-primary-text hover:text-primary-text border border-primary/22 px-4 min-h-11 rounded-xl hover:bg-primary/8 transition-colors press-spring"
             >
               عرض كل الطلبات
             </button>
@@ -497,7 +504,11 @@ export default function OrdersPage() {
                           className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
                         />
                       ) : (
-                        <span className="text-xl font-bold text-primary/50 select-none">
+                        /* R125-I7 (A7 B-6 class, computed): sibling of the
+                           cart fallback — text-primary/50 measured
+                           1.65:1 dark / 2.35:1 light on the muted/60
+                           tile; full --muted-foreground: 7.44:1 / 6.09:1. */
+                        <span className="text-xl font-bold text-muted-foreground select-none">
                           {(order.product_name ?? "؟")[0]}
                         </span>
                       )}

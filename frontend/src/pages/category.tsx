@@ -1,5 +1,6 @@
 import { ProductCard } from "@/components/ProductCard";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { useSeo } from "@/hooks/useSeo";
 import { CATEGORY_META, type CategoryMeta } from "@/lib/categories";
@@ -14,7 +15,6 @@ import {
   Sparkles,
   TrendingUp,
   Tv2,
-  WifiOff,
 } from "lucide-react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useMemo, type ComponentType } from "react";
@@ -228,9 +228,12 @@ export default function CategoryPage() {
         </p>
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-primary-text font-bold hover:text-primary transition-colors press-spring"
+          className="inline-flex items-center gap-1.5 text-primary-text font-bold hover:text-primary-text transition-colors press-spring"
         >
-          {/* RTL: "back" points right (unified icon-direction decision) */}
+          {/* RTL: "back" points right (unified icon-direction decision) —
+              the chevron rotation is correct here; only the hover tint
+              needed the text-safe token (R125-I7 / A7 B-2: raw
+              hover:text-primary is 3.76:1 on the dark card). */}
           <ChevronLeft className="w-4 h-4 rotate-180" />
           العودة للرئيسية
         </Link>
@@ -266,7 +269,9 @@ export default function CategoryPage() {
           className={`absolute inset-0 bg-gradient-to-l ${theme.heroGradient} via-transparent to-transparent pointer-events-none`}
         />
         <div
-          className={`absolute right-0 top-0 bottom-0 w-[2px] bg-gradient-to-b ${theme.edgeAccent}`}
+          /* R125-I7 (A7 B-12 / R124-A3 #12): w-[2px] → w-px — the
+              craft-floor cap for colored side stripes is 1px. */
+          className={`absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b ${theme.edgeAccent}`}
         />
         <div
           className={`absolute top-[-30px] right-[10%] w-48 h-48 ${theme.blurOrb} rounded-full blur-3xl pointer-events-none`}
@@ -294,7 +299,9 @@ export default function CategoryPage() {
       <section aria-labelledby="products-heading" className="mb-10">
         <h2
           id="products-heading"
-          className={`text-base font-bold mb-3 flex items-center gap-2 border-r-2 ${theme.headingBorder} pr-3`}
+          /* R125-I7 (A7 B-12 / R124-A3 #12): border-r-2 → border-r —
+             1px is the craft-floor cap for colored heading stripes. */
+          className={`text-base font-bold mb-3 flex items-center gap-2 border-r ${theme.headingBorder} pr-3`}
         >
           منتجات {meta.label}
           {!isLoading && products.length > 0 && (
@@ -309,18 +316,19 @@ export default function CategoryPage() {
           </div>
         ) : productsError ? (
           /* Distinct from "no products": an outage previously rendered the
-             empty-category state — misleading during API incidents. */
-          <div className="bg-card border border-status-error/22 rounded-2xl py-12 text-center float-in">
-            <WifiOff className="w-6 h-6 text-status-error/70 mx-auto mb-3" />
-            <p className="font-bold mb-2 text-foreground/80">تعذّر تحميل منتجات الفئة</p>
-            <p className="text-sm text-muted-foreground mb-5">حدث خطأ في الاتصال — أعد المحاولة</p>
-            <button
-              onClick={() => refetchProducts()}
-              className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
+             empty-category state — misleading during API incidents.
+             R125-I7 (A7 B-4): converged on the shared FetchErrorCard —
+             this hand-rolled card was a 7th drifted site the component's
+             own ledger never listed; the ~37px native retry rides the
+             44px floor now (orders/flash-sales page-family idiom). */
+          <FetchErrorCard
+            size="page"
+            className="py-12 float-in"
+            title="تعذّر تحميل منتجات الفئة"
+            description="حدث خطأ في الاتصال — أعد المحاولة"
+            retryClassName="min-h-11 gap-2"
+            onRetry={() => refetchProducts()}
+          />
         ) : products.length === 0 ? (
           <div className="bg-card border border-border/55 rounded-2xl py-12 px-4 text-center float-in">
             <p className="font-bold mb-2 text-foreground/80">لا توجد منتجات في هذه الفئة حالياً.</p>
@@ -346,7 +354,9 @@ export default function CategoryPage() {
       <section aria-labelledby="faq-heading" className="max-w-3xl mb-8">
         <h2
           id="faq-heading"
-          className={`text-base font-bold mb-3 flex items-center gap-2 border-r-2 ${theme.headingBorder} pr-3`}
+          /* R125-I7 (A7 B-12 / R124-A3 #12): border-r-2 → border-r (same
+             heading-stripe cap as the products heading above). */
+          className={`text-base font-bold mb-3 flex items-center gap-2 border-r ${theme.headingBorder} pr-3`}
         >
           الأسئلة الشائعة
         </h2>

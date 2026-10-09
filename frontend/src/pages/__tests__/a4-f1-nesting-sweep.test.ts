@@ -88,7 +88,10 @@ describe("A4-F1 completion — zero Button-inside-Link nesting app-wide (R120-B7
       ["pages/orders.tsx", "تصفح الكتالوج"],
       ["pages/order-detail.tsx", "تواصل مع الدعم"],
       ["pages/order-detail.tsx", "تصفح المزيد"],
-      ["components/admin/forecast/StockoutRiskPanel.tsx", "فتح في المنتجات"],
+      // R125-I3 (A2-9): StockoutRiskPanel's «فتح في المنتجات» CTA is
+      // DELETED — it deep-linked to ?highlight={id}, a param nothing
+      // consumes (ponytail: deletion wins). The pin dies with the CTA;
+      // the app-wide net above still guards the whole class.
     ];
     for (const [rel, label] of pins) {
       const text = readFileSync(resolve(process.cwd(), "src", rel), "utf8");

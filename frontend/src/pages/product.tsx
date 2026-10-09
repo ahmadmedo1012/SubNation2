@@ -837,15 +837,19 @@ export default function ProductPage() {
         <p className="font-bold mb-1 text-foreground/80">تعذّر تحميل المنتج</p>
         <p className="text-sm mb-3">حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة</p>
         <div className="flex items-center justify-center gap-2.5">
+          {/* R125-I7 (A7 B-4): both recovery buttons ride the 44px tap
+              floor (min-h-11) — the drifted px-5 py-2 measured ~37px.
+              The two-button row (retry + escape hatch) stays bespoke
+              per the R124-I8 extraction ledger. */}
           <button
             onClick={() => refetchProduct()}
-            className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+            className="min-h-11 text-sm font-bold text-primary-text border border-primary/25 px-5 rounded-xl hover:bg-primary/8 transition-colors press-spring"
           >
             إعادة المحاولة
           </button>
           <button
             onClick={() => navigate("/")}
-            className="text-sm text-muted-foreground hover:text-foreground border border-border/50 px-5 py-2 rounded-xl transition-colors press-spring"
+            className="min-h-11 text-sm text-muted-foreground hover:text-foreground border border-border/50 px-5 rounded-xl transition-colors press-spring"
           >
             العودة للكتالوج
           </button>
@@ -2062,7 +2066,11 @@ function RecommendationsSection({ numericId }: { numericId: number }) {
                     className="w-full h-full items-center justify-center"
                   >
                     <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/50 border border-border/40">
-                      <span className="text-xl font-bold text-muted-foreground/55">
+                      {/* R125-I7 (A7 B-6 class, computed): the first-letter
+                          fallback rode muted-foreground/55 — 2.39:1 light /
+                          3.19:1 dark on the muted/50 tile. Full
+                          --muted-foreground measures 6.20:1 / 7.54:1. */}
+                      <span className="text-xl font-bold text-muted-foreground select-none">
                         {(r.name || "؟")[0]}
                       </span>
                     </div>
@@ -2160,7 +2168,7 @@ function VariantSelector({
                   className={`min-h-11 px-4 rounded-xl border text-sm font-bold transition-all press-spring ${
                     isPlanSelected
                       ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/25"
-                      : "bg-card text-foreground/80 border-border/50 hover:border-primary/45 hover:text-primary"
+                      : "bg-card text-foreground/80 border-border/50 hover:border-primary/45 hover:text-primary-text"
                   } ${!planAvailable ? "opacity-40 pointer-events-none" : ""}`}
                 >
                   {plan}

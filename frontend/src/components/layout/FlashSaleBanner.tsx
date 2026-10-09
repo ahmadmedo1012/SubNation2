@@ -51,6 +51,39 @@ const BANNER_RESERVED_H = 44;
  * whenever a sale renders, read on mount to decide the reservation. */
 const SALE_ENDS_KEY = "sn_flash_sale_ends";
 
+/**
+ * R125-I7 (A7 B-1, WCAG 1.4.3): the banner's wash-aware ink.
+ *
+ * Both promo spans — the «عرض محدود» label (11px bold) at the wash's
+ * strong (from-) edge and the «— خصم N%» span mid-wash — sit ON the
+ * banner's own primary gradient, not the page background. The R124
+ * partial fix measured against the page (4.81:1 light) and missed the
+ * wash; computed on the ACTUAL wash (WCAG relative luminance, each
+ * stop alpha-composited over --background — the R116-S1/R124-A3
+ * method, independently re-run):
+ *
+ *   light theme, text-primary-text: label 3.78:1 (non-urgent /15
+ *   wash) / 3.19:1 (urgent /25); discount span 3.84:1 (urgent /14) to
+ *   4.24:1 (non-urgent /8) — all under the 4.5:1 floor for 11–12px
+ *   bold functional copy. Dark theme passes: 5.02–5.83:1.
+ *
+ * So the ink is theme-scoped: --primary-text in dark (unchanged,
+ * passing) and a foreground tier in light, where the primary wash
+ * lightens the surface under brand-hue text. text-foreground/90 (the
+ * title's own ink beside these spans) measures on the same washes:
+ * light 8.72:1 (urgent /25) – 11.12:1 (/8); dark 12.70:1+ — the
+ * light-scope is what makes the token wash-aware. The Zap/ArrowLeft
+ * icons keep full primary-text: they clear WCAG 1.4.11's 3:1
+ * non-text floor in light (3.19:1 at the worst stop).
+ *
+ * Expressed as a base token + a `.light &`-scoped override (Tailwind
+ * arbitrary variant) because the theme system toggles `.light` on
+ * <html> and no `dark:` variant exists (index.css:27-31) — the
+ * descendant selector (0,2,0) deterministically beats the base
+ * utility (0,1,0) in light and never matches in dark.
+ */
+const BANNER_INK = "text-primary-text [.light_&]:text-foreground/90";
+
 function readCachedSaleEnd(): number | null {
   try {
     const raw = window.localStorage.getItem(SALE_ENDS_KEY);
@@ -195,11 +228,8 @@ export function FlashSaleBanner() {
               }`}
             />
           </div>
-          {/* R124-A3 #4 (WCAG 1.4.3): full-opacity token — the /80 alpha
-              measured 4.01:1 (dark) / 3.15:1 (light) on the banner wash;
-              full --primary-text measures 5.56:1 dark / 4.81:1 light vs
-              the page background. */}
-          <span className="text-2xs sm:text-xs font-bold hidden sm:inline text-primary-text">
+          {/* Ink: BANNER_INK above — measured on the wash, not the page. */}
+          <span className={`text-2xs sm:text-xs font-bold hidden sm:inline ${BANNER_INK}`}>
             عرض محدود
           </span>
         </div>
@@ -218,7 +248,7 @@ export function FlashSaleBanner() {
         >
           <div className="text-center text-xs sm:text-sm font-bold text-foreground/90 truncate cursor-pointer hover:text-primary-text transition-colors flex items-center justify-center gap-1 sm:gap-2">
             <span className="truncate">{flashSale.title}</span>
-            <span className="text-primary-text font-bold shrink-0">
+            <span className={`${BANNER_INK} font-bold shrink-0`}>
               {/* 93-C8 (A11 §5): «خصم N%» — the dominant site order. */}— خصم{" "}
               {flashSale.discount_percent}%
             </span>
