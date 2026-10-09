@@ -116,12 +116,14 @@ export default function AdminRiskEventPage() {
       qc.invalidateQueries({ queryKey: ["admin-risk-events"] });
       qc.invalidateQueries({ queryKey: ["admin-risk-dashboard"] });
       // A4-B-3 stats co-invalidation (A10 §C-5): mutations that feed
-      // admin numbers also refresh the shared stats key — R125-I6 has
-      // since landed the backend `admin-stats-update` emits for risk
-      // writes too (this comment predates it); the frontend
-      // invalidation still covers the acting tab immediately (the
-      // socket refreshes other open tabs). /admin/stats is
-      // server-cached 30s, so the extra GET is cheap.
+      // admin numbers also refresh the shared stats key. R125-I6
+      // landed the backend `admin-stats-update` emits for risk
+      // writes; R126-L3 (A2-1) closed the frontend half — the socket
+      // handler now invalidates the risk keys too
+      // ("admin-risk-events" + "admin-risk-dashboard"), so another
+      // admin's label refreshes this tab's lists on the push. The
+      // invalidations here still cover the ACTING tab immediately;
+      // /admin/stats is server-cached 30s, so the extra GET is cheap.
       qc.invalidateQueries({ queryKey: ["/api/admin/stats"] });
     },
   });

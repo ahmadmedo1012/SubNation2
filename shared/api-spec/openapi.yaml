@@ -3425,6 +3425,784 @@ paths:
                   - $ref: "#/components/schemas/ErrorResponse"
                   - $ref: "#/components/schemas/IdempotencyConflictResponse"
 
+  # ──────────────────────────────────────────────────────────────────────────
+  # R126-L8b (A4 §D — OpenAPI batch-1): the alerts family (×7), tickets
+  # family (×4), settings GET + settings/auth GET, chart-data, the auth
+  # security pair, and the referrals list — every endpoint whose admin
+  # consumer was raw-fetch / hand-rolled. Response schemas are written
+  # from the REAL backend handlers (routes/admin/{alerts,tickets,settings,
+  # security,stats,referrals}.ts + routes/auth-settings.ts) and pinned by
+  # the openapi-response-contracts suite (backend/src/__tests__) — a field
+  # the handler does not emit is not in the contract; a field it emits is.
+  # Later batches (A4 §D): alerts /new + /test, settings/auth PATCH,
+  # observability, diagnostics, risk, admins/auth lifecycle.
+  # ──────────────────────────────────────────────────────────────────────────
+  /admin/alerts:
+    get:
+      operationId: listAdminAlerts
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: List admin alerts (requireAdmin + support scope) — paginated inbox envelope
+      description: |
+        The alerts inbox feed (20 s poll + `admin-alert-new` socket
+        refresh). The envelope carries the unread badge count, the
+        honest total and `hasMore` so the FE infinite query accumulates
+        without relying on the full-page heuristic. Cache-Control:
+        no-store.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: 1-based page number (default 1, ceiling 10 000).
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Page size, clamped to [1, 200] (default 50).
+      responses:
+        "200":
+          description: Alerts page envelope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAlertsPage"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAllAdminAlerts
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Delete every admin alert (requireAdmin + support scope)
+      description: |
+        Wipes the whole admin_alerts table (the «حذف الكل» confirm in
+        the inbox). This is operations-telemetry deletion, not an audit
+        purge — audit_logs is untouched. Cache-Control: no-store.
+      responses:
+        "200":
+          description: All alerts deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/alerts/unread-count:
+    get:
+      operationId: getAdminAlertsUnreadCount
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Count unread admin alerts (requireAdmin + support scope)
+      description: |
+        The layout's unread badge (300 s staleTime + socket refresh on
+        `admin-alert-new`). Cache-Control: no-store.
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                required: [count]
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/alerts/read-all:
+    patch:
+      operationId: markAllAdminAlertsRead
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Mark every admin alert read (requireAdmin + support scope)
+      responses:
+        "200":
+          description: All alerts marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/alerts/read:
+    delete:
+      operationId: deleteReadAdminAlerts
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Delete all READ admin alerts (requireAdmin + support scope)
+      responses:
+        "200":
+          description: Read alerts deleted (with the deleted row count)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAlertsDeleteReadResult"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/alerts/{id}:
+    delete:
+      operationId: deleteAdminAlert
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Delete one admin alert (requireAdmin + support scope)
+      description: |
+        404 when the id does not exist (silent no-op → 404 per audit §5).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Alert id (digit-exact strict parse; non-integer → 400 INVALID_DATA).
+      responses:
+        "200":
+          description: Alert deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Non-integer id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Alert not found (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/alerts/{id}/read:
+    patch:
+      operationId: markAdminAlertRead
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Mark one admin alert read (requireAdmin + support scope)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Alert id (digit-exact strict parse; non-integer → 400 INVALID_DATA).
+      responses:
+        "200":
+          description: Alert marked read (idempotent — already-read stays read)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Non-integer id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tickets:
+    get:
+      operationId: listAdminTickets
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: List support tickets for the admin queue (requireAdmin + support scope)
+      description: |
+        Plain array (no total meta — the FE getNextPageParam uses the
+        full-page heuristic, documented frontend-side). Each row is the
+        identity-enriched ticket + batched reply_count / last_reply_at /
+        has_unread_admin (true when the LATEST reply is from the user).
+        Cache-Control: no-store.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum:
+              - open
+              - in_progress
+              - closed
+              - null
+          description: |
+            Optional ticket_status pg-enum filter — out-of-enum values
+            are 400 INVALID_DATA (round-94 A5-03), not the 500 the raw
+            column filter used to produce.
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: 1-based page number (default 1, ceiling 10 000).
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Page size, clamped to [1, 200] (default 100; ?limit=0 maps to 100).
+      responses:
+        "200":
+          description: Ticket queue rows (newest-updated first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminTicketSummary"
+        "400":
+          description: Out-of-enum status filter (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tickets/{id}:
+    get:
+      operationId: getAdminTicket
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: One ticket's full thread (requireAdmin + support scope)
+      description: |
+        The ticket row + every reply (oldest first). Cache-Control:
+        no-store.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Ticket id (digit-exact strict parse; non-integer → 400 INVALID_DATA).
+      responses:
+        "200":
+          description: Ticket thread
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTicketThread"
+        "400":
+          description: Non-integer id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Ticket not found (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tickets/{id}/reply:
+    post:
+      operationId: replyAdminTicket
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Reply to a ticket as admin (requireAdmin + support scope; audited)
+      description: |
+        Inserts an admin reply, flips the ticket to in_progress, notifies
+        the user, emits `admin-stats-update {type: ticket-reply}` and
+        writes a `ticket.reply` audit row. 404 when the ticket id does
+        not exist.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Ticket id (digit-exact strict parse; non-integer → 400 INVALID_DATA).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReplyTicketBody"
+      responses:
+        "201":
+          description: The created reply row
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketReply"
+        "400":
+          description: Non-integer id or invalid body (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Ticket not found (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tickets/{id}/status:
+    patch:
+      operationId: updateAdminTicketStatus
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Flip a ticket's status (requireAdmin + support scope; audited)
+      description: |
+        404 when the ticket id does not exist (silent no-op → 404 per
+        audit §5). Emits `admin-stats-update {type:
+        ticket-status-update, status}` and writes a
+        `ticket.status_update` audit row.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Ticket id (digit-exact strict parse; non-integer → 400 INVALID_DATA).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTicketStatusBody"
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Non-integer id or out-of-enum status (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Ticket not found (NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/settings:
+    get:
+      operationId: getAdminSettings
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Platform settings snapshot (requireAdmin + settings scope)
+      description: |
+        Four fixed fields — the settings page's read-only snapshot.
+        Cache-Control: no-store.
+      responses:
+        "200":
+          description: Platform settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSettings"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing settings permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/settings/auth:
+    get:
+      operationId: getAdminAuthSettings
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Auth provider settings + masked config (requireAdmin + settings scope)
+      description: |
+        Static provider metadata (from the PROVIDERS registry) joined
+        with the system_settings rows: enablement + a MASKED config
+        (secrets collapse to "[SET]", non-secrets show verbatim). The
+        PATCH /auth/{id} sibling validates per-provider dynamically and
+        is deliberately out of batch 1. Cache-Control: no-store.
+      responses:
+        "200":
+          description: Provider settings rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthSettings"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing settings permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/chart-data:
+    get:
+      operationId: getAdminChartData
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Daily chart series (requireAdmin + finance scope)
+      description: |
+        Per-Tripoli-calendar-day buckets (the SQL shifts +2h before
+        truncating to DATE, so buckets match the operator's wall clock).
+        `date` is the RAW ISO calendar key ("2026-09-06") — display
+        localization stays client-side. Money fields (revenue,
+        discounts) ride the finance gate server-side (R126 A7-F1); the
+        FE additionally never fetches this for non-finance operators.
+        Cached 30 s per (days, day-bucket).
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Series length in days, clamped to [1, 365] (default 7).
+      responses:
+        "200":
+          description: Daily buckets, oldest first (one entry per day, zero-filled)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminChartDay"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing finance permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/auth-stats/summary:
+    get:
+      operationId: getAdminAuthStatsSummary
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Auth activity counts (requireAdmin + admins scope)
+      description: |
+        Four counts from ONE filtered aggregate (R125-I6): total,
+        success, failure and last-24h rows in auth_activity.
+        Cache-Control: no-store.
+      responses:
+        "200":
+          description: Auth activity summary counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthStatsSummary"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing admins permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/auth-activity:
+    get:
+      operationId: listAdminAuthActivity
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Auth activity timeline (requireAdmin + admins scope)
+      description: |
+        The newest 100 rows at most (hard .limit(100), no page param —
+        the FE discloses the window honestly). PII-lean projection: the
+        full auth_activity row minus nothing — identifier/provider/IP/
+        user-agent are the audit payload. Cache-Control: no-store.
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: |
+            Exact action filter ("login", "register", … — free varchar;
+            "all" or empty means no filter). Array-valued params are
+            ignored (round-94 A5-09).
+        - name: success
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: ["true", "false", null]
+          description: '"true"/"false" string filter; "all" or empty means no filter.'
+        - name: startDate
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: |
+            Inclusive lower bound — any Date-parseable string; invalid
+            values are 400 INVALID_DATA (round-94 A5-09).
+        - name: endDate
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Inclusive upper bound (same validation as startDate).
+      responses:
+        "200":
+          description: Activity rows (newest first, ≤100)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activities:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminAuthActivity"
+                required: [activities]
+        "400":
+          description: Unparseable startDate/endDate (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing admins permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/referrals:
+    get:
+      operationId: listAdminReferrals
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Referral events list + stats + top referrers (requireAdmin + users scope)
+      description: |
+        Three payloads in one response: the newest-200 list (LEFT JOIN
+        referrer/referee users), the all-time stats block, and the top
+        10 referrers by credited count. KNOWN WINDOW (B-7): the
+        `search` filter runs POST-limit in JS — it only matches inside
+        the newest-200 window, not the full history; scoped honestly in
+        the UI copy. Cache-Control: no-store.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum:
+              - pending
+              - credited
+              - null
+          description: |
+            Optional status filter; out-of-enum values are 400
+            INVALID_DATA (they used to silently return an empty list).
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: |
+            Case-insensitive substring on referrer/referee phone —
+            applied AFTER the LIMIT 200 window (see B-7 window note).
+      responses:
+        "200":
+          description: Referrals list + stats + top referrers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminReferralsResponse"
+        "400":
+          description: Out-of-enum status filter (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing users permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/login:
     post:
       operationId: adminLogin
@@ -5981,6 +6759,445 @@ components:
                 type: string
             required: [orderId, code, message]
       required: [success, updated, failed]
+
+    # ── R126-L8b (A4 §D batch-1): alerts / tickets / settings / chart /
+    # security / referrals response schemas — written field-by-field from
+    # the real handlers + drizzle rows (safeParse-pinned by the
+    # openapi-response-contracts suite). Nullable columns stay nullable;
+    # values the handler derives are typed exactly as serialized. ────────
+    AdminAlert:
+      type: object
+      description: |
+        A raw admin_alerts row (drizzle select() — every column rides
+        the JSON, dedupeKey included).
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          description: |
+            varchar(30) — known values: system, low_stock, no_stock,
+            forecast_stockout, coupon_maxed, coupon_expiring. Kept an
+            open string (not an enum) so a new producer cannot break
+            the contract.
+        title:
+          type: string
+        message:
+          type: ["string", "null"]
+        isRead:
+          type: boolean
+        dedupeKey:
+          type: ["string", "null"]
+          description: Dedupe key for repeated operational alerts; null for one-offs.
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, type, title, message, isRead, dedupeKey, createdAt]
+
+    AdminAlertsPage:
+      type: object
+      description: |
+        The inbox envelope: one page of rows + the unread badge count +
+        the honest total + hasMore (offset + page length < total).
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAlert"
+        unreadCount:
+          type: integer
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+      required: [alerts, unreadCount, total, page, limit, hasMore]
+
+    AdminAlertsDeleteReadResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        deleted:
+          type: integer
+          description: Count of read rows deleted.
+      required: [success, deleted]
+
+    # Identity-enrichment fields (user_display_name … user_has_whatsapp)
+    # feed the admin display helper — same pattern as AdminOrder.
+    AdminTicketSummary:
+      type: object
+      description: |
+        One queue row: the ticket + identity enrichment + batched reply
+        stats.
+      properties:
+        id:
+          type: integer
+        user_phone:
+          type: string
+          description: Empty string when the ticket's user was deleted/anonymized.
+        user_display_name:
+          type: ["string", "null"]
+        user_email:
+          type: ["string", "null"]
+        user_auth_provider:
+          type: ["string", "null"]
+        user_has_google:
+          type: boolean
+        user_has_telegram:
+          type: boolean
+        user_has_firebase:
+          type: boolean
+        user_has_whatsapp:
+          type: boolean
+        title:
+          type: string
+        category:
+          type: ["string", "null"]
+          description: |
+            Raw varchar(50) — the user-side create route writes the
+            billing/technical/order/account/other enum (default other);
+            the admin list passes the column through unvalidated, so
+            null/legacy values are possible.
+        status:
+          type: string
+          enum: [open, in_progress, closed]
+        created_at:
+          type: string
+        reply_count:
+          type: integer
+        last_reply_at:
+          type: ["string", "null"]
+          description: ISO timestamp of the newest reply; null when the ticket has none.
+        has_unread_admin:
+          type: boolean
+          description: True when the LATEST reply is from the user (awaiting admin).
+      required:
+        [
+          id,
+          user_phone,
+          user_display_name,
+          user_email,
+          user_auth_provider,
+          user_has_google,
+          user_has_telegram,
+          user_has_firebase,
+          user_has_whatsapp,
+          title,
+          category,
+          status,
+          created_at,
+          reply_count,
+          last_reply_at,
+          has_unread_admin,
+        ]
+
+    AdminTicketThread:
+      type: object
+      description: |
+        The detail view — the same identity-enriched ticket row + every
+        reply, oldest first.
+      properties:
+        id:
+          type: integer
+        user_phone:
+          type: string
+        user_display_name:
+          type: ["string", "null"]
+        user_email:
+          type: ["string", "null"]
+        user_auth_provider:
+          type: ["string", "null"]
+        user_has_google:
+          type: boolean
+        user_has_telegram:
+          type: boolean
+        user_has_firebase:
+          type: boolean
+        user_has_whatsapp:
+          type: boolean
+        title:
+          type: string
+        category:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [open, in_progress, closed]
+        created_at:
+          type: string
+        replies:
+          type: array
+          description: Full messages, oldest first.
+          items:
+            $ref: "#/components/schemas/TicketReply"
+      required:
+        [
+          id,
+          user_phone,
+          user_display_name,
+          user_email,
+          user_auth_provider,
+          user_has_google,
+          user_has_telegram,
+          user_has_firebase,
+          user_has_whatsapp,
+          title,
+          category,
+          status,
+          created_at,
+          replies,
+        ]
+
+    AdminReplyTicketBody:
+      type: object
+      description: |
+        strict zod (AdminReplyBody) — unknown keys are 400; message is
+        trimmed and bounded 1-4000 chars.
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+      required: [message]
+
+    AdminTicketStatusBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, in_progress, closed]
+      required: [status]
+
+    AdminSettings:
+      type: object
+      description: The settings page's four-field snapshot (fixed values today).
+      properties:
+        telegram_configured:
+          type: boolean
+        platform_name:
+          type: string
+        currency:
+          type: string
+          description: ISO currency code (LYD).
+        maintenance_mode:
+          type: boolean
+      required: [telegram_configured, platform_name, currency, maintenance_mode]
+
+    AdminAuthProviderField:
+      type: object
+      description: Static provider-field metadata (the form builder's source).
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        isSecret:
+          type: boolean
+        placeholder:
+          type: string
+      required: [key, label, isSecret]
+
+    AdminAuthProvider:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Provider registry id (google | telegram | apple today).
+        label:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        auth_type:
+          type: string
+          enum: [client_side, oauth_redirect, widget]
+        description:
+          type: string
+        setup_url:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuthProviderField"
+        enabled:
+          type: boolean
+        config:
+          type: object
+          description: |
+            Masked config keyed by field key — secret fields collapse to
+            "[SET]" (or "" when unset); non-secret fields show verbatim
+            ("" when unset).
+          additionalProperties:
+            type: string
+      required: [id, label, icon, color, auth_type, description, setup_url, fields, enabled, config]
+
+    AdminAuthSettings:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuthProvider"
+      required: [providers]
+
+    AdminChartDay:
+      type: object
+      description: |
+        One Tripoli-calendar-day bucket. Zero-filled: every day in the
+        range appears, with 0s when nothing happened.
+      properties:
+        date:
+          type: string
+          description: RAW ISO calendar key ("2026-09-06") — NOT localized; the FE parses and localizes.
+        orders:
+          type: integer
+        revenue:
+          type: number
+          description: Money (finance-gated surface).
+        users:
+          type: integer
+        discounts:
+          type: number
+          description: Money (finance-gated surface).
+        coupon_orders:
+          type: integer
+      required: [date, orders, revenue, users, discounts, coupon_orders]
+
+    AdminAuthStatsSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        success:
+          type: integer
+        failure:
+          type: integer
+        last24h:
+          type: integer
+      required: [total, success, failure, last24h]
+
+    AdminAuthActivity:
+      type: object
+      description: |
+        A raw auth_activity row — the audit trail (identifier, provider,
+        IP, user agent).
+      properties:
+        id:
+          type: integer
+        userId:
+          type: ["integer", "null"]
+        identifier:
+          type: string
+        action:
+          type: string
+          description: e.g. login, register, logout, change_password, unlink_provider.
+        provider:
+          type: ["string", "null"]
+        success:
+          type: boolean
+        ipAddress:
+          type: ["string", "null"]
+        userAgent:
+          type: ["string", "null"]
+        failureReason:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          userId,
+          identifier,
+          action,
+          provider,
+          success,
+          ipAddress,
+          userAgent,
+          failureReason,
+          createdAt,
+        ]
+
+    AdminReferralsStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        credited:
+          type: integer
+        pending:
+          type: integer
+        total_points:
+          type: integer
+          description: credited × POINTS_PER_REFERRAL (lib/loyalty-policy).
+      required: [total, credited, pending, total_points]
+
+    AdminTopReferrer:
+      type: object
+      properties:
+        id:
+          type: integer
+        phone:
+          type: string
+        credited_count:
+          type: integer
+        total_count:
+          type: integer
+      required: [id, phone, credited_count, total_count]
+
+    AdminReferralEventRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, credited]
+        created_at:
+          type: string
+        credited_at:
+          type: ["string", "null"]
+        referrer_phone:
+          type: string
+        referrer_id:
+          type: integer
+        referee_phone:
+          type: string
+        points_earned:
+          type: integer
+          description: POINTS_PER_REFERRAL when credited, else 0.
+      required:
+        [
+          id,
+          status,
+          created_at,
+          credited_at,
+          referrer_phone,
+          referrer_id,
+          referee_phone,
+          points_earned,
+        ]
+
+    AdminReferralsResponse:
+      type: object
+      properties:
+        stats:
+          $ref: "#/components/schemas/AdminReferralsStats"
+        top_referrers:
+          type: array
+          description: Top 10 referrers by credited count.
+          items:
+            $ref: "#/components/schemas/AdminTopReferrer"
+        list:
+          type: array
+          description: Newest 200 referral events (post-limit search window — B-7).
+          items:
+            $ref: "#/components/schemas/AdminReferralEventRow"
+      required: [stats, top_referrers, list]
 
     # ──────────────────────────────────────────────────────────────────────
     # AI Admin Copilot schemas (010-ai-admin-copilot)

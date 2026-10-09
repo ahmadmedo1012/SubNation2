@@ -3,32 +3,30 @@ import { Button } from "@/components/ui/button";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد أنشطة" empty
 // state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
-import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+// R126-L8b (A4 §C batch-C): both reads ride the generated client from
+// the batch-1 spec exposure — useGetAdminAuthStatsSummary (stats cards)
+// and useListAdminAuthActivity (timeline, keyed by the filter params).
+// The R125-I5 seq/abort belt is now TanStack-native: the params sit in
+// the queryKey, so a filter flip swaps queries and the stale response
+// can only land in the OLD key's cache — last-REQUEST wins. customFetch
+// owns the ok-guard + the global 401 observer (useAdminHeaders
+// registers it), so a session expiring mid-work still gets the
+// «انتهت الجلسة» toast + redirect; the error cards below stay quiet on
+// its ApiError shape (the A4 §C batch-A idiom: `err.status === 401`).
+import { useGetAdminAuthStatsSummary, useListAdminAuthActivity } from "@workspace/api-client-react";
 import { Activity, CheckCircle, Download, RefreshCw, Shield, WifiOff, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
+import { useState } from "react";
 import { AdminLayout } from "./layout";
 import { formatCount, formatDate } from "@/lib/utils";
 
-interface AuthActivity {
-  id: number;
-  userId: number;
-  identifier: string;
-  action: string;
-  success: boolean;
-  provider: string | null;
-  failureReason: string | null;
-  ipAddress: string | null;
-  userAgent: string | null;
-  createdAt: string;
-}
-
-interface AuthStats {
-  total: number;
-  success: number;
-  failure: number;
-  last24h: number;
+// R126-L8b: customFetch rejects 401s with its ApiError — type-only from
+// the package, so the quiet-catch duck-types the `status` field (the
+// App.tsx isRetryableQueryError idiom).
+function isSessionExpiredError(err: unknown): boolean {
+  return (err as { status?: unknown } | null | undefined)?.status === 401;
 }
 
 /** 94-C2 (A2 P3-18): the timeline used to render the raw backend
@@ -64,115 +62,66 @@ const ACTIVITY_COUNT_FORMS = {
 export function AdminSecurityDashboard() {
   const { adminToken } = useAuth();
   const headers = useAdminHeaders();
-  const [stats, setStats] = useState<AuthStats | null>(null);
-  const [activities, setActivities] = useState<AuthActivity[]>([]);
-  const [loading, setLoading] = useState(true);
-  // 94-C2 (A2 P2-1): both fetches previously swallowed failures with
-  // console.error — `stats` stayed null (the cards silently vanished)
-  // and `activities` stayed [] ⇒ the "لا توجد أنشطة" empty state during
-  // an outage or an expired session. The failure is now a first-class
-  // surface: an error card with retry (referrals.tsx idiom).
-  const [statsError, setStatsError] = useState<string | null>(null);
-  const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     action: "all",
     success: "all",
   });
-  // R125-I5 (A3-5): sequence token + abort belt for the activities
-  // fetch — rapid filter flips used to race two overlapping requests
-  // and the OLDER response could land last, rendering filter A's rows
-  // under filter B's selects (last-ARRIVAL, not last-REQUEST — the
-  // referrals-search-race class). Every fetch takes a token; a
-  // response whose token is no longer current is dropped, and the
-  // previous request is aborted at the source in real runtimes.
-  const activitiesSeqRef = useRef(0);
-  const activitiesAbortRef = useRef<AbortController | null>(null);
 
-  // 94-C2 (A2 P3-18): stats are UNFILTERED — the effect used to re-run
-  // `fetchStats` on every filter change, re-requesting the same
-  // unfiltered numbers each time the operator flipped a select.
-  useEffect(() => {
-    if (adminToken) {
-      fetchStats();
-    }
-  }, [adminToken]);
+  // 94-C2 (A2 P3-18): stats are UNFILTERED — one key, one mount fetch;
+  // manual refresh refetches it.
+  const statsQuery = useGetAdminAuthStatsSummary({
+    query: { enabled: !!adminToken },
+    request: { headers },
+  });
 
-  useEffect(() => {
-    if (adminToken) {
-      fetchActivities();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchActivities closes over `filters`/`headers` deliberately
-  }, [adminToken, filters]);
+  // R125-I5 (A3-5) preserved structurally: the filters sit in the
+  // queryKey ("all" params are omitted from the URL exactly like the
+  // old URLSearchParams builder), so each flip is a fresh query and the
+  // in-flight predecessor can never render — the RQ signal threads the
+  // abort through customFetch's AbortSignal.any merge.
+  const activitiesQuery = useListAdminAuthActivity(
+    {
+      action: filters.action !== "all" ? filters.action : undefined,
+      success: filters.success !== "all" ? (filters.success as "true" | "false") : undefined,
+    },
+    {
+      query: {
+        enabled: !!adminToken,
+        // R125-I5 parity: while a flipped filter's window is in flight,
+        // the PREVIOUS rows keep rendering (the old code simply never
+        // touched `activities` until the new response landed) — no
+        // skeleton flash, no false "لا توجد أنشطة" between filters.
+        placeholderData: keepPreviousData,
+      },
+      request: { headers },
+    },
+  );
 
-  const fetchStats = async () => {
-    setStatsError(null);
-    try {
-      const response = await fetch("/api/admin/auth-stats/summary", {
-        headers,
-      });
-      // 94-C2 (A2 P2-14): a mid-session 401 is the global handler's
-      // job (toast + redirect) — don't render a local error card on top.
-      if (isAdminUnauthorized(response, "/api/admin/auth-stats/summary")) return;
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل تحميل الإحصاءات (HTTP ${response.status})`);
-      }
-      const data = (await response.json()) as AuthStats;
-      setStats(data);
-    } catch (error) {
-      // 94-C2 (A2 P2-1): surfaced to the operator, not just the console.
-      setStatsError(
-        error instanceof Error && error.message ? error.message : "تعذّر تحميل الإحصاءات",
-      );
-    }
-  };
+  const stats = statsQuery.data ?? null;
+  // 94-C2 (A2 P2-14): a mid-session 401 is the global handler's business
+  // (toast + redirect already fired inside customFetch) — don't render a
+  // local error card on top.
+  const statsError =
+    statsQuery.isError && !isSessionExpiredError(statsQuery.error)
+      ? getErrorMessage(statsQuery.error)
+      : null;
 
-  const fetchActivities = async () => {
-    const seq = ++activitiesSeqRef.current;
-    activitiesAbortRef.current?.abort();
-    const controller = new AbortController();
-    activitiesAbortRef.current = controller;
-    setActivitiesError(null);
-    try {
-      const params = new URLSearchParams();
-      if (filters.action !== "all") params.append("action", filters.action);
-      if (filters.success !== "all") params.append("success", filters.success);
+  const activities = activitiesQuery.data?.activities ?? [];
+  const activitiesError =
+    activitiesQuery.isError && !isSessionExpiredError(activitiesQuery.error)
+      ? getErrorMessage(activitiesQuery.error)
+      : null;
+  // The first-load gate (R125-I5 A3-4): the page-shaped skeleton stands
+  // until the FIRST window settles — pending with no data. Later filter
+  // flips ride the placeholder above and keep the loaded page.
+  const loading = activitiesQuery.isPending && !activitiesQuery.data;
 
-      const url = `/api/admin/auth-activity?${params}`;
-      const response = await fetch(url, {
-        headers,
-        signal: controller.signal,
-      });
-      if (isAdminUnauthorized(response, url)) return;
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `فشل تحميل سجل النشاط (HTTP ${response.status})`);
-      }
-      const data = (await response.json()) as { activities?: AuthActivity[] };
-      // Stale response (a newer filter fetch superseded this one) —
-      // drop it: its rows belong to a filter nobody is looking at.
-      if (seq !== activitiesSeqRef.current) return;
-      setActivities(Array.isArray(data.activities) ? data.activities : []);
-    } catch (error) {
-      if (seq !== activitiesSeqRef.current) return; // stale — drop
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setActivitiesError(
-        error instanceof Error && error.message ? error.message : "تعذّر تحميل سجل النشاط",
-      );
-    } finally {
-      // Only the CURRENT fetch may clear the first-load gate — an
-      // aborted/superseded fetch clearing it early would flash the
-      // loaded page while the newer request is still in flight.
-      if (seq === activitiesSeqRef.current) {
-        setLoading(false);
-      }
-    }
+  // 94-C2 (A2 P3-18): the header renders on FIRST load too — the old
+  // bare «جارٍ التحميل…» hid the entire page; the layout refresh button
+  // refetches both queries.
+  const refreshAll = () => {
+    void statsQuery.refetch();
+    void activitiesQuery.refetch();
   };
 
   const exportToCSV = () => {
@@ -219,10 +168,7 @@ export function AdminSecurityDashboard() {
   // 94-C2 (A2 P3-18): the loading state renders INSIDE the admin shell
   // (the previous bare centered div appeared before the layout — a
   // flash of structure-less text on every visit).
-  const refreshAll = () => {
-    void fetchStats();
-    void fetchActivities();
-  };
+  // (refreshAll above replaced the old fetchStats/fetchActivities pair.)
 
   return (
     <AdminLayout onRefresh={refreshAll}>
@@ -292,7 +238,7 @@ export function AdminSecurityDashboard() {
                 <span className="min-w-0">{statsError}</span>
                 <button
                   type="button"
-                  onClick={() => void fetchStats()}
+                  onClick={() => void statsQuery.refetch()}
                   className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
                 >
                   إعادة المحاولة
@@ -416,7 +362,7 @@ export function AdminSecurityDashboard() {
                   </p>
                   <p className="text-sm mb-5 max-w-xs mx-auto leading-relaxed">{activitiesError}</p>
                   <Button
-                    onClick={() => void fetchActivities()}
+                    onClick={() => void activitiesQuery.refetch()}
                     className="gap-2 font-bold"
                     variant="outline"
                     size="sm"

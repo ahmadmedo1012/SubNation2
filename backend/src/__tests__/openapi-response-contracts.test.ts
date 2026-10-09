@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { sql } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   HealthCheckResponse,
@@ -22,8 +23,40 @@ import {
   AdminLoginResponse,
   ListAdminOrdersResponse,
   ListAdminTopupsResponse,
+  // R126-L8b (A4 §D batch-1) — the 17 newly-exposed admin endpoints.
+  ListAdminAlertsResponse,
+  GetAdminAlertsUnreadCountResponse,
+  MarkAdminAlertReadResponse,
+  MarkAllAdminAlertsReadResponse,
+  DeleteAdminAlertResponse,
+  DeleteReadAdminAlertsResponse,
+  DeleteAllAdminAlertsResponse,
+  ListAdminTicketsResponse,
+  GetAdminTicketResponse,
+  ReplyAdminTicketResponse,
+  UpdateAdminTicketStatusResponse,
+  GetAdminSettingsResponse,
+  GetAdminAuthSettingsResponse,
+  GetAdminChartDataResponse,
+  GetAdminAuthStatsSummaryResponse,
+  ListAdminAuthActivityResponse,
+  ListAdminReferralsResponse,
 } from "@workspace/api-zod";
-import { db, initTestDb, resetTestDb, usersTable, productsTable, couponsTable, adminUsersTable } from "../test/db";
+import {
+  db,
+  initTestDb,
+  resetTestDb,
+  usersTable,
+  productsTable,
+  couponsTable,
+  adminUsersTable,
+  // R126-L8b: batch-1 seed tables.
+  adminAlertsTable,
+  supportTicketsTable,
+  ticketRepliesTable,
+  referralEventsTable,
+  authActivityTable,
+} from "../test/db";
 import { signUserToken, signAdminToken } from "../lib/jwt";
 import { hashPassword } from "../lib/crypto";
 
@@ -58,10 +91,30 @@ beforeAll(async () => {
   const appModule: AppModule = await import("../app");
   realApp = appModule.default;
   await initTestDb();
+  // R126-L8b: auth_activity is not part of the shared harness DDL (the
+  // admin-security-summary convention) — provision it per-file so the
+  // REAL app's /admin/auth-activity + /admin/auth-stats/summary can be
+  // contract-pinned here too. resetTestDb's TRUNCATE list doesn't know
+  // it, so the beforeEach below clears it manually.
+  await db.execute(
+    sql`CREATE TABLE IF NOT EXISTS auth_activity (
+      id serial PRIMARY KEY,
+      user_id integer,
+      identifier varchar(255) NOT NULL,
+      action varchar(50) NOT NULL,
+      provider varchar(50),
+      success boolean NOT NULL,
+      ip_address varchar(45),
+      user_agent text,
+      failure_reason varchar(255),
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+  );
 }, 120_000);
 
 beforeEach(async () => {
   await resetTestDb();
+  await db.execute(sql`DELETE FROM auth_activity`);
 });
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -72,7 +125,7 @@ interface ApiOk {
 }
 
 function call(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
   opts: { userToken?: string; adminToken?: string; body?: unknown } = {},
 ): Promise<ApiOk> {
@@ -111,7 +164,10 @@ function call(
 }
 
 /** safeParse + issue dump — the one assertion shape this suite exists for. */
-function expectContract(schema: { safeParse: (v: unknown) => { success: boolean; error?: { issues: unknown[] } } }, body: unknown) {
+function expectContract(
+  schema: { safeParse: (v: unknown) => { success: boolean; error?: { issues: unknown[] } } },
+  body: unknown,
+) {
   const parsed = schema.safeParse(body);
   expect(
     parsed.success,
@@ -219,14 +275,18 @@ describe("response contracts — user", () => {
 
   it("GET /api/wallet/topups → ListTopupsResponse", async () => {
     const u = await seedUser();
-    const res = await call("GET", "/api/wallet/topups", { userToken: signUserToken({ userId: u.id }) });
+    const res = await call("GET", "/api/wallet/topups", {
+      userToken: signUserToken({ userId: u.id }),
+    });
     expect(res.status).toBe(200);
     expectContract(ListTopupsResponse, res.body);
   });
 
   it("GET /api/wallet/ledger → GetWalletLedgerResponse", async () => {
     const u = await seedUser();
-    const res = await call("GET", "/api/wallet/ledger", { userToken: signUserToken({ userId: u.id }) });
+    const res = await call("GET", "/api/wallet/ledger", {
+      userToken: signUserToken({ userId: u.id }),
+    });
     expect(res.status).toBe(200);
     expectContract(GetWalletLedgerResponse, res.body);
   });
@@ -247,14 +307,18 @@ describe("response contracts — user", () => {
 
   it("GET /api/loyalty/ledger → GetLoyaltyLedgerResponse", async () => {
     const u = await seedUser();
-    const res = await call("GET", "/api/loyalty/ledger", { userToken: signUserToken({ userId: u.id }) });
+    const res = await call("GET", "/api/loyalty/ledger", {
+      userToken: signUserToken({ userId: u.id }),
+    });
     expect(res.status).toBe(200);
     expectContract(GetLoyaltyLedgerResponse, res.body);
   });
 
   it("GET /api/notifications → ListNotificationsResponse", async () => {
     const u = await seedUser();
-    const res = await call("GET", "/api/notifications", { userToken: signUserToken({ userId: u.id }) });
+    const res = await call("GET", "/api/notifications", {
+      userToken: signUserToken({ userId: u.id }),
+    });
     expect(res.status).toBe(200);
     expectContract(ListNotificationsResponse, res.body);
   });
@@ -342,5 +406,246 @@ describe("response contracts — admin", () => {
     });
     expect(res.status).toBe(200);
     expectContract(ListAdminTopupsResponse, res.body);
+  });
+});
+
+// ── admin batch-1 (R126-L8b, A4 §D) — 17 newly-exposed endpoints ───────────
+//
+// The batch-1 OpenAPI exposure (alerts ×7, tickets ×4, settings GET,
+// settings/auth GET, chart-data, auth-stats/summary, auth-activity,
+// referrals list). Every response schema was written field-by-field from
+// the real handlers; these rows pin that honesty against the real app —
+// a field the spec forgot or mistypes fails here, not in production.
+
+let alertSeq = 0;
+async function seedAlert(
+  over: Partial<{
+    type: string;
+    message: string | null;
+    isRead: boolean;
+    dedupeKey: string | null;
+  }> = {},
+) {
+  alertSeq += 1;
+  const [row] = await db
+    .insert(adminAlertsTable)
+    .values({
+      type: over.type ?? "system",
+      title: `تنبيه اختبار العقد ${alertSeq}`,
+      message: over.message === undefined ? "تفاصيل التنبيه" : over.message,
+      isRead: over.isRead ?? false,
+      dedupeKey: over.dedupeKey ?? null,
+    })
+    .returning();
+  return row;
+}
+
+async function seedTicketWithReply() {
+  const u = await seedUser();
+  const [ticket] = await db
+    .insert(supportTicketsTable)
+    .values({ userId: u.id, title: "تذكرة عقد الاستجابة", category: "technical", status: "open" })
+    .returning();
+  await db
+    .insert(ticketRepliesTable)
+    .values({ ticketId: ticket.id, authorType: "user", message: "رسالة المستخدم الأولى" });
+  return ticket;
+}
+
+async function seedReferralEvent(status: "pending" | "credited" = "pending") {
+  const referrer = await seedUser();
+  const referee = await seedUser();
+  const [event] = await db
+    .insert(referralEventsTable)
+    .values({ referrerId: referrer.id, refereeId: referee.id, status })
+    .returning();
+  return event;
+}
+
+describe("response contracts — admin batch-1 (R126-L8b)", () => {
+  it("GET /api/admin/alerts → ListAdminAlertsResponse (full drizzle row incl. dedupeKey)", async () => {
+    const a = await seedAdmin();
+    await seedAlert({ isRead: false, dedupeKey: "stock:contract-1" });
+    await seedAlert({ isRead: true, message: null });
+    const res = await call("GET", "/api/admin/alerts?page=1&limit=50", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(ListAdminAlertsResponse, res.body);
+  });
+
+  it("GET /api/admin/alerts/unread-count → GetAdminAlertsUnreadCountResponse", async () => {
+    const a = await seedAdmin();
+    await seedAlert({ isRead: false });
+    await seedAlert({ isRead: false });
+    const res = await call("GET", "/api/admin/alerts/unread-count", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(GetAdminAlertsUnreadCountResponse, res.body);
+  });
+
+  it("PATCH /api/admin/alerts/{id}/read → MarkAdminAlertReadResponse", async () => {
+    const a = await seedAdmin();
+    const alert = await seedAlert({ isRead: false });
+    const res = await call("PATCH", `/api/admin/alerts/${alert.id}/read`, {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(MarkAdminAlertReadResponse, res.body);
+  });
+
+  it("PATCH /api/admin/alerts/read-all → MarkAllAdminAlertsReadResponse", async () => {
+    const a = await seedAdmin();
+    await seedAlert({ isRead: false });
+    const res = await call("PATCH", "/api/admin/alerts/read-all", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(MarkAllAdminAlertsReadResponse, res.body);
+  });
+
+  it("DELETE /api/admin/alerts/{id} → DeleteAdminAlertResponse", async () => {
+    const a = await seedAdmin();
+    const alert = await seedAlert({ isRead: true });
+    const res = await call("DELETE", `/api/admin/alerts/${alert.id}`, {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(DeleteAdminAlertResponse, res.body);
+  });
+
+  it("DELETE /api/admin/alerts/read → DeleteReadAdminAlertsResponse (deleted count)", async () => {
+    const a = await seedAdmin();
+    await seedAlert({ isRead: true });
+    await seedAlert({ isRead: false });
+    const res = await call("DELETE", "/api/admin/alerts/read", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(DeleteReadAdminAlertsResponse, res.body);
+  });
+
+  it("DELETE /api/admin/alerts → DeleteAllAdminAlertsResponse", async () => {
+    const a = await seedAdmin();
+    await seedAlert({ isRead: true });
+    await seedAlert({ isRead: false });
+    const res = await call("DELETE", "/api/admin/alerts", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(DeleteAllAdminAlertsResponse, res.body);
+  });
+
+  it("GET /api/admin/tickets → ListAdminTicketsResponse (identity + reply stats row)", async () => {
+    const a = await seedAdmin();
+    await seedTicketWithReply();
+    const res = await call("GET", "/api/admin/tickets", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(ListAdminTicketsResponse, res.body);
+  });
+
+  it("GET /api/admin/tickets/{id} → GetAdminTicketResponse (thread envelope)", async () => {
+    const a = await seedAdmin();
+    const ticket = await seedTicketWithReply();
+    const res = await call("GET", `/api/admin/tickets/${ticket.id}`, {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(GetAdminTicketResponse, res.body);
+  });
+
+  it("POST /api/admin/tickets/{id}/reply → 201 ReplyAdminTicketResponse", async () => {
+    const a = await seedAdmin();
+    const ticket = await seedTicketWithReply();
+    const res = await call("POST", `/api/admin/tickets/${ticket.id}/reply`, {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+      body: { message: "رد فريق الدعم على التذكرة" },
+    });
+    expect(res.status).toBe(201);
+    expectContract(ReplyAdminTicketResponse, res.body);
+  });
+
+  it("PATCH /api/admin/tickets/{id}/status → UpdateAdminTicketStatusResponse", async () => {
+    const a = await seedAdmin();
+    const ticket = await seedTicketWithReply();
+    const res = await call("PATCH", `/api/admin/tickets/${ticket.id}/status`, {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+      body: { status: "closed" },
+    });
+    expect(res.status).toBe(200);
+    expectContract(UpdateAdminTicketStatusResponse, res.body);
+  });
+
+  it("GET /api/admin/settings → GetAdminSettingsResponse (4 fixed fields)", async () => {
+    const a = await seedAdmin();
+    const res = await call("GET", "/api/admin/settings", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(GetAdminSettingsResponse, res.body);
+  });
+
+  it("GET /api/admin/settings/auth → GetAdminAuthSettingsResponse (masked providers)", async () => {
+    const a = await seedAdmin();
+    const res = await call("GET", "/api/admin/settings/auth", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(GetAdminAuthSettingsResponse, res.body);
+  });
+
+  it("GET /api/admin/chart-data → GetAdminChartDataResponse (zero-filled daily buckets)", async () => {
+    const a = await seedAdmin();
+    const res = await call("GET", "/api/admin/chart-data?days=7", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(GetAdminChartDataResponse, res.body);
+  });
+
+  it("GET /api/admin/auth-stats/summary → GetAdminAuthStatsSummaryResponse (4 counts)", async () => {
+    const a = await seedAdmin();
+    await db
+      .insert(authActivityTable)
+      .values({ identifier: "0912345678", action: "login", success: true });
+    const res = await call("GET", "/api/admin/auth-stats/summary", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(GetAdminAuthStatsSummaryResponse, res.body);
+  });
+
+  it("GET /api/admin/auth-activity → ListAdminAuthActivityResponse (raw audit row)", async () => {
+    const a = await seedAdmin();
+    const u = await seedUser();
+    await db.insert(authActivityTable).values({
+      userId: u.id,
+      identifier: "0912345678",
+      action: "login",
+      provider: "telegram",
+      success: false,
+      ipAddress: "41.208.0.1",
+      userAgent: "contract-test-agent",
+      failureReason: "انتهت صلاحية الجلسة",
+    });
+    const res = await call("GET", "/api/admin/auth-activity", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(ListAdminAuthActivityResponse, res.body);
+  });
+
+  it("GET /api/admin/referrals → ListAdminReferralsResponse (stats + top + list)", async () => {
+    const a = await seedAdmin();
+    await seedReferralEvent("pending");
+    await seedReferralEvent("credited");
+    const res = await call("GET", "/api/admin/referrals", {
+      adminToken: signAdminToken({ adminId: a.id, role: "admin" }),
+    });
+    expect(res.status).toBe(200);
+    expectContract(ListAdminReferralsResponse, res.body);
   });
 });

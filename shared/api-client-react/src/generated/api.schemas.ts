@@ -1676,6 +1676,308 @@ export interface BulkUpdateOrderStatusPartial {
   failed: BulkUpdateOrderStatusPartialFailedItem[];
 }
 
+/**
+ * A raw admin_alerts row (drizzle select() — every column rides
+ * the JSON, dedupeKey included).
+ */
+export interface AdminAlert {
+  id: number;
+  /**
+   * varchar(30) — known values: system, low_stock, no_stock,
+   * forecast_stockout, coupon_maxed, coupon_expiring. Kept an
+   * open string (not an enum) so a new producer cannot break
+   * the contract.
+   */
+  type: string;
+  title: string;
+  /** @nullable */
+  message: string | null;
+  isRead: boolean;
+  /**
+   * Dedupe key for repeated operational alerts; null for one-offs.
+   * @nullable
+   */
+  dedupeKey: string | null;
+  createdAt: string;
+}
+
+/**
+ * The inbox envelope: one page of rows + the unread badge count +
+ * the honest total + hasMore (offset + page length < total).
+ */
+export interface AdminAlertsPage {
+  alerts: AdminAlert[];
+  unreadCount: number;
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export interface AdminAlertsDeleteReadResult {
+  success: boolean;
+  /** Count of read rows deleted. */
+  deleted: number;
+}
+
+export type AdminTicketSummaryStatus =
+  (typeof AdminTicketSummaryStatus)[keyof typeof AdminTicketSummaryStatus];
+
+export const AdminTicketSummaryStatus = {
+  open: "open",
+  in_progress: "in_progress",
+  closed: "closed",
+} as const;
+
+/**
+ * One queue row: the ticket + identity enrichment + batched reply
+ * stats.
+ */
+export interface AdminTicketSummary {
+  id: number;
+  /** Empty string when the ticket's user was deleted/anonymized. */
+  user_phone: string;
+  /** @nullable */
+  user_display_name: string | null;
+  /** @nullable */
+  user_email: string | null;
+  /** @nullable */
+  user_auth_provider: string | null;
+  user_has_google: boolean;
+  user_has_telegram: boolean;
+  user_has_firebase: boolean;
+  user_has_whatsapp: boolean;
+  title: string;
+  /**
+   * Raw varchar(50) — the user-side create route writes the
+   * billing/technical/order/account/other enum (default other);
+   * the admin list passes the column through unvalidated, so
+   * null/legacy values are possible.
+   * @nullable
+   */
+  category: string | null;
+  status: AdminTicketSummaryStatus;
+  created_at: string;
+  reply_count: number;
+  /**
+   * ISO timestamp of the newest reply; null when the ticket has none.
+   * @nullable
+   */
+  last_reply_at: string | null;
+  /** True when the LATEST reply is from the user (awaiting admin). */
+  has_unread_admin: boolean;
+}
+
+export type AdminTicketThreadStatus =
+  (typeof AdminTicketThreadStatus)[keyof typeof AdminTicketThreadStatus];
+
+export const AdminTicketThreadStatus = {
+  open: "open",
+  in_progress: "in_progress",
+  closed: "closed",
+} as const;
+
+/**
+ * The detail view — the same identity-enriched ticket row + every
+ * reply, oldest first.
+ */
+export interface AdminTicketThread {
+  id: number;
+  user_phone: string;
+  /** @nullable */
+  user_display_name: string | null;
+  /** @nullable */
+  user_email: string | null;
+  /** @nullable */
+  user_auth_provider: string | null;
+  user_has_google: boolean;
+  user_has_telegram: boolean;
+  user_has_firebase: boolean;
+  user_has_whatsapp: boolean;
+  title: string;
+  /** @nullable */
+  category: string | null;
+  status: AdminTicketThreadStatus;
+  created_at: string;
+  /** Full messages, oldest first. */
+  replies: TicketReply[];
+}
+
+/**
+ * strict zod (AdminReplyBody) — unknown keys are 400; message is
+ * trimmed and bounded 1-4000 chars.
+ */
+export interface AdminReplyTicketBody {
+  /**
+   * @minLength 1
+   * @maxLength 4000
+   */
+  message: string;
+}
+
+export type AdminTicketStatusBodyStatus =
+  (typeof AdminTicketStatusBodyStatus)[keyof typeof AdminTicketStatusBodyStatus];
+
+export const AdminTicketStatusBodyStatus = {
+  open: "open",
+  in_progress: "in_progress",
+  closed: "closed",
+} as const;
+
+export interface AdminTicketStatusBody {
+  status: AdminTicketStatusBodyStatus;
+}
+
+/**
+ * The settings page's four-field snapshot (fixed values today).
+ */
+export interface AdminSettings {
+  telegram_configured: boolean;
+  platform_name: string;
+  /** ISO currency code (LYD). */
+  currency: string;
+  maintenance_mode: boolean;
+}
+
+/**
+ * Static provider-field metadata (the form builder's source).
+ */
+export interface AdminAuthProviderField {
+  key: string;
+  label: string;
+  isSecret: boolean;
+  placeholder?: string;
+}
+
+export type AdminAuthProviderAuthType =
+  (typeof AdminAuthProviderAuthType)[keyof typeof AdminAuthProviderAuthType];
+
+export const AdminAuthProviderAuthType = {
+  client_side: "client_side",
+  oauth_redirect: "oauth_redirect",
+  widget: "widget",
+} as const;
+
+/**
+ * Masked config keyed by field key — secret fields collapse to
+ * "[SET]" (or "" when unset); non-secret fields show verbatim
+ * ("" when unset).
+ */
+export type AdminAuthProviderConfig = { [key: string]: string };
+
+export interface AdminAuthProvider {
+  /** Provider registry id (google | telegram | apple today). */
+  id: string;
+  label: string;
+  icon: string;
+  color: string;
+  auth_type: AdminAuthProviderAuthType;
+  description: string;
+  setup_url: string;
+  fields: AdminAuthProviderField[];
+  enabled: boolean;
+  /**
+   * Masked config keyed by field key — secret fields collapse to
+   * "[SET]" (or "" when unset); non-secret fields show verbatim
+   * ("" when unset).
+   */
+  config: AdminAuthProviderConfig;
+}
+
+export interface AdminAuthSettings {
+  providers: AdminAuthProvider[];
+}
+
+/**
+ * One Tripoli-calendar-day bucket. Zero-filled: every day in the
+ * range appears, with 0s when nothing happened.
+ */
+export interface AdminChartDay {
+  /** RAW ISO calendar key ("2026-09-06") — NOT localized; the FE parses and localizes. */
+  date: string;
+  orders: number;
+  /** Money (finance-gated surface). */
+  revenue: number;
+  users: number;
+  /** Money (finance-gated surface). */
+  discounts: number;
+  coupon_orders: number;
+}
+
+export interface AdminAuthStatsSummary {
+  total: number;
+  success: number;
+  failure: number;
+  last24h: number;
+}
+
+/**
+ * A raw auth_activity row — the audit trail (identifier, provider,
+ * IP, user agent).
+ */
+export interface AdminAuthActivity {
+  id: number;
+  /** @nullable */
+  userId: number | null;
+  identifier: string;
+  /** e.g. login, register, logout, change_password, unlink_provider. */
+  action: string;
+  /** @nullable */
+  provider: string | null;
+  success: boolean;
+  /** @nullable */
+  ipAddress: string | null;
+  /** @nullable */
+  userAgent: string | null;
+  /** @nullable */
+  failureReason: string | null;
+  createdAt: string;
+}
+
+export interface AdminReferralsStats {
+  total: number;
+  credited: number;
+  pending: number;
+  /** credited × POINTS_PER_REFERRAL (lib/loyalty-policy). */
+  total_points: number;
+}
+
+export interface AdminTopReferrer {
+  id: number;
+  phone: string;
+  credited_count: number;
+  total_count: number;
+}
+
+export type AdminReferralEventRowStatus =
+  (typeof AdminReferralEventRowStatus)[keyof typeof AdminReferralEventRowStatus];
+
+export const AdminReferralEventRowStatus = {
+  pending: "pending",
+  credited: "credited",
+} as const;
+
+export interface AdminReferralEventRow {
+  id: number;
+  status: AdminReferralEventRowStatus;
+  created_at: string;
+  /** @nullable */
+  credited_at: string | null;
+  referrer_phone: string;
+  referrer_id: number;
+  referee_phone: string;
+  /** POINTS_PER_REFERRAL when credited, else 0. */
+  points_earned: number;
+}
+
+export interface AdminReferralsResponse {
+  stats: AdminReferralsStats;
+  /** Top 10 referrers by credited count. */
+  top_referrers: AdminTopReferrer[];
+  /** Newest 200 referral events (post-limit search window — B-7). */
+  list: AdminReferralEventRow[];
+}
+
 export interface CopilotAskContext {
   route?: string;
   focus_entity_type?: string;
@@ -2489,6 +2791,121 @@ export type ListAdminUsersParams = {
    */
   limit?: number | null;
 };
+
+export type ListAdminAlertsParams = {
+  /**
+   * 1-based page number (default 1, ceiling 10 000).
+   * @nullable
+   */
+  page?: number | null;
+  /**
+   * Page size, clamped to [1, 200] (default 50).
+   * @nullable
+   */
+  limit?: number | null;
+};
+
+export type GetAdminAlertsUnreadCount200 = {
+  count: number;
+};
+
+export type ListAdminTicketsParams = {
+  /**
+   * Optional ticket_status pg-enum filter — out-of-enum values
+   * are 400 INVALID_DATA (round-94 A5-03), not the 500 the raw
+   * column filter used to produce.
+   * @nullable
+   */
+  status?: ListAdminTicketsStatus;
+  /**
+   * 1-based page number (default 1, ceiling 10 000).
+   * @nullable
+   */
+  page?: number | null;
+  /**
+   * Page size, clamped to [1, 200] (default 100; ?limit=0 maps to 100).
+   * @nullable
+   */
+  limit?: number | null;
+};
+
+export type ListAdminTicketsStatus =
+  (typeof ListAdminTicketsStatus)[keyof typeof ListAdminTicketsStatus] | null;
+
+export const ListAdminTicketsStatus = {
+  open: "open",
+  in_progress: "in_progress",
+  closed: "closed",
+} as const;
+
+export type GetAdminChartDataParams = {
+  /**
+   * Series length in days, clamped to [1, 365] (default 7).
+   * @nullable
+   */
+  days?: number | null;
+};
+
+export type ListAdminAuthActivityParams = {
+  /**
+   * Exact action filter ("login", "register", … — free varchar;
+   * "all" or empty means no filter). Array-valued params are
+   * ignored (round-94 A5-09).
+   * @nullable
+   */
+  action?: string | null;
+  /**
+   * "true"/"false" string filter; "all" or empty means no filter.
+   * @nullable
+   */
+  success?: ListAdminAuthActivitySuccess;
+  /**
+   * Inclusive lower bound — any Date-parseable string; invalid
+   * values are 400 INVALID_DATA (round-94 A5-09).
+   * @nullable
+   */
+  startDate?: string | null;
+  /**
+   * Inclusive upper bound (same validation as startDate).
+   * @nullable
+   */
+  endDate?: string | null;
+};
+
+export type ListAdminAuthActivitySuccess =
+  (typeof ListAdminAuthActivitySuccess)[keyof typeof ListAdminAuthActivitySuccess] | null;
+
+export const ListAdminAuthActivitySuccess = {
+  true: "true",
+  false: "false",
+} as const;
+
+export type ListAdminAuthActivity200 = {
+  activities: AdminAuthActivity[];
+};
+
+export type ListAdminReferralsParams = {
+  /**
+   * Optional status filter; out-of-enum values are 400
+   * INVALID_DATA (they used to silently return an empty list).
+   * @nullable
+   */
+  status?: ListAdminReferralsStatus;
+  /**
+   * Case-insensitive substring on referrer/referee phone —
+   * applied AFTER the LIMIT 200 window (see B-7 window note).
+   * @nullable
+   */
+  search?: string | null;
+};
+
+export type ListAdminReferralsStatus =
+  (typeof ListAdminReferralsStatus)[keyof typeof ListAdminReferralsStatus] | null;
+
+export const ListAdminReferralsStatus = {
+  pending: "pending",
+  credited: "credited",
+} as const;
 
 export type CopilotAskBody = {
   /**

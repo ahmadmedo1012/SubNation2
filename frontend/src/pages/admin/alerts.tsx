@@ -4,18 +4,33 @@ import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
-// R123 (E3 item 1): the five mutation fetches ride the session-aware
-// wrapper — a support cookie expiring mid-work now gets the global
-// «انتهت الجلسة» toast + redirect instead of a per-action failure toast
-// (the optimistic rollback still runs first, so the cache stays
-// truthful), and adminFetchJson owns the ok-guard + safe error-body
-// parse the inline copies hand-rolled.
-import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
+// R123→R126-L8b: the five mutation fetches ride the orval-generated
+// client from the batch-1 spec exposure — the list is a typed
+// listAdminAlerts fetcher inside the SAME accumulating useInfiniteQuery
+// (same "admin-alerts" key, so every existing invalidation still
+// refreshes the accumulated pages), and the five mutations are the
+// generated fetchers (markAdminAlertRead / markAllAdminAlertsRead /
+// deleteAdminAlert / deleteReadAdminAlerts / deleteAllAdminAlerts).
+// customFetch owns the ok-guard + error envelope + the global 401
+// observer (useAdminHeaders registers it), so a session expiring
+// mid-work still gets the «انتهت الجلسة» toast + redirect — the
+// per-mutation 401 quiet-catch below duck-types the ApiError status
+// field (ApiError is type-only from the package; the App.tsx
+// isRetryableQueryError idiom — the A4 §C batch-A `err.status === 401`).
+import {
+  deleteAdminAlert,
+  deleteAllAdminAlerts,
+  deleteReadAdminAlerts,
+  listAdminAlerts,
+  markAdminAlertRead,
+  markAllAdminAlertsRead,
+  type AdminAlert,
+  type AdminAlertsPage,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatDate, formatRelativeTime } from "@/lib/utils";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { customFetch } from "@workspace/api-client-react";
 import {
   AlertTriangle,
   Bell,
@@ -35,14 +50,14 @@ import { AdminLayout } from "./layout";
 type AlertType =
   "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system" | "forecast_stockout";
 
-interface AdminAlertItem {
-  id: number;
-  type: AlertType;
-  title: string;
-  message: string | null;
-  isRead: boolean;
-  createdAt: string;
-}
+/** R126-L8b: rows come from the generated client now — AdminAlert.type
+ * is an open string (the spec deliberately keeps it non-enum so a new
+ * alert producer can't break the contract); the known-type map stays
+ * keyed by the AlertType union and the two row-type lookups below cast
+ * through it with the same fallbacks as before. */
+type AdminAlertItem = AdminAlert;
+
+type AlertsPageData = AdminAlertsPage;
 
 const TYPE_META: Record<
   AlertType,
@@ -137,6 +152,14 @@ const ALERT_COUNT_FORMS = {
   other: "تنبيه",
 };
 
+/** 94-C2 (A2 P2-10) → R126-L8b: a 401 from the generated fetcher is the
+ * global admin-session handler's business (toast + redirect fired inside
+ * customFetch) — the mutations below stay quiet on it. ApiError is
+ * type-only from the package, so the check duck-types `status`. */
+function isSessionExpiredError(err: unknown): boolean {
+  return (err as { status?: unknown } | null | undefined)?.status === 401;
+}
+
 /** 94-C2 (A2 P2-11): the inbox mutations get the same error surface as
  *  every other admin action (r.ok + parsed envelope + onError toast) —
  *  a failed delete/read used to invalidate the cache and silently
@@ -145,16 +168,9 @@ function alertActionToast(title: string, description: string) {
   return { title, description, variant: "destructive" as const };
 }
 
-interface AlertsPageData {
-  alerts: AdminAlertItem[];
-  unreadCount: number;
-  /** Present in the current backend response (was ignored by the
-   *  declared type — surfaced defensively, A2 P1-1). */
-  total?: number;
-  page?: number;
-  limit?: number;
-  hasMore?: boolean;
-}
+// (R126-L8b) AlertsPageData is the generated AdminAlertsPage envelope —
+// every field the handler emits (alerts, unreadCount, total, page,
+// limit, hasMore) is required in the contract now.
 
 type AlertsInfiniteData = { pages: AlertsPageData[]; pageParams: number[] };
 
@@ -222,11 +238,14 @@ export default function AdminAlertsPage() {
     isFetchingNextPage,
   } = useInfiniteQuery<AlertsPageData, Error>({
     queryKey: ALERTS_LIST_KEY,
+    // R126-L8b (A4 §C batch-C): the generated fetcher builds the same
+    // frozen `?page=&limit=` URL from typed params (spec-exposed in
+    // batch-1) — the accumulating key/semantics above are untouched.
+    // (pageParam cast: the 2-generic form leaves TPageParam as unknown —
+    // the risk.tsx `pageParam as string | null` idiom; every value here
+    // is a number by construction — initialPageParam 1, next = pages+1.)
     queryFn: ({ pageParam, signal }) =>
-      customFetch<AlertsPageData>(`/api/admin/alerts?page=${pageParam}&limit=${ALERTS_PAGE_SIZE}`, {
-        signal,
-        headers,
-      }),
+      listAdminAlerts({ page: pageParam as number, limit: ALERTS_PAGE_SIZE }, { signal, headers }),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) =>
       lastPage.hasMore === true
@@ -250,12 +269,9 @@ export default function AdminAlertsPage() {
     // 94-C2 (A2 P2-11): r.ok + parsed envelope — a failed PATCH used to
     // "succeed" (fetch resolves on HTTP errors), invalidate, and
     // silently resurrect the unread dot.
-    // R123 (E3 item 1): adminFetchJson owns that contract now.
-    mutationFn: async (id: number) =>
-      adminFetchJson<{ success?: boolean }>(`/api/admin/alerts/${id}/read`, {
-        method: "PATCH",
-        headers,
-      }),
+    // R126-L8b: the generated fetcher owns that contract now (typed
+    // {success} response; non-2xx rejects with ApiError).
+    mutationFn: (id: number) => markAdminAlertRead(id, { headers }),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
       const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
@@ -275,21 +291,17 @@ export default function AdminAlertsPage() {
     },
     onError: (err, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
-      // R123 (E3 item 1): session expiry already toasted + redirected
-      // globally — the rollback above keeps the cache truthful, but no
-      // local failure toast on top.
-      if (err instanceof AdminSessionExpiredError) return;
+      // R126-L8b: a 401 is the global handler's business (toast +
+      // redirect already fired inside customFetch) — the rollback
+      // above keeps the cache truthful, no local failure toast on top.
+      if (isSessionExpiredError(err)) return;
       toast(alertActionToast("فشل تعيين التنبيه كمقروء", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const markAllRead = useMutation({
-    mutationFn: async () =>
-      adminFetchJson<{ success?: boolean }>("/api/admin/alerts/read-all", {
-        method: "PATCH",
-        headers,
-      }),
+    mutationFn: () => markAllAdminAlertsRead({ headers }),
     onMutate: async () => {
       await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
       const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
@@ -303,18 +315,14 @@ export default function AdminAlertsPage() {
     },
     onError: (err, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
-      if (err instanceof AdminSessionExpiredError) return;
+      if (isSessionExpiredError(err)) return;
       toast(alertActionToast("فشل تعيين الكل كمقروء", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const deleteAlert = useMutation({
-    mutationFn: async (id: number) =>
-      adminFetchJson<{ success?: boolean }>(`/api/admin/alerts/${id}`, {
-        method: "DELETE",
-        headers,
-      }),
+    mutationFn: (id: number) => deleteAdminAlert(id, { headers }),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ALERTS_LIST_KEY });
       const prev = qc.getQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY);
@@ -329,34 +337,26 @@ export default function AdminAlertsPage() {
     },
     onError: (err, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(ALERTS_LIST_KEY, ctx.prev);
-      if (err instanceof AdminSessionExpiredError) return;
+      if (isSessionExpiredError(err)) return;
       toast(alertActionToast("فشل حذف التنبيه", getErrorMessage(err)));
     },
     onSettled: () => invalidateAll(),
   });
 
   const deleteRead = useMutation({
-    mutationFn: async () =>
-      adminFetchJson<{ success?: boolean; deleted?: number }>("/api/admin/alerts/read", {
-        method: "DELETE",
-        headers,
-      }),
+    mutationFn: () => deleteReadAdminAlerts({ headers }),
     onSuccess: () => invalidateAll(),
     onError: (err) => {
-      if (err instanceof AdminSessionExpiredError) return;
+      if (isSessionExpiredError(err)) return;
       toast(alertActionToast("فشل حذف التنبيهات المقروءة", getErrorMessage(err)));
     },
   });
 
   const deleteAll = useMutation({
-    mutationFn: async () =>
-      adminFetchJson<{ success?: boolean }>("/api/admin/alerts", {
-        method: "DELETE",
-        headers,
-      }),
+    mutationFn: () => deleteAllAdminAlerts({ headers }),
     onSuccess: () => invalidateAll(),
     onError: (err) => {
-      if (err instanceof AdminSessionExpiredError) return;
+      if (isSessionExpiredError(err)) return;
       toast(alertActionToast("فشل حذف كل التنبيهات", getErrorMessage(err)));
     },
   });
@@ -372,7 +372,7 @@ export default function AdminAlertsPage() {
   // carries the alert type + title, the same context the bulk confirm
   // names its count).
   const confirmDeleteAlert = async (alert: AdminAlertItem) => {
-    const typeLabel = TYPE_META[alert.type]?.label ?? "تنبيه";
+    const typeLabel = TYPE_META[alert.type as AlertType]?.label ?? "تنبيه";
     const confirmed = await confirm({
       title: "حذف التنبيه؟",
       description: `سيتم حذف تنبيه «${alert.title}» (${typeLabel}) نهائياً${alert.message ? ` — «${alert.message}»` : ""}. لا يمكن التراجع عن الحذف.`,
@@ -660,7 +660,7 @@ export default function AdminAlertsPage() {
 
                 <div className="space-y-1.5">
                   {group.items.map((alert) => {
-                    const meta = TYPE_META[alert.type] ?? TYPE_META.system;
+                    const meta = TYPE_META[alert.type as AlertType] ?? TYPE_META.system;
                     const Icon = meta.icon;
                     return (
                       <div

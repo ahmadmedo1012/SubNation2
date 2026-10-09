@@ -65,7 +65,12 @@ import type {
 
 import type {
   AddCartItemBody,
+  AdminAlertsDeleteReadResult,
+  AdminAlertsPage,
   AdminAuthResponse,
+  AdminAuthSettings,
+  AdminAuthStatsSummary,
+  AdminChartDay,
   AdminFlashSale,
   AdminInventoryHealthReport,
   AdminLoginBody,
@@ -74,7 +79,13 @@ import type {
   AdminPricingCalculateBody,
   AdminProduct,
   AdminProductVariant,
+  AdminReferralsResponse,
+  AdminReplyTicketBody,
+  AdminSettings,
   AdminStats,
+  AdminTicketStatusBody,
+  AdminTicketSummary,
+  AdminTicketThread,
   AdminTopup,
   AdminTopupActionBody,
   AdminUser,
@@ -118,6 +129,8 @@ import type {
   DeleteVariantResponse,
   ErrorResponse,
   FlashSaleResponse,
+  GetAdminAlertsUnreadCount200,
+  GetAdminChartDataParams,
   GetAdminOrderCredentials200,
   GetCart200,
   GetLoyaltyLedger200Item,
@@ -126,9 +139,14 @@ import type {
   GetWalletLedgerParams,
   HealthStatus,
   IdempotencyConflictResponse,
+  ListAdminAlertsParams,
+  ListAdminAuthActivity200,
+  ListAdminAuthActivityParams,
   ListAdminFlashSales200,
   ListAdminOrdersParams,
   ListAdminProductsParams,
+  ListAdminReferralsParams,
+  ListAdminTicketsParams,
   ListAdminTopupsParams,
   ListAdminUsersParams,
   ListOrdersParams,
@@ -8408,6 +8426,1977 @@ export const useUpdateAdminUser = <
 > => {
   return useMutation(getUpdateAdminUserMutationOptions(options), queryClient);
 };
+
+export const getListAdminAlertsUrl = (params?: ListAdminAlertsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/alerts?${stringifiedParams}`
+    : `/api/admin/alerts`;
+};
+
+/**
+ * The alerts inbox feed (20 s poll + `admin-alert-new` socket
+ * refresh). The envelope carries the unread badge count, the
+ * honest total and `hasMore` so the FE infinite query accumulates
+ * without relying on the full-page heuristic. Cache-Control:
+ * no-store.
+ * @summary List admin alerts (requireAdmin + support scope) — paginated inbox envelope
+ */
+export const listAdminAlerts = async (
+  params?: ListAdminAlertsParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminAlertsPage> => {
+  return customFetch<AdminAlertsPage>(getListAdminAlertsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminAlertsQueryKey = (params?: ListAdminAlertsParams) => {
+  return [`/api/admin/alerts`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminAlertsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAlertsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAlerts>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminAlertsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminAlerts>>> = ({ signal }) =>
+    listAdminAlerts(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminAlerts>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminAlertsQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminAlerts>>>;
+export type ListAdminAlertsQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminAlerts<
+  TData = Awaited<ReturnType<typeof listAdminAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminAlertsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAlerts>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminAlerts>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminAlerts>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminAlerts<
+  TData = Awaited<ReturnType<typeof listAdminAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAlertsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAlerts>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminAlerts>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminAlerts>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminAlerts<
+  TData = Awaited<ReturnType<typeof listAdminAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAlertsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAlerts>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List admin alerts (requireAdmin + support scope) — paginated inbox envelope
+ */
+
+export function useListAdminAlerts<
+  TData = Awaited<ReturnType<typeof listAdminAlerts>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAlertsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminAlerts>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminAlertsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getDeleteAllAdminAlertsUrl = () => {
+  return `/api/admin/alerts`;
+};
+
+/**
+ * Wipes the whole admin_alerts table (the «حذف الكل» confirm in
+ * the inbox). This is operations-telemetry deletion, not an audit
+ * purge — audit_logs is untouched. Cache-Control: no-store.
+ * @summary Delete every admin alert (requireAdmin + support scope)
+ */
+export const deleteAllAdminAlerts = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getDeleteAllAdminAlertsUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAllAdminAlertsMutationKey = () => ["deleteAllAdminAlerts"] as const;
+
+export const getDeleteAllAdminAlertsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAllAdminAlerts>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAllAdminAlerts>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = getDeleteAllAdminAlertsMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAllAdminAlerts>>,
+    void
+  > = () => {
+    return deleteAllAdminAlerts(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAllAdminAlertsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAllAdminAlerts>>
+>;
+
+export type DeleteAllAdminAlertsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete every admin alert (requireAdmin + support scope)
+ */
+export const useDeleteAllAdminAlerts = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteAllAdminAlerts>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof deleteAllAdminAlerts>>, TError, void, TContext> => {
+  return useMutation(getDeleteAllAdminAlertsMutationOptions(options), queryClient);
+};
+
+export const getGetAdminAlertsUnreadCountUrl = () => {
+  return `/api/admin/alerts/unread-count`;
+};
+
+/**
+ * The layout's unread badge (300 s staleTime + socket refresh on
+ * `admin-alert-new`). Cache-Control: no-store.
+ * @summary Count unread admin alerts (requireAdmin + support scope)
+ */
+export const getAdminAlertsUnreadCount = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<GetAdminAlertsUnreadCount200> => {
+  return customFetch<GetAdminAlertsUnreadCount200>(getGetAdminAlertsUnreadCountUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminAlertsUnreadCountQueryKey = () => {
+  return [`/api/admin/alerts/unread-count`] as const;
+};
+
+export const getGetAdminAlertsUnreadCountQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminAlertsUnreadCountQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>> = ({
+    signal,
+  }) => getAdminAlertsUnreadCount({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminAlertsUnreadCountQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>
+>;
+export type GetAdminAlertsUnreadCountQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminAlertsUnreadCount<
+  TData = Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminAlertsUnreadCount<
+  TData = Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminAlertsUnreadCount<
+  TData = Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Count unread admin alerts (requireAdmin + support scope)
+ */
+
+export function useGetAdminAlertsUnreadCount<
+  TData = Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAlertsUnreadCount>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminAlertsUnreadCountQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getMarkAllAdminAlertsReadUrl = () => {
+  return `/api/admin/alerts/read-all`;
+};
+
+/**
+ * @summary Mark every admin alert read (requireAdmin + support scope)
+ */
+export const markAllAdminAlertsRead = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getMarkAllAdminAlertsReadUrl(), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getMarkAllAdminAlertsReadMutationKey = () => ["markAllAdminAlertsRead"] as const;
+
+export const getMarkAllAdminAlertsReadMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markAllAdminAlertsRead>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof markAllAdminAlertsRead>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = getMarkAllAdminAlertsReadMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof markAllAdminAlertsRead>>,
+    void
+  > = () => {
+    return markAllAdminAlertsRead(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MarkAllAdminAlertsReadMutationResult = NonNullable<
+  Awaited<ReturnType<typeof markAllAdminAlertsRead>>
+>;
+
+export type MarkAllAdminAlertsReadMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Mark every admin alert read (requireAdmin + support scope)
+ */
+export const useMarkAllAdminAlertsRead = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof markAllAdminAlertsRead>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof markAllAdminAlertsRead>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getMarkAllAdminAlertsReadMutationOptions(options), queryClient);
+};
+
+export const getDeleteReadAdminAlertsUrl = () => {
+  return `/api/admin/alerts/read`;
+};
+
+/**
+ * @summary Delete all READ admin alerts (requireAdmin + support scope)
+ */
+export const deleteReadAdminAlerts = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminAlertsDeleteReadResult> => {
+  return customFetch<AdminAlertsDeleteReadResult>(getDeleteReadAdminAlertsUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteReadAdminAlertsMutationKey = () => ["deleteReadAdminAlerts"] as const;
+
+export const getDeleteReadAdminAlertsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteReadAdminAlerts>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteReadAdminAlerts>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = getDeleteReadAdminAlertsMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteReadAdminAlerts>>,
+    void
+  > = () => {
+    return deleteReadAdminAlerts(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteReadAdminAlertsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteReadAdminAlerts>>
+>;
+
+export type DeleteReadAdminAlertsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete all READ admin alerts (requireAdmin + support scope)
+ */
+export const useDeleteReadAdminAlerts = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteReadAdminAlerts>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof deleteReadAdminAlerts>>, TError, void, TContext> => {
+  return useMutation(getDeleteReadAdminAlertsMutationOptions(options), queryClient);
+};
+
+export const getDeleteAdminAlertUrl = (id: number) => {
+  return `/api/admin/alerts/${id}`;
+};
+
+/**
+ * 404 when the id does not exist (silent no-op → 404 per audit §5).
+ * @summary Delete one admin alert (requireAdmin + support scope)
+ */
+export const deleteAdminAlert = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getDeleteAdminAlertUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAdminAlertMutationKey = () => ["deleteAdminAlert"] as const;
+
+export const getDeleteAdminAlertMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAdminAlert>>,
+    TError,
+    DeleteAdminAlertMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAdminAlert>>,
+  TError,
+  DeleteAdminAlertMutationVariables,
+  TContext
+> => {
+  const mutationKey = getDeleteAdminAlertMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAdminAlert>>,
+    DeleteAdminAlertMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteAdminAlert(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAdminAlertMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAdminAlert>>
+>;
+
+export type DeleteAdminAlertMutationError = ErrorType<ErrorResponse>;
+export type DeleteAdminAlertMutationVariables = { id: number };
+
+/**
+ * @summary Delete one admin alert (requireAdmin + support scope)
+ */
+export const useDeleteAdminAlert = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteAdminAlert>>,
+      TError,
+      DeleteAdminAlertMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAdminAlert>>,
+  TError,
+  DeleteAdminAlertMutationVariables,
+  TContext
+> => {
+  return useMutation(getDeleteAdminAlertMutationOptions(options), queryClient);
+};
+
+export const getMarkAdminAlertReadUrl = (id: number) => {
+  return `/api/admin/alerts/${id}/read`;
+};
+
+/**
+ * @summary Mark one admin alert read (requireAdmin + support scope)
+ */
+export const markAdminAlertRead = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getMarkAdminAlertReadUrl(id), {
+    ...options,
+    method: "PATCH",
+  });
+};
+
+export const getMarkAdminAlertReadMutationKey = () => ["markAdminAlertRead"] as const;
+
+export const getMarkAdminAlertReadMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof markAdminAlertRead>>,
+    TError,
+    MarkAdminAlertReadMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof markAdminAlertRead>>,
+  TError,
+  MarkAdminAlertReadMutationVariables,
+  TContext
+> => {
+  const mutationKey = getMarkAdminAlertReadMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof markAdminAlertRead>>,
+    MarkAdminAlertReadMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return markAdminAlertRead(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MarkAdminAlertReadMutationResult = NonNullable<
+  Awaited<ReturnType<typeof markAdminAlertRead>>
+>;
+
+export type MarkAdminAlertReadMutationError = ErrorType<ErrorResponse>;
+export type MarkAdminAlertReadMutationVariables = { id: number };
+
+/**
+ * @summary Mark one admin alert read (requireAdmin + support scope)
+ */
+export const useMarkAdminAlertRead = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof markAdminAlertRead>>,
+      TError,
+      MarkAdminAlertReadMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof markAdminAlertRead>>,
+  TError,
+  MarkAdminAlertReadMutationVariables,
+  TContext
+> => {
+  return useMutation(getMarkAdminAlertReadMutationOptions(options), queryClient);
+};
+
+export const getListAdminTicketsUrl = (params?: ListAdminTicketsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/tickets?${stringifiedParams}`
+    : `/api/admin/tickets`;
+};
+
+/**
+ * Plain array (no total meta — the FE getNextPageParam uses the
+ * full-page heuristic, documented frontend-side). Each row is the
+ * identity-enriched ticket + batched reply_count / last_reply_at /
+ * has_unread_admin (true when the LATEST reply is from the user).
+ * Cache-Control: no-store.
+ * @summary List support tickets for the admin queue (requireAdmin + support scope)
+ */
+export const listAdminTickets = async (
+  params?: ListAdminTicketsParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminTicketSummary[]> => {
+  return customFetch<AdminTicketSummary[]>(getListAdminTicketsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminTicketsQueryKey = (params?: ListAdminTicketsParams) => {
+  return [`/api/admin/tickets`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminTicketsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminTickets>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminTicketsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminTickets>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminTicketsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminTickets>>> = ({ signal }) =>
+    listAdminTickets(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminTickets>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminTicketsQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminTickets>>>;
+export type ListAdminTicketsQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminTickets<
+  TData = Awaited<ReturnType<typeof listAdminTickets>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminTicketsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminTickets>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminTickets>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminTickets>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminTickets<
+  TData = Awaited<ReturnType<typeof listAdminTickets>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminTicketsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminTickets>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminTickets>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminTickets>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminTickets<
+  TData = Awaited<ReturnType<typeof listAdminTickets>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminTicketsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminTickets>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List support tickets for the admin queue (requireAdmin + support scope)
+ */
+
+export function useListAdminTickets<
+  TData = Awaited<ReturnType<typeof listAdminTickets>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminTicketsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminTickets>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminTicketsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminTicketUrl = (id: number) => {
+  return `/api/admin/tickets/${id}`;
+};
+
+/**
+ * The ticket row + every reply (oldest first). Cache-Control:
+ * no-store.
+ * @summary One ticket's full thread (requireAdmin + support scope)
+ */
+export const getAdminTicket = async (
+  id: number,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminTicketThread> => {
+  return customFetch<AdminTicketThread>(getGetAdminTicketUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminTicketQueryKey = (id: number) => {
+  return [`/api/admin/tickets/${id}`] as const;
+};
+
+export const getGetAdminTicketQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminTicket>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminTicket>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminTicketQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminTicket>>> = ({ signal }) =>
+    getAdminTicket(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: id !== null && id !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getAdminTicket>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetAdminTicketQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminTicket>>>;
+export type GetAdminTicketQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminTicket<
+  TData = Awaited<ReturnType<typeof getAdminTicket>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminTicket>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminTicket>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminTicket>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminTicket<
+  TData = Awaited<ReturnType<typeof getAdminTicket>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminTicket>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminTicket>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminTicket>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminTicket<
+  TData = Awaited<ReturnType<typeof getAdminTicket>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminTicket>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary One ticket's full thread (requireAdmin + support scope)
+ */
+
+export function useGetAdminTicket<
+  TData = Awaited<ReturnType<typeof getAdminTicket>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminTicket>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminTicketQueryOptions(id, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getReplyAdminTicketUrl = (id: number) => {
+  return `/api/admin/tickets/${id}/reply`;
+};
+
+/**
+ * Inserts an admin reply, flips the ticket to in_progress, notifies
+ * the user, emits `admin-stats-update {type: ticket-reply}` and
+ * writes a `ticket.reply` audit row. 404 when the ticket id does
+ * not exist.
+ * @summary Reply to a ticket as admin (requireAdmin + support scope; audited)
+ */
+export const replyAdminTicket = async (
+  id: number,
+  adminReplyTicketBody: AdminReplyTicketBody,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<TicketReply> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return customFetch<TicketReply>(getReplyAdminTicketUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(adminReplyTicketBody),
+  });
+};
+
+export const getReplyAdminTicketMutationKey = () => ["replyAdminTicket"] as const;
+
+export const getReplyAdminTicketMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replyAdminTicket>>,
+    TError,
+    ReplyAdminTicketMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof replyAdminTicket>>,
+  TError,
+  ReplyAdminTicketMutationVariables,
+  TContext
+> => {
+  const mutationKey = getReplyAdminTicketMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof replyAdminTicket>>,
+    ReplyAdminTicketMutationVariables
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return replyAdminTicket(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReplyAdminTicketMutationResult = NonNullable<
+  Awaited<ReturnType<typeof replyAdminTicket>>
+>;
+export type ReplyAdminTicketMutationBody = BodyType<AdminReplyTicketBody>;
+export type ReplyAdminTicketMutationError = ErrorType<ErrorResponse>;
+export type ReplyAdminTicketMutationVariables = {
+  id: number;
+  data: BodyType<AdminReplyTicketBody>;
+};
+
+/**
+ * @summary Reply to a ticket as admin (requireAdmin + support scope; audited)
+ */
+export const useReplyAdminTicket = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof replyAdminTicket>>,
+      TError,
+      ReplyAdminTicketMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof replyAdminTicket>>,
+  TError,
+  ReplyAdminTicketMutationVariables,
+  TContext
+> => {
+  return useMutation(getReplyAdminTicketMutationOptions(options), queryClient);
+};
+
+export const getUpdateAdminTicketStatusUrl = (id: number) => {
+  return `/api/admin/tickets/${id}/status`;
+};
+
+/**
+ * 404 when the ticket id does not exist (silent no-op → 404 per
+ * audit §5). Emits `admin-stats-update {type:
+ * ticket-status-update, status}` and writes a
+ * `ticket.status_update` audit row.
+ * @summary Flip a ticket's status (requireAdmin + support scope; audited)
+ */
+export const updateAdminTicketStatus = async (
+  id: number,
+  adminTicketStatusBody: AdminTicketStatusBody,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<SuccessResponse> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return customFetch<SuccessResponse>(getUpdateAdminTicketStatusUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(adminTicketStatusBody),
+  });
+};
+
+export const getUpdateAdminTicketStatusMutationKey = () => ["updateAdminTicketStatus"] as const;
+
+export const getUpdateAdminTicketStatusMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminTicketStatus>>,
+    TError,
+    UpdateAdminTicketStatusMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAdminTicketStatus>>,
+  TError,
+  UpdateAdminTicketStatusMutationVariables,
+  TContext
+> => {
+  const mutationKey = getUpdateAdminTicketStatusMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAdminTicketStatus>>,
+    UpdateAdminTicketStatusMutationVariables
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateAdminTicketStatus(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAdminTicketStatusMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAdminTicketStatus>>
+>;
+export type UpdateAdminTicketStatusMutationBody = BodyType<AdminTicketStatusBody>;
+export type UpdateAdminTicketStatusMutationError = ErrorType<ErrorResponse>;
+export type UpdateAdminTicketStatusMutationVariables = {
+  id: number;
+  data: BodyType<AdminTicketStatusBody>;
+};
+
+/**
+ * @summary Flip a ticket's status (requireAdmin + support scope; audited)
+ */
+export const useUpdateAdminTicketStatus = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof updateAdminTicketStatus>>,
+      TError,
+      UpdateAdminTicketStatusMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof updateAdminTicketStatus>>,
+  TError,
+  UpdateAdminTicketStatusMutationVariables,
+  TContext
+> => {
+  return useMutation(getUpdateAdminTicketStatusMutationOptions(options), queryClient);
+};
+
+export const getGetAdminSettingsUrl = () => {
+  return `/api/admin/settings`;
+};
+
+/**
+ * Four fixed fields — the settings page's read-only snapshot.
+ * Cache-Control: no-store.
+ * @summary Platform settings snapshot (requireAdmin + settings scope)
+ */
+export const getAdminSettings = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminSettings> => {
+  return customFetch<AdminSettings>(getGetAdminSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminSettingsQueryKey = () => {
+  return [`/api/admin/settings`] as const;
+};
+
+export const getGetAdminSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminSettings>>, TError, TData>>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminSettingsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminSettings>>> = ({ signal }) =>
+    getAdminSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminSettings>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminSettings>>>;
+export type GetAdminSettingsQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminSettings<
+  TData = Awaited<ReturnType<typeof getAdminSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminSettings>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminSettings>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminSettings<
+  TData = Awaited<ReturnType<typeof getAdminSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminSettings>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminSettings>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminSettings<
+  TData = Awaited<ReturnType<typeof getAdminSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminSettings>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Platform settings snapshot (requireAdmin + settings scope)
+ */
+
+export function useGetAdminSettings<
+  TData = Awaited<ReturnType<typeof getAdminSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminSettings>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminAuthSettingsUrl = () => {
+  return `/api/admin/settings/auth`;
+};
+
+/**
+ * Static provider metadata (from the PROVIDERS registry) joined
+ * with the system_settings rows: enablement + a MASKED config
+ * (secrets collapse to "[SET]", non-secrets show verbatim). The
+ * PATCH /auth/{id} sibling validates per-provider dynamically and
+ * is deliberately out of batch 1. Cache-Control: no-store.
+ * @summary Auth provider settings + masked config (requireAdmin + settings scope)
+ */
+export const getAdminAuthSettings = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminAuthSettings> => {
+  return customFetch<AdminAuthSettings>(getGetAdminAuthSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminAuthSettingsQueryKey = () => {
+  return [`/api/admin/settings/auth`] as const;
+};
+
+export const getGetAdminAuthSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminAuthSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthSettings>>, TError, TData>>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminAuthSettingsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAuthSettings>>> = ({ signal }) =>
+    getAdminAuthSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminAuthSettings>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminAuthSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminAuthSettings>>
+>;
+export type GetAdminAuthSettingsQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminAuthSettings<
+  TData = Awaited<ReturnType<typeof getAdminAuthSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthSettings>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminAuthSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminAuthSettings>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminAuthSettings<
+  TData = Awaited<ReturnType<typeof getAdminAuthSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthSettings>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminAuthSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminAuthSettings>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminAuthSettings<
+  TData = Awaited<ReturnType<typeof getAdminAuthSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthSettings>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Auth provider settings + masked config (requireAdmin + settings scope)
+ */
+
+export function useGetAdminAuthSettings<
+  TData = Awaited<ReturnType<typeof getAdminAuthSettings>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthSettings>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminAuthSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminChartDataUrl = (params?: GetAdminChartDataParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/chart-data?${stringifiedParams}`
+    : `/api/admin/chart-data`;
+};
+
+/**
+ * Per-Tripoli-calendar-day buckets (the SQL shifts +2h before
+ * truncating to DATE, so buckets match the operator's wall clock).
+ * `date` is the RAW ISO calendar key ("2026-09-06") — display
+ * localization stays client-side. Money fields (revenue,
+ * discounts) ride the finance gate server-side (R126 A7-F1); the
+ * FE additionally never fetches this for non-finance operators.
+ * Cached 30 s per (days, day-bucket).
+ * @summary Daily chart series (requireAdmin + finance scope)
+ */
+export const getAdminChartData = async (
+  params?: GetAdminChartDataParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminChartDay[]> => {
+  return customFetch<AdminChartDay[]>(getGetAdminChartDataUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminChartDataQueryKey = (params?: GetAdminChartDataParams) => {
+  return [`/api/admin/chart-data`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAdminChartDataQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminChartData>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminChartDataParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminChartData>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminChartDataQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminChartData>>> = ({ signal }) =>
+    getAdminChartData(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminChartData>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminChartDataQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminChartData>>
+>;
+export type GetAdminChartDataQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminChartData<
+  TData = Awaited<ReturnType<typeof getAdminChartData>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | GetAdminChartDataParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminChartData>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminChartData>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminChartData>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminChartData<
+  TData = Awaited<ReturnType<typeof getAdminChartData>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminChartDataParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminChartData>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminChartData>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminChartData>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminChartData<
+  TData = Awaited<ReturnType<typeof getAdminChartData>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminChartDataParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminChartData>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Daily chart series (requireAdmin + finance scope)
+ */
+
+export function useGetAdminChartData<
+  TData = Awaited<ReturnType<typeof getAdminChartData>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: GetAdminChartDataParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getAdminChartData>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminChartDataQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetAdminAuthStatsSummaryUrl = () => {
+  return `/api/admin/auth-stats/summary`;
+};
+
+/**
+ * Four counts from ONE filtered aggregate (R125-I6): total,
+ * success, failure and last-24h rows in auth_activity.
+ * Cache-Control: no-store.
+ * @summary Auth activity counts (requireAdmin + admins scope)
+ */
+export const getAdminAuthStatsSummary = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminAuthStatsSummary> => {
+  return customFetch<AdminAuthStatsSummary>(getGetAdminAuthStatsSummaryUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminAuthStatsSummaryQueryKey = () => {
+  return [`/api/admin/auth-stats/summary`] as const;
+};
+
+export const getGetAdminAuthStatsSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthStatsSummary>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminAuthStatsSummaryQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAuthStatsSummary>>> = ({
+    signal,
+  }) => getAdminAuthStatsSummary({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetAdminAuthStatsSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminAuthStatsSummary>>
+>;
+export type GetAdminAuthStatsSummaryQueryError = ErrorType<ErrorResponse>;
+
+export function useGetAdminAuthStatsSummary<
+  TData = Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthStatsSummary>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminAuthStatsSummary>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminAuthStatsSummary<
+  TData = Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthStatsSummary>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+          TError,
+          Awaited<ReturnType<typeof getAdminAuthStatsSummary>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetAdminAuthStatsSummary<
+  TData = Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthStatsSummary>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Auth activity counts (requireAdmin + admins scope)
+ */
+
+export function useGetAdminAuthStatsSummary<
+  TData = Awaited<ReturnType<typeof getAdminAuthStatsSummary>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getAdminAuthStatsSummary>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetAdminAuthStatsSummaryQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getListAdminAuthActivityUrl = (params?: ListAdminAuthActivityParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/auth-activity?${stringifiedParams}`
+    : `/api/admin/auth-activity`;
+};
+
+/**
+ * The newest 100 rows at most (hard .limit(100), no page param —
+ * the FE discloses the window honestly). PII-lean projection: the
+ * full auth_activity row minus nothing — identifier/provider/IP/
+ * user-agent are the audit payload. Cache-Control: no-store.
+ * @summary Auth activity timeline (requireAdmin + admins scope)
+ */
+export const listAdminAuthActivity = async (
+  params?: ListAdminAuthActivityParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<ListAdminAuthActivity200> => {
+  return customFetch<ListAdminAuthActivity200>(getListAdminAuthActivityUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminAuthActivityQueryKey = (params?: ListAdminAuthActivityParams) => {
+  return [`/api/admin/auth-activity`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminAuthActivityQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminAuthActivity>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuthActivityParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminAuthActivity>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminAuthActivityQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminAuthActivity>>> = ({ signal }) =>
+    listAdminAuthActivity(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminAuthActivity>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminAuthActivityQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminAuthActivity>>
+>;
+export type ListAdminAuthActivityQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminAuthActivity<
+  TData = Awaited<ReturnType<typeof listAdminAuthActivity>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminAuthActivityParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminAuthActivity>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminAuthActivity>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminAuthActivity>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminAuthActivity<
+  TData = Awaited<ReturnType<typeof listAdminAuthActivity>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuthActivityParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminAuthActivity>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminAuthActivity>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminAuthActivity>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminAuthActivity<
+  TData = Awaited<ReturnType<typeof listAdminAuthActivity>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuthActivityParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminAuthActivity>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Auth activity timeline (requireAdmin + admins scope)
+ */
+
+export function useListAdminAuthActivity<
+  TData = Awaited<ReturnType<typeof listAdminAuthActivity>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminAuthActivityParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminAuthActivity>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminAuthActivityQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getListAdminReferralsUrl = (params?: ListAdminReferralsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/referrals?${stringifiedParams}`
+    : `/api/admin/referrals`;
+};
+
+/**
+ * Three payloads in one response: the newest-200 list (LEFT JOIN
+ * referrer/referee users), the all-time stats block, and the top
+ * 10 referrers by credited count. KNOWN WINDOW (B-7): the
+ * `search` filter runs POST-limit in JS — it only matches inside
+ * the newest-200 window, not the full history; scoped honestly in
+ * the UI copy. Cache-Control: no-store.
+ * @summary Referral events list + stats + top referrers (requireAdmin + users scope)
+ */
+export const listAdminReferrals = async (
+  params?: ListAdminReferralsParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminReferralsResponse> => {
+  return customFetch<AdminReferralsResponse>(getListAdminReferralsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminReferralsQueryKey = (params?: ListAdminReferralsParams) => {
+  return [`/api/admin/referrals`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAdminReferralsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminReferrals>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminReferralsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminReferrals>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminReferralsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminReferrals>>> = ({ signal }) =>
+    listAdminReferrals(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminReferrals>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListAdminReferralsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminReferrals>>
+>;
+export type ListAdminReferralsQueryError = ErrorType<ErrorResponse>;
+
+export function useListAdminReferrals<
+  TData = Awaited<ReturnType<typeof listAdminReferrals>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: undefined | ListAdminReferralsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminReferrals>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminReferrals>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminReferrals>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminReferrals<
+  TData = Awaited<ReturnType<typeof listAdminReferrals>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminReferralsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof listAdminReferrals>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAdminReferrals>>,
+          TError,
+          Awaited<ReturnType<typeof listAdminReferrals>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListAdminReferrals<
+  TData = Awaited<ReturnType<typeof listAdminReferrals>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminReferralsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminReferrals>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Referral events list + stats + top referrers (requireAdmin + users scope)
+ */
+
+export function useListAdminReferrals<
+  TData = Awaited<ReturnType<typeof listAdminReferrals>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListAdminReferralsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listAdminReferrals>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListAdminReferralsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getAdminLoginUrl = () => {
   return `/api/admin/login`;
