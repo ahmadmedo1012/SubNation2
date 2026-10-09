@@ -202,11 +202,13 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     const r = await get("/category/vpn");
     expect(r.status).toBe(200);
     expect(isSpaShell(r)).toBe(true);
-    // The category map's meta (NOT the homepage baseline).
-    expect(titleOf(r.body)).toBe("اشتراكات VPN في ليبيا — ExpressVPN و CyberGhost و IPVanish");
+    // The category map's meta (NOT the homepage baseline). Branded
+    // ≤60ch titles since R124 (A10-F5) — kept in lockstep with
+    // SHELL_CATEGORY_META by the parity suite.
+    expect(titleOf(r.body)).toBe("اشتراكات VPN في ليبيا — ExpressVPN | SubNation");
     expect(metaContent(r.body, "name", "description")).toContain("ExpressVPN");
     expect(metaContent(r.body, "property", "og:title")).toBe(
-      "اشتراكات VPN في ليبيا — ExpressVPN و CyberGhost و IPVanish",
+      "اشتراكات VPN في ليبيا — ExpressVPN | SubNation",
     );
     expect(canonicalHref(r.body)).toBe("https://subnation.ly/category/vpn");
     // Public money route stays indexable.
