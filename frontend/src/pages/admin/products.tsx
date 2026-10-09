@@ -864,8 +864,26 @@ export default function AdminProductsPage() {
     setSeoTouched({ title: false, description: false });
   };
 
+  // R127-B2 (§A — the R126-L9 future-lane note): select-all membership
+  // honesty, the same class the orders.tsx select-all had (R126-L3
+  // A1-5). The toggle used to branch on a SIZE test
+  // (`selectedIds.size === filtered.length`) while the rendered
+  // checkbox state (title/icon/text below) uses MEMBERSHIP
+  // (`filtered.every((p) => selectedIds.has(p.id))`). The selection
+  // legitimately carries ids OUTSIDE the current category tab (rows
+  // selected before a chip flip — selections are never pruned on
+  // filter change), so the two could disagree: with hidden-but-
+  // selected ids and visible-unselected rows the unchecked button
+  // CLEARED the selection instead of selecting the visible rows; with
+  // an extra hidden id alongside a fully-selected window the checked
+  // button re-ran the select branch and the operator could never
+  // clear. The toggle now branches on the SAME membership flag it
+  // renders (the flag used to live below its consumers — hoisted
+  // here, mirroring orders.tsx:1021-1026).
+  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    if (allFilteredSelected) setSelectedIds(new Set());
     else setSelectedIds(new Set(filtered.map((p) => p.id)));
   };
 
@@ -1005,8 +1023,6 @@ export default function AdminProductsPage() {
       setBulkProcessing(false);
     }
   };
-
-  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
 
   return (
     <AdminLayout onRefresh={() => refetch()}>
@@ -1415,6 +1431,10 @@ export default function AdminProductsPage() {
           {!isLoading && filtered.length > 0 && (
             <button
               onClick={toggleSelectAll}
+              /* R127-B2 (§A.1 rider): aria-pressed mirrors orders.tsx:1560 —
+                 the visible text swap already announces the state; this
+                 exposes it to AT + makes test assertions uniform. */
+              aria-pressed={allFilteredSelected}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-lg hover:bg-secondary"
               title={allFilteredSelected ? "إلغاء تحديد الكل" : "تحديد الكل"}
             >

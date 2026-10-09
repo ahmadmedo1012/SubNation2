@@ -53,15 +53,19 @@ import {
   telegramCallbackAllowedOrigins,
 } from "../lib/telegram-callback";
 
-// A3 split plan E (R126-L9): the moved predicate + provider-type shapes
-// stay importable from THIS module — routes/index.ts and the pinning
-// tests (telegram-callback-csrf.test.ts) keep resolving them here.
+// A3 split plan E (R126-L9): the moved predicate stays importable from
+// THIS module — routes/index.ts and the pinning test
+// (telegram-callback-csrf.test.ts) keep resolving it here.
+// (R127-B2 §B.3: the sibling ProviderField/ProviderMeta TYPE re-export
+// had zero importers — the types are imported directly from
+// auth-settings-store where consumed — and was deleted.)
 export { isTelegramCallbackSameOrigin } from "../lib/telegram-callback";
-export type { ProviderField, ProviderMeta } from "../services/auth-settings-store";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
 
-export const PROVIDERS: ProviderMeta[] = [
+// R127-B2 (§B.3): the R126-L9 split left `export` on this module-private
+// table — keyword dropped; zero behavior change.
+const PROVIDERS: ProviderMeta[] = [
   {
     id: "google",
     label: "Google",
@@ -590,7 +594,7 @@ authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
       .status(400)
       .json(
         createErrorResponse(
-          "قيمة غير صالحة لإعدادات المزوّد (نصوص فقط ضمن الحدود المسموحة)",
+          "قيمة غير صالحة لإعدادات المزود (نصوص فقط ضمن الحدود المسموحة)",
           ErrorCode.INVALID_DATA,
         ),
       );

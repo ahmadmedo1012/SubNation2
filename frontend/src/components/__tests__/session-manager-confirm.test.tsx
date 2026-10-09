@@ -21,6 +21,15 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ token: "test-token" }),
 }));
 
+// R127 (B15-2): the logout-all failure path now fires a toast (the
+// error-state suite pins it). Mocked here too so this file stays
+// hermetic — the confirmation-path test below deliberately answers
+// ok:false, which exercises the toast call in the real component.
+const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
+vi.mock("@/hooks/use-toast", () => ({
+  useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
+}));
+
 const fetchMock = vi.fn();
 
 function mockFetchResponses(responses: Array<{ ok: boolean; body: unknown }>) {

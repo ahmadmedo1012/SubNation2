@@ -71,7 +71,7 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 
-const PRODUCT = (id: number, name: string) => ({
+const PRODUCT = (id: number, name: string, category = "streaming") => ({
   id,
   name,
   description: null,
@@ -79,7 +79,7 @@ const PRODUCT = (id: number, name: string) => ({
   price: 20 + id,
   stock_count: 10,
   is_active: true,
-  category: "streaming",
+  category,
   usage_terms: null,
   order_count: 3,
   created_at: "2026-08-01T10:00:00.000Z",
@@ -541,5 +541,129 @@ describe("AdminProductsPage — stats co-invalidation + Arabic bulk reasons (R12
     const toastArg = toastMock.mock.calls[0][0];
     expect(toastArg.description).toContain("تعذّر الاتصال بالخدمة");
     expect(toastArg.description).not.toContain("Failed to fetch");
+  });
+});
+
+/**
+ * R127-B2 (§A) — the LAST size-vs-membership select-all (the twin of
+ * the R126-L3 orders fix; mirrored from orders-bulk-status.test.tsx).
+ *
+ * The toggle used to branch on `selectedIds.size === filtered.length`
+ * — a SIZE test — while the rendered checkbox state (title/icon/text,
+ * and now aria-pressed) uses MEMBERSHIP (`filtered.every((p) =>
+ * selectedIds.has(p.id))`). Selections are never pruned on filter
+ * change, so the category chip split the two:
+ *
+ *   - hidden-but-selected ids + visible-unselected rows → the
+ *     unchecked button CLEARED the selection instead of selecting
+ *     the visible rows (both feed the bulk archive/hide money
+ *     actions — same blast radius orders had);
+ *   - an extra hidden id alongside a fully-selected window → the
+ *     checked button re-ran the select branch and the operator could
+ *     never clear from the button.
+ *
+ * The category tabs filter CLIENT-side over the loaded rows (the
+ * `filtered` memo), so flipping the chip mid-selection is the natural
+ * way to hold out-of-filter ids — exactly what these two tests do.
+ */
+describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R127-B2)", () => {
+  // Two streaming + two music products — the category chips split
+  // them 2/2 while the selection rides across the flip
+  // (CATEGORY_FILTERS: «بث مباشر» = streaming, «موسيقى» = music).
+  const MIXED = [
+    PRODUCT(1, "Netflix 1M"),
+    PRODUCT(2, "Hulu 1M"),
+    PRODUCT(3, "Spotify 3M", "music"),
+    PRODUCT(4, "Apple Music", "music"),
+  ];
+
+  /** The header select-all (text swaps with state; aria-pressed pins it). */
+  const selectAllButton = () => screen.getByRole("button", { name: "تحديد الكل" });
+  const deselectAllButton = () => screen.getByRole("button", { name: "إلغاء الكل" });
+
+  /** The row selector's shared aria-pressed state (single layout — no
+   *  desktop/mobile duplicate like orders has). */
+  const rowSelected = (name: string): boolean =>
+    screen.getByRole("button", { name: `تحديد ${name}` }).getAttribute("aria-pressed") === "true";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockProductsResult(MIXED);
+    // Live mutation stubs (the memoized cards dereference `mutate` at
+    // render time — see the first describe's R124-I5 note).
+    (useDeleteProduct as unknown as Mock).mockReturnValue({ mutate: vi.fn() });
+    (useCreateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    (useUpdateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("visible-unselected rows with out-of-category selections: select-all SELECTS the visible rows (was: cleared)", async () => {
+    renderPage();
+    await screen.findAllByText("Netflix 1M");
+
+    // Select the two MUSIC rows on the «الكل» view…
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Apple Music" }));
+    expect(screen.getByText("2 منتج محدد")).toBeInTheDocument();
+
+    // …then narrow the chip to «بث مباشر»: the two visible streaming
+    // rows are UNSELECTED, yet the stale selection's SIZE (2) equals
+    // the filtered LENGTH (2) — the old size-equality trap.
+    fireEvent.click(screen.getByRole("button", { name: "بث مباشر" }));
+    await waitFor(() => expect(screen.queryAllByText("Spotify 3M")).toHaveLength(0));
+    expect(selectAllButton()).toHaveAttribute("aria-pressed", "false");
+
+    // The unchecked select-all must SELECT the visible rows — the old
+    // branch saw 2===2 and cleared the selection instead.
+    fireEvent.click(selectAllButton());
+
+    // The button flips to its checked face («إلغاء الكل», pressed).
+    expect(deselectAllButton()).toHaveAttribute("aria-pressed", "true");
+    expect(rowSelected("Netflix 1M")).toBe(true);
+    expect(rowSelected("Hulu 1M")).toBe(true);
+    // The bulk bar still reads a live selection count (the old branch
+    // zeroed the set — the bar vanished entirely).
+    expect(screen.getByText("2 منتج محدد")).toBeInTheDocument();
+  });
+
+  it("a fully-selected window with an extra hidden id: the checked select-all CLEARS (was: a silent re-select that pruned the hidden id)", async () => {
+    renderPage();
+    await screen.findAllByText("Netflix 1M");
+
+    // Select three rows on «الكل»: both music rows + one streaming…
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Netflix 1M" }));
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Apple Music" }));
+    expect(screen.getByText("3 منتج محدد")).toBeInTheDocument();
+
+    // …then narrow to «موسيقى»: both visible rows are selected (the
+    // button reads checked) but Netflix 1M rides hidden in the set —
+    // size 3 ≠ length 2, so the old branch re-ran the SELECT side
+    // and the checked button could never clear anything.
+    fireEvent.click(screen.getByRole("button", { name: "موسيقى" }));
+    await waitFor(() => expect(screen.queryAllByText("Netflix 1M")).toHaveLength(0));
+    expect(deselectAllButton()).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(deselectAllButton());
+
+    // Membership-keyed: checked → cleared (the hidden id goes with it
+    // — «إلغاء الكل» semantics), never a silent re-select.
+    expect(selectAllButton()).toHaveAttribute("aria-pressed", "false");
+    expect(rowSelected("Spotify 3M")).toBe(false);
+    expect(rowSelected("Apple Music")).toBe(false);
+    // The bulk bar (gated on size > 0) is gone entirely.
+    expect(screen.queryByText(/منتج محدد/)).not.toBeInTheDocument();
   });
 });

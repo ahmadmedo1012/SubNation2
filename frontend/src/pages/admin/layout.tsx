@@ -908,9 +908,8 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // endpoint now counts open/in_progress tickets (30s cacheWrap window,
   // the same staleness contract pending_topups already rides); the
   // tickets page keeps its local override via the `badges` fallback.
-  // Local widening only — the generated AdminStats type predates the
-  // open_tickets field (regenerating orval bindings is a follow-up).
-  const layoutStatsWide = layoutStats as (AdminStats & { open_tickets?: number }) | undefined;
+  // R127: the generated AdminStats type ships open_tickets since the
+  // L1 batch-2 regen — the local widening cast is retired.
 
   const mergedBadges = {
     ...badges,
@@ -924,7 +923,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     // leaves openTickets undefined and the tickets page's local count
     // wins).
     openTickets: canSeeSupportBadge
-      ? (layoutStatsWide?.open_tickets ?? badges?.openTickets ?? 0)
+      ? (layoutStats?.open_tickets ?? badges?.openTickets ?? 0)
       : (badges?.openTickets ?? 0),
     unreadAlerts: alertCountData?.count ?? badges?.unreadAlerts ?? 0,
   };

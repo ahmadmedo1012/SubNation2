@@ -29,7 +29,10 @@ const ROLE_LABELS: Record<string, string> = {
   superadmin: "مسؤول رئيسي",
 };
 
-export const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
+// R127-B2 (§B.3): the R126-L9 split left `export` on module-private
+// symbols (the split plan's "export surface" was never actually needed
+// by the shell) — keyword dropped; zero behavior change.
+const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
 
 // ── Account Tab ───────────────────────────────────────────────────────────────
 //
@@ -51,7 +54,7 @@ export const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
 const PASSWORD_CHANGED_LOGOUT_MESSAGE =
   "تم تغيير كلمة المرور بنجاح — سيتم تسجيل خروجك من كل الجلسات";
 
-export interface AdminSession {
+interface AdminSession {
   id: number;
   username: string;
   display_name: string;

@@ -106,7 +106,9 @@ export async function upsertSetting(key: string, value: Record<string, any>) {
   `);
 }
 
-export function maskSecret(v: string | undefined): string {
+// R127-B2 (§B.3): the R126-L9 split left `export` on this module-private
+// helper — keyword dropped; zero behavior change.
+function maskSecret(v: string | undefined): string {
   return v ? "[SET]" : "";
 }
 

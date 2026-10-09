@@ -62,7 +62,9 @@ import { getSetting } from "./auth-settings-store";
  *   now pass a manually-approved paid topup before any credit lands.
  */
 
-export async function findOrCreateTelegramUser(
+// R127-B2 (§B.3): the R126-L9 split left `export` on this module-private
+// helper — keyword dropped; zero behavior change.
+async function findOrCreateTelegramUser(
   fields: TelegramAuthFields,
   referralCode: string | undefined,
 ): Promise<{ user: typeof usersTable.$inferSelect; isNewUser: boolean }> {

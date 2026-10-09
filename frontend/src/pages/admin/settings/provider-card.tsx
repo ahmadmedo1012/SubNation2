@@ -31,7 +31,9 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-export interface ProviderField {
+// R127-B2 (§B.3): the R126-L9 split left `export` on module-private
+// symbols — keyword dropped; zero behavior change.
+interface ProviderField {
   key: string;
   label: string;
   isSecret: boolean;
@@ -147,9 +149,19 @@ export function ProviderCard({
       // toasted + redirected.
       setEnabled(provider.enabled);
       if (err instanceof AdminSessionExpiredError) return;
+      // B14-14 (R127-L11): the inline error span below is the card's
+      // designed affordance but was dead — `error` was only ever
+      // cleared, never set, so save failures surfaced ONLY via the
+      // toast. The catch now feeds the same Arabic message
+      // (adminFetchJson maps the body via getErrorMessage; the
+      // `fallbackError: "فشل الحفظ"` covers message-less bodies) to
+      // both channels. `setError("")` at save() start keeps every
+      // retry clean.
+      const message = err instanceof Error ? err.message : "فشلت العملية";
+      setError(message);
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -292,7 +304,7 @@ export function ProviderCard({
             >
               {saving ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ الحفظ...
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ الحفظ…
                 </>
               ) : saved ? (
                 <>
