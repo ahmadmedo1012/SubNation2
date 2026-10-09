@@ -310,7 +310,11 @@ export default function AdminCouponsPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
+        // B14-11 (R127-L11, same-file cheap pass): unified to the file's
+        // majority fallback «فشلت العملية» (:255/:276) — the cross-repo
+        // fallback canon decision stays deferred to R128 per B14's
+        // batching.
+        description: err instanceof Error ? err.message : "فشلت العملية",
         variant: "destructive",
       });
     } finally {

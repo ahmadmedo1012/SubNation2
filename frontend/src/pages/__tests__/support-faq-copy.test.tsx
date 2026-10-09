@@ -63,7 +63,7 @@ describe("SupportPage FAQ — the referral answer matches policy B (R115 A8 P1)"
     // The answer states the approval trigger and BOTH sides' rewards.
     expect(screen.getByText(/عندما يعتمد فريقنا أول شحن/)).toBeInTheDocument();
     expect(screen.getByText(/مكافأة ترحيب 5 د\.ل تُضاف لمحفظته/)).toBeInTheDocument();
-    expect(screen.getByText(/نقاط ولاء قابلة للتحويل/)).toBeInTheDocument();
+    expect(screen.getByText(/نقاط الولاء قابلة للتحويل/)).toBeInTheDocument();
 
     // The old at-signup promise must be gone.
     expect(screen.queryByText(/فور التسجيل/)).not.toBeInTheDocument();

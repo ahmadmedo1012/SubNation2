@@ -76,7 +76,9 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   if (result.payload.isTemp === true) {
     res
       .status(401)
-      .json(createErrorResponse("جلسة مؤقتة — أكمل التحقق بخطوتين أولاً", ErrorCode.UNAUTHORIZED));
+      .json(
+        createErrorResponse("جلسة مؤقتة — أكمل المصادقة الثنائية أولاً", ErrorCode.UNAUTHORIZED),
+      );
     return;
   }
 

@@ -59,7 +59,7 @@ describe("RegisterPage — the welcome-bonus promise matches policy B (R115 A8 P
 
     // The honest trigger headline.
     expect(
-      screen.getByText("عند أول شحن معتمد عبر كود إحالة تحصل أنت وصديقك على مكافآت"),
+      screen.getByText("عند أول شحن معتمد عبر رمز الإحالة تحصل أنت وصديقك على مكافآت"),
     ).toBeInTheDocument();
 
     // The per-side detail: the registrant's 5.00 د.ل credit…

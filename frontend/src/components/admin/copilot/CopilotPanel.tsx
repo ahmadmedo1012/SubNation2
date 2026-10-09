@@ -50,7 +50,7 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // quietly — no fake "request failed" bubble on a page being left).
 import { AdminSessionExpiredError, adminFetch } from "@/lib/admin-session";
 import { getErrorMessage } from "@/lib/errors";
-import { copyToClipboard } from "@/lib/utils";
+import { copyToClipboard, formatCount } from "@/lib/utils";
 // 93-C7 / C-UX2 (A12 B13): the copilot phase pill migrates from raw
 // emerald/amber/blue hues to the canonical StatusBadge tones on the
 // --status-* tokens.
@@ -196,7 +196,7 @@ export function sanitizeRestoredConversations(list: Conversation[]): Conversatio
         ? {
             ...t,
             loading: false,
-            error: t.error ?? "انقطع الطلب بإغلاق اللوحة — أعد المحاولة",
+            error: t.error ?? "انقطع الطلب بإغلاق اللوحة — حاول مجدداً",
           }
         : t,
     ),
@@ -754,7 +754,7 @@ export function CopilotPanel() {
       // answer and no error: a silent dead end. The operator now gets
       // an honest retryable error on the turn itself.
       patchTurn(turnId, {
-        error: "لم يصل رد من المساعد — انقطع البث قبل اكتمال الإجابة، أعد المحاولة.",
+        error: "لم يصل رد من المساعد — انقطع البث قبل اكتمال الإجابة، حاول مجدداً.",
         loading: false,
         progress: [],
       });
@@ -980,7 +980,16 @@ export function CopilotPanel() {
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold truncate leading-tight">{c.title}</div>
                         <div className="text-3xs text-muted-foreground mt-0.5">
-                          {c.turns.length} رسالة
+                          {/* B14-5 (R127-L11): formatCount plural routing —
+                              the frozen «N رسالة» rendered «2 رسالة»/
+                              «3 رسالة» for the dual/plural counts. */}
+                          {formatCount(c.turns.length, {
+                            one: "رسالة",
+                            two: "رسالتان",
+                            few: "رسائل",
+                            many: "رسالة",
+                            other: "رسالة",
+                          })}
                         </div>
                       </div>
                       <button
@@ -1102,7 +1111,7 @@ export function CopilotPanel() {
                         }}
                         rows={1}
                         placeholder={
-                          flags.phase2_enabled ? "اكتب سؤالاً أو أمراً للتعديل..." : "اكتب سؤالك..."
+                          flags.phase2_enabled ? "اكتب سؤالاً أو أمراً للتعديل…" : "اكتب سؤالك…"
                         }
                         className="flex-1 resize-none bg-transparent border-0 text-sm focus:outline-none min-h-[20px] max-h-[240px] py-1"
                       />
@@ -1236,7 +1245,7 @@ function TurnView({
           <button
             onClick={onRetry}
             className="text-2xs hover:underline shrink-0 flex items-center gap-1"
-            title="إعادة المحاولة"
+            title="حاول مجدداً"
           >
             <RefreshCw className="w-3 h-3" /> إعادة
           </button>
@@ -1508,9 +1517,19 @@ function PreviewCard({
                  variant uses (AA-safe on both themes). */
               className="flex-1 px-3 py-2 rounded-xl bg-primary/10 border border-primary/40 text-primary-text text-xs font-bold hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
+              {/* R127-L7 (B14-4): the countdown rendered a bare number
+                  («الانتظار 3…») on the money-critical double-confirm.
+                  Unit added — plural forms follow the BE twin on the
+                  same 3s cooldown («مدة الانتظار 3 ثوانٍ», previews.ts). */}
               {cooldownDone
                 ? "تأكيد ثانٍ — تنفيذ الآن"
-                : `الانتظار ${Math.ceil(remainingMs / 1000)}…`}
+                : `الانتظار ${Math.ceil(remainingMs / 1000)} ${
+                    Math.ceil(remainingMs / 1000) === 1
+                      ? "ثانية"
+                      : Math.ceil(remainingMs / 1000) === 2
+                        ? "ثانيتين"
+                        : "ثوانٍ"
+                  }…`}
             </button>
             <button
               onClick={onCancel}

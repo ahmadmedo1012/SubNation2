@@ -9,7 +9,7 @@ import { useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 /** Arabic copy for the (rare) cookie-could-not-be-established failure. */
-const SESSION_BOOTSTRAP_FAILED = "تعذّر تثبيت جلسة الإدارة — تحقق من اتصالك ثم أعد المحاولة";
+const SESSION_BOOTSTRAP_FAILED = "تعذّر تثبيت جلسة الإدارة — تحقق من اتصالك ثم حاول مجدداً";
 
 export default function AdminLoginPage() {
   const [, navigate] = useLocation();
@@ -189,7 +189,7 @@ export default function AdminLoginPage() {
           <h1 className="text-xl font-bold">{needs2FA ? "المصادقة الثنائية" : "لوحة الإدارة"}</h1>
           <p className="text-muted-foreground text-sm mt-1">
             {needs2FA
-              ? "الرجاء إدخال رمز التحقق من تطبيق Authenticator"
+              ? "يرجى إدخال رمز التحقق من تطبيق Authenticator"
               : "SubNation — وصول مقيد للمسؤولين"}
           </p>
         </div>

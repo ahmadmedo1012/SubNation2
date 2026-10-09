@@ -3,6 +3,10 @@
  *
  * One template per field. Each template includes:
  *   - Arabic-output instruction (FR-DRAFT-003 + research §R-4 validator).
+ *   - Western-digit instruction (R127-L7 / B14-6): the site-wide
+ *     numerals canon is Western 0-9 (utils.ts CLDR pins) — without an
+ *     explicit constraint the model ships Arabic-Indic ٠-٩ into
+ *     generated catalog copy.
  *   - The product's existing context (name, current description, category).
  *   - An explicit shape for the response so the validator has a
  *     predictable target.
@@ -39,6 +43,7 @@ export function buildPrompt(field: FieldName, ctx: PromptContext): string {
         "- وصف عربي قصير، بين 80 و 250 حرفاً.",
         "- صياغة واضحة، بدون تكرار، بدون رموز ترويجية مزعجة.",
         "- لا تذكر السعر أو خصومات وهمية.",
+        "- استخدم الأرقام الغربية (0-9) في كل المخرجات.",
         "- اخرج النص فقط، بدون عناوين أو أقواس.",
       ]
         .filter(Boolean)
@@ -57,9 +62,10 @@ export function buildPrompt(field: FieldName, ctx: PromptContext): string {
         "المطلوب:",
         "- وصف عربي بين 400 و 1500 حرف.",
         "- يشرح الميزات الرئيسية والفائدة للعميل بلغة طبيعية.",
-        "- يقسم المحتوى إلى فقرات قصيرة (٢-٤ فقرات).",
+        "- يقسم المحتوى إلى فقرات قصيرة (2-4 فقرات).",
         "- لا يستخدم القوائم النقطية ولا العناوين الفرعية.",
         "- لا يذكر السعر أو وعوداً غير قابلة للتحقق.",
+        "- استخدم الأرقام الغربية (0-9) في كل المخرجات.",
         "- اخرج النص فقط، بدون عناوين تمهيدية.",
       ]
         .filter(Boolean)
@@ -76,11 +82,12 @@ export function buildPrompt(field: FieldName, ctx: PromptContext): string {
         ctx.currentUsageTerms ? `- شروط الاستخدام: ${ctx.currentUsageTerms.slice(0, 400)}` : "",
         "",
         "المطلوب:",
-        "- بين ٣ و ٦ أسئلة شائعة.",
-        "- كل سؤال قصير وواضح، وكل إجابة بين ٣٠ و ٢٥٠ حرفاً.",
+        "- بين 3 و 6 أسئلة شائعة.",
+        "- كل سؤال قصير وواضح، وكل إجابة بين 30 و 250 حرفاً.",
         "- المخرجات بصيغة JSON صرفة (بدون أي شرح خارج JSON):",
         '  [{"question": "...", "answer": "..."}, ...]',
         "- لا تذكر السعر أو وعوداً تجارية. ركّز على الاستخدام، الدعم، والمشاكل الشائعة.",
+        "- استخدم الأرقام الغربية (0-9) في كل المخرجات.",
       ]
         .filter(Boolean)
         .join("\n");
@@ -94,7 +101,10 @@ export function buildPrompt(field: FieldName, ctx: PromptContext): string {
  */
 export function tryParseFaq(text: string): Array<{ question: string; answer: string }> | null {
   // Strip code fences if the model wrapped the output.
-  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
   try {
     const parsed = JSON.parse(trimmed);
     if (!Array.isArray(parsed)) return null;

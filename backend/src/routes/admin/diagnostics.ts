@@ -310,7 +310,7 @@ function whatsappGatewayError(res: Response, err: unknown) {
             : ErrorCode.SERVICE_UNAVAILABLE;
     return res
       .status(err.statusCode)
-      .json(createErrorResponse("تعذر تنفيذ عملية جلسة واتساب", code));
+      .json(createErrorResponse("تعذّر تنفيذ عملية جلسة واتساب", code));
   }
   return res
     .status(502)

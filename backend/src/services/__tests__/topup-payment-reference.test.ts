@@ -170,7 +170,8 @@ describe("B2-02: duplicate payment_reference — concurrent case (unique index 2
 
     expect(err).toBeInstanceOf(ServiceError);
     expect((err as ServiceError).statusCode).toBe(409);
-    expect((err as ServiceError).message).toContain("مرجع الدفع مستخدم مسبقاً");
+    // R127-L11: «رمز التحويل» canon (B14 §1 L8a residual) — pin updated in lockstep.
+    expect((err as ServiceError).message).toContain("رمز التحويل مستخدم مسبقاً");
 
     // t2's whole transaction rolled back: no credit, no topup ledger row,
     // t2 still pending. (t1's flip was the simulated concurrent writer —

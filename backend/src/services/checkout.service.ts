@@ -671,7 +671,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           "inventory_corrupt",
           `مخزون غير قابل للتسليم: ${product.name}`,
           `وحدة المخزون #${unitId} للمنتج «${product.name}» تحتوي بيانات اعتماد لا يمكن فك تشفيرها بالمفتاح الحالي — رُفض البيع ولم يُخصم أي مبلغ. ` +
-            `أعد رفع مخزون هذا المنتج من لوحة الأدمن، وإلا سيصل المشتري بريد/كلمة مرور فارغة رغم الدفع.`,
+            `أعد رفع مخزون هذا المنتج من لوحة الإدارة، وإلا سيصل المشتري بريد/كلمة مرور فارغة رغم الدفع.`,
           { dedupeKey: `inventory:corrupt:${productId}` },
         );
         return { failure: "INVENTORY_CORRUPT" as const };

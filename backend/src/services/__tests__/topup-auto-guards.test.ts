@@ -70,15 +70,18 @@ describe("F5: createApprovedTopup input guards (fail before any DB write)", () =
   it.each([
     ["missing", ""],
     ["blank", "   "],
-  ])("%s reference → ServiceError 400 (a gateway callback without a reference carries no dedup signal)", async (_label, ref) => {
-    const user = await makeUser("10.00");
+  ])(
+    "%s reference → ServiceError 400 (a gateway callback without a reference carries no dedup signal)",
+    async (_label, ref) => {
+      const user = await makeUser("10.00");
 
-    await expect(
-      TopupService.createApprovedTopup(user.id, 25, "test-gw", ref),
-    ).rejects.toMatchObject({ statusCode: 400 });
+      await expect(
+        TopupService.createApprovedTopup(user.id, 25, "test-gw", ref),
+      ).rejects.toMatchObject({ statusCode: 400 });
 
-    expect(await db.select().from(walletTopupsTable)).toHaveLength(0);
-  });
+      expect(await db.select().from(walletTopupsTable)).toHaveLength(0);
+    },
+  );
 
   it("amount exactly at the 5000 cap is accepted", async () => {
     const user = await makeUser("0.00");
@@ -89,9 +92,11 @@ describe("F5: createApprovedTopup input guards (fail before any DB write)", () =
   });
 
   it("nonexistent user → 404 (unchanged)", async () => {
-    await expect(TopupService.createApprovedTopup(999999, 25, "gw", "ref-x")).rejects.toMatchObject({
-      statusCode: 404,
-    });
+    await expect(TopupService.createApprovedTopup(999999, 25, "gw", "ref-x")).rejects.toMatchObject(
+      {
+        statusCode: 404,
+      },
+    );
   });
 });
 
@@ -167,7 +172,8 @@ describe("F5: createApprovedTopup duplicate-reference guards", () => {
     // that a gateway would retry forever).
     expect(err).toBeInstanceOf(ServiceError);
     expect((err as ServiceError).statusCode).toBe(409);
-    expect((err as ServiceError).message).toContain("مرجع الدفع مستخدم مسبقاً");
+    // R127-L11: «رمز التحويل» canon (B14 §1 L8a residual) — pin updated in lockstep.
+    expect((err as ServiceError).message).toContain("رمز التحويل مستخدم مسبقاً");
 
     // The whole transaction rolled back: no credit, no ledger row.
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));

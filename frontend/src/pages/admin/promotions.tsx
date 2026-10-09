@@ -384,7 +384,7 @@ export default function AdminPromotionsPage() {
                   dir="ltr"
                 />
                 <p className="text-3xs text-muted-foreground mt-1">
-                  الحد الأقصى 95% — يحمي من بيع المنتج مجاناً عند تجمع الكوبونات.
+                  الحد الأقصى 95% — يحمي من بيع المنتج مجاناً عند تجمّع الكوبونات.
                 </p>
               </div>
               <div>
@@ -492,7 +492,7 @@ export default function AdminPromotionsPage() {
                 className="gap-1.5 font-bold"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                إعادة المحاولة
+                حاول مجدداً
               </Button>
             </div>
           ) : sales.length === 0 ? (

@@ -134,7 +134,7 @@ export default function RegisterPage() {
                     The banner now states the trigger honestly; the detail
                     line names each side's reward. */}
                 <p className="text-2xs text-status-success mt-0.5">
-                  عند أول شحن معتمد عبر كود إحالة تحصل أنت وصديقك على مكافآت
+                  عند أول شحن معتمد عبر رمز الإحالة تحصل أنت وصديقك على مكافآت
                 </p>
                 <p className="text-2xs text-status-success mt-0.5 leading-relaxed">
                   تحصل أنت على <span className="font-bold">{formatCurrency(5)}</span> رصيد، ويحصل
@@ -190,8 +190,12 @@ export default function RegisterPage() {
               checkout's consent line was the funnel's only one.
               Reuses the checkout consent idiom (checkout.tsx) — an
               informational link, no forced-checkbox gate on the
-              passwordless provider flow. */}
-          <p className="text-2xs text-muted-foreground text-center mt-4 leading-relaxed">
+              passwordless provider flow.
+              R127-L7 (B3-K2): 11px/400 muted ink measured 3.5:1
+              pixel-median (anti-alias density) — lifted to text-xs +
+              font-semibold (the design-system gate allows 400/600/700
+              only), same treatment as support.tsx's authed-note line. */}
+          <p className="text-xs font-semibold text-muted-foreground text-center mt-4 leading-relaxed">
             بإنشاء حسابك فإنك توافق على{" "}
             <Link
               href="/terms"

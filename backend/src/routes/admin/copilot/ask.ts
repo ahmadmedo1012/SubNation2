@@ -147,7 +147,7 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
       .status(503)
       .json(
         createErrorResponse(
-          "خدمة المساعد غير متاحة (مفتاح المزوّد غير مضبوط)",
+          "خدمة المساعد غير متاحة (مفتاح المزود غير مضبوط)",
           ErrorCode.COPILOT_LLM_UNAVAILABLE,
         ),
       );

@@ -283,11 +283,11 @@ router.post(
         ? payment_reference.trim()
         : null;
     if (paymentReference !== null && paymentReference.length > 100) {
-      return res
-        .status(400)
-        .json(
-          createErrorResponse("مرجع الدفع طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
-        );
+      return res.status(400).json(
+        // L8a residual (R127-L11, B14 §1): «رمز التحويل» canon — same
+        // rename wallet.ts:383-386 (A8 F4) already documented.
+        createErrorResponse("رمز التحويل طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
+      );
     }
 
     if (amount <= 0 || amount > 10000) {
@@ -307,14 +307,17 @@ router.post(
       network = String(payment_network).trim().toLowerCase() || null;
     }
     if (network !== null && !PAYMENT_NETWORK_ALLOWLIST.has(network)) {
-      return res
-        .status(400)
-        .json(
-          createErrorResponse(
-            "شبكة الدفع غير صالحة (المسموح: ليبيانا، مدار)",
-            ErrorCode.INVALID_DATA,
-          ),
-        );
+      return res.status(400).json(
+        createErrorResponse(
+          // L8a residual (R127-L11, B14 §1): the copy listed 2 of the
+          // 4 allowlist values — sadad/lypay also pass the check above,
+          // so the message lied about what the route accepts. All 4
+          // now listed with their canonical labels (the
+          // PAYMENT_NETWORK_LABELS names from telegram.ts A8 F1).
+          "شبكة الدفع غير صالحة (المسموح: ليبيانا، مدار، سداد، LyPay)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
     }
 
     if (method === "mobile_transfer" && !network) {

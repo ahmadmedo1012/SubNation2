@@ -516,7 +516,7 @@ function WalletStatementCard({
         <FetchErrorCard
           size="compact"
           title="تعذّر تحميل سجل الحركات"
-          description="حدث خطأ في الاتصال — أعد المحاولة لعرض حركات محفظتك"
+          description="حدث خطأ في الاتصال — حاول مجدداً لعرض حركات محفظتك"
           onRetry={onRetry}
         />
       ) : entries.length === 0 ? (
@@ -716,7 +716,7 @@ function PaymentReferenceField({
       <p className="text-2xs text-muted-foreground mt-1.5 leading-relaxed">
         {required
           ? "مطلوب للتحقق من تحويلك ومنع احتسابه مرتين."
-          : "يساعد هذا المرجع فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين."}
+          : "يساعد رمز التحويل فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين."}
       </p>
     </div>
   );
@@ -1222,7 +1222,7 @@ export default function WalletPage() {
             <FetchErrorCard
               size="section"
               title="تعذّر تحميل رصيد المحفظة"
-              description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+              description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم حاول مجدداً"
               onRetry={() => void refetchWallet()}
             />
           ) : wallet ? (
@@ -1964,7 +1964,7 @@ export default function WalletPage() {
                 size="compact"
                 descriptionClassName="max-w-[220px]"
                 title="تعذّر تحميل سجل الشحن"
-                description="حدث خطأ في الاتصال — أعد المحاولة لعرض طلبات الشحن السابقة"
+                description="حدث خطأ في الاتصال — حاول مجدداً لعرض طلبات الشحن السابقة"
                 onRetry={() => void refetchTopups()}
               />
             ) : topups.length === 0 ? (

@@ -677,7 +677,7 @@ export default function AdminPricingPage() {
                 onClick={() => void refetchConfig()}
                 className="text-xs text-destructive underline underline-offset-2 shrink-0"
               >
-                إعادة المحاولة
+                حاول مجدداً
               </button>
             ) : null}
           </div>
@@ -780,7 +780,7 @@ export default function AdminPricingPage() {
           <div className="flex items-start gap-2.5 p-3 bg-muted/20 border border-border/40 rounded-xl">
             <Info className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
             <p className="text-2xs leading-relaxed">
-              <span className="font-bold">السعر = التكلفة × (1 + الهامش٪) × سعر الصرف</span>
+              <span className="font-bold">السعر = التكلفة × (1 + الهامش %) × سعر الصرف</span>
               <span className="text-muted-foreground">
                 {" "}
                 — مثال: $5 × {fmtFactor(exampleFactor)} × {fmtFactor(exampleRate)} ={" "}
@@ -1141,7 +1141,7 @@ export default function AdminPricingPage() {
                   <span className="font-bold">
                     {result
                       ? "فشل تحديث الحاسبة — النتيجة أدناه من آخر حساب ناجح وقد لا تطابق المدخلات الحالية."
-                      : "تعذّر تشغيل الحاسبة — أعد المحاولة أو حدّث الصفحة."}
+                      : "تعذّر تشغيل الحاسبة — حاول مجدداً أو حدّث الصفحة."}
                   </span>{" "}
                   <span className="opacity-80">{calcError}</span>
                 </div>
