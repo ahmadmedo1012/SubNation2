@@ -17,16 +17,34 @@
  *   2. React's createRoot error handlers (onUncaughtError /
  *      onCaughtError / onRecoverableError) get a wrapper that ALSO
  *      buffers, then delegates once Sentry is loaded.
- *   3. The actual @sentry/react chunk loads on requestIdleCallback
- *      (or setTimeout 0 fallback). Once it's loaded:
+ *   3. The actual @sentry/react chunk loads per the R127-L10 (B4 D2)
+ *      replay-roll-aware schedule (see scheduleSentryBoot below):
+ *        - sticky session-replay WINNERS (the 10% roll, mirroring
+ *          the SDK's own stickySession sampling semantics) boot on
+ *          requestIdleCallback exactly as before — their replay
+ *          records the whole session, so delaying the SDK would
+ *          truncate the recording (A2 F1 semantics preserved);
+ *        - everyone else (~90%): the import attaches to the LATER of
+ *          the window `load` event / the first `pointerdown` — live
+ *          (B4) the vendor-sentry chunk (111,295 B br, 70% unused at
+ *          load, a 221 ms long task at ~3.6 s on home) rode INSIDE
+ *          the load window on mid-tier mobile because rIC fires
+ *          during it, not after it. The first buffered ERROR loads
+ *          the SDK immediately (see deferredErrorLoadTrigger).
+ *      Once it's loaded:
  *        - instrument.ts runs (Sentry.init + integrations)
  *        - the buffered events are flushed
  *        - the wrapped React handlers start delegating in real time
  *
- * Tradeoff: errors during the ~50–200 ms window between page-load
- * and Sentry boot are captured and replayed, NOT lost. Source-map
- * fidelity is preserved (Sentry resolves stack frames at ingest time
- * using the bundle hash, not at capture time).
+ * Tradeoff: errors during the deferral window are captured and
+ * replayed once the chunk lands, NOT lost — the synchronous buffer
+ * (§1–2) is the guarantee, and the first error short-circuits the
+ * load/pointerdown gate so an early crash pulls the SDK in at once.
+ * The only capture gap vs the old rIC schedule is the (rare) session
+ * with errors that unloads before load+pointerdown ever fire; the
+ * old schedule had the same property inside its 2 s rIC timeout.
+ * Source-map fidelity is preserved (Sentry resolves stack frames at
+ * ingest time using the bundle hash, not at capture time).
  *
  * 97-F6 (R97 J-3) — DSN dead-weight guard: R97-A1 observed the live
  * production site fetching the vendor-sentry chunk (~151 KB brotli) at
@@ -69,6 +87,16 @@ type SentryFlushApi = {
 let sentryReady: SentryFlushApi | null = null;
 
 /**
+ * R127-L10 (B4 D2): the "load the deferred SDK NOW" handle for the
+ * non-sampled path. Armed by armDeferredSentryLoad() while the SDK load
+ * is waiting on the later-of(load, first pointerdown) gate; fired (and
+ * cleared) by push() on the FIRST buffered event — an early crash must
+ * not wait for user engagement to reach Sentry. Null on the winner path
+ * (rIC already bounds the window) and once any load path has fired.
+ */
+let deferredErrorLoadTrigger: (() => void) | null = null;
+
+/**
  * 97-F6 (R97 J-3): build-time DSN presence. Vite statically replaces
  * import.meta.env.VITE_SENTRY_DSN during `vite build` (`void 0` when
  * unset — verified against the emitted instrument chunk), so this is a
@@ -91,6 +119,13 @@ function push(event: BufferedEvent): void {
   if (buffer.length < MAX_BUFFER) {
     buffer.push(event);
   }
+  // R127-L10 (B4 D2): the first buffered error of a DEFERRED
+  // (non-sampled) session loads the SDK immediately — the event stays
+  // buffered (flushed the moment the chunk lands, the §1–2 guarantee),
+  // but it also short-circuits the load/pointerdown gate so the chunk
+  // starts landing right away. Self-clearing: no-op for winners (the
+  // rIC path arms nothing) and once any load path has fired.
+  deferredErrorLoadTrigger?.();
 }
 
 function flushOne(Sentry: SentryFlushApi, event: BufferedEvent): void {
@@ -148,8 +183,136 @@ export function bufferedReactErrorHandler(): ReactErrorHandler {
 }
 
 /**
- * Schedule the Sentry chunk to load on idle. Once loaded, the
- * buffered queue is flushed and subsequent push() calls go directly
+ * R127-L10 (B4 D2): MIRROR of instrument.ts's rollReplaySessionWinner —
+ * same sessionStorage key ("sn:sentry-replay-roll"), same sticky
+ * per-tab-session semantics, same rate (10% in production, 0 in
+ * dev/test). boot-sentry needs the verdict BEFORE the SDK chunk exists
+ * (it decides WHEN to fetch the 111 KB br chunk), so the roll runs here
+ * FIRST; when instrument.ts later evaluates inside the loaded chunk, its
+ * own roll reads the same stored verdict and the two always agree.
+ * Storage-blocked environments (private mode) fall back to independent
+ * per-boot rolls on both sides — they may disagree there, which only
+ * means a deferred boot attaches a session replay when the chunk lands
+ * (harmless: the SDK loads either way; instrument.ts's roll is the one
+ * that decides recording).
+ */
+const REPLAY_ROLL_STORAGE_KEY = "sn:sentry-replay-roll";
+
+function rollReplaySessionWinnerForBoot(sampleRate: number): boolean {
+  if (sampleRate <= 0) return false;
+  try {
+    const stored = sessionStorage.getItem(REPLAY_ROLL_STORAGE_KEY);
+    if (stored === "1") return true;
+    if (stored === "0") return false;
+    const won = Math.random() < sampleRate;
+    sessionStorage.setItem(REPLAY_ROLL_STORAGE_KEY, won ? "1" : "0");
+    return won;
+  } catch {
+    // Storage blocked (private mode / quota) — per-boot roll, exactly
+    // like instrument.ts's fallback.
+    return Math.random() < sampleRate;
+  }
+}
+
+/**
+ * R127-L10 (B4 D2): arm the deferred SDK load for NON-sampled sessions.
+ *
+ * The window `load` event ends the initial load window — importing the
+ * vendor-sentry chunk before it would put 111 KB br + its eval + its
+ * long task right back into the LCP phase (B4's measured regression:
+ * 174 ms eval + a 221 ms long task at ~3.6 s on home, the #1
+ * unused-JS opportunity on every mobile route). The import fires at the
+ * LATER of the load event / the first pointerdown: engagement proves
+ * the visitor is staying (and moves any eval cost off the critical
+ * interaction), while waiting for `load` keeps the bytes from competing
+ * with the LCP resources even when the first tap lands early.
+ *
+ * The FIRST buffered error overrides the gate (deferredErrorLoadTrigger
+ * — an early crash must reach Sentry ASAP, and the error also arms the
+ * replay beforeSend path the moment the chunk initializes).
+ *
+ * Listeners are removed on whichever path fires — nothing dangles on
+ * window for the page lifetime after the decision.
+ */
+function armDeferredSentryLoad(startOnce: () => void): void {
+  // R127-L10 (B4 D2) belt-and-braces: an error may already be sitting
+  // in the buffer when the schedule arms — only possible if the window
+  // listeners were installed meaningfully earlier than
+  // scheduleSentryBoot() (main.tsx calls them back-to-back, so today
+  // this is future-proofing for other entry points). The early-crash
+  // guarantee wins over the load-window discipline: load NOW.
+  if (buffer.length > 0) {
+    deferredErrorLoadTrigger = null;
+    startOnce();
+    return;
+  }
+
+  // The load event may already have fired by the time the entry chunk
+  // evaluates (fast cached boots) — readyState is the honest check.
+  let loaded = typeof document !== "undefined" && document.readyState === "complete";
+  let interacted = false;
+  let disarmed = false;
+
+  const onLoad = (): void => {
+    loaded = true;
+    maybeLoad();
+  };
+  const onPointerDown = (): void => {
+    interacted = true;
+    maybeLoad();
+  };
+
+  const disarm = (): void => {
+    disarmed = true;
+    deferredErrorLoadTrigger = null;
+    window.removeEventListener("load", onLoad);
+    window.removeEventListener("pointerdown", onPointerDown, true);
+  };
+
+  const maybeLoad = (): void => {
+    if (disarmed || !loaded || !interacted) return;
+    disarm();
+    startOnce();
+  };
+
+  deferredErrorLoadTrigger = (): void => {
+    if (disarmed) return;
+    disarm();
+    startOnce();
+  };
+
+  if (!loaded) window.addEventListener("load", onLoad);
+  window.addEventListener("pointerdown", onPointerDown, true);
+}
+
+/**
+ * R127-L10 (B4 D2) TEST-ONLY introspection (same naming convention as
+ * use-public-auth-providers' __resetPublicAuthProvidersCacheForTests):
+ * the boot schedule's decision state, so the regression suite can pin
+ * "the deferred load has NOT fired" WITHOUT pushing a probe error
+ * through the buffer — a probe error would itself trip the
+ * first-error short-circuit (the very behavior under test), so a
+ * captureException-based probe cannot distinguish "already live"
+ * from "the probe just triggered the load".
+ *
+ *   - ready: a load path fired AND the import chain settled (sentryReady
+ *     is set — subsequent pushes flush synchronously to Sentry).
+ *   - deferredGateArmed: the non-sampled path is waiting on the
+ *     later-of(load, first pointerdown) gate right now.
+ */
+export function __sentryBootStateForTests(): {
+  ready: boolean;
+  deferredGateArmed: boolean;
+} {
+  return {
+    ready: sentryReady !== null,
+    deferredGateArmed: deferredErrorLoadTrigger !== null,
+  };
+}
+
+/**
+ * Schedule the Sentry chunk per the R127-L10 (B4 D2) plan. Once loaded,
+ * the buffered queue is flushed and subsequent push() calls go directly
  * to Sentry.
  *
  * 97-F6 (R97 J-3): when the build carries no VITE_SENTRY_DSN this is a
@@ -212,10 +375,36 @@ export function scheduleSentryBoot(): void {
     });
   };
 
-  if (typeof w.requestIdleCallback === "function") {
-    // 2s timeout so a busy main thread can't indefinitely block boot.
-    w.requestIdleCallback(start, { timeout: 2000 });
-  } else {
-    setTimeout(start, 0);
+  let started = false;
+  const startOnce = (): void => {
+    if (started) return;
+    started = true;
+    start();
+  };
+
+  // R127-L10 (B4 D2): the sticky replay roll decides the boot schedule
+  // (see rollReplaySessionWinnerForBoot above — same key/semantics/rate
+  // as instrument.ts, rolled here FIRST so the loaded SDK agrees).
+  const replaySessionWinner = rollReplaySessionWinnerForBoot(
+    import.meta.env.MODE === "production" ? 0.1 : 0,
+  );
+
+  if (replaySessionWinner) {
+    // Sticky 10% session winners: unchanged idle boot — their session
+    // replay records from SDK boot (this module is itself the deferred
+    // SDK boot, so the winner's replay starts delayed-on-idle, exactly
+    // the documented A2 F1 lazy-load shape). 2s timeout so a busy main
+    // thread can't indefinitely block boot.
+    if (typeof w.requestIdleCallback === "function") {
+      w.requestIdleCallback(startOnce, { timeout: 2000 });
+    } else {
+      setTimeout(startOnce, 0);
+    }
+    return;
   }
+
+  // Everyone else (~90% of sessions — they only ever need the SDK for
+  // an error, which arms error replay at that point): keep the 111 KB
+  // br chunk out of the first-visit load window entirely.
+  armDeferredSentryLoad(startOnce);
 }

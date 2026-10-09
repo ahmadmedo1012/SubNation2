@@ -181,7 +181,13 @@ function bundleBudgetPlugin(): Plugin {
 
       console.log(
         `[bundle-budget] eager path (${eagerFiles.size} files: ${breakdown.join(" + ")}): ` +
-          `${eagerGzipSum} bytes (gzip)`,
+          `${eagerGzipSum} bytes (gzip)` +
+          // R127-L10 (B4 D1): surface the parity substitution exactly
+          // where the gate's numbers are read, so a CI log reader can
+          // connect the measured bytes to the production shape.
+          (budgetDsnParitySubstituted
+            ? " [DSN parity: placeholder VITE_SENTRY_DSN active — production-shaped bytes]"
+            : ""),
       );
 
       if (eagerGzipSum > EAGER_GZIP_LIMIT_ERROR) {
@@ -196,6 +202,82 @@ function bundleBudgetPlugin(): Plugin {
       }
     },
   };
+}
+
+// ── R127-L10 (B4 D1, conf 5): budget-gate DSN parity ─────────────────────
+//
+// B4 measured the LIVE eager path (a DSN build) at 148,042 B gz vs the
+// 148,480 B warn line — 438 B (0.3%) of headroom — while CI's budget
+// gate measures the NO-DSN build (R126-A5 basis: 145,717 B). The
+// deployed DSN build is +2,325 B heavier (entry alone +1,737 B:
+// boot-sentry keeps its DSN-present branch + the DSN string), so the
+// gate under-reports production by more than 5× the remaining headroom
+// — any ~0.5 KB addition to the eager path trips the production warn
+// while CI stays silent (the DSN number already grew +1,946 B since
+// R125 with no gate ever seeing it).
+//
+// Fix (report directive D1): CI's budget build must measure
+// PRODUCTION-SHAPED bytes. Production deploys always build with
+// VITE_SENTRY_DSN set (Dockerfile ARG block), and the no-DSN shape
+// exists only in CI and local measurement builds — so when this build
+// runs in CI (GitHub Actions sets CI=true) with no DSN configured,
+// substitute a PLACEHOLDER DSN of realistic length at config load,
+// BEFORE anything below resolves the env (sentryDsnGuardPlugin's mode,
+// Vite's import.meta.env replacement, boot-sentry's SENTRY_DSN_SET).
+// Effects, all intentional:
+//
+//   - sentryDsnGuardPlugin runs in its DSN-set mode → the real
+//     @sentry/react graph is emitted (vendor-sentry as an idle async
+//     chunk, still off the eager path) and the A2 F1 barrel-strip /
+//     wrapper-swap transforms run exactly as in production builds.
+//   - boot-sentry.ts keeps its DSN-present branch → the entry chunk
+//     carries production-shaped bytes.
+//   - bundleBudgetPlugin above sums those bytes — the gate finally
+//     sees what production ships.
+//
+// Safety properties:
+//
+//   - The placeholder host uses the RFC 2606 reserved `.invalid` TLD —
+//     a CI artifact can never accidentally report anywhere (every
+//     ingest attempt DNS-fails), and CI artifacts are never deployed
+//     (production images build inside Docker with the real DSN; the
+//     e2e suite targets a separately deployed stack via E2E_BASE_URL).
+//   - VITEST guard: vitest does not load this config (separate
+//     vitest.config.ts), but suites that IMPORT it for its exports
+//     (preload-gate.test.ts) must not mutate process.env for the whole
+//     test worker — a CI-only VITE_SENTRY_DSN would leak into sibling
+//     tests (e.g. boot-sentry-dsn-guard's "unset" suite) and diverge
+//     CI from local runs.
+//   - The budget thresholds themselves are UNCHANGED (entry 46/55 KiB,
+//     eager 145/160 KiB) — the gate now simply measures the truth.
+export const PLACEHOLDER_BUDGET_SENTRY_DSN =
+  "https://0123456789abcdef0123456789abcdef@o1234567.ingest.budget-sentry.invalid/1234567";
+
+/**
+ * R127-L10 (B4 D1): pure decision for the budget-DSN parity
+ * substitution (see the block docblock above). Exported for the
+ * regression test — the substitution itself is a config-load side
+ * effect, so the predicate is what can be truth-tabled.
+ */
+export function shouldSubstituteBudgetDsn(env: {
+  CI?: string | undefined;
+  VITEST?: string | undefined;
+  VITE_SENTRY_DSN?: string | undefined;
+}): boolean {
+  // VITEST is set to a truthy string in every vitest worker — never
+  // substitute under the test runner (see the safety notes above).
+  return !env.VITEST && env.CI === "true" && (env.VITE_SENTRY_DSN ?? "").trim().length === 0;
+}
+
+// Module scope, evaluated before the `sentryDsnConfigured` resolution
+// below (and before Vite's own loadEnv pass) — the one mutation point.
+const budgetDsnParitySubstituted = shouldSubstituteBudgetDsn(process.env);
+if (budgetDsnParitySubstituted) {
+  process.env.VITE_SENTRY_DSN = PLACEHOLDER_BUDGET_SENTRY_DSN;
+  console.warn(
+    "[bundle-budget] DSN parity (R127 B4 D1): VITE_SENTRY_DSN unset in CI — building with a placeholder DSN so the budget gate measures production-shaped bytes " +
+      "(the live DSN build is +2,325 B over the no-DSN shape and sat 438 B under the 145 KiB warn at f53a886).",
+  );
 }
 
 /**
@@ -750,6 +832,9 @@ const apiProxyTarget =
 // import.meta.env at build time) agree on whether this build ships Sentry.
 // Render/Vercel inject env vars before the build command runs, so the
 // config always sees the deployment's value.
+// R127-L10 (B4 D1): in CI this may be the PLACEHOLDER DSN injected by the
+// budget-parity block above — intentional, so the gate measures the
+// production (DSN) shape. Everywhere else the value is the operator's own.
 const sentryDsnConfigured = (process.env.VITE_SENTRY_DSN ?? "").trim().length > 0;
 
 export default defineConfig({
