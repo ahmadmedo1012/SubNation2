@@ -336,6 +336,39 @@ export interface Product {
 }
 
 /**
+ * Grid projection of Product (R124 A2-F3). GET /api/products ALWAYS includes every field below (variant_count included in both projections); the default full response carries the remaining Product fields (usage_terms, variants) as a structural superset. ?fields=list omits exactly those two — the storefront grids (home/category/flash-sales) render entirely from this shape: price already equals MIN(variants.price) by the import invariant, and the count badge reads variant_count. description rides both projections (R124 review P1-1 — ProductCard renders it at ≥sm).
+ */
+export interface ProductListItem {
+  id: number;
+  /** @nullable */
+  slug?: string | null;
+  name: string;
+  /**
+   * Card sub-line (ProductCard renders it at ≥sm) — in both projections.
+   * @nullable
+   */
+  description?: string | null;
+  /** @nullable */
+  image_url?: string | null;
+  /** Cheapest active variant's LYD price when variants exist, otherwise the product-level LYD price. */
+  price: number;
+  /** True when multiple active variants exist (card renders "تبدأ من"). */
+  price_from: boolean;
+  /** @nullable */
+  category?: string | null;
+  is_active: boolean;
+  stock_count: number;
+  is_available: boolean;
+  /** @nullable */
+  sale_price?: number | null;
+  /** @nullable */
+  discount_percent?: number | null;
+  order_count: number;
+  /** Number of public variants — the count badge's data source when the variant tree is not projected. */
+  variant_count: number;
+}
+
+/**
  * Same-category recommendation rail (max 4, active + unarchived
  * peers). R122 (A1-P2): `slug` rides the DTO so the rail links
  * /product/<slug ?? id> directly — same nullable contract as every
@@ -2139,6 +2172,11 @@ export type ListProductsParams = {
    * @nullable
    */
   search?: string | null;
+  /**
+   * Projection selector (R124 A2-F3). "list" omits the fields the grid never renders — the variant tree (62.6% of the wire bytes, measured live) and usage_terms — the card reads variant_count + price instead (description rides both projections; R124 review P1-1). Absent (default) returns the full Product shape; both shapes satisfy ProductListItem (the full shape is a structural superset).
+   * @nullable
+   */
+  fields?: ListProductsFields;
 };
 
 export type ListProductsSort = (typeof ListProductsSort)[keyof typeof ListProductsSort] | null;
@@ -2148,6 +2186,13 @@ export const ListProductsSort = {
   price_desc: "price_desc",
   popular: "popular",
   newest: "newest",
+} as const;
+
+export type ListProductsFields =
+  (typeof ListProductsFields)[keyof typeof ListProductsFields] | null;
+
+export const ListProductsFields = {
+  list: "list",
 } as const;
 
 export type ListOrdersParams = {

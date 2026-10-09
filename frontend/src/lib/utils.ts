@@ -147,7 +147,13 @@ export function categoryLabel(cat: string | null | undefined): string {
     music: "موسيقى",
     software: "برامج وتراخيص",
     vpn: "شبكات VPN",
-    "ai-tools": "ذكاء اصطناعي",
+    // R124 (A10-F8c): «أدوات ذكاء اصطناعي» — the canonical root of the
+    // page label («أدوات الذكاء الاصطناعي», lib/categories.ts + admin
+    // select), chip-brevity form like «تعليم ومكتبات». Was «ذكاء
+    // اصطناعي», which diverged from every other ai-tools surface AND
+    // leaked into the Product-LD `category` field + breadcrumb LD via
+    // buildProductLd/buildBreadcrumbLd consumers.
+    "ai-tools": "أدوات ذكاء اصطناعي",
     "seo-tools": "أدوات SEO",
     education: "تعليم ومكتبات",
     gaming: "ألعاب",

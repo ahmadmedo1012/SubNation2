@@ -2,6 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { existsSync, readdirSync, readFileSync, rmSync } from "fs";
+import { createRequire } from "module";
 import path from "path";
 import { defineConfig, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -23,6 +24,14 @@ import { injectGoogleSiteVerification } from "./src/lib/seo";
  * eager path — the old gate watched 18% of the bytes a cold visitor
  * downloads before first paint.)
  */
+
+// R1 (R124 review P2-1): chunkGraphDebugPlugin removed — it was the
+// A2 investigation's console.log map of sentry module placement and
+// printed on every production build. The structural guarantee it was
+// used to verify (replay bytes off the every-visitor path) is now
+// pinned by tests: instrument-replay-lazy.test.ts + the eager-path
+// bundle budget gate.
+
 function bundleBudgetPlugin(): Plugin {
   return {
     name: "bundle-budget",
@@ -105,6 +114,20 @@ function bundleBudgetPlugin(): Plugin {
         const file = path.basename(href);
         if (rel === "modulepreload" && /\.js$/.test(file)) eagerFiles.add(file);
         else if (rel === "stylesheet" && /\.css$/.test(file)) eagerFiles.add(file);
+      }
+
+      // A2 F7 (R124): the deliberately modulepreload-linked HOME route
+      // chunk is skipped from the eager sum. It is not part of the
+      // entry's static import graph — the boot head-start (App.tsx
+      // startBootHeadStart, leg (a)) fetches the very same chunk at
+      // module-eval time on EVERY non-admin boot, i.e. before first
+      // paint anyway. The HTML preload only moves that identical fetch
+      // earlier (HTML parse instead of post-entry-parse); the pre-paint
+      // byte total is unchanged, so counting the link here would
+      // falsely fail/warn on an intentional, byte-neutral hint. Every
+      // other modulepreload/entry/stylesheet file stays fully guarded.
+      for (const file of [...eagerFiles]) {
+        if (/^home-[A-Za-z0-9_-]+\.js$/.test(file)) eagerFiles.delete(file);
       }
 
       let eagerGzipSum = 0;
@@ -223,9 +246,9 @@ function seoHeadInject(): Plugin {
  * hash in index.html — this plugin reads the rollup bundle at the
  * very end of the build and emits the correct preload tags.
  */
-function fontPreloadInject(): Plugin {
+function criticalPreloadInject(): Plugin {
   return {
-    name: "font-preload-inject",
+    name: "critical-preload-inject",
     apply: "build",
     enforce: "post",
     transformIndexHtml: {
@@ -233,6 +256,8 @@ function fontPreloadInject(): Plugin {
       handler(html, ctx) {
         const bundle = ctx.bundle;
         if (!bundle) return html;
+
+        const tags: string[] = [];
 
         // Find the LCP-text woff2 files by name pattern: Arabic 400
         // (body text), Latin 400 (Latin glyphs), Arabic 700 (the
@@ -243,20 +268,38 @@ function fontPreloadInject(): Plugin {
             name,
           ),
         );
+        for (const name of woff2) {
+          tags.push(
+            `<link rel="preload" as="font" type="font/woff2" crossorigin href="/${name}" />`,
+          );
+        }
 
-        if (woff2.length === 0) return html;
+        // A2 F7 (R124): modulepreload the HOME route chunk. Vite only
+        // modulepreloads the entry's STATIC imports (the vendor chunks);
+        // the home chunk — the money page, warmed on EVERY non-admin boot
+        // by the boot head-start's module-eval import() (App.tsx, leg
+        // (a)) — previously started fetching only AFTER the entry chunk
+        // had downloaded AND parsed (~150-300 ms on 4G). The link moves
+        // the fetch to HTML-parse time, in parallel with the entry +
+        // vendors. Net-new bytes: zero — every non-admin boot fetches
+        // this exact chunk at module-eval time regardless of entry path;
+        // the browser dedupes the module map entry. (The bundle-budget
+        // plugin deliberately skips this one link — see its comment.)
+        const homeChunks = Object.keys(bundle).filter((name) =>
+          /^assets\/home-[A-Za-z0-9_-]+\.js$/.test(name),
+        );
+        for (const name of homeChunks) {
+          tags.push(`<link rel="modulepreload" href="/${name}" />`);
+        }
 
-        const tags = woff2
-          .map(
-            (name) =>
-              `<link rel="preload" as="font" type="font/woff2" crossorigin href="/${name}" />`,
-          )
-          .join("\n    ");
+        if (tags.length === 0) return html;
 
-        // Inject right before the </head> close so the preload tags sit
+        // Inject right before the </head> close so the hints sit
         // alongside the existing network hints. The browser starts the
-        // font fetch during HTML parse, in parallel with the CSS bundle.
-        return html.replace(/(\s*<\/head>)/, `\n    ${tags}$1`);
+        // font/chunk fetches during HTML parse, in parallel with the CSS
+        // bundle and the entry script.
+        const tagBlock = tags.join("\n    ");
+        return html.replace(/(\s*<\/head>)/, `\n    ${tagBlock}$1`);
       },
     },
   };
@@ -297,6 +340,40 @@ function sourcemapGuardPlugin(): Plugin {
 }
 
 /**
+ * A2 F1 (R124): absolute path to @sentry-internal/replay's ESM entry —
+ * the package that physically contains the rrweb Session Replay recorder
+ * (~⅔ of the old 469 KB vendor-sentry chunk; @sentry/react merely re-exports
+ * `replayIntegration` from it through its barrel).
+ *
+ * Resolved at CONFIG LOAD by walking the installed dependency chain
+ * @sentry/react → @sentry/browser → @sentry-internal/replay (never a
+ * version-pinned literal), so SDK upgrades keep working as long as the
+ * package exists — and if it ever stops existing, the build fails LOUDLY
+ * on an unresolvable import instead of silently re-merging the recorder
+ * into the every-visitor chunk. See sentryDsnGuardPlugin below for why
+ * app code imports this package at all.
+ */
+function resolveSentryReplaySdkEntry(): string | null {
+  try {
+    const requireFromFrontend = createRequire(path.resolve(import.meta.dirname, "package.json"));
+    const sentryReactPkg = requireFromFrontend.resolve("@sentry/react/package.json");
+    const sentryBrowserPkg = createRequire(sentryReactPkg).resolve("@sentry/browser/package.json");
+    const replayPkg = createRequire(sentryBrowserPkg).resolve(
+      "@sentry-internal/replay/package.json",
+    );
+    // Prefer the ESM (import) entry — the same code Vite would load for a
+    // normal dependency import.
+    const replayExports = JSON.parse(readFileSync(replayPkg, "utf8"))["exports"]?.["."];
+    const entry = replayExports?.import?.default ?? replayExports?.default?.default;
+    return entry ? path.resolve(path.dirname(replayPkg), entry) : null;
+  } catch {
+    return null;
+  }
+}
+
+const sentryReplaySdkEntry = resolveSentryReplaySdkEntry();
+
+/**
  * 97-F6 (R97 J-3): Sentry dead-weight guard.
  *
  * Live production (R97-A1 §3.5 [46]) showed the vendor-sentry chunk
@@ -309,7 +386,8 @@ function sourcemapGuardPlugin(): Plugin {
  * present at build time):
  *
  *   - When VITE_SENTRY_DSN is SET at build time this plugin is inert and
- *     @sentry/react resolves normally — current behavior is unchanged.
+ *     @sentry/react resolves normally — current behavior is unchanged,
+ *     EXCEPT the A2 F1 build-graph severance below.
  *   - When it is UNSET, this plugin swaps @sentry/react for a no-op
  *     virtual module. Result: no `node_modules/@sentry/` ids enter the
  *     module graph, the manualChunks `vendor-sentry` rule matches
@@ -318,6 +396,52 @@ function sourcemapGuardPlugin(): Plugin {
  *     remaining Sentry surface is the few-byte stub consumed by
  *     ErrorBoundary's error-path dynamic import (a no-op there too: with
  *     no DSN there is nothing to report).
+ *
+ * A2 F1 (R124) — replay byte-gating, the missing build half. The runtime
+ * half lives in src/instrument.ts + src/lib/sentry-replay.ts: the replay
+ * recorder is fetched ONLY when a session will record (sticky 10% roll /
+ * first error). But that only moves bytes if the rrweb code sits OUTSIDE
+ * vendor-sentry — and @sentry/react re-exports `replayIntegration` from
+ * @sentry-internal/replay through its BARREL, the barrel is pinned into
+ * the vendor-sentry manual chunk, and a module whose only chunk-level
+ * importer is that barrel merges INTO it. Importing `replayIntegration`
+ * through the barrel from even a lazy module therefore re-ships the whole
+ * recorder to every visitor. Two coordinated build moves sever it:
+ *
+ *   1. `transform` rewrites src/lib/sentry-replay.ts's import of
+ *      `replayIntegration` from the public barrel to the internal
+ *      package entry. The on-disk module keeps importing "@sentry/react"
+ *      so TypeScript + vitest see the public API (it is the identical
+ *      binding — the barrel re-exports exactly this package's export).
+ *   2. `resolveId` maps that specifier to the resolved ESM entry (app
+ *      code cannot resolve @sentry-internal/* itself under pnpm).
+ *
+ * With the binding severed, the barrel's re-export is unused → tree-shaken
+ * (every @sentry package ships sideEffects:false) → the recorder rides
+ * ONLY the lazy sentry-replay async chunk. The swap is pinned by
+ * src/lib/__tests__/instrument-replay-lazy.test.ts.
+ *
+ * A2 F1 move #3 (verified necessary, R124): tree-shaking alone did NOT
+ * drop the barrel re-export — the prebundled @sentry/browser dist keeps
+ * `export { getReplay, replayIntegration } from '@sentry-internal/replay'`
+ * alive through the chunk graph, and the recorder then merged back into
+ * vendor-sentry (measured: 469,777 B chunk, rrweb markers inside) —
+ * every idle SDK load fetched ~151 KB br of recorder for nothing, and
+ * the unused replay-canvas re-export rode along too. Two more moves
+ * make the boundary deterministic instead of tree-shake-dependent:
+ *
+ *   3. `transform` strips the two replay re-export lines from
+ *      @sentry/browser's ESM barrel (loud shape-drift error, same
+ *      discipline as the wrapper swap). Nothing in app code imports
+ *      getReplay/replayIntegration/replayCanvasIntegration from the
+ *      barrel — the wrapper imports the recorder directly via move 1.
+ *   4. `manualChunks` pins the recorder package + the wrapper source
+ *      file into one named "sentry-replay" chunk. Rollup's default
+ *      grouping merged the 2 KB wrapper into the instrument chunk
+ *      (experimentalMinChunkSize), dissolving the dynamic-import
+ *      boundary; the named chunk is 314 KB — far above the merge
+ *      threshold — so import("./lib/sentry-replay") stays a REAL
+ *      network boundary: fetched only when a session will record.
  */
 function sentryDsnGuardPlugin(dsnConfigured: boolean): Plugin {
   // Virtual-module id resolved for "@sentry/react" when the DSN is unset.
@@ -336,6 +460,12 @@ function sentryDsnGuardPlugin(dsnConfigured: boolean): Plugin {
     "export const withIsolation = noop;",
     "export const browserTracingIntegration = () => ({});",
     "export const replayIntegration = () => ({});",
+    // A2 F1 (R124): src/lib/sentry-replay.ts imports addIntegration from
+    // @sentry/react. Under a DSN-less build this stub replaces the module,
+    // so the named import must exist here too (the wrapper chunk is never
+    // executed in such builds — instrument.ts never loads — but Rollup
+    // still resolves its imports at build time).
+    "export const addIntegration = noop;",
     "export const flush = () => Promise.resolve(false);",
     "export default { init, captureException, captureMessage, withScope, withIsolation, browserTracingIntegration, replayIntegration, flush };",
   ].join("\n");
@@ -344,12 +474,81 @@ function sentryDsnGuardPlugin(dsnConfigured: boolean): Plugin {
     name: "sentry-dsn-guard",
     enforce: "pre",
     resolveId(source) {
+      if (source === "@sentry-internal/replay") {
+        // A2 F1 (R124): the swap below makes this the import source for
+        // `replayIntegration`. DSN-less builds get the same no-op stub as
+        // the rest of the SDK (the sentry graph is closed there anyway —
+        // instrument.ts never loads — this only keeps the import
+        // resolvable). Node_modules-internal imports of the same specifier
+        // (the @sentry/browser barrel's own re-export) resolve to the same
+        // entry, so nothing is duplicated.
+        if (dsnConfigured) {
+          return sentryReplaySdkEntry; // null → unresolvable → loud build error
+        }
+        return STUB_ID;
+      }
       if (dsnConfigured || source !== "@sentry/react") return null;
       return STUB_ID;
     },
     load(id) {
-      if (dsnConfigured || id !== STUB_ID) return null;
+      if (id !== STUB_ID) return null;
       return STUB_CODE;
+    },
+    transform(code, id) {
+      // A2 F1 (R124): DSN-set builds only — sever the replay binding from
+      // the @sentry/react barrel (full rationale in the plugin docblock
+      // above). Shape-drift is a LOUD failure, never a silent no-op: if
+      // sentry-replay.ts's import line changes, this errors so the swap
+      // is updated in lockstep instead of quietly re-eagering the
+      // recorder into vendor-sentry.
+      if (!dsnConfigured) return null;
+      // ── A2 F1 move #3: strip the replay re-exports from the ─────────
+      // prebundled @sentry/browser barrel (docblock above). Same loud
+      // shape-drift discipline as the wrapper swap: the SDK upgrade that
+      // reformats these lines must fail the build, not silently re-ship
+      // the recorder to every visitor. Scoped to the BARREL entry
+      // (build/npm/esm[/dev|/prod]/index.js) — the esm tree also ships
+      // side entries (feedbackAsync.js, integrations/*) that never carry
+      // these lines.
+      if (id.includes("@sentry/browser") && /build\/npm\/esm\/(dev\/|prod\/)?index\.js$/.test(id)) {
+        const BARREL_LINES = [
+          "export { getReplay, replayIntegration } from '@sentry-internal/replay';\n",
+          "export { replayCanvasIntegration } from '@sentry-internal/replay-canvas';\n",
+        ];
+        let stripped = code;
+        let found = 0;
+        for (const line of BARREL_LINES) {
+          if (stripped.includes(line)) {
+            stripped = stripped.replace(line, "");
+            found += 1;
+          }
+        }
+        if (found !== BARREL_LINES.length) {
+          this.error(
+            "[sentry-dsn-guard] @sentry/browser's barrel no longer matches the A2 F1 replay re-export shape — update BARREL_LINES in vite.config.ts.",
+          );
+        }
+        return { code: stripped, map: null };
+      }
+      // ── A2 F1 moves 1+2: the wrapper swap ────────────────────────────
+      if (!id.endsWith("src/lib/sentry-replay.ts")) return null;
+      const SWAP_FROM = 'import { addIntegration, replayIntegration } from "@sentry/react";';
+      const SWAP_TO = [
+        'import { addIntegration } from "@sentry/react";',
+        'import { replayIntegration } from "@sentry-internal/replay";',
+      ].join("\n");
+      if (!code.includes(SWAP_FROM)) {
+        this.error(
+          "[sentry-dsn-guard] src/lib/sentry-replay.ts no longer matches the A2 F1 barrel-import shape — update the swap in vite.config.ts.",
+        );
+      }
+      // R1 (R124 review P1-2): no build markers in shipped code — the
+      // swap itself is load-bearing (breaking the @sentry/react barrel
+      // import is what keeps the rrweb recorder out of the every-visitor
+      // SDK chunk); the debug marker that used to ride along is gone.
+      // map:null stays honest: the string replace invalidates the
+      // original sourcemap, and this chunk's frames are minified-short.
+      return { code: code.replace(SWAP_FROM, SWAP_TO), map: null };
     },
   };
 }
@@ -380,7 +579,7 @@ export default defineConfig({
     tailwindcss(),
     bundleBudgetPlugin(),
     seoHeadInject(),
-    fontPreloadInject(),
+    criticalPreloadInject(),
     sentryDsnGuardPlugin(sentryDsnConfigured),
     VitePWA({
       registerType: "autoUpdate",
@@ -479,7 +678,17 @@ export default defineConfig({
             options: {
               cacheName: "assets-js",
               expiration: {
-                maxEntries: 40,
+                // A2 F2 (R124): 40 → 160. The build emits ~150 JS chunks
+                // and one storefront session loads 13-56 of them (home 30,
+                // product 27, admin products 56 — measured in the A2
+                // report). The old 40-entry cap let a single
+                // home→product→cart session exceed it, so the LRU evicted
+                // chunks a back-navigation immediately re-fetched —
+                // silently defeating this rule's R98-08a offline goal on
+                // any 2-3-page session. 160 × avg ~1.5 KB br ≈ 240 KB
+                // worst-case footprint, well within a sane SW quota
+                // budget (images already use 200 entries).
+                maxEntries: 160,
                 maxAgeSeconds: 2_592_000, // 30 days
               },
               cacheableResponse: {
@@ -587,6 +796,19 @@ export default defineConfig({
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
+        // A2 F6 (R124): merge micro-chunks. The R122 icon de-chunking left
+        // ~70-90 per-icon chunks at 511-855 B br each — every lazy route
+        // navigation paid 13-56 requests where a handful would do (h2
+        // per-request header overhead + stream scheduling). NOTE: Rollup
+        // 4's option is `experimentalMinChunkSize` (the A2 report's
+        // `minChunkSize` does not exist in rollup 4.59 — verified against
+        // rollup/dist/rollup.d.ts). The value is ESTIMATED SOURCE bytes
+        // (pre-minify), not wire bytes; 2048 merges the icon/one-liner
+        // chunks into their consumers. Merge candidates are ranked by the
+        // dead bytes they would add to other routes, so icons do not
+        // re-eager — and if anything ever does, the eager-sum gate above
+        // fails the build.
+        experimentalMinChunkSize: 2048,
         manualChunks(id) {
           // Ensure tiny shared utility libs stay with the eager critical
           // bundle so admin-only chart libs don't get pulled into the
@@ -673,6 +895,27 @@ export default defineConfig({
           // no id ever matches this rule and the vendor-sentry chunk is
           // not emitted at all — the ~151 KB brotli dead weight stays out
           // of the deployment entirely.
+          // A2 F1 move #4 (R124): the replay recorder + its wrapper get
+          // their OWN named chunk. Without this pin, Rollup's default
+          // grouping merged the 2 KB wrapper into the instrument chunk
+          // (experimentalMinChunkSize) — dissolving the dynamic-import
+          // boundary — and the recorder followed the barrel's re-export
+          // into vendor-sentry. With the pin (and the barrel strip in
+          // sentryDsnGuardPlugin), "sentry-replay" is ~314 KB, far above
+          // any merge threshold, and import("./lib/sentry-replay") is a
+          // real network boundary: fetched only when a session will
+          // actually record (sticky 10% roll / first error).
+          // NOTE the id shapes: pnpm store paths carry
+          // "@sentry-internal+replay@" in the directory segment, while
+          // the package-internal segment is "@sentry-internal/replay/".
+          // The wrapper is matched by its source path suffix.
+          if (
+            id.includes("@sentry-internal+replay") ||
+            id.includes("node_modules/@sentry-internal/replay/") ||
+            id.endsWith("src/lib/sentry-replay.ts")
+          ) {
+            return "sentry-replay";
+          }
           if (id.includes("node_modules/@sentry/")) {
             return "vendor-sentry";
           }

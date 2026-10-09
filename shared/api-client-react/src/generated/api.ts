@@ -144,6 +144,7 @@ import type {
   PricingConfig,
   ProbeAuth200,
   Product,
+  ProductListItem,
   ProductRecommendation,
   RecomputeResult,
   ReferralEventItem,
@@ -1638,8 +1639,8 @@ export const getListProductsUrl = (params?: ListProductsParams) => {
 export const listProducts = async (
   params?: ListProductsParams,
   options?: Parameters<typeof customFetch>[1],
-): Promise<Product[]> => {
-  return customFetch<Product[]>(getListProductsUrl(params), {
+): Promise<ProductListItem[]> => {
+  return customFetch<ProductListItem[]>(getListProductsUrl(params), {
     ...options,
     method: "GET",
   });

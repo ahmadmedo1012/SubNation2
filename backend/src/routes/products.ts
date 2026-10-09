@@ -303,7 +303,7 @@ function buildProductDetailDto(
 }
 
 router.get("/", catalogCache, async (req, res) => {
-  const { category, available_only, sort, search } = req.query;
+  const { category, available_only, sort, search, fields } = req.query;
 
   // R104 (AG5-7): 30 s in-process response cache keyed by the validated
   // filter combo — the single most-repeated query set in the app (every
@@ -317,11 +317,16 @@ router.get("/", catalogCache, async (req, res) => {
   // (?sort=<random>) mints a fresh full-payload LRU entry per request.
   const normalizedSort =
     sort === "price_asc" || sort === "price_desc" || sort === "popular" ? sort : "";
+  // A2-F3 (R124): the projection is part of the loader's behavior, so
+  // it belongs in the cache key (RT-1 discipline) — "list" and full
+  // payloads are distinct cached shapes.
+  const listView = fields === "list";
   const cacheKey = JSON.stringify([
     typeof category === "string" ? category.trim().toLowerCase() : "",
     typeof search === "string" ? search.trim().toLowerCase() : "",
     normalizedSort,
     available_only === "true",
+    listView,
   ]);
 
   // B6-02 (R111, audit B6): the search key space is UNBOUNDED — every
@@ -459,22 +464,37 @@ router.get("/", catalogCache, async (req, res) => {
         price_from: variants.length > 1,
         category: p.category,
         is_active: p.isActive,
-        usage_terms: p.usageTerms,
+        // usage_terms moved into the full-projection spread (A2-F3) —
+        // no grid consumer reads it.
         stock_count: stockCount,
         is_available: stockCount > 0,
         sale_price: discountPercent > 0 ? displayPrice : null,
         discount_percent: discountPercent > 0 ? discountPercent : null,
         order_count: Number(p.orderCount ?? 0),
-        variants: variants.map((v) => ({
-          id: v.id,
-          plan_label: v.plan_label,
-          duration_label: v.duration_label,
-          label: v.label,
-          price: v.price,
-          sale_price: v.sale_price,
-          discount_percent: v.discount_percent,
-          is_available: v.is_available,
-        })),
+        // A2-F3 (R124): variant_count ships in BOTH projections so the
+        // grid's count badge has a single data source. description also
+        // rides both (R1 review P1-1 — ProductCard renders it at ≥sm).
+        // The full-projection-only fields are usage_terms + the variant
+        // tree (62.6% of the wire bytes, measured live) — the detail
+        // pages use those. price already equals MIN(variants.price) by
+        // the import invariant, so the "تبدأ من" card renders
+        // identically.
+        variant_count: variants.length,
+        ...(listView
+          ? {}
+          : {
+              usage_terms: p.usageTerms,
+              variants: variants.map((v) => ({
+                id: v.id,
+                plan_label: v.plan_label,
+                duration_label: v.duration_label,
+                label: v.label,
+                price: v.price,
+                sale_price: v.sale_price,
+                discount_percent: v.discount_percent,
+                is_available: v.is_available,
+              })),
+            }),
       };
     });
 

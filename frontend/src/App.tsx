@@ -12,7 +12,7 @@ import { useDocumentDirection } from "@/lib/direction";
 import { consumeQuietScrollToTopReset } from "@/lib/navigation-quiet";
 import { ThemeProvider } from "@/lib/theme";
 import { getListProductsQueryKey } from "@workspace/api-client-react";
-import type { Product } from "@workspace/api-client-react";
+import type { ProductListItem } from "@workspace/api-client-react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
@@ -323,11 +323,12 @@ function startBootHeadStart(): void {
   // head-start.
   if (!isHomeBootPath(bootPath, routerBase)) return;
 
-  // (b) products head-start. NOTE the `{}` argument: home always
-  // builds its params as an object (`const params: Record<string,
-  // string> = {}`), so its unfiltered key is ["/api/products", {}] —
-  // `getListProductsQueryKey()` (no argument) would hash to a
-  // DIFFERENT key and seed nothing.
+  // (b) products head-start. NOTE the `{ fields: "list" }` argument:
+  // home always builds its params as an object with the A2-F3 grid
+  // projection (`const params: Record<string, string> = { fields: "list" }`),
+  // so its unfiltered key is ["/api/products", {fields:"list"}] — a key
+  // built with `{}` or without the projection would hash to a DIFFERENT
+  // key and seed nothing.
   //
   // Raw fetch + apiUrl (not the generated client): this fires at
   // module-eval time, BEFORE main.tsx installs the API fetch bridge
@@ -336,14 +337,14 @@ function startBootHeadStart(): void {
   // every deployment shape.
   void queryClient
     .prefetchQuery({
-      queryKey: getListProductsQueryKey({}),
-      queryFn: async (): Promise<Product[]> => {
-        const res = await fetch(apiUrl("/api/products"), {
+      queryKey: getListProductsQueryKey({ fields: "list" }),
+      queryFn: async (): Promise<ProductListItem[]> => {
+        const res = await fetch(apiUrl("/api/products?fields=list"), {
           credentials: "include",
           headers: { Accept: "application/json" },
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return (await res.json()) as Product[];
+        return (await res.json()) as ProductListItem[];
       },
       // Match home's products staleTime (3 min) so the seeded entry
       // is treated as fresh when home mounts.
@@ -361,6 +362,103 @@ function startBootHeadStart(): void {
 // tests (MODE === "test") so module imports in vitest stay inert.
 if (typeof window !== "undefined" && import.meta.env.MODE !== "test") {
   startBootHeadStart();
+}
+
+// ── A2 F4 (R124): pointer/focus route-chunk warm-up ─────────────────────
+//
+// Every storefront navigation paid a cold chunk burst AT the tap: the
+// product page alone pulls a 27-file fan-out (route chunk + its dep
+// chunks — measured in the A2 report), all after the interaction, on a
+// single-VPS origin with no CDN in front of it. Two delegated document
+// listeners move that fetch one interaction-RTT earlier: when a pointer
+// enters (or keyboard focus lands on) an in-app link, `import()` the
+// target route's chunk using the SAME module specifier its
+// lazyWithRetry route resolves against — the module map dedupes, so the
+// subsequent navigation mount is zero-RTT (the head-start's leg (a)
+// pattern, generalized beyond boot).
+type RouteWarmupFamily = "product" | "category" | "cart" | "checkout" | "wallet";
+
+const ROUTE_CHUNK_WARMUP: Readonly<
+  Record<RouteWarmupFamily, readonly [RegExp, () => Promise<unknown>]>
+> = {
+  // The storefront's most-traveled link families (A2 F4): product cards,
+  // category rails, cart, checkout, wallet.
+  product: [/^\/product\//, () => import("@/pages/product")],
+  category: [/^\/category\//, () => import("@/pages/category")],
+  cart: [/^\/cart/, () => import("@/pages/cart")],
+  checkout: [/^\/checkout/, () => import("@/pages/checkout")],
+  wallet: [/^\/wallet/, () => import("@/pages/wallet")],
+};
+
+const ROUTE_WARMUP_FAMILIES = Object.keys(ROUTE_CHUNK_WARMUP) as RouteWarmupFamily[];
+
+/**
+ * A2 F4 (R124): pure pathname → warm-up-family predicate. Exported for
+ * the same export-for-test pattern as isHomeBootPath below (regression
+ * suite: route-chunk-warmup.test.ts) so the warmed set can neither
+ * silently widen (hover-eagering new chunks) nor silently narrow (losing
+ * the measured navigation-latency win).
+ */
+export function routeWarmupFamilyForPath(pathname: string): RouteWarmupFamily | null {
+  for (const family of ROUTE_WARMUP_FAMILIES) {
+    if (ROUTE_CHUNK_WARMUP[family][0].test(pathname)) return family;
+  }
+  return null;
+}
+
+const warmedRouteChunks = new Set<RouteWarmupFamily>();
+
+function warmRouteChunkForPath(pathname: string): void {
+  const family = routeWarmupFamilyForPath(pathname);
+  if (!family || warmedRouteChunks.has(family)) return;
+  warmedRouteChunks.add(family);
+  // Best-effort: a stale-chunk 404 right after a deploy is recovered
+  // by lazyWithRetry when the route actually mounts.
+  void ROUTE_CHUNK_WARMUP[family][1]().catch(() => {});
+}
+
+function installRouteWarmupListeners(): void {
+  if (typeof document === "undefined") return;
+  // A2 F4: respect data-saver sessions — speculative fetches are pure
+  // waste there, so the whole mechanism stays off.
+  const connection = (navigator as { connection?: { saveData?: boolean } }).connection;
+  if (connection?.saveData) return;
+
+  const warmFromEvent = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const anchor = target.closest("a[href]");
+    if (!anchor) return;
+    const href = anchor.getAttribute("href");
+    // Skip absolute/protocol URLs, //hosts, fragments and empty hrefs —
+    // only in-app path links are warmed.
+    if (!href || /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(href)) return;
+    let pathname: string;
+    try {
+      pathname = new URL(href, window.location.origin).pathname;
+    } catch {
+      return;
+    }
+    const routerBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const normalized =
+      routerBase && pathname.startsWith(`${routerBase}/`)
+        ? pathname.slice(routerBase.length)
+        : pathname;
+    // Admin surfaces are behind a guard and pull 40-56 chunks per page —
+    // warming them from storefront chrome on hover is waste, not speed.
+    if (normalized === "/admin" || normalized.startsWith("/admin/")) return;
+    warmRouteChunkForPath(normalized);
+  };
+
+  // pointerenter does NOT bubble — capture at the document level is the
+  // only delegation point. Keyboard parity via focusin (bubbles).
+  document.addEventListener("pointerenter", warmFromEvent, { capture: true });
+  document.addEventListener("focusin", warmFromEvent);
+}
+
+// Same module-scope/test gate as the head-start above.
+if (typeof window !== "undefined" && import.meta.env.MODE !== "test") {
+  installRouteWarmupListeners();
 }
 
 /**

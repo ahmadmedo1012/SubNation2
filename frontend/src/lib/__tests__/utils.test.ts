@@ -120,7 +120,10 @@ describe("categoryLabel", () => {
   it("returns Arabic labels for the seven live catalog categories (r100)", () => {
     expect(categoryLabel("software")).toBe("برامج وتراخيص");
     expect(categoryLabel("vpn")).toBe("شبكات VPN");
-    expect(categoryLabel("ai-tools")).toBe("ذكاء اصطناعي");
+    // R124 (A10-F8c): «أدوات ذكاء اصطناعي» — canonical root of the
+    // page label, so the Product-LD `category` field agrees with
+    // lib/categories.ts (was the divergent «ذكاء اصطناعي»).
+    expect(categoryLabel("ai-tools")).toBe("أدوات ذكاء اصطناعي");
     expect(categoryLabel("seo-tools")).toBe("أدوات SEO");
     expect(categoryLabel("education")).toBe("تعليم ومكتبات");
   });

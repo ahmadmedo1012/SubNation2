@@ -431,78 +431,49 @@ export const ListProductsQueryParams = zod.object({
     ])
     .nullish(),
   search: zod.coerce.string().nullish(),
-});
-
-export const ListProductsResponseItem = zod.object({
-  id: zod.number().int(),
-  slug: zod.string().nullish(),
-  name: zod.string(),
-  description: zod.string().nullish(),
-  description_long: zod.string().nullish(),
-  faq: zod
-    .array(
-      zod.object({
-        question: zod.string(),
-        answer: zod.string(),
-      }),
-    )
-    .nullish(),
-  features: zod
-    .array(zod.string())
+  fields: zod
+    .union([zod.literal("list"), zod.literal(null)])
     .nullish()
     .describe(
-      "Marketing feature bullets (Arabic). Returned on the detail endpoints (/products/:id and /products/by-slug/:slug) — the list endpoint may omit it. (Contract added round-98: the backend serialized features from the start; the spec gap forced a local `any` cast in the storefront.)\n",
-    ),
-  seo_title: zod.string().nullish().describe("Operator override for the product page <title>."),
-  seo_description: zod.string().nullish().describe("Operator override for the meta description."),
-  image_url: zod.string().nullish(),
-  price: zod
-    .number()
-    .describe(
-      'Cheapest active variant\'s LYD price when variants exist (MIN(variants.price) — the storefront "تبدأ من" number), otherwise the product-level LYD price.\n',
-    ),
-  price_from: zod
-    .boolean()
-    .describe('True when multiple active variants exist (card renders "تبدأ من").'),
-  category: zod.string().nullish(),
-  is_active: zod.boolean(),
-  usage_terms: zod.string().nullish(),
-  stock_count: zod.number().int(),
-  is_available: zod.boolean(),
-  sale_price: zod.number().nullish(),
-  discount_percent: zod.number().nullish(),
-  order_count: zod.number().int(),
-  variants: zod
-    .array(
-      zod
-        .object({
-          id: zod.number().int(),
-          plan_label: zod
-            .string()
-            .nullish()
-            .describe(
-              'Tier axis label (e.g. "فردي", "عائلي", "أساسي") — null when the product only varies by duration.',
-            ),
-          duration_label: zod
-            .string()
-            .nullish()
-            .describe('Validity axis label (e.g. "1 شهر", "سنة", "مدى الحياة").'),
-          label: zod
-            .string()
-            .describe('Joined display label "plan — duration" (single axis: the axis itself).'),
-          price: zod.number().describe("Retail price in LYD."),
-          sale_price: zod.number().nullish(),
-          discount_percent: zod.number().nullish(),
-          is_available: zod.boolean(),
-        })
-        .describe(
-          "Public catalog variant DTO. Deliberately excludes every internal field (cost_price, sku, provider identity) — those exist in the database and admin APIs only.\n",
-        ),
-    )
-    .describe(
-      "Catalog sellable options (Plan × Duration). PUBLIC DTO by design — carries labels, LYD price and availability ONLY. Internal fields (cost_price, sku, supplier identity) are never serialized here.\n",
+      'Projection selector (R124 A2-F3). "list" omits the fields the grid never renders — the variant tree (62.6% of the wire bytes, measured live) and usage_terms — the card reads variant_count + price instead (description rides both projections; R124 review P1-1). Absent (default) returns the full Product shape; both shapes satisfy ProductListItem (the full shape is a structural superset).\n',
     ),
 });
+
+export const ListProductsResponseItem = zod
+  .object({
+    id: zod.number().int(),
+    slug: zod.string().nullish(),
+    name: zod.string(),
+    description: zod
+      .string()
+      .nullish()
+      .describe("Card sub-line (ProductCard renders it at ≥sm) — in both projections."),
+    image_url: zod.string().nullish(),
+    price: zod
+      .number()
+      .describe(
+        "Cheapest active variant's LYD price when variants exist, otherwise the product-level LYD price.",
+      ),
+    price_from: zod
+      .boolean()
+      .describe('True when multiple active variants exist (card renders "تبدأ من").'),
+    category: zod.string().nullish(),
+    is_active: zod.boolean(),
+    stock_count: zod.number().int(),
+    is_available: zod.boolean(),
+    sale_price: zod.number().nullish(),
+    discount_percent: zod.number().nullish(),
+    order_count: zod.number().int(),
+    variant_count: zod
+      .number()
+      .int()
+      .describe(
+        "Number of public variants — the count badge's data source when the variant tree is not projected.",
+      ),
+  })
+  .describe(
+    "Grid projection of Product (R124 A2-F3). GET /api/products ALWAYS includes every field below (variant_count included in both projections); the default full response carries the remaining Product fields (usage_terms, variants) as a structural superset. ?fields=list omits exactly those two — the storefront grids (home/category/flash-sales) render entirely from this shape: price already equals MIN(variants.price) by the import invariant, and the count badge reads variant_count. description rides both projections (R124 review P1-1 — ProductCard renders it at ≥sm).\n",
+  );
 export const ListProductsResponse = zod.array(ListProductsResponseItem);
 
 /**

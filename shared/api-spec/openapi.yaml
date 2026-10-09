@@ -658,6 +658,19 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
+        - name: fields
+          in: query
+          description: >
+            Projection selector (R124 A2-F3). "list" omits the fields the
+            grid never renders — the variant tree (62.6% of the wire
+            bytes, measured live) and usage_terms — the card reads
+            variant_count + price instead (description rides both
+            projections; R124 review P1-1). Absent (default) returns the
+            full Product shape; both shapes satisfy ProductListItem (the
+            full shape is a structural superset).
+          schema:
+            type: ["string", "null"]
+            enum: ["list", null]
       responses:
         "200":
           description: List of products
@@ -666,7 +679,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Product"
+                  $ref: "#/components/schemas/ProductListItem"
 
   /products/{id}:
     get:
@@ -4415,6 +4428,67 @@ components:
             $ref: "#/components/schemas/ProductVariant"
       required:
         [id, name, price, price_from, is_active, stock_count, is_available, order_count, variants]
+
+    ProductListItem:
+      type: object
+      description: >
+        Grid projection of Product (R124 A2-F3). GET /api/products
+        ALWAYS includes every field below (variant_count included in
+        both projections); the default full response carries the
+        remaining Product fields (usage_terms, variants) as a
+        structural superset. ?fields=list omits exactly those two —
+        the storefront grids (home/category/flash-sales) render
+        entirely from this shape: price already equals
+        MIN(variants.price) by the import invariant, and the count
+        badge reads variant_count. description rides both projections
+        (R124 review P1-1 — ProductCard renders it at ≥sm).
+      properties:
+        id:
+          type: integer
+        slug:
+          type: ["string", "null"]
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+          description: Card sub-line (ProductCard renders it at ≥sm) — in both projections.
+        image_url:
+          type: ["string", "null"]
+        price:
+          type: number
+          description: Cheapest active variant's LYD price when variants exist, otherwise the product-level LYD price.
+        price_from:
+          type: boolean
+          description: True when multiple active variants exist (card renders "تبدأ من").
+        category:
+          type: ["string", "null"]
+        is_active:
+          type: boolean
+        stock_count:
+          type: integer
+        is_available:
+          type: boolean
+        sale_price:
+          type: ["number", "null"]
+        discount_percent:
+          type: ["number", "null"]
+        order_count:
+          type: integer
+        variant_count:
+          type: integer
+          description: Number of public variants — the count badge's data source when the variant tree is not projected.
+      required:
+        [
+          id,
+          name,
+          price,
+          price_from,
+          is_active,
+          stock_count,
+          is_available,
+          order_count,
+          variant_count,
+        ]
 
     ProductVariant:
       type: object

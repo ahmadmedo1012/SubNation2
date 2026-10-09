@@ -2,7 +2,8 @@
  * Sentry boot deferrer.
  *
  * Background: importing `./instrument` at the top of main.tsx pulls
- * @sentry/react (Replay + BrowserTracing integrations) into the
+ * @sentry/react (core + BrowserTracing — the rrweb Replay bytes are a
+ * separate lazy chunk since A2 F1, see src/lib/sentry-replay.ts) into the
  * initial chunk graph. Vite emits a `<link rel="modulepreload">` for
  * the resulting `vendor-sentry` chunk, which on the production build
  * is ~155 KB gzip — bigger than React itself. That payload contends
@@ -53,7 +54,19 @@ interface BufferedEvent {
 const buffer: BufferedEvent[] = [];
 const MAX_BUFFER = 32; // hard cap so a runaway error loop can't bloat memory
 
-let sentryReady: typeof import("@sentry/react") | null = null;
+/**
+ * The only @sentry/react API the flush path needs. Kept as an explicit
+ * minimal type (not the module namespace) — A2 F1 (R124): a namespace
+ * handle stored at module scope defeats tree-shaking and would pin every
+ * export, including the lazy Session Replay integration, back into the
+ * every-visitor vendor-sentry chunk.
+ */
+type SentryFlushApi = {
+  captureException: (typeof import("@sentry/react"))["captureException"];
+  withScope: (typeof import("@sentry/react"))["withScope"];
+};
+
+let sentryReady: SentryFlushApi | null = null;
 
 /**
  * 97-F6 (R97 J-3): build-time DSN presence. Vite statically replaces
@@ -80,7 +93,7 @@ function push(event: BufferedEvent): void {
   }
 }
 
-function flushOne(Sentry: typeof import("@sentry/react"), event: BufferedEvent): void {
+function flushOne(Sentry: SentryFlushApi, event: BufferedEvent): void {
   try {
     if (event.kind === "react") {
       Sentry.withScope((scope) => {
@@ -101,27 +114,6 @@ function flushOne(Sentry: typeof import("@sentry/react"), event: BufferedEvent):
   } catch {
     // Never let Sentry replay throw and break the app.
   }
-}
-
-type SentryOp = (S: typeof import("@sentry/react")) => void;
-const opQueue: SentryOp[] = [];
-
-/**
- * Run a Sentry operation (setUser/setTag/captureMessage/…) as soon as the
- * SDK is available; queued otherwise. Lets app modules avoid a STATIC
- * @sentry/react import — which would drag vendor-sentry back into the
- * entry graph and defeat this module's whole deferral.
- */
-export function enqueueSentryOp(op: SentryOp): void {
-  if (sentryReady) {
-    try {
-      op(sentryReady);
-    } catch {
-      /* never break app flow */
-    }
-    return;
-  }
-  if (opQueue.length < MAX_BUFFER) opQueue.push(op);
 }
 
 /** Install window error listeners. Call EARLY in main.tsx. */
@@ -205,25 +197,17 @@ export function scheduleSentryBoot(): void {
 
   const start = (): void => {
     void import("../instrument").then(async () => {
-      // instrument.ts sets window.Sentry as part of its boot. We re-import
-      // @sentry/react here to get a typed handle without a cyclic dep.
-      const SentryModule = await import("@sentry/react");
-      sentryReady = SentryModule;
+      // instrument.ts runs Sentry.init as part of its boot. We re-import
+      // @sentry/react here for a typed handle without a cyclic dep —
+      // NAMED imports only (see the SentryFlushApi note above): a
+      // namespace handle would re-pin every export, replay included,
+      // into the every-visitor chunk (A2 F1).
+      const { captureException, withScope } = await import("@sentry/react");
+      sentryReady = { captureException, withScope };
       // Drain the event buffer in arrival order.
       while (buffer.length) {
         const event = buffer.shift();
-        if (event) flushOne(SentryModule, event);
-      }
-      // Drain deferred operations.
-      while (opQueue.length) {
-        const op = opQueue.shift();
-        if (op) {
-          try {
-            op(SentryModule);
-          } catch {
-            /* noop */
-          }
-        }
+        if (event) flushOne(sentryReady, event);
       }
     });
   };

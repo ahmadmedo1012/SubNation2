@@ -111,18 +111,6 @@ export async function exchangeFirebaseIdToken(
   return data;
 }
 
-export async function exchangeCurrentFirebaseUser(
-  referralCode?: string,
-  /** F-003 — same forwarding contract as exchangeFirebaseIdToken. */
-  linkConsentToken?: string,
-) {
-  const auth = await requireFirebaseAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("لم يتم إكمال تسجيل الدخول");
-  const idToken = await user.getIdToken();
-  return exchangeFirebaseIdToken(idToken, referralCode, linkConsentToken);
-}
-
 export async function refreshFirebaseSession(idToken: string) {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/api/auth/firebase/refresh`, {
@@ -134,22 +122,6 @@ export async function refreshFirebaseSession(idToken: string) {
   const data = (await res.json()) as { token: string; user: unknown; error?: string };
   if (!res.ok) throw new Error(data.error ?? "فشل تجديد الجلسة");
   return data;
-}
-
-export async function refreshCurrentFirebaseSession() {
-  const auth = await requireFirebaseAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("لم يتم تسجيل الدخول");
-  const idToken = await user.getIdToken(true); // Force refresh
-  return refreshFirebaseSession(idToken);
-}
-
-export async function resetFirebaseAuth() {
-  const auth = await getFirebaseAuth();
-  if (auth) {
-    const { signOut } = await import("firebase/auth");
-    await signOut(auth);
-  }
 }
 
 // Store for tracking refresh state across component instances

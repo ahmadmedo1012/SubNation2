@@ -8,8 +8,9 @@ import { describe, expect, it } from "vitest";
  * Three coordinated pieces (R98-08a/b):
  *
  *   a. vite.config.ts: a THIRD runtimeCaching rule — CacheFirst for
- *      same-origin JS (`assets-js`, 40 entries / 30 days) — while the
- *      precache JS glob ban stays deliberately untouched.
+ *      same-origin JS (`assets-js`, 160 entries / 30 days — raised from
+ *      40 in A2 F2/R124 to stop LRU thrash on the ~150-chunk build) —
+ *      while the precache JS glob ban stays deliberately untouched.
  *      Rationale: mobile browsers evict the HTTP cache under storage
  *      pressure without touching SW caches, so the offline story
  *      previously died exactly when the JS chunks vanished.
@@ -36,10 +37,10 @@ function read(rel: string): string {
 describe("R98-08a — vite.config.ts runtime JS caching", () => {
   const configText = read("vite.config.ts");
 
-  it("has a third runtime rule: CacheFirst assets-js with 40 entries / 30 days", () => {
+  it("has a third runtime rule: CacheFirst assets-js with 160 entries / 30 days (A2 F2/R124)", () => {
     expect(configText).toMatch(/cacheName:\s*"assets-js"/);
     expect(configText).toMatch(/handler:\s*"CacheFirst"/);
-    expect(configText).toMatch(/maxEntries:\s*40,/);
+    expect(configText).toMatch(/maxEntries:\s*160,/);
     expect(configText).toMatch(/maxAgeSeconds:\s*2_592_000/);
   });
 

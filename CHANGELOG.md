@@ -7,6 +7,126 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R124 — the biggest round: impeccable/ponytail-driven 10-agent audit + 7-lane implementation + replay byte-gate + catalog projection — 2026-10-09
+
+The round the operator asked to be "أعمق وأشمل وأدق" with the largest
+agent fleet. Ten parallel read-only auditors ran the external
+impeccable/ponytail/gstack methodologies (cloned into the workspace,
+craft-floor as the visual rubric) over `c736d13`: A1 storefront UX · A2
+performance (live-measured) · A3 visual design (computed contrast) ·
+A4 mobile/responsive · A5 accessibility (WCAG 2.1 AA) · A6 admin console ·
+A7 live production smoke · A8 frontend org · A9 backend org · A10
+SEO/copy — **93 findings, 0 P0, evidence-cited to file:line**
+(docs/inspection-r124/). Then seven write lanes in parallel (I1 money
+pages · I2 catalog · I3 design system · I4 auth/support · I5 admin ·
+I6 build/perf — I2/I5/I6 interrupted by infra timeouts, completed by
+dedicated C1/C2 agents + the parent) + one mechanical extraction pass
+(I8) + the parent's cross-cutting A2-F3 catalog projection + an
+adversarial independent reviewer (verdict FIX-FIRST → both P1s fixed +
+6 P2s cleaned, re-verified).
+
+### Performance (live-measured, A2's numbers)
+- **Sentry Session Replay byte-gate, completed end-to-end (A2-F1):** the
+  recorder rode the SDK chunk every visitor idle-loads. The first
+  implementation (lazy wrapper + import swap) was NOT enough — the
+  parent's dist forensics found the prebundled @sentry/browser barrel
+  keeps its replay re-export alive and Rollup merged the wrapper back in
+  (vendor-sentry still 469,777 B with rrweb inside). Two more build
+  moves make it deterministic: the barrel's two replay re-export lines
+  are stripped at build time (loud shape-drift guard) and the recorder +
+  wrapper are pinned into their own `sentry-replay` manual chunk.
+  Measured: vendor-sentry 469,777 → **328,652 B (−141 KB raw, −30%)**,
+  recorder 126,497 B now fetched ONLY on the sticky 10% session roll /
+  first error, via a real dynamic-import boundary. No debug markers in
+  shipped code; pinned by 18 tests (runtime + build-config halves).
+- **Catalog list projection (A2-F3):** `GET /api/products?fields=list`
+  omits the variant tree (62.6% of the wire bytes) + usage_terms; the
+  grids read `price` (already MIN(variants.price) by import invariant) +
+  new `variant_count` (both projections). Spec gains `ProductListItem`,
+  orval/zod regen, contract suite 21/21 still green (full view is a
+  structural superset), boot head-start key kept byte-identical to
+  home's query.
+- **Route-chunk warm-up (A2-F4):** pointerenter/focusin delegation
+  warms likely-next-route chunks (−150-400 ms perceived nav on 3G/4G),
+  saveData-respecting, pinned by route-chunk-warmup.test.ts.
+- **Micro-chunk merge (A2-F5):** `experimentalMinChunkSize: 2048`
+  (Rollup 4's actual option — the audit's `minChunkSize` does not
+  exist) folds ~70 per-icon 511-855 B chunks into their consumers.
+- **Home chunk modulepreload (A2-F6)** + SW assets-js cache cap
+  40→160 (146-chunk builds were LRU-thrashing the offline story).
+- Eager path 145,879 B gz (no-DSN) / 146,276 B gz (DSN-set) — under the
+  145 KiB gate both ways; 138 chunks total.
+
+### Storefront UX / a11y / mobile (craft-floor rubric)
+- **[P2] Wallet topup sequencing**: the required «رمز التحويل» receipt
+  field sat BEFORE the USSD transfer step that generates it — moved
+  after, zero validation change. Pending terminology unified
+  («قيد المراجعة»), rejection modal now links /support + preserves the
+  return path.
+- **Contrast (A3, all computed):** light-theme category accents on
+  ProductCard badges failed AA (education 2.50:1) — darkened via the
+  repo's own R116-S1 method (now 4.88:1); ::selection/caret-color
+  themed; Footer/Navbar muted-fg/80 (4.15:1) + FlashSaleBanner alphas
+  + --status-purple dark (4.09→4.80:1) fixed; raw `text-primary` as
+  text swept to `text-primary-text` repo-wide (login, register,
+  checkout consent, loyalty, profile, wallet, product 404 link).
+- **44px tap floor:** 9 money/recovery controls under 44px fixed
+  (checkout topup link was ~20px — the only path from a failed
+  checkout), footer links min-h-6 (WCAG 2.5.8), orders retry, loyalty
+  convert, referrals share, profile logout, support form.
+- **A11y:** aria-pressed on wallet method/network/preset/phone
+  selectors + support pills + terms tabs; Navbar aria-current; sonner
+  toast region Arabic labels; OTP countdown aria-live + error
+  associations; single-h1 home; underline idiom on footer/inline links.
+- **SEO:** product 404 soft-404 killed (was index,follow + canonical→
+  homepage on an infinite URL space — now noindex, self-canonical,
+  regression-tested); category titles branded ≤60ch (backend SPA-shell
+  parity resynced, 8 parity tests green); flash-sales description to
+  contract length; /terms#privacy fragment stripped from canonical.
+- **Craft-floor REFUSE cleanups:** gradient text (3 hero sites + dead
+  CSS twins), cta-glow zero-offset halo (4 money CTAs), toast 3px side
+  stripes, ghost-card double elevation, emoji-as-icons in support,
+  tablet quick-add hover-only fallback, ProductCard min-w-0.
+
+### Admin console
+- Toast success-variant unified (~22 sites) + emoji removed; filter-tab
+  vocabulary now derives from the same statusLabel source as row badges
+  (orders/topups/dashboard); product editor's 9 fields (+3 promotions
+  +1 pricing) got real labels; keystroke memoization (R118-B2 pattern)
+  extended to users/products/referrals; topups money queue got debounced
+  search (3 new tests); CopilotPanel lazy-loaded out of the layout
+  chunk; dashboard dates to the Latin-digits pin; nav title drifts +
+  «الكتالوج» group label unified from NAV_SECTIONS.
+
+### Code organization (ponytail: deletion beats addition)
+- **−~570 LOC net**: FetchErrorCard extracted (19 sites, 3 preserved
+  size families, drifted sites documented) + LoadMoreButton (6 files,
+  spinner drift standardized) + 12 dead exports deleted (boot-sentry
+  opQueue, firebase-auth ×3, breadcrumbSubsystem, getCorrelationContext,
+  authLogger, workerLogger, hasCriticalFailure, isErrorCode, DEFAULT_DIR,
+  TicketStatus).
+- **Backend (A9 P2s):** coupons.ts now composes the GENERATED
+  CreateCouponBody (the hand-rolled divergent twin deleted; the test
+  imports the real schema); both swallowed catches (alerts/referrals)
+  log with correlation; generic /api 404 got Cache-Control: no-store.
+
+### Gates on the merged tree
+typecheck clean (FE+BE) · lint 0 errors (85 pre-existing warnings) ·
+frontend build + budget PASS (both DSN modes) · frontend 131 files /
+908 tests PASS · backend ~199 files / ~2050 tests PASS (3 chunks) ·
+contract suite 21/21 · spa-shell parity 8/8 · replay-lazy 18/18.
+Independent review verdict: no P0; both P1s (description projection
+regression + build marker) fixed and re-verified with dist forensics.
+
+### Deferred (documented, not forgotten)
+A9's bigger refactors (copilot error envelope ×47, diagnostics.ts
+modernization, toNumber consolidation, auth-settings split) · A8's
+tsconfig test-inclusion · FlashSaleBanner light-wash contrast token ·
+post-deploy `window.__sentryTest` replay canary (ops) · GSC verification
+token (ops) · inventory loading runbook (operator decision — store is
+browse-only with 1 sellable product) · http→https 301 + origin gzip
+exclusions (Traefik/Coolify edge, ops).
+
 ## Round R123 — the deepest phase: audit octet + six fix waves + codegen pipeline reborn + V1-M27..M30 — 2026-10-08
 
 Eight parallel read-only auditors (A1 money chain · A2 test quality · A3
