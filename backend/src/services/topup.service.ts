@@ -355,7 +355,7 @@ export class TopupService {
             const siblingIds = suspiciousSiblings.map((s) => `#${s.id}`).join("، ");
             throw new ServiceError(
               409,
-              `مرجع دفع مكرر (DUPLICATE_PAYMENT_REFERENCE): يوجد طلب شحن معتمد مطابق لنفس المبلغ والشبكة والمُرسل خلال 24 ساعة — تحقق من التحويل قبل إعادة المحاولة (الطلبات: ${siblingIds})`,
+              `رمز تحويل مكرر: يوجد طلب شحن معتمد مطابق لنفس المبلغ والشبكة والمُرسل خلال 24 ساعة — تحقق من التحويل قبل إعادة المحاولة (الطلبات: ${siblingIds})`,
               "DUPLICATE_PAYMENT_REFERENCE",
             );
           }
@@ -607,7 +607,7 @@ export class TopupService {
       await createNotification(
         user.id,
         "wallet",
-        `تم قبول شحن ${parseFloat(String(topup.amount)).toFixed(2)} د.ل`,
+        `تم اعتماد طلب الشحن (${parseFloat(String(topup.amount)).toFixed(2)} د.ل)`,
         "تمت إضافة الرصيد إلى محفظتك بنجاح",
         "/wallet",
       );

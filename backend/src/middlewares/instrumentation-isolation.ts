@@ -67,7 +67,9 @@ export const instrumentationIsolation: import("express").RequestHandler = (req, 
     logger.error({ err, component: "middleware", category: "monitoring" }, "Instrumentation error");
     // Send 500 to client but don't crash the server
     if (!res.headersSent) {
-      res.status(500).json(createErrorResponse("Internal server error", ErrorCode.INTERNAL_ERROR));
+      res
+        .status(500)
+        .json(createErrorResponse("حدث خطأ في الخادم. حاول مرة أخرى", ErrorCode.INTERNAL_ERROR));
     }
   }
 };

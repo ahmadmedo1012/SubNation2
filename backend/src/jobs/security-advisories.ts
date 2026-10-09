@@ -69,7 +69,7 @@ export async function checkAdminTotpAdvisory(): Promise<void> {
     await logAdminAlert(
       "system",
       `توصية أمنية: فعّل التحقق بخطوتين (${names})`,
-      "حساب أدمن بصلاحيات كاملة يعمل دون TOTP. فعّل التحقق بخطوتين من صفحة الأمان لتقييد الوصول بكلمة المرور وحدها.",
+      "حساب مدير بصلاحيات كاملة يعمل دون تحقق بخطوتين. فعّله من صفحة الأمان حتى لا يبقى الوصول معتمداً على كلمة المرور وحدها.",
       { dedupeKey: "admin:no-totp", dedupeWindowMs: 7 * 24 * 60 * 60 * 1000 },
     );
     logger.info(

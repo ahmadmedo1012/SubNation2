@@ -109,8 +109,9 @@ describe("F-03: composite soft-dedup on approve (different refs, same transfer p
     expect(err).toBeInstanceOf(ServiceError);
     const se = err as ServiceError;
     expect(se.statusCode).toBe(409);
-    // The clear Arabic error code from the fix spec, riding the message.
-    expect(se.message).toContain("DUPLICATE_PAYMENT_REFERENCE");
+    // A8 F14 (R126): the Arabic message leads with the «رمز تحويل مكرر»
+    // prefix — the raw enum stays on the machine-readable code below.
+    expect(se.message).toContain("رمز تحويل مكرر");
     // Sibling ids surface for the operator to compare receipts.
     expect(se.message).toContain(`#${t1.id}`);
     expect(se.code).toBe("DUPLICATE_PAYMENT_REFERENCE");

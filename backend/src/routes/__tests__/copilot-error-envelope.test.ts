@@ -251,7 +251,7 @@ describe("copilot error envelopes — byte-identical after the createErrorRespon
       });
       expect(res.status).toBe(400);
       expect(res.text).toBe(
-        '{"error":"intent_text required (1–4000 chars)","code":"COPILOT_INVALID_INPUT"}',
+        '{"error":"نص الأمر مطلوب (من 1 إلى 4000 حرف)","code":"COPILOT_INVALID_INPUT"}',
       );
     } finally {
       close();
