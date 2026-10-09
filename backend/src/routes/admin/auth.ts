@@ -88,6 +88,21 @@ const USERNAME_LOCKOUT_POLICY: LockoutPolicy = {
   baseLockoutMinutes: 15,
 };
 
+// R126-L4 (A7-F3, P3): no-store parity with the 98-F3 / R123-E5 pattern —
+// this was the last admin-family router WITHOUT a router-level header, so
+// its auth rejection paths answered with NO Cache-Control: the inline
+// 401s (login failures, verify-2fa, change-password current-password
+// mismatch) AND the requireAdmin rejections on /session /logout
+// /change-password /profile /2fa/* (live-verified: GET /api/admin/session
+// 401 shipped bare). An intermediary must never cache an auth envelope —
+// a stored "session expired"/"wrong password" body could be replayed for
+// a request that now carries valid credentials. /probe and /session set
+// their own (more specific) values in-handler and override this one.
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 router.post("/login", async (req, res) => {
   const parse = AdminLoginBody.safeParse(req.body);
   if (!parse.success)

@@ -32,6 +32,20 @@ export interface AdminAuthenticatedRequest extends Request {
 }
 
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // R126-L4 (A7-F3, P3): every rejection this middleware produces (the
+  // 401s below + the disabled 403) must ship Cache-Control: no-store —
+  // the R123-E5 no-store sweep covered the admin ROUTERS' bodies, but
+  // the middleware's own 401 envelopes on the auth router (live-verified
+  // on GET /api/admin/session: 401 with NO Cache-Control) were the
+  // parity gap: an intermediary or browser back-cache could serve a
+  // stale "session expired" envelope for a request that now carries a
+  // valid token. Stamped once at entry (not per-branch) so every branch
+  // inherits it. The success path keeps it too — no admin response is
+  // cacheable (the 98-F3 convention), and handlers that set their own
+  // Cache-Control later (copilot ask.ts SSE headers, /probe) override
+  // this value verbatim.
+  res.setHeader("Cache-Control", "no-store");
+
   // Try cookie first, fallback to Authorization header
   const token = req.cookies?.admin_token || req.headers.authorization?.replace("Bearer ", "");
 

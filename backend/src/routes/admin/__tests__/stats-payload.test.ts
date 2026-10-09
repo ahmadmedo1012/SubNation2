@@ -56,7 +56,15 @@ const ADMIN_USERNAME = "stats-payload-admin";
 async function seedAdminToken(): Promise<string> {
   const [a] = await db
     .insert(adminUsersTable)
-    .values({ username: ADMIN_USERNAME, passwordHash: "x", isActive: true })
+    .values({
+      username: ADMIN_USERNAME,
+      passwordHash: "x",
+      isActive: true,
+      // R126-L4 (A7-F1): /api/admin/stats is now finance-scoped — the
+      // payload-contract fixtures below read it as the full-scope
+      // operator would.
+      permissions: ["all"],
+    })
     .returning();
   return signAdminToken({ adminId: a.id, role: "admin" });
 }

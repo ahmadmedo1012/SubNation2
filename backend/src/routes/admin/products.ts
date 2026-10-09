@@ -9,6 +9,7 @@ import {
 import { and, count, desc, eq, inArray, asc, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
+import { logger } from "../../lib/logger";
 import { computeRetailLYD, getPricingConfig } from "../../lib/pricing-config";
 import { encrypt, safeDecrypt } from "../../lib/encryption";
 import { intParam } from "../../lib/http";
@@ -285,6 +286,22 @@ router.post("/products", requireAdmin, async (req, res) => {
     category: data.category,
   });
 
+  // R126-L4 (A4-B2): the products family was the one mutation family
+  // with NO admin-stats-update emit (commit a8d688c's changelog claimed
+  // otherwise — the audit round proved the emit never landed), so a
+  // catalog write on one tab left every other tab's dashboard stats
+  // (and the storefront catalog) stale until their poll intervals.
+  // Same fire-and-forget idiom as orders.ts:702-705 — the frontend's
+  // SocketInitializer handler ignores the payload and prefix-invalidates
+  // the admin stats/orders/topups/users families. A create moves the
+  // catalog stats (total_products / available_products on /api/products/
+  // stats).
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", { type: "product-create", product_id: product.id });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+
   return res.status(201).json({
     id: product.id,
     slug: product.slug,
@@ -373,6 +390,14 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
     fields_changed: Object.keys(updateData),
   });
 
+  // R126-L4 (A4-B2): same emit as create — an is_active/price flip moves
+  // available_products / lowest_price on the catalog stats surface.
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", { type: "product-update", product_id: id });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+
   return res.json({
     id: product.id,
     slug: product.slug,
@@ -409,6 +434,15 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
   bumpSitemapCache();
   bumpCatalogCache();
   void writeAuditLog(req, "product.archive", "product", id);
+
+  // R126-L4 (A4-B2): archiving deactivates the row — available_products /
+  // total_products on the catalog stats surface move with it.
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", { type: "product-archive", product_id: id });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });
 
@@ -579,6 +613,23 @@ router.post("/products/:id/inventory/set-count", requireAdmin, async (req, res) 
     after: target,
     removed: surplus,
   });
+
+  // R126-L4 (A4-B2): ONLY when surplus > 0 — a set-count that matched the
+  // existing unsold count deleted nothing, so emitting a "stats moved"
+  // event would be a false signal (the emit rides actual catalog change,
+  // not mere API success). A real deletion moves available_stock /
+  // unsold_rows on /api/admin/stats.
+  if (surplus > 0) {
+    import("../../lib/socket")
+      .then(({ emitToAdmins }) => {
+        emitToAdmins("admin-stats-update", {
+          type: "product-stock-set-count",
+          product_id: productId,
+          removed: surplus,
+        });
+      })
+      .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  }
 
   // 2026-09-20 (free-infrastructure round): admin inventory write —
   // trigger the low/zero-stock sweep (throttled 10 min; was a
@@ -837,6 +888,19 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
     added: inserted.length,
     skipped_duplicates: skippedDuplicates,
   });
+
+  // R126-L4 (A4-B2): an upload inserts unsold deliverable units — both
+  // available_stock and unsold_rows on /api/admin/stats move, plus
+  // total_units / available_products on the public catalog stats.
+  import("../../lib/socket")
+    .then(({ emitToAdmins }) => {
+      emitToAdmins("admin-stats-update", {
+        type: "product-inventory-upload",
+        product_id: productId,
+        added: inserted.length,
+      });
+    })
+    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
 
   // 2026-09-20 (free-infrastructure round): admin inventory write —
   // trigger the low/zero-stock sweep (throttled 10 min; was a

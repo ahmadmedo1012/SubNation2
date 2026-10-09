@@ -6,9 +6,10 @@ import {
   usersTable,
   walletTopupsTable,
 } from "@workspace/db";
-import { and, count, eq, gte, inArray, isNotNull, or, sql, sum } from "drizzle-orm";
+import { count, eq, inArray, isNotNull, or, sql, sum } from "drizzle-orm";
 import { Router } from "express";
 import { cacheWrap } from "../../lib/cache";
+import { requirePermission } from "../../lib/permissions";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 
 const router = Router();
@@ -57,101 +58,149 @@ function tripoliKey(dayStartUtcMs: number): string {
   return new Date(dayStartUtcMs + TRIPOLI_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-router.get("/stats", requireAdmin, async (_req, res) => {
-  const today = new Date(tripoliDayStartUtc(Date.now()));
+router.get(
+  "/stats",
+  requireAdmin,
+  // R126-L4 (A7-F1, P2): this route (and /chart-data below) previously
+  // carried NO permission scope — mounted ahead of the scope-gated
+  // protectedRouter in admin/index.ts, any scoped admin (e.g. a
+  // `support`-only session) read total_revenue / today_revenue /
+  // total_wallet_balance straight off the API even though the dashboard
+  // UI hides those tiles for non-finance operators (dashboard.tsx
+  // canSeeMoney, R122 A2-P2 — the UI was the ONLY gate). `finance` is the
+  // honest scope: revenue + wallet aggregates are money data, and every
+  // other money surface is finance-gated (topups mount, coupons,
+  // wallet edits in users.ts).
+  //
+  // Frontend alignment, verified before shipping: the dashboard nav is
+  // the one unscoped item, so scoped admins still LAND on /admin — for
+  // them the stats query now 403s and the tile grid renders empty (the
+  // page degrades gracefully; layout badges fall back to page-passed
+  // counts) — the same accepted trade the R123-E3 chart gate made (a
+  // non-finance operator's chart payload goes dark). The operator's
+  // own account holds ["all"] (verified live, sole active admin), so
+  // the primary dashboard is unaffected.
+  requirePermission("finance"),
+  async (_req, res) => {
+    const today = new Date(tripoliDayStartUtc(Date.now()));
 
-  // Round-3 (8-c §5.2): the dashboard polls this every 30s and each poll
-  // ran 8 full-table aggregates (COUNT users/orders, SUM revenue ×2,
-  // SUM wallet, pending topups, stock). `lib/cache.ts` existed for exactly
-  // this and had ZERO callers — wiring it here makes the dead module live
-  // and cuts 8 aggregates/poll to 8 aggregates/30s (Redis or in-memory LRU
-  // fallback, whichever is active).
-  const payload = await cacheWrap("admin:stats", 30, async () => {
-    const [
-      [totalUsers],
-      [totalOrders],
-      [totalRevenue],
-      [pendingTopups],
-      [todayOrders],
-      [todayRevenue],
-      [availableStock],
-      [totalWallet],
-      // R120-B4 (A2-F3): the support badge count — tickets NOT yet
-      // resolved (the ticket_status pg enum is open/in_progress/closed;
-      // dashboard + tickets page badge the same population).
-      [openTickets],
-      // R120-B4 (A6-F5): raw unsold-row count kept alongside the
-      // deliverable-units stock so a ghost-row gap stays observable.
-      [unsoldRows],
-    ] = await Promise.all([
-      db.select({ count: count() }).from(usersTable),
-      db.select({ count: count() }).from(ordersTable).where(eq(ordersTable.status, "completed")),
-      db
-        .select({ sum: sum(ordersTable.amount) })
-        .from(ordersTable)
-        .where(eq(ordersTable.status, "completed")),
-      db
-        .select({ count: count() })
-        .from(walletTopupsTable)
-        .where(eq(walletTopupsTable.status, "pending")),
-      db
-        .select({ count: count() })
-        .from(ordersTable)
-        .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
-      db
-        .select({ sum: sum(ordersTable.amount) })
-        .from(ordersTable)
-        .where(and(eq(ordersTable.status, "completed"), gte(ordersTable.createdAt, today))),
-      // R120-B4 (A6-F5): deliverable units only — the public stock
-      // definition (see deliverableUnitCondition above). The raw
-      // unsold count rides along as unsold_rows.
-      db
-        .select({ count: count() })
-        .from(inventoryTable)
-        .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
-      db.select({ sum: sum(usersTable.walletBalance) }).from(usersTable),
-      db
-        .select({ count: count() })
-        .from(supportTicketsTable)
-        .where(inArray(supportTicketsTable.status, ["open", "in_progress"])),
-      db.select({ count: count() }).from(inventoryTable).where(eq(inventoryTable.isSold, false)),
-    ]);
+    // Round-3 (8-c §5.2): the dashboard polls this every 30s and each poll
+    // ran 8 full-table aggregates (COUNT users/orders, SUM revenue ×2,
+    // SUM wallet, pending topups, stock). `lib/cache.ts` existed for exactly
+    // this and had ZERO callers — wiring it here makes the dead module live
+    // and cuts 8 aggregates/poll to 8 aggregates/30s (Redis or in-memory LRU
+    // fallback, whichever is active).
+    const payload = await cacheWrap("admin:stats", 30, async () => {
+      // R126-L4 (A6-F2): the ten parallel count()/sum() aggregates folded
+      // into five single-scan queries via count(*) FILTER (the shipped
+      // admin/security.ts:91-104 + products.ts:452 idiom). 10 round-trips
+      // per 30s cache-miss → 5, and the Promise.all stage width (5) now
+      // fits inside the pool's 8 clients instead of queueing two queries
+      // behind it. Predicates mirror the pre-fold queries EXACTLY — same
+      // numbers, same response shape; only the scan count changed.
+      const [[usersAgg], [ordersAgg], [pendingTopups], [openTickets], [invAgg]] = await Promise.all(
+        [
+          // users: total count + wallet sum shared ONE users scan.
+          db
+            .select({ totalUsers: count(), walletSum: sum(usersTable.walletBalance) })
+            .from(usersTable),
+          // orders: completed totals + today's completed slice — one
+          // orders scan, the today-boundary rides a FILTER clause instead
+          // of a second/third query.
+          db
+            .select({
+              completedOrders:
+                sql<number>`count(*) filter (where ${ordersTable.status} = 'completed')`.mapWith(
+                  Number,
+                ),
+              totalRevenue: sql<
+                string | null
+              >`sum(${ordersTable.amount}) filter (where ${ordersTable.status} = 'completed')`,
+              todayOrders:
+                sql<number>`count(*) filter (where ${ordersTable.status} = 'completed' and ${ordersTable.createdAt} >= ${today})`.mapWith(
+                  Number,
+                ),
+              todayRevenue: sql<
+                string | null
+              >`sum(${ordersTable.amount}) filter (where ${ordersTable.status} = 'completed' and ${ordersTable.createdAt} >= ${today})`,
+            })
+            .from(ordersTable),
+          db
+            .select({ count: count() })
+            .from(walletTopupsTable)
+            .where(eq(walletTopupsTable.status, "pending")),
+          // R120-B4 (A2-F3): the support badge count — tickets NOT yet
+          // resolved (the ticket_status pg enum is open/in_progress/closed;
+          // dashboard + tickets page badge the same population).
+          db
+            .select({ count: count() })
+            .from(supportTicketsTable)
+            .where(inArray(supportTicketsTable.status, ["open", "in_progress"])),
+          // R120-B4 (A6-F5): ONE unsold scan — deliverable units (at least
+          // one credential field present, the public stock definition) via
+          // a FILTER on the deliverableUnitCondition, the raw unsold-row
+          // count alongside so a ghost-row gap stays observable.
+          db
+            .select({
+              unsoldRows: count(),
+              deliverableUnits:
+                sql<number>`count(*) filter (where ${deliverableUnitCondition()})`.mapWith(Number),
+            })
+            .from(inventoryTable)
+            .where(eq(inventoryTable.isSold, false)),
+        ],
+      );
 
-    return {
-      total_users: Number(totalUsers?.count ?? 0),
-      total_orders: Number(totalOrders?.count ?? 0),
-      total_revenue: parseFloat(String(totalRevenue?.sum ?? 0)),
-      pending_topups: Number(pendingTopups?.count ?? 0),
-      today_orders: Number(todayOrders?.count ?? 0),
-      today_revenue: parseFloat(String(todayRevenue?.sum ?? 0)),
-      available_stock: Number(availableStock?.count ?? 0),
-      total_wallet_balance: parseFloat(String(totalWallet?.sum ?? 0)),
-      // R120-B4 (A2-F3): rides the same 30s cacheWrap window as
-      // pending_topups — a ticket closed up to 30s ago may still count
-      // (the established admin:stats staleness contract; no write-side
-      // invalidation exists for this cache key — see the topup approve
-      // path, which shares the window).
-      open_tickets: Number(openTickets?.count ?? 0),
-      unsold_rows: Number(unsoldRows?.count ?? 0),
-    };
-  });
+      return {
+        total_users: Number(usersAgg?.totalUsers ?? 0),
+        total_orders: Number(ordersAgg?.completedOrders ?? 0),
+        total_revenue: parseFloat(String(ordersAgg?.totalRevenue ?? 0)),
+        pending_topups: Number(pendingTopups?.count ?? 0),
+        today_orders: Number(ordersAgg?.todayOrders ?? 0),
+        today_revenue: parseFloat(String(ordersAgg?.todayRevenue ?? 0)),
+        // R120-B4 (A6-F5): deliverable units only — the public stock
+        // definition (see deliverableUnitCondition above). The raw
+        // unsold count rides along as unsold_rows.
+        available_stock: Number(invAgg?.deliverableUnits ?? 0),
+        total_wallet_balance: parseFloat(String(usersAgg?.walletSum ?? 0)),
+        // R120-B4 (A2-F3): rides the same 30s cacheWrap window as
+        // pending_topups — a ticket closed up to 30s ago may still count
+        // (the established admin:stats staleness contract; no write-side
+        // invalidation exists for this cache key — see the topup approve
+        // path, which shares the window).
+        open_tickets: Number(openTickets?.count ?? 0),
+        unsold_rows: Number(invAgg?.unsoldRows ?? 0),
+      };
+    });
 
-  return res.json(payload);
-});
+    return res.json(payload);
+  },
+);
 
-router.get("/chart-data", requireAdmin, async (req, res) => {
-  const days = Math.min(Math.max(parseInt(String(req.query.days ?? "7")) || 7, 1), 365);
+router.get(
+  "/chart-data",
+  requireAdmin,
+  // R126-L4 (A7-F1): same finance gate as /stats — the chart payload
+  // carries the daily revenue/discount series (money data; CSV export
+  // included). The frontend already never fetches this endpoint for
+  // non-finance operators (dashboard.tsx fetchChart early-returns on
+  // !canSeeMoney, R123 E3 item 5) — the gate just moves that contract
+  // server-side where it can't be bypassed with a raw fetch.
+  requirePermission("finance"),
+  async (req, res) => {
+    const days = Math.min(Math.max(parseInt(String(req.query.days ?? "7")) || 7, 1), 365);
 
-  // Round-3 (8-c §5.4): re-aggregating the whole order/user history per
-  // dashboard mount (and per days-toggle) — cache per (days, day-bucket)
-  // for 30s. The day bucket in the key means the cache flips automatically
-  // at Tripoli midnight instead of serving yesterday's partial bucket.
-  const todayBucket = tripoliKey(tripoliDayStartUtc(Date.now()));
-  const payload = await cacheWrap(`admin:chart:${days}:${todayBucket}`, 30, () =>
-    computeChartData(days),
-  );
-  return res.json(payload);
-});
+    // Round-3 (8-c §5.4): re-aggregating the whole order/user history per
+    // dashboard mount (and per days-toggle) — cache per (days, day-bucket)
+    // for 30s. The day bucket in the key means the cache flips automatically
+    // at Tripoli midnight instead of serving yesterday's partial bucket.
+    const todayBucket = tripoliKey(tripoliDayStartUtc(Date.now()));
+    const payload = await cacheWrap(`admin:chart:${days}:${todayBucket}`, 30, () =>
+      computeChartData(days),
+    );
+    return res.json(payload);
+  },
+);
 
 async function computeChartData(days: number) {
   const todayStartMs = tripoliDayStartUtc(Date.now());

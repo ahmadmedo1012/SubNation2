@@ -7,14 +7,20 @@ import {
   db,
   execTestSql,
   initTestDb,
+  inventoryTable,
+  productsTable,
   resetTestDb,
   supportTicketsTable,
   usersTable,
 } from "../../test/db";
 import { signAdminToken } from "../../lib/jwt";
+import { requireAdmin } from "../../middlewares/requireAdmin";
+import { requirePermission } from "../../lib/permissions";
 import { adminTicketsRouter } from "../admin/tickets";
 import { adminUsersRouter } from "../admin/users";
 import { adminRiskRouter } from "../admin/risk";
+import { adminProductsRouter } from "../admin/products";
+import { adminProductVariantsRouter } from "../admin/product-variants";
 
 /**
  * R125-I6 (I4 cross-lane handoff / A4-B-3 backend half): the
@@ -28,6 +34,13 @@ import { adminRiskRouter } from "../admin/risk";
  *         loyalty edits that reach a mutation)
  *   POST  /api/admin/risk/events/:id/label       {type:"risk-label"}
  *   POST  /api/admin/risk/events/bulk-label      {type:"risk-bulk-label", applied}
+ *
+ * R126-L4 (A4-B2): the products family joins the emit set — commit
+ * a8d688c's changelog CLAIMED products emits, but the R126 audit proved
+ * products.ts had ZERO emitToAdmins hits. Product/variant/stock
+ * mutations now emit too (second describe): create/update/archive,
+ * inventory upload, set-count (only when surplus > 0), and the three
+ * variant mutations. Same fire-and-forget idiom + mock harness.
  *
  * Same room (admin-room via emitToAdmins) and payload shape as the
  * orders-bulk emit; the frontend SocketInitializer handler ignores the
@@ -87,6 +100,17 @@ function buildApp(): Express {
   app.use(express.json());
   app.use(cookieParser());
   app.use("/api/admin", adminTicketsRouter, adminUsersRouter, adminRiskRouter);
+  // R126-L4: products family — the production mount chain from
+  // admin/index.ts:67-72 (requireAdmin + the `inventory` scope in front
+  // of both routers; the tickets/users/risk mounts above ride their own
+  // leaf-level requireAdmin).
+  app.use(
+    "/api/admin",
+    requireAdmin,
+    requirePermission("inventory"),
+    adminProductsRouter,
+    adminProductVariantsRouter,
+  );
   return app;
 }
 
@@ -303,6 +327,191 @@ describe("admin-stats-update emits — tickets/users/risk mutations (R125-I6, I4
         type: "risk-bulk-label",
         applied: 2,
       });
+    } finally {
+      close();
+    }
+  });
+});
+
+describe("admin-stats-update emits — products/variants/stock mutations (R126-L4, A4-B2)", () => {
+  let productSeq = 0;
+  async function seedProduct(): Promise<number> {
+    productSeq += 1;
+    const [p] = await db
+      .insert(productsTable)
+      .values({ name: `Emit Product ${productSeq}`, price: "25.00", isActive: true })
+      .returning();
+    return p.id;
+  }
+
+  it("POST /products emits {type:'product-create', product_id} on 201", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, "/api/admin/products", token, {
+        method: "POST",
+        body: JSON.stringify({ name: "Emit Created", price: 19.5 }),
+      });
+      expect(res.status).toBe(201);
+      const productId = (res.body as { id: number }).id;
+
+      await vi.waitFor(() => expect(emitToAdminsMock).toHaveBeenCalledTimes(1));
+      expect(emitToAdminsMock).toHaveBeenCalledWith("admin-stats-update", {
+        type: "product-create",
+        product_id: productId,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("PATCH /products/:id emits {type:'product-update', product_id}", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct();
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, `/api/admin/products/${productId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ name: "Emit Renamed" }),
+      });
+      expect(res.status).toBe(200);
+
+      await vi.waitFor(() => expect(emitToAdminsMock).toHaveBeenCalledTimes(1));
+      expect(emitToAdminsMock).toHaveBeenCalledWith("admin-stats-update", {
+        type: "product-update",
+        product_id: productId,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("DELETE /products/:id (archive) emits {type:'product-archive', product_id}", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct();
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, `/api/admin/products/${productId}`, token, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(200);
+
+      await vi.waitFor(() => expect(emitToAdminsMock).toHaveBeenCalledTimes(1));
+      expect(emitToAdminsMock).toHaveBeenCalledWith("admin-stats-update", {
+        type: "product-archive",
+        product_id: productId,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("POST /products/:id/inventory (upload) emits {type:'product-inventory-upload', product_id, added}", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct();
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, `/api/admin/products/${productId}/inventory`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          entries: [
+            { kind: "credentials", email: "emit1@x.com", password: "pw-one" },
+            { kind: "code", extra: "EMIT-CODE-1" },
+          ],
+        }),
+      });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ added: 2 });
+
+      await vi.waitFor(() => expect(emitToAdminsMock).toHaveBeenCalledTimes(1));
+      expect(emitToAdminsMock).toHaveBeenCalledWith("admin-stats-update", {
+        type: "product-inventory-upload",
+        product_id: productId,
+        added: 2,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("POST /products/:id/inventory/set-count emits {type:'product-stock-set-count', removed} when surplus > 0", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct();
+    await db.insert(inventoryTable).values([
+      { productId, accountEmail: "stock1@x.com", accountPassword: "p1" },
+      { productId, accountEmail: "stock2@x.com", accountPassword: "p2" },
+    ]);
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, `/api/admin/products/${productId}/inventory/set-count`, token, {
+        method: "POST",
+        body: JSON.stringify({ count: 1 }),
+      });
+      expect(res.status).toBe(200);
+
+      await vi.waitFor(() => expect(emitToAdminsMock).toHaveBeenCalledTimes(1));
+      expect(emitToAdminsMock).toHaveBeenCalledWith("admin-stats-update", {
+        type: "product-stock-set-count",
+        product_id: productId,
+        removed: 1,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("a NO-OP set-count (count == unsold) emits NOTHING — the emit rides actual change", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct();
+    await db
+      .insert(inventoryTable)
+      .values({ productId, accountEmail: "noop@x.com", accountPassword: "p1" });
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, `/api/admin/products/${productId}/inventory/set-count`, token, {
+        method: "POST",
+        body: JSON.stringify({ count: 1 }),
+      });
+      expect(res.status).toBe(200);
+      // Give the fire-and-forget chain a beat to (not) fire.
+      await new Promise((r) => setImmediate(r));
+      expect(emitToAdminsMock).not.toHaveBeenCalled();
+    } finally {
+      close();
+    }
+  });
+
+  it("POST /products/:id/variants emits {type:'product-variant-create', product_id, variant_id}", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct();
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, `/api/admin/products/${productId}/variants`, token, {
+        method: "POST",
+        body: JSON.stringify({ plan_label: "شهر", cost_price: 10 }),
+      });
+      expect(res.status).toBe(201);
+      const variantId = (res.body as { id: number }).id;
+
+      await vi.waitFor(() => expect(emitToAdminsMock).toHaveBeenCalledTimes(1));
+      expect(emitToAdminsMock).toHaveBeenCalledWith("admin-stats-update", {
+        type: "product-variant-create",
+        product_id: productId,
+        variant_id: variantId,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("a failed product mutation (archive 404) emits NOTHING — the emit rides success only", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, "/api/admin/products/999999", token, { method: "DELETE" });
+      expect(res.status).toBe(404);
+      await new Promise((r) => setImmediate(r));
+      expect(emitToAdminsMock).not.toHaveBeenCalled();
     } finally {
       close();
     }

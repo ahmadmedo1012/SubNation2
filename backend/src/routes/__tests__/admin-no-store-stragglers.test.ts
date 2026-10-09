@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { adminUsersTable, db, initTestDb, resetTestDb } from "../../test/db";
 import { signAdminToken } from "../../lib/jwt";
+import { requireAdmin } from "../../middlewares/requireAdmin";
 import { adminAuthRouter } from "../admin/auth";
 import { adminSettingsRouter } from "../admin/settings";
 import { copilotRouter } from "../admin/copilot";
@@ -155,6 +156,77 @@ describe("R123-E5 — no-store on the four admin GET stragglers", () => {
         headers: { Authorization: `Bearer ${admin.token}` },
       });
       expect(res.status).toBe(404);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+});
+
+describe("R126-L4 (A7-F3) — admin auth 401/rejection paths ship Cache-Control: no-store", () => {
+  it("GET /api/admin/session without a token: the requireAdmin 401 carries no-store (the live-verified gap)", async () => {
+    const { url, close } = await listen();
+    try {
+      // No Authorization header, no cookie — requireAdmin's first
+      // rejection branch. Live probe at HEAD observed this 401 with NO
+      // Cache-Control; the middleware now stamps it at entry.
+      const res = await fetch(`${url}/api/admin/session`);
+      expect(res.status).toBe(401);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+
+  it("an EXPIRED/garbage token's 401 carries no-store too (requireAdmin verify branch)", async () => {
+    const { url, close } = await listen();
+    try {
+      const res = await fetch(`${url}/api/admin/session`, {
+        headers: { Authorization: "Bearer not-a-real-jwt" },
+      });
+      expect(res.status).toBe(401);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      close();
+    }
+  });
+
+  it("requireAdmin ALONE (bare mount, no router-level header) stamps the 401 — the middleware is the fix site", async () => {
+    // The /session cases above could inherit the header from the auth
+    // router's own middleware; this bare mount (the lib/__tests__/
+    // permissions.test.ts idiom) pins the MIDDLEWARE entry stamp itself:
+    // no router, no router-level no-store, just requireAdmin in front of
+    // a route on a router that never sets Cache-Control.
+    const bare = express();
+    bare.use(express.json());
+    bare.get("/bare-admin", requireAdmin, (_req, res) => {
+      res.json({ ok: true });
+    });
+    const server = bare.listen(0);
+    const addr = server.address();
+    if (!addr || typeof addr === "string") throw new Error("no address");
+    const url = `http://127.0.0.1:${addr.port}`;
+    try {
+      const res = await fetch(`${url}/bare-admin`);
+      expect(res.status).toBe(401);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("POST /api/admin/login with unknown credentials: the inline 401 carries no-store (auth router-level header)", async () => {
+    const { url, close } = await listen();
+    try {
+      // Unknown username → the dummy-argon2 401 branch inside the login
+      // handler (not requireAdmin) — covered by the auth router's new
+      // router-level no-store middleware.
+      const res = await fetch(`${url}/api/admin/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "no-such-admin", password: "wrong-password" }),
+      });
+      expect(res.status).toBe(401);
       expect(res.headers.get("cache-control")).toBe("no-store");
     } finally {
       close();

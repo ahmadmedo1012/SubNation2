@@ -4,6 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { intParam, pageParam, queryString } from "../../lib/http";
 import { logger } from "../../lib/logger";
+import { writeAuditLog } from "../../lib/audit";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -260,6 +261,19 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
     })
     .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
 
+  // R126-L4 (A7-F4, P3): an admin reply is a customer-facing mutation —
+  // the admin speaks AS the store in the thread and flips the ticket to
+  // in_progress. Every other customer-facing mutation family (orders,
+  // topups, users, products) writes an audit row; ticket writes were the
+  // gap (A7: "reply + status flip — customer-messaging mutations with no
+  // audit row"). Same fire-and-forget idiom as orders.ts:707. The message
+  // body is NOT copied into metadata — it already lives on the
+  // ticket_replies row this audit entry's target identifies.
+  void writeAuditLog(req, "ticket.reply", "ticket", id, {
+    reply_id: reply.id,
+    status_after: "in_progress",
+  });
+
   return res.status(201).json({
     id: reply.id,
     author_type: reply.authorType,
@@ -297,6 +311,12 @@ router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
       emitToAdmins("admin-stats-update", { type: "ticket-status-update", status });
     })
     .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+
+  // R126-L4 (A7-F4, P3): the status flip is the same un-audited write
+  // class as the reply above — an incident review ("who closed this
+  // ticket, when") previously had nothing to consult. Mirrors the
+  // order.bulk_status_update audit shape (new status rides metadata).
+  void writeAuditLog(req, "ticket.status_update", "ticket", id, { status });
 
   return res.json({ success: true });
 });
