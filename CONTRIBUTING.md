@@ -27,8 +27,8 @@ first so the PR lands green:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm --filter @workspace/api-server exec vitest run      # backend suite (231 files)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (148 files)
+pnpm --filter @workspace/api-server exec vitest run      # backend suite (240 files)
+pnpm --filter @workspace/subnation run test:run          # frontend suite (168 files)
 pnpm build                                               # includes the bundle budget gate
 ```
 

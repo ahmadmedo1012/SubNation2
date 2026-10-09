@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/hooks/use-confirm";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatDateShort } from "@/lib/utils";
-import { LogOut, Smartphone } from "lucide-react";
+import { LogOut, Smartphone, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Session {
@@ -27,28 +29,51 @@ interface Session {
  * (B6-P1-3): it was the only confirm in the app a keyboard user
  * couldn't Escape out of.
  *
- * Failures are silent in the UI — Sentry's network instrumentation
- * captures the actual error, and a stale list won't lock the user
- * out of anything (the logout-all endpoint is independent).
+ * Failures are honest in the UI (R127 B15-2): a failed sessions
+ * load renders an inline Arabic error line + retry — never the false
+ * «لا توجد جلسات نشطة» empty state a 401/5xx outage envelope used to
+ * produce — and a FAILED logout-all fires a destructive toast instead
+ * of a silent no-op (the user must not believe every device was
+ * revoked when the request never landed). Sentry still captures the
+ * underlying error server-side; it is not the operator affordance.
  */
 export function SessionManager() {
   const { token } = useAuth();
   const { confirm, ConfirmDialog } = useConfirm();
+  const { toast } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // B15-2: retry key for the sessions fetch (the honest error line's
+  // «إعادة المحاولة» re-runs the effect without a remount).
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
     (async () => {
       try {
         const response = await fetch("/api/auth/sessions", {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await response.json().catch(() => ({}));
-        if (!cancelled) setSessions(data.sessions ?? []);
-      } catch {
-        // Sentry network instrumentation captures the real error.
+        if (cancelled) return;
+        // B15-2: no r.ok guard here meant a 401/500/502 envelope parsed
+        // to `{}` → sessions=[] → the FALSE «لا توجد جلسات نشطة» —
+        // the exact false-empty class the admin console systematically
+        // killed. The honest Arabic line (server wording via
+        // getErrorMessage, generic Arabic fallback otherwise) + retry
+        // instead; the card itself stays.
+        if (!response.ok) {
+          setLoadError(getErrorMessage(data));
+          return;
+        }
+        setSessions(data.sessions ?? []);
+      } catch (e) {
+        // Network-level failure — same honest state, not the empty list.
+        if (!cancelled) setLoadError(getErrorMessage(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -56,7 +81,7 @@ export function SessionManager() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, reloadKey]);
 
   const handleLogoutAll = async () => {
     // Destructive confirm via the shared a11y-complete AlertDialog
@@ -81,9 +106,27 @@ export function SessionManager() {
       });
       if (response.ok) {
         window.location.href = "/login";
+        return;
       }
-    } catch {
-      // Sentry captures it; the user can re-attempt via the page reload.
+      // B15-2: a FAILED logout-all used to be a silent no-op — the
+      // button clicks, nothing happens, and the user still believes
+      // all devices were revoked. The failure is now surfaced as a
+      // destructive toast (getErrorMessage, the console idiom); the
+      // button itself remains the retry affordance and the session
+      // list above is untouched (still rendered, still true).
+      const body = await response.json().catch(() => null);
+      toast({
+        title: "فشل تسجيل الخروج من جميع الأجهزة",
+        description: getErrorMessage(body),
+        variant: "destructive",
+      });
+    } catch (e) {
+      // Network-level failure — same honesty (no silent swallow).
+      toast({
+        title: "فشل تسجيل الخروج من جميع الأجهزة",
+        description: getErrorMessage(e),
+        variant: "destructive",
+      });
     }
   };
 
@@ -99,6 +142,21 @@ export function SessionManager() {
       {loading ? (
         <div className="space-y-2">
           <div className="h-14 rounded-xl skeleton-shimmer" />
+        </div>
+      ) : loadError ? (
+        /* B15-2: the honest outage state — a failed load is NEVER the
+         * «لا توجد جلسات نشطة» empty list. Inline Arabic line + retry
+         * (the admin error-banner idiom, scaled to the card). */
+        <div role="alert" className="flex flex-wrap items-center gap-2 py-2 text-sm text-destructive">
+          <WifiOff className="w-4 h-4 shrink-0" />
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="text-xs underline underline-offset-2 hover:opacity-80"
+          >
+            إعادة المحاولة
+          </button>
         </div>
       ) : sessions.length === 0 ? (
         <p className="text-sm text-muted-foreground py-2">لا توجد جلسات نشطة لعرضها.</p>

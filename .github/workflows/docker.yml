@@ -1,48 +1,62 @@
-# R107 (Oracle/Coolify migration): multi-arch Docker image build for the
-# SubNation backend image (linux/amd64 + linux/arm64 → GHCR).
+# R127-L4 truth pass (B9 F5 + B10): this workflow is the DISASTER-RECOVERY
+# publisher for the SubNation image (linux/amd64 → GHCR
+# ghcr.io/ahmadmedo1012/subnation2). It does NOT participate in production
+# deploys: Coolify's push-to-deploy webhook builds every push on the VM
+# itself, so nothing here runs on the per-push path.
 #
-# WHY: the production target is Oracle Cloud Always Free Ampere A1 (ARM64).
-# Building the image in CI means the small VM never compiles the pnpm
-# dependency tree — it only pulls and runs (see docs/deployment/
-# COOLIFY_ORACLE_MIGRATION.md §build-strategy for the trade-offs).
+# WHY IT EXISTS: the emergency rollback path pulls prebuilt, immutable
+# per-commit images — FINAL_ROLLBACK_RUNBOOK.md §2: `docker pull
+# ghcr.io/ahmadmedo1012/subnation2:sha-<short>`. This workflow is the only
+# publisher of those tags; retiring it silently would strand the runbook.
+#
+# WHY AMD64-ONLY (R127-L4, B9 W2): the original R107 rationale — "the
+# production target is Oracle Cloud Always Free Ampere A1 (ARM64)" — has
+# been dead since the 2026-10 Contabo cutover (production host: Contabo,
+# amd64 — FINAL_PRODUCTION_TOPOLOGY.md). Nothing consumes arm64 subnation2
+# images, so the QEMU-emulated arm64 leg (~15-25 min per publish, the
+# historically flaky leg the fail-fast:false matrix existed to contain) was
+# dropped. Re-adding a platform = restore the matrix entry + the QEMU step
+# below; the merge job's registry probe already handles a missing arch.
 #
 # TRIGGERS — deliberately NOT every push:
 #   - workflow_dispatch (manual, from the Actions tab)
 #   - version tags v* (release artifacts)
 # R122 (premise corrected): this was originally written when the repo was
 # PRIVATE with metered Actions minutes. The repo is PUBLIC now (minutes
-# free), but the manual/tag-only trigger discipline stays: Coolify's
-# push-to-deploy webhook already builds every push on the VM itself, so
-# publishing GHCR multi-arch images from here adds nothing on the per-push
-# path — and the QEMU-emulated arm64 legs stay ~3-5× slower than native
-# (~15-25 min each), which is not worth burning on every commit.
+# free), but the manual/tag-only trigger discipline stays: publishing on
+# every push would add nothing over Coolify's own VM build.
 #
-# STRUCTURE (r110, closes R109 109-j P2-2 — arm64 failure used to block the
-# amd64 publish because ONE buildx invocation built+pushed both platforms):
+# STRUCTURE (r110, closes R109 109-j P2-2 — one buildx invocation per
+# platform, so a failed leg can no longer take the others' publish down):
 #
-#   build-and-push — fail-fast:false matrix, one leg per platform. Each leg
-#     builds and pushes ONLY arch-suffixed tags (docker/metadata-action
-#     flavor suffix):
-#       sha-<short>-amd64 / sha-<short>-arm64   (immutable, per-commit)
-#       1.2.3-<arch>, 1.2-<arch>, latest-<arch>, <branch>-<arch>  (when
-#       those semantic tags apply). The legs share nothing but the checkout,
-#     so an arm64 failure can no longer take the amd64 publish down with it.
+#   build-and-push — builds and pushes arch-suffixed tags (docker/
+#     metadata-action flavor suffix):
+#       sha-<short>-amd64   (immutable, per-commit)
+#       1.2.3-amd64, 1.2-amd64, latest-amd64, <branch>-amd64  (when
+#       those semantic tags apply).
 #
-#   merge — needs both legs but runs `if: !cancelled()`, probes GHCR for the
-#     arch tags that ACTUALLY landed, and assembles the canonical multi-arch
-#     tags with `docker buildx imagetools create -t <canonical> …`:
+#   merge — needs the legs but runs `if: !cancelled()`, probes GHCR for the
+#     arch tags that ACTUALLY landed, and assembles the canonical tags with
+#     `docker buildx imagetools create -t <canonical> …`:
 #       sha-<short>  1.2.3  1.2  latest  <branch>
 #     amd64 is the primary publish target: if its image is missing the merge
-#     fails and NO canonical tag is minted. arm64 is best-effort: when its
-#     leg fails, the canonical tags ship amd64-only and pick arm64 back up
-#     on the next commit whose arm64 leg is green. Previously-published
-#     sha-<short> tags are immutable and are never retro-fitted.
+#     fails and NO canonical tag is minted. Previously-published sha-<short>
+#     tags are immutable and are never retro-fitted.
 #
-# STATUS: NOT YET VERIFIED on real infrastructure (the r107 workspace had
-# no Docker; the "Actions minutes exhausted" blocker cited then is
-# obsolete — the repo is public and minutes are free, R122). Validate with
-# a manual run before relying on the published image.
-name: Docker Image (multi-arch)
+# STATUS (R127-L4, verified 2026-10-09 — replaces the standing "NOT YET
+# VERIFIED" banner): NO completed publish is on record. The
+# v0.0.1-coolify-test tag (2026-10-01, 47b304e) matched the v* trigger, but
+# Actions was disabled at the time (FINAL_ROLLBACK_RUNBOOK.md §2,
+# re-verified 2026-10-01: "NO subnation2 GHCR image exists for any
+# commit"), and no manual dispatch has been recorded since the repo went
+# public (R122). An anonymous registry probe on 2026-10-09 could neither
+# confirm nor deny the package (403 on every tag — private-or-absent; the
+# PUBLIC openwa package answers the same probe with 200). OPERATOR STEP
+# before relying on the rollback runbook's §2 image path: dispatch this
+# workflow once on main, then verify the sha-<short> tag landed in GHCR
+# (needs a read:packages PAT — the package is private). Until then §2's
+# image fallback is openwa-only, exactly as the runbook already documents.
+name: Docker Image (GHCR, amd64)
 
 on:
   workflow_dispatch:
@@ -58,9 +72,12 @@ concurrency:
   group: docker-image-${{ github.ref }}
   cancel-in-progress: false
 
+# R127-L4 (B9 F2, zizmor excessive-permissions): packages:write was
+# workflow-level — any future job added to this file would have inherited
+# registry write. Now granted ONLY on the two jobs that push/merge tags;
+# the workflow-level default stays least-privilege read-only.
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
@@ -72,17 +89,20 @@ jobs:
     name: Build and push (${{ matrix.arch }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
     strategy:
-      # R109 P2-2: an arm64 failure must NOT cancel the amd64 leg (nor vice
-      # versa) — each platform publishes its arch tags independently.
+      # R109 P2-2 heritage: legs publish independently so a failed platform
+      # could never cancel the others. R127-L4: arm64 dropped (no consumer —
+      # see the header); the matrix SHAPE stays so re-adding a platform is a
+      # one-line change plus the QEMU step.
       fail-fast: false
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        platform: [linux/amd64]
         include:
           - platform: linux/amd64
             arch: amd64
-          - platform: linux/arm64
-            arch: arm64
     steps:
       - name: Checkout
         # SHA-pinned (r110, 109-p P2); kept on the v4 line this job already
@@ -90,13 +110,9 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
-
-      # amd64 is native on ubuntu-latest — QEMU only exists for the arm64 leg.
-      - name: Set up QEMU (arm64 emulation)
-        if: matrix.platform == 'linux/arm64'
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-        with:
-          platforms: arm64
+          # R127-L4 (B9 F3, zizmor artipacked): the token never persists
+          # into the workspace git config — GHCR login is its own step.
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -145,23 +161,27 @@ jobs:
           # are intentionally NOT baked here either: pass them in the
           # Coolify build environment when you want per-environment control,
           # or fork this step with the extra build-args.
-          # Per-arch cache scope: both legs build concurrently and must not
-          # thrash a single shared gha scope.
+          # Per-arch cache scope: keeps each platform's cache independent
+          # if a second leg is ever restored (concurrent legs must not
+          # thrash a single shared gha scope).
           cache-from: type=gha,scope=multi-arch-${{ matrix.arch }}
           cache-to: type=gha,scope=multi-arch-${{ matrix.arch }},mode=max
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Merge: assemble the canonical multi-arch tags from whatever landed.
+  # Merge: assemble the canonical tags from whatever landed.
   # ─────────────────────────────────────────────────────────────────────────
   merge:
-    name: Merge multi-arch tags (imagetools)
+    name: Merge canonical tags (imagetools)
     needs: [build-and-push]
     # Run even when a leg failed — the merge decides from the REGISTRY which
-    # platforms are available (race-free: both legs have finished by then).
+    # platforms are available (race-free: the legs have finished by then).
     # !cancelled() so a manually cancelled run pushes no half tag set.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Set up Docker Buildx (imagetools CLI)
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -176,7 +196,7 @@ jobs:
       # Identical tag rules to the legs but WITHOUT the arch suffix — these
       # are the canonical tags consumers pull: sha-<short>, 1.2.3, 1.2,
       # latest, <branch>.
-      - name: Docker metadata (canonical multi-arch tags)
+      - name: Docker metadata (canonical tags)
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
@@ -228,7 +248,7 @@ jobs:
           if [ "$arm64_ok" -eq 1 ]; then
             sources+=("$arm64_src")
           else
-            echo "::warning::arm64 leg did not land (${arm64_src}) — canonical tags below are amd64-only. arm64 rejoins on the next green arm64 build; immutable sha- tags are never retro-fitted."
+            echo "::warning::arm64 image ${arm64_src} not present in GHCR — canonical tags below are amd64-only (expected while the arm64 leg is retired, R127-L4). It rejoins automatically on the next green arm64 build; immutable sha- tags are never retro-fitted."
           fi
 
           tag_args=()
@@ -238,5 +258,5 @@ jobs:
 
           docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
 
-          echo "Canonical multi-arch tags now point at:"
+          echo "Canonical tags now point at:"
           docker buildx imagetools inspect "${image}:${sha_tag}" || true

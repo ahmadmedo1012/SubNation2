@@ -45,6 +45,11 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
+          # R127-L4 (B9 F3, zizmor artipacked): never persist the
+          # 90-day token into the workspace git config — nothing after
+          # this checkout needs repo credentials (gitleaks scans a public
+          # repo's history; the SARIF upload uses the job token, not git).
+          persist-credentials: false
 
       - name: Validate gitleaks config syntax
         run: |
@@ -97,7 +102,8 @@ jobs:
   # Path filter (cost gate) — FH-A12 F-4
   # ─────────────────────────────────────────────────────────────────────────
   #
-  # Docs-only pushes skip the heavy jobs (audit/quality) via job-level `if`
+  # Docs-only pushes skip the heavy jobs (audit/checks/tests/build) via
+  # job-level `if`
   # on the outputs below (~19 min → ~2 min). secret-scan stays ALWAYS-ON:
   # secrets get pasted into docs too, so a workflow-level paths-ignore
   # would be a coverage gap.
@@ -113,6 +119,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Run path filters
         uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
@@ -187,6 +195,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         # SHA = the commit the moving v4 tag actually tracks: the 2026-03-11
@@ -235,15 +245,24 @@ jobs:
         run: pnpm audit --prod --audit-level critical
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Quality — lint, typecheck, migration drift, tests, full build
+  # Quality — split into three PARALLEL jobs (R127-L4, B9 W1). The old
+  # monolithic `quality` job ran 8 serial steps on one runner (~13-17 min
+  # per its own comment). lint/typecheck/drift, both vitest suites, and
+  # the production build are mutually independent after the install, so
+  # the critical path is now the slowest leg (~7-9 min). Cost: two extra
+  # warm `pnpm install`s (~+1-2 min total runner time — free on a public
+  # repo); the win is feedback latency. All three jobs keep the same
+  # if/permissions/env contract the monolith had. If the repo ever gains
+  # branch-protection required checks, they referenced the old
+  # "Lint, typecheck, test, and build" job name — update them in Settings.
   # ─────────────────────────────────────────────────────────────────────────
-  quality:
-    name: Lint, typecheck, test, and build
+  checks:
+    name: Lint, typecheck, and drift gates
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     needs: [secret-scan, filter]
-    # FH-A12 F-4: skip the ~13-17 min suite on docs-only pushes (the
-    # filter job decides). Schedule and manual dispatch force a full run.
+    # FH-A12 F-4: skip the heavy gates on docs-only pushes (the filter
+    # job decides). Schedule and manual dispatch force a full run.
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
@@ -251,7 +270,7 @@ jobs:
     permissions:
       contents: read
     env:
-      # Synthetic values — the test suite stubs all DB/auth interactions.
+      # Synthetic values — these gates stub all DB/auth interactions.
       DATABASE_URL: postgres://ci:ci@localhost/ci
       # 32+ char synthetic value — jwt.ts rejects shorter secrets at module load.
       SESSION_SECRET: ci-test-secret-not-real-do-not-use-in-prod
@@ -261,6 +280,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         # Version pinned via package.json `packageManager` field (pnpm@10.17.0);
@@ -277,6 +298,24 @@ jobs:
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: UI anti-pattern source gate (impeccable)
+        # R127-L4 (B3 Phase 1): regex-mode scan of the frontend source for
+        # AI-slop tells (bounce easings, slop gradients, glow shadows).
+        # Version-pinned — the npx shim downloads a version-locked engine
+        # binary; an unpinned ref would drift the rule set between runs.
+        # Exit semantics (impeccable's own): 0 = clean · 2 = findings →
+        # this step FAILS (blocks the PR) · 1 = operational error (the
+        # scan itself could not run) → also fails; NEVER `|| true` — a
+        # masked 1 silently switches the gate off. Only warning-severity
+        # findings affect the exit code (advisories print, never block).
+        # Sanctioned exceptions carry inline `impeccable-disable-line`
+        # waivers at the site (frontend/src/index.css — the FINAL_UX_SYSTEM
+        # §2 spring vocabulary); triage + kept findings:
+        # docs/inspection-r127/B3-impeccable-ui.md. Verified exit 0 on the
+        # R127 tree before this gate landed. Source mode only (no browser)
+        # — rendered-mode scans stay a separate B3 Phase 2 decision.
+        run: npx -y impeccable@4.1.0 detect frontend/src/
 
       - name: Lint
         run: pnpm run lint
@@ -320,20 +359,112 @@ jobs:
             exit 1
           fi
 
-      - name: Backend unit tests
-        run: pnpm --filter @workspace/api-server exec vitest run
+  # Unit tests — one matrix leg per suite (R127-L4 split). fail-fast:
+  # false so a backend red does not cancel the frontend leg — both
+  # results are signal. Same if/permissions/env contract as `checks`.
+  tests:
+    name: Unit tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [secret-scan, filter]
+    # FH-A12 F-4: skip the suites on docs-only pushes (the filter job
+    # decides). Schedule and manual dispatch force a full run.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.filter.outputs.code == 'true'
+    permissions:
+      contents: read
+    env:
+      # Synthetic values — the test suites stub all DB/auth interactions.
+      DATABASE_URL: postgres://ci:ci@localhost/ci
+      # 32+ char synthetic value — jwt.ts rejects shorter secrets at module load.
+      SESSION_SECRET: ci-test-secret-not-real-do-not-use-in-prod
+      # Quiets the husky `prepare` script that runs on `pnpm install`.
+      HUSKY: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [backend, frontend]
 
-      - name: Frontend unit tests
-        # Branch 007 — frontend test infrastructure (vitest + jsdom +
-        # @testing-library). Runs the same vitest binary used by the
-        # backend so CI failures look identical regardless of which
-        # workspace introduced the regression.
-        run: pnpm --filter @workspace/subnation exec vitest run
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        # Version pinned via package.json `packageManager` field (pnpm@10.17.0);
+        # action SHA-pinned to the same v4 moving-tag commit as the audit job
+        # (see the note there + worklog 110-I for why not the v4.4.0 tag).
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run the ${{ matrix.suite }} suite
+        # Branch 007 heritage: both suites run the same vitest binary so CI
+        # failures look identical regardless of which workspace introduced
+        # the regression.
+        run: pnpm --filter ${{ matrix.suite == 'backend' && '@workspace/api-server' || '@workspace/subnation' }} exec vitest run
+
+  # Production build — its own leg of the R127-L4 split (independent of
+  # the suites; the api-server build script chains the Vite SPA build).
+  build:
+    name: Production build (API + Vite SPA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [secret-scan, filter]
+    # FH-A12 F-4: skip the build on docs-only pushes (the filter job
+    # decides). Schedule and manual dispatch force a full run.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.filter.outputs.code == 'true'
+    permissions:
+      contents: read
+    env:
+      # Synthetic values — mirrors the siblings (the build emits the
+      # no-DSN bundle; the known CI-vs-prod budget delta is B4 NEW-1).
+      DATABASE_URL: postgres://ci:ci@localhost/ci
+      SESSION_SECRET: ci-test-secret-not-real-do-not-use-in-prod
+      # Quiets the husky `prepare` script that runs on `pnpm install`.
+      HUSKY: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        # Version pinned via package.json `packageManager` field (pnpm@10.17.0);
+        # action SHA-pinned to the same v4 moving-tag commit as the audit job
+        # (see the note there + worklog 110-I for why not the v4.4.0 tag).
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Production build (API + Vite SPA)
         # The api-server build script chains the frontend build via
         # `pnpm --dir .. --filter @workspace/subnation run build`,
         # so this single command builds the full deployable artifact.
+        # The vite build embeds the bundle-budget + CSP inline-script gates.
         run: pnpm --filter @workspace/api-server run build
 
   # ─────────────────────────────────────────────────────────────────────────
@@ -348,14 +479,31 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # R127-L4 (B9 F1/F9): this job used to hold the repo's only 3 mutable
+    # action refs (@v4 moving tags) — a violation of the in-file r110 SHA
+    # policy above. Now pinned to the exact SHAs the other jobs already
+    # resolve to, with the siblings' permissions/HUSKY/cache hygiene.
+    permissions:
+      contents: read
+    env:
+      # Quiets the husky `prepare` script that runs on `pnpm install`
+      # (same as the checks/tests/build jobs — B9 W3).
+      HUSKY: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
       - name: Install Playwright browsers
         run: pnpm --filter @workspace/subnation exec playwright install --with-deps chromium
       - name: Run the guest smoke suite

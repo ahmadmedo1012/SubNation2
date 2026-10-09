@@ -68,9 +68,16 @@
 #
 # GRACEFUL SHUTDOWN:
 #   stop_grace_period is intentionally ABOVE each app's internal drain
-#   budget (subnation 25 s, openwa 4 s) so `docker compose down` / Coolify
-#   redeploys let the app exit cleanly (pool drain + Sentry flush + WhatsApp
-#   session flush) instead of being SIGKILLed mid-write.
+#   budget (subnation 25 s, openwa 4 s) so `docker compose down` /
+#   bare-VM stops let the app exit cleanly (pool drain + Sentry flush +
+#   WhatsApp session flush) instead of being SIGKILLed mid-write.
+#   R127-L4 (B10 F1) TRUTH: this file governs the compose/bare-VM path
+#   ONLY — Coolify's Docker-build resource never reads it. Production
+#   redeploys stop the container with `docker stop --time <the Coolify
+#   resource's own stop-grace setting>` (per-resource; Docker's default
+#   is 10 s — below the 25 s in-app drain). Operator step: check/set 40 s
+#   on the SubNation resource — see docs/deployment/COOLIFY_FINAL_SETUP.md
+#   §4 (Stop grace period).
 # =============================================================================
 
 name: subnation
@@ -127,6 +134,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # compose/bare-VM path only — Coolify deploys use the resource's own
+    # stop-grace setting (B10 F1, R127-L4; see header note + setup doc §4).
     stop_grace_period: 40s
     # Health check mirrors the Dockerfile's (explicit here so Coolify's
     # compose parser sees it; /api/healthz = 503 "starting" → 200 ready).

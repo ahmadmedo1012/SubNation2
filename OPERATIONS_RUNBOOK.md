@@ -644,16 +644,18 @@ synthetic alert test exercises the same delivery path.
 Mimosa scan: no command-injection path). Only `TELEGRAM_ADMIN_IDS`
 accounts can press them.
 
-## 13. Edge canonicalization — www→apex permanent single-hop (LIVE since R121; **301 since the R124 redeploy 2026-10-09, 308 before it**)
+## 13. Edge canonicalization — www→apex permanent single-hop (LIVE since R121)
 
 - **What is live:** `/data/coolify/proxy/dynamic/www-redirect.yml` — a
   standalone Traefik file-provider router at **priority 1000**; every
-  `https://www.subnation.ly/<path>?<query>` → **301** → the apex (path +
-  query preserved); the apex serves 200 untouched. (The status digit is
-  Traefik-regen-dependent — R121 308 → R122 probe 301 → R124 pre-redeploy
-  308 → post-redeploy 301, stable ×3, commit `09857fc`; either way it is a
-  single-hop, method-preserving permanent redirect, which is the required
-  behavior.)
+  `https://www.subnation.ly/<path>?<query>` → a single-hop **permanent
+  redirect (301 or 308)** → the apex (path + query preserved); the apex
+  serves 200 untouched. R127-L4 (B12-N1): the specific status digit is
+  Traefik-regen-dependent and has flipped on every regen so far — R121
+  308 → R122 probe 301 → R124 pre-redeploy 308 → post-redeploy 301 →
+  R127-B12 probe 308 — so no doc pins a bare digit anymore. The
+  OBSERVABLE contract to verify is: exactly ONE hop, method-preserving,
+  permanent (301/308), `location` = the apex with path + query intact.
 - **The poisoning lesson:** the dead v2-syntax `subnation.yml` (plus 4
   backup variants) errored on every watcher callback and **blocked the
   whole dynamic directory**. They were quarantined to
@@ -663,7 +665,7 @@ accounts can press them.
 - **Verify (2 minutes):**
   ```bash
   curl -sI https://www.subnation.ly/ | head -n 5
-  #    expect: HTTP/2 301 + location: https://subnation.ly/
+  #    expect: HTTP/2 301 or 308 + location: https://subnation.ly/
   curl -sIL -o /dev/null -w '%{num_redirects} %{url_effective}\n' https://www.subnation.ly/
   #    expect: 1  https://subnation.ly/
   curl -s https://subnation.ly/api/healthz   # expect: {"status":"ok"}
@@ -686,12 +688,14 @@ accounts can press them.
 - **Stock + TOTP** (unverified since R118): the open items in
   `docs/operations/OPERATOR_ACTIONS_R118.md` — status header refreshed
   R122.
-- **R123 addition — http→https apex redirect is a 302** (verified live
-  2026-10-08, R123-A8): the Traefik entrypoint `redirectScheme` middleware
-  in the Coolify proxy config ships `permanent: false`. Fix = Coolify →
+- **R123 addition — http→https apex redirect is TEMPORARY (standing ops
+  item; the digit drifts with Traefik regens — 302 at the R123-A8 probe,
+  307 at the R127-B12 probe — R127-L4 N1: verify the CLASS, not the
+  digit)**: the Traefik entrypoint `redirectScheme` middleware in the
+  Coolify proxy config ships `permanent: false`. Fix = Coolify →
   Server → Proxy → Configuration, set `permanent: true` on the
-  redirect-to-https middleware → 301 (no app redeploy). Verify:
-  `curl -sI http://subnation.ly/ | head -3` → 301 + apex Location.
+  redirect-to-https middleware → a permanent redirect (no app redeploy).
+  Verify: `curl -sI http://subnation.ly/ | head -3` → 301 + apex Location.
   Rollback = flip the flag back. Full steps: OPERATOR_ACTIONS_R118 #11.
 - **R123 addition — copilot_actions / copilot_action_items retention
   policy is UNDECIDED** (currently unbounded; the only audit-grade tables

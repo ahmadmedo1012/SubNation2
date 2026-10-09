@@ -166,9 +166,10 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
 # webhook deploy — deliberately not on the critical path). A manual deploy
 # of a red-CI commit is still the operator's explicit override.
 # Side note: `tsc --build` emits shared/*/dist declaration artifacts
-# (~1.1 MB d.ts + .tsbuildinfo) into this stage; they ride the runtime
-# `COPY /app/shared` as inert type-only files (exports resolve to src/*.ts)
-# — harmless next to the full TS sources that copy already ships.
+# (~1.1 MB d.ts + .tsbuildinfo) into this stage. R127-L4 (B10 F3): the
+# runtime stage no longer copies /app/shared (or backend sources) at all —
+# only the workspace package.jsons for pnpm linking — so those artifacts
+# stay here in the discarded build stage with the TS sources.
 RUN pnpm run typecheck
 
 # R107: VITE_RELEASE_SHA is resolved here (shell-standard ${A:-$B}, no
@@ -213,13 +214,26 @@ ENV NODE_ENV=production \
 # above). Only the runtime CMD bypasses pnpm (FH-A3 F-3 note at the CMD).
 RUN corepack enable
 
-COPY --from=build --chown=node:node /app/package.json         ./package.json
-COPY --from=build --chown=node:node /app/pnpm-workspace.yaml  ./pnpm-workspace.yaml
-COPY --from=build --chown=node:node /app/pnpm-lock.yaml       ./pnpm-lock.yaml
-COPY --from=build --chown=node:node /app/.npmrc               ./.npmrc
-COPY --from=build --chown=node:node /app/backend              ./backend
-COPY --from=build --chown=node:node /app/frontend/dist        ./frontend/dist
-COPY --from=build --chown=node:node /app/shared               ./shared
+COPY --from=build /app/package.json         ./package.json
+COPY --from=build /app/pnpm-workspace.yaml  ./pnpm-workspace.yaml
+COPY --from=build /app/pnpm-lock.yaml       ./pnpm-lock.yaml
+COPY --from=build /app/.npmrc               ./.npmrc
+# R127-L4 (B10 F2): manifest-first runtime install — mirror the deps-stage
+# ordering at the top of this file. The old order copied the FULL source
+# trees (backend/ + shared/) BEFORE this install, so every source change
+# invalidated the install layer (a full node_modules re-link per deploy;
+# the cache mount saves the download, not the link). The install reads only
+# the root manifests + EVERY workspace package.json — pnpm must parse the
+# whole workspace to resolve the `--filter @workspace/api-server...`
+# closure — so those are all that needs to precede it. Built artifacts
+# ride AFTER the install layer.
+COPY --from=build /app/backend/package.json        ./backend/package.json
+COPY --from=build /app/frontend/package.json       ./frontend/package.json
+COPY --from=build /app/scripts/package.json        ./scripts/package.json
+COPY --from=build /app/shared/api-client-react/package.json ./shared/api-client-react/package.json
+COPY --from=build /app/shared/api-zod/package.json          ./shared/api-zod/package.json
+COPY --from=build /app/shared/api-spec/package.json         ./shared/api-spec/package.json
+COPY --from=build /app/shared/db/package.json               ./shared/db/package.json
 
 # R109 P0-1: the root `prepare: husky` script runs under this --prod install,
 # but husky is a devDependency (absent here) -> `husky: not found` -> exit 1
@@ -230,9 +244,32 @@ COPY --from=build --chown=node:node /app/shared               ./shared
 # require-time (verified: `require('argon2')` and `require('firebase-admin')`
 # succeed in a --ignore-scripts prod tree; pnpm 10 additionally gates
 # dependency lifecycle scripts behind onlyBuiltDependencies anyway).
+# R127-L4 (B10 F4): `corepack enable` + this install download pnpm 10.17.0
+# into /root/.cache/node/corepack (~44 MB) — after `USER node` it is
+# unreadable and the CMD invokes node directly, so it was pure dead weight
+# in every pull. Removed in the SAME layer so the bytes never ship.
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod --ignore-scripts --filter @workspace/api-server... \
+    && rm -rf /root/.cache/node/corepack \
     && chown -R node:node /app
+
+# R127-L4 (B10 F3): runtime artifacts only. The app runs the compiled
+# esbuild bundle (see the CMD below): build.mjs inlines every @workspace/*
+# import and externalizes only real node_modules packages, so the TS
+# sources (backend/src, backend/tests, shared/*/src) no longer ship —
+# they stay in the discarded build stage, which still typechecks them
+# (backend/tsconfig.json includes src + tests — that is why backend/tests
+# is NOT .dockerignored: it must stay in the build context for the R122
+# deploy-time typecheck gate). The workspace package.jsons above are all
+# pnpm's linking needs. pino's worker siblings (pino-*.mjs,
+# thread-stream-worker.mjs) ARE runtime files (loaded via
+# __bundlerPathsOverrides), so dist/ ships wholesale — except the unused
+# job-worker entry (dist/worker.mjs: a separate esbuild entry, imported
+# by nothing in the server graph — backend/src/worker.ts:193; no worker
+# tier exists, WORKER_TIER is unset).
+COPY --from=build --chown=node:node /app/backend/dist    ./backend/dist
+COPY --from=build --chown=node:node /app/frontend/dist   ./frontend/dist
+RUN rm -f /app/backend/dist/worker.mjs
 
 # F-011 (security audit 004) — drop root in the runtime stage.
 # Any RCE in the application becomes container-`node` (UID 1000) code execution
@@ -258,7 +295,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=150s --retries=3 \
 # then the readiness gate opens — identical ordering to the old pnpm chain.
 # FH-A3 F-3: node is invoked DIRECTLY (not via `pnpm --filter … start`) so
 # node becomes PID 1 — SIGTERM reaches the drain handlers without an
-# unproven pnpm hop, and the corepack shim no longer re-downloads pnpm
-# from the npm registry on every fresh container start (its build-time
-# cache lives under /root, unreadable by USER node).
+# unproven pnpm hop, and the corepack shim never re-downloads pnpm from
+# the npm registry on container start (its build-time cache lived under
+# /root, unreadable by USER node — and is deleted at build time since
+# R127-L4/B10 F4; the shims themselves need no cache at runtime).
 CMD ["node", "--enable-source-maps", "backend/dist/index.mjs"]

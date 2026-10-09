@@ -18,7 +18,7 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter @workspace/api-server --filter @workspace/subnation --filter @workspace/scripts --if-present run typecheck",
     "prepare": "husky",
-    "validate:suite": "tsx scripts/validate.ts"
+    "validate:suite": "pnpm --filter @workspace/scripts run validate"
   },
   "private": true,
   "packageManager": "pnpm@10.17.0",

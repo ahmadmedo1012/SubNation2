@@ -188,6 +188,23 @@ DASHBOARD_SESSION_SECRET=<32+ chars>
 Interval 30 s, timeout 5 s, retries 3 — mirrors the Dockerfile/compose healthchecks
 (Coolify reads the image HEALTHCHECK by default; enter these if the panel asks).
 
+**Stop grace period (per-resource setting — R127-L4, B10 F1):** Coolify stops
+the app container on every redeploy with `docker stop --time <the resource's
+own stop-grace setting>` (verified against Coolify's
+`app/Actions/Application/StopApplication.php`, 2026-10-09). The repo
+`docker-compose.yml`'s `stop_grace_period: 40s` **never applies to this
+resource** — this resource builds the repo Dockerfile and Coolify generates
+its own runtime config from it; the compose file only governs the
+`docker compose`/bare-VM path. If the resource setting is left at Docker's
+10 s default, every production redeploy SIGKILLs the app mid-drain (the
+in-app drain budget is 25 s: keep-alive sweep, pool + lockPool drain, Sentry
+flush — `server.ts` force-exits at 25 s). Operator step: Coolify → SubNation
+resource → Advanced → **Stop timeout / Stop Grace Period: 40 s** (mirror the
+compose contract); after a redeploy, confirm the app log shows the drain
+choreography completing (clean exit well before the timeout) rather than a
+hard kill. Do the same check on the OpenWA resource (its drain budget is
+4 s; 15 s is the compose mirror).
+
 **What `docker ps` will show on the VM** — Coolify's own control-plane
 containers (`coolify-db` Postgres, `coolify-redis`, the Traefik proxy, and
 in some installs `soketi`/`coolify-realtime`) run alongside your TWO app

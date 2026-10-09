@@ -1934,6 +1934,63 @@ export interface AdminAuthActivity {
   createdAt: string;
 }
 
+export type AdminAuditLogActorType =
+  (typeof AdminAuditLogActorType)[keyof typeof AdminAuditLogActorType];
+
+export const AdminAuditLogActorType = {
+  user: "user",
+  admin: "admin",
+  system: "system",
+} as const;
+
+/**
+ * R127-L5 (B15-1): one audit_logs row — the WHO did WHAT WHEN
+ * answer for every consequential admin action. `metadata` is the
+ * writer's raw JSON string (writeAuditLog safeMetadata, ≤2 KB);
+ * e.g. the Telegram webhook path carries
+ * `{"source":"telegram_webhook","actor":"@ops","from_id":111111}`
+ * (B11-F1). `actorUsername` is the LEFT-JOINed admin_users
+ * username for the actor id (null for system/telegram actors).
+ */
+export interface AdminAuditLog {
+  id: number;
+  /**
+   * admin_users id when the writer rode an admin session; null for the Telegram webhook path (the actor lives in metadata).
+   * @nullable
+   */
+  actorId: number | null;
+  actorType: AdminAuditLogActorType;
+  /** @nullable */
+  actorUsername: string | null;
+  /** Stable `<resource>.<verb>` string (topup.approve, user.update, …). */
+  action: string;
+  /** @nullable */
+  targetType: string | null;
+  /** @nullable */
+  targetId: number | null;
+  /**
+   * Raw JSON-stringified metadata (≤2 KB per writeAuditLog).
+   * @nullable
+   */
+  metadata: string | null;
+  /** @nullable */
+  ip: string | null;
+  createdAt: string;
+}
+
+/**
+ * The audit-trail page envelope (the alerts-inbox shape): one
+ * page of rows + the honest total + page/limit + hasMore (offset
+ * + page length < total).
+ */
+export interface AdminAuditLogsPage {
+  logs: AdminAuditLog[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 export interface AdminReferralsStats {
   total: number;
   credited: number;
@@ -2262,6 +2319,638 @@ export interface AdminInventoryHealthReport {
   products_with_undeliverable_units: number;
   items: AdminInventoryHealthReportItemsItem[];
   checked_at: string;
+}
+
+export type AdminSchedulerStateMode =
+  (typeof AdminSchedulerStateMode)[keyof typeof AdminSchedulerStateMode];
+
+export const AdminSchedulerStateMode = {
+  embedded: "embedded",
+  dedicated: "dedicated",
+  single: "single",
+  disabled: "disabled",
+} as const;
+
+export type AdminSchedulerStateReason =
+  (typeof AdminSchedulerStateReason)[keyof typeof AdminSchedulerStateReason];
+
+export const AdminSchedulerStateReason = {
+  active: "active",
+  disabled_by_env: "disabled_by_env",
+  not_leader: "not_leader",
+  redis_unavailable: "redis_unavailable",
+  unknown: "unknown",
+} as const;
+
+/**
+ * The scheduler singleton's state (lib/scheduler-state.ts) — what
+ * this process believes the topology is.
+ */
+export interface AdminSchedulerState {
+  mode: AdminSchedulerStateMode;
+  /** Whether the scheduler loops run in THIS process. */
+  active: boolean;
+  /** Whether this process holds the Redis-backed leader lock. */
+  isLeader: boolean;
+  /**
+   * Stable process id (host + pid + uuid) — null before boot decides.
+   * @nullable
+   */
+  instanceId: string | null;
+  reason: AdminSchedulerStateReason;
+  /** @nullable */
+  startedAt: string | null;
+}
+
+export type AdminMetricsSnapshotHttpRequestsByStatusClass = {
+  "2xx": number;
+  "3xx": number;
+  "4xx": number;
+  "5xx": number;
+  other: number;
+};
+
+export type AdminMetricsSnapshotHttpLatency = {
+  /** @nullable */
+  p50Ms: number | null;
+  /** @nullable */
+  p95Ms: number | null;
+  /** @nullable */
+  p99Ms: number | null;
+  /** @nullable */
+  meanMs: number | null;
+};
+
+export type AdminMetricsSnapshotHttpTopRoutesItem = {
+  route: string;
+  method: string;
+  count: number;
+  errorCount: number;
+  /**
+   * Always null today (kept for a future per-route histogram).
+   * @nullable
+   */
+  p95Ms: number | null;
+};
+
+export type AdminMetricsSnapshotHttp = {
+  totalRequests: number;
+  requestsByStatusClass: AdminMetricsSnapshotHttpRequestsByStatusClass;
+  /** 5xx / total (0–1). */
+  errorRate: number;
+  latency: AdminMetricsSnapshotHttpLatency;
+  /** Top 8 routes by request count. */
+  topRoutes: AdminMetricsSnapshotHttpTopRoutesItem[];
+};
+
+/**
+ * "method:outcome" → count (joined-string keys).
+ */
+export type AdminMetricsSnapshotAuthOutcomes = { [key: string]: number };
+
+export type AdminMetricsSnapshotAuth = {
+  /** "method:outcome" → count (joined-string keys). */
+  outcomes: AdminMetricsSnapshotAuthOutcomes;
+  totalAttempts: number;
+  failureRate: number;
+};
+
+/**
+ * "op:status" → count.
+ */
+export type AdminMetricsSnapshotRedisOpsTotal = { [key: string]: number };
+
+/**
+ * reason → count.
+ */
+export type AdminMetricsSnapshotRedisErrorsTotal = { [key: string]: number };
+
+export type AdminMetricsSnapshotRedisPingLatencyMs = {
+  /** @nullable */
+  p50: number | null;
+  /** @nullable */
+  p95: number | null;
+  /** @nullable */
+  p99: number | null;
+};
+
+export type AdminMetricsSnapshotRedis = {
+  available: boolean;
+  /** "op:status" → count. */
+  opsTotal: AdminMetricsSnapshotRedisOpsTotal;
+  /** reason → count. */
+  errorsTotal: AdminMetricsSnapshotRedisErrorsTotal;
+  pingLatencyMs: AdminMetricsSnapshotRedisPingLatencyMs;
+  degradedEvents: number;
+};
+
+/**
+ * "event:direction" → count.
+ */
+export type AdminMetricsSnapshotSocketEventsTotal = { [key: string]: number };
+
+export type AdminMetricsSnapshotSocket = {
+  connectedClients: number;
+  /** "event:direction" → count. */
+  eventsTotal: AdminMetricsSnapshotSocketEventsTotal;
+};
+
+/**
+ * "job:status" → count.
+ */
+export type AdminMetricsSnapshotWorkerJobsTotal = { [key: string]: number };
+
+export type AdminMetricsSnapshotWorker = {
+  /** "job:status" → count. */
+  jobsTotal: AdminMetricsSnapshotWorkerJobsTotal;
+};
+
+/**
+ * metric name → sample count.
+ */
+export type AdminMetricsSnapshotCwvSamples = { [key: string]: number };
+
+/**
+ * metric name → p75 (ms for timings, unit-less for CLS).
+ */
+export type AdminMetricsSnapshotCwvP75 = { [key: string]: number | null };
+
+export type AdminMetricsSnapshotCwv = {
+  /** metric name → sample count. */
+  samples: AdminMetricsSnapshotCwvSamples;
+  /** metric name → p75 (ms for timings, unit-less for CLS). */
+  p75: AdminMetricsSnapshotCwvP75;
+};
+
+/**
+ * "rule:severity:outcome" → count.
+ */
+export type AdminMetricsSnapshotAlertsDispatchedTotal = { [key: string]: number };
+
+export type AdminMetricsSnapshotAlerts = {
+  /** "rule:severity:outcome" → count. */
+  dispatchedTotal: AdminMetricsSnapshotAlertsDispatchedTotal;
+};
+
+/**
+ * The prom registry re-shaped (lib/metrics-snapshot.ts) — bounded
+ * top-N route aggregation, interpolated histogram percentiles,
+ * "key:status"-joined record counters.
+ */
+export interface AdminMetricsSnapshot {
+  timestamp: string;
+  uptimeSec: number;
+  http: AdminMetricsSnapshotHttp;
+  auth: AdminMetricsSnapshotAuth;
+  redis: AdminMetricsSnapshotRedis;
+  socket: AdminMetricsSnapshotSocket;
+  worker: AdminMetricsSnapshotWorker;
+  cwv: AdminMetricsSnapshotCwv;
+  alerts: AdminMetricsSnapshotAlerts;
+  monitoringErrors: number;
+  scheduler: AdminSchedulerState;
+}
+
+/**
+ * GET /admin/observability/metrics — the last-known-good envelope
+ * around the snapshot (10 s server cache).
+ */
+export interface AdminObservabilityMetrics {
+  /** Null only before the first successful build AND a failed recompute. */
+  value: AdminMetricsSnapshot | null;
+  /** @nullable */
+  lastKnownGoodAt: string | null;
+  stale: boolean;
+}
+
+export type AdminObservabilitySummaryServer = {
+  /** 7-char release SHA (GIT_SHA / RENDER_GIT_COMMIT, "unknown" when unset). */
+  version: string;
+  uptimeSec: number;
+  nodeVersion: string;
+};
+
+export type AdminObservabilitySummaryRedis = {
+  available: boolean;
+};
+
+export type AdminObservabilitySummaryWorkerHeartbeat = {
+  /** @nullable */
+  ageSec: number | null;
+  /** @nullable */
+  ts: string | null;
+} | null;
+
+export type AdminObservabilitySummaryWorker = {
+  heartbeat: AdminObservabilitySummaryWorkerHeartbeat;
+};
+
+export type AdminObservabilitySummaryAlerts = {
+  /** @nullable */
+  lastKnownGoodAt: string | null;
+  stale: boolean;
+  recentCount: number;
+};
+
+export type AdminObservabilitySummaryDashboards = {
+  /** @nullable */
+  render: string | null;
+  /** @nullable */
+  sentry: string | null;
+  /** @nullable */
+  neon: string | null;
+};
+
+/**
+ * GET /admin/observability/summary — the System tab summary card.
+ */
+export interface AdminObservabilitySummary {
+  server: AdminObservabilitySummaryServer;
+  redis: AdminObservabilitySummaryRedis;
+  worker: AdminObservabilitySummaryWorker;
+  alerts: AdminObservabilitySummaryAlerts;
+  dashboards: AdminObservabilitySummaryDashboards;
+}
+
+export type AdminObservabilitySchedulerMode =
+  (typeof AdminObservabilitySchedulerMode)[keyof typeof AdminObservabilitySchedulerMode];
+
+export const AdminObservabilitySchedulerMode = {
+  embedded: "embedded",
+  dedicated: "dedicated",
+  single: "single",
+  disabled: "disabled",
+} as const;
+
+export type AdminObservabilitySchedulerReason =
+  (typeof AdminObservabilitySchedulerReason)[keyof typeof AdminObservabilitySchedulerReason];
+
+export const AdminObservabilitySchedulerReason = {
+  active: "active",
+  disabled_by_env: "disabled_by_env",
+  not_leader: "not_leader",
+  redis_unavailable: "redis_unavailable",
+  unknown: "unknown",
+} as const;
+
+export type AdminObservabilitySchedulerHeartbeat = {
+  /** @nullable */
+  ageSec: number | null;
+  /** @nullable */
+  ts: string | null;
+  healthy: boolean;
+  /**
+   * False whenever no Redis client exists (the heartbeat is
+   * inert by design on no-Redis deployments — R108).
+   */
+  expected: boolean;
+  /** Present only when no Redis client exists ("no Redis — heartbeat inert by design"). */
+  note?: string;
+};
+
+/**
+ * GET /admin/observability/scheduler — the topology state plus the
+ * mode-framed Redis heartbeat.
+ */
+export interface AdminObservabilityScheduler {
+  mode: AdminObservabilitySchedulerMode;
+  active: boolean;
+  isLeader: boolean;
+  /** @nullable */
+  instanceId: string | null;
+  reason: AdminObservabilitySchedulerReason;
+  /** @nullable */
+  startedAt: string | null;
+  heartbeat: AdminObservabilitySchedulerHeartbeat;
+  /** Operator-facing Arabic line (mode-dependent). */
+  description: string;
+}
+
+/**
+ * GET /admin/observability/alerts/recent — the newest 50
+ * admin_alerts rows in the last-known-good envelope.
+ */
+export interface AdminObservabilityAlertsRecent {
+  alerts: AdminAlert[];
+  /** @nullable */
+  lastKnownGoodAt: string | null;
+  stale: boolean;
+}
+
+export type AdminDiagnosticsNode = {
+  version: string;
+  platform: string;
+  arch: string;
+  pid: number;
+};
+
+export type AdminDiagnosticsRuntime = {
+  uptimeSec: number;
+  /** The 7-char release SHA ("unknown" when unset). */
+  version: string;
+  env: string;
+  /** RENDER_SERVICE_NAME or the "web" fallback. */
+  service: string;
+};
+
+export type AdminDiagnosticsMemory = {
+  rssMb: number;
+  heapUsedMb: number;
+  heapTotalMb: number;
+  externalMb: number;
+};
+
+export type AdminDiagnosticsCpu = {
+  userMs: number;
+  systemMs: number;
+};
+
+/**
+ * Null until the 5 s monitor interval produces a histogram.
+ */
+export type AdminDiagnosticsEventLoop = {
+  meanMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  maxMs: number;
+} | null;
+
+export type AdminDiagnosticsDepsRedis = {
+  connected: boolean;
+};
+
+export type AdminDiagnosticsDepsSocket = {
+  initialized: boolean;
+};
+
+export type AdminDiagnosticsDeps = {
+  redis: AdminDiagnosticsDepsRedis;
+  socket: AdminDiagnosticsDepsSocket;
+};
+
+/**
+ * The four env-flag strings verbatim (fallbacks included).
+ */
+export type AdminDiagnosticsFlags = {
+  ALERTING_ENABLED: string;
+  METRICS_ENABLED: string;
+  NEW_HEALTH_CHECKS_ENABLED: string;
+  FIREBASE_AUTH_ENABLED: string;
+};
+
+/**
+ * GET /admin/diagnostics — the runtime diagnostics snapshot.
+ */
+export interface AdminDiagnostics {
+  node: AdminDiagnosticsNode;
+  runtime: AdminDiagnosticsRuntime;
+  memory: AdminDiagnosticsMemory;
+  cpu: AdminDiagnosticsCpu;
+  /** Null until the 5 s monitor interval produces a histogram. */
+  eventLoop: AdminDiagnosticsEventLoop;
+  deps: AdminDiagnosticsDeps;
+  /** The four env-flag strings verbatim (fallbacks included). */
+  flags: AdminDiagnosticsFlags;
+}
+
+/**
+ * GET /admin/alerts/new — the drawer's polling delta; plain
+ * admin_alerts rows (drizzle select(), camelCase keys), newest
+ * first, ≤50.
+ */
+export interface AdminNewAlerts {
+  alerts: AdminAlert[];
+}
+
+export type AdminRiskDashboardByLevel = {
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
+};
+
+export type AdminRiskDashboardTopRulesItem = {
+  rule: string;
+  count: number;
+};
+
+export type AdminRiskDashboardPipeline = {
+  /** RISK_PIPELINE_ENABLED === "true". */
+  enabled: boolean;
+};
+
+/**
+ * GET /admin/risk/dashboard — the review-queue header aggregates.
+ */
+export interface AdminRiskDashboard {
+  /** The clamped lookback (1–720). */
+  window_hours: number;
+  /** Sum of the by_level counts. */
+  total: number;
+  by_level: AdminRiskDashboardByLevel;
+  /** Events in the window with no risk_labels row (the backlog). */
+  unresolved: number;
+  /** Top ≤5 fired rules, count-descending. */
+  top_rules: AdminRiskDashboardTopRulesItem[];
+  pipeline: AdminRiskDashboardPipeline;
+}
+
+export type AdminRiskEventEventType =
+  (typeof AdminRiskEventEventType)[keyof typeof AdminRiskEventEventType];
+
+export const AdminRiskEventEventType = {
+  login_attempt: "login_attempt",
+  login_success: "login_success",
+  login_failure: "login_failure",
+  otp_request: "otp_request",
+  otp_verify: "otp_verify",
+  topup_attempt: "topup_attempt",
+  topup_success: "topup_success",
+  order_create: "order_create",
+  order_deliver: "order_deliver",
+  coupon_apply: "coupon_apply",
+  referral_event: "referral_event",
+  admin_force_reauth: "admin_force_reauth",
+} as const;
+
+export type AdminRiskEventLevel = (typeof AdminRiskEventLevel)[keyof typeof AdminRiskEventLevel];
+
+export const AdminRiskEventLevel = {
+  low: "low",
+  medium: "medium",
+  high: "high",
+  critical: "critical",
+} as const;
+
+export type AdminRiskEventActionTaken =
+  (typeof AdminRiskEventActionTaken)[keyof typeof AdminRiskEventActionTaken];
+
+export const AdminRiskEventActionTaken = {
+  none: "none",
+  log: "log",
+  soft_block: "soft_block",
+  hard_block: "hard_block",
+  alert: "alert",
+} as const;
+
+/**
+ * One risk_events review-queue row, LEFT-JOIN enriched with the
+ * user's phone/email.
+ */
+export interface AdminRiskEvent {
+  id: number;
+  /**
+   * Null when the user was deleted (ON DELETE SET NULL).
+   * @nullable
+   */
+  user_id: number | null;
+  /** @nullable */
+  user_phone: string | null;
+  /** @nullable */
+  user_email: string | null;
+  event_type: AdminRiskEventEventType;
+  /** 0–100 (the V1-M29 CHECK bounds). */
+  score: number;
+  level: AdminRiskEventLevel;
+  /** numeric(4,3) → number, 0–1. */
+  confidence: number;
+  rule_fired: string[];
+  action_taken: AdminRiskEventActionTaken;
+  /** @nullable */
+  ip_address: string | null;
+  created_at: string;
+  /**
+   * First investigation-view open (SC-004 triage timer); null until then.
+   * @nullable
+   */
+  shown_at: string | null;
+}
+
+/**
+ * GET /admin/risk/events — one keyset page.
+ */
+export interface AdminRiskEventsResponse {
+  events: AdminRiskEvent[];
+  /**
+   * Opaque "<isoCreatedAt>:<id>" — null on the last page.
+   * @nullable
+   */
+  next_cursor: string | null;
+}
+
+export type AdminForecastRowConfidence =
+  (typeof AdminForecastRowConfidence)[keyof typeof AdminForecastRowConfidence];
+
+export const AdminForecastRowConfidence = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+  insufficient_data: "insufficient_data",
+} as const;
+
+/**
+ * One at-risk inventory_forecasts row joined with its product.
+ * Prediction fields are null when confidence='insufficient_data'
+ * (the pipeline refuses to fabricate without ≥14 days of history).
+ */
+export interface AdminForecastRow {
+  product_id: number;
+  product_name: string;
+  /** @nullable */
+  product_image_url: string | null;
+  /** @nullable */
+  product_slug: string | null;
+  /** @nullable */
+  category: string | null;
+  current_stock_on_hand: number;
+  /**
+   * Trailing 14-day mean (numeric → number).
+   * @nullable
+   */
+  avg_daily_sales: number | null;
+  /** @nullable */
+  predicted_demand_7d: number | null;
+  /** @nullable */
+  predicted_demand_30d: number | null;
+  /**
+   * RAW calendar date ("2026-10-01"), clamped to +90 days.
+   * @nullable
+   */
+  predicted_runout_at: string | null;
+  /** @nullable */
+  recommended_reorder_qty: number | null;
+  confidence: AdminForecastRowConfidence;
+  /** RAW calendar date the forecast represents. */
+  forecast_date: string;
+  /** APP_ORIGIN-joined admin products link (?highlight=<id>). */
+  panel_url: string;
+}
+
+export type AdminForecastAtRiskPipelineState =
+  (typeof AdminForecastAtRiskPipelineState)[keyof typeof AdminForecastAtRiskPipelineState];
+
+export const AdminForecastAtRiskPipelineState = {
+  fresh: "fresh",
+  stale: "stale",
+  uninitialized: "uninitialized",
+  calibrating: "calibrating",
+} as const;
+
+/**
+ * GET /admin/forecast/at-risk — the stockout-risk panel feed.
+ */
+export interface AdminForecastAtRisk {
+  pipeline_state: AdminForecastAtRiskPipelineState;
+  /** @nullable */
+  last_successful_run_at: string | null;
+  /**
+   * Hours since the last successful run (null when none).
+   * @nullable
+   */
+  data_freshness_hours: number | null;
+  rows: AdminForecastRow[];
+}
+
+export type AdminForecastProductPipelineState =
+  (typeof AdminForecastProductPipelineState)[keyof typeof AdminForecastProductPipelineState];
+
+export const AdminForecastProductPipelineState = {
+  fresh: "fresh",
+  stale: "stale",
+  uninitialized: "uninitialized",
+  calibrating: "calibrating",
+} as const;
+
+/**
+ * Null when no forecast row exists for the product.
+ */
+export type AdminForecastProductForecast =
+  | (AdminForecastRow & {
+      explanation: {
+        /** @nullable */
+        avg_daily_sales: number | null;
+        /**
+         * Avg day-of-week multiplier across the next 7 days.
+         * @nullable
+         */
+        dow_blend_7d: number | null;
+        /** Distinct days of order history (the ≥14-day hint). */
+        days_of_history_available: number;
+        /** @nullable */
+        run_completed_at: string | null;
+      };
+    })
+  | null;
+
+/**
+ * GET /admin/forecast/products/{id} — the per-product drawer; the
+ * row plus the explanation block.
+ */
+export interface AdminForecastProduct {
+  pipeline_state: AdminForecastProductPipelineState;
+  /** Null when no forecast row exists for the product. */
+  forecast: AdminForecastProductForecast;
 }
 
 export type ListSessions200 = {
@@ -2884,6 +3573,52 @@ export type ListAdminAuthActivity200 = {
   activities: AdminAuthActivity[];
 };
 
+export type ListAdminAuditLogsParams = {
+  /**
+   * Exact action filter ("topup.approve", "user.update", … —
+   * free `<resource>.<verb>` varchar; "all" or empty means no
+   * filter). Array-valued params are ignored (round-94 A5-09
+   * single-string guard).
+   * @nullable
+   */
+  action?: string | null;
+  /**
+   * Exact admin id filter (actor_id). Digit-exact positive
+   * integer; anything else is 400 INVALID_DATA.
+   * @nullable
+   */
+  actor?: number | null;
+  /**
+   * Exact target row id filter (target_id, across target
+   * types). Digit-exact positive integer; anything else is 400
+   * INVALID_DATA.
+   * @nullable
+   */
+  target?: number | null;
+  /**
+   * Inclusive lower bound on created_at — any Date-parseable
+   * string; invalid values are 400 INVALID_DATA (round-94
+   * A5-09, the auth-activity idiom).
+   * @nullable
+   */
+  startDate?: string | null;
+  /**
+   * Inclusive upper bound (same validation as startDate).
+   * @nullable
+   */
+  endDate?: string | null;
+  /**
+   * 1-based page number (default 1, ceiling 10 000).
+   * @nullable
+   */
+  page?: number | null;
+  /**
+   * Page size, clamped to [1, 200] (default 50).
+   * @nullable
+   */
+  limit?: number | null;
+};
+
 export type ListAdminReferralsParams = {
   /**
    * Optional status filter; out-of-enum values are 400
@@ -2968,4 +3703,108 @@ export type CopilotHistory200 = {
   entries: CopilotHistoryEntry[];
   /** @nullable */
   next_cursor?: string | null;
+};
+
+export type GetAdminObservabilityMetrics500Error =
+  (typeof GetAdminObservabilityMetrics500Error)[keyof typeof GetAdminObservabilityMetrics500Error];
+
+export const GetAdminObservabilityMetrics500Error = {
+  metrics_snapshot_failed: "metrics_snapshot_failed",
+} as const;
+
+export type GetAdminObservabilityMetrics500 = {
+  error: GetAdminObservabilityMetrics500Error;
+  message: string;
+};
+
+export type ListAdminNewAlertsParams = {
+  /**
+   * Last-seen alert id (default 0 → the newest 50).
+   * @nullable
+   */
+  since?: number | null;
+};
+
+export type GetAdminRiskDashboardParams = {
+  /**
+   * Lookback window in hours, clamped to [1, 720] (default 24).
+   * @nullable
+   */
+  hours?: number | null;
+};
+
+export type ListAdminRiskEventsParams = {
+  /**
+   * Page size, clamped to [1, 200] (default 50).
+   * @nullable
+   */
+  limit?: number | null;
+  /**
+   * Exact level filter (out-of-enum values are ignored, not 400).
+   * @nullable
+   */
+  level?: ListAdminRiskEventsLevel;
+  /**
+   * Exact event-type filter — camelCase query name (matches the
+   * FE caller). Unlike level, an out-of-enum value here IS 400
+   * INVALID_DATA.
+   * @nullable
+   */
+  eventType?: ListAdminRiskEventsEventType;
+  /**
+   * Exact user filter (ignored when unparseable).
+   * @nullable
+   */
+  userId?: number | null;
+  /**
+   * Inclusive lower bound (any Date-parseable string; unparseable values are silently ignored).
+   * @nullable
+   */
+  from?: string | null;
+  /**
+   * Inclusive upper bound (same semantics as from).
+   * @nullable
+   */
+  to?: string | null;
+  /**
+   * Opaque keyset cursor from a previous page's next_cursor.
+   * @nullable
+   */
+  cursor?: string | null;
+};
+
+export type ListAdminRiskEventsLevel =
+  (typeof ListAdminRiskEventsLevel)[keyof typeof ListAdminRiskEventsLevel] | null;
+
+export const ListAdminRiskEventsLevel = {
+  low: "low",
+  medium: "medium",
+  high: "high",
+  critical: "critical",
+} as const;
+
+export type ListAdminRiskEventsEventType =
+  (typeof ListAdminRiskEventsEventType)[keyof typeof ListAdminRiskEventsEventType] | null;
+
+export const ListAdminRiskEventsEventType = {
+  login_attempt: "login_attempt",
+  login_success: "login_success",
+  login_failure: "login_failure",
+  otp_request: "otp_request",
+  otp_verify: "otp_verify",
+  topup_attempt: "topup_attempt",
+  topup_success: "topup_success",
+  order_create: "order_create",
+  order_deliver: "order_deliver",
+  coupon_apply: "coupon_apply",
+  referral_event: "referral_event",
+  admin_force_reauth: "admin_force_reauth",
+} as const;
+
+export type ListAdminForecastAtRiskParams = {
+  /**
+   * Max rows, clamped to [1, 50] (default 10).
+   * @nullable
+   */
+  limit?: number | null;
 };

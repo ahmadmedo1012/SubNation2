@@ -683,7 +683,7 @@
     animation: page-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .float-in {
-    animation: float-in 0.34s cubic-bezier(0.34, 1.35, 0.64, 1) both;
+    animation: float-in 0.34s cubic-bezier(0.34, 1.35, 0.64, 1) both; /* impeccable-disable-line bounce-easing: sanctioned spring vocabulary — docs/ux/FINAL_UX_SYSTEM.md §2 (R127-B3 waiver) */
   }
   .slide-up {
     animation: slide-up 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -782,7 +782,8 @@
   .card-spring {
     transition:
       transform 0.26s cubic-bezier(0.34, 1.4, 0.64, 1),
-      box-shadow 0.26s ease,
+      /* impeccable-disable-line bounce-easing: sanctioned spring vocabulary — docs/ux/FINAL_UX_SYSTEM.md §2 (R127-B3 waiver) */
+        box-shadow 0.26s ease,
       border-color 0.2s ease;
     will-change: transform;
   }
@@ -795,7 +796,7 @@
 
   /* Press-spring for buttons */
   .press-spring {
-    transition: transform 0.16s cubic-bezier(0.34, 1.5, 0.64, 1);
+    transition: transform 0.16s cubic-bezier(0.34, 1.5, 0.64, 1); /* impeccable-disable-line bounce-easing: sanctioned spring vocabulary — docs/ux/FINAL_UX_SYSTEM.md §2 (R127-B3 waiver) */
     will-change: transform;
   }
   .press-spring:active {
@@ -815,7 +816,7 @@
 
   /* Num pop emphasis */
   .num-pop {
-    animation: num-pop 0.42s cubic-bezier(0.34, 1.6, 0.64, 1) both;
+    animation: num-pop 0.42s cubic-bezier(0.34, 1.6, 0.64, 1) both; /* impeccable-disable-line bounce-easing: sanctioned spring vocabulary — docs/ux/FINAL_UX_SYSTEM.md §2 (R127-B3 waiver) */
   }
 
   /* Pulse dot */
@@ -825,7 +826,7 @@
 
   /* Tab indicator */
   .tab-slide-in {
-    animation: tab-slide-in 0.24s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+    animation: tab-slide-in 0.24s cubic-bezier(0.34, 1.4, 0.64, 1) both; /* impeccable-disable-line bounce-easing: sanctioned spring vocabulary — docs/ux/FINAL_UX_SYSTEM.md §2 (R127-B3 waiver) */
   }
 
   /* Keyboard focus ring — keyboard-only (never on mouse click).
