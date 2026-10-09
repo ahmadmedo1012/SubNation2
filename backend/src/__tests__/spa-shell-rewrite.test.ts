@@ -22,8 +22,11 @@ import { bumpCatalogCache } from "../lib/catalog-cache";
  * production marker set installed BEFORE importing ../app):
  *
  *   A7-F3: /category/:slug, /product/:slug, /flash-sales, /support,
- *          /terms get their REAL canonical + title + description;
- *          / stays byte-identical.
+ *          /terms get their REAL canonical + title + description.
+ *   B12-F1 (R127-L9): / gets the HOME runtime copy (title/description
+ *          + their og twins) — the static baseline was the generic
+ *          brand-first default while the rendered page showed the
+ *          keyword-forward Arabic title.
  *   A7-F7: unknown / inactive / archived product slugs → REAL 404 (the
  *          shell still ships so the SPA's client-side 404 renders).
  *   A7-F16: login/register/cart/wallet/checkout/orders/profile/admin
@@ -195,10 +198,31 @@ const isSpaShell = (r: ShellResponse) => r.body.includes("SUBNATION-SPA-SHELL-ST
 // ── A7-F3: per-route canonical + title + description ───────────────────────
 
 describe("SPA shell rewrite — known public routes (A7-F3)", () => {
-  it("/ stays BYTE-IDENTICAL to the shipped shell (the homepage meta is already correct)", async () => {
+  it("/ gets the HOME runtime copy — title/description + og twins rewritten, baseline canonical/robots/og:image untouched (B12-F1)", async () => {
     const r = await get("/");
     expect(r.status).toBe(200);
-    expect(r.body).toBe(SPA_STUB_HTML);
+    expect(isSpaShell(r)).toBe(true);
+    // The hydrated page's exact copy (home.tsx useSeo — pinned verbatim
+    // by spa-shell-route-parity.test.ts) — NOT the stub's generic
+    // baseline. The old "homepage shell is already correct" pass-through
+    // was B12-F1: every non-rendering engine saw the brand-first title
+    // where the rendered page showed this keyword-forward one.
+    expect(titleOf(r.body)).toBe("سوق الاشتراكات الرقمية في ليبيا | SubNation");
+    expect(metaContent(r.body, "property", "og:title")).toBe(
+      "سوق الاشتراكات الرقمية في ليبيا | SubNation",
+    );
+    expect(metaContent(r.body, "name", "description")).toBe(
+      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
+    );
+    expect(metaContent(r.body, "property", "og:description")).toBe(
+      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
+    );
+    // The static apex canonical, robots and og:image set were already
+    // correct for "/" — the home rewrite must not touch them.
+    expect(canonicalHref(r.body)).toBe("https://subnation.ly/");
+    expect(metaContent(r.body, "name", "robots")).toBe("index,follow");
+    expect(metaContent(r.body, "property", "og:image")).toBe("https://subnation.ly/opengraph.jpg");
+    expect(r.body).toContain('property="og:image:width" content="1280"');
   });
 
   it("/category/vpn gets the category metaTitle + description + own canonical", async () => {
@@ -222,6 +246,15 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     const flash = await get("/flash-sales");
     expect(titleOf(flash.body)).toBe("عروض فلاش — SubNation");
     expect(canonicalHref(flash.body)).toBe("https://subnation.ly/flash-sales");
+    // B12-F2 (R127-L9): the 140-char A10-F3 runtime copy — the shell
+    // kept the pre-R124 53-char description after the fix shipped
+    // frontend-only. Pinned verbatim by spa-shell-route-parity.test.ts.
+    expect(metaContent(flash.body, "name", "description")).toBe(
+      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
+    );
+    expect(metaContent(flash.body, "property", "og:description")).toBe(
+      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
+    );
 
     const support = await get("/support");
     expect(titleOf(support.body)).toBe("الدعم والأسئلة الشائعة — SubNation");

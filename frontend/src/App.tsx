@@ -14,7 +14,7 @@ import { ThemeProvider } from "@/lib/theme";
 import { getListProductsQueryKey } from "@workspace/api-client-react";
 import type { ProductListItem } from "@workspace/api-client-react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { Route, Switch, useLocation, Router as WouterRouter } from "wouter";
 
@@ -299,6 +299,57 @@ export function isRetryableQueryError(error: unknown): boolean {
 // non-admin boot — deep-linked visitors tapping the logo get the
 // warm chunk, and the home page itself fetches on mount exactly as it
 // did before the 96-F3 head-start existed).
+// ── R127-L10 (B4 D5): boot card-image warming ─────────────────────────────
+//
+// Live (B4 home-mobile observed trace): the LCP card image request
+// only STARTED at 2,214 ms — doc 620 ms → entry eval → /api/products
+// JSON at 2,062 ms → a React render hop → only then the <img> fetch →
+// paint 2,499 ms. resourceLoadDelay (1,537–3,739 ms) dominated EVERY
+// image-LCP run: the bytes were cheap, discovery was the cost. The
+// fields=list payload this head-start already fetches carries
+// image_url per row, so warming the first-4 card images AT PREFETCH
+// RESOLVE removes the render hop from the image's critical path —
+// the bytes land in the HTTP cache while React is still mounting.
+
+/** Card-image warm count — matches ProductCard's eager window (index < 4). */
+const BOOT_CARD_IMAGE_WARM_COUNT = 4;
+
+/**
+ * R127-L10 (B4 D5): the image URLs the boot head-start warms — the
+ * first 4 catalog rows' image_url values, in render order. Pure
+ * slice+filter, exported for the regression suite (same pattern as
+ * isHomeBootPath / shapeForRoute) so the warmed set can neither
+ * silently widen (warming the whole catalog) nor narrow (losing the
+ * LCP cards). Rows with a missing/empty image_url are skipped WITHOUT
+ * pulling later rows forward — the report's literal directive
+ * (list.slice(0,4)); all 45 live products carry images, so the
+ * distinction is theoretical today.
+ */
+export function bootCardImageWarmUrls(list: ProductListItem[] | undefined | null): string[] {
+  if (!Array.isArray(list)) return [];
+  const urls: string[] = [];
+  for (const product of list.slice(0, BOOT_CARD_IMAGE_WARM_COUNT)) {
+    const url = product?.image_url;
+    if (typeof url === "string" && url.length > 0) {
+      urls.push(url);
+    }
+  }
+  return urls;
+}
+
+/**
+ * R127-L10 (B4 D5): prime the HTTP cache for the first-4 card images
+ * (Image() never touches the DOM — no layout, no decode race with
+ * React's own <img>; the browser dedupes against ProductCard's fetch).
+ */
+function warmBootCardImages(list: ProductListItem[] | undefined): void {
+  if (typeof window === "undefined") return;
+  for (const url of bootCardImageWarmUrls(list)) {
+    const img = new Image();
+    img.src = url;
+  }
+}
+
 function startBootHeadStart(): void {
   if (typeof window === "undefined") return;
 
@@ -349,6 +400,17 @@ function startBootHeadStart(): void {
       // Match home's products staleTime (3 min) so the seeded entry
       // is treated as fresh when home mounts.
       staleTime: 3 * 60 * 1000,
+    })
+    .then(() => {
+      // R127-L10 (B4 D5): the catalog payload just landed — warm the
+      // first-4 card images NOW so their bytes flow while React mounts
+      // (see the R127-L10 warming block above startBootHeadStart).
+      // prefetchQuery resolves void, so the payload is read back from
+      // the just-seeded cache entry (same key); a failed prefetch
+      // seeds nothing and the warm is an inert no-op.
+      warmBootCardImages(
+        queryClient.getQueryData<ProductListItem[]>(getListProductsQueryKey({ fields: "list" })),
+      );
     })
     .catch(() => {
       // prefetchQuery already swallows query failures; this guards
@@ -1006,6 +1068,19 @@ function App() {
 }
 
 /**
+ * R127-L10 (B4 D3): pure boot-path predicate — is this boot the PUBLIC
+ * login route? TRUE only for the exact /login path (query strings are
+ * irrelevant — the login form is identical with ?redirect=/?error=/?ref=
+ * and AuthErrorBanner's param-stripping uses replaceState, keeping the
+ * pathname). Admin login (/admin/login) is a DIFFERENT surface (its own
+ * page, its own probe) and must never pass. Exported for the regression
+ * suite (same pattern as isHomeBootPath / routeWarmupFamilyForPath).
+ */
+export function isLoginBootPath(pathname: string, routerBase: string): boolean {
+  return pathname === `${routerBase}/login`;
+}
+
+/**
  * Auth hydration gate. Holds the entire app tree (including the
  * router, the socket initializer, and every lazy-imported page)
  * behind the splash screen until `AuthProvider` finishes its
@@ -1022,6 +1097,38 @@ function App() {
  * splash holds, the probe resolves, the routes render with the
  * correct auth state immediately.
  *
+ * ── R127-L10 (B4 D3): the /login exception ────────────────────────
+ * Live (B4 §B/§C) the login route was the worst run of the fleet
+ * (mobile score 66, TBT 621 ms at the poor boundary, LCP 4,260 ms)
+ * because its LCP element — the rendered «المتابعة عبر Telegram»
+ * button — sat BEHIND this gate with elementRenderDelay 2,220 ms:
+ * JS boot → probe (a full origin RTT, 0.6–0.9 s live — the
+ * ~50-300 ms claim in auth.tsx's docclaim is stale) → login chunk →
+ * /api/auth/providers → paint. The probe gated paint while carrying
+ * ZERO information the login form needs: LoginPage and its
+ * AuthProviders render no token-dependent content (verified —
+ * AuthProviders reads useAuth() for setToken only), so the page is
+ * byte-identical for guests and cookie-authed visitors.
+ *
+ * So: on a /login boot the gate renders `children` optimistically
+ * while the probe is in flight. The login chunk + providers fetch
+ * start immediately (parallel with the probe) and paint without
+ * waiting for identity. Safety properties:
+ *
+ *   - Every OTHER route (the money pages checkout/wallet/orders
+ *     included) keeps the exact splash contract below — no
+ *     unauthenticated UI can flash anywhere identity matters.
+ *   - On /login itself there is no flash-of-wrong-content by
+ *     construction: the optimistic tree IS the post-probe tree
+ *     (same children, same route match; the probe only flips
+ *     Navbar's auth chip, and only for already-authed visitors on
+ *     a page whose content is the same login form either way).
+ *   - Auth-gate semantics are otherwise intact: no post-probe
+ *     redirect was added (today /login renders the login form to
+ *     authed users too — preserved verbatim), and when the probe
+ *     lands the tree does not remount (children identity is
+ *     unchanged; only the conditional branches disappear).
+ *
  * ── Splash threshold ───────────────────────────────────────────────
  * The probe finishes in 50-300ms on a normal connection. Showing the
  * branded splash for that brief window produces a visible flash of
@@ -1036,7 +1143,7 @@ function App() {
  * there is no perceived flicker — only a continuous surface that
  * fills with real content when ready.
  */
-function AuthGate({ children }: { children: React.ReactNode }) {
+export function AuthGate({ children }: { children: React.ReactNode }) {
   const { initializing } = useAuth();
   const [showSplash, setShowSplash] = useState(false);
 
@@ -1046,7 +1153,20 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [initializing]);
 
-  if (initializing) {
+  // R127-L10 (B4 D3): the /login-boot verdict, computed ONCE per gate
+  // lifetime from the boot URL. During `initializing` no SPA navigation
+  // can have happened before the first render (the router is inside
+  // `children` and has not mounted yet), so window.location.pathname IS
+  // the boot path; the memo keeps the verdict stable for the whole
+  // probe window even if an in-window navigation follows (the router is
+  // then live inside the optimistic tree and handles it natively).
+  const loginBoot = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const routerBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    return isLoginBootPath(window.location.pathname, routerBase);
+  }, []);
+
+  if (initializing && !loginBoot) {
     return showSplash ? (
       <AppSplashScreen />
     ) : (
