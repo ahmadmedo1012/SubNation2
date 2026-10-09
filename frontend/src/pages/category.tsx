@@ -4,11 +4,7 @@ import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { useSeo } from "@/hooks/useSeo";
 import { CATEGORY_META, type CategoryMeta } from "@/lib/categories";
 import { buildBreadcrumbLd, buildFaqLd, buildItemListLd } from "@/lib/seo-builders";
-import {
-  getListProductsQueryKey,
-  useListProducts,
-  type Product,
-} from "@workspace/api-client-react";
+import { getListProductsQueryKey, useListProducts } from "@workspace/api-client-react";
 import {
   AppWindow,
   ChevronLeft,
@@ -140,7 +136,7 @@ export default function CategoryPage() {
   // available_only=false so the grid also shows out-of-stock items.
   // ProductCard's mute treatment + 'نفد المخزون' badge handle the
   // visual differentiation; an empty category page would be a soft-404.
-  const params = meta ? { category: meta.slug } : {};
+  const params = { ...(meta ? { category: meta.slug } : {}), fields: "list" as const };
   const {
     data: products = [],
     isLoading,
@@ -173,9 +169,9 @@ export default function CategoryPage() {
     if (!meta || products.length === 0) return null;
     return buildItemListLd(
       products.slice(0, 30).map((p) => ({
-        // Slug-based product URL. The orval Product type doesn't yet
-        // include slug; widen the cast to read it safely.
-        id: (p as Product & { slug?: string | null }).slug ?? p.id,
+        // Slug-based product URL. ProductListItem has carried slug
+        // since the A2-F3 projection — no cast needed anymore.
+        id: p.slug ?? p.id,
         name: p.name,
       })),
     );
@@ -253,7 +249,12 @@ export default function CategoryPage() {
         <Link href="/" className="hover:text-foreground transition-colors press-spring">
           الرئيسية
         </Link>
-        <ChevronLeft className="w-3 h-3 rotate-180 opacity-50" />
+        {/* R124 (A1-F6): the breadcrumb separator denotes traversal FORWARD
+            (parent → current), so in RTL it points LEFT — the app's
+            documented forward=left chevron rule. The stray rotate-180 made
+            it the only backwards-pointing chevron on the page (the :238
+            back-link rotation is the correct opposite case). */}
+        <ChevronLeft className="w-3 h-3 opacity-50" />
         <span className="text-foreground font-bold">{meta.label}</span>
       </nav>
 
@@ -334,7 +335,7 @@ export default function CategoryPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {displayProducts.map((product, i) => (
-              <ProductCard key={product.id} product={product as Product} index={i} />
+              <ProductCard key={product.id} product={product} index={i} />
             ))}
           </div>
         )}

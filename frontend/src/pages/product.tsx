@@ -36,6 +36,7 @@ import {
   AlertCircle,
   ArrowRight,
   CheckCircle,
+  ChevronLeft,
   Eye,
   EyeOff,
   Headphones,
@@ -81,6 +82,14 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
  * to "/" so the breadcrumb never produces a broken link.
  */
 const KNOWN_CATEGORIES = new Set(Object.keys(CATEGORY_META));
+
+/** The product's category landing-page meta (label + slug route) when it
+ * has one — null for retired/unknown categories so the visible breadcrumb
+ * and the back affordance below degrade to the home path instead of a
+ * broken /category/<retired> link (the JSON-LD breadcrumb follows the same
+ * KNOWN_CATEGORIES rule). */
+const categoryMetaFor = (cat: string | null | undefined) =>
+  cat && KNOWN_CATEGORIES.has(cat) ? CATEGORY_META[cat as keyof typeof CATEGORY_META] : null;
 
 // Empty-image fallback foreground tint per category. Mirrors the
 // gradient palette above so the giant first-letter glyph reads as
@@ -259,7 +268,7 @@ function CopyField({
             type="button"
             onClick={() => setRevealed((r) => !r)}
             aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary-text hover:border-primary/22"
           >
             {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             {revealed ? "إخفاء" : "إظهار"}
@@ -772,12 +781,37 @@ export default function ProductPage() {
             ...(productFaqs ? [buildFaqLd(productFaqs)] : []),
           ],
         }
-      : {
-          title: "SubNation",
-          description: "اشتراكات رقمية بالدينار الليبي.",
-          path: "/",
-          locale: "ar",
-        },
+      : isNotFoundError
+        ? {
+            /* R124 (A10-F1 P2): a 404 is definitive — the infinite
+               /product/<anything> URL space must never consolidate
+               against the homepage (Google flags homepage-canonicalized
+               soft-404s; category.tsx's unknown-slug branch is the
+               in-house pattern). noindex,follow + a SELF canonical: the
+               phantom URL consolidates nowhere, and MetaTags' upsert
+               keeps og:url honest for WhatsApp unfurls of dead product
+               links. The block is rendered by the !product early return
+               below (category.tsx A7-F1 pattern — an unrendered useSeo
+               element owns nothing and the App fallback would win);
+               the LOADING skeleton and the outage card deliberately
+               render NO block, keeping the App fallback's index,follow
+               + self canonical there (an outage on a REAL product URL
+               must not deindex or re-canonicalize it). The neutral
+               third branch below only covers the defensive null-data-
+               without-error edge. */
+            title: "المنتج غير موجود — SubNation",
+            description:
+              "المنتج المطلوب غير موجود أو لم يعد متوفراً. تصفّح باقي الاشتراكات الرقمية بالدينار الليبي من الصفحة الرئيسية.",
+            path: `/product/${param}`,
+            locale: "ar",
+            robots: "noindex,follow",
+          }
+        : {
+            title: "SubNation",
+            description: "اشتراكات رقمية بالدينار الليبي.",
+            path: "/",
+            locale: "ar",
+          },
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
@@ -822,13 +856,19 @@ export default function ProductPage() {
   if (!product)
     return (
       <div className="max-w-xl mx-auto px-4 py-20 text-center text-muted-foreground">
+        {/* A7-F1 (category.tsx pattern): the not-found SEO block renders
+            HERE too — this early return is the only place the 404 branch's
+            noindex,follow + self canonical can own the head. Without this
+            render the useSeo element never mounts, the App-level fallback
+            (index,follow) wins, and the R124 A10-F1 fix is inert. */}
+        {seoBlock}
         <div className="w-16 h-16 rounded-2xl bg-muted mx-auto mb-4 flex items-center justify-center">
           <Package className="w-7 h-7 opacity-40" />
         </div>
         <p className="font-bold mb-1">المنتج غير موجود</p>
         <button
           onClick={() => navigate("/")}
-          className="text-sm text-primary hover:underline mt-2 press-spring"
+          className="text-sm text-primary-text hover:underline mt-2 press-spring"
         >
           العودة للكتالوج
         </button>
@@ -1042,17 +1082,63 @@ export default function ProductPage() {
   return (
     <div className={`max-w-xl lg:max-w-6xl mx-auto px-4 py-6 sm:py-8 sm:pb-8 ${mobileContentPad}`}>
       {seoBlock}
+      {/* ── Visible breadcrumb (R124 / A1-F5) ─────────────────────────────
+          Mirrors category.tsx's breadcrumb row (same nav label, classes,
+          chevron idiom). Before this, the breadcrumb existed only as
+          JSON-LD — invisible to shoppers — and the product's category
+          badge on the hero was not a link, so a shopper who arrived via
+          Home → /category/<x> → product had no way back to the category
+          they were browsing. The middle segment links to the category
+          landing page only when one exists (KNOWN_CATEGORIES). */}
+      <nav
+        aria-label="مسار التنقّل"
+        className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2 min-w-0"
+      >
+        <Link href="/" className="hover:text-foreground transition-colors press-spring shrink-0">
+          الرئيسية
+        </Link>
+        {categoryMetaFor(product.category) && (
+          <>
+            {/* R124 (A1-F6): the separator denotes traversal FORWARD
+                (parent → current), so in RTL it points LEFT — the app's
+                unified forward=left chevron rule. (category.tsx's own
+                separator had a stray rotate-180 making it the lone
+                backwards exception — fixed in the same round.) */}
+            <ChevronLeft className="w-3 h-3 opacity-50 shrink-0" aria-hidden="true" />
+            <Link
+              href={`/category/${product.category}`}
+              className="hover:text-foreground transition-colors press-spring shrink-0"
+            >
+              {categoryMetaFor(product.category)!.label}
+            </Link>
+          </>
+        )}
+        <ChevronLeft className="w-3 h-3 opacity-50 shrink-0" aria-hidden="true" />
+        <span className="text-foreground font-bold truncate" aria-current="page">
+          {product.name}
+        </span>
+      </nav>
+
       {/* Back link */}
       {/* A3-F4 (R120-B2): min-h-11 — the 20px-tall text link measured
           112×20 live; the catalog escape hatch now clears the 44px touch
           floor (flex items-center centers the label inside the taller
-          box). */}
+          box).
+          R124 (A1-F5): the escape hatch returns to the product's own
+          CATEGORY when one exists (where the shopper most likely came
+          from — previously it always dumped them on home); home stays one
+          breadcrumb hop away, and unknown/retired categories keep the
+          home fallback. The label names its destination honestly. */}
       <button
-        onClick={() => navigate("/")}
+        onClick={() =>
+          navigate(categoryMetaFor(product.category) ? `/category/${product.category}` : "/")
+        }
         className="min-h-11 flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm mb-4 transition-colors press-spring group"
       >
         <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform duration-150" />
-        العودة للكتالوج
+        {categoryMetaFor(product.category)
+          ? `العودة إلى ${categoryMetaFor(product.category)!.label}`
+          : "العودة للكتالوج"}
       </button>
 
       {/* R116-S2 (P2) — desktop split layout. Below lg this is the SAME
@@ -1664,6 +1750,24 @@ function CtaBlock({
               «سجل الدخول للشراء / سجل للشراء» were the only outliers. */}
           {compact ? "سجّل دخولك للشراء" : "تسجيل الدخول للشراء"}
         </Button>
+        {/* R124 (A1-F4): guests get the same add-to-cart affordance the
+            grid cards give them — the cart is local (ProductCard's CTA
+            has no auth gate), and the cart page already funnels guests
+            through /login?redirect=/checkout, so the label says WHEN
+            sign-in actually happens. Desktop CTA block only: the mobile
+            sticky bar stays a single direct action by design (it never
+            receives onAddToCart), and sold-out products keep the
+            login-only state via the is_available gate. */}
+        {!compact && onAddToCart && product.is_available && (
+          <Button
+            onClick={onAddToCart}
+            variant="outline"
+            className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-border font-bold rounded-xl gap-2"
+          >
+            <PlusCircle className="w-4 h-4" />
+            أضف للسلة — سجّل الدخول عند إتمام الطلب
+          </Button>
+        )}
       </div>
     );
   }
@@ -1831,7 +1935,7 @@ function CtaBlock({
       <Button
         onClick={onBuy}
         disabled={isPending}
-        className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring ${!compact ? "cta-glow" : ""}`}
+        className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
       >
         <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2`} />
         {isPending

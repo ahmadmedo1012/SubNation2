@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
@@ -21,10 +22,9 @@ import {
   Star,
   Trophy,
   Users,
-  WifiOff,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -103,6 +103,110 @@ function StatCard({
     </div>
   );
 }
+
+/* ── R124-I5 (A6 F4 — the R118-B2 orders.tsx pattern) ──────────────────
+ * The search box is a CONTROLLED input — every keystroke re-rendered
+ * the full referral list with fresh inline closures (the debounced
+ * network refetch is separate). The row is now a module-level
+ * React.memo component whose props are stable across a keystroke (row
+ * refs come from `data`; onCredit is useCallback-stable; the busy/
+ * scope flags are primitives), so typing re-renders the search box and
+ * nothing else. */
+interface ReferralRowItemProps {
+  row: ReferralRow;
+  /** Zebra striping (i % 2). */
+  idx: number;
+  /** Whether THIS row's credit POST is in flight. */
+  crediting: boolean;
+  /** R122 (A2-P1): finance scope for the credit action. */
+  canCredit: boolean;
+  onCredit: (row: ReferralRow) => void;
+}
+
+const ReferralRowItem = React.memo(function ReferralRowItem({
+  row,
+  idx,
+  crediting,
+  canCredit,
+  onCredit,
+}: ReferralRowItemProps) {
+  const credited = row.status === "credited";
+  return (
+    <div
+      className={`flex flex-col md:grid md:grid-cols-[1fr_1fr_100px_130px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/15 transition-colors ${idx % 2 !== 0 ? "bg-muted/5" : ""}`}
+    >
+      {/* Referrer */}
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-lg bg-blue-400/10 border border-blue-400/15 flex items-center justify-center shrink-0">
+          <Phone className="w-2.5 h-2.5 text-blue-400" />
+        </div>
+        <span className="font-mono text-sm font-bold truncate">{row.referrer_phone}</span>
+      </div>
+
+      {/* Referee */}
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-lg bg-muted/50 border border-border/40 flex items-center justify-center shrink-0">
+          <Users className="w-2.5 h-2.5 text-muted-foreground" />
+        </div>
+        <span className="font-mono text-sm text-muted-foreground truncate">
+          {row.referee_phone}
+        </span>
+      </div>
+
+      {/* Status */}
+      <div>
+        {credited ? (
+          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <CheckCircle className="w-2.5 h-2.5" /> ناجحة
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+            <Clock className="w-2.5 h-2.5" /> معلقة
+          </span>
+        )}
+      </div>
+
+      {/* Date */}
+      <div className="text-xs text-muted-foreground">
+        <div>{formatRelativeTime(row.created_at)}</div>
+        {credited && row.credited_at && (
+          <div className="text-emerald-400/70 text-3xs mt-0.5">
+            قُيِّد: {formatRelativeTime(row.credited_at)}
+          </div>
+        )}
+      </div>
+
+      {/* Action */}
+      <div>
+        {credited ? (
+          <div className="flex items-center gap-1 text-xs text-yellow-400 font-bold">
+            <Star className="w-3 h-3" />+{row.points_earned}
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onCredit(row)}
+            // R122 (A2-P1): finance scope required — see
+            // canCredit (users.tsx canEditMoney idiom).
+            disabled={crediting || !canCredit}
+            title={canCredit ? undefined : "يتطلب صلاحية المالية"}
+            className="h-7 px-2.5 text-xs gap-1 border-primary/25 text-primary hover:bg-primary/8 hover:border-primary/40"
+          >
+            {crediting ? (
+              <RefreshCw className="w-3 h-3 animate-spin" />
+            ) : (
+              <>
+                <Zap className="w-3 h-3" />
+                منح نقاط
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+});
 
 export default function AdminReferralsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -220,63 +324,81 @@ export default function AdminReferralsPage() {
     };
   }, [search]);
 
-  const handleCredit = async (row: ReferralRow) => {
-    // 93-C6 / F-07 (A5 S-1/RE-1): points are LYD-convertible money
-    // (100:1 via /loyalty/convert-points) — the credit POST now
-    // requires an explicit confirmation instead of firing on the
-    // first tap, matching the topups/orders money-action bar.
-    const ok = await confirm({
-      title: "تأكيد منح النقاط",
-      description: `سيتم قيد ${row.points_earned} نقطة ولاء للمُحيل ${row.referrer_phone} (إحالة ${row.referee_phone}).`,
-      confirmLabel: "منح النقاط",
-    });
-    if (!ok) return;
-    setCrediting(row.id);
-    try {
-      const url = `/api/admin/referrals/${row.id}/credit`;
-      const r = await fetch(url, {
-        method: "POST",
-        // 93-C6 / F-07 (A5 RE-1): parity with topups/users/orders — the
-        // backend idempotency middleware
-        // (admin.referrals.credit) currently logs a warning and passes
-        // through when the header is missing; a follow-up makes it
-        // REQUIRED. Sending the key now closes that gap (a network
-        // retry / double-click replays the cached response instead of
-        // surfacing 409 noise).
-        headers: withIdempotencyKey(headers, generateIdempotencyKey()),
+  // R124-I5 (A6 F4 — R118-B2): useCallback-stable so the memoized
+  // ReferralRowItem rows bail out on search keystrokes. The post-credit
+  // refresh rides fetchDataRef (the ref the debounce effect already
+  // updates on every fetchData identity change) instead of a direct
+  // fetchData call — a direct dep would re-mint this callback per
+  // keystroke (fetchData's deps include `search`).
+  const handleCredit = useCallback(
+    async (row: ReferralRow) => {
+      // 93-C6 / F-07 (A5 S-1/RE-1): points are LYD-convertible money
+      // (100:1 via /loyalty/convert-points) — the credit POST now
+      // requires an explicit confirmation instead of firing on the
+      // first tap, matching the topups/orders money-action bar.
+      const ok = await confirm({
+        title: "تأكيد منح النقاط",
+        description: `سيتم قيد ${row.points_earned} نقطة ولاء للمُحيل ${row.referrer_phone} (إحالة ${row.referee_phone}).`,
+        confirmLabel: "منح النقاط",
       });
-      // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast
-      // + redirect); not a "فشلت العملية" toast.
-      if (isAdminUnauthorized(r, url)) return;
-      const result = (await r.json().catch(() => null)) as {
-        points_credited?: number;
-        error?: string;
-        code?: string;
-      } | null;
-      if (!r.ok || !result) {
-        // 93-C6 / F-07: envelope-parsed Arabic reasons (already-credited
-        // 400, points-race 409 CONFLICT).
-        throw new Error((result && getErrorMessage(result)) || `فشل منح النقاط (HTTP ${r.status})`);
+      if (!ok) return;
+      setCrediting(row.id);
+      try {
+        const url = `/api/admin/referrals/${row.id}/credit`;
+        const r = await fetch(url, {
+          method: "POST",
+          // 93-C6 / F-07 (A5 RE-1): parity with topups/users/orders — the
+          // backend idempotency middleware
+          // (admin.referrals.credit) currently logs a warning and passes
+          // through when the header is missing; a follow-up makes it
+          // REQUIRED. Sending the key now closes that gap (a network
+          // retry / double-click replays the cached response instead of
+          // surfacing 409 noise).
+          headers: withIdempotencyKey(headers, generateIdempotencyKey()),
+        });
+        // 93-C6 / F-07 (A5 S-3): expired session → global handler (toast
+        // + redirect); not a "فشلت العملية" toast.
+        if (isAdminUnauthorized(r, url)) return;
+        const result = (await r.json().catch(() => null)) as {
+          points_credited?: number;
+          error?: string;
+          code?: string;
+        } | null;
+        if (!r.ok || !result) {
+          // 93-C6 / F-07: envelope-parsed Arabic reasons (already-credited
+          // 400, points-race 409 CONFLICT).
+          throw new Error(
+            (result && getErrorMessage(result)) || `فشل منح النقاط (HTTP ${r.status})`,
+          );
+        }
+        // R124-I5 (A6 F1): success variant — points are LYD-convertible
+        // money; the confirmation rides the green success treatment like
+        // every other money action.
+        toast({
+          title: "تم منح النقاط",
+          description: `تم قيد ${result.points_credited} نقطة للمُحيل`,
+          variant: "success",
+        });
+        fetchDataRef.current(true);
+      } catch (err: unknown) {
+        toast({
+          title: "خطأ",
+          description: getErrorMessage(err),
+          variant: "destructive",
+        });
+      } finally {
+        setCrediting(null);
       }
-      toast({
-        title: "تم منح النقاط",
-        description: `تم قيد ${result.points_credited} نقطة للمُحيل`,
-      });
-      fetchData(true);
-    } catch (err: unknown) {
-      toast({
-        title: "خطأ",
-        description: getErrorMessage(err),
-        variant: "destructive",
-      });
-    } finally {
-      setCrediting(null);
-    }
-  };
+    },
+    [confirm, headers, toast],
+  );
 
   const stats = data?.stats;
   const topReferrers = data?.top_referrers ?? [];
-  const list = data?.list ?? [];
+  // R124-I5 (A6 F4 — R118-B2): memoized — `?? []` mints a fresh identity
+  // per render when data is absent; the stable identity lets the memoized
+  // rows below bail out on keystrokes.
+  const list = useMemo(() => data?.list ?? [], [data]);
 
   // R122 (A2-P1): the credit POST is finance-gated server-side
   // (backend routes/admin/referrals.ts — requirePermission("finance"),
@@ -435,22 +557,13 @@ export default function AdminReferralsPage() {
           /* Distinct from "no data": an outage/expired session previously
              masqueraded as the empty state below (B5-03). Same error-card
              idiom the storefront pages use (loyalty.tsx / orders.tsx). */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-8 h-8 text-status-error/70" />
-            </div>
-            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل الإحالات</p>
-            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-              حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-            </p>
-            <Button
-              onClick={() => fetchData()}
-              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل الإحالات"
+            description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+            onRetry={() => fetchData()}
+          />
         ) : list.length === 0 ? (
           <EmptyState
             icon={Gift}
@@ -469,87 +582,19 @@ export default function AdminReferralsPage() {
             </div>
 
             <div className="divide-y divide-border/30">
-              {list.map((row, i) => {
-                const credited = row.status === "credited";
-                return (
-                  <div
-                    key={row.id}
-                    className={`flex flex-col md:grid md:grid-cols-[1fr_1fr_100px_130px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/15 transition-colors ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
-                  >
-                    {/* Referrer */}
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-blue-400/10 border border-blue-400/15 flex items-center justify-center shrink-0">
-                        <Phone className="w-2.5 h-2.5 text-blue-400" />
-                      </div>
-                      <span className="font-mono text-sm font-bold truncate">
-                        {row.referrer_phone}
-                      </span>
-                    </div>
-
-                    {/* Referee */}
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-muted/50 border border-border/40 flex items-center justify-center shrink-0">
-                        <Users className="w-2.5 h-2.5 text-muted-foreground" />
-                      </div>
-                      <span className="font-mono text-sm text-muted-foreground truncate">
-                        {row.referee_phone}
-                      </span>
-                    </div>
-
-                    {/* Status */}
-                    <div>
-                      {credited ? (
-                        <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          <CheckCircle className="w-2.5 h-2.5" /> ناجحة
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-                          <Clock className="w-2.5 h-2.5" /> معلقة
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Date */}
-                    <div className="text-xs text-muted-foreground">
-                      <div>{formatRelativeTime(row.created_at)}</div>
-                      {credited && row.credited_at && (
-                        <div className="text-emerald-400/70 text-3xs mt-0.5">
-                          قُيِّد: {formatRelativeTime(row.credited_at)}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action */}
-                    <div>
-                      {credited ? (
-                        <div className="flex items-center gap-1 text-xs text-yellow-400 font-bold">
-                          <Star className="w-3 h-3" />+{row.points_earned}
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleCredit(row)}
-                          // R122 (A2-P1): finance scope required — see
-                          // canCredit above (users.tsx canEditMoney idiom).
-                          disabled={crediting === row.id || !canCredit}
-                          title={canCredit ? undefined : "يتطلب صلاحية المالية"}
-                          className="h-7 px-2.5 text-xs gap-1 border-primary/25 text-primary hover:bg-primary/8 hover:border-primary/40"
-                        >
-                          {crediting === row.id ? (
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <>
-                              <Zap className="w-3 h-3" />
-                              منح نقاط
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {/* R124-I5 (A6 F4 — R118-B2): the memoized row component —
+                  props are stable across keystrokes so only the search
+                  box re-renders while typing. */}
+              {list.map((row, i) => (
+                <ReferralRowItem
+                  key={row.id}
+                  row={row}
+                  idx={i}
+                  crediting={crediting === row.id}
+                  canCredit={canCredit}
+                  onCredit={handleCredit}
+                />
+              ))}
             </div>
 
             {/* Footer count */}

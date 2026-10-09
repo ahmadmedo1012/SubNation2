@@ -203,17 +203,21 @@ export default function TermsPage() {
     }
   };
 
-  // SEO — title + canonical track the active tab so /terms and
-  // /terms#privacy report different titles to Google. Both tabs are
-  // legal/policy content with no transactional value, so robots stays
-  // index,follow but priority in the sitemap is low.
+  // SEO — title + description track the active tab so /terms and
+  // /terms#privacy report different titles to Google (a legit CTR
+  // signal). R124-I4 (A10 #4): the canonical/og:url is now always
+  // "/terms" — Google strips fragments from canonicals (non-standard)
+  // and an og:url with a fragment mismatches the sitemap URL; the
+  // in-page #privacy anchor stays for UX/deep-links only. Both tabs
+  // are legal/policy content with no transactional value, so robots
+  // stays index,follow but priority in the sitemap is low.
   const isPrivacy = tab === "privacy";
   const seoBlock = useSeo({
     title: isPrivacy ? "سياسة الخصوصية — SubNation" : "الشروط والأحكام — SubNation",
     description: isPrivacy
       ? "كيف يجمع SubNation بياناتك ويحميها أثناء استخدامك المتجر وشحن المحفظة وشراء الاشتراكات."
       : "شروط استخدام منصة SubNation: سياسة الشراء، شحن المحفظة، الاشتراكات الرقمية، والاسترداد.",
-    path: isPrivacy ? "/terms#privacy" : "/terms",
+    path: "/terms",
     locale: "ar",
     type: "website",
   });
@@ -246,6 +250,10 @@ export default function TermsPage() {
           <button
             key={id}
             onClick={() => handleTabClick(id)}
+            /* R124-I4 (A5 #2): the active tab was conveyed by bg/bold
+               only — aria-pressed per the tested toggle-pill idiom
+               (home.tsx category chips). */
+            aria-pressed={tab === id}
             /* R123-E4b (P3-f): min-h-11 — the old px-4 py-2.5 chip measured
                 ≈40px, under the 44px touch floor the app enforces on every
                 other control. */

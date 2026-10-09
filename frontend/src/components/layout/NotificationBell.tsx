@@ -485,11 +485,15 @@ function NotificationPanel({
       ref={panelRef}
       tabIndex={-1}
       data-notification-panel="1"
-      /* R115 (A10 a11y tail): z-50 keeps the panel INSIDE the modal
+      /* R124-A3 #10 (declare elevation once): the ghost-card pairing
+         (near-invisible border/60 under a wide double shadow) is gone —
+         the panel now rides the repo's defensible pairing (visible
+         border + small shadow, same as ProductCard/Input/MobileNav).
+         R115 (A10 a11y tail): z-50 keeps the panel INSIDE the modal
          layer instead of the old inline zIndex:70, which made it bleed
          above every Radix dialog (also z-50) — DOM order (this portal
          mounts at body end) still paints it above the Navbar. */
-      className="bg-card border border-border/60 rounded-2xl shadow-2xl shadow-black/35 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 outline-none z-50"
+      className="bg-card border border-border/70 rounded-2xl shadow-sm overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 outline-none z-50"
       style={panelStyle}
       role="dialog"
       aria-label="الإشعارات"
@@ -558,7 +562,11 @@ function NotificationPanel({
                 }`}
               >
                 {!n.is_read && (
-                  <div className="absolute right-0 top-3 bottom-3 w-0.5 bg-primary/60 rounded-full" />
+                  /* R124-A3 #12 (refuse rule): colored side stripes on list
+                     rows stay at 1px — w-0.5 (2px) reduced to the system's
+                     stripe language; the row tint + pulsing dot still
+                     carry the unread state. */
+                  <div className="absolute right-0 top-3 bottom-3 w-px bg-primary/60 rounded-full" />
                 )}
 
                 {/* Row body as a real button so keyboard/screen-reader users

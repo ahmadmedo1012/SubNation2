@@ -267,7 +267,10 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     // …and its boolean result drives a failure state instead of a
     // false "copied" success.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "تعذّر النسخ" })).toBeInTheDocument(),
+      // R124-I5: the shared CopyButton (sm) swaps its visible label to «تعذّر»
+      // on failure — the shared affordance replaced the local button's
+      // aria-label wording («تعذّر النسخ»).
+      expect(screen.getByRole("button", { name: "تعذّر" })).toBeInTheDocument(),
     );
   });
 });

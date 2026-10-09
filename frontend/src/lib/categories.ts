@@ -52,7 +52,11 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       "ادفع من محفظتك بالدينار الليبي عبر مدار أو ليبيانا واستلم تفاصيل الحساب " +
       "خلال ثوانٍ. الاشتراك صالح للاستخدام في جميع المدن الليبية: طرابلس، " +
       "بنغازي، مصراتة، الزاوية، سبها، زليتن، وغيرها.",
-    metaTitle: "اشتراكات البث المباشر في ليبيا — Netflix و Disney+ و Shahid",
+    /* R124 (A10-F5): all seven metaTitles now carry the «| SubNation»
+       brand tail (home/products/flash-sales/support all did) and fit
+       the full ≤60-char budget — the previous ai-tools title (63) was
+       word-boundary-clamped at runtime, eating its tail first. */
+    metaTitle: "البث المباشر في ليبيا — Netflix و Disney+ | SubNation",
     metaDescription:
       "اشترِ اشتراكات Netflix و Disney+ و Shahid VIP و Amazon Prime Video بالدينار " +
       "الليبي. تسليم فوري في طرابلس وبنغازي ومصراتة وكامل ليبيا.",
@@ -101,7 +105,7 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       "على الهاتف والكمبيوتر والسماعات الذكية، ويسمح بالتنزيل للاستماع بدون " +
       "إنترنت أثناء التنقل بين المدن. ادفع من محفظتك عبر مدار أو ليبيانا " +
       "واستمتع بمكتبة موسيقية لا حدود لها في كل أرجاء ليبيا.",
-    metaTitle: "اشتراكات الموسيقى في ليبيا — Spotify Premium بالدينار الليبي",
+    metaTitle: "اشتراكات الموسيقى في ليبيا — Spotify | SubNation",
     metaDescription:
       "اشترِ اشتراك Spotify Premium وخدمات الموسيقى الأخرى بالدينار الليبي. تسليم " +
       "فوري، جودة صوت عالية، استماع بدون إعلانات في كامل ليبيا.",
@@ -145,7 +149,7 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       "في حسابك. نوفر دعماً فنياً خطوة بخطوة أثناء التفعيل، ونضمن استبدال أي " +
       "مفتاح لا يعمل. خدمة موثوقة للطلاب والمبرمجين وأصحاب السيرفرات في " +
       "طرابلس وبنغازي ومصراتة وكامل ليبيا.",
-    metaTitle: "مفاتيح Windows ورخص برامج أصلية في ليبيا — تفعيل فوري",
+    metaTitle: "مفاتيح Windows وبرامج أصلية في ليبيا | SubNation",
     metaDescription:
       "اشترِ مفاتيح Windows 10 و WinRAR و Grammarly و cPanel أصلية بالدينار الليبي. " +
       "تراخيص دائمة، تفعيل فوري، ضمان استبدال في كامل ليبيا.",
@@ -200,7 +204,7 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       "بعد الدفع عبر مدار أو ليبيانا، وتعمل على ويندوز وماك ولينكس و iOS " +
       "وأندرويد وأجهزة الراوتر. نخدم كل المدن الليبية: طرابلس، بنغازي، " +
       "مصراتة، الزاوية، سبها وغيرها.",
-    metaTitle: "اشتراكات VPN في ليبيا — ExpressVPN و CyberGhost و IPVanish",
+    metaTitle: "اشتراكات VPN في ليبيا — ExpressVPN | SubNation",
     metaDescription:
       "اشترِ اشتراكات ExpressVPN و CyberGhost و IPVanish و HMA بالدينار الليبي. " +
       "تسليم فوري، تشفير كامل، خوادم عالمية، تعمل في كامل ليبيا.",
@@ -257,7 +261,9 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       "مدار أو ليبيانا — بدون حاجة لبطاقة ائتمانية دولية أو محفظة أجنبية. " +
       "مثالية للطلاب والباحثين وصناع المحتوى والمطورين في طرابلس وبنغازي " +
       "ومصراتة وكامل المدن الليبية، مع دعم فني يساعدك في أول خطوات الاستخدام.",
-    metaTitle: "اشتراك ChatGPT Plus في ليبيا — الذكاء الاصطناعي بالدينار الليبي",
+    /* 40 chars — was 63 and got runtime-clamped (the brand tail was the
+       first casualty); «بالدينار الليبي» stays in the description. */
+    metaTitle: "اشتراك ChatGPT Plus في ليبيا | SubNation",
     metaDescription:
       "فعّل ChatGPT Plus و Shopia AI بالدينار الليبي بدون بطاقة دولية. تسليم فوري " +
       "لبيانات الحساب، وصول كامل للنماذج المتقدمة، دعم في كامل ليبيا.",
@@ -305,7 +311,7 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       "بدون بطاقة دولية وبنفس صلاحيات الاشتراك المباشر. مثالية لوكالات التسويق " +
       "والمستقلين وأصحاب المواقع في طرابلس وبنغازي وكامل ليبيا، مع تسليم فوري " +
       "ودعم فني لضمان أول دخول ناجح.",
-    metaTitle: "اشتراكات Ahrefs و Semrush في ليبيا — أدوات SEO احترافية",
+    metaTitle: "أدوات SEO في ليبيا — Ahrefs و Semrush | SubNation",
     metaDescription:
       "اشترِ اشتراكات Ahrefs و Semrush الاحترافية بالدينار الليبي. تحليل روابط " +
       "وكلمات مفتاحية ومنافسين، فاتورة شهرية أو سنوية، تسليم فوري في ليبيا.",
@@ -355,7 +361,7 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       "على الهاتف والتابلت والكمبيوتر مع إمكانية التنزيل للقراءة والمشاهدة " +
       "بدون إنترنت. رفيق مثالي لطلاب الجامعات والمهتمين بالتطوير الذاتي في " +
       "طرابلس وبنغازي ومصراتة وكامل المدن الليبية.",
-    metaTitle: "اشتراكات Skillshare و Scribd في ليبيا — تعلم بلا حدود",
+    metaTitle: "اشتراكات Skillshare و Scribd في ليبيا | SubNation",
     metaDescription:
       "اشترِ اشتراكات Skillshare و Scribd الأصلية بالدينار الليبي. آلاف الدورات " +
       "ومكتبة كتب غير محدودة، تنزيل بدون إنترنت، تسليم فوري في كامل ليبيا.",

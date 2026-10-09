@@ -1,5 +1,14 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
+// R124-I5 (A6 F8): the shared copy affordance replaces the local
+// CopyButton re-implementation that lived in this file (idle→copied→failed
+// state machine, ~45 lines) — the shared one carries strictly better
+// hygiene (type="button" form-safety, 44px hit box, tracked reset timer,
+// aria-live label swap) and orders.tsx already rides it.
+import { CopyButton } from "@/components/CopyButton";
+import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { useConfirm } from "@/hooks/use-confirm";
@@ -9,7 +18,7 @@ import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { copyToClipboard, formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
+import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
@@ -24,25 +33,24 @@ import {
   AlertTriangle,
   Building2,
   Calendar,
-  Check,
   CheckCheck,
   CheckCircle,
   CheckSquare,
-  ChevronDown,
   Clock,
-  Copy,
   Hash,
   Loader2,
   MessageSquare,
   RefreshCw,
+  Search,
   Smartphone,
   Square,
   User,
   UserCheck,
   WifiOff,
+  X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -76,11 +84,17 @@ function NetworkBadge({ net }: { net?: string | null }) {
   );
 }
 
+// R124-I5 (A6 F2): tab labels derive from statusLabel — the same map
+// that feeds the row badges (the tickets.tsx STATUS_FILTERS pattern). The
+// tabs previously hand-rolled «معلق»/«مقبول» while the badges on the very
+// same cards read «قيد الانتظار»/«موافق عليه» — one status can never show
+// two different Arabic words on one page (the status-badge invariant).
 const STATUS_FILTERS = [
   { value: "", label: "الكل" },
-  { value: "pending", label: "معلق" },
-  { value: "approved", label: "مقبول" },
-  { value: "rejected", label: "مرفوض" },
+  ...(["pending", "approved", "rejected"] as const).map((s) => ({
+    value: s,
+    label: statusLabel(s),
+  })),
 ];
 
 /** 94-C2 (A2 P1-1): page size for the topup queue — the backend
@@ -362,52 +376,6 @@ function BulkConfirmModal({
   );
 }
 
-function CopyButton({ text, size = "sm" }: { text: string; size?: "sm" | "xs" }) {
-  const [copied, setCopied] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const copy = async () => {
-    // B6 (round-92 audit): the shared helper (secure-context check +
-    // execCommand fallback + boolean result) replaces the raw
-    // `navigator.clipboard.writeText(text).catch(() => {})` — the raw
-    // call silently rejected on non-secure contexts / strict Firefox
-    // and still flipped the button to the "copied" check icon.
-    const ok = await copyToClipboard(text);
-    if (!ok) {
-      setFailed(true);
-      setTimeout(() => setFailed(false), 2000);
-      return;
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-  return (
-    <button
-      onClick={copy}
-      title={failed ? "تعذّر النسخ" : "نسخ"}
-      aria-label={failed ? "تعذّر النسخ" : "نسخ"}
-      /* 93-C6 / F-07 (A5 S-6): the bare w-3 icon was a ~12px touch
-         target — below any usable minimum on the 375px admin layout
-         and directly adjacent to money-action rows. p-2 (the audit's
-         recommendation) lifts it to ~28px. */
-      className={`shrink-0 rounded p-2 transition-colors ${
-        failed
-          ? "text-red-400"
-          : copied
-            ? "text-emerald-400"
-            : "text-muted-foreground hover:text-muted-foreground"
-      }`}
-    >
-      {failed ? (
-        <XCircle className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
-      ) : copied ? (
-        <Check className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
-      ) : (
-        <Copy className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
-      )}
-    </button>
-  );
-}
-
 export default function AdminTopupsPage() {
   const { adminToken } = useAuth();
   const jsonHeaders = useAdminHeaders({ json: true });
@@ -415,7 +383,8 @@ export default function AdminTopupsPage() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  // R120-B4 (A2-F7): the layout's «المعلقة فقط» context action deep-links
+  // R120-B4 (A2-F7): the layout's «قيد الانتظار فقط» context action (the
+  // R124-C2 statusLabel-aligned label) deep-links
   // /admin/topups?status=pending — the initial filter now consumes the
   // param (validated against the real filter values; anything else falls
   // back to the queue's default "pending" view).
@@ -423,6 +392,19 @@ export default function AdminTopupsPage() {
     const fromUrl = new URLSearchParams(window.location.search).get("status") ?? "";
     return STATUS_FILTERS.some((s) => s.value === fromUrl) ? fromUrl : "pending";
   });
+  // R124-I5 (A6 F14a): the money queue's search. The frozen list route
+  // (routes/admin/topups.ts) supports ?status=&page=&limit= but NO
+  // ?search= — so the filter runs client-side over the ACCUMULATED
+  // pages, with the honest partial-window hint while more pages exist
+  // (the products.tsx category-filter discipline). 300ms debounce per
+  // the admin search idiom (orders/users/products) so typing pauses,
+  // not keystrokes, drive the re-filter.
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [rejectTarget, setRejectTarget] = useState<any | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -556,11 +538,15 @@ export default function AdminTopupsPage() {
       setProcessingId(null);
       invalidate();
       const t = allTopups.find((x) => x.id === vars.id);
+      // R124-I5 (A6 F1): success variant — the single approve/reject are
+      // money actions and were the only blue-default toasts on the page
+      // while their bulk equivalents (below) render green.
       toast({
         title: "تمت الموافقة",
         description: t
           ? `${formatCurrency(t.amount)} لـ ${t.user_phone}`
           : "تمت الموافقة على الطلب",
+        variant: "success",
       });
     },
     onError(err: unknown) {
@@ -597,9 +583,13 @@ export default function AdminTopupsPage() {
       setRejectTarget(null);
       invalidate();
       const t = allTopups.find((x) => x.id === vars.id);
+      // R124-I5 (A6 F1): same success variant as the approve toast above
+      // (parity with the green bulk-reject summary at the bottom of the
+      // file) — the action completed; the queue is safer for it.
       toast({
         title: "تم الرفض",
         description: t ? `${formatCurrency(t.amount)} من ${t.user_phone}` : "تم رفض الطلب",
+        variant: "success",
       });
     },
     onError(err: unknown) {
@@ -617,6 +607,29 @@ export default function AdminTopupsPage() {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
 
+  // R124-I5 (A6 F14a): the status tab + the debounced search both filter
+  // client-side over the accumulated pages (useMemo — the derived array
+  // feeding the cards keeps a stable identity between keystrokes). Lives
+  // ABOVE the adminToken early-return (rules of hooks).
+  const topups = useMemo(() => {
+    const byStatus = statusFilter ? allTopups.filter((t) => t.status === statusFilter) : allTopups;
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q) return byStatus;
+    return byStatus.filter((t) =>
+      // Search by reference / phone / user: the operator's lookup keys
+      // for a single topup in the queue (payment reference, sender +
+      // user phone, and the display name when present).
+      [
+        t.payment_reference,
+        t.user_phone,
+        t.sender_phone,
+        t.sender_account,
+        t.user_display_name,
+      ].some((v) => (v ?? "").toLowerCase().includes(q)),
+    );
+  }, [allTopups, statusFilter, debouncedSearch]);
+  const searchActive = debouncedSearch.trim() !== "";
+
   if (!adminToken) return null;
 
   const pendingTopups = allTopups.filter((t) => t.status === "pending");
@@ -630,7 +643,6 @@ export default function AdminTopupsPage() {
   }, {});
 
   const pendingCount = statusCounts["pending"] ?? 0;
-  const topups = statusFilter ? allTopups.filter((t) => t.status === statusFilter) : allTopups;
 
   const handleApprove = async (id: number) => {
     // 93-C6 / F-07 (A5 T-1): confirm BEFORE the money moves. The
@@ -939,6 +951,15 @@ export default function AdminTopupsPage() {
                   ? `${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} إجمالاً`
                   : `عرض ${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} (الأحدث أولاً)`}
               </span>
+              {/* R124-I5 (A6 F14a): honest search-result count — the
+                  header keeps describing the loaded window; the filter's
+                  own result set is labeled separately (never «إجمالاً»). */}
+              {searchActive && (
+                <>
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                  <span>نتائج البحث: {formatCount(topups.length, TOPUP_COUNT_FORMS)}</span>
+                </>
+              )}
               {pendingCount > 0 &&
                 (() => {
                   const pendingTotal = allTopups
@@ -960,6 +981,32 @@ export default function AdminTopupsPage() {
               viewport without it (select-all + approve-all + reject + 4
               status chips on one row). */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* R124-I5 (A6 F14a): the money queue's search box — the
+                orders/users/products chrome (icon-in-box + ✕ clear).
+                Filters the ACCUMULATED pages client-side; see the
+                honest-range hint below the header when pages remain. */}
+            <div className="relative order-first w-full sm:order-none sm:w-auto">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                type="search"
+                placeholder="بحث برقم التحويل أو الهاتف…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pr-9 h-9 w-full sm:w-52 text-sm"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="مسح البحث"
+                  /* 93-C6 / F-07 (A5 S-6): the orders.tsx ✕-button hit-area
+                     fix — p-2 lifts the tappable area to ~28px. */
+                  className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
             {selectedPendingCount > 0 && (
               <>
                 <Button
@@ -1034,6 +1081,11 @@ export default function AdminTopupsPage() {
                       else url.searchParams.delete("status");
                       window.history.replaceState(null, "", url.toString());
                     }}
+                    /* R124-I5 (A6 F10): the active chip was purely visual —
+                       a screen reader announced four identical buttons.
+                       aria-pressed exposes the toggle state (the
+                       coupons.tsx chip-bar idiom). */
+                    aria-pressed={active}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                       active
                         ? "bg-card shadow-sm text-foreground font-bold"
@@ -1054,6 +1106,16 @@ export default function AdminTopupsPage() {
             </div>
           </div>
         </div>
+
+        {/* R124-I5 (A6 F14a): partial-window honesty — the client-side
+            search only sees the ACCUMULATED pages; while load-more
+            remains, say so instead of letting «لا نتائج» claim the whole
+            history (the products.tsx capped-window hint idiom). */}
+        {searchActive && hasNextPage && !isLoading && !isError && (
+          <p className="text-3xs text-muted-foreground">
+            البحث يعمل على الطلبات المعروضة فقط — حمّل المزيد لتوسيع النطاق
+          </p>
+        )}
 
         {/* List */}
         {/* 93-C6 / F-07 (A5 S-2): refresh of an already-rendered queue
@@ -1085,29 +1147,39 @@ export default function AdminTopupsPage() {
              queue — an outage/expired session previously rendered "لا
              توجد طلبات معلقة" and the operator believed the queue was
              clear (the worst false-empty in the panel). */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-8 h-8 text-status-error/70" />
-            </div>
-            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل طلبات الشحن</p>
-            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-              {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
-            </p>
-            <Button
-              onClick={() => refetch()}
-              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل طلبات الشحن"
+            description={`${getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة`}
+            onRetry={() => refetch()}
+          />
         ) : topups.length === 0 ? (
           <EmptyState
             icon={Clock}
             title={
-              statusFilter === "pending" ? "لا توجد طلبات معلقة" : "لا توجد طلبات في هذه الفئة"
+              searchActive
+                ? `لا نتائج لـ "${debouncedSearch.trim()}"`
+                : statusFilter === "pending"
+                  ? "لا توجد طلبات معلقة"
+                  : "لا توجد طلبات في هذه الفئة"
             }
-            description="ستظهر الطلبات هنا عند ورودها"
+            description={
+              searchActive
+                ? "جرّب رقم تحويل أو هاتفاً آخر — أو امسح البحث"
+                : "ستظهر الطلبات هنا عند ورودها"
+            }
+            action={
+              searchActive ? (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="text-xs text-primary hover:underline mt-1"
+                >
+                  مسح البحث
+                </button>
+              ) : undefined
+            }
           />
         ) : (
           <div className="space-y-2.5">
@@ -1132,6 +1204,10 @@ export default function AdminTopupsPage() {
                         onClick={() => handleSelect(t.id)}
                         className="p-1 rounded hover:bg-secondary/50 transition-colors"
                         aria-label={selectedIds.has(t.id) ? "إلغاء الاختيار" : "اختيار"}
+                        /* R124-I5 (A6 F10): the selection state feeding the
+                           bulk money actions was visual-only — aria-pressed
+                           exposes it (the orders.tsx row-selector idiom). */
+                        aria-pressed={selectedIds.has(t.id)}
                       >
                         {selectedIds.has(t.id) ? (
                           <CheckSquare className="w-4 h-4 text-primary" />
@@ -1173,7 +1249,7 @@ export default function AdminTopupsPage() {
                       <span className="font-mono font-bold text-foreground">
                         {displayUserName(userFromRow(t))}
                       </span>
-                      <CopyButton text={t.user_phone} size="xs" />
+                      <CopyButton text={t.user_phone} />
                     </div>
                     {t.sender_phone && (
                       <div className="flex items-center gap-1.5 text-xs">
@@ -1182,7 +1258,7 @@ export default function AdminTopupsPage() {
                         <span className="font-mono font-bold text-foreground">
                           {t.sender_phone}
                         </span>
-                        <CopyButton text={t.sender_phone} size="xs" />
+                        <CopyButton text={t.sender_phone} />
                       </div>
                     )}
                     {t.payment_reference && (
@@ -1192,7 +1268,7 @@ export default function AdminTopupsPage() {
                         <span className="font-mono text-xs text-foreground">
                           {t.payment_reference}
                         </span>
-                        <CopyButton text={t.payment_reference} size="xs" />
+                        <CopyButton text={t.payment_reference} />
                       </div>
                     )}
                     {t.sender_account && (
@@ -1202,7 +1278,7 @@ export default function AdminTopupsPage() {
                         <span className="font-mono font-bold text-foreground">
                           {t.sender_account}
                         </span>
-                        <CopyButton text={t.sender_account} size="xs" />
+                        <CopyButton text={t.sender_account} />
                       </div>
                     )}
                   </div>
@@ -1266,23 +1342,7 @@ export default function AdminTopupsPage() {
             button hides once a short page arrives. */}
         {hasNextPage && !isLoading && !isError && (
           <div className="flex justify-center pt-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 gap-1.5"
-              disabled={isFetchingNextPage}
-              onClick={() => void fetchNextPage()}
-            >
-              {isFetchingNextPage ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                </>
-              )}
-            </Button>
+            <LoadMoreButton busy={isFetchingNextPage} onClick={() => void fetchNextPage()} />
           </div>
         )}
       </div>

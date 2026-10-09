@@ -125,7 +125,12 @@ export default function StatusPage(): ReactElement {
           <div>
             <h1 className="text-2xl font-bold">حالة المنصة</h1>
             <p className="text-xs text-muted-foreground">
-              <a href="https://subnation.ly" className="text-primary hover:underline">
+              {/* R124-I4 (A5 #1/#10): text-primary-text (the Button link
+                  convention) + resting underline — not color-alone. */}
+              <a
+                href="https://subnation.ly"
+                className="text-primary-text underline underline-offset-2 hover:opacity-80 transition-opacity"
+              >
                 subnation.ly
               </a>{" "}
               · تحديث تلقائي كل خمس دقائق
@@ -174,7 +179,10 @@ export default function StatusPage(): ReactElement {
         {/* Help link */}
         <div className="mt-10 text-center text-xs text-muted-foreground">
           هل تواجه مشكلة لم تظهر هنا؟{" "}
-          <Link href="/support" className="text-primary hover:underline">
+          <Link
+            href="/support"
+            className="text-primary-text underline underline-offset-2 hover:opacity-80 transition-opacity"
+          >
             تواصل مع فريق الدعم
           </Link>
         </div>

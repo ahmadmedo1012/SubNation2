@@ -130,8 +130,13 @@ export function AppDialog({
           {...(description ? {} : { "aria-describedby": undefined })}
           className={cn(
             // Mobile: full-width bottom sheet; ≥sm: centered card.
+            // R124-A3 #10 (declare elevation once): shadow-2xl + border was
+            // the ghost-card pairing — over the dark scrim the wide shadow
+            // was invisible anyway, so the border is THE edge device and
+            // shadow-sm adds the small contact shadow (ProductCard's
+            // defensible pairing).
             "fixed inset-x-0 bottom-0 z-50 flex w-full flex-col gap-0",
-            "rounded-t-2xl border bg-card shadow-2xl duration-200",
+            "rounded-t-2xl border bg-card shadow-sm duration-200",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
             "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom-4",

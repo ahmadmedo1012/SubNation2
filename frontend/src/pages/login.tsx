@@ -204,7 +204,12 @@ export default function LoginPage() {
                 ? `/register?redirect=${encodeURIComponent(redirectTarget)}`
                 : "/register"
             }
-            className="text-primary font-bold hover:text-primary/80 transition-colors"
+            /* R124-I4 (A5 #1/#10): text-primary is the surface token
+               (~3.9:1 dark) — the text-safe twin is text-primary-text
+               (the Button link variant's own convention, button.tsx).
+               Resting underline + hover:opacity-80 = the checkout
+               error-link idiom, so the link is not color-alone. */
+            className="text-primary-text font-bold underline underline-offset-2 hover:opacity-80 transition-opacity"
           >
             إنشاء حساب جديد
           </Link>

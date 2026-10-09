@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
@@ -51,7 +52,6 @@ import {
   Star,
   TrendingUp,
   Wallet,
-  WifiOff,
   XCircle,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
@@ -196,9 +196,16 @@ const NETWORKS = [
     // R94-A1 #5 (P2, WCAG AA): green-300/blue-300 on white cards
     // measured 1.40:1 / 2.30:1 in the light theme — the selected network
     // name was near-invisible. The shared --status-* tokens are
-    // theme-aware; border/bg stay brand-tinted (non-text).
+    // theme-aware; the bg tint stays brand-hued (non-text decoration —
+    // the AA text carries the state).
+    // R124-I1 (A3 P2, WCAG 1.4.11): the selected border is the visible
+    // state boundary and must clear 3:1 in BOTH themes. The raw
+    // green-500/45 / blue-500/45 borders measured 2.55:1 / 1.96:1 on the
+    // dark chip (light worse) — the theme-aware --status-* pair at the
+    // Input recipe's calibrated /75 alpha (input.tsx A4-F12) measures
+    // ≈5.2:1 dark / ≈3.5:1 light (success) and ≈3.5:1 in both (info).
     color: "text-status-success",
-    border: "border-green-500/45",
+    border: "border-status-success/75",
     bg: "bg-green-500/10",
     activeBg: "bg-green-500",
   },
@@ -206,7 +213,7 @@ const NETWORKS = [
     value: "madar",
     label: "مدار",
     color: "text-status-info",
-    border: "border-blue-500/45",
+    border: "border-status-info/75",
     bg: "bg-blue-500/10",
     activeBg: "bg-blue-500",
   },
@@ -224,6 +231,19 @@ function topupStatusIcon(status: string) {
   if (status === "approved") return <CheckCircle className="w-4 h-4 text-status-success" />;
   if (status === "rejected") return <XCircle className="w-4 h-4 text-status-error" />;
   return <Clock className="w-4 h-4 text-status-warning pulse-dot" />;
+}
+
+/**
+ * R124-I1 (A1 P3): a pending TOPUP is «قيد المراجعة» — an admin review
+ * action, exactly as the pending banner, the form chip and
+ * TopupWaitingModal («قيد المراجعة من الإدارة») already say. The shared
+ * statusLabel() maps pending to «قيد الانتظار» for ORDER/referral
+ * waiting states (correct there), which left one screen saying two
+ * words for one topup state. The topup rows and the mobile latest-topup
+ * pin resolve through here so the concept keeps one word on this page.
+ */
+function topupStatusLabel(status: string): string {
+  return status === "pending" ? "قيد المراجعة" : statusLabel(status);
 }
 
 /**
@@ -469,22 +489,12 @@ function WalletStatementCard({
       ) : error ? (
         /* 93-C5 / F-05: outage ≠ "no movements yet" — a failed ledger
            fetch must not read as an empty wallet history. */
-        <div className="text-center py-10 text-muted-foreground">
-          <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-3.5">
-            <WifiOff className="w-5 h-5 text-status-error/70" />
-          </div>
-          <p className="font-bold text-sm mb-1 text-foreground/80">تعذّر تحميل سجل الحركات</p>
-          <p className="text-xs text-muted-foreground mb-4 leading-relaxed max-w-[240px] mx-auto">
-            حدث خطأ في الاتصال — أعد المحاولة لعرض حركات محفظتك
-          </p>
-          <Button
-            onClick={onRetry}
-            size="sm"
-            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl h-9"
-          >
-            إعادة المحاولة
-          </Button>
-        </div>
+        <FetchErrorCard
+          size="compact"
+          title="تعذّر تحميل سجل الحركات"
+          description="حدث خطأ في الاتصال — أعد المحاولة لعرض حركات محفظتك"
+          onRetry={onRetry}
+        />
       ) : entries.length === 0 ? (
         <div className="text-center py-10 text-muted-foreground">
           <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
@@ -558,7 +568,7 @@ function TransferCodePanel({
   return (
     <div className="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-3.5">
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-primary/80">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-primary-text">
           <PhoneCall className="w-3.5 h-3.5" />
           {/* R111-F2 N3: «رمز» family (رمز الكوبون، رمز التحقق) — was
               «كود التحويل». */}
@@ -1153,23 +1163,12 @@ export default function WalletPage() {
                failed /api/wallet probe — the money page's primary datum
                cannot just disappear. Honest error card + retry (same
                idiom as orders/loyalty error states). */
-            <div className="text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
-              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                <WifiOff className="w-6 h-6 text-status-error/70" />
-              </div>
-              <p className="font-bold text-base mb-1.5 text-foreground/80">
-                تعذّر تحميل رصيد المحفظة
-              </p>
-              <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
-                حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-              </p>
-              <Button
-                onClick={() => void refetchWallet()}
-                className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl"
-              >
-                إعادة المحاولة
-              </Button>
-            </div>
+            <FetchErrorCard
+              size="section"
+              title="تعذّر تحميل رصيد المحفظة"
+              description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+              onRetry={() => void refetchWallet()}
+            />
           ) : wallet ? (
             <div
               ref={balanceGlow.ref}
@@ -1285,7 +1284,7 @@ export default function WalletPage() {
                     }
                     size="xs"
                   >
-                    {statusLabel(latestTopup.status)}
+                    {topupStatusLabel(latestTopup.status)}
                   </StatusBadge>
                   <span className="text-3xs text-muted-foreground">
                     {formatRelativeTime(latestTopup.created_at)}
@@ -1354,6 +1353,12 @@ export default function WalletPage() {
                       setMethod(m.id);
                       setError("");
                     }}
+                    /* R124-I1 (A5 P2, WCAG 4.1.2): the selected method is
+                        exposed to assistive tech — same tested
+                        aria-pressed toggle-button idiom as the catalog/
+                        variant pills (home.tsx / product.tsx), not
+                        class-only state. */
+                    aria-pressed={method === m.id}
                     className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border-2 transition-all duration-180 text-center sm:text-right press-spring min-w-0 ${
                       method === m.id
                         ? "border-primary/50 bg-primary/7 shadow-sm"
@@ -1401,6 +1406,11 @@ export default function WalletPage() {
                           }
                           setNetwork(n.value);
                         }}
+                        /* R124-I1 (A5 P2, WCAG 4.1.2): aria-pressed exposes
+                            which network is selected — the money path's
+                            selector groups follow the tested home.tsx /
+                            product.tsx toggle-button idiom. */
+                        aria-pressed={network === n.value}
                         className={`py-3 rounded-xl border-2 font-bold text-sm transition-all press-spring ${
                           network === n.value
                             ? `${n.border} ${n.bg} ${n.color} shadow-sm`
@@ -1432,6 +1442,10 @@ export default function WalletPage() {
                         key={p}
                         type="button"
                         onClick={() => applyAmountPreset(p)}
+                        /* R124-I1 (A5 P2, WCAG 4.1.2): aria-pressed names
+                            the active preset (toggle-button idiom — see
+                            the method tabs above). */
+                        aria-pressed={amount === String(p)}
                         className={`flex-1 min-w-[52px] min-h-11 py-2 rounded-xl text-sm font-bold transition-all border press-spring ${
                           amount === String(p)
                             ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
@@ -1482,25 +1496,35 @@ export default function WalletPage() {
                     dir="ltr"
                     className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 bg-card"
                   />
-                  {/* 93-C5 / F-03: the transfer receipt — REQUIRED on this
-                      flow since R123-E4a (see PaymentReferenceField). */}
-                  <PaymentReferenceField
-                    id="topup-payment-reference-mobile"
-                    value={paymentReference}
-                    onChange={handlePaymentReferenceChange}
-                    required
-                  />
                 </div>
 
                 <div className="border-t border-border/20" />
 
-                {/* Step 3: One-tap transfer */}
+                {/* Step 3: One-tap transfer + the receipt it produces */}
                 <div>
                   <StepDot n={3} label="نفّذ التحويل" active />
                   <TransferCodePanel
                     network={network as TransferNetwork}
                     amount={amount}
                     receiver={RECEIVER_PHONE}
+                  />
+                  {/* 93-C5 / F-03: the transfer receipt — REQUIRED on this
+                      flow since R123-E4a (see PaymentReferenceField).
+                      R124-I1 (A1 P2): rendered AFTER the transfer panel —
+                      the receipt number only exists once the user has
+                      run the USSD transfer above, so the field used to
+                      sit ~1,000px above the button that generates its
+                      value (a required field the user cannot fill yet,
+                      then a scroll-back hunt after step 3). The flow now
+                      reads top-to-bottom: transfer → receipt from the
+                      transfer SMS → sender phone → submit. Validation,
+                      state and the idempotency-key rotation contract are
+                      unchanged. */}
+                  <PaymentReferenceField
+                    id="topup-payment-reference-mobile"
+                    value={paymentReference}
+                    onChange={handlePaymentReferenceChange}
+                    required
                   />
                 </div>
 
@@ -1533,9 +1557,13 @@ export default function WalletPage() {
                             }
                             setSenderPhone(phone);
                           }}
+                          /* R124-I1 (A5 P2, WCAG 4.1.2): aria-pressed on
+                              the saved-phone chips — same toggle-button
+                              idiom as the selector groups above. */
+                          aria-pressed={senderPhone === phone}
                           className={`min-h-11 px-2.5 py-1 rounded-lg text-xs font-mono border transition-all flex items-center justify-center ${
                             senderPhone === phone
-                              ? "bg-primary/15 border-primary/50 text-primary"
+                              ? "bg-primary/15 border-primary/50 text-primary-text"
                               : "bg-secondary/30 border-border/50 hover:bg-secondary/50 text-muted-foreground"
                           }`}
                         >
@@ -1648,9 +1676,11 @@ export default function WalletPage() {
                     /* R116-S2 CTA recipe: size=lg (h-12-class primary)
                       + w-full form layout — the drifted h-11/bg-primary/
                       shadow overrides are gone (button.tsx's lg + default
-                      variant own them now). */
+                      variant own them now). R124-I1 (A3 P6): cta-glow
+                      removed — the zero-offset pulsing halo is retired;
+                      the gradient + press-spring carry the affordance. */
                     size="lg"
-                    className="w-full cta-glow rounded-xl"
+                    className="w-full rounded-xl"
                     disabled={submitting || topupMutation.isPending}
                   >
                     {submitting || topupMutation.isPending ? "جارٍ الإرسال…" : "إرسال طلب الشحن"}
@@ -1713,6 +1743,10 @@ export default function WalletPage() {
                           key={p}
                           type="button"
                           onClick={() => applyAmountPreset(p)}
+                          /* R124-I1 (A5 P2, WCAG 4.1.2): aria-pressed names
+                              the active preset — the lypay twin of the
+                              mobile-flow chips above. */
+                          aria-pressed={amount === String(p)}
                           className={`flex-1 min-w-[64px] min-h-11 py-2 rounded-xl text-sm font-bold transition-all border press-spring ${
                             amount === String(p)
                               ? "border-primary bg-primary text-white shadow-md shadow-primary/22"
@@ -1811,9 +1845,11 @@ export default function WalletPage() {
                     )}
                     <Button
                       type="submit"
-                      /* R116-S2 CTA recipe (lypay twin of the mobile CTA). */
+                      /* R116-S2 CTA recipe (lypay twin of the mobile CTA).
+                          R124-I1 (A3 P6): cta-glow removed with the
+                          mobile CTA above (the pulsing halo is retired). */
                       size="lg"
-                      className="w-full cta-glow rounded-xl"
+                      className="w-full rounded-xl"
                       disabled={submitting || topupMutation.isPending}
                     >
                       {submitting || topupMutation.isPending ? "جارٍ الإرسال…" : "تأكيد طلب الشحن"}
@@ -1870,22 +1906,13 @@ export default function WalletPage() {
                  the "لا توجد طلبات شحن بعد" empty state — an outage read as
                  "you never topped up" on the money page. Distinct error
                  branch with retry. */
-              <div className="text-center py-10 text-muted-foreground">
-                <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-3.5">
-                  <WifiOff className="w-5 h-5 text-status-error/70" />
-                </div>
-                <p className="font-bold text-sm mb-1 text-foreground/80">تعذّر تحميل سجل الشحن</p>
-                <p className="text-xs text-muted-foreground mb-4 leading-relaxed max-w-[220px] mx-auto">
-                  حدث خطأ في الاتصال — أعد المحاولة لعرض طلبات الشحن السابقة
-                </p>
-                <Button
-                  onClick={() => void refetchTopups()}
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl h-9"
-                >
-                  إعادة المحاولة
-                </Button>
-              </div>
+              <FetchErrorCard
+                size="compact"
+                descriptionClassName="max-w-[220px]"
+                title="تعذّر تحميل سجل الشحن"
+                description="حدث خطأ في الاتصال — أعد المحاولة لعرض طلبات الشحن السابقة"
+                onRetry={() => void refetchTopups()}
+              />
             ) : topups.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground">
                 <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
@@ -1934,7 +1961,7 @@ export default function WalletPage() {
                           }
                           size="xs"
                         >
-                          {statusLabel(t.status)}
+                          {topupStatusLabel(t.status)}
                         </StatusBadge>
                         <span className="text-3xs text-muted-foreground">
                           {formatDate(t.created_at)}

@@ -1,5 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { Input } from "@/components/ui/input";
 // R120-B5 (A2-F9): the hand-rolled card-list skeleton joins the shared
 // admin TableSkeleton (the orders/users/coupons console idiom).
@@ -30,7 +32,6 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle,
-  ChevronDown,
   ChevronLeft,
   Clock,
   Loader2,
@@ -38,7 +39,6 @@ import {
   Send,
   Shield,
   User,
-  WifiOff,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -383,6 +383,10 @@ export default function AdminTicketsPage() {
                     setStatusFilter(s.value);
                     syncFilterParams(s.value, categoryFilter);
                   }}
+                  /* R124-C2 (A6 F10): the active tab was purely visual —
+                     aria-pressed exposes the toggle state (the
+                     orders.tsx/topups.tsx chip-bar idiom). */
+                  aria-pressed={statusFilter === s.value}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   {s.label}
@@ -401,6 +405,9 @@ export default function AdminTicketsPage() {
                 setCategoryFilter(c.value);
                 syncFilterParams(statusFilter, c.value);
               }}
+              /* R124-C2 (A6 F10): same toggle-state exposure as the
+                 status tabs above. */
+              aria-pressed={categoryFilter === c.value}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                 categoryFilter === c.value
                   ? "bg-primary/10 border-primary/30 text-primary font-bold"
@@ -446,21 +453,13 @@ export default function AdminTicketsPage() {
                  error-card idiom the storefront pages use (loyalty.tsx /
                  orders.tsx) — an admin on a flaky network must never
                  believe the support queue is empty. */
-              <div className="flex-1 text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-                <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                  <WifiOff className="w-8 h-8 text-status-error/70" />
-                </div>
-                <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
-                <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-                  حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-                </p>
-                <Button
-                  onClick={() => void refetch()}
-                  className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-                >
-                  إعادة المحاولة
-                </Button>
-              </div>
+              <FetchErrorCard
+                size="page"
+                className="flex-1"
+                title="تعذّر تحميل التذاكر"
+                description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+                onRetry={() => void refetch()}
+              />
             ) : visibleTickets.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
                 <MessageSquare className="w-10 h-10 mb-3 opacity-25" />
@@ -534,23 +533,10 @@ export default function AdminTicketsPage() {
                   pages, the fetching flag, and the has-more verdict. */}
                 {hasNextPage && (
                   <div className="flex justify-center pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 gap-1.5"
-                      disabled={loadingMoreTickets}
+                    <LoadMoreButton
+                      busy={loadingMoreTickets}
                       onClick={() => void fetchNextPage()}
-                    >
-                      {loadingMoreTickets ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                        </>
-                      )}
-                    </Button>
+                    />
                   </div>
                 )}
               </>

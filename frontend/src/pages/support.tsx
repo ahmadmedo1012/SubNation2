@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -10,14 +11,16 @@ import {
   CheckCircle,
   ChevronLeft,
   Clock,
+  CreditCard,
   Headphones,
   Loader2,
   MessageSquare,
+  Package,
   Plus,
   Send,
   Shield,
   User,
-  WifiOff,
+  Wrench,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -25,12 +28,15 @@ import { Link } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
 import { buildFaqLd, type FaqItem } from "@/lib/seo-builders";
 
+/* R124-I4 (A3 #15): the category picker/badges used emoji as icons
+   (💳📦⚙️👤💬) — the page otherwise rides lucide. Same component-ref +
+   stroke/size idiom as STATUS_CONFIG below. */
 const CATEGORIES = [
-  { value: "billing", label: "الدفع والفواتير", icon: "💳" },
-  { value: "order", label: "الطلبات", icon: "📦" },
-  { value: "technical", label: "مشكلة تقنية", icon: "⚙️" },
-  { value: "account", label: "الحساب", icon: "👤" },
-  { value: "other", label: "أخرى", icon: "💬" },
+  { value: "billing", label: "الدفع والفواتير", icon: CreditCard },
+  { value: "order", label: "الطلبات", icon: Package },
+  { value: "technical", label: "مشكلة تقنية", icon: Wrench },
+  { value: "account", label: "الحساب", icon: User },
+  { value: "other", label: "أخرى", icon: MessageSquare },
 ];
 
 /**
@@ -155,8 +161,12 @@ interface TicketDetail extends Ticket {
 function categoryLabel(cat: string | null) {
   return CATEGORIES.find((c) => c.value === cat)?.label ?? "أخرى";
 }
-function categoryIcon(cat: string | null) {
-  return CATEGORIES.find((c) => c.value === cat)?.icon ?? "💬";
+/** R124-I4 (A3 #15): renders the category's lucide icon at the
+ * caller's stroke size (w-3 in the badges, w-3.5 in the pills) —
+ * decorative, so aria-hidden like every icon-only glyph here. */
+function categoryIcon(cat: string | null, className = "w-3 h-3") {
+  const Icon = CATEGORIES.find((c) => c.value === cat)?.icon ?? MessageSquare;
+  return <Icon className={className} aria-hidden="true" />;
 }
 
 export default function SupportPage() {
@@ -395,6 +405,13 @@ export default function SupportPage() {
         {!selectedTicket && !showCreate && isAuthenticated && (
           <Button
             onClick={() => setShowCreate(true)}
+            /* R124-I4 (A5 #2): disclosure wiring — aria-expanded/
+               aria-controls per the Navbar hamburger idiom
+               (Navbar.tsx). A disclosure is expanded-state semantics,
+               not pressed-state, so it deliberately diverges from the
+               aria-pressed pills below. */
+            aria-expanded={showCreate}
+            aria-controls="support-create-ticket"
             className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 active:scale-[0.97] transition-all gap-1.5 rounded-xl shrink-0"
           >
             <Plus className="w-4 h-4" />
@@ -506,7 +523,9 @@ export default function SupportPage() {
                         className={`max-w-[78%] flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}
                       >
                         {!isUser && (
-                          <span className="text-2xs font-bold text-primary/80 px-1">
+                          /* R124-I4 (A5 #1): the raw surface token at /80
+                             alpha is sub-AA at 11px — the text-safe twin. */
+                          <span className="text-2xs font-bold text-primary-text px-1">
                             فريق الدعم
                           </span>
                         )}
@@ -592,7 +611,10 @@ export default function SupportPage() {
 
       {/* ── Create Form ──────────────────────────────────────────── */}
       {!selectedTicket && showCreate && (
-        <div className="bg-card border border-primary/22 rounded-2xl overflow-hidden shadow-xl shadow-primary/6 mb-5 float-in">
+        <div
+          id="support-create-ticket"
+          className="bg-card border border-primary/22 rounded-2xl overflow-hidden shadow-xl shadow-primary/6 mb-5 float-in"
+        >
           <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border/25 bg-primary/4">
             <div className="w-7 h-7 rounded-lg bg-primary/12 border border-primary/20 flex items-center justify-center">
               <Plus className="w-3.5 h-3.5 text-primary" />
@@ -624,6 +646,10 @@ export default function SupportPage() {
                     key={c.value}
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, category: c.value }))}
+                    /* R124-I4 (A5 #2): the selected pill was conveyed by
+                       bg/bold only — aria-pressed per the tested
+                       toggle-pill idiom (home.tsx category chips). */
+                    aria-pressed={form.category === c.value}
                     /* R122 (A1 P2-7): min-h-[36px] → min-h-11 — the 44px
                        tap-target floor the catalog chips already ride. */
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-150 press-spring min-h-11 ${
@@ -632,7 +658,7 @@ export default function SupportPage() {
                         : "bg-muted/35 border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
                     }`}
                   >
-                    <span>{c.icon}</span>
+                    {categoryIcon(c.value, "w-3.5 h-3.5")}
                     {c.label}
                   </button>
                 ))}
@@ -692,14 +718,16 @@ export default function SupportPage() {
                   setShowCreate(false);
                   setForm({ title: "", message: "", category: "other" });
                 }}
-                className="flex-1 h-10 active:scale-[0.97] rounded-xl"
+                /* R124-I4 (A4 F1): h-10 (40px) → min-h-11 — the ticket
+                   form's only submit/cancel pair rides the 44px floor. */
+                className="flex-1 min-h-11 active:scale-[0.97] rounded-xl"
               >
                 إلغاء
               </Button>
               <Button
                 type="submit"
                 disabled={submitting}
-                className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97] shadow-md shadow-primary/22 rounded-xl gap-1.5"
+                className="flex-1 min-h-11 bg-primary hover:bg-primary/90 active:scale-[0.97] shadow-md shadow-primary/22 rounded-xl gap-1.5"
               >
                 {submitting ? (
                   <>
@@ -758,21 +786,15 @@ export default function SupportPage() {
           /* 93-C5 / F-05: distinct from "no tickets" — an outage/expired
              session previously read as "لا توجد تذاكر دعم". Same error-card
              idiom as orders/loyalty (B4 P1-4 class). */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
-            <div className="w-14 h-14 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-4">
-              <WifiOff className="w-6 h-6 text-status-error/70" />
-            </div>
-            <p className="font-bold text-sm mb-1.5 text-foreground/80">تعذّر تحميل التذاكر</p>
-            <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
-              حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-            </p>
-            <Button
-              onClick={fetchTickets}
-              className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
-            >
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="section"
+            className="py-16"
+            titleClassName="text-sm"
+            title="تعذّر تحميل التذاكر"
+            description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+            retryClassName="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
+            onRetry={fetchTickets}
+          />
         ) : tickets.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground bg-card border border-border/45 rounded-2xl reveal-up">
             <div className="w-14 h-14 rounded-2xl bg-muted/40 border border-border/35 flex items-center justify-center mx-auto mb-4">
@@ -818,7 +840,7 @@ export default function SupportPage() {
                         {t.status === "open" && (
                           <span className="w-2 h-2 rounded-full bg-status-info shrink-0 pulse-dot" />
                         )}
-                        <span className="font-bold text-sm truncate flex-1 leading-snug group-hover:text-primary transition-colors duration-150">
+                        <span className="font-bold text-sm truncate flex-1 leading-snug group-hover:text-primary-text transition-colors duration-150">
                           {t.title}
                         </span>
                       </div>
@@ -844,7 +866,7 @@ export default function SupportPage() {
                         <div
                           className={`text-xs px-3 py-1.5 rounded-xl leading-relaxed line-clamp-1 border ${
                             hasAdminReply
-                              ? "bg-primary/7 text-primary/75 border-primary/15"
+                              ? "bg-primary/7 text-primary-text border-primary/15"
                               : "bg-muted/35 text-muted-foreground border-border/35"
                           }`}
                         >

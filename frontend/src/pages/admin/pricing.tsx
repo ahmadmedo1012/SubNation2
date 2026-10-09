@@ -1025,13 +1025,17 @@ export default function AdminPricingPage() {
 
             {/* Coupon code */}
             <div>
-              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+              <Label
+                htmlFor="pricing-calc-coupon"
+                className="text-xs font-bold text-muted-foreground mb-1.5 block"
+              >
                 {/* 93-C7 / C-UX5 (A11 top-20 #5): كود/رمز unification —
                     "رمز" is the canonical word for the coupon field
                     (matches admin/coupons.tsx + the backend message). */}
                 رمز الكوبون (اختياري)
               </Label>
               <Input
+                id="pricing-calc-coupon"
                 value={couponCode}
                 onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                 placeholder="WELCOME10"

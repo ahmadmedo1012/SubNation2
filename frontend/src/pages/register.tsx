@@ -183,6 +183,24 @@ export default function RegisterPage() {
             </div>
           )}
 
+          {/* R124-I4 (A1 F13): registration — the moment the account
+              (wallet, points, referral balance) is created — never
+              surfaced the governing terms: the auth pages are
+              chrome-free (Footer returns null on /register) and
+              checkout's consent line was the funnel's only one.
+              Reuses the checkout consent idiom (checkout.tsx) — an
+              informational link, no forced-checkbox gate on the
+              passwordless provider flow. */}
+          <p className="text-2xs text-muted-foreground text-center mt-4 leading-relaxed">
+            بإنشاء حسابك فإنك توافق على{" "}
+            <Link
+              href="/terms"
+              className="text-primary-text font-bold underline underline-offset-2 hover:opacity-80 transition-opacity"
+            >
+              الشروط والأحكام
+            </Link>
+          </p>
+
           {/* Legacy Firebase Phone OTP block was removed in this commit.
               Phone authentication now flows exclusively through WhatsApp OTP
               above. Telegram + Google remain available via <AuthProviders />. */}
@@ -195,7 +213,12 @@ export default function RegisterPage() {
             href={
               redirectTarget ? `/login?redirect=${encodeURIComponent(redirectTarget)}` : "/login"
             }
-            className="text-primary font-bold hover:text-primary/80 transition-colors"
+            /* R124-I4 (A5 #1/#10): text-primary is the surface token
+               (~3.9:1 dark) — the text-safe twin is text-primary-text
+               (the Button link variant's own convention, button.tsx).
+               Resting underline + hover:opacity-80 = the checkout
+               error-link idiom, so the link is not color-alone. */
+            className="text-primary-text font-bold underline underline-offset-2 hover:opacity-80 transition-opacity"
           >
             تسجيل الدخول
           </Link>

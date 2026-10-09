@@ -21,6 +21,7 @@ import {
 } from "@workspace/api-client-react";
 import { CheckCircle2, Clock, Loader2, Sparkles, Wallet, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 
 interface Props {
   topupId: number | null;
@@ -385,8 +386,12 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
       <div className="mx-auto mb-4 w-20 h-20 rounded-full bg-status-error/15 border border-status-error/35 flex items-center justify-center">
         <XCircle className="w-10 h-10 text-status-error" />
       </div>
+      {/* R124-I1 (A1 P3): the no-note fallback names the problem (the
+          money was NOT credited) — the recovery is the /support link
+          below, which replaces the old bare «تواصل مع الدعم إذا كنت ترى
+          أن هذا خطأ.» copy that offered no link and no way back. */}
       <p className="text-sm text-muted-foreground mb-5">
-        {adminNote ? "السبب الموضّح من الإدارة:" : "تواصل مع الدعم إذا كنت ترى أن هذا خطأ."}
+        {adminNote ? "السبب الموضّح من الإدارة:" : "رُفض طلب الشحن ولم يُضاف المبلغ إلى محفظتك."}
       </p>
 
       {adminNote && (
@@ -395,13 +400,31 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onClose}
-        className="w-full min-h-11 py-2.5 rounded-xl bg-muted/60 border border-border/55 text-sm font-bold hover:bg-muted/80 transition-colors press-spring"
-      >
-        إغلاق
-      </button>
+      <div className="space-y-2">
+        {/* R124-I1 (A1 P3): a WORKING support path — order-detail's
+            failure-card idiom (a real /support Link, the only recourse
+            when the user contests the rejection). Deliberately no
+            ?ref= prefill: support.tsx's ref handler auto-files an
+            ORDER ticket («بخصوص الطلب …» + category "order"), which
+            would mislabel a wallet dispute. The neutral secondary keeps
+            the user in the wallet, where the ?return= product path stays
+            armed in sessionStorage (only the approved «متابعة الشراء»
+            consumes it) — a rejected attempt never strands the
+            round-trip. */}
+        <Link
+          href="/support"
+          className="w-full min-h-11 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
+        >
+          تواصل مع الدعم
+        </Link>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full min-h-11 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+        >
+          البقاء في المحفظة
+        </button>
+      </div>
     </div>
   );
 }

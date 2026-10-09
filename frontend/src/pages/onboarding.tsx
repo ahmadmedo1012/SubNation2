@@ -123,8 +123,11 @@ export function OnboardingPage() {
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/12 border border-primary/22 mx-auto">
                   <Sparkles className="w-6 h-6 text-primary" />
                 </div>
+                {/* R124-I4 (A3 #7): gradient text is on the REFUSE list —
+                    emphasis comes from weight/size (the h1 already carries
+                    both); the brand accent rides the text-safe token. */}
                 <h1 className="text-2xl font-bold leading-tight">
-                  مرحباً بك في <span className="text-gradient-animated">SubNation</span>
+                  مرحباً بك في <span className="text-primary-text">SubNation</span>
                 </h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   سوق الاشتراكات الرقمية في ليبيا — بالدينار الليبي، تسليم فوري، ودعم محلي.
@@ -156,9 +159,12 @@ export function OnboardingPage() {
                 />
               </div>
 
+              {/* R124-I4 (A3 #6): cta-glow (zero-offset pulsing halo)
+                  removed — the gradient fill + press-spring already carry
+                  the affordance (the R116-S1 CTA recipe's own rationale). */}
               <Button
                 onClick={() => setStep(2)}
-                className="w-full h-12 font-bold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/22 cta-glow"
+                className="w-full h-12 font-bold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/22"
               >
                 التالي
               </Button>

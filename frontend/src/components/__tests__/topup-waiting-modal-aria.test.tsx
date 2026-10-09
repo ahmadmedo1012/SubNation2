@@ -215,11 +215,16 @@ describe("TopupWaitingModal — AppDialog mobile geometry (R116-S2, folded from 
     const done = screen.getByRole("button", { name: "تم" });
     expect(done.className).toContain("min-h-11");
 
-    // Rejected state: the body's full-width «إغلاق» (the LAST إغلاق in
-    // DOM order — the header close renders first).
+    // Rejected state: R124-I1 (A1 P3) replaced the body's full-width
+    // «إغلاق» with the /support Link (primary) + the neutral
+    // «البقاء في المحفظة» secondary — the header close is now the only
+    // «إغلاق» in the rejected state.
     renderModal({ ...BASE, status: "rejected", id: 2 });
-    const closes = screen.getAllByRole("button", { name: "إغلاق" });
-    expect(closes.length).toBe(2);
-    expect(closes[1].className).toContain("min-h-11");
+    const support = screen.getByRole("link", { name: "تواصل مع الدعم" });
+    expect(support).toHaveAttribute("href", "/support");
+    expect(support.className).toContain("min-h-11");
+    const stay = screen.getByRole("button", { name: "البقاء في المحفظة" });
+    expect(stay.className).toContain("min-h-11");
+    expect(screen.getAllByRole("button", { name: "إغلاق" })).toHaveLength(1);
   });
 });

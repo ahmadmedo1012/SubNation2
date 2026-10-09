@@ -118,13 +118,15 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     );
     // The sort select carries the URL value.
     expect(screen.getByLabelText("ترتيب المنتجات")).toHaveValue("price_asc");
-    // And the products query received the exact filter set.
+    // And the products query received the exact filter set (fields:list
+    // is the A2-F3 grid projection every catalog fetch carries).
     const firstCall = vi.mocked(useListProducts).mock.calls[0]!;
     expect(firstCall[0]).toEqual({
       search: "نتفلكس",
       category: "software",
       sort: "price_asc",
       available_only: "true",
+      fields: "list",
     });
   });
 
@@ -189,7 +191,7 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
       "موسيقى",
       "برامج",
       "VPN وشبكات",
-      "ذكاء اصطناعي",
+      "أدوات ذكاء اصطناعي",
       "أدوات SEO",
       "تعليم",
     ]) {
@@ -198,8 +200,9 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
         label === "الكل" ? "true" : "false",
       );
     }
-    // The products query got the sanitized (empty) filters.
-    expect(vi.mocked(useListProducts).mock.calls[0]![0]).toEqual({});
+    // The products query got the sanitized (empty) filters — plus the
+    // always-on A2-F3 list projection flag.
+    expect(vi.mocked(useListProducts).mock.calls[0]![0]).toEqual({ fields: "list" });
   });
 
   it("hands the products query placeholderData: keepPreviousData (r97 F-16 — no skeleton flash on filter change)", () => {

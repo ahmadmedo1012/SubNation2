@@ -58,7 +58,7 @@ const CATEGORIES = [
   { value: "music", label: "موسيقى", Icon: Music2 },
   { value: "software", label: "برامج", Icon: AppWindow },
   { value: "vpn", label: "VPN وشبكات", Icon: ShieldCheck },
-  { value: "ai-tools", label: "ذكاء اصطناعي", Icon: Sparkles },
+  { value: "ai-tools", label: "أدوات ذكاء اصطناعي", Icon: Sparkles },
   { value: "seo-tools", label: "أدوات SEO", Icon: TrendingUp },
   { value: "education", label: "تعليم", Icon: GraduationCap },
 ];
@@ -259,7 +259,7 @@ export default function HomePage() {
     setSearchHistory([]);
   };
 
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { fields: "list" };
   if (search) params.search = search;
   if (category) params.category = category;
   if (sort) params.sort = sort;
@@ -483,9 +483,18 @@ export default function HomePage() {
                   <p className="text-muted-foreground text-xs mb-0.5 font-semibold">
                     مرحباً بك مجدداً
                   </p>
-                  <h1 className="text-fluid-2xl font-bold text-gradient-animated">
+                  {/* R124 (A5-F8 + A3-F7): h1 → h2 — a greeting is a
+                      section heading, not the page's topic (the guest
+                      SEO hero below owns the page's h1 identity; these
+                      branches are mutually exclusive, but the greeting
+                      must not outrank the catalog's h2s when it renders).
+                      The gradient text is gone (craft-floor ban on
+                      gradient type) — solid --primary-text (4.82:1 on the
+                      light card / 6.05:1 dark) + weight carry the
+                      emphasis. */}
+                  <h2 className="text-fluid-2xl font-bold text-primary-text">
                     اشترِ اشتراكك المفضل اليوم
-                  </h1>
+                  </h2>
                 </div>
                 <div className="flex gap-2">
                   <Link href="/wallet">
@@ -691,7 +700,11 @@ export default function HomePage() {
                       boxes but IS in the DOM text, so crawlers and SRs
                       read the phrase with its space. */}
                     <span className="block">سوق الاشتراكات الرقمية</span>{" "}
-                    <span className="block text-gradient-animated">في ليبيا</span>
+                    {/* R124 (A3-F7): the accent line rode the banned
+                        gradient-type utility — solid --primary-text
+                        (weight/size already carry the hierarchy) keeps
+                        the two-line brand rhythm AA-safe in both themes. */}
+                    <span className="block text-primary-text">في ليبيا</span>
                   </h1>
                   <p
                     className={`text-muted-foreground text-sm leading-relaxed max-w-md mb-1.5 sm:mb-4 ${
@@ -1261,7 +1274,7 @@ export default function HomePage() {
                 icon={ShieldCheck}
                 tone="success"
                 title="دفع آمن"
-                description="محفظتك محمية بالكامل وجميع معاملاتك موثقة"
+                description="محفظتك محمية بالكامل وجميع عملياتك موثقة"
               />
               <TrustCard
                 icon={Headphones}

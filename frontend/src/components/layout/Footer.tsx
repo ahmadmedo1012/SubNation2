@@ -43,16 +43,21 @@ export function Footer() {
             storefront-level inbound link) and the support cluster.
             Slugs/labels come READ-ONLY from lib/categories.ts (single
             source of truth); ≤2 compact rows on mobile, side-by-side
-            from sm. Same hairline divider language as the legal row. */}
+            from sm. Same hairline divider language as the legal row.
+            R124-A4 #2 + A5 #10 (WCAG 2.5.8 + 1.4.1): every list link is
+            an inline-flex min-h-6 (24px) target and carries the repo's
+            underline-offset idiom (checkout error links) — the links
+            were ~14px targets distinguishable from body copy by color
+            alone. */}
         <div className="flex flex-col sm:flex-row sm:items-start gap-x-10 gap-y-3.5 pt-5 pb-4 sm:pt-6 sm:pb-5 border-b border-border/20">
           <nav aria-label="الفئات" className="min-w-0">
-            <h3 className="text-3xs font-bold text-muted-foreground/80 mb-1.5">الفئات</h3>
+            <h3 className="text-3xs font-bold text-muted-foreground mb-1.5">الفئات</h3>
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
               {Object.values(CATEGORY_META).map((c) => (
                 <li key={c.slug}>
                   <Link
                     href={`/category/${c.slug}`}
-                    className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                    className="inline-flex min-h-6 items-center text-2xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
                   >
                     {c.label}
                   </Link>
@@ -61,7 +66,7 @@ export function Footer() {
               <li>
                 <Link
                   href="/flash-sales"
-                  className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex min-h-6 items-center text-2xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
                 >
                   العروض
                 </Link>
@@ -69,12 +74,12 @@ export function Footer() {
             </ul>
           </nav>
           <nav aria-label="المساعدة والدعم" className="min-w-0">
-            <h3 className="text-3xs font-bold text-muted-foreground/80 mb-1.5">المساعدة والدعم</h3>
+            <h3 className="text-3xs font-bold text-muted-foreground mb-1.5">المساعدة والدعم</h3>
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
               <li>
                 <Link
                   href="/support"
-                  className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex min-h-6 items-center text-2xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
                 >
                   الدعم الفني
                 </Link>
@@ -82,7 +87,7 @@ export function Footer() {
               <li>
                 <Link
                   href="/terms"
-                  className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex min-h-6 items-center text-2xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
                 >
                   الشروط والأحكام
                 </Link>
@@ -90,7 +95,7 @@ export function Footer() {
               <li>
                 <Link
                   href="/status"
-                  className="text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex min-h-6 items-center text-2xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
                 >
                   حالة الخدمة
                 </Link>
@@ -113,10 +118,13 @@ export function Footer() {
               links + two separators measured ≈271px against 288px available
               at 320px, so any wider glyph run (font fallback, longer labels)
               clipped the last link under the global overflow-x: clip. Wrapping
-              guarantees the row degrades gracefully instead of clipping. */}
+              guarantees the row degrades gracefully instead of clipping.
+              R124-A4 #2 + A5 #10: links ride min-h-6 (24px AA floor) + the
+              underline idiom — they matched the copyright text's color with
+              no second cue. */}
           <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4">
-            <Link href="/terms#terms">
-              <span className="hover:text-foreground transition-colors cursor-pointer">
+            <Link href="/terms#terms" className="inline-flex min-h-6 items-center">
+              <span className="underline underline-offset-2 hover:text-foreground transition-colors cursor-pointer">
                 الشروط والأحكام
               </span>
             </Link>
@@ -125,14 +133,16 @@ export function Footer() {
                 `window.location.hash` on mount + on hashchange and switches
                 the active tab. Replaces a previous setTimeout + DOM-query
                 hack that silently broke when terms hadn't finished mounting. */}
-            <Link href="/terms#privacy">
-              <span className="hover:text-foreground transition-colors cursor-pointer">
+            <Link href="/terms#privacy" className="inline-flex min-h-6 items-center">
+              <span className="underline underline-offset-2 hover:text-foreground transition-colors cursor-pointer">
                 سياسة الخصوصية
               </span>
             </Link>
             <span className="w-px h-3 bg-border/50" />
-            <Link href="/support">
-              <span className="hover:text-foreground transition-colors cursor-pointer">الدعم</span>
+            <Link href="/support" className="inline-flex min-h-6 items-center">
+              <span className="underline underline-offset-2 hover:text-foreground transition-colors cursor-pointer">
+                الدعم
+              </span>
             </Link>
           </div>
         </div>

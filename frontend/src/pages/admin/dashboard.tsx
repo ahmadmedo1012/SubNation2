@@ -117,6 +117,34 @@ const GRANULARITY_OPTIONS = [
   { label: "شهري", value: "monthly" },
 ] as const;
 
+// R124-I5 (A8 F4 / 96-F7 class): every chart date below pins the
+// -u-nu-latn extension. Bare "ar-LY" relies on the engine shipping
+// ar-LY locale data; engines lacking it (older Safari/WebView) fall
+// back to root "ar" whose CLDR default numbering is Arabic-Indic
+// (٠١٢…) — silently flipping the chart axis digits vs the Latin stat
+// tiles on the same screen (lib/utils.ts:61-70 documents the pin;
+// dashboard was the last bare-locale outlier). Kept local — the shared
+// formatters' option sets differ from the chart keys.
+const AR_CHART_DATE_LOCALE = "ar-LY-u-nu-latn";
+
+/** Aggregate-bucket key (weekly/monthly granularity). */
+const fmtChartKey = (d: Date, opts: Intl.DateTimeFormatOptions) =>
+  d.toLocaleDateString(AR_CHART_DATE_LOCALE, opts);
+
+/** XAxis tick: daily buckets carry the raw backend ISO key
+ *  ("2026-09-06") — format it (Round-3 8-e §1.4). One helper feeds all
+ *  three charts (was a triplicated inline tickFormatter). */
+const fmtChartTick = (value: string) => {
+  const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+  return Number.isNaN(d.getTime())
+    ? value
+    : d.toLocaleDateString(AR_CHART_DATE_LOCALE, {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      });
+};
+
 // Aggregate chart data into weekly or monthly buckets
 function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
   if (granularity === "daily" || data.length === 0) return data;
@@ -134,9 +162,9 @@ function aggregateData(data: ChartDay[], granularity: string): ChartDay[] {
     if (granularity === "weekly") {
       const week = new Date(date);
       week.setDate(date.getDate() - date.getDay());
-      key = week.toLocaleDateString("ar-LY", { month: "short", day: "numeric" });
+      key = fmtChartKey(week, { month: "short", day: "numeric" });
     } else {
-      key = date.toLocaleDateString("ar-LY", { year: "numeric", month: "short" });
+      key = fmtChartKey(date, { year: "numeric", month: "short" });
     }
 
     if (!buckets[key])
@@ -415,7 +443,10 @@ export default function AdminDashboardPage() {
           sparkColor: chart.primary,
         },
         {
-          label: "طلبات الشحن المعلقة",
+          // R124-I5 (A6 F2): «معلقة» — the same statusLabel drift as the
+          // topups tabs; the tile now reads exactly like the queue it
+          // deep-links to (statusLabel("pending")).
+          label: "طلبات الشحن قيد الانتظار",
           value: stats.pending_topups,
           sub: "تحتاج مراجعة يدوية",
           icon: Clock,
@@ -760,20 +791,7 @@ export default function AdminDashboardPage() {
                             />
                             <XAxis
                               dataKey="date"
-                              // Round-3 (8-e §1.4): daily buckets carry the raw
-                              // backend ISO key ("2026-09-06") — unlocalized and
-                              // inconsistent with the Arabic month names the same
-                              // axis shows in weekly/monthly mode. Format it.
-                              tickFormatter={(value: string) => {
-                                const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                                return Number.isNaN(d.getTime())
-                                  ? value
-                                  : d.toLocaleDateString("ar-LY", {
-                                      month: "short",
-                                      day: "numeric",
-                                      timeZone: "UTC",
-                                    });
-                              }}
+                              tickFormatter={fmtChartTick}
                               tick={{ fontSize: 10, fill: chart.muted }}
                               axisLine={false}
                               tickLine={false}
@@ -861,20 +879,7 @@ export default function AdminDashboardPage() {
                             />
                             <XAxis
                               dataKey="date"
-                              // Round-3 (8-e §1.4): daily buckets carry the raw
-                              // backend ISO key ("2026-09-06") — unlocalized and
-                              // inconsistent with the Arabic month names the same
-                              // axis shows in weekly/monthly mode. Format it.
-                              tickFormatter={(value: string) => {
-                                const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                                return Number.isNaN(d.getTime())
-                                  ? value
-                                  : d.toLocaleDateString("ar-LY", {
-                                      month: "short",
-                                      day: "numeric",
-                                      timeZone: "UTC",
-                                    });
-                              }}
+                              tickFormatter={fmtChartTick}
                               tick={{ fontSize: 10, fill: chart.muted }}
                               axisLine={false}
                               tickLine={false}
@@ -955,20 +960,7 @@ export default function AdminDashboardPage() {
                         <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
                         <XAxis
                           dataKey="date"
-                          // Round-3 (8-e §1.4): daily buckets carry the raw
-                          // backend ISO key ("2026-09-06") — unlocalized and
-                          // inconsistent with the Arabic month names the same
-                          // axis shows in weekly/monthly mode. Format it.
-                          tickFormatter={(value: string) => {
-                            const d = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-                            return Number.isNaN(d.getTime())
-                              ? value
-                              : d.toLocaleDateString("ar-LY", {
-                                  month: "short",
-                                  day: "numeric",
-                                  timeZone: "UTC",
-                                });
-                          }}
+                          tickFormatter={fmtChartTick}
                           tick={{ fontSize: 10, fill: chart.muted }}
                           axisLine={false}
                           tickLine={false}

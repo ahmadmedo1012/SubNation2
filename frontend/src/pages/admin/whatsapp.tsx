@@ -149,7 +149,13 @@ export default function AdminWhatsAppPage() {
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}/start`,
         { method: "POST", headers },
       );
-      toast({ title: "بدأ تشغيل الجلسة", description: "يمكنك طلب QR أو رمز الاقتران الآن" });
+      // R124-I5 (A6 F1): success variant — matches the green
+      // create/delete session toasts on this page.
+      toast({
+        title: "بدأ تشغيل الجلسة",
+        description: "يمكنك طلب QR أو رمز الاقتران الآن",
+        variant: "success",
+      });
       await loadSessions();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
@@ -176,9 +182,11 @@ export default function AdminWhatsAppPage() {
         },
       );
       setPairCode(body.code);
+      // R124-I5 (A6 F1): success variant.
       toast({
         title: "تم إصدار رمز الاقتران",
         description: "أدخله في واتساب خلال دقيقتين تقريباً",
+        variant: "success",
       });
       await loadSessions();
     } catch (err) {

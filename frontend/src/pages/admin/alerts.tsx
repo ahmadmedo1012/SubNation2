@@ -1,5 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 // R123 (E3 item 1): the five mutation fetches ride the session-aware
@@ -19,7 +21,6 @@ import {
   Bell,
   BellOff,
   CheckCheck,
-  ChevronDown,
   Inbox,
   Info,
   Package,
@@ -579,22 +580,13 @@ export default function AdminAlertsPage() {
             ))}
           </div>
         ) : isError && alerts.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-8 h-8 text-status-error/70" />
-            </div>
-            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل التنبيهات</p>
-            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-              {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
-            </p>
-            <Button
-              onClick={() => refetch()}
-              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل التنبيهات"
+            description={`${getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة`}
+            onRetry={() => refetch()}
+          />
         ) : displayed.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
             <div className="w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center">
@@ -740,23 +732,11 @@ export default function AdminAlertsPage() {
                 short page arrives). */}
             {hasNextPage && (
               <div className="flex justify-center pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5"
-                  disabled={isFetchingNextPage}
+                <LoadMoreButton
+                  spinner={RefreshCw}
+                  busy={isFetchingNextPage}
                   onClick={() => void fetchNextPage()}
-                >
-                  {isFetchingNextPage ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                    </>
-                  )}
-                </Button>
+                />
               </div>
             )}
           </div>

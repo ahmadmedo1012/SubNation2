@@ -13,9 +13,15 @@ import { cn } from "@/lib/utils";
  * tuples in ProductCard / orders / order-detail / wallet pages.
  *
  * Each variant maps to a `--status-*` CSS variable, so light + dark
- * themes get tonally-correct colors automatically. The size scale
- * matches the dominant in-place sizes (xs = 10px legend chip, sm =
- * 11px row badge).
+ * themes get tonally-correct colors automatically.
+ *
+ * R124-A3 #17 (honest collapse): the size variants are a PADDING + ICON
+ * scale, NOT a type scale — --text-2xs and --text-3xs both emit 11px
+ * (the R120-B1 Arabic readability floor; a 10px 3xs loses dot
+ * distinction in connected glyphs, a 12px 2xs would reflow ~150
+ * badge/chip surfaces). xs = tight chip (legend/inline), sm = roomy
+ * chip (row badge), md = 12px + looser padding. Adjacent variants
+ * differ in padding + icon size, deliberately.
  */
 const statusBadgeVariants = cva(
   "inline-flex items-center gap-1 font-bold whitespace-nowrap rounded-full border transition-colors",
@@ -36,6 +42,9 @@ const statusBadgeVariants = cva(
         purple: "bg-status-purple/12 text-status-purple border-status-purple/28",
       },
       size: {
+        // R124-A3 #17: see the file header — padding/icon scale, not type
+        // scale (both micro tokens are pinned at 11px by the Arabic
+        // readability floor + design-system-css.test.ts).
         xs: "text-3xs px-1.5 py-0.5 [&_svg]:w-2.5 [&_svg]:h-2.5",
         sm: "text-2xs px-2 py-0.5 [&_svg]:w-3 [&_svg]:h-3",
         md: "text-xs px-2.5 py-1 [&_svg]:w-3.5 [&_svg]:h-3.5",
@@ -141,7 +150,6 @@ export const UNKNOWN_STATUS_TONE: StatusBadgeVariant = "neutral";
  * follow-up to consume this export.
  */
 export const TICKET_STATUSES = ["open", "in_progress", "closed"] as const;
-export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
 export interface StatusBadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>, VariantProps<typeof statusBadgeVariants> {

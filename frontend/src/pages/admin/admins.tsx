@@ -1,5 +1,9 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+// R124-I5 (A6 F13): the shared empty-state card — admins was the only
+// list page left with a bare text line (visual weight drifted from
+// every other console list: no icon tile, no card, no border).
+import { EmptyState } from "@/components/admin/EmptyState";
 // 94-C2 (A2 P2-6): the create/edit admin shells migrate from the
 // hand-rolled overlay (unguarded backdrop, no ESC/aria/focus-trap) to
 // the shared AppDialog — dismissable while busy is false keeps the
@@ -26,7 +30,6 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
-  WifiOff,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -143,7 +146,9 @@ export default function AdminAdminsPage() {
         credentials: "include",
         headers,
       });
-      toast({ title: `تم ${verb} المسؤول @${admin.username}` });
+      // R124-I5 (A6 F1): success variant — completes the console-wide
+      // unification (every action-success toast is green).
+      toast({ title: `تم ${verb} المسؤول @${admin.username}`, variant: "success" });
       void reload();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
@@ -181,24 +186,19 @@ export default function AdminAdminsPage() {
         ) : loadError ? (
           /* 93-C6 / F-07 (A5 AD-1): a failed load is NOT "no accounts" —
              referrals.tsx error-card idiom. */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-8 h-8 text-status-error/70" />
-            </div>
-            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل المسؤولين</p>
-            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">{loadError}</p>
-            <Button
-              onClick={() => reload()}
-              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل المسؤولين"
+            description={loadError}
+            onRetry={() => reload()}
+          />
         ) : admins.length === 0 ? (
-          <div className="text-center text-muted-foreground py-12 text-sm">
-            لا توجد حسابات مسؤولين بعد.
-          </div>
+          <EmptyState
+            icon={ShieldCheck}
+            title="لا توجد حسابات مسؤولين بعد"
+            description="أنشئ أول حساب لتفويض عضو فريق آخر بالوصول إلى لوحة الإدارة"
+          />
         ) : (
           <div className="grid grid-cols-1 gap-3">
             {admins.map((admin) => {
@@ -380,7 +380,8 @@ function CreateAdminDialog({
         },
         { fallbackError: "فشل الإنشاء" },
       );
-      toast({ title: "تم إنشاء حساب المسؤول" });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم إنشاء حساب المسؤول", variant: "success" });
       onCreated();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
@@ -533,7 +534,8 @@ function EditAdminDialog({
         },
         { fallbackError: "فشل التحديث" },
       );
-      toast({ title: "تم تحديث الحساب" });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم تحديث الحساب", variant: "success" });
       onSaved();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;

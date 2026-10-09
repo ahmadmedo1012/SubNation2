@@ -1,10 +1,15 @@
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { useSeo } from "@/hooks/useSeo";
 import { buildItemListLd } from "@/lib/seo-builders";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
 import { CATEGORY_ACCENT, CATEGORY_ICON, DEFAULT_ACCENT } from "@/components/ProductCard";
-import { useGetFlashSale, useListProducts, type Product } from "@workspace/api-client-react";
-import { Flame, Clock, Package, Sparkles, Tag, WifiOff } from "lucide-react";
+import {
+  useGetFlashSale,
+  useListProducts,
+  type ProductListItem,
+} from "@workspace/api-client-react";
+import { Flame, Clock, Package, Sparkles, Tag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 
@@ -64,7 +69,7 @@ function FlashCard({
   countdown,
   stagger,
 }: {
-  product: Product;
+  product: ProductListItem;
   countdown: Countdown;
   stagger: string;
 }) {
@@ -170,7 +175,7 @@ function FlashCard({
 }
 
 export default function FlashSalesPage() {
-  const { data: products = [], isLoading, isError, refetch } = useListProducts({});
+  const { data: products = [], isLoading, isError, refetch } = useListProducts({ fields: "list" });
 
   // Products with a flash-sale price are considered "on sale"
   const onSale = useMemo(() => {
@@ -220,7 +225,13 @@ export default function FlashSalesPage() {
   // loaded — an empty ItemList reads as thin structured data).
   const seoBlock = useSeo({
     title: "عروض فلاش — SubNation",
-    description: "خصومات حصرية لفترة محدودة على أفضل الاشتراكات الرقمية",
+    // R124 (A10-F3): 53 → 140 chars — /flash-sales is an indexable money
+    // page (sitemap priority 0.8, changefreq daily); the old half-length
+    // description wasted the SERP snippet. Same register as home/category:
+    // names what's discounted, the currency, the delivery promise, the
+    // locale.
+    description:
+      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
     type: "website",
     path: "/flash-sales",
     locale: "ar",
@@ -264,20 +275,17 @@ export default function FlashSalesPage() {
       ) : isError ? (
         /* Distinct from "no offers": an API outage previously rendered the
            empty state — misleading during incidents. */
-        <div className="text-center py-20 px-4 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-            <WifiOff className="w-8 h-8 text-status-error/70" />
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
-          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-            حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-          </p>
-          {/* R116-S1 CTA recipe: size="lg" + w-full sm:w-auto — no
-              per-page bg/shadow/press overrides on the gradient variant. */}
-          <Button size="lg" className="w-full sm:w-auto" onClick={() => refetch()}>
-            إعادة المحاولة
-          </Button>
-        </div>
+        <FetchErrorCard
+          size="page"
+          className="py-20 px-4 reveal-up"
+          title="تعذّر تحميل العروض"
+          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          /* R116-S1 CTA recipe: size="lg" + w-full sm:w-auto — no
+             per-page bg/shadow/press overrides on the gradient variant. */
+          retrySize="lg"
+          retryClassName="w-full sm:w-auto"
+          onRetry={() => refetch()}
+        />
       ) : onSale.length === 0 ? (
         <div className="text-center py-20 px-4 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
           <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-muted/60 border border-border/40 flex items-center justify-center">

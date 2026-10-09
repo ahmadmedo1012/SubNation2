@@ -1,5 +1,6 @@
 import { CopyButton } from "@/components/CopyButton";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Input } from "@/components/ui/input";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +22,6 @@ import {
   TrendingUp,
   Users,
   Wallet,
-  WifiOff,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -462,21 +462,13 @@ export default function LoyaltyPage() {
         /* Distinct from "no data": an outage/expired session previously
            fell through to a blank page under the header — same error
            idiom as home/category/flash-sales (B4 P1-3). */
-        <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-            <WifiOff className="w-8 h-8 text-status-error/70" />
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل بيانات الولاء</p>
-          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-            حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-          </p>
-          <Button
-            onClick={() => void overviewQ.refetch()}
-            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-          >
-            إعادة المحاولة
-          </Button>
-        </div>
+        <FetchErrorCard
+          size="page"
+          className="reveal-up"
+          title="تعذّر تحميل بيانات الولاء"
+          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          onRetry={() => void overviewQ.refetch()}
+        />
       ) : data && isLoyaltyPayload(data) ? (
         <div className="space-y-4">
           {/* Stats Row */}
@@ -648,7 +640,10 @@ export default function LoyaltyPage() {
                 while converting. */}
             <Link
               href="/referrals"
-              className="w-full min-h-11 py-2 flex items-center justify-center gap-2 rounded-xl bg-primary/8 hover:bg-primary/15 border border-primary/20 hover:border-primary/30 text-primary text-sm font-bold transition-all active:scale-[0.98] press-spring"
+              /* R124-I1 (A3/A5 P2): text-primary-text — raw text-primary is
+                  the surface tone (~3.9:1 dark, sub-AA for this 14px bold
+                  CTA text); button.tsx's link variant pins the convention. */
+              className="w-full min-h-11 py-2 flex items-center justify-center gap-2 rounded-xl bg-primary/8 hover:bg-primary/15 border border-primary/20 hover:border-primary/30 text-primary-text text-sm font-bold transition-all active:scale-[0.98] press-spring"
             >
               <Users className="w-3.5 h-3.5" />
               عرض سجل الإحالات الكامل
@@ -669,7 +664,7 @@ export default function LoyaltyPage() {
               <span className="font-bold text-foreground">
                 {data.points_rate.points_per_lyd} نقطة
               </span>{" "}
-              = <span className="font-bold text-primary">1 د.ل</span>
+              = <span className="font-bold text-primary-text">1 د.ل</span>
             </p>
 
             {/* Persistent conversion failure (B4 P1-7): cleared only when a
@@ -709,7 +704,21 @@ export default function LoyaltyPage() {
               <form onSubmit={handleConvert} className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">
                   <Input
-                    type="number"
+                    /* R124-I1 (A4 P3): the R96 wallet keyboard contract
+                       (wallet.tsx's amount field) — the storefront's last
+                       type="number" still accepted e/+ on desktop, fired
+                       no sensible mobile Enter label and invited browser
+                       autofill into a points field. type="text" +
+                       inputMode="numeric" + autoComplete="off" +
+                       enterKeyHint="done" instead; the min/multiples
+                       rules stay enforced by convertValidation +
+                       handleConvert's own gates (the numeric attrs are
+                       inert on text inputs but kept as the declared
+                       domain — the wallet amount field's pattern). */
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    enterKeyHint="done"
                     min={pointsPerLyd}
                     max={Math.floor(data.points / pointsPerLyd) * pointsPerLyd}
                     step={pointsPerLyd}
@@ -779,7 +788,7 @@ export default function LoyaltyPage() {
                     </div>
                     <span className="text-sm font-semibold leading-snug">{row.label}</span>
                   </div>
-                  <span className="text-xs font-bold text-primary whitespace-nowrap">
+                  <span className="text-xs font-bold text-primary-text whitespace-nowrap">
                     {row.points}
                   </span>
                 </div>
@@ -831,22 +840,12 @@ export default function LoyaltyPage() {
             ) : historyError ? (
               /* Same idiom as the page-level error branch: an outage is
                  NOT «لا توجد حركات» — retry offered, stats above stay. */
-              <div className="text-center py-10 text-muted-foreground">
-                <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-3.5">
-                  <WifiOff className="w-5 h-5 text-status-error/70" />
-                </div>
-                <p className="font-bold text-sm mb-1 text-foreground/80">تعذّر تحميل سجل النقاط</p>
-                <p className="text-xs text-muted-foreground mb-4 leading-relaxed max-w-[240px] mx-auto">
-                  حدث خطأ في الاتصال — أعد المحاولة لعرض حركات نقاطك
-                </p>
-                <Button
-                  onClick={() => void ledgerQ.refetch()}
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl h-9"
-                >
-                  إعادة المحاولة
-                </Button>
-              </div>
+              <FetchErrorCard
+                size="compact"
+                title="تعذّر تحميل سجل النقاط"
+                description="حدث خطأ في الاتصال — أعد المحاولة لعرض حركات نقاطك"
+                onRetry={() => void ledgerQ.refetch()}
+              />
             ) : history.length === 0 ? (
               <div className="text-center py-10 text-muted-foreground">
                 <div className="w-14 h-14 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-3.5">

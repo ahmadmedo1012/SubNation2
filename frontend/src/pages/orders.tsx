@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
@@ -7,17 +9,14 @@ import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/s
 import { type Order } from "@workspace/api-client-react";
 import {
   CheckCircle,
-  ChevronDown,
   ChevronLeft,
   Clock,
   Layers,
-  Loader2,
   Package,
   ShoppingBag,
   Sparkles,
   Tag,
   Undo2,
-  WifiOff,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -374,24 +373,17 @@ export default function OrdersPage() {
            previously fell into the empty state below — an incident read
            as "you never bought anything" (B4 P1-4, the last page in the
            purchase journey without an error branch). */
-        <div className="text-center py-20 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-            <WifiOff className="w-8 h-8 text-status-error/70" />
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
-          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-            حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-          </p>
-          <Button
-            onClick={() => refetch()}
-            /* R116-S2 (P3): 44px floor on the retry affordance (the
-               drifted active:scale-[0.97] rides the global press-spring
-               now). */
-            className="min-h-11 gap-2"
-          >
-            إعادة المحاولة
-          </Button>
-        </div>
+        <FetchErrorCard
+          size="page"
+          className="py-20 reveal-up"
+          title="تعذّر تحميل الطلبات"
+          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          /* R116-S2 (P3): 44px floor on the retry affordance (the
+             drifted active:scale-[0.97] rides the global press-spring
+             now). */
+          retryClassName="min-h-11 gap-2"
+          onRetry={() => refetch()}
+        />
       ) : /* Empty state */
       orders.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
@@ -432,29 +424,24 @@ export default function OrdersPage() {
             </p>
             <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
             <div className="flex justify-center gap-2 flex-wrap pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 gap-1.5"
-                disabled={loadingMoreOrders || isLoading}
+              <LoadMoreButton
+                /* R124-I4 (A4 F1): the fixed h-9 capped the button at
+                   36px (it even capped Button's own min-h-8) — min-h-11
+                   restores the 44px tap-target floor (twMerge drops the
+                   sm variant's min-h-8). */
+                className="min-h-11 gap-1.5"
+                busy={loadingMoreOrders}
+                disabled={isLoading}
                 onClick={() => void fetchNextPage()}
-              >
-                {loadingMoreOrders ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                  </>
-                )}
-              </Button>
+              />
               <button
                 onClick={() => setFilter("all")}
                 /* R122 (A1 P2-7): the text CTA was ~24px tall — min-h-11
-                   rides the 44px tap-target floor the load-more right
-                   above it already follows. */
-                className="inline-flex items-center min-h-11 px-2 text-xs font-bold text-primary hover:underline"
+                   rides the 44px tap-target floor. R124-I4 (A4 F1): the
+                   load-more beside it lost its h-9 cap and rides the
+                   same floor now (the old comment claimed it already
+                   did). */
+                className="inline-flex items-center min-h-11 px-2 text-xs font-bold text-primary-text hover:underline"
               >
                 عرض كل الطلبات
               </button>
@@ -518,7 +505,10 @@ export default function OrdersPage() {
 
                     {/* Main content */}
                     <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm leading-snug truncate group-hover:text-primary transition-colors duration-150">
+                      {/* R124-I4 (A5 #1): hover tint rides the text-safe
+                          token — raw text-primary is 3.76:1 on the dark
+                          card (AA fail on the hover state of small text). */}
+                      <div className="font-bold text-sm leading-snug truncate group-hover:text-primary-text transition-colors duration-150">
                         {order.product_name}
                       </div>
                       {/* R116-S2 (P2): the purchased option under the product
@@ -606,22 +596,14 @@ export default function OrdersPage() {
               back short (the plain-array contract's definite end). */}
           {hasNextPage && (
             <div className="flex justify-center pt-3">
-              <Button
-                variant="outline"
+              <LoadMoreButton
+                size="default"
                 className="min-h-11 gap-1.5"
-                disabled={loadingMoreOrders || isLoading}
+                iconClassName="w-4 h-4"
+                busy={loadingMoreOrders}
+                disabled={isLoading}
                 onClick={() => void fetchNextPage()}
-              >
-                {loadingMoreOrders ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> جارٍ التحميل…
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-4 h-4" /> تحميل المزيد
-                  </>
-                )}
-              </Button>
+              />
             </div>
           )}
         </div>

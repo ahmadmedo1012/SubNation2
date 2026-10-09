@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { StockoutRiskPanel } from "@/components/admin/forecast/StockoutRiskPanel";
 import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
@@ -55,7 +56,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 
@@ -238,6 +239,257 @@ function InlineStockEdit({
   );
 }
 
+/* ── R124-I5 (A6 F4 — the R118-B2 orders.tsx pattern) ──────────────────
+ * The search box is a CONTROLLED input — every keystroke re-rendered the
+ * whole page and (with the 200-card grid inlined in the map closure) all
+ * card subtrees with fresh inline handlers, TWICE a minute more via the
+ * 60s refetchInterval. The card is now a module-level React.memo
+ * component whose props are stable across a keystroke (product refs come
+ * from the query data array; isSelected/isEditingStock are primitives;
+ * the seven callbacks are useCallback-stable), so typing re-renders the
+ * search box and nothing else, and the poll only busts cards whose rows
+ * actually changed identity. */
+interface ProductCardProps {
+  product: AdminProduct;
+  isSelected: boolean;
+  /** Whether THIS card's inline stock editor is open. */
+  isEditingStock: boolean;
+  onToggleSelect: (id: number) => void;
+  onEdit: (product: AdminProduct) => void;
+  onEditStock: (id: number) => void;
+  onStockEditDone: () => void;
+  onUploadInventory: (product: AdminProduct) => void;
+  onManageVariants: (product: AdminProduct) => void;
+  onArchive: (product: AdminProduct) => void;
+}
+
+const ProductCard = React.memo(function ProductCard({
+  product,
+  isSelected,
+  isEditingStock,
+  onToggleSelect,
+  onEdit,
+  onEditStock,
+  onStockEditDone,
+  onUploadInventory,
+  onManageVariants,
+  onArchive,
+}: ProductCardProps) {
+  return (
+    <div
+      className={`bg-card border rounded-2xl overflow-hidden transition-all hover:shadow-lg hover:shadow-black/10 ${
+        isSelected
+          ? "border-primary/40 ring-1 ring-primary/20 shadow-md shadow-primary/5"
+          : !product.is_active
+            ? "opacity-55 border-border/60"
+            : product.stock_count === 0
+              ? "border-orange-500/25"
+              : "border-border/60 hover:border-border"
+      }`}
+    >
+      <div className="p-4">
+        {/* Product info */}
+        <div className="flex items-start gap-3 mb-3">
+          {/* Checkbox — 94-C2: aria-label so the icon-only
+              toggle is announced (and reachable by tests). */}
+          <button
+            onClick={() => onToggleSelect(product.id)}
+            aria-label={`تحديد ${product.name}`}
+            /* R124-I5 (A6 F10): the bulk-archive selection state feeding
+               the destructive action was visual-only — aria-pressed
+               exposes it (the orders.tsx row-selector idiom). */
+            aria-pressed={isSelected}
+            className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
+          >
+            {isSelected ? (
+              <CheckSquare className="w-4 h-4 text-primary" />
+            ) : (
+              <Square className="w-4 h-4" />
+            )}
+          </button>
+          <div
+            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/50 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "bg-muted") : "bg-muted"}`}
+          >
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt={product.name}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-full object-contain p-1.5"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                  e.currentTarget.parentElement!.classList.add(
+                    CATEGORY_INITIAL_COLOR[product.category ?? ""]?.split(" ")[0] ?? "bg-muted",
+                  );
+                }}
+              />
+            ) : (
+              <span className="text-base font-bold opacity-70">
+                {product.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-sm truncate">{product.name}</div>
+            <div className="text-xs text-muted-foreground">{categoryLabel(product.category)}</div>
+          </div>
+          <div className="flex flex-col gap-1 items-end shrink-0">
+            {/* 93-C7 / C-UX2 (A12 B9): canonical pills (were a
+                square rounded + raw orange tuple). */}
+            {!product.is_active && (
+              <StatusBadge variant="neutral" size="xs">
+                غير نشط
+              </StatusBadge>
+            )}
+            {product.stock_count === 0 && product.is_active && (
+              <StatusBadge variant="low-stock" size="xs">
+                نفد المخزون
+              </StatusBadge>
+            )}
+          </div>
+        </div>
+
+        {/* Stats bar — inline stock edit */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <span className="font-bold text-primary tabular-nums">
+              {formatCurrency(product.price)}
+            </span>
+            {/* catalog-recon: variant-count badge — the display
+                price is MIN(active variants); zero variants =
+                unbuyable product (actionable catalog signal). */}
+            {(() => {
+              const count = product.variants?.length ?? 0;
+              if (count === 0)
+                return (
+                  <span
+                    title="لا باقات — اضغط «الباقات» لإضافة باقة"
+                    className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-500 border-amber-500/30"
+                  >
+                    بلا باقات
+                  </span>
+                );
+              return (
+                <span
+                  title="عدد باقات المنتج — اضغط «الباقات» للإدارة"
+                  className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/25"
+                >
+                  {formatCount(count, {
+                    one: "باقة",
+                    two: "باقتان",
+                    few: "باقات",
+                    many: "باقة",
+                    other: "باقة",
+                  })}
+                </span>
+              );
+            })()}
+            {(() => {
+              const cp = (product as { cost_price?: number | null }).cost_price;
+              if (cp == null) return null;
+              const margin = product.price - cp;
+              const pct = product.price > 0 ? (margin / product.price) * 100 : 0;
+              const tone =
+                margin < 0
+                  ? "bg-destructive/15 text-destructive border-destructive/30"
+                  : pct < 10
+                    ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                    : "bg-emerald-500/15 text-emerald-500 border-emerald-500/30";
+              return (
+                <span
+                  /* 96-F7 (R96 A6 #11): 9px → 10px — a
+                      functional money hint (margin %), not
+                      decoration. */
+                  className={`text-3xs font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
+                  title={`تكلفة: ${formatCurrency(cp)} / هامش: ${formatCurrency(margin)}`}
+                >
+                  {margin >= 0 ? "+" : ""}
+                  {pct.toFixed(0)}%
+                </span>
+              );
+            })()}
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            {isEditingStock ? (
+              <InlineStockEdit
+                productId={product.id}
+                current={product.stock_count}
+                onDone={onStockEditDone}
+              />
+            ) : (
+              <button
+                onClick={() => onEditStock(product.id)}
+                className={`font-bold tabular-nums hover:underline decoration-dashed underline-offset-2 transition-colors ${
+                  product.stock_count === 0 ? "text-orange-400" : "text-emerald-400"
+                }`}
+                /* R115 (A9 P3-7): the inline edit is an absolute
+                   SET, not +N — say so on the trigger too. */
+                title="انقر لتعديل المخزون — تعيين العدد الكلي (وليس إضافة)"
+              >
+                {product.stock_count} وحدة
+              </button>
+            )}
+            <span className="text-muted-foreground">·</span>
+            <span className="text-muted-foreground">{product.order_count} طلب</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        {/* 96-F7 (R96 M9): destructive archive stays visually
+            separated (gap-2 + min-w-9) from the adjacent
+            «رفع مخزون» button, and now opens the shared
+            confirm dialog instead of swapping into the inline
+            Archive/X icon pair. */}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 min-w-[88px] h-8 text-xs active:scale-[0.97] transition-transform"
+            onClick={() => onEdit(product)}
+          >
+            <Edit2 className="w-3 h-3 ml-1" /> تعديل
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 min-w-[88px] h-8 text-xs text-muted-foreground active:scale-[0.97] transition-transform"
+            onClick={() => onUploadInventory(product)}
+          >
+            <Upload className="w-3 h-3 ml-1" /> رفع مخزون
+          </Button>
+          {/* catalog-recon: variant manager entry (plan/duration/
+              cost + engine pricing). */}
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`إدارة باقات ${product.name}`}
+            className="flex-1 min-w-[88px] h-8 text-xs text-primary active:scale-[0.97] transition-transform"
+            onClick={() => onManageVariants(product)}
+          >
+            <Layers className="w-3 h-3 ml-1" /> الباقات
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`أرشفة ${product.name}`}
+            className="h-8 min-w-9 px-2 border-destructive/15 text-destructive/50 hover:border-destructive/35 hover:text-destructive hover:bg-destructive/8 active:scale-90"
+            onClick={() => onArchive(product)}
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Inventory upload now happens in a full-screen
+          dialog (see InventoryUploadDialog). The 'رفع مخزون'
+          button above opens it; it gives the operator a
+          preview table, drag-drop file support, and dedup
+          detection before the POST fires. */}
+    </div>
+  );
+});
+
 export default function AdminProductsPage() {
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
@@ -378,8 +630,12 @@ export default function AdminProductsPage() {
 
   const loadErrorMessage = isError ? getErrorMessage(error) : null;
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() });
+  // R124-I5 (A6 F4 — R118-B2): useCallback-stable — feeds the memoized
+  // cards' onStockEditDone and the dialogs' onChanged without busting them.
+  const invalidate = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() }),
+    [queryClient],
+  );
 
   const createMutation = useCreateProduct({
     request: { headers },
@@ -389,7 +645,9 @@ export default function AdminProductsPage() {
         setShowForm(false);
         setForm({ ...EMPTY_FORM });
         setSeoTouched({ title: false, description: false });
-        toast({ title: "تمت الإضافة" });
+        // R124-I5 (A6 F1): success variant (matches the green stock-edit
+        // toast above — the create/update/archive paths were blue).
+        toast({ title: "تمت الإضافة", variant: "success" });
       },
       onError(err: unknown) {
         toast({
@@ -409,7 +667,8 @@ export default function AdminProductsPage() {
         setForm({ ...EMPTY_FORM });
         setShowForm(false);
         setSeoTouched({ title: false, description: false });
-        toast({ title: "تم التحديث" });
+        // R124-I5 (A6 F1): success variant.
+        toast({ title: "تم التحديث", variant: "success" });
       },
       onError(err: unknown) {
         toast({
@@ -425,7 +684,8 @@ export default function AdminProductsPage() {
     mutation: {
       onSuccess() {
         invalidate();
-        toast({ title: "تمت الأرشفة" });
+        // R124-I5 (A6 F1): success variant.
+        toast({ title: "تمت الأرشفة", variant: "success" });
       },
       onError(err: unknown) {
         toast({
@@ -447,16 +707,24 @@ export default function AdminProductsPage() {
   // list endpoint filters is_archived=false and NO restore path exists
   // anywhere (UI or API); the old «تبقى بياناته ومبيعاته» wording
   // implied recoverability that does not exist.
-  const archiveProduct = async (product: AdminProduct) => {
-    const confirmed = await confirm({
-      title: "أرشفة المنتج؟",
-      description: `سيتم أرشفة «${product.name}» — الأرشفة نهائية من الواجهة: بيانات المنتج ومبيعاته تبقى في السجل، لكنه يُخفى من المتجر ومن قائمة المنتجات، واستعادته تتطلب تدخلاً مباشراً.`,
-      confirmLabel: "أرشفة",
-      destructive: true,
-    });
-    if (!confirmed) return;
-    deleteMutation.mutate({ id: product.id });
-  };
+  const deleteMutate = deleteMutation.mutate;
+  // R124-I5 (A6 F4 — R118-B2): useCallback-stable for the memoized cards
+  // (confirm is useCallback([]) in useConfirm; deleteMutate is referentially
+  // stable for a fixed mutationKey — only the wrapper object re-mints per
+  // render, so the destructured fn is the safe dep).
+  const archiveProduct = useCallback(
+    async (product: AdminProduct) => {
+      const confirmed = await confirm({
+        title: "أرشفة المنتج؟",
+        description: `سيتم أرشفة «${product.name}» — الأرشفة نهائية من الواجهة: بيانات المنتج ومبيعاته تبقى في السجل، لكنه يُخفى من المتجر ومن قائمة المنتجات، واستعادته تتطلب تدخلاً مباشراً.`,
+        confirmLabel: "أرشفة",
+        destructive: true,
+      });
+      if (!confirmed) return;
+      deleteMutate({ id: product.id });
+    },
+    [confirm, deleteMutate],
+  );
 
   // Keyboard shortcut: Ctrl+S to save form
   useEffect(() => {
@@ -477,6 +745,75 @@ export default function AdminProductsPage() {
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
+
+  // R124-I5 (A6 F4 — R118-B2): useCallback-stable (only stable setters + window).
+  const startEdit = useCallback((product: AdminProduct) => {
+    setEditingId(product.id);
+    const next = {
+      name: product.name,
+      description: product.description ?? "",
+      image_url: product.image_url ?? "",
+      price: String(product.price),
+      cost_price:
+        (product as { cost_price?: number | null }).cost_price != null
+          ? String((product as { cost_price?: number | null }).cost_price)
+          : "",
+      category: product.category ?? "",
+      usage_terms: product.usage_terms ?? "",
+      // R123 (E3 item 2): the admin list row does not carry the current
+      // SEO overrides — seed empty and OMIT on submit while untouched
+      // (see handleSubmit), so opening + saving changes nothing SEO-wise.
+      seo_title: "",
+      seo_description: "",
+      is_active: product.is_active,
+    };
+    // 98-F7 (R98-05): the loaded values double as the pristine baseline.
+    setForm(next);
+    setFormBaseline(next);
+    setSeoTouched({ title: false, description: false });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  // R124-I5 (A6 F4 — R118-B2): useCallback-stable for the memoized cards.
+  const openInventory = useCallback((product: AdminProduct) => {
+    setInventoryDialogProduct({
+      id: product.id,
+      name: product.name,
+      inventoryCount: product.stock_count,
+    });
+  }, []);
+  const openVariants = useCallback((product: AdminProduct) => {
+    setVariantsDialogProduct({ id: product.id, name: product.name });
+  }, []);
+  const stockEditDone = useCallback(() => {
+    setEditingStockId(null);
+    invalidate();
+  }, [invalidate]);
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // R120-B4 (A2-F2): the search ran on the SERVER (?search= covers the
+  //  whole catalog, not just the loaded window) — only the category tab
+  //  stays client-side over the (possibly capped) loaded rows.
+  // R124-I5 (A6 F4 — R118-B2): memoized derived arrays — the search is
+  // SERVER-side (?search=), so only the category tab stays client-side; a
+  // keystroke no longer re-mints the filtered array + the low-stock count.
+  const filtered = useMemo(
+    () => (categoryFilter ? products.filter((p) => p.category === categoryFilter) : products),
+    [products, categoryFilter],
+  );
+
+  const lowStockCount = useMemo(
+    () => products.filter((p) => p.stock_count === 0 && p.is_active).length,
+    [products],
+  );
 
   if (!adminToken) return null;
 
@@ -510,57 +847,11 @@ export default function AdminProductsPage() {
     else createMutation.mutate({ data });
   };
 
-  const startEdit = (product: AdminProduct) => {
-    setEditingId(product.id);
-    const next = {
-      name: product.name,
-      description: product.description ?? "",
-      image_url: product.image_url ?? "",
-      price: String(product.price),
-      cost_price:
-        (product as { cost_price?: number | null }).cost_price != null
-          ? String((product as { cost_price?: number | null }).cost_price)
-          : "",
-      category: product.category ?? "",
-      usage_terms: product.usage_terms ?? "",
-      // R123 (E3 item 2): the admin list row does not carry the current
-      // SEO overrides — seed empty and OMIT on submit while untouched
-      // (see handleSubmit), so opening + saving changes nothing SEO-wise.
-      seo_title: "",
-      seo_description: "",
-      is_active: product.is_active,
-    };
-    // 98-F7 (R98-05): the loaded values double as the pristine baseline.
-    setForm(next);
-    setFormBaseline(next);
-    setSeoTouched({ title: false, description: false });
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   const cancelForm = () => {
     setShowForm(false);
     setEditingId(null);
     setForm({ ...EMPTY_FORM });
     setSeoTouched({ title: false, description: false });
-  };
-
-  // R120-B4 (A2-F2): the search ran on the SERVER (?search= covers the
-  //  whole catalog, not just the loaded window) — only the category tab
-  //  stays client-side over the (possibly capped) loaded rows.
-  const filtered = categoryFilter
-    ? products.filter((p) => p.category === categoryFilter)
-    : products;
-
-  const lowStockCount = products.filter((p) => p.stock_count === 0 && p.is_active).length;
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   };
 
   const toggleSelectAll = () => {
@@ -831,11 +1122,20 @@ export default function AdminProductsPage() {
               onSubmit={handleSubmit}
               className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4"
             >
+              {/* R124-I5 (A6 F3 — AUD103-6-F2 completion): every editor
+                field carries a real htmlFor↔id pair. The r103 label pass
+                covered coupons/users/topups/admins/settings/security but
+                missed this — the biggest admin form (9 fields) had
+                programmatically-unassociated labels. */}
               <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-name"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   اسم المنتج *
                 </Label>
                 <Input
+                  id="product-editor-name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   required
@@ -843,10 +1143,14 @@ export default function AdminProductsPage() {
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-price"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   السعر (د.ل) *
                 </Label>
                 <Input
+                  id="product-editor-price"
                   type="number"
                   min="0"
                   step="0.5"
@@ -858,7 +1162,10 @@ export default function AdminProductsPage() {
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2">
+                <Label
+                  htmlFor="product-editor-cost"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2"
+                >
                   سعر التكلفة (د.ل)
                   {/* 96-F7 (R96 A6 #11): 9px → 10px — functional hint
                       text, not decoration. */}
@@ -867,6 +1174,7 @@ export default function AdminProductsPage() {
                   </span>
                 </Label>
                 <Input
+                  id="product-editor-cost"
                   type="number"
                   min="0"
                   step="0.01"
@@ -903,20 +1211,28 @@ export default function AdminProductsPage() {
                 )}
               </div>
               <div className="md:col-span-2">
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-description"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   الوصف
                 </Label>
                 <Input
+                  id="product-editor-description"
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="وصف مختصر للمنتج…"
                 />
               </div>
               <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-image"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   رابط الصورة
                 </Label>
                 <Input
+                  id="product-editor-image"
                   value={form.image_url}
                   onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
                   dir="ltr"
@@ -957,10 +1273,14 @@ export default function AdminProductsPage() {
                 )}
               </div>
               <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-category"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   الفئة
                 </Label>
                 <select
+                  id="product-editor-category"
                   value={form.category}
                   onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                   className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
@@ -973,10 +1293,14 @@ export default function AdminProductsPage() {
                 </select>
               </div>
               <div className="md:col-span-2">
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-usage"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   شروط الاستخدام
                 </Label>
                 <Input
+                  id="product-editor-usage"
                   value={form.usage_terms}
                   onChange={(e) => setForm((f) => ({ ...f, usage_terms: e.target.value }))}
                   placeholder="ملاحظات مهمة تظهر بعد الشراء…"
@@ -987,10 +1311,14 @@ export default function AdminProductsPage() {
                   (seo-builders consume the overrides; empty falls back to
                   name/description). Column-aligned caps: 200/320. */}
               <div className="md:col-span-2">
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-seo-title"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   عنوان SEO (اختياري)
                 </Label>
                 <Input
+                  id="product-editor-seo-title"
                   value={form.seo_title}
                   onChange={(e) => {
                     setForm((f) => ({ ...f, seo_title: e.target.value }));
@@ -1005,10 +1333,14 @@ export default function AdminProductsPage() {
                 </p>
               </div>
               <div className="md:col-span-2">
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="product-editor-seo-description"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   وصف SEO (اختياري)
                 </Label>
                 <textarea
+                  id="product-editor-seo-description"
                   value={form.seo_description}
                   onChange={(e) => {
                     setForm((f) => ({ ...f, seo_description: e.target.value }));
@@ -1105,6 +1437,10 @@ export default function AdminProductsPage() {
               <button
                 key={c.value}
                 onClick={() => setCategoryFilter(c.value)}
+                /* R124-C2 (A6 F10): the active chip was purely visual —
+                   aria-pressed exposes the toggle state (the
+                   orders.tsx/topups.tsx chip-bar idiom). */
+                aria-pressed={categoryFilter === c.value}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
                   categoryFilter === c.value
                     ? "bg-card shadow-sm text-foreground font-bold"
@@ -1173,253 +1509,35 @@ export default function AdminProductsPage() {
           /* 94-C2 (A2 P1-2): a failed load is NOT an empty catalog — the
              referrals.tsx error-card idiom (an outage/expired session
              previously masqueraded as "لا توجد منتجات"). */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-8 h-8 text-status-error/70" />
-            </div>
-            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل المنتجات</p>
-            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-              {loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
-            </p>
-            <Button
-              onClick={() => refetch()}
-              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل المنتجات"
+            description={loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
+            onRetry={() => refetch()}
+          />
         ) : filtered.length === 0 ? (
           <EmptyState icon={Package} title="لا توجد منتجات" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((product) => {
-              const isSelected = selectedIds.has(product.id);
-              return (
-                <div
-                  key={product.id}
-                  className={`bg-card border rounded-2xl overflow-hidden transition-all hover:shadow-lg hover:shadow-black/10 ${
-                    isSelected
-                      ? "border-primary/40 ring-1 ring-primary/20 shadow-md shadow-primary/5"
-                      : !product.is_active
-                        ? "opacity-55 border-border/60"
-                        : product.stock_count === 0
-                          ? "border-orange-500/25"
-                          : "border-border/60 hover:border-border"
-                  }`}
-                >
-                  <div className="p-4">
-                    {/* Product info */}
-                    <div className="flex items-start gap-3 mb-3">
-                      {/* Checkbox — 94-C2: aria-label so the icon-only
-                          toggle is announced (and reachable by tests). */}
-                      <button
-                        onClick={() => toggleSelect(product.id)}
-                        aria-label={`تحديد ${product.name}`}
-                        className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        {isSelected ? (
-                          <CheckSquare className="w-4 h-4 text-primary" />
-                        ) : (
-                          <Square className="w-4 h-4" />
-                        )}
-                      </button>
-                      <div
-                        className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/50 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "bg-muted") : "bg-muted"}`}
-                      >
-                        {product.image_url ? (
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-full h-full object-contain p-1.5"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                              e.currentTarget.parentElement!.classList.add(
-                                CATEGORY_INITIAL_COLOR[product.category ?? ""]?.split(" ")[0] ??
-                                  "bg-muted",
-                              );
-                            }}
-                          />
-                        ) : (
-                          <span className="text-base font-bold opacity-70">
-                            {product.name.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-sm truncate">{product.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {categoryLabel(product.category)}
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1 items-end shrink-0">
-                        {/* 93-C7 / C-UX2 (A12 B9): canonical pills (were a
-                            square rounded + raw orange tuple). */}
-                        {!product.is_active && (
-                          <StatusBadge variant="neutral" size="xs">
-                            غير نشط
-                          </StatusBadge>
-                        )}
-                        {product.stock_count === 0 && product.is_active && (
-                          <StatusBadge variant="low-stock" size="xs">
-                            نفد المخزون
-                          </StatusBadge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stats bar — inline stock edit */}
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
-                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        <span className="font-bold text-primary tabular-nums">
-                          {formatCurrency(product.price)}
-                        </span>
-                        {/* catalog-recon: variant-count badge — the display
-                            price is MIN(active variants); zero variants =
-                            unbuyable product (actionable catalog signal). */}
-                        {(() => {
-                          const count = product.variants?.length ?? 0;
-                          if (count === 0)
-                            return (
-                              <span
-                                title="لا باقات — اضغط «الباقات» لإضافة باقة"
-                                className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-500 border-amber-500/30"
-                              >
-                                بلا باقات
-                              </span>
-                            );
-                          return (
-                            <span
-                              title="عدد باقات المنتج — اضغط «الباقات» للإدارة"
-                              className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/25"
-                            >
-                              {formatCount(count, {
-                                one: "باقة",
-                                two: "باقتان",
-                                few: "باقات",
-                                many: "باقة",
-                                other: "باقة",
-                              })}
-                            </span>
-                          );
-                        })()}
-                        {(() => {
-                          const cp = (product as { cost_price?: number | null }).cost_price;
-                          if (cp == null) return null;
-                          const margin = product.price - cp;
-                          const pct = product.price > 0 ? (margin / product.price) * 100 : 0;
-                          const tone =
-                            margin < 0
-                              ? "bg-destructive/15 text-destructive border-destructive/30"
-                              : pct < 10
-                                ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
-                                : "bg-emerald-500/15 text-emerald-500 border-emerald-500/30";
-                          return (
-                            <span
-                              /* 96-F7 (R96 A6 #11): 9px → 10px — a
-                                  functional money hint (margin %), not
-                                  decoration. */
-                              className={`text-3xs font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
-                              title={`تكلفة: ${formatCurrency(cp)} / هامش: ${formatCurrency(margin)}`}
-                            >
-                              {margin >= 0 ? "+" : ""}
-                              {pct.toFixed(0)}%
-                            </span>
-                          );
-                        })()}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs">
-                        {editingStockId === product.id ? (
-                          <InlineStockEdit
-                            productId={product.id}
-                            current={product.stock_count}
-                            onDone={() => {
-                              setEditingStockId(null);
-                              invalidate();
-                            }}
-                          />
-                        ) : (
-                          <button
-                            onClick={() => setEditingStockId(product.id)}
-                            className={`font-bold tabular-nums hover:underline decoration-dashed underline-offset-2 transition-colors ${
-                              product.stock_count === 0 ? "text-orange-400" : "text-emerald-400"
-                            }`}
-                            /* R115 (A9 P3-7): the inline edit is an absolute
-                               SET, not +N — say so on the trigger too. */
-                            title="انقر لتعديل المخزون — تعيين العدد الكلي (وليس إضافة)"
-                          >
-                            {product.stock_count} وحدة
-                          </button>
-                        )}
-                        <span className="text-muted-foreground">·</span>
-                        <span className="text-muted-foreground">{product.order_count} طلب</span>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    {/* 96-F7 (R96 M9): destructive archive stays visually
-                        separated (gap-2 + min-w-9) from the adjacent
-                        «رفع مخزون» button, and now opens the shared
-                        confirm dialog instead of swapping into the inline
-                        Archive/X icon pair. */}
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 min-w-[88px] h-8 text-xs active:scale-[0.97] transition-transform"
-                        onClick={() => startEdit(product)}
-                      >
-                        <Edit2 className="w-3 h-3 ml-1" /> تعديل
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 min-w-[88px] h-8 text-xs text-muted-foreground active:scale-[0.97] transition-transform"
-                        onClick={() =>
-                          setInventoryDialogProduct({
-                            id: product.id,
-                            name: product.name,
-                            inventoryCount: product.stock_count,
-                          })
-                        }
-                      >
-                        <Upload className="w-3 h-3 ml-1" /> رفع مخزون
-                      </Button>
-                      {/* catalog-recon: variant manager entry (plan/duration/
-                          cost + engine pricing). */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        aria-label={`إدارة باقات ${product.name}`}
-                        className="flex-1 min-w-[88px] h-8 text-xs text-primary active:scale-[0.97] transition-transform"
-                        onClick={() =>
-                          setVariantsDialogProduct({ id: product.id, name: product.name })
-                        }
-                      >
-                        <Layers className="w-3 h-3 ml-1" /> الباقات
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        aria-label={`أرشفة ${product.name}`}
-                        className="h-8 min-w-9 px-2 border-destructive/15 text-destructive/50 hover:border-destructive/35 hover:text-destructive hover:bg-destructive/8 active:scale-90"
-                        onClick={() => void archiveProduct(product)}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Inventory upload now happens in a full-screen
-                      dialog (see InventoryUploadDialog). The 'رفع مخزون'
-                      button above opens it; it gives the operator a
-                      preview table, drag-drop file support, and dedup
-                      detection before the POST fires. */}
-                </div>
-              );
-            })}
+            {filtered.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                isSelected={selectedIds.has(product.id)}
+                isEditingStock={editingStockId === product.id}
+                onToggleSelect={toggleSelect}
+                onEdit={startEdit}
+                /* setState dispatchers + the useCallbacks above are all
+                   referentially stable — no inline arrows here, or every
+                   keystroke would bust all 200 memoized cards. */
+                onEditStock={setEditingStockId}
+                onStockEditDone={stockEditDone}
+                onUploadInventory={openInventory}
+                onManageVariants={openVariants}
+                onArchive={archiveProduct}
+              />
+            ))}
           </div>
         )}
       </div>

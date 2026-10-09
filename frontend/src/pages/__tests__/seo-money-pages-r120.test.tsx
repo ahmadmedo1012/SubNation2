@@ -133,7 +133,9 @@ describe("R120-B3 A7-F1 — CategoryPage renders its SEO block (was: useSeo disc
 
     // The category map's metaTitle (categories.ts vpn entry) — NOT the
     // app default. This is the exact line the discarded-return bug broke.
-    expect(document.title).toBe("اشتراكات VPN في ليبيا — ExpressVPN و CyberGhost و IPVanish");
+    // R124 (A10-F5): category metaTitles now carry the «| SubNation»
+    // brand tail within the ≤60 budget (categories.ts).
+    expect(document.title).toBe("اشتراكات VPN في ليبيا — ExpressVPN | SubNation");
     expect(metaContent('meta[name="robots"]')).toBe("index,follow");
 
     // The three structured-data blocks the page assembles (the old bug

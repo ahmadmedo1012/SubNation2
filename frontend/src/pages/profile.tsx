@@ -2,6 +2,7 @@ import { AuthProviders } from "@/components/AuthProviders";
 import { CopyButton } from "@/components/CopyButton";
 import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useOnScreen } from "@/hooks/use-on-screen";
@@ -25,7 +26,6 @@ import {
   Unlink,
   User,
   Wallet,
-  WifiOff,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -190,7 +190,10 @@ export default function ProfilePage() {
     } catch (err: unknown) {
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        /* R124-I4 (A10 #7): the vague «فشلت العملية» fallback is below
+           the app's error-copy bar — names the failed action + recovery,
+           matching the R111-F2 family (loyalty.tsx / support.tsx). */
+        description: err instanceof Error ? err.message : "تعذّر فصل الحساب — حاول مرة أخرى",
         variant: "destructive",
       });
     } finally {
@@ -228,23 +231,12 @@ export default function ProfilePage() {
           /* R115 (A8 #4): a failed /auth/me probe must not quietly remove
              the identity card — same error-card idiom as the wallet
              balance card (93-C5 / F-05). */
-          <div className="text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-6 h-6 text-status-error/70" />
-            </div>
-            <p className="font-bold text-base mb-1.5 text-foreground/80">
-              تعذّر تحميل بيانات حسابك
-            </p>
-            <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
-              حدث خطأ في الاتصال — رصيدك ونقاطك سليمة، أعد المحاولة لعرضهما
-            </p>
-            <Button
-              onClick={() => void refetchMe()}
-              className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl"
-            >
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="section"
+            title="تعذّر تحميل بيانات حسابك"
+            description="حدث خطأ في الاتصال — رصيدك ونقاطك سليمة، أعد المحاولة لعرضهما"
+            onRetry={() => void refetchMe()}
+          />
         ) : user ? (
           <div
             ref={tierGlow.ref}
@@ -328,7 +320,10 @@ export default function ProfilePage() {
                     <div className="text-3xs text-muted-foreground mb-0.5 font-semibold">
                       الرصيد
                     </div>
-                    <div className="font-bold text-sm text-primary tabular-nums">
+                    {/* R124-I4 (A5 #1): money value rode the raw surface
+                        token (3.93:1 dark — text-sm is not large text);
+                        text-primary-text = the checkout totals idiom. */}
+                    <div className="font-bold text-sm text-primary-text tabular-nums">
                       {formatCurrency(user.wallet_balance ?? 0)}
                     </div>
                   </div>
@@ -523,7 +518,9 @@ export default function ProfilePage() {
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                     <div>
-                      <div className="text-xs font-bold text-primary mb-1">حماية حسابك</div>
+                      {/* R124-I4 (A5 #1): 11px bold heading on the raw
+                          surface token — text-primary-text (AA-safe). */}
+                      <div className="text-xs font-bold text-primary-text mb-1">حماية حسابك</div>
                       <div className="text-3xs text-muted-foreground leading-relaxed">
                         اربط حسابك بطريقة دخول إضافية (Google، رقم الهاتف، أو Telegram) لتسهيل
                         الوصول وحماية حسابك إذا فقدت إحدى الطرق.
@@ -579,7 +576,10 @@ export default function ProfilePage() {
               logout();
               navigate("/");
             }}
-            className="w-full h-10 border-destructive/25 text-destructive hover:bg-destructive/7 hover:border-destructive/45 font-bold transition-all rounded-xl gap-2"
+            /* R124-I4 (A4 F1): h-10 (40px) → min-h-11 — the 44px floor
+               every sibling control here already rides (destructive-ish
+               account action on a mobile-visible page). */
+            className="w-full min-h-11 border-destructive/25 text-destructive hover:bg-destructive/7 hover:border-destructive/45 font-bold transition-all rounded-xl gap-2"
           >
             <LogOut className="w-4 h-4" />
             تسجيل الخروج

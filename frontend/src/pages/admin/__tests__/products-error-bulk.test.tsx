@@ -32,6 +32,7 @@ import { type ReactNode } from "react";
 import AdminProductsPage from "@/pages/admin/products";
 import {
   useCreateProduct,
+  useDeleteProduct,
   useListAdminProducts,
   useUpdateProduct,
 } from "@workspace/api-client-react";
@@ -125,6 +126,12 @@ describe("AdminProductsPage — a failed load is an error card, not a false-empt
     vi.clearAllMocks();
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
+    // R124-I5/C2 (A6 F4): the page now dereferences the stable `mutate`
+    // at render time (useCallback dep for the memoized cards) instead of
+    // lazily inside the click handler — the bare vi.fn() default
+    // (undefined) would crash the render. The archive tests below
+    // cancel before the confirm, so a no-op mutate is side-effect-free.
+    (useDeleteProduct as unknown as Mock).mockReturnValue({ mutate: vi.fn() });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -369,20 +376,14 @@ describe("AdminProductsPage — server-side search + honest catalog count (R120-
 
     // Before the debounce settles, the initial (unsearched) params ride
     // the generated hook.
-    expect(useListAdminProducts).toHaveBeenCalledWith(
-      { search: undefined },
-      expect.anything(),
-    );
+    expect(useListAdminProducts).toHaveBeenCalledWith({ search: undefined }, expect.anything());
 
     // After the 300ms debounce, the settled term enters the hook params
     // (the orders/users idiom — one request per typing pause).
     await act(async () => {
       await new Promise((r) => setTimeout(r, 340));
     });
-    expect(useListAdminProducts).toHaveBeenLastCalledWith(
-      { search: "netflix" },
-      expect.anything(),
-    );
+    expect(useListAdminProducts).toHaveBeenLastCalledWith({ search: "netflix" }, expect.anything());
   });
 
   it("a short catalog keeps the honest «في الكتالوج» total", async () => {
@@ -397,9 +398,7 @@ describe("AdminProductsPage — server-side search + honest catalog count (R120-
     // Exactly the backend cap (routes/admin/products.ts limit(200)) —
     // the old header claimed «200 منتج في الكتالوج», a false total:
     // older products beyond the cap were invisible to the list.
-    mockProductsResult(
-      Array.from({ length: 200 }, (_, i) => PRODUCT(i + 1, `Product ${i + 1}`)),
-    );
+    mockProductsResult(Array.from({ length: 200 }, (_, i) => PRODUCT(i + 1, `Product ${i + 1}`)));
     renderPage();
     await screen.findAllByText("Product 1");
 
@@ -408,9 +407,7 @@ describe("AdminProductsPage — server-side search + honest catalog count (R120-
     expect(screen.queryByText(/في الكتالوج/)).not.toBeInTheDocument();
     // The category tabs are client-side over the capped window — the
     // hint says so (the orders honest-count discipline).
-    expect(
-      screen.getByText(/الفلاتر تعمل على المنتجات المعروضة فقط/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/الفلاتر تعمل على المنتجات المعروضة فقط/)).toBeInTheDocument();
   });
 
   it("the clear-search control carries an accessible name and a padded hit area (A2-F12)", async () => {

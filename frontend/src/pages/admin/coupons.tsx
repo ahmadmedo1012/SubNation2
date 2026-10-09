@@ -230,7 +230,8 @@ export default function AdminCouponsPage() {
         headers,
         body: JSON.stringify(body),
       });
-      toast({ title: "تم إنشاء الكوبون", description: `رمز: ${result.code}` });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم إنشاء الكوبون", description: `رمز: ${result.code}`, variant: "success" });
       setShowCreate(false);
       // Form resets ONLY on success (93-C7 / C-UX3): previously every
       // dismiss path (backdrop click, X, إلغاء) wiped a half-filled
@@ -292,7 +293,8 @@ export default function AdminCouponsPage() {
     try {
       await adminFetchJson(`/api/coupons/admin/${coupon.id}`, { method: "DELETE", headers });
       fetchCoupons(true);
-      toast({ title: "تم تعطيل الكوبون" });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم تعطيل الكوبون", variant: "success" });
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({

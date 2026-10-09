@@ -1,5 +1,7 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 // 94-C2 (A2 P2-5): the wallet-edit shell migrates from the hand-rolled
@@ -31,7 +33,6 @@ import {
 } from "@workspace/api-client-react";
 import {
   CheckCircle,
-  ChevronDown,
   Download,
   Edit2,
   Filter,
@@ -44,7 +45,7 @@ import {
   Wallet,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // R123 (E3 P3a): two-way URL filter sync follows the settings.tsx ?tab=
 // idiom — useSearch re-renders on ?tier=/?sort=/?filters= changes.
 import { useLocation, useSearch } from "wouter";
@@ -175,6 +176,116 @@ function TableSkeleton() {
     />
   );
 }
+
+/* ── R124-I5 (A6 F4 — the R118-B2 orders.tsx pattern) ──────────────────
+ * The search box is a CONTROLLED input — every keystroke re-rendered the
+ * whole page and recomputed the directory sort inline (100+ rows) plus
+ * every row subtree with fresh inline closures (the network debounces at
+ * 300ms; the RENDER path did not). The rows are now module-level
+ * React.memo components whose props are stable across a keystroke (user
+ * refs come from the memoized `users` array; onEdit is useCallback-
+ * stable), so typing re-renders the search box and nothing else. */
+interface UserRowProps {
+  user: AdminUser;
+  onEdit: (user: AdminUser) => void;
+}
+
+/** Desktop table row. */
+const DesktopUserRow = React.memo(function DesktopUserRow({
+  user,
+  idx,
+  onEdit,
+}: UserRowProps & { idx: number }) {
+  return (
+    <tr
+      className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
+    >
+      <td className="px-4 py-2.5 font-mono font-bold text-sm">
+        {displayUserName(user as unknown as AdminUserShape)}
+      </td>
+      <td className="px-4 py-2.5">
+        <ProviderBadges user={user as unknown as Record<string, unknown>} />
+      </td>
+      <td className="px-4 py-2.5 font-bold text-primary tabular-nums">
+        {formatCurrency(user.wallet_balance)}
+      </td>
+      <td className="px-4 py-2.5">
+        <span
+          className={`font-bold text-xs px-2 py-0.5 rounded-full border ${
+            user.loyalty_tier === "platinum"
+              ? "text-cyan-400 bg-cyan-400/10 border-cyan-400/20"
+              : user.loyalty_tier === "gold"
+                ? "text-yellow-400 bg-yellow-400/10 border-yellow-400/20"
+                : user.loyalty_tier === "silver"
+                  ? "text-slate-300 bg-slate-400/10 border-slate-400/20"
+                  : user.loyalty_tier === "bronze"
+                    ? "text-amber-600 bg-amber-600/10 border-amber-600/20"
+                    : "text-muted-foreground bg-muted/40 border-border"
+          }`}
+        >
+          {tierLabel(user.loyalty_tier)}
+        </span>
+      </td>
+      <td className="px-4 py-2.5 tabular-nums text-sm">{user.loyalty_points}</td>
+      <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
+        {formatCurrency(user.lifetime_spend)}
+      </td>
+      <td className="px-4 py-2.5 tabular-nums font-semibold">{user.order_count}</td>
+      <td className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums">
+        {user.created_at ? formatDate(user.created_at) : "—"}
+      </td>
+      <td className="px-4 py-2.5">
+        <button
+          onClick={() => onEdit(user)}
+          aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
+          /* 93-C6 / F-07 (A5 S-6): p-1.5 ≈ 28px target —
+             p-2 + min sizes lift the tappable area for
+             the 375px admin layout. */
+          className="p-2 min-w-9 min-h-9 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90"
+        >
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+      </td>
+    </tr>
+  );
+});
+
+/** Mobile card. */
+const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit }: UserRowProps) {
+  return (
+    <div className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border hover:shadow-md hover:shadow-black/10 transition-all">
+      <div className="flex-1 min-w-0">
+        <div className="font-mono font-bold text-sm truncate">
+          {displayUserName(user as unknown as AdminUserShape)}
+        </div>
+        <div className="mt-1">
+          <ProviderBadges user={user as unknown as Record<string, unknown>} />
+        </div>
+        <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+          <span className={tierColor(user.loyalty_tier)}>{tierLabel(user.loyalty_tier)}</span>
+          <span>·</span>
+          <span>{user.order_count} طلب</span>
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className="font-bold text-primary tabular-nums text-sm">
+          {formatCurrency(user.wallet_balance)}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">{user.loyalty_points} نقطة</div>
+      </div>
+      <button
+        onClick={() => onEdit(user)}
+        /* R123 (E3 P3b): the mobile twin of the desktop edit
+           button — same accessible name so screen readers
+           announce the same action in both layouts. */
+        aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
+        className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
+      >
+        <Edit2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+});
 
 export default function AdminUsersPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -332,41 +443,58 @@ export default function AdminUsersPage() {
     refetchIntervalInBackground: false,
   });
 
-  const users: AdminUser[] = (usersPages?.pages ?? []).flat();
+  // R124-I5 (A6 F4 — R118-B2): `.flat()` mints a fresh array identity per
+  // render, defeating the memo chain below (and every row's `user` prop
+  // identity) on each keystroke; usersPages only changes on query updates.
+  const users: AdminUser[] = useMemo(() => (usersPages?.pages ?? []).flat(), [usersPages]);
   // 94-C2 (A2 P1-1): the directory size is only provably known when a
   // single short page arrived — «عرض N» otherwise.
   const knownTotal = (usersPages?.pages.length ?? 0) <= 1 && users.length < USERS_PAGE_SIZE;
+
+  // R124-I5 (A6 F4 — R118-B2): the summary aggregates + the client-side
+  // tier filter/sort are derived through useMemo keyed on
+  // [users, tierFilter, sortBy] so a keystroke skips the re-sort/reduce
+  // entirely (they only recompute when data or a filter actually changes).
+  // Lives ABOVE the adminToken early-return (rules of hooks).
+  const totalWallet = useMemo(
+    () => users.reduce((sum: number, u) => sum + (u.wallet_balance ?? 0), 0),
+    [users],
+  );
+  const totalSpend = useMemo(
+    () => users.reduce((sum: number, u) => sum + (u.lifetime_spend ?? 0), 0),
+    [users],
+  );
+
+  const sorted = useMemo(() => {
+    const tierFiltered = tierFilter ? users.filter((u) => u.loyalty_tier === tierFilter) : users;
+    return [...tierFiltered].sort((a, b) => {
+      switch (sortBy) {
+        case "wallet_desc":
+          return (b.wallet_balance ?? 0) - (a.wallet_balance ?? 0);
+        case "spend_desc":
+          return (b.lifetime_spend ?? 0) - (a.lifetime_spend ?? 0);
+        case "orders_desc":
+          return (b.order_count ?? 0) - (a.order_count ?? 0);
+        case "points_desc":
+          return (b.loyalty_points ?? 0) - (a.loyalty_points ?? 0);
+        case "created_asc":
+          return new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime();
+        default:
+          return 0;
+      }
+    });
+  }, [users, tierFilter, sortBy]);
 
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
 
-  if (!adminToken) return null;
-
-  const totalWallet = users.reduce((sum: number, u) => sum + (u.wallet_balance ?? 0), 0);
-  const totalSpend = users.reduce((sum: number, u) => sum + (u.lifetime_spend ?? 0), 0);
-
-  // Client-side tier filter + sort
-  const tierFiltered = tierFilter ? users.filter((u) => u.loyalty_tier === tierFilter) : users;
-
-  const sorted = [...tierFiltered].sort((a, b) => {
-    switch (sortBy) {
-      case "wallet_desc":
-        return (b.wallet_balance ?? 0) - (a.wallet_balance ?? 0);
-      case "spend_desc":
-        return (b.lifetime_spend ?? 0) - (a.lifetime_spend ?? 0);
-      case "orders_desc":
-        return (b.order_count ?? 0) - (a.order_count ?? 0);
-      case "points_desc":
-        return (b.loyalty_points ?? 0) - (a.loyalty_points ?? 0);
-      case "created_asc":
-        return new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime();
-      default:
-        return 0;
-    }
-  });
-
-  function openEdit(user: AdminUser) {
+  // R124-I5 (A6 F4 — R118-B2): the edit callback is useCallback-stable so
+  // the memoized row components bail out on keystroke re-renders. It only
+  // touches stable setters + the save-intent ref, so [] deps are honest.
+  // Declared BEFORE the !adminToken early return — hooks must run
+  // unconditionally (rules-of-hooks); behavior-neutral for the authed path.
+  const openEdit = useCallback((user: AdminUser) => {
     setEditingUser(user);
     // 99-M3: a newly opened edit dialog is a NEW save intent — a stale key
     // from a previous save of the same user would replay THAT adjustment's
@@ -380,7 +508,9 @@ export default function AdminUsersPage() {
       note: "",
       loyalty_points: String(user.loyalty_points),
     });
-  }
+  }, []);
+
+  if (!adminToken) return null;
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -531,7 +661,13 @@ export default function AdminUsersPage() {
         // the generic code map stays the fallback.
         throw new Error(describeSaveError(data) || "خطأ");
       }
-      toast({ title: "تم الحفظ", description: `تم تحديث بيانات ${editingUser.phone}` });
+      // R124-I5 (A6 F1): success variant — wallet save is a money
+      // action; green like the topup approvals.
+      toast({
+        title: "تم الحفظ",
+        description: `تم تحديث بيانات ${editingUser.phone}`,
+        variant: "success",
+      });
       // 99-M3: success is a terminal resolution — the intent key must not
       // survive to answer a future save of the same user with a stale replay.
       saveIntentKeyRef.current = null;
@@ -692,6 +828,10 @@ export default function AdminUsersPage() {
                         setTierFilter(t.value);
                         syncFilterParams(t.value, sortBy, showFilters);
                       }}
+                      /* R124-C2 (A6 F10): the active chip was purely
+                         visual — aria-pressed exposes the toggle state
+                         (the orders.tsx/topups.tsx chip-bar idiom). */
+                      aria-pressed={tierFilter === t.value}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         tierFilter === t.value
                           ? "bg-primary/10 border-primary/30 text-primary font-bold"
@@ -720,6 +860,9 @@ export default function AdminUsersPage() {
                         setSortBy(s.value);
                         syncFilterParams(tierFilter, s.value, showFilters);
                       }}
+                      /* R124-C2 (A6 F10): same toggle-state exposure as
+                         the tier chips (single-select radio behavior). */
+                      aria-pressed={sortBy === s.value}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         sortBy === s.value
                           ? "bg-primary/10 border-primary/30 text-primary font-bold"
@@ -1082,22 +1225,13 @@ export default function AdminUsersPage() {
           /* 93-C6 / F-07 (A5 S-2): a failed load is NOT "no users" — the
              referrals.tsx error-card idiom (an outage/expired session
              previously masqueraded as the empty state). */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-8 h-8 text-status-error/70" />
-            </div>
-            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل المستخدمين</p>
-            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-              {getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة
-            </p>
-            <Button
-              onClick={() => refetch()}
-              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل المستخدمين"
+            description={`${getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة`}
+            onRetry={() => refetch()}
+          />
         ) : sorted.length === 0 ? (
           <EmptyState
             icon={Users}
@@ -1186,59 +1320,7 @@ export default function AdminUsersPage() {
                   </thead>
                   <tbody>
                     {sorted.map((user, idx: number) => (
-                      <tr
-                        key={user.id}
-                        className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
-                      >
-                        <td className="px-4 py-2.5 font-mono font-bold text-sm">
-                          {displayUserName(user as unknown as AdminUserShape)}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <ProviderBadges user={user as unknown as Record<string, unknown>} />
-                        </td>
-                        <td className="px-4 py-2.5 font-bold text-primary tabular-nums">
-                          {formatCurrency(user.wallet_balance)}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span
-                            className={`font-bold text-xs px-2 py-0.5 rounded-full border ${
-                              user.loyalty_tier === "platinum"
-                                ? "text-cyan-400 bg-cyan-400/10 border-cyan-400/20"
-                                : user.loyalty_tier === "gold"
-                                  ? "text-yellow-400 bg-yellow-400/10 border-yellow-400/20"
-                                  : user.loyalty_tier === "silver"
-                                    ? "text-slate-300 bg-slate-400/10 border-slate-400/20"
-                                    : user.loyalty_tier === "bronze"
-                                      ? "text-amber-600 bg-amber-600/10 border-amber-600/20"
-                                      : "text-muted-foreground bg-muted/40 border-border"
-                            }`}
-                          >
-                            {tierLabel(user.loyalty_tier)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 tabular-nums text-sm">{user.loyalty_points}</td>
-                        <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
-                          {formatCurrency(user.lifetime_spend)}
-                        </td>
-                        <td className="px-4 py-2.5 tabular-nums font-semibold">
-                          {user.order_count}
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums">
-                          {user.created_at ? formatDate(user.created_at) : "—"}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <button
-                            onClick={() => openEdit(user)}
-                            aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
-                            /* 93-C6 / F-07 (A5 S-6): p-1.5 ≈ 28px target —
-                               p-2 + min sizes lift the tappable area for
-                               the 375px admin layout. */
-                            className="p-2 min-w-9 min-h-9 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
+                      <DesktopUserRow key={user.id} user={user} idx={idx} onEdit={openEdit} />
                     ))}
                   </tbody>
                 </table>
@@ -1252,44 +1334,7 @@ export default function AdminUsersPage() {
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">
               {sorted.map((user) => (
-                <div
-                  key={user.id}
-                  className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border hover:shadow-md hover:shadow-black/10 transition-all"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="font-mono font-bold text-sm truncate">
-                      {displayUserName(user as unknown as AdminUserShape)}
-                    </div>
-                    <div className="mt-1">
-                      <ProviderBadges user={user as unknown as Record<string, unknown>} />
-                    </div>
-                    <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-                      <span className={tierColor(user.loyalty_tier)}>
-                        {tierLabel(user.loyalty_tier)}
-                      </span>
-                      <span>·</span>
-                      <span>{user.order_count} طلب</span>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-bold text-primary tabular-nums text-sm">
-                      {formatCurrency(user.wallet_balance)}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {user.loyalty_points} نقطة
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => openEdit(user)}
-                    /* R123 (E3 P3b): the mobile twin of the desktop edit
-                       button — same accessible name so screen readers
-                       announce the same action in both layouts. */
-                    aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
-                    className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                </div>
+                <MobileUserCard key={user.id} user={user} onEdit={openEdit} />
               ))}
             </div>
 
@@ -1299,23 +1344,11 @@ export default function AdminUsersPage() {
                 once a short page arrives. */}
             {hasNextPage && (
               <div className="flex justify-center pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5"
-                  disabled={isFetchingNextPage}
+                <LoadMoreButton
+                  spinner={RefreshCw}
+                  busy={isFetchingNextPage}
                   onClick={() => void fetchNextPage()}
-                >
-                  {isFetchingNextPage ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                    </>
-                  )}
-                </Button>
+                />
               </div>
             )}
           </>

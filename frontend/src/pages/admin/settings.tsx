@@ -586,7 +586,8 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
       );
       setSession((s) => (s ? { ...s, ...body } : s));
       setProfilePassword("");
-      toast({ title: "تم تحديث بيانات الحساب" });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم تحديث بيانات الحساب", variant: "success" });
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
@@ -646,7 +647,8 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
       setPwCurrent("");
       setPwNew("");
       setPwConfirm("");
-      toast({ title: "تم تغيير كلمة المرور بنجاح" });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم تغيير كلمة المرور بنجاح", variant: "success" });
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
@@ -1043,12 +1045,23 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* Tab bar */}
-        <div className="flex flex-wrap gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1 w-fit">
+        {/* R124-I5 (A6 F10): real tab semantics — the five content panes
+            made the active tab purely visual for assistive tech. The bar
+            is a tablist; each button is a tab with aria-selected; each
+            pane below carries role="tabpanel" + aria-labelledby. */}
+        <div
+          role="tablist"
+          aria-label="أقسام الإعدادات"
+          className="flex flex-wrap gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1 w-fit"
+        >
           {/* R123 (E3 P3f): auth + integrations render only for
               settings-scoped admins (the tabAllowed gate above). */}
           {TABS.filter((tab) => tabAllowed(tab.id, canManageSettings)).map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              id={`settings-tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
               onClick={() => selectTab(tab.id)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all duration-150 ${activeTab === tab.id ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
             >
@@ -1068,11 +1081,15 @@ export default function AdminSettingsPage() {
         )}
 
         {/* ── Account Tab ─────────────────────────────────────────────── */}
-        {activeTab === "account" && adminToken && <AccountTab adminToken={adminToken} />}
+        {activeTab === "account" && adminToken && (
+          <div role="tabpanel" aria-labelledby="settings-tab-account">
+            <AccountTab adminToken={adminToken} />
+          </div>
+        )}
 
         {/* ── Auth Providers Tab ─────────────────────────────────────────── */}
         {activeTab === "auth" && canManageSettings && (
-          <div className="space-y-5">
+          <div role="tabpanel" aria-labelledby="settings-tab-auth" className="space-y-5">
             {/* Summary banner */}
             <div className="flex items-center gap-3 px-5 py-3.5 bg-card border border-border/60 rounded-2xl float-in">
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -1157,7 +1174,7 @@ export default function AdminSettingsPage() {
 
         {/* ── Integrations Tab ──────────────────────────────────────────── */}
         {activeTab === "integrations" && canManageSettings && (
-          <div className="space-y-5">
+          <div role="tabpanel" aria-labelledby="settings-tab-integrations" className="space-y-5">
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
               <div className="flex items-center gap-2.5 mb-5">
                 <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
@@ -1363,7 +1380,11 @@ export default function AdminSettingsPage() {
 
         {/* ── Notifications Tab ─────────────────────────────────────────── */}
         {activeTab === "notifications" && (
-          <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
+          <div
+            role="tabpanel"
+            aria-labelledby="settings-tab-notifications"
+            className="bg-card border border-border/60 rounded-2xl p-6 float-in"
+          >
             <h2 className="font-bold mb-1 text-sm">الأحداث التي يتم إشعارك بها</h2>
             {/* R120-B4 (A2-F5): descriptive info panel — the old rows
                 rendered a green CheckCircle per event, which read as a
@@ -1396,7 +1417,7 @@ export default function AdminSettingsPage() {
 
         {/* ── Security Tab ──────────────────────────────────────────────── */}
         {activeTab === "security" && (
-          <div className="space-y-5">
+          <div role="tabpanel" aria-labelledby="settings-tab-security" className="space-y-5">
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">

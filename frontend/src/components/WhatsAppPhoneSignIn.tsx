@@ -509,6 +509,14 @@ export function WhatsAppPhoneSignIn({
                   disabled={loading || settlingAuto}
                   dir="ltr"
                   enterKeyHint="done"
+                  /* R124-I4 (A5 #9): the role=alert error block was never
+                     tied to the field — mirror the wallet sender-phone
+                     pattern (aria-invalid + aria-describedby → the
+                     id'd error below). Only one step's input is mounted
+                     at a time and errors are step-scoped, so the shared
+                     id is unambiguous. */
+                  aria-invalid={!!error}
+                  aria-describedby={error ? "whatsapp-auth-error" : undefined}
                   /* F3-12 (R111 WCAG 1.4.11): `focus:border-primary/50`
                   alone measured 1.70:1 vs the resting border on the dark
                   card — the ring token at full opacity (3.76:1 dark card /
@@ -547,7 +555,10 @@ export function WhatsAppPhoneSignIn({
                   ) : (
                     <>
                       <MessageCircle className="w-4 h-4" />
-                      إرسال
+                      {/* R124-I4 (A10 #9): the storefront's lone generic
+                          submit — every other button names its action; the
+                          resend link below already says «إعادة الإرسال». */}
+                      إرسال الرمز
                     </>
                   )}
                 </button>
@@ -596,6 +607,10 @@ export function WhatsAppPhoneSignIn({
                   disabled={loading}
                   dir="ltr"
                   enterKeyHint="done"
+                  /* R124-I4 (A5 #9): same field-association as the phone
+                     input above (wallet sender-phone pattern). */
+                  aria-invalid={!!error}
+                  aria-describedby={error ? "whatsapp-auth-error" : undefined}
                   /* F3-12 (R111 WCAG 1.4.11): same fix as the phone field
                   above — a real 3.76:1+ ring instead of the 1.70:1 border
                   tint. (R122 A1 P2-4: tracking now rides the arbitrary
@@ -634,17 +649,24 @@ export function WhatsAppPhoneSignIn({
                 </button>
               </div>
               {/* 96-F2 (R96-A4 §4.1): OTP TTL from expires_at — subtle
-              Latin-digit M:SS countdown (never the code itself). */}
+              Latin-digit M:SS countdown (never the code itself).
+              R124-I4 (A5 #9): live region so the countdown + the expiry
+              note reach screen readers — the same money flow's waiting
+              modal already does this (TopupWaitingModal countdown). */}
               {expiresAt !== null &&
                 (expiryLeft > 0 ? (
-                  <p className="text-2xs text-muted-foreground text-center">
+                  <p
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="text-2xs text-muted-foreground text-center"
+                  >
                     ينتهي خلال{" "}
                     <span dir="ltr" className="tabular-nums">
                       {formatMSS(expiryLeft)}
                     </span>
                   </p>
                 ) : (
-                  <p className="text-2xs text-muted-foreground text-center">
+                  <p aria-live="polite" className="text-2xs text-muted-foreground text-center">
                     انتهت صلاحية الرمز — استخدم «إعادة الإرسال» للحصول على رمز جديد
                   </p>
                 ))}
@@ -723,7 +745,14 @@ export function WhatsAppPhoneSignIn({
           role="alert"
           className="bg-destructive/10 border border-destructive/20 rounded-lg p-2.5 animate-in fade-in slide-in-from-top-1"
         >
-          <p className="text-xs text-destructive text-center leading-relaxed">{error}</p>
+          {/* R124-I4 (A5 #9): the id the phone/OTP inputs point at via
+              aria-describedby above (wallet sender-phone pattern). */}
+          <p
+            id="whatsapp-auth-error"
+            className="text-xs text-destructive text-center leading-relaxed"
+          >
+            {error}
+          </p>
         </div>
       )}
     </div>

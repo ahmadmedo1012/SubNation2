@@ -163,7 +163,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     fetchMock.mockResolvedValue(resLike());
     renderPage();
 
-    const dialog = await openBulkConfirm("مسترجع");
+    const dialog = await openBulkConfirm("مُسترد");
     expect(dialog.getByText(/سيتم استرداد المبالغ للمستخدمين/)).toBeInTheDocument();
 
     fireEvent.click(dialog.getByRole("button", { name: "إلغاء" }));
@@ -179,7 +179,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     fetchMock.mockResolvedValue(resLike({ body: { success: true, updated: 2 } }));
     renderPage();
 
-    const dialog = await openBulkConfirm("مسترجع");
+    const dialog = await openBulkConfirm("مُسترد");
     fireEvent.click(dialog.getByRole("button", { name: "استرداد" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
@@ -208,7 +208,7 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     );
     renderPage();
 
-    const dialog = await openBulkConfirm("مسترجع");
+    const dialog = await openBulkConfirm("مُسترد");
     fireEvent.click(dialog.getByRole("button", { name: "استرداد" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
@@ -276,7 +276,7 @@ describe("AdminOrdersPage — finance-gated refund option + menu semantics (R120
     const anchor = await openBulkMenu();
     const menu = within(anchor).getByRole("menu");
     // The refund entry is gone…
-    expect(within(menu).queryByRole("menuitem", { name: "مسترجع" })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "مُسترد" })).not.toBeInTheDocument();
     // …while the non-money transitions stay offered.
     expect(within(menu).getByRole("menuitem", { name: "مكتمل" })).toBeInTheDocument();
     expect(within(menu).getAllByRole("menuitem").length).toBe(3);
@@ -287,7 +287,7 @@ describe("AdminOrdersPage — finance-gated refund option + menu semantics (R120
 
     const anchor = await openBulkMenu();
     const menu = within(anchor).getByRole("menu");
-    expect(within(menu).getByRole("menuitem", { name: "مسترجع" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "مُسترد" })).toBeInTheDocument();
     expect(within(menu).getAllByRole("menuitem").length).toBe(4);
   });
 

@@ -1,6 +1,8 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
 import { Input } from "@/components/ui/input";
@@ -69,19 +71,31 @@ interface OrderCredentials {
   decrypt_failed?: boolean;
 }
 
-const BULK_STATUSES = [
-  { value: "completed", label: "مكتمل", color: "text-emerald-400" },
-  { value: "pending", label: "قيد الانتظار", color: "text-yellow-400" },
-  { value: "failed", label: "فشل", color: "text-red-400" },
-  { value: "refunded", label: "مسترجع", color: "text-blue-400" },
-];
+// R124-I5 (A6 F2): bulk-action + filter-tab labels derive from
+// statusLabel — the same map that feeds the row badges (the tickets.tsx
+// pattern). The tabs previously hand-rolled a THIRD vocabulary mix
+// («معلق»/«فاشل»/«مسترجع» tabs vs «قيد الانتظار»/«فشل»/«مُسترد» badges
+// vs «مسترجع» bulk entries) — one status can never show two different
+// Arabic words on one page (the status-badge invariant).
+const BULK_STATUSES = (["completed", "pending", "failed", "refunded"] as const).map((s) => ({
+  value: s,
+  label: statusLabel(s),
+  color:
+    s === "completed"
+      ? "text-emerald-400"
+      : s === "pending"
+        ? "text-yellow-400"
+        : s === "failed"
+          ? "text-red-400"
+          : "text-blue-400",
+}));
 
 const STATUS_FILTERS = [
   { value: "", label: "الكل" },
-  { value: "completed", label: "مكتمل" },
-  { value: "pending", label: "معلق" },
-  { value: "failed", label: "فاشل" },
-  { value: "refunded", label: "مسترجع" },
+  ...(["completed", "pending", "failed", "refunded"] as const).map((s) => ({
+    value: s,
+    label: statusLabel(s),
+  })),
 ];
 
 const DATE_RANGES = [
@@ -839,7 +853,12 @@ export default function AdminOrdersPage() {
         });
       }
       setSelectedIds(new Set());
-      refetch();
+      // R124-I5 (A6 F11): the explicit refetch() + the base-key
+      // invalidateQueries fired TWO identical list requests per bulk
+      // action (the invalidate already re-fetches every active query
+      // under the key). The invalidate alone is the refresh — the same
+      // single-invalidation shape every other admin page uses
+      // (users.tsx / topups.tsx / products.tsx).
       // 93-C6 / F-07: invalidate the BASE key (no params) so every
       // cached page + the dashboard's recent-orders query refresh,
       // not just the current page's exact key.
@@ -1331,6 +1350,10 @@ export default function AdminOrdersPage() {
                     setStatusFilter(s.value);
                     syncFilterParams(s.value, dateRange);
                   }}
+                  /* R124-I5 (A6 F10): the active chip was purely visual —
+                     aria-pressed exposes the toggle state to assistive
+                     tech (the coupons.tsx chip-bar idiom). */
+                  aria-pressed={active}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                     active
                       ? "bg-card shadow-sm text-foreground font-bold"
@@ -1360,6 +1383,9 @@ export default function AdminOrdersPage() {
                   setDateRange(dr.days);
                   syncFilterParams(statusFilter, dr.days);
                 }}
+                /* R124-I5 (A6 F10): same toggle-state exposure as the
+                   status chips. */
+                aria-pressed={dateRange === dr.days}
                 className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                   dateRange === dr.days
                     ? "bg-card shadow-sm text-foreground font-bold"
@@ -1418,22 +1444,13 @@ export default function AdminOrdersPage() {
              The referrals.tsx error-card idiom — an outage/expired
              session previously masqueraded as "لا توجد طلبات" and the
              header told the operator the support queue was empty. */
-          <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl">
-            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-              <WifiOff className="w-8 h-8 text-status-error/70" />
-            </div>
-            <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل الطلبات</p>
-            <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-              {loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
-            </p>
-            <Button
-              onClick={() => refetch()}
-              className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              إعادة المحاولة
-            </Button>
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل الطلبات"
+            description={loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
+            onRetry={() => refetch()}
+          />
         ) : filtered.length === 0 ? (
           hasNextPage ? (
             /* R115 (A9 P2): zero matches over PARTIAL data — the status
@@ -1449,23 +1466,12 @@ export default function AdminOrdersPage() {
               </p>
               <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
               <div className="flex justify-center gap-2 flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5"
-                  disabled={isFetchingNextPage || isLoading}
+                <LoadMoreButton
+                  spinner={RefreshCw}
+                  busy={isFetchingNextPage}
+                  disabled={isLoading}
                   onClick={() => void fetchNextPage()}
-                >
-                  {isFetchingNextPage ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                    </>
-                  )}
-                </Button>
+                />
                 {(search || statusFilter || dateRange > 0) && (
                   <button
                     onClick={() => {
@@ -1626,23 +1632,12 @@ export default function AdminOrdersPage() {
                 survive. The button hides once a short page arrives. */}
             {hasNextPage && (
               <div className="flex justify-center pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5"
-                  disabled={isFetchingNextPage || isLoading}
+                <LoadMoreButton
+                  spinner={RefreshCw}
+                  busy={isFetchingNextPage}
+                  disabled={isLoading}
                   onClick={() => void fetchNextPage()}
-                >
-                  {isFetchingNextPage ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> جارٍ التحميل…
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-3.5 h-3.5" /> تحميل المزيد
-                    </>
-                  )}
-                </Button>
+                />
               </div>
             )}
           </>

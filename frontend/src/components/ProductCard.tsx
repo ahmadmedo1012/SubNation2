@@ -40,6 +40,10 @@ interface Product {
   discount_percent?: number | null;
   order_count?: number;
   variants?: CatalogVariant[];
+  /* A2-F3 (R124): the ?fields=list projection drops the variant tree —
+     the count badge reads this instead. Present on every list response
+     (both projections); absent only on hand-built fixtures. */
+  variant_count?: number;
 }
 
 /** Public catalog variant (mirrors the /api/products DTO — price only,
@@ -249,6 +253,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
     product.variants && product.variants.length > 0
       ? product.variants.reduce((a, b) => (a.price <= b.price ? a : b))
       : null;
+  /* A2-F3 (R124): variant count works with or without the projected
+     variant tree — the live list payloads carry variant_count only. */
+  const variantCount = product.variants?.length ?? product.variant_count ?? 0;
   const handleAddToCart = () => {
     if (unavailable) return;
     const now = Date.now();
@@ -290,8 +297,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
        paradigm for every count (2 → «باقتان», 3–10 → «باقات», 11+ →
        «باقة»); formatCount is the app standard used at 20+ count
        sites (utils.ts:49). */
-    product.variants && product.variants.length > 1
-      ? formatCount(product.variants.length, {
+    /* R122 (A1 P2-1): same formatCount swap as the aria-label
+       above — «2 باقتان» instead of the frozen «2 باقات». */
+    variantCount > 1
+      ? formatCount(variantCount, {
           one: "باقة",
           two: "باقتان",
           few: "باقات",
@@ -445,10 +454,16 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 document outline; R120-B1 (A1-F10): 2 name lines below sm
                 (8/12 names clipped at 390px), 1 line from sm up. The
                 11px description row is hidden below sm (A1-F15) to fund
-                the second name line in the 2-col mobile grid. */}
+                the second name line in the 2-col mobile grid.
+                R124 (A4-F7): min-w-0 — a flex item's automatic minimum
+                size is its longest unbroken token, so a catalog name
+                with one long Latin token pushed the shrink-0 category
+                badge out of the row (every other flex text chain in the
+                app already carries it; the card's overflow-hidden kept
+                the squeeze latent until such a name ships). */}
             <h3
               dir="auto"
-              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-1 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
+              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-1 min-w-0 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
             >
               {product.name}
             </h3>
@@ -473,8 +488,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               of the price row for the persistent desktop quick-add button
               below (48px = 12px inset + 32px button + 4px gap) so the
               stock/variants badge never sits under it. Mobile keeps the
-              full-width row — the always-on CTA there lives below. */}
-          <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto md:pe-12">
+              full-width row — the always-on CTA there lives below.
+              R124 (A4-F4): on touch viewports ≥md the quick-add grows to
+              the 44px floor (see the button below), so the reservation
+              grows with it — pe-15 = 60px = 12px inset + 44px button +
+              4px gap (the stacked variant sorts after md:pe-12 in the
+              utilities layer, so the override is cascade-safe). */}
+          <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto md:pe-12 md:[@media(hover:none)]:pe-15">
             <div className="flex items-baseline gap-1.5 flex-wrap">
               {product.price_from && (
                 <span className="text-3xs font-semibold text-muted-foreground">تبدأ من</span>
@@ -490,13 +510,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             </div>
 
             {product.is_available ? (
-              product.variants && product.variants.length > 1 ? (
+              variantCount > 1 ? (
                 <span
                   className={`text-3xs font-bold px-1.5 py-0.5 rounded-full border ${accent.bg} ${accent.text} ${accent.border}`}
                 >
                   {/* R122 (A1 P2-1): same formatCount swap as the aria-label
                       above — «2 باقتان» instead of the frozen «2 باقات». */}
-                  {formatCount(product.variants.length, {
+                  {formatCount(variantCount, {
                     one: "باقة",
                     two: "باقتان",
                     few: "باقات",
@@ -585,14 +605,26 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           keeps a dimmed DISABLED affordance mirroring mobile's muted
           bar. The hover slide-up panel below stays for delight; this
           button layers ABOVE it (z-10 vs the panel's z-auto) so a
-          focused quick-add is never visually obscured by the panel. */}
+          focused quick-add is never visually obscured by the panel.
+          R124 (A4-F4): tablets sit at ≥md with a coarse pointer — the
+          mobile CTA (md:hidden) is gone and the hover slide-up below can
+          never reveal there, so this button is the card's ONLY add
+          affordance, and at 32px it sat under the app's own 44px touch
+          floor. Under @media(hover:none) it grows to 44px and becomes
+          the visible touch fallback (adapt.md: detect input method, not
+          just screen size — same idiom as index.css's sonner close
+          button); pointer users keep the compact 32px icon. The disabled
+          sold-out twin below is sized identically so the grid's corner
+          geometry stays uniform across cards (disabled controls are
+          exempt from the floor — that one is visual rhythm, not a
+          target). */}
       {product.is_available ? (
         <button
           type="button"
           onClick={handleAddToCart}
           aria-label={`أضف ${product.name} إلى السلة`}
           title="أضف للسلة"
-          className="hidden md:flex absolute bottom-3 left-3 z-10 h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary/90 active:scale-90 transition-all duration-150 press-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+          className="hidden md:flex absolute bottom-3 left-3 z-10 h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary/90 active:scale-90 transition-all duration-150 press-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         >
           <ShoppingCart className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
@@ -601,7 +633,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           type="button"
           disabled
           aria-label="نفد المخزون"
-          className="hidden md:flex absolute bottom-3 left-3 h-8 w-8 items-center justify-center rounded-xl bg-muted/40 border border-border/40 text-muted-foreground/70 cursor-not-allowed"
+          className="hidden md:flex absolute bottom-3 left-3 h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 items-center justify-center rounded-xl bg-muted/40 border border-border/40 text-muted-foreground/70 cursor-not-allowed"
         >
           <Lock className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
@@ -638,5 +670,16 @@ export const ProductCard = memo(
     prev.product.order_count === next.product.order_count &&
     prev.product.stock_count === next.product.stock_count &&
     prev.product.is_available === next.product.is_available &&
+    /* R124 (A2-F8): variants — the card derives its «تبدأ من» min-price,
+       quick-add target and count badge from product.variants, but the
+       perf comparator never compared them, so a background refetch
+       (staleTime 3 min) that only changed a variant's price or
+       availability re-rendered nothing and the card kept showing the
+       stale price on a money display. Identity is exact AND
+       perf-neutral: both storefront consumers (home, category) ride
+       TanStack Query's default structural sharing, which preserves the
+       variants array reference across refetches unless the data deeply
+       changed — and a deep change re-renders, exactly as it must. */
+    prev.product.variants === next.product.variants &&
     prev.index === next.index,
 );

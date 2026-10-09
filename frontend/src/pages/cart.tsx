@@ -251,7 +251,10 @@ export default function CartPage() {
                     </Link>
                     <div className="flex-1 min-w-[10rem]">
                       <Link href={`/product/${it.slug ?? it.productId}`}>
-                        <div className="font-bold text-sm leading-snug truncate group-hover:text-primary transition-colors">
+                        {/* R124-I4 (A5 #1): hover tint rides the text-safe
+                            token — raw text-primary is 3.76:1 on the dark
+                            card (AA fail on the hover state of small text). */}
+                        <div className="font-bold text-sm leading-snug truncate group-hover:text-primary-text transition-colors">
                           {it.name}
                         </div>
                       </Link>

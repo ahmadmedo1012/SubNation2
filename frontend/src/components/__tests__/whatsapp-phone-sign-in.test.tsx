@@ -115,7 +115,7 @@ async function reachCodeStepFake(expiresInSec = 300) {
   );
   renderSignIn();
   typePhone(openPhoneStep(), PHONE);
-  fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+  fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
   await flushAsync();
   return screen.getByPlaceholderText("رمز التحقق");
 }
@@ -206,7 +206,7 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     const otp = await screen.findByPlaceholderText("رمز التحقق");
     expect(otp.className).toContain("text-base");
     expect(otp.getAttribute("enterkeyhint")).toBe("done");
@@ -223,7 +223,7 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
     typePhone(openPhoneStep(), PHONE);
     const retreat = screen.getByRole("button", { name: "تراجع" });
     expect(retreat.className).toContain("min-h-11");
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     await screen.findByPlaceholderText("رمز التحقق");
     const change = screen.getByRole("button", { name: "تغيير الرقم" });
     expect(change.className).toContain("min-h-11");
@@ -239,7 +239,7 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
     );
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     await screen.findByRole("button", { name: "إعادة الإرسال (30 ث)" });
     // No Latin "s" unit may resurface (the old «(60s)» copy).
     expect(screen.queryByRole("button", { name: /\(\d+s\)/ })).not.toBeInTheDocument();
@@ -359,7 +359,7 @@ describe("settling state — 503 whatsapp_settling (96-F2 §1.3E)", () => {
       .mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     await flushAsync();
 
     // Honest banner — NOT the destructive error style.
@@ -385,7 +385,7 @@ describe("settling state — 503 whatsapp_settling (96-F2 §1.3E)", () => {
     fetchMock.mockResolvedValue(settlingResponse(3));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     await flushAsync(); // call 1 → schedules auto-retry #1
     await advance(3000); // call 2 → schedules auto-retry #2
     await advance(3000); // call 3 → budget spent → manual mode
@@ -397,7 +397,7 @@ describe("settling state — 503 whatsapp_settling (96-F2 §1.3E)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
     // Manual: the send button is usable again and still works.
-    const send = screen.getByRole("button", { name: "إرسال" });
+    const send = screen.getByRole("button", { name: "إرسال الرمز" });
     expect(send).toBeEnabled();
     fireEvent.click(send);
     await flushAsync();
@@ -408,7 +408,7 @@ describe("settling state — 503 whatsapp_settling (96-F2 §1.3E)", () => {
     fetchMock.mockResolvedValue(settlingResponse(3));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     await flushAsync();
 
     fireEvent.click(screen.getByRole("button", { name: "تراجع" }));
@@ -465,7 +465,7 @@ describe("error funnel — getErrorMessage everywhere (96-F2 §4.1)", () => {
     );
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("تعذّر إرسال الرمز عبر WhatsApp");
@@ -477,7 +477,7 @@ describe("error funnel — getErrorMessage everywhere (96-F2 §4.1)", () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("تعذّر الاتصال بالخدمة");
@@ -487,7 +487,7 @@ describe("error funnel — getErrorMessage everywhere (96-F2 §4.1)", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     const otp = await screen.findByPlaceholderText("رمز التحقق");
 
     fetchMock.mockResolvedValueOnce(
@@ -508,7 +508,7 @@ describe("error funnel — getErrorMessage everywhere (96-F2 §4.1)", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
-    fireEvent.click(screen.getByRole("button", { name: "إرسال" }));
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
     const otp = await screen.findByPlaceholderText("رمز التحقق");
 
     // The user's keyboard delivered ١٢٣٤٥٦ — the old extractor deleted

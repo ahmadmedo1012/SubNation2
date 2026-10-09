@@ -1207,7 +1207,12 @@ export default function CheckoutPage() {
                   </p>
                   <Link
                     href="/wallet?return=/checkout"
-                    className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"
+                    /* R124-I4 (A4 F1): the ONLY path from a failed
+                       checkout to the topup flow measured ~20px tall.
+                       44px floor via the FlashSaleBanner negative-margin
+                       idiom (min-h-11 -my-2 py-2) — the hit area clears
+                       the floor while the alert box barely grows. */
+                    className="inline-flex items-center gap-1 min-h-11 -my-2 py-2 text-status-error underline underline-offset-2 hover:opacity-80"
                   >
                     اشحن المحفظة ثم عُد لإتمام الطلب
                   </Link>
@@ -1244,6 +1249,14 @@ export default function CheckoutPage() {
                 }}
                 placeholder="أدخل رمز الكوبون"
                 aria-label="رمز الكوبون"
+                /* R124-I4 (A5 #9): the coupon error is a role=alert block
+                   but was never tied to the field — mirror the wallet
+                   sender-phone pattern (wallet.tsx aria-invalid +
+                   aria-describedby → the id'd error <p> below). */
+                aria-invalid={!!couponNotice && !appliedCoupon}
+                aria-describedby={
+                  couponNotice && !appliedCoupon ? "checkout-coupon-error" : undefined
+                }
                 /* 96-F4 (R96 A2 P3-1 / A1 M05): Safari/iOS happily autofills
                    coupon inputs from saved emails, and the shared Input's
                    text-base (16px < md) already prevents the iOS focus-zoom —
@@ -1280,7 +1293,11 @@ export default function CheckoutPage() {
               )}
             </div>
             {couponNotice && !appliedCoupon && (
-              <p role="alert" className="text-xs font-bold text-status-error mt-2 leading-relaxed">
+              <p
+                id="checkout-coupon-error"
+                role="alert"
+                className="text-xs font-bold text-status-error mt-2 leading-relaxed"
+              >
                 {couponNotice}
               </p>
             )}
@@ -1539,7 +1556,11 @@ export default function CheckoutPage() {
                   بالنقر على «إتمام الطلب» فإنك توافق على{" "}
                   <Link
                     href="/terms"
-                    className="text-primary font-bold hover:text-primary/80 transition-colors"
+                    /* R124-I4 (A5 #1/#10): consent link rode the raw
+                       surface token at 11px (3.93:1 dark — AA fail at
+                       this size). text-primary-text + the resting
+                       underline idiom (color-alone is not enough). */
+                    className="text-primary-text font-bold underline underline-offset-2 hover:opacity-80 transition-opacity"
                   >
                     الشروط والأحكام
                   </Link>

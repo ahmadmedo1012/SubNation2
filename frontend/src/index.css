@@ -98,7 +98,12 @@
      ~320× as arbitrary values. R120-B1 (A3-F6/A4-F11): 3xs raised
      10→11px — 10px was below the Arabic readability floor on nav labels
      and badges (connected glyphs lose dot distinction); 2xs stays 11px
-     (conservative — no overflow risk taken on denser 2xs surfaces). */
+     (conservative — no overflow risk taken on denser 2xs surfaces).
+     R124-A3 #17 (honest collapse): both tokens deliberately emit 11px —
+     the Arabic floor outranks a visible 2xs/3xs type step, and a 12px
+     2xs would reflow ~150 badge/chip surfaces. The micro scale is a
+     PADDING/ICON scale, not a type scale — StatusBadge documents this
+     at its size variants. */
   --text-2xs: 11px;
   --text-3xs: 11px;
 
@@ -154,8 +159,13 @@
   --status-low-stock: 22 92% 58%;
   /* Support/ticket notifications (NotificationBell TYPE_CONFIG). HSL
      channels like the rest of the status palette so consumers compose
-     bg/border/text from one token (B6-P1-4). */
-  --status-purple: 262 83% 66%;
+     bg/border/text from one token (B6-P1-4).
+     R124-A3 #5 (WCAG 1.4.3): 66% lightness measured 4.09:1 as 11px bold
+     badge text on the /12 StatusBadge tint over the dark card — under
+     the 4.5:1 AA floor. Raised to 70% (same hue + saturation): 4.80:1
+     on the /12 tint, 4.93:1 on the bell's /10 action-chip tint. Light
+     value already passed (6.85:1) and is untouched. */
+  --status-purple: 262 83% 70%;
 
   /* Fixed MobileNav height (px). Mirrors MOBILE_NAV_HEIGHT exported from
      components/layout/MobileNav.tsx — the two are asserted equal by
@@ -259,14 +269,33 @@
   --surface-overlay: 0 0% 100%;
 
   /* Light-mode-tuned category accents — saturated mid-tones that
-     keep readable contrast on white surfaces. */
+     keep readable contrast on white surfaces.
+     R124 (A3-F1 P1, R116-S1 method — the same WCAG 1.4.3 fix the
+     --status-* family got): the 11px text-3xs badge text on
+     ProductCard/category chips rides text-cat-* over its OWN /10 tint
+     composited over the white card, and five of the seven live accents
+     measured under 4.5:1 there (education 42 90% 42% = 2.50:1, music
+     152 60% 38% = 3.15:1, seo-tools 16 85% 46% = 3.78:1, vpn
+     199 80% 38% = 4.04:1, ai-tools 291 60% 48% = 4.49:1 — computed
+     WCAG relative luminance, alpha composited). Darkened values hold
+     ≥4.5:1 on every tint in use — the /10 badge tint, the /12 tint,
+     and the category chips' /15 hover tint:
+       education 42 90% 28% → 4.88 / 4.74 / 4.54
+       music     152 60% 29% → 4.87 / 4.74 / 4.54
+       seo-tools 16 85% 39% → 4.90 / 4.75 / 4.53
+       vpn       199 80% 33% → 4.98 / 4.84 / 4.63
+       ai-tools  291 60% 45% → 4.96 / 4.81 / 4.58
+     streaming (5.57:1) and software (5.00:1) already passed; dark
+     theme (4.97–9.29:1) untouched. The retired gaming/productivity
+     pairs stay as-is (admin-preview-only surfaces, zero live
+     consumers). */
   --cat-streaming: 270 65% 50%;
-  --cat-music: 152 60% 38%;
+  --cat-music: 152 60% 29%;
   --cat-software: 217 70% 46%;
-  --cat-vpn: 199 80% 38%;
-  --cat-ai-tools: 291 60% 48%;
-  --cat-seo-tools: 16 85% 46%;
-  --cat-education: 42 90% 42%;
+  --cat-vpn: 199 80% 33%;
+  --cat-ai-tools: 291 60% 45%;
+  --cat-seo-tools: 16 85% 39%;
+  --cat-education: 42 90% 28%;
   --cat-gaming: 211 80% 48%;
   --cat-productivity: 38 90% 45%;
 
@@ -497,18 +526,6 @@
   }
 }
 
-@keyframes cta-glow {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0;
-    transform: scale(1.18);
-  }
-}
-
 @keyframes badge-pulse {
   0%,
   100% {
@@ -732,26 +749,10 @@
     animation: reveal-up 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  /* Gradient text */
-  .text-gradient {
-    background: linear-gradient(130deg, hsl(var(--primary)) 0%, hsl(350 80% 65%) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  /* Animated gradient text — static gradient (no non-composited animation) */
-  .text-gradient-animated {
-    background: linear-gradient(
-      130deg,
-      hsl(var(--primary)) 0%,
-      hsl(350 85% 58%) 50%,
-      hsl(var(--primary)) 100%
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+  /* Gradient text — R124-A3 #7: both `.text-gradient` and the animated
+     variant are deleted (zero consumers anywhere in src — the R124
+     lanes converted every hero to solid emphasis; craft-floor bans
+     gradient text outright). */
 
   /* Dot-grid pattern */
   .dot-grid {
@@ -801,29 +802,11 @@
     transform: scale(0.91);
   }
 
-  /* CTA glow pulse — composited (transform + opacity only) */
-  .cta-glow {
-    position: relative;
-    isolation: isolate;
-  }
-  .cta-glow::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    box-shadow: 0 0 0 6px hsl(var(--primary) / 0.32);
-    opacity: 0;
-    transform: scale(1);
-    animation: cta-glow 2.8s ease-in-out infinite;
-    will-change: transform, opacity;
-    z-index: -1;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .cta-glow::after {
-      animation: none;
-    }
-  }
+  /* R124-A3 #6: .cta-glow (zero-offset pulsing colored halo) deleted —
+     craft-floor: "a zero-offset colored halo is decoration". Its last
+     four call sites (onboarding/wallet×2/product CTAs) are dropping the
+     class in the R124 page write lanes; the button gradient +
+     press-spring already carry the affordance. */
 
   /* Badge pulse for notification dots */
   .badge-pulse {
@@ -856,6 +839,25 @@
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
+  }
+
+  /* ── Browser surfaces: text selection + caret (R124-A3 #2) ────────
+     The themed half of the browser chrome (scrollbars, focus rings,
+     tabular numerals, color-scheme) was already done — selection still
+     painted the platform default blue and the caret was untouched.
+     Selection rides the brand primary at an alpha that keeps the
+     SELECTED text readable in both themes (measured, --foreground on
+     the 40% primary wash over --background: 12.7:1 dark / 8.2:1 light);
+     the caret rides --primary-text, the token that exists for
+     primary-as-ink (5.8:1 on the dark card / 5.3:1 on the light card). */
+  ::selection {
+    background: hsl(var(--primary) / 0.4);
+  }
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    caret-color: hsl(var(--primary-text));
   }
 
   /* Tap highlight suppression */
@@ -1091,7 +1093,7 @@
  * (float-in / reveal-up / page-in / slide-*) start at
  * opacity:0 — finishing them in ~0ms (rather than cancelling) lands the
  * element at its final visible frame, so reduced-motion users still SEE
- * the content. Infinite loops (blob-drift / cta-glow / *-pulse / shine)
+ * the content. Infinite loops (blob-drift / *-pulse / shine)
  * are pinned to a single iteration so nothing keeps moving. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1169,15 +1171,19 @@
      don't override or we fight the JS-driven choreography. */
 }
 
-/* Leading accent strip — vertical bar that hugs the inline-start edge.
-   Logical properties keep it on the right under dir="rtl" (the app's
-   default) and on the left in any LTR context, automatically. */
+/* Leading accent strip — vertical 1px bar that hugs the inline-start
+   edge. Logical properties keep it on the right under dir="rtl" (the
+   app's default) and on the left in any LTR context, automatically.
+   R124-A3 #12 (refuse rule): was 3px — colored side stripes above 1px
+   on cards/callouts/list rows are banned; 1px is the system's stripe
+   language (the glow stays as the accent's soft light, same idiom as
+   the icon bubble). */
 [data-sonner-toast][data-styled="true"].premium-toast::before {
   content: "";
   position: absolute;
   inset-block: 12px;
   inset-inline-start: 6px;
-  width: 3px;
+  width: 1px;
   border-radius: 999px;
   background: hsl(var(--toast-accent, var(--primary)));
   box-shadow: 0 0 14px 0 hsl(var(--toast-accent, var(--primary)) / 0.55);

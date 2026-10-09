@@ -176,7 +176,10 @@ export default function AdminPromotionsPage() {
         });
         return;
       }
-      toast({ title: "تم إنشاء العرض ✅" });
+      // R124-I5 (A6 F1 + F18): success variant, and the emoji dropped
+      // from the title — the only emoji-bearing toast in the admin
+      // console; color + wording carry the confirmation now.
+      toast({ title: "تم إنشاء العرض", variant: "success" });
       setShowForm(false);
       setForm(EMPTY_FORM);
       void load();
@@ -228,7 +231,8 @@ export default function AdminPromotionsPage() {
         });
         return;
       }
-      toast({ title: next ? "تم التفعيل" : "تم الإيقاف" });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: next ? "تم التفعيل" : "تم الإيقاف", variant: "success" });
       void load();
     } catch (err) {
       toast({
@@ -253,7 +257,8 @@ export default function AdminPromotionsPage() {
       // — the failure toast keeps its Arabic envelope mapping via the
       // wrapper's getErrorMessage.
       await adminFetchJson(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });
-      toast({ title: "تم الإيقاف" });
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم الإيقاف", variant: "success" });
       void load();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
@@ -315,11 +320,18 @@ export default function AdminPromotionsPage() {
               <Sparkles className="w-4 h-4 text-primary" /> إنشاء عرض جديد
             </h2>
 
+            {/* R124-I5 (A6 F3 — AUD103-6-F2 completion): real
+                htmlFor↔id pairs on the three create-form fields (the
+                r103 label pass missed this page). */}
             <div>
-              <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+              <Label
+                htmlFor="promotion-form-title"
+                className="text-xs font-bold text-muted-foreground mb-1.5 block"
+              >
                 عنوان العرض
               </Label>
               <Input
+                id="promotion-form-title"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 placeholder="عرض رمضان، تخفيضات الصيف…"
@@ -329,10 +341,14 @@ export default function AdminPromotionsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="promotion-form-discount"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   نسبة الخصم (%)
                 </Label>
                 <Input
+                  id="promotion-form-discount"
                   type="number"
                   min="1"
                   max="95"
@@ -347,10 +363,14 @@ export default function AdminPromotionsPage() {
                 </p>
               </div>
               <div>
-                <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                <Label
+                  htmlFor="promotion-form-ends-at"
+                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                >
                   ينتهي في
                 </Label>
                 <Input
+                  id="promotion-form-ends-at"
                   type="datetime-local"
                   value={form.ends_at}
                   onChange={(e) => setForm((f) => ({ ...f, ends_at: e.target.value }))}

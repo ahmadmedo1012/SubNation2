@@ -9,7 +9,16 @@ import { useTheme } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
-import { CopilotPanel } from "@/components/admin/copilot/CopilotPanel";
+// R124-I5 (A6 F12): CopilotPanel (1,676 lines + its history view) is no
+// longer STATICALLY imported into the admin layout chunk — every admin
+// route paid for a component that only mounts a floating launcher. It
+// now rides its own code-split chunk via the App.tsx lazyWithRetry
+// recipe (stale-deploy chunk recovery included); the import fires on
+// the first admin mount, in parallel with the page's own chunk.
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
+const CopilotPanel = lazyWithRetry(() =>
+  import("@/components/admin/copilot/CopilotPanel").then((m) => ({ default: m.CopilotPanel })),
+);
 import { useQuery } from "@tanstack/react-query";
 import {
   getGetAdminStatsQueryKey,
@@ -51,7 +60,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 // R120-B4 (A2-F1): exported for the nav-scope parity regression test
@@ -87,7 +96,12 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    label: "الكتالوج",
+    // R124-I5 (A6 F16): the group holds catalog entities (products /
+    // enrichment / pricing / promotions) AND customer+pricing entities
+    // (users / referrals / coupons) — «الكتالوج» alone mislabeled four
+    // of seven items. The label now names both halves of what it
+    // actually contains.
+    label: "الكتالوج والعملاء",
     items: [
       { href: "/admin/products", label: "المنتجات", icon: Package, scope: "inventory" },
       {
@@ -204,26 +218,14 @@ function NavItem({
   );
 }
 
-const PAGE_TITLES: Record<string, string> = {
-  "/admin": "لوحة التحكم",
-  "/admin/topups": "طلبات الشحن",
-  "/admin/orders": "الطلبات",
-  "/admin/products": "المنتجات",
-  "/admin/products/enrichment": "مراجعة المحتوى",
-  "/admin/pricing": "حاسبة الأسعار",
-  "/admin/users": "المستخدمون",
-  "/admin/tickets": "الدعم الفني",
-  "/admin/settings": "الإعدادات",
-  "/admin/referrals": "الإحالات",
-  "/admin/coupons": "الكوبونات",
-  "/admin/promotions": "العروض السريعة",
-  "/admin/alerts": "صندوق التنبيهات",
-  "/admin/security": "الأمان",
-  "/admin/system": "حالة النظام",
-  "/admin/whatsapp": "جلسة واتساب",
-  "/admin/admins": "إدارة المسؤولين",
-  "/admin/risk": "مراقبة المخاطر",
-};
+// R124-I5 (A6 F16): the top-bar titles derive from NAV_SECTIONS — ONE
+// source. The hand-maintained map had drifted on three routes (nav
+// «الرئيسية» vs title «لوحة التحكم», nav «سجل الأمان» vs «الأمان», nav
+// «التنبيهات» vs «صندوق التنبيهات»); deriving keeps nav and title
+// honest by construction — a label can never change in one place only.
+const PAGE_TITLES: Record<string, string> = Object.fromEntries(
+  NAV_SECTIONS.flatMap((s) => s.items.map((i) => [i.href, i.label])),
+);
 
 /** Detail-route title fallbacks (no exact PAGE_TITLES entry possible). */
 function pageTitleFor(location: string): string {
@@ -256,7 +258,12 @@ const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; 
     // page) was removed outright: the orders list is newest-first by
     // server default, so the link promised a filter that does not
     // exist — only the working products#new pattern stays.
-    "/admin/topups": [{ label: "المعلقة فقط", icon: Clock, href: "/admin/topups?status=pending" }],
+    // R124-C2 (A6 F2): «قيد الانتظار فقط» — the last معلق-family string
+    // on the topups surface; the CTA now reads exactly like the queue tab
+    // and row badges it deep-links to (?status=pending → statusLabel).
+    "/admin/topups": [
+      { label: "قيد الانتظار فقط", icon: Clock, href: "/admin/topups?status=pending" },
+    ],
   };
 
 // ── Global search component ──────────────────────────────────────────────────
@@ -1180,7 +1187,13 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           {children}
         </div>
       </main>
-      <CopilotPanel />
+      {/* R124-I5 (A6 F12): the launcher pops in once its own chunk
+          lands (first admin visit only — cached afterwards); a null
+          fallback avoids layout shift for a floating, non-critical
+          affordance. */}
+      <Suspense fallback={null}>
+        <CopilotPanel />
+      </Suspense>
     </div>
   );
 }

@@ -79,7 +79,10 @@ function CopyField({
             type="button"
             onClick={() => setRevealed((r) => !r)}
             aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary hover:border-primary/22"
+            /* R124-I4 (A3 #8): hover:text-primary on 12px bold text is
+                3.76:1 (AA fail on the hover state) — the text-safe
+                twin (the Button link variant's own convention). */
+            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary-text hover:border-primary/22"
           >
             {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             {revealed ? "إخفاء" : "إظهار"}
@@ -353,7 +356,10 @@ export default function OrderDetailPage() {
                         vertical margins (checkout.tsx:1493's error-banner
                         close) — the tight header row keeps its rhythm
                         while the tap target clears the touch floor. */
-                    className="flex items-center gap-1 min-h-11 px-3 -my-3 text-muted-foreground hover:text-primary text-2xs font-mono transition-colors group/code"
+                    /* R124-I4 (A3 #8): hover tint on 12px text —
+                        text-primary-text (raw text-primary hover is
+                        3.76:1, sub-AA at this size). */
+                    className="flex items-center gap-1 min-h-11 px-3 -my-3 text-muted-foreground hover:text-primary-text text-2xs font-mono transition-colors group/code"
                   >
                     <span>{order.order_code}</span>
                     {/* 96-F4 (R96 A6 #9 / A2 P2-10): the copy affordance is
@@ -398,7 +404,9 @@ export default function OrderDetailPage() {
                     {formatCurrency(originalAmount)}
                   </div>
                 )}
-                <div className="font-bold text-xl tabular-nums text-primary">
+                {/* R124-I4 (A5 #1): money value on the raw surface token
+                    — text-primary-text, the checkout totals idiom. */}
+                <div className="font-bold text-xl tabular-nums text-primary-text">
                   {formatCurrency(order.amount ?? 0)}
                 </div>
               </div>
@@ -618,7 +626,9 @@ export default function OrderDetailPage() {
               capitalized Button component. */}
           <Link
             href="/support"
-            className="text-xs text-muted-foreground hover:text-primary/80 transition-colors inline-flex items-center gap-1.5 press-spring"
+            /* R124-I4 (A5 #1): hover:text-primary/80 is sub-AA on the
+                hover state — the text-safe twin. */
+            className="text-xs text-muted-foreground hover:text-primary-text transition-colors inline-flex items-center gap-1.5 press-spring"
           >
             <ExternalLink className="w-3 h-3" />
             مشكلة في هذا الطلب؟ تواصل مع الدعم

@@ -76,6 +76,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
       offset="20px"
       closeButton
       dir="rtl"
+      /* R124-A5 #6 (language of component labels): Sonner's defaults are
+         English — "Notifications" on the aria-live region and "Close
+         toast" on every close button — inside an all-Arabic UI. Label
+         both in the app language (props verified against sonner 2.x:
+         containerAriaLabel lives on the Toaster, closeButtonAriaLabel
+         per-toast via toastOptions). */
+      containerAriaLabel="الإشعارات"
       icons={{
         success: <CheckCircle2 strokeWidth={2.4} />,
         error: <AlertCircle strokeWidth={2.4} />,
@@ -84,6 +91,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         loading: <Loader2 className="animate-spin" strokeWidth={2.4} />,
       }}
       toastOptions={{
+        closeButtonAriaLabel: "إغلاق",
         classNames: {
           toast: "premium-toast",
           title: "premium-toast-title",

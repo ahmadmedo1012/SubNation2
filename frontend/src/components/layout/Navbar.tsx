@@ -107,7 +107,14 @@ export function Navbar() {
   const navLink = (path: string, label: string) => {
     const active = location === path;
     return (
-      <Link href={path}>
+      <Link
+        href={path}
+        /* R124-A5 #3 (WCAG 2.4.8/1.3.1): programmatic current-page state —
+           the visual (text-primary-text + underline bar) was already
+           there; MobileNav.tsx has carried the same attribute since
+           R120. */
+        aria-current={active ? "page" : undefined}
+      >
         <div
           className={`
           relative px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150
@@ -267,7 +274,15 @@ export function Navbar() {
             </div>
           )}
 
-          {/* Mobile menu button — guests only */}
+          {/* Mobile menu button — guests only.
+              R124-A4 #5 (documented, not fixed): authed phones in landscape
+              (<480px height) lose the bottom nav to the max-height hide and
+              have no hamburger either — «المحفظة/طلباتي/حسابي» become
+              unreachable. Clean fix = an authed drawer variant (wallet/
+              orders/loyalty/profile/support) + internal scroll (the drawer
+              is taller than a landscape viewport while body-scroll-locked);
+              tracked as follow-up — the hide itself is pinned by
+              mobile-nav-clearance.test.tsx as the keyboard fallback. */}
           {!token && (
             <button
               className="md:hidden p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all touch-target flex items-center justify-center"
@@ -352,7 +367,10 @@ export function Navbar() {
           id="guest-menu"
           className="md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in"
         >
-          <div className="px-4 pt-1 pb-0.5 text-3xs font-bold text-muted-foreground/80">الفئات</div>
+          {/* R124-A3 #3: full token — the /80 alpha measured 4.14:1 in
+              light mode (sub-AA for the 11px bold label); full
+              --muted-foreground measures 6.67:1 (light) / 8.03:1 (dark). */}
+          <div className="px-4 pt-1 pb-0.5 text-3xs font-bold text-muted-foreground">الفئات</div>
           <div className="grid grid-cols-2 gap-x-2">
             {DRAWER_CATEGORIES.map((c) => (
               <Link

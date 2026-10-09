@@ -213,14 +213,14 @@ describe("AdminOrdersPage — honest partial-empty over paged data (R115 A9 P2)"
 
   it("a status tab with 0 matches while more pages exist keeps load-more + the incompleteness hint — never the hard empty claim", async () => {
     // Page 1: a FULL page of completed orders (hasNextPage=true), zero
-    // pending. The «معلق» tab used to render the hard «لا توجد طلبات»
+    // pending. The «قيد الانتظار» tab used to render the hard «لا توجد طلبات»
     // empty state while pending rows could sit on unloaded pages.
     (listAdminOrders as unknown as Mock).mockResolvedValue(FULL_PAGE);
 
     renderPage();
     await screen.findAllByText("SN-1000");
 
-    fireEvent.click(screen.getByRole("button", { name: /^معلق/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^قيد الانتظار/ }));
 
     // The honest partial-empty state: the incompleteness hint + a
     // VISIBLE load-more (the old empty state hid the button entirely).
@@ -254,7 +254,7 @@ describe("AdminOrdersPage — honest partial-empty over paged data (R115 A9 P2)"
     renderPage();
     await screen.findAllByText("SN-1000");
 
-    fireEvent.click(screen.getByRole("button", { name: /^مسترجع/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^مُسترد/ }));
     // No refunded orders anywhere (all pages loaded) — the hard empty
     // state is the honest answer now.
     expect(await screen.findByText("لا توجد طلبات")).toBeInTheDocument();

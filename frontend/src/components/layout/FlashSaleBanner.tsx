@@ -195,11 +195,11 @@ export function FlashSaleBanner() {
               }`}
             />
           </div>
-          <span
-            className={`text-2xs sm:text-xs font-bold hidden sm:inline ${
-              urgent ? "text-primary-text" : "text-primary-text/80"
-            }`}
-          >
+          {/* R124-A3 #4 (WCAG 1.4.3): full-opacity token — the /80 alpha
+              measured 4.01:1 (dark) / 3.15:1 (light) on the banner wash;
+              full --primary-text measures 5.56:1 dark / 4.81:1 light vs
+              the page background. */}
+          <span className="text-2xs sm:text-xs font-bold hidden sm:inline text-primary-text">
             عرض محدود
           </span>
         </div>
@@ -247,15 +247,16 @@ export function FlashSaleBanner() {
                     {String(seg.val).padStart(2, "0")}
                   </span>
                   {/* 94-C3 (A3 P2-11): 7px/50% was unreadable on small
-                      screens — the unit is functional copy, not decor. */}
+                      screens — the unit is functional copy, not decor.
+                      R124-A3 #4: opacity-70 removed — it measured
+                      3.26:1 (light) / 4.55:1 (dark); full opacity rides
+                      6.44:1 / 8.20:1. */}
                   {/* 96-F5 (R96-M22): the label hides at ≤359px so the
                       sale title survives — the fixed clusters (icon +
                       countdown digits + dismiss) left the title ~116px
                       at 320px; dropping the unit labels frees ~30px for
                       the actual message (the digits stay readable). */}
-                  <span className="text-3xs opacity-70 leading-none max-[359px]:hidden">
-                    {seg.label}
-                  </span>
+                  <span className="text-3xs leading-none max-[359px]:hidden">{seg.label}</span>
                 </div>
               </div>
             ))}

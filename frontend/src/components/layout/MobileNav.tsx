@@ -70,6 +70,16 @@ export function MobileNav() {
   // [@media(max-height:480px)]:hidden class below stays as the no-JS
   // fallback for short viewports (landscape phones, keyboard-resized
   // layouts that don't fire visualViewport).
+  //
+  // R124-A4 #5 (documented, not fixed — stretch item): because this hide
+  // is unconditional, an AUTHED phone rotated to landscape (<480px tall)
+  // loses the bottom nav while the hamburger (Navbar) is guest-only —
+  // «المحفظة/طلباتي/حسابي» have no entry point until rotation. A clean
+  // fix needs an authed drawer variant (wallet/orders/loyalty/profile/
+  // support) WITH internal scrolling (the drawer outgrows a landscape
+  // viewport while body-scroll-locked); the hide itself is pinned as the
+  // keyboard fallback by mobile-nav-clearance.test.tsx, so dropping it
+  // outright would trade the stranding for a permanent 60px band.
   const keyboardVisible = useKeyboardVisibility();
 
   // R120-B1 (A3-F1): hidden on the auth pages for everyone — mirrors

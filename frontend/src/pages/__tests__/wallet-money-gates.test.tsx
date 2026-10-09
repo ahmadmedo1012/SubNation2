@@ -175,8 +175,11 @@ describe("WalletPage — MAX_PENDING=3 gate (T2: dead under the static data:[] m
     // R123-E4a (P3-a): the headline no longer reads as a platform
     // outage — the user is queued behind their own review requests.
     expect(await screen.findByText("وصلت للحد الأقصى من طلبات المراجعة")).toBeInTheDocument();
-    // …with the live count and the cap.
-    expect(screen.getByText(/قيد المراجعة/)).toBeInTheDocument();
+    // …with the live count and the cap. R124-I1 (A1 P3): the topup ROW
+    // badges now also read «قيد المراجعة» (topupStatusLabel — one word
+    // for one pending state), so the assertion pins the banner's own
+    // count line (the only element carrying the cap).
+    expect(screen.getByText(/قيد المراجعة \(الحد الأقصى 3\)/)).toBeInTheDocument();
 
     // The form card itself goes inert (opacity-50 + pointer-events-none).
     const form = container.querySelector("form")!;

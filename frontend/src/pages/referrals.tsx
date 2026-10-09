@@ -16,11 +16,10 @@ import {
   Zap,
   Trophy,
   UserPlus,
-  WifiOff,
   ChevronLeft,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 
@@ -251,24 +250,16 @@ export default function ReferralsPage() {
       {loadError ? (
         /* 93-C5 / F-05: distinct from "no referrals" — standard error-card
            idiom (loyalty.tsx) with a retry that re-runs both queries. */
-        <div className="text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-            <WifiOff className="w-8 h-8 text-status-error/70" />
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">تعذّر تحميل بيانات الإحالات</p>
-          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-            حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة
-          </p>
-          <Button
-            onClick={() => {
-              void overviewQ.refetch();
-              void eventsQ.refetch();
-            }}
-            className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-          >
-            إعادة المحاولة
-          </Button>
-        </div>
+        <FetchErrorCard
+          size="page"
+          className="reveal-up"
+          title="تعذّر تحميل بيانات الإحالات"
+          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          onRetry={() => {
+            void overviewQ.refetch();
+            void eventsQ.refetch();
+          }}
+        />
       ) : (
         <>
           {/* Stats row */}
@@ -365,7 +356,10 @@ export default function ReferralsPage() {
               {!loading && (
                 <button
                   onClick={handleShare}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-all active:scale-[0.98] shadow-md shadow-primary/25 press-spring"
+                  /* R124-I1 (A4 P2): py-3 + min-h-11 — the page's primary
+                      action rode ~40px (py-2.5), under the app-wide 44px
+                      tap floor the share/CTA controls enforce elsewhere. */
+                  className="w-full flex items-center justify-center gap-2 py-3 min-h-11 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-all active:scale-[0.98] shadow-md shadow-primary/25 press-spring"
                 >
                   <Share2 className="w-4 h-4" />
                   مشاركة الرابط
