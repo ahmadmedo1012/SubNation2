@@ -405,11 +405,19 @@ export function ProductVariantsDialog({
                 </button>
               </div>
               <form onSubmit={submitForm} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* R125-I3 (A2-4): every form field carries a real htmlFor↔id
+                    pair — the R124-I5 label pass covered the pages/ forms
+                    but this dialog (the catalog's second-biggest money
+                    form, in components/admin/) was outside that sweep. */}
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="variant-form-plan-label"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     اسم الباقة
                   </Label>
                   <Input
+                    id="variant-form-plan-label"
                     value={form.plan_label}
                     onChange={(e) => setForm((f) => ({ ...f, plan_label: e.target.value }))}
                     maxLength={120}
@@ -417,10 +425,14 @@ export function ProductVariantsDialog({
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="variant-form-duration-label"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     المدة
                   </Label>
                   <Input
+                    id="variant-form-duration-label"
                     value={form.duration_label}
                     onChange={(e) => setForm((f) => ({ ...f, duration_label: e.target.value }))}
                     maxLength={120}
@@ -428,10 +440,14 @@ export function ProductVariantsDialog({
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="variant-form-duration-days"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     أيام المدة (اختياري)
                   </Label>
                   <Input
+                    id="variant-form-duration-days"
                     type="number"
                     min="0"
                     step="1"
@@ -442,10 +458,14 @@ export function ProductVariantsDialog({
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="variant-form-cost-price"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     التكلفة بالدولار ($) *
                   </Label>
                   <Input
+                    id="variant-form-cost-price"
                     type="number"
                     min="0.01"
                     step="0.01"
@@ -461,13 +481,17 @@ export function ProductVariantsDialog({
                 </div>
                 {editingId != null && (
                   <div>
-                    <Label className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2">
+                    <Label
+                      htmlFor="variant-form-price-lyd"
+                      className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2"
+                    >
                       السعر (د.ل)
                       <span className="text-3xs font-normal text-muted-foreground/70">
                         اتركه فارغًا ليُحسب من التكلفة
                       </span>
                     </Label>
                     <Input
+                      id="variant-form-price-lyd"
                       type="number"
                       min="0.01"
                       step="0.01"
@@ -479,10 +503,14 @@ export function ProductVariantsDialog({
                   </div>
                 )}
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="variant-form-sku"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     SKU (اختياري)
                   </Label>
                   <Input
+                    id="variant-form-sku"
                     value={form.sku}
                     onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
                     maxLength={160}
@@ -491,10 +519,14 @@ export function ProductVariantsDialog({
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-bold text-muted-foreground mb-1.5 block">
+                  <Label
+                    htmlFor="variant-form-sort-order"
+                    className="text-xs font-bold text-muted-foreground mb-1.5 block"
+                  >
                     الترتيب
                   </Label>
                   <Input
+                    id="variant-form-sort-order"
                     type="number"
                     min="0"
                     step="1"

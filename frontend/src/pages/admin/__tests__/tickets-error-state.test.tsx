@@ -21,7 +21,7 @@
  * module boundary (vitest-config pattern).
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -162,5 +162,44 @@ describe("AdminTicketsPage — a failed queue load is an error, not a false empt
     expect(String(toastArg.description)).toContain("خطأ في الخادم");
     // The detail pane never opened — the placeholder is still showing.
     expect(screen.getByText("اختر تذكرة للعرض")).toBeInTheDocument();
+  });
+
+  // R125-I4 (A3-3 + A10 §C-25): the backend computes has_unread_admin
+  // (last reply came from the USER — a customer reply awaiting
+  // response, backend admin/tickets.ts:145) on every row; the
+  // frontend declared it and rendered it nowhere, so every
+  // in_progress ticket with a fresh customer reply (the exact tickets
+  // that need a response) carried no cue. The row now renders the
+  // «بانتظار ردك» badge — text + tone, never a color-only dot.
+  it("renders the awaiting-reply cue only on rows with has_unread_admin (A3-3)", async () => {
+    const awaiting = {
+      ...ticketSummary,
+      id: 2,
+      title: "لم يصل الاشتراك",
+      status: "in_progress",
+      has_unread_admin: true,
+    };
+    const notAwaiting = {
+      ...ticketSummary,
+      id: 3,
+      title: "استفسار عن الفاتورة",
+      status: "open",
+      has_unread_admin: false,
+    };
+    fetchMock.mockResolvedValue(resLike({ body: [awaiting, notAwaiting] }));
+
+    renderPage();
+
+    expect(await screen.findByText("لم يصل الاشتراك")).toBeInTheDocument();
+
+    // The awaiting row carries the cue badge; the open-without-it row
+    // does not — plus the header count chip («1 بانتظار ردك»).
+    expect(screen.getAllByText("بانتظار ردك").length).toBe(1);
+    expect(screen.getByText("1 بانتظار ردك")).toBeInTheDocument();
+    // The cue rides the awaiting row (its card contains the badge).
+    const awaitingCard = screen.getByText("لم يصل الاشتراك").closest("button")!;
+    expect(within(awaitingCard).getByText("بانتظار ردك")).toBeInTheDocument();
+    const otherCard = screen.getByText("استفسار عن الفاتورة").closest("button")!;
+    expect(within(otherCard).queryByText("بانتظار ردك")).not.toBeInTheDocument();
   });
 });

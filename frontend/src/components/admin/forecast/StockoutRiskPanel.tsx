@@ -20,7 +20,6 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // panel's null-on-error renders stay intact for real failures), with
 // adminFetchJson owning the ok-guard + safe parse.
 import { adminFetchJson } from "@/lib/admin-session";
-import { Button } from "@/components/ui/button";
 // 93-C7 / C-UX2 (A12 B14): forecast-confidence pills migrate from raw
 // emerald/yellow/orange hues to the canonical StatusBadge on the
 // --status-* tokens (high→success, medium→warning, low→low-stock).
@@ -38,7 +37,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "wouter";
 
 type Confidence = "high" | "medium" | "low" | "insufficient_data";
 type PipelineState = "fresh" | "stale" | "uninitialized" | "calibrating";
@@ -219,6 +217,9 @@ function RiskRow({ row }: { row: AtRiskRow }) {
     <li className="px-4 py-2.5">
       <button
         onClick={() => setOpen((v) => !v)}
+        /* R125-I3 (A2-9): the expandable row's state was visual-only —
+           aria-expanded exposes it (the orders-row-expansion idiom). */
+        aria-expanded={open}
         className="w-full flex items-center gap-3 text-right group"
       >
         <div className="w-9 h-9 rounded-lg bg-muted/40 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
@@ -335,14 +336,17 @@ function ExplainDrawer({
           </span>
         </div>
       )}
-      <div className="pt-1 border-t border-border/30">
-        {/* R120-B7 (reviewer finding — A4-F1 sweep completion): asChild
-            composition (cart.tsx / Navbar CTA idiom) instead of Link>Button
-            nesting — one anchor, one tab stop, identical styling. */}
-        <Button asChild size="sm" variant="outline" className="text-xs gap-1.5">
-          <Link href={`/admin/products?highlight=${row.product_id}`}>فتح في المنتجات</Link>
-        </Button>
-      </div>
+      {/* R125-I3 (A2-9, ponytail — deletion wins): the «فتح في المنتجات»
+          deep-link is REMOVED. It navigated to
+          /admin/products?highlight={product_id}, but NOTHING consumes a
+          `highlight` param (products.tsx reads only ?search=) — the CTA
+          landed the operator on an unsorted 200-card grid with no
+          highlight, so the panel's act-on-risk purpose stayed manual
+          anyway. The alternatives (wire id→?search=name, or teach
+          products.tsx a highlight handler) are additions onto a dead
+          feature; per the ponytail rule the dead link is deleted. The
+          row header above (product name, stock, runout date, reorder
+          qty) carries the actionable context. */}
     </div>
   );
 }

@@ -21,13 +21,14 @@ interface TableSkeletonProps {
  * NOT used by topups.tsx — its skeleton is card-shaped (stacked
  * payment cards), a different layout entirely.
  */
-export function TableSkeleton({
-  rows = 6,
-  cells,
-  zebra = true,
-}: TableSkeletonProps) {
+export function TableSkeleton({ rows = 6, cells, zebra = true }: TableSkeletonProps) {
   return (
-    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+    // R125 (A6 B-8): role="status" + sr-only label — the loading→loaded
+    // swap was invisible to screen readers (storefront skeletons already
+    // carried this pair; the shared admin skeleton now does too). Pure
+    // addition, no visual change.
+    <div role="status" className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+      <span className="sr-only">جارٍ التحميل…</span>
       <div className="border-b border-border/60 bg-muted/30 h-11" />
       {Array.from({ length: rows }).map((_, i) => (
         <div
@@ -37,10 +38,7 @@ export function TableSkeleton({
           }`}
         >
           {cells.map((cls, j) => (
-            <div
-              key={j}
-              className={`h-4 bg-muted skeleton-shimmer rounded ${cls}`}
-            />
+            <div key={j} className={`h-4 bg-muted skeleton-shimmer rounded ${cls}`} />
           ))}
         </div>
       ))}

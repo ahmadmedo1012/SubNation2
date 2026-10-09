@@ -20,6 +20,15 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // wrapper too.
 import { adminFetchJson } from "@/lib/admin-session";
 import { Button } from "@/components/ui/button";
+// R125-I3 (A2-1): the LoadMoreButton — the review queue's next_cursor
+// was fetched but never used (drafts #26+ were invisible while the
+// header promised the true pending count).
+import { LoadMoreButton } from "@/components/ui/load-more-button";
+// R125-I3 (A2-18): the bare centered «جارٍ التحميل…» + the thin
+// no-retry error banner adopt the shared taxonomy (TableSkeleton /
+// FetchErrorCard — the A6-F5 class this page was the fourth member of).
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // R123 (E3 P3d): the publish action gains the shared styled confirm —
 // it overwrites the product's LIVE catalog content in one tap.
 import { useConfirm } from "@/hooks/use-confirm";
@@ -31,7 +40,7 @@ import { AppDialog } from "@/components/ui/app-dialog";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled "لا توجد مسودات…" block
 // adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Check,
@@ -61,7 +70,9 @@ interface DraftRow {
   input_tokens: number;
   output_tokens: number;
   created_at: string;
-  panel_url: string;
+  // R125-I3 (A2-19, ponytail): the panel_url field the backend ships
+  // was declared here but never rendered — dead type surface, removed.
+  // The card header carries the product name + id it pointed at.
 }
 
 interface ListResponse {
@@ -81,16 +92,35 @@ export default function AdminEnrichmentPage() {
   const headersJson = useAdminHeaders({ json: true });
   const qc = useQueryClient();
 
-  const query = useQuery<ListResponse>({
+  // R125-I3 (A2-1): the queue is CURSOR-paginated server-side
+  // (routes/admin/enrichment.ts — ?cursor= + next_cursor) but the page
+  // fetched one 25-row page and rendered it as the whole queue while
+  // the header promised the true pending_count — drafts #26+ were
+  // invisible AND unreviewable. The alerts.tsx useInfiniteQuery idiom:
+  // pages accumulate in place, next_cursor drives the load-more, and
+  // publish/reject keep invalidating the same base key (refetches all
+  // loaded pages).
+  const PAGE_SIZE = 25;
+  const query = useInfiniteQuery<ListResponse, Error>({
     queryKey: ["admin-enrichment-list", "drafted"],
-    queryFn: async () =>
-      adminFetchJson<ListResponse>("/api/admin/enrichment/list?state=drafted&limit=25", {
-        headers,
-      }),
+    queryFn: ({ pageParam }) =>
+      adminFetchJson<ListResponse>(
+        `/api/admin/enrichment/list?state=drafted&limit=${PAGE_SIZE}${
+          pageParam ? `&cursor=${encodeURIComponent(String(pageParam))}` : ""
+        }`,
+        { headers },
+      ),
+    initialPageParam: "" as string,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   });
 
-  const drafts = useMemo(() => query.data?.drafts ?? [], [query.data]);
-  const pending = query.data?.pending_count ?? null;
+  const drafts = useMemo(() => query.data?.pages.flatMap((p) => p.drafts) ?? [], [query.data]);
+  // pending_count is computed at query time for the whole drafted set —
+  // every page carries the same value; take the newest page's.
+  const pending =
+    query.data && query.data.pages.length > 0
+      ? (query.data.pages[query.data.pages.length - 1].pending_count ?? null)
+      : null;
 
   return (
     <AdminLayout>
@@ -110,6 +140,12 @@ export default function AdminEnrichmentPage() {
                   <span dir="ltr" className="font-mono font-bold">
                     {pending}
                   </span>
+                  {/* R125-I3 (A2-1): the loaded window vs the true pending
+                      count — only rendered when drafts are actually
+                      hidden behind the cursor. */}
+                  {pending > drafts.length && (
+                    <span className="text-muted-foreground/80"> (تُعرض أول {drafts.length})</span>
+                  )}
                 </>
               )}
             </p>
@@ -126,15 +162,29 @@ export default function AdminEnrichmentPage() {
           </Button>
         </header>
 
+        {/* R125-I3 (A2-18): the shared loading taxonomy — the bare
+            centered «جارٍ التحميل…» is a TableSkeleton now (the
+            coupons/referrals recipe). */}
         {query.isLoading && (
-          <div className="text-sm text-muted-foreground py-12 text-center">جارٍ التحميل…</div>
+          <TableSkeleton rows={4} cells={["w-32", "rounded-full w-20", "flex-1 w-24", "w-16"]} />
         )}
+        {/* R125-I3 (A2-18): the error branch had NO retry — only the
+            header's تحديث incidentally retried. The FetchErrorCard
+            carries a real retry (the products idiom). */}
         {query.isError && (
-          <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
-            <AlertTriangle className="w-4 h-4" /> فشل تحميل المسودات
-          </div>
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل المسودات"
+            description={
+              query.error instanceof Error
+                ? query.error.message
+                : "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+            }
+            onRetry={() => query.refetch()}
+          />
         )}
-        {!query.isLoading && drafts.length === 0 && (
+        {!query.isLoading && !query.isError && drafts.length === 0 && (
           <EmptyState
             icon={CheckCircle2}
             title="لا توجد مسودات تنتظر المراجعة"
@@ -154,6 +204,17 @@ export default function AdminEnrichmentPage() {
             headersJson={headersJson}
           />
         ))}
+        {/* R125-I3 (A2-1): the cursor load-more — hidden exactly when the
+            server says the queue is exhausted (next_cursor null). */}
+        {query.hasNextPage && (
+          <div className="flex justify-center">
+            <LoadMoreButton
+              busy={query.isFetchingNextPage}
+              disabled={query.isLoading}
+              onClick={() => void query.fetchNextPage()}
+            />
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
@@ -208,14 +269,23 @@ function DraftCard({
   // content in one tap — the confirm names the product + the field it
   // overwrites (the same context the card header carries), in the
   // styled-confirm idiom the destructive admin actions use.
-  const confirmPublish = async () => {
+  // R125-I3 (A2-2): the EDIT path ("تطبيق التعديل") used to fire
+  // publish.mutate(edited) DIRECTLY — no confirm — while the unedited
+  // path confirmed; the more consequential action (operator-authored
+  // text over the live description) was the unguarded one. Both paths
+  // now confirm; the edited-path message says the operator's EDITED
+  // text is what goes live.
+  const confirmPublish = async (editedText?: string) => {
+    const editing = editedText != null;
     const confirmed = await confirm({
-      title: "نشر المسودة على المنتج؟",
-      description: `سيتم استبدال ${FIELD_LABEL[draft.field_name]} الحالي للمنتج «${draft.product_name}» بهذا النص المنشور — يظهر فوراً للعملاء في المتجر.`,
+      title: editing ? "نشر النص المعدّل على المنتج؟" : "نشر المسودة على المنتج؟",
+      description: editing
+        ? `سيتم استبدال ${FIELD_LABEL[draft.field_name]} الحالي للمنتج «${draft.product_name}» بنصّك المعدّل — يظهر فوراً للعملاء في المتجر.`
+        : `سيتم استبدال ${FIELD_LABEL[draft.field_name]} الحالي للمنتج «${draft.product_name}» بهذا النص المنشور — يظهر فوراً للعملاء في المتجر.`,
       confirmLabel: "نشر",
     });
     if (!confirmed) return;
-    publish.mutate(null);
+    publish.mutate(editedText ?? null);
   };
 
   return (
@@ -290,7 +360,7 @@ function DraftCard({
               <Button
                 size="sm"
                 disabled={busy}
-                onClick={() => publish.mutate(edited)}
+                onClick={() => void confirmPublish(edited)}
                 className="gap-2"
               >
                 <Check className="w-3.5 h-3.5" /> تطبيق التعديل

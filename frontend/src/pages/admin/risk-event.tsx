@@ -107,6 +107,22 @@ export default function AdminRiskEventPage() {
     onSuccess: () => {
       setNotes("");
       qc.invalidateQueries({ queryKey: ["admin-risk-event", id] });
+      // R125-I4 (A4-B-3): the label changes the risk LIST rows and the
+      // dashboard's unresolved count — the old handler invalidated only
+      // this detail key, so back-nav showed stale chips for up to the
+      // 60s global staleTime / 30s dashboard poll. Base-key
+      // invalidations prefix-match every filter variant of the list
+      // (the socket-initializer key discipline).
+      qc.invalidateQueries({ queryKey: ["admin-risk-events"] });
+      qc.invalidateQueries({ queryKey: ["admin-risk-dashboard"] });
+      // A4-B-3 stats co-invalidation (A10 §C-5): mutations that feed
+      // admin numbers also refresh the shared stats key — R125-I6 has
+      // since landed the backend `admin-stats-update` emits for risk
+      // writes too (this comment predates it); the frontend
+      // invalidation still covers the acting tab immediately (the
+      // socket refreshes other open tabs). /admin/stats is
+      // server-cached 30s, so the extra GET is cheap.
+      qc.invalidateQueries({ queryKey: ["/api/admin/stats"] });
     },
   });
 

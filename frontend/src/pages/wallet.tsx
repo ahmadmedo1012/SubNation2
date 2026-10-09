@@ -270,15 +270,25 @@ function sanitizeAmountInput(raw: string): string {
   return s;
 }
 
+/**
+ * A numbered step marker for the topup flows.
+ *
+ * R125-I7 (A7 B-7, the R124-A1 F2 collapse): every call site used to
+ * pass a hardcoded `active` — all five dots rendered as "current",
+ * the inactive branch was dead code, and the prop claimed a
+ * where-am-I signal the form never derived (onboarding's twin dots
+ * DO derive theirs). The dots are now honestly what they always
+ * rendered: a flat numbered legend (1 الشبكة، 2 المبلغ…) — no
+ * progress semantics, no dead branch, identical visuals. The
+ * primary-filled numbered circle is the legend's marker style.
+ */
 function StepDot({
   n,
   label,
-  active,
   htmlFor,
 }: {
   n: number;
   label: string;
-  active: boolean;
   /**
    * 96-F6 (R96 A6 #2 P1): when set, the step text renders as a <label>
    * bound to the field it names — the PaymentReferenceField recipe in
@@ -289,16 +299,8 @@ function StepDot({
   htmlFor?: string;
 }) {
   return (
-    <div
-      className={`flex items-center gap-2 text-xs font-bold transition-all duration-200 ${active ? "text-foreground" : "text-muted-foreground"}`}
-    >
-      <div
-        className={`w-6 h-6 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 transition-all duration-200 shadow-sm ${
-          active
-            ? "bg-primary text-white shadow-primary/30"
-            : "bg-muted/50 border border-border/50 text-muted-foreground"
-        }`}
-      >
+    <div className="flex items-center gap-2 text-xs font-bold">
+      <div className="w-6 h-6 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 shadow-sm bg-primary text-white shadow-primary/30">
         {n}
       </div>
       {htmlFor ? (
@@ -475,7 +477,9 @@ function WalletStatementCard({
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="bg-card border border-border border-l-2 border-l-border/30 rounded-xl p-4 flex items-center gap-4"
+              /* R125-I7 (A7 B-12 / R124-A3 #12): 2px border-l accent
+                 stripe → the plain 1px border (craft-floor cap). */
+              className="bg-card border border-border rounded-xl p-4 flex items-center gap-4"
             >
               <div className="w-10 h-10 rounded-xl bg-muted skeleton-shimmer shrink-0" />
               <div className="flex-1 space-y-2">
@@ -1390,7 +1394,7 @@ export default function WalletPage() {
               <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Step 1: Network */}
                 <div>
-                  <StepDot n={1} label="اختر شبكتك" active />
+                  <StepDot n={1} label="اختر شبكتك" />
                   <div className="grid grid-cols-2 gap-2 mt-3">
                     {NETWORKS.map((n) => (
                       <button
@@ -1428,12 +1432,7 @@ export default function WalletPage() {
                 {/* Step 2: Amount */}
                 <div>
                   {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
-                  <StepDot
-                    n={2}
-                    label="المبلغ بالدينار الليبي"
-                    active
-                    htmlFor="topup-amount-mobile"
-                  />
+                  <StepDot n={2} label="المبلغ بالدينار الليبي" htmlFor="topup-amount-mobile" />
                   {/* 96-F6 (R96 A2 P2-7): preset chips raised to the 44px
                       touch floor (wrap already flex-wrap). */}
                   <div className="flex gap-2 mt-3 mb-2.5 flex-wrap">
@@ -1502,7 +1501,7 @@ export default function WalletPage() {
 
                 {/* Step 3: One-tap transfer + the receipt it produces */}
                 <div>
-                  <StepDot n={3} label="نفّذ التحويل" active />
+                  <StepDot n={3} label="نفّذ التحويل" />
                   <TransferCodePanel
                     network={network as TransferNetwork}
                     amount={amount}
@@ -1533,7 +1532,7 @@ export default function WalletPage() {
                 {/* Step 4: Phone */}
                 <div>
                   {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
-                  <StepDot n={4} label="رقم هاتف المُرسل" active htmlFor="topup-sender-phone" />
+                  <StepDot n={4} label="رقم هاتف المُرسل" htmlFor="topup-sender-phone" />
                   <p className="text-xs text-muted-foreground mt-2 mb-3">
                     أدخل رقمك الذي حوّلت منه الرصيد لتأكيد العملية.
                   </p>
@@ -1658,7 +1657,7 @@ export default function WalletPage() {
 
                 {/* Step 5: Submit */}
                 <div>
-                  <StepDot n={5} label="أرسل الطلب" active />
+                  <StepDot n={5} label="أرسل الطلب" />
                   <InstructionsPanel />
                   {error && (
                     <div
@@ -1694,7 +1693,7 @@ export default function WalletPage() {
               <div className="space-y-5">
                 {/* Step 1: Bank info */}
                 <div>
-                  <StepDot n={1} label="معلومات الحساب المصرفي" active />
+                  <StepDot n={1} label="معلومات الحساب المصرفي" />
                   <div className="mt-3 bg-muted/25 border border-border/45 rounded-xl p-4 space-y-3.5 text-sm">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <InfoRow label="اسم الحساب" value={LYPAY_INFO.account_name} />
@@ -1732,7 +1731,6 @@ export default function WalletPage() {
                           datum one tab away (the input's own placeholder
                           already said this). */
                       label="المبلغ بالدينار الليبي"
-                      active
                       htmlFor="topup-amount-lypay"
                     />
                     {/* 96-F6 (R96 A2 P2-7): preset chips raised to the 44px
@@ -1801,7 +1799,6 @@ export default function WalletPage() {
                     <StepDot
                       n={3}
                       label="رقم حسابك (المُرسل)"
-                      active
                       htmlFor="topup-sender-account"
                     />
                     <Input
@@ -1827,7 +1824,10 @@ export default function WalletPage() {
                   <div className="border-t border-border/20" />
 
                   <div>
-                    <StepDot n={4} label="تأكيد الإرسال" active />
+                    {/* R125-I7 (A7 B-9): the lypay tab's step-4 label joins
+                        the mobile flow's «أرسل الطلب» — one verb pair for
+                        the same submit action (was «تأكيد الإرسال»). */}
+                    <StepDot n={4} label="أرسل الطلب" />
                     <div className="mt-3 mb-3 p-3.5 bg-status-warning/8 border border-status-warning/22 rounded-xl text-xs text-status-warning flex items-center gap-2">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       تأكد من إتمام التحويل المصرفي أولاً قبل إرسال الطلب
@@ -1852,7 +1852,11 @@ export default function WalletPage() {
                       className="w-full rounded-xl"
                       disabled={submitting || topupMutation.isPending}
                     >
-                      {submitting || topupMutation.isPending ? "جارٍ الإرسال…" : "تأكيد طلب الشحن"}
+                      {/* R125-I7 (A7 B-9): unified submit verb — the lypay
+                          CTA joins the mobile flow's «إرسال طلب الشحن»
+                          (was «تأكيد طلب الشحن»); same action, one verb
+                          pair — the R111-F2 N1 drift class. */}
+                      {submitting || topupMutation.isPending ? "جارٍ الإرسال…" : "إرسال طلب الشحن"}
                     </Button>
                   </div>
                 </form>
@@ -1890,7 +1894,9 @@ export default function WalletPage() {
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div
                     key={i}
-                    className="bg-card border border-border border-l-2 border-l-border/30 rounded-xl p-4 flex items-center gap-4"
+                    /* R125-I7 (A7 B-12 / R124-A3 #12): 2px border-l accent
+                 stripe → the plain 1px border (craft-floor cap). */
+              className="bg-card border border-border rounded-xl p-4 flex items-center gap-4"
                   >
                     <div className="w-10 h-10 rounded-xl bg-muted skeleton-shimmer shrink-0" />
                     <div className="flex-1 space-y-2">

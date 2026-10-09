@@ -28,7 +28,7 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatDate, formatRelativeTime, statusLabel } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle,
@@ -120,6 +120,14 @@ export default function AdminTicketsPage() {
 
   const { adminToken } = useAuth();
   const [, navigate] = useLocation();
+  // R125-I4 (A4-B-3): stats co-invalidation — open_tickets feeds the
+  // layout badge + the dashboard, and /admin/stats has no write-side
+  // cache invalidation (30s server cache, stats.ts:129-133); without
+  // this a closed ticket left the badge lagging ≤5 min. R125-I6 has
+  // since landed the backend `admin-stats-update` emits for ticket
+  // status/reply too (this comment predates it); the frontend
+  // invalidation below still covers the acting tab immediately.
+  const qc = useQueryClient();
   // R123 (E3 P3a): two-way URL filter sync (?status= / ?category=) —
   // follows the settings.tsx ?tab= idiom: URL → state on mount/param
   // change, state → URL via replaceState (filter flips don't spam the
@@ -296,6 +304,10 @@ export default function AdminTicketsPage() {
       setReplyText("");
       await openTicket(selected.id);
       void refetch();
+      // R125-I4 (A4-B-3): see the qc declaration — the reply/status
+      // family keeps the shared stats key fresh (server 30s cache
+      // makes the extra GET cheap).
+      void qc.invalidateQueries({ queryKey: ["/api/admin/stats"] });
     } catch (err: unknown) {
       // Session expiry already toasted + redirected — keep the drafted
       // reply in the box (it survives the redirect round-trip) and stay
@@ -324,6 +336,9 @@ export default function AdminTicketsPage() {
       });
       if (selected?.id === id) await openTicket(id);
       void refetch();
+      // R125-I4 (A4-B-3): a status flip changes open_tickets — refresh
+      // the stats key the layout badge + dashboard read from.
+      void qc.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       toast({
         title: status === "closed" ? "تم إغلاق التذكرة" : "تمت إعادة فتح التذكرة",
         variant: "success",
@@ -344,6 +359,17 @@ export default function AdminTicketsPage() {
   const pendingCount = tickets.filter(
     (t) => t.status === "open" || t.status === "in_progress",
   ).length;
+  // R125-I4 (A3-3): the awaiting-reply signal — the backend already
+  // computes has_unread_admin (last reply came from the USER,
+  // backend admin/tickets.ts:145) on every row; the queue rendered it
+  // nowhere, so every in_progress ticket with a fresh customer reply
+  // (the exact tickets that need a response) carried no cue at all —
+  // the open-status pulse dot misses them by design. A closed ticket
+  // the admin closed after the customer's last word is NOT awaiting
+  // anyone (its reply box is disabled).
+  const awaitingReplyCount = tickets.filter(
+    (t) => t.has_unread_admin && t.status !== "closed",
+  ).length;
   const visibleTickets = tickets.filter((t) => {
     const matchCategory = !categoryFilter || t.category === categoryFilter;
     return matchCategory;
@@ -360,6 +386,13 @@ export default function AdminTicketsPage() {
               {pendingCount > 0 && (
                 <span className="bg-status-info/15 text-status-info border border-status-info/30 text-xs font-bold px-2.5 py-1 rounded-full">
                   {pendingCount} نشطة
+                </span>
+              )}
+              {/* R125-I4 (A3-3): the queue's most important number — how
+                  many customers are waiting on US right now. */}
+              {awaitingReplyCount > 0 && (
+                <span className="bg-status-warning/15 text-status-warning border border-status-warning/30 text-xs font-bold px-2.5 py-1 rounded-full">
+                  {awaitingReplyCount} بانتظار ردك
                 </span>
               )}
             </div>
@@ -410,7 +443,7 @@ export default function AdminTicketsPage() {
               aria-pressed={categoryFilter === c.value}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                 categoryFilter === c.value
-                  ? "bg-primary/10 border-primary/30 text-primary font-bold"
+                  ? "bg-primary/10 border-primary/30 text-primary-text font-bold"
                   : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary/60"
               }`}
             >
@@ -513,6 +546,16 @@ export default function AdminTicketsPage() {
                             >
                               {statusLabel(t.status)}
                             </StatusBadge>
+                            {/* R125-I4 (A3-3): the awaiting-reply cue — the
+                                customer's reply is the last word on this
+                                ticket. Text + tone (never a color-only
+                                dot) so the signal survives grayscale +
+                                screen readers. */}
+                            {t.has_unread_admin && t.status !== "closed" && (
+                              <StatusBadge variant="warning" size="sm">
+                                بانتظار ردك
+                              </StatusBadge>
+                            )}
                             <span className="text-xs text-muted-foreground">
                               {t.reply_count} ردود
                             </span>

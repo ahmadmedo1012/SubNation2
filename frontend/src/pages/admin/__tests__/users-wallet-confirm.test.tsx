@@ -469,4 +469,24 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     expect(toastMock.mock.calls[0][0].title).toBe("تم الحفظ");
   });
+
+  // R125-I4 (A1-2 / A6 B-12 + A10 §C-12): the money field itself —
+  // the r103 label pass covered the note + points fields but missed
+  // the primary wallet-amount input; screen readers announced only
+  // the mode-dependent placeholder (WCAG 1.3.1/3.3.2). The
+  // htmlFor↔id pair (+ the mode aria-describedby hint) is the fix.
+  it("the wallet-amount input is programmatically labeled (htmlFor↔id + mode hint)", async () => {
+    renderPage();
+    const dialog = await openEditModal();
+
+    // getByLabelText resolves through the htmlFor↔id pair — the
+    // «تعديل المحفظة (د.ل)» label now focuses/reaches the input.
+    const amount = within(dialog).getByLabelText("تعديل المحفظة (د.ل)");
+    expect(amount).toBeInTheDocument();
+    expect(amount).toHaveAttribute("id", "user-edit-wallet");
+    expect(amount).toHaveAttribute("aria-describedby", "user-edit-wallet-hint");
+    // The hint names the MODE semantics (the placeholder alone was
+    // the only signal before).
+    expect(within(dialog).getByText("سيُضاف المبلغ إلى الرصيد الحالي")).toBeInTheDocument();
+  });
 });

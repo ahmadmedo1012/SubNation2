@@ -9,6 +9,8 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // 93-C7 / C-UX2 (A12 B3): risk-level pills migrate from raw
 // emerald/yellow/orange/red hues to the canonical StatusBadge on the
@@ -23,7 +25,8 @@ import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-bad
 // fired unauthenticated 401s into the console.
 import { adminFetchJson } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
-import { useQuery } from "@tanstack/react-query";
+import { getErrorMessage } from "@/lib/errors";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -92,8 +95,16 @@ const TONE_CHIP: Record<StatusBadgeVariant, string> = {
 
 export default function AdminRiskPage() {
   const headers = useAdminHeaders();
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
   const [filter, setFilter] = useState<"all" | RiskLevel>("all");
+
+  // R125-I4 (A3-11): honest-reason RBAC gate (the settings.tsx
+  // tabAllowed idiom). The nav hides /admin/risk from admins without
+  // the users scope (layout.tsx NAV_SECTIONS), but a deep link used
+  // to mount the page, fire the queries, and land on a generic
+  // «فشل تحميل» banner. A scope-less admin now sees the honest
+  // reason up front and fires nothing.
+  const canViewRisk = hasAdminPermission("users");
 
   const dashboard = useQuery<DashboardResponse>({
     queryKey: ["admin-risk-dashboard"],
@@ -105,38 +116,71 @@ export default function AdminRiskPage() {
     // mobile data. Every other admin poller (orders/products/alerts)
     // already sets this to false.
     refetchIntervalInBackground: false,
-    // R123 (E3 P3g): no token ⇒ no fetch (see header comment).
-    enabled: !!adminToken,
+    // R123 (E3 P3g): no token ⇒ no fetch (see header comment). R125-I4
+    // (A3-11): no users scope ⇒ no fetch either.
+    enabled: !!adminToken && canViewRisk,
   });
 
-  const query = useQuery<ListResponse>({
-    queryKey: ["admin-risk-events", filter],
-    queryFn: async () => {
+  // R125-I4 (A4-B-6): the events list rides the backend's real
+  // has-more envelope — the response carries next_cursor (the
+  // limit+1 probe verdict), and the accumulating useInfiniteQuery
+  // appends the next cursor page in place (the orders/users/tickets
+  // recipe). The old fixed limit=100 query ignored the envelope, so
+  // events #101+ were unreachable no matter what the filter said.
+  // The "load-more" key segment mirrors those pages: it keeps the
+  // infinite cache entry from colliding with the plain all-window
+  // query below (the shared-key dedupe it replaces).
+  const {
+    data: eventsPages,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+  } = useInfiniteQuery<ListResponse, Error>({
+    queryKey: ["admin-risk-events", "load-more", { level: filter === "all" ? undefined : filter }],
+    queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       params.set("limit", "100");
       if (filter !== "all") params.set("level", filter);
+      const cursor = pageParam as string | null;
+      if (cursor) params.set("cursor", cursor);
       return adminFetchJson<ListResponse>(`/api/admin/risk/events?${params.toString()}`, {
         headers,
+        signal,
       });
     },
-    enabled: !!adminToken,
+    initialPageParam: null as string | null,
+    // Frozen envelope contract (backend risk.ts:193-196): next_cursor
+    // is non-null exactly when the limit+1 probe found another row —
+    // it IS the has-more verdict.
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    enabled: !!adminToken && canViewRisk,
   });
 
   // 94-C2 (A2 P3-1): the chip counters were computed from the FILTERED
   // response — picking «حرج» made every other chip read (0) even when
   // high/medium events existed (the server only returned the filtered
-  // subset). A background "all" query (same endpoint, same cache key
-  // namespace — it dedupes with the main query when filter === "all")
-  // now feeds the counters so they stay level-agnostic.
+  // subset). The counters need a level-agnostic source:
+  //   - filter === "all": the main view IS the all-view — its
+  //     accumulated pages feed the counters directly (and grow with
+  //     load-more). R125-I4: this replaces the old shared-key dedupe
+  //     with the infinite query (whose cache shape no longer matches
+  //     a plain useQuery entry).
+  //   - filter !== "all": a background plain query fetches the
+  //     unfiltered window (same as before).
   const allEventsQuery = useQuery<ListResponse>({
     queryKey: ["admin-risk-events", "all"],
     queryFn: async () =>
       adminFetchJson<ListResponse>(`/api/admin/risk/events?limit=100`, { headers }),
-    enabled: !!adminToken,
+    enabled: !!adminToken && canViewRisk && filter !== "all",
   });
 
-  const events = useMemo(() => query.data?.events ?? [], [query.data]);
-  const countSource = allEventsQuery.data?.events ?? events;
+  const events = useMemo(() => (eventsPages?.pages ?? []).flatMap((p) => p.events), [eventsPages]);
+  const countSource = filter === "all" ? events : (allEventsQuery.data?.events ?? events);
   const counts = useMemo(() => {
     const c: Record<RiskLevel | "all", number> = {
       all: countSource.length,
@@ -148,6 +192,21 @@ export default function AdminRiskPage() {
     for (const e of countSource) c[e.level]++;
     return c;
   }, [countSource]);
+
+  // R125-I4 (A3-11): the deep-link honest-reason card (the settings.tsx
+  // tabAllowed idiom) — reached only via a URL, never via the nav (which
+  // hides the item for scope-less admins). Sits AFTER every hook (the
+  // queries' `enabled` gates already keep a scope-less mount fetch-free).
+  // The status-warning token keeps AA contrast in both themes.
+  if (!canViewRisk) {
+    return (
+      <AdminLayout>
+        <p className="text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
+          مراقبة المخاطر تتطلب صلاحية المستخدمين — تواصل مع مسؤول النظام
+        </p>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -166,14 +225,14 @@ export default function AdminRiskPage() {
             variant="outline"
             size="sm"
             onClick={() => {
-              query.refetch();
+              refetch();
               dashboard.refetch();
             }}
-            disabled={query.isFetching || dashboard.isFetching}
+            disabled={isFetching || dashboard.isFetching}
             className="gap-2"
           >
             <RefreshCw
-              className={`w-3.5 h-3.5 ${query.isFetching || dashboard.isFetching ? "animate-spin" : ""}`}
+              className={`w-3.5 h-3.5 ${isFetching || dashboard.isFetching ? "animate-spin" : ""}`}
             />
             تحديث
           </Button>
@@ -238,11 +297,15 @@ export default function AdminRiskPage() {
               <button
                 key={f.value}
                 onClick={() => setFilter(f.value)}
+                /* R125-I4 (A6 B-10): the active chip was purely visual —
+                   aria-pressed exposes the toggle state (the
+                   orders/users/tickets chip-bar idiom). */
+                aria-pressed={active}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
                   active
                     ? tone
                       ? TONE_CHIP[tone.tone]
-                      : "bg-primary/15 text-primary border-primary/40"
+                      : "bg-primary/15 text-primary-text border-primary/40"
                     : "bg-muted/30 border-border/30 hover:bg-muted/60"
                 }`}
               >
@@ -253,18 +316,47 @@ export default function AdminRiskPage() {
           })}
         </div>
 
-        {/* Empty / loading / error / list */}
-        {query.isLoading && (
+        {/* Empty / loading / error / list — R125-I4 (A3-2): an error
+            is an error and ONLY an error. The old layout rendered the
+            failure banner AND the «لا توجد أحداث» EmptyState together
+            (on a failed load events is [] and isLoading is false), so
+            an operator skimming past the banner read "no fraud
+            events" during an outage — the B5-04 contract, fixed with
+            the tickets.tsx error-card recipe + an inline retry. */}
+        {isLoading && (
           <TableSkeleton
             cells={["w-20 rounded-full", "flex-1", "w-24", "flex-1", "w-14", "w-20", "w-28"]}
           />
         )}
-        {query.isError && (
-          <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
-            <AlertTriangle className="w-4 h-4" /> فشل تحميل الأحداث
+        {isError && events.length === 0 && (
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل الأحداث"
+            description={`${getErrorMessage(error)} — تحقّق من شبكتك ثم أعد المحاولة`}
+            onRetry={() => void refetch()}
+          />
+        )}
+        {/* A refresh of an already-rendered list failed — keep the
+            accumulated rows, surface the failure inline (the
+            stale-refresh banner idiom every sibling list uses). */}
+        {isError && events.length > 0 && (
+          <div
+            role="alert"
+            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span className="min-w-0">تعذّر تحديث الأحداث</span>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
           </div>
         )}
-        {!query.isLoading && events.length === 0 && (
+        {!isLoading && !isError && events.length === 0 && (
           <EmptyState
             icon={ShieldCheck}
             title="لا توجد أحداث في النطاق المحدد"
@@ -273,15 +365,6 @@ export default function AdminRiskPage() {
         )}
         {events.length > 0 && (
           <>
-            {/* 94-C2 (A2 P3-2): the list is capped at the newest 100 per
-                filter (next_cursor exists) — disclose the truncation
-                instead of silently cutting history. */}
-            {query.data?.next_cursor && (
-              <p className="text-2xs text-muted-foreground text-center">
-                يُعرض أحدث 100 حدث فقط لهذا الفلتر — استخدم الفلاتر لتضييق النطاق والوصول إلى
-                الأحداث الأقدم.
-              </p>
-            )}
             {/* Canonical admin table chrome + horizontal scroll on mobile —
                 previously a bespoke border-border/40 bg-card/60 card with
                 no overflow handling (7 columns crushed at 375px). */}
@@ -325,7 +408,7 @@ export default function AdminRiskPage() {
                       return (
                         <tr
                           key={e.id}
-                          className={`border-t border-border/30 hover:bg-muted/20 transition-colors ${
+                          className={`relative border-t border-border/30 hover:bg-muted/20 transition-colors cursor-pointer ${
                             i % 2 !== 0 ? "bg-muted/5" : ""
                           }`}
                         >
@@ -345,9 +428,19 @@ export default function AdminRiskPage() {
                             {e.action_taken}
                           </td>
                           <td className="px-4 py-2.5 text-2xs text-muted-foreground whitespace-nowrap">
+                            {/* R125-I4 (A3-10): the whole row navigates —
+                                the date cell's anchor stretches over the
+                                row (after:inset-0 against the relative
+                                tr), so the drill-in target is the entire
+                                row, not a small date link in the last
+                                column. Real anchor semantics + keyboard
+                                access stay (single tab stop per row, the
+                                docblock's "click a row" is finally true
+                                on desktop). */}
                             <Link
                               href={`/admin/risk/events/${e.id}`}
-                              className="text-primary hover:underline"
+                              aria-label={`فتح تحقيق الحدث رقم ${e.id}`}
+                              className="text-primary-text hover:underline after:absolute after:inset-0 after:content-['']"
                             >
                               {formatDate(e.created_at)}
                             </Link>
@@ -387,6 +480,21 @@ export default function AdminRiskPage() {
                 );
               })}
             </div>
+
+            {/* R125-I4 (A4-B-6): the has-more envelope drives a real
+                append-in-place «تحميل المزيد» (the orders/users/tickets
+                recipe) — the button replaces the old "newest 100 only"
+                truncation notice and hides when next_cursor goes null. */}
+            {hasNextPage && (
+              <div className="flex justify-center pt-1">
+                <LoadMoreButton
+                  spinner={RefreshCw}
+                  busy={isFetchingNextPage}
+                  disabled={isLoading}
+                  onClick={() => void fetchNextPage()}
+                />
+              </div>
+            )}
           </>
         )}
       </div>

@@ -102,6 +102,14 @@ function pillDot(container: HTMLElement): string | null {
   return el ? el.className : null;
 }
 
+/** R125 (A6 B-15): the pill now renders the visible label
+ *  (`hidden sm:inline`) PLUS an sr-only narrow-viewport twin carrying
+ *  the same text for screen readers — pill-text assertions target the
+ *  visible twin and tolerate the sr-only one. */
+function visiblePillText(text: string): HTMLElement[] {
+  return screen.getAllByText(text).filter((el) => !el.className.includes("sr-only"));
+}
+
 describe("AdminLayout last-updated pill — reflects real query state (R122 A2-P2)", () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -123,7 +131,7 @@ describe("AdminLayout last-updated pill — reflects real query state (R122 A2-P
     const { container } = renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByText("الآن")).toBeInTheDocument();
+      expect(visiblePillText("الآن").length).toBeGreaterThan(0);
     });
     // Live = the emerald pulse (not the amber error dot, not the gray
     // in-flight dot).
@@ -141,11 +149,11 @@ describe("AdminLayout last-updated pill — reflects real query state (R122 A2-P
     const { container } = renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByText("تعذّر التحديث")).toBeInTheDocument();
+      expect(visiblePillText("تعذّر التحديث").length).toBeGreaterThan(0);
     });
     expect(pillDot(container)).toContain("bg-status-warning");
     expect(pillDot(container)).not.toContain("animate-pulse");
-    expect(screen.queryByText("الآن")).not.toBeInTheDocument();
+    expect(screen.queryAllByText("الآن")).toHaveLength(0);
   });
 
   it("before ANY data lands → gray dot + «جارٍ التحديث…», never a fake live signal", async () => {
@@ -155,11 +163,11 @@ describe("AdminLayout last-updated pill — reflects real query state (R122 A2-P
     const { container } = renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByText("جارٍ التحديث…")).toBeInTheDocument();
+      expect(visiblePillText("جارٍ التحديث…").length).toBeGreaterThan(0);
     });
     expect(pillDot(container)).toContain("bg-muted-foreground/60");
     expect(pillDot(container)).not.toContain("animate-pulse");
-    expect(screen.queryByText("الآن")).not.toBeInTheDocument();
+    expect(screen.queryAllByText("الآن")).toHaveLength(0);
   });
 });
 

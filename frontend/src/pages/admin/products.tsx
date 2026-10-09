@@ -69,10 +69,11 @@ const EMPTY_FORM = {
   category: "",
   usage_terms: "",
   // R123 (E3 item 2): the operator SEO overrides (backend columns
-  // seo_title ≤200 / seo_description ≤320). Empty-by-default — the
-  // submit path omits UNTOUCHED fields (see handleSubmit), so an
-  // untouched editor never clears an existing override it cannot see
-  // (the admin list payload doesn't carry the current values).
+  // seo_title ≤200 / seo_description ≤320). Empty-by-default for the
+  // CREATE path; startEdit seeds the row's LIVE values (R125-I3 — the
+  // list payload now carries them). The submit path still omits
+  // UNTOUCHED fields (see handleSubmit) as belt-and-suspenders against
+  // accidental clears.
   seo_title: "",
   seo_description: "",
   is_active: true,
@@ -386,7 +387,9 @@ const ProductCard = React.memo(function ProductCard({
               );
             })()}
             {(() => {
-              const cp = (product as { cost_price?: number | null }).cost_price;
+              // R125-I3 (A2-20): the generated AdminProduct already
+              // declares cost_price — the pre-codegen-era cast is gone.
+              const cp = product.cost_price;
               if (cp == null) return null;
               const margin = product.price - cp;
               const pct = product.price > 0 ? (margin / product.price) * 100 : 0;
@@ -504,12 +507,11 @@ export default function AdminProductsPage() {
   // the form is flat strings + one bool).
   const [formBaseline, setFormBaseline] = useState({ ...EMPTY_FORM });
   // R123 (E3 item 2): per-field "the operator edited this SEO field"
-  // flags. The pristine-baseline compare CANNOT distinguish a
-  // typed-then-fully-cleared field from an untouched one — both are ""
-  // while the editor is open, because the admin list payload does not
-  // carry the current overrides — and the backend PATCH contract needs
-  // exactly that distinction (untouched → omit, cleared → explicit
-  // null). The first change event per field sets its flag; every editor
+  // flags. R125-I3: the editor now SEEDS the stored values, so a plain
+  // value-vs-baseline compare would suffice — but the touched flags
+  // stay as belt-and-suspenders (they also keep an explicit
+  // clear-back-to-the-original-value from sending a redundant write).
+  // The first change event per field sets its flag; every editor
   // re-seed resets both. (The reset rides the stable setState directly —
   // a per-render wrapper fn would make openCreateFromHash/cancelForm
   // non-stable and re-flag the two pre-existing mount effects for
@@ -754,17 +756,16 @@ export default function AdminProductsPage() {
       description: product.description ?? "",
       image_url: product.image_url ?? "",
       price: String(product.price),
-      cost_price:
-        (product as { cost_price?: number | null }).cost_price != null
-          ? String((product as { cost_price?: number | null }).cost_price)
-          : "",
+      cost_price: product.cost_price != null ? String(product.cost_price) : "",
       category: product.category ?? "",
       usage_terms: product.usage_terms ?? "",
-      // R123 (E3 item 2): the admin list row does not carry the current
-      // SEO overrides — seed empty and OMIT on submit while untouched
-      // (see handleSubmit), so opening + saving changes nothing SEO-wise.
-      seo_title: "",
-      seo_description: "",
+      // R125-I3 (A4 B-2 / A2-3): the list projection now carries the
+      // LIVE overrides — seed the editor with them so the operator SEES
+      // (and can deliberately clear) what is actually stored, instead
+      // of a misleading blank editor on an already-optimized product.
+      // null (no override) maps to "" for the string form fields.
+      seo_title: product.seo_title ?? "",
+      seo_description: product.seo_description ?? "",
       is_active: product.is_active,
     };
     // 98-F7 (R98-05): the loaded values double as the pristine baseline.
@@ -827,18 +828,18 @@ export default function AdminProductsPage() {
       cost_price: form.cost_price ? parseFloat(form.cost_price) : undefined,
       category: form.category || undefined,
       usage_terms: form.usage_terms || undefined,
-      // R123 (E3 item 2): SEO overrides mirror the backend PATCH contract
-      // (admin/products.ts:329-333 — explicit-null-clears), keyed on the
-      // per-field touched flags (NOT the pristine baseline — the admin
-      // list payload does not carry the current overrides, so a
-      // typed-then-fully-cleared field is byte-identical to an untouched
-      // one): send the trimmed value when the operator set one; send
-      // null when the operator edited AND cleared (explicit clear → the
-      // product page falls back to the name/description-based meta, the
-      // exact behavior the field's hint copy promises); OMIT when the
-      // operator never touched the field, so opening + saving changes
-      // nothing SEO-wise. The generated zod carries the column-aligned
-      // caps (200/320) server-side.
+      // R123 (E3 item 2) + R125-I3 (A4 B-2): SEO overrides mirror the
+      // backend PATCH contract (admin/products.ts — explicit-null-
+      // clears), keyed on the per-field touched flags: send the trimmed
+      // value when the operator set one; send null when the operator
+      // edited AND cleared (explicit clear → the product page falls
+      // back to the name/description-based meta, the exact behavior the
+      // field's hint copy promises); OMIT when the operator never
+      // touched the field. With the seeded values the guard is now
+      // belt-and-suspenders — an untouched save is byte-identical to
+      // the stored row anyway — but it keeps the wire body minimal.
+      // The generated zod carries the column-aligned caps (200/320)
+      // server-side.
       seo_title: seoTouched.title ? form.seo_title.trim() || null : undefined,
       seo_description: seoTouched.description ? form.seo_description.trim() || null : undefined,
       is_active: form.is_active,

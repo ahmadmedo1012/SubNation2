@@ -167,9 +167,13 @@ describe("AdminTopupsPage — bulk confirm modal dialog semantics (F3-03)", () =
     try {
       renderPage();
 
-      // Select the pending row (its selector is named «اختيار»), then
-      // open the bulk reject confirm.
-      fireEvent.click(await screen.findByRole("button", { name: "اختيار" }));
+      // Select the pending row (its selector is row-specific — R125-I2
+      // renamed the generic «اختيار» to «تحديد طلب الشحن {id} للإجراء
+      // الجماعي», the orders.tsx state-aware idiom), then open the bulk
+      // reject confirm.
+      fireEvent.click(
+        await screen.findByRole("button", { name: /تحديد طلب الشحن .* للإجراء الجماعي/ }),
+      );
       fireEvent.click(await screen.findByRole("button", { name: /رفض \(1\)/ }));
 
       const dialog = await screen.findByRole("dialog", { name: "تأكيد الرفض الجماعي" });

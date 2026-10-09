@@ -30,18 +30,31 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import { type ReactElement, type ReactNode, useEffect, useRef } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import { type ReactElement, type ReactNode, Suspense, useEffect, useRef } from "react";
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { Link, useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+
+/* ── R125-I2 (A5-F3): the recharts lazy boundary (the dashboard.tsx
+ * bridge, duplicated in-file — this round's file ownership is the four
+ * admin pages, so the shared components/admin/charts.tsx wrapper A5
+ * sketched stays a follow-up). system.tsx statically imported recharts
+ * for two below-the-fold surfaces (the diagnostics MetricCard
+ * sparklines + the SECTION-2 rps trend chart); its route chunk paid the
+ * full 109.48 KB gz vendor-charts download + parse before ANY panel
+ * painted. The only runtime reference to "recharts" is now the dynamic
+ * import() below — vendor-charts streams in on demand while the health
+ * overview renders on the system chunk alone. The type-only alias
+ * erases at compile time. */
+type RechartsNS = typeof import("recharts");
+
+const ChartsLoader = lazyWithRetry(() =>
+  import("recharts").then((rc) => ({
+    default: function RechartsBridge({ children }: { children: (rc: RechartsNS) => ReactNode }) {
+      return children(rc);
+    },
+  })),
+);
 
 // ── Backend response shapes (mirror what the deployed API returns) ─────────
 //
@@ -256,22 +269,33 @@ function MetricCard({
       <div className="font-bold text-lg leading-none tabular-nums">{value}</div>
       {sub && <div className="text-3xs text-muted-foreground mt-1">{sub}</div>}
       {spark && spark.length >= 2 && (
+        /* R125-I2 (A5-F3): the sparkline rides the lazy recharts bridge —
+           a height-reserved shimmer keeps the card's 28px slot so the
+           vendor-charts fetch causes zero layout shift. */
         <div className="mt-2 -mx-1 opacity-70">
-          <ResponsiveContainer width="100%" height={28}>
-            <LineChart
-              data={spark.map((v, i) => ({ i, v }))}
-              margin={{ top: 1, right: 1, left: 1, bottom: 1 }}
-            >
-              <Line
-                type="monotone"
-                dataKey="v"
-                stroke={sparkColor ?? "currentColor"}
-                strokeWidth={1.5}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <Suspense
+            fallback={<div className="h-7 skeleton-shimmer rounded-lg" aria-hidden="true" />}
+          >
+            <ChartsLoader>
+              {(rc) => (
+                <rc.ResponsiveContainer width="100%" height={28}>
+                  <rc.LineChart
+                    data={spark.map((v, i) => ({ i, v }))}
+                    margin={{ top: 1, right: 1, left: 1, bottom: 1 }}
+                  >
+                    <rc.Line
+                      type="monotone"
+                      dataKey="v"
+                      stroke={sparkColor ?? "currentColor"}
+                      strokeWidth={1.5}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </rc.LineChart>
+                </rc.ResponsiveContainer>
+              )}
+            </ChartsLoader>
+          </Suspense>
         </div>
       )}
     </div>
@@ -930,7 +954,11 @@ export default function AdminSystemPage(): ReactElement | null {
                           mode: {scheduler.mode}
                         </span>
                         {scheduler.isLeader && (
-                          <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary">
+                          /* R125-I2 (A6-B6): --primary-text — raw --primary
+                           * on its own /10 tint is 3.56:1 on dark (text
+                           * floor 4.5:1); the mono `leader` value is
+                           * TEXT. */
+                          <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary-text">
                             leader
                           </span>
                         )}
@@ -1074,7 +1102,9 @@ export default function AdminSystemPage(): ReactElement | null {
                 <button
                   type="button"
                   onClick={() => metricsQ.refetch()}
-                  className="text-xs font-bold text-primary underline underline-offset-2 hover:opacity-80"
+                  /* R125-I2 (A6-B6): --primary-text (raw --primary is
+                     3.76:1 on dark — under the 4.5:1 text floor). */
+                  className="text-xs font-bold text-primary-text underline underline-offset-2 hover:opacity-80"
                 >
                   إعادة المحاولة
                 </button>
@@ -1477,39 +1507,52 @@ export default function AdminSystemPage(): ReactElement | null {
                       {Math.min(samples.length, 60) * 15}ث
                     </span>
                   </div>
-                  <ResponsiveContainer width="100%" height={120}>
-                    <AreaChart
-                      data={reqRate.map((v, i) => ({ i, rps: v, errs: errRate[i] ?? 0 }))}
-                      margin={{ top: 4, right: 4, left: 4, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="rpsGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={chart.primary} stopOpacity={0.25} />
-                          <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} vertical={false} />
-                      <Tooltip
-                        contentStyle={{
-                          background: chart.tooltipBg,
-                          border: `1px solid ${chart.tooltipBorder}`,
-                          borderRadius: 12,
-                          fontSize: 11,
-                        }}
-                        labelStyle={{ display: "none" }}
-                        formatter={(v: number) => [v.toFixed(2), "طلب/ث"]}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="rps"
-                        stroke={chart.primary}
-                        fill="url(#rpsGrad)"
-                        strokeWidth={2}
-                        dot={false}
-                        isAnimationActive={false}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  {/* R125-I2 (A5-F3): the rps trend rides the lazy
+                      recharts bridge (see the ChartsLoader comment at the
+                      top of the file) with a height-reserved fallback. */}
+                  <Suspense fallback={<div className="h-[120px] skeleton-shimmer rounded-lg" />}>
+                    <ChartsLoader>
+                      {(rc) => (
+                        <rc.ResponsiveContainer width="100%" height={120}>
+                          <rc.AreaChart
+                            data={reqRate.map((v, i) => ({ i, rps: v, errs: errRate[i] ?? 0 }))}
+                            margin={{ top: 4, right: 4, left: 4, bottom: 0 }}
+                          >
+                            <defs>
+                              <linearGradient id="rpsGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={chart.primary} stopOpacity={0.25} />
+                                <stop offset="95%" stopColor={chart.primary} stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <rc.CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke={chart.grid}
+                              vertical={false}
+                            />
+                            <rc.Tooltip
+                              contentStyle={{
+                                background: chart.tooltipBg,
+                                border: `1px solid ${chart.tooltipBorder}`,
+                                borderRadius: 12,
+                                fontSize: 11,
+                              }}
+                              labelStyle={{ display: "none" }}
+                              formatter={(v: number) => [v.toFixed(2), "طلب/ث"]}
+                            />
+                            <rc.Area
+                              type="monotone"
+                              dataKey="rps"
+                              stroke={chart.primary}
+                              fill="url(#rpsGrad)"
+                              strokeWidth={2}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                          </rc.AreaChart>
+                        </rc.ResponsiveContainer>
+                      )}
+                    </ChartsLoader>
+                  </Suspense>
                 </div>
               </DetailsSection>
             )}
@@ -1522,7 +1565,7 @@ export default function AdminSystemPage(): ReactElement | null {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold">آخر التنبيهات</h2>
             <Link href="/admin/alerts">
-              <span className="text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer">
+              <span className="text-xs text-muted-foreground hover:text-primary-text transition-colors cursor-pointer">
                 {/* RTL: forward link arrow points left (unified icon-direction decision) */}
                 عرض الكل <ChevronLeft className="w-3 h-3 inline" />
               </span>

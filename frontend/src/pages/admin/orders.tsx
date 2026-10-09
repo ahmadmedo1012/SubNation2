@@ -80,14 +80,18 @@ interface OrderCredentials {
 const BULK_STATUSES = (["completed", "pending", "failed", "refunded"] as const).map((s) => ({
   value: s,
   label: statusLabel(s),
+  /* R125-I2 (A6-B4): the raw -400 label hues collapse to 1.53-2.77:1
+   * on the shipped light admin theme — the --status-* token family
+   * (the StatusBadge ink) is contrast-safe in BOTH themes. Icons/dots
+   * keep their raw hues elsewhere; these are TEXT labels. */
   color:
     s === "completed"
-      ? "text-emerald-400"
+      ? "text-status-success"
       : s === "pending"
-        ? "text-yellow-400"
+        ? "text-status-warning"
         : s === "failed"
-          ? "text-red-400"
-          : "text-blue-400",
+          ? "text-status-error"
+          : "text-status-info",
 }));
 
 const STATUS_FILTERS = [
@@ -286,7 +290,12 @@ const DesktopOrderRow = React.memo(function DesktopOrderRow({
           {order.product_name}
         </td>
         <td
-          className="px-4 py-2.5 font-bold text-primary text-sm tabular-nums"
+          /* R125-I2 (A6-B6): money cell — raw --primary on a dark card is
+           * 3.76:1 (under the 4.5:1 text floor; dark is the admin
+           * default). --primary-text is the text-safe variant (5.75:1
+           * dark / 5.30 light — button.tsx:35-37 documents raw
+           * text-primary as surface-only). */
+          className="px-4 py-2.5 font-bold text-primary-text text-sm tabular-nums"
           onClick={() => onToggleExpand(order.id)}
         >
           {formatCurrency(order.amount)}
@@ -433,7 +442,11 @@ const MobileOrderCard = React.memo(function MobileOrderCard({
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="font-bold text-primary tabular-nums">{formatCurrency(order.amount)}</div>
+          {/* R125-I2 (A6-B6): money cell — --primary-text (see the desktop
+           * row's money-cell note). */}
+          <div className="font-bold text-primary-text tabular-nums">
+            {formatCurrency(order.amount)}
+          </div>
           {/* R116: shared StatusBadge (STATUS_TONE) replaces the
               deprecated statusColor() — 93-C7 follow-up. */}
           <StatusBadge
@@ -1025,7 +1038,7 @@ export default function AdminOrdersPage() {
               {todayCount > 0 && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                  <span className="text-primary font-bold">{todayCount} اليوم</span>
+                  <span className="text-primary-text font-bold">{todayCount} اليوم</span>
                 </>
               )}
               {filtered.length !== allOrders.length && (
@@ -1115,7 +1128,7 @@ export default function AdminOrdersPage() {
                       <TrendingUp className="w-3 h-3" />
                       إجمالي الإيرادات
                     </div>
-                    <div className="font-bold text-base tabular-nums text-primary">
+                    <div className="font-bold text-base tabular-nums text-primary-text">
                       {formatCurrency(totalRevenueAll)}
                     </div>
                     <div className="text-3xs text-muted-foreground mt-0.5">
@@ -1231,7 +1244,10 @@ export default function AdminOrdersPage() {
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-150 flex-wrap">
             <Zap className="w-4 h-4 text-primary shrink-0" />
-            <span className="text-sm font-bold text-primary">{selectedIds.size} طلب محدد</span>
+            {/* R125-I2 (A6-B6): --primary-text (raw --primary is 3.76:1
+                on dark — the text floor is 4.5:1; the Zap icon keeps
+                text-primary: icons only need the 3:1 non-text floor). */}
+            <span className="text-sm font-bold text-primary-text">{selectedIds.size} طلب محدد</span>
             <div className="flex gap-2 mr-auto flex-wrap items-center">
               {/* Bulk status dropdown */}
               {/* R120-B4 (A2-F19): menu semantics on the hand-rolled
@@ -1406,7 +1422,7 @@ export default function AdminOrdersPage() {
                 // R123 (E3 P3a): the clear-all also clears the URL params.
                 syncFilterParams("", 0);
               }}
-              className="text-xs text-muted-foreground hover:text-primary transition-colors"
+              className="text-xs text-muted-foreground hover:text-primary-text transition-colors"
             >
               مسح الكل
             </button>
@@ -1481,7 +1497,7 @@ export default function AdminOrdersPage() {
                       // R123 (E3 P3a): the clear-all also clears the URL params.
                       syncFilterParams("", 0);
                     }}
-                    className="text-xs text-primary hover:underline mt-1.5"
+                    className="text-xs text-primary-text hover:underline mt-1.5"
                   >
                     مسح الفلاتر
                   </button>
@@ -1502,7 +1518,7 @@ export default function AdminOrdersPage() {
                       // R123 (E3 P3a): the clear-all also clears the URL params.
                       syncFilterParams("", 0);
                     }}
-                    className="text-xs text-primary hover:underline mt-1"
+                    className="text-xs text-primary-text hover:underline mt-1"
                   >
                     مسح الفلاتر
                   </button>
@@ -1601,7 +1617,15 @@ export default function AdminOrdersPage() {
                 <span>
                   {formatCount(filtered.length, ORDER_COUNT_FORMS)}
                   {search && ` · نتائج "${search}"`}
-                  {filtered.length > 0 && ` · إجمالي ${formatCurrency(totalRevenue)}`}
+                  {/* R125-I2 (A1-10): honest partial-window wording — the
+                      footer sums the ACCUMULATED pages; «إجمالي» claims a
+                      total the window can't prove while more pages exist
+                      (the same honest-counts convention as the header's
+                      «عرض N» and the coupon panel's caveat). */}
+                  {filtered.length > 0 &&
+                    (knownTotal
+                      ? ` · إجمالي ${formatCurrency(totalRevenue)}`
+                      : ` · مجموع المعروض ${formatCurrency(totalRevenue)}`)}
                 </span>
                 <span className="hidden sm:inline text-muted-foreground">
                   انقر على الصف لعرض بيانات التسليم

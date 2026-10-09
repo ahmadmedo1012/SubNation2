@@ -216,9 +216,25 @@ function riskExplanation(result: CalculatorResponse): string {
   }
 }
 
+// R125-I3 (A2-10b): grouped money formatting — fmt used to render bare
+// toFixed(2) ("1250.00 د.ل") while the product picker used
+// formatCurrency's grouped "1,250.00 د.ل" on the SAME page, so
+// ≥1000-dinar values read with inconsistent digit grouping. Same en-US
+// grouping convention as utils.ts CURRENCY_NUMBER_FORMATTER, cached per
+// decimals value (Intl construction is the expensive part).
+const FMT_FORMATTERS = new Map<number, Intl.NumberFormat>();
+
 function fmt(n: number | null | undefined, decimals = 2): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return n.toFixed(decimals);
+  let f = FMT_FORMATTERS.get(decimals);
+  if (!f) {
+    f = new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+    FMT_FORMATTERS.set(decimals, f);
+  }
+  return f.format(n);
 }
 
 /** Same cent-rounding the backend pricing engine applies (round2). */
@@ -534,25 +550,22 @@ export default function AdminPricingPage() {
   // the config hooks). The response schema is open-ended
   // ({[key: string]: unknown}) in the codegen, so it is cast to the
   // page-local CalculatorResponse contract documented above.
+  // R125-I3 (A2-11): race guard — the 300ms debounced auto-recalc and
+  // the manual «إعادة الحساب» button share this one mutation; a slow
+  // earlier response landing AFTER a newer request used to win
+  // setResult (margins disagreeing with the inputs on screen). The
+  // monotonic seq token is the referrals fetchSeqRef recipe: every
+  // calculate() takes the next number, and only the response whose seq
+  // is still the newest may write state. Handling moved off the
+  // hook-level callbacks onto mutateAsync so the token can tag the
+  // exact request it belongs to.
+  const calcSeqRef = useRef(0);
   const calculateMutation = useAdminPricingCalculate({
     request: { headers },
-    mutation: {
-      onSuccess: (data) => {
-        setResult(data as unknown as CalculatorResponse);
-      },
-      onError: (err: unknown) => {
-        toast({
-          title: "خطأ",
-          description: describeError(err),
-          variant: "destructive",
-        });
-        setResult(null);
-      },
-    },
   });
   const loading = calculateMutation.isPending;
 
-  function calculate() {
+  async function calculate() {
     if (!canCalculate) return;
     const body: AdminPricingCalculateBody = {
       coupon_code: couponCode.trim() || undefined,
@@ -567,7 +580,22 @@ export default function AdminPricingPage() {
     } else {
       body.product_id = productId;
     }
-    calculateMutation.mutate({ data: body });
+    const seq = ++calcSeqRef.current;
+    try {
+      const data = await calculateMutation.mutateAsync({ data: body });
+      // A newer request was issued while this one was in flight — its
+      // response owns the result slot; drop the stale one.
+      if (seq !== calcSeqRef.current) return;
+      setResult(data as unknown as CalculatorResponse);
+    } catch (err: unknown) {
+      if (seq !== calcSeqRef.current) return;
+      toast({
+        title: "خطأ",
+        description: describeError(err),
+        variant: "destructive",
+      });
+      setResult(null);
+    }
   }
 
   // Auto-recalculate when any input changes — ACTUALLY debounced.
@@ -925,7 +953,9 @@ export default function AdminPricingPage() {
               >
                 <option value="custom">— سعر مخصّص (للاختبار) —</option>
                 {products.map((p) => {
-                  const cp = (p as { cost_price?: number | null }).cost_price;
+                  // R125-I3 (A2-20): the generated AdminProduct already
+                  // declares cost_price — the pre-codegen-era cast is gone.
+                  const cp = p.cost_price;
                   return (
                     <option key={p.id} value={p.id}>
                       {/* 96-F7 (R96 A6 #18): formatCurrency — the manual
@@ -1060,7 +1090,15 @@ export default function AdminPricingPage() {
                     : "تُخصم مكافأة الترحيب للمُحال وقيمة نقاط المُحيل من الربح"}
                 </div>
               </div>
-              <Switch checked={simulateReferred} onCheckedChange={setSimulateReferred} />
+              <Switch
+                checked={simulateReferred}
+                onCheckedChange={setSimulateReferred}
+                /* R125-I3 (A2-10a): the Switch had no accessible name — the
+                   label text sits in a sibling div and switch.tsx forwards
+                   nothing implicitly. aria-label names the control for
+                   screen readers + getByRole("switch", { name }). */
+                aria-label="محاكاة مشتري مُحال"
+              />
             </div>
 
             <Button onClick={calculate} disabled={!canCalculate || loading} className="w-full">
@@ -1139,8 +1177,12 @@ export default function AdminPricingPage() {
                     </div>
                   )}
                   {result.coupon && !result.coupon.valid && (
-                    <div className="flex justify-between py-1 text-destructive text-3xs">
-                      <span>⚠️ كوبون غير صالح</span>
+                    <div className="flex justify-between items-center gap-2 py-1 text-destructive text-3xs">
+                      {/* R125-I3 (A2-10c): the ⚠️ emoji is gone — lucide
+                          icon, the R124 promotions-toast convention. */}
+                      <span className="flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" /> كوبون غير صالح
+                      </span>
                       <span>{result.coupon.reason_invalid}</span>
                     </div>
                   )}

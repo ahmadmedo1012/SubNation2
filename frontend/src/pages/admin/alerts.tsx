@@ -92,7 +92,23 @@ const TYPE_META: Record<
   },
 };
 
-type FilterType = "all" | "unread" | "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock";
+type FilterType = "all" | "unread" | AlertType;
+
+/** R125 (A3 #6): the filter tabs now cover EVERY type TYPE_META renders
+ * (system + forecast_stockout rows were rendered but unfilterable —
+ * the filter runs client-side over the loaded window, so both entries
+ * are a pure UI completion; the backend list endpoint has no type
+ * param to consult). */
+const FILTERS: { value: FilterType; label: string }[] = [
+  { value: "all", label: "الكل" },
+  { value: "unread", label: "غير مقروء" },
+  { value: "no_stock", label: "نفاد مخزون" },
+  { value: "low_stock", label: "مخزون منخفض" },
+  { value: "forecast_stockout", label: "نفاد متوقع" },
+  { value: "coupon_maxed", label: "كوبون استُنفد" },
+  { value: "coupon_expiring", label: "كوبون منتهٍ" },
+  { value: "system", label: "نظام" },
+];
 
 /** 94-C2 (A2 P1-1): page size for the alerts inbox — the backend's
  *  DEFAULT_LIMIT is 50 with `page`/`limit` (and total/hasMore) already
@@ -148,15 +164,6 @@ function patchCachedAlerts(
   );
 }
 
-const FILTERS: { value: FilterType; label: string }[] = [
-  { value: "all", label: "الكل" },
-  { value: "unread", label: "غير مقروء" },
-  { value: "no_stock", label: "نفاد مخزون" },
-  { value: "low_stock", label: "مخزون منخفض" },
-  { value: "coupon_maxed", label: "كوبون استُنفد" },
-  { value: "coupon_expiring", label: "كوبون منتهٍ" },
-];
-
 function groupByDate(alerts: AdminAlertItem[]): { label: string; items: AdminAlertItem[] }[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -192,7 +199,6 @@ export default function AdminAlertsPage() {
   // so the operator knows exactly what is being removed.
   const { confirm, ConfirmDialog } = useConfirm();
   const [filter, setFilter] = useState<FilterType>("all");
-  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
   // 94-C2 (A2 P1-1): the inbox is an accumulating infinite query over
   // the frozen `?page=&limit=` contract. The backend already returns
@@ -343,10 +349,7 @@ export default function AdminAlertsPage() {
         method: "DELETE",
         headers,
       }),
-    onSuccess: () => {
-      setConfirmDeleteAll(false);
-      invalidateAll();
-    },
+    onSuccess: () => invalidateAll(),
     onError: (err) => {
       if (err instanceof AdminSessionExpiredError) return;
       toast(alertActionToast("فشل حذف كل التنبيهات", getErrorMessage(err)));
@@ -390,6 +393,25 @@ export default function AdminAlertsPage() {
     });
     if (!confirmed) return;
     deleteRead.mutate();
+  };
+
+  // R125 (A3 #6): حذف الكل was the page's ONLY destructive action not
+  // riding the shared useConfirm dialog its two siblings use — an
+  // inline «تأكيد حذف الكل؟ نعم / لا» block whose bare نعم/لا button
+  // names are the anti-pattern the clarify rule names. The dialog now
+  // names the count (server `total` when the window carries it) and
+  // states explicitly that read AND unread alerts go — the same copy
+  // style as the two confirms above. The mutation itself is untouched.
+  const confirmDeleteAll = async () => {
+    const count = typeof totalAlerts === "number" && totalAlerts > 0 ? totalAlerts : alerts.length;
+    const confirmed = await confirm({
+      title: "حذف كل التنبيهات؟",
+      description: `سيتم حذف ${formatCount(count, ALERT_COUNT_FORMS)} نهائياً — المقروءة وغير المقروءة. لا يمكن التراجع عن الحذف.`,
+      confirmLabel: "حذف الكل",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    deleteAll.mutate();
   };
 
   const displayed = alerts.filter((a) => {
@@ -447,48 +469,44 @@ export default function AdminAlertsPage() {
               </Button>
             )}
 
-            {alerts.length > 0 &&
-              (confirmDeleteAll ? (
-                <div className="flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 rounded-lg px-2.5 py-1.5">
-                  <span className="text-xs text-destructive font-semibold">تأكيد حذف الكل؟</span>
-                  <button
-                    onClick={() => deleteAll.mutate()}
-                    disabled={deleteAll.isPending}
-                    className="text-2xs font-bold text-destructive hover:text-destructive/80 transition-colors px-1"
-                  >
-                    نعم
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteAll(false)}
-                    className="text-2xs text-muted-foreground hover:text-foreground transition-colors px-1"
-                  >
-                    لا
-                  </button>
-                </div>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setConfirmDeleteAll(true)}
-                  className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  حذف الكل
-                </Button>
-              ))}
+            {alerts.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void confirmDeleteAll()}
+                disabled={deleteAll.isPending}
+                className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                حذف الكل
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Stats row — R125 (A3 #6): all six TYPE_META types are now
+            quick-filter chips (system + forecast_stockout rows were
+            rendered but had no filter affordance anywhere). Each chip
+            carries aria-pressed (A3 #6 / A6 B-10 — the R124-C2 chip-bar
+            idiom, applied to the last two bars that lacked it). */}
         {!isLoading && alerts.length > 0 && (
           <div className="flex items-center gap-3 flex-wrap">
             {[
               { key: "no_stock", count: alerts.filter((a) => a.type === "no_stock").length },
               { key: "low_stock", count: alerts.filter((a) => a.type === "low_stock").length },
               {
+                key: "forecast_stockout",
+                count: alerts.filter((a) => a.type === "forecast_stockout").length,
+              },
+              {
                 key: "coupon_maxed",
                 count: alerts.filter((a) => a.type === "coupon_maxed").length,
               },
+              {
+                key: "coupon_expiring",
+                count: alerts.filter((a) => a.type === "coupon_expiring").length,
+              },
+              { key: "system", count: alerts.filter((a) => a.type === "system").length },
             ]
               .filter((s) => s.count > 0)
               .map((s) => {
@@ -497,6 +515,7 @@ export default function AdminAlertsPage() {
                   <button
                     key={s.key}
                     onClick={() => setFilter(filter === s.key ? "all" : (s.key as FilterType))}
+                    aria-pressed={filter === s.key}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold transition-all duration-150 ${
                       filter === s.key
                         ? `${m.bg} ${m.border} ${m.color}`
@@ -516,7 +535,9 @@ export default function AdminAlertsPage() {
           </div>
         )}
 
-        {/* Filter tabs */}
+        {/* Filter tabs — R125 (A3 #6 / A6 B-10): aria-pressed exposes
+            the active tab (the in-repo chip-bar idiom; the active state
+            was visual-only on the last two chip bars in the console). */}
         <div className="flex items-center gap-1 bg-muted/30 border border-border/40 p-1 rounded-2xl overflow-x-auto scrollbar-none w-fit max-w-full">
           {FILTERS.map((tab) => {
             const cnt =
@@ -529,6 +550,7 @@ export default function AdminAlertsPage() {
               <button
                 key={tab.value}
                 onClick={() => setFilter(tab.value)}
+                aria-pressed={filter === tab.value}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap shrink-0 ${
                   filter === tab.value
                     ? "bg-card text-foreground shadow-sm font-bold"
@@ -540,7 +562,7 @@ export default function AdminAlertsPage() {
                   <span
                     className={`text-3xs font-bold px-1.5 py-px rounded-full ${
                       filter === tab.value
-                        ? "bg-primary/15 text-primary"
+                        ? "bg-primary/15 text-primary-text"
                         : "bg-muted/60 text-muted-foreground"
                     }`}
                   >
@@ -574,7 +596,12 @@ export default function AdminAlertsPage() {
           </div>
         )}
         {isLoading ? (
-          <div className="space-y-3">
+          // R125 (A6 B-8): the loading→loaded swap was silent to screen
+          // readers — the page-shaped skeleton now carries the same
+          // role="status" + sr-only label pair the shared TableSkeleton
+          // got (4.1.3).
+          <div className="space-y-3" role="status">
+            <span className="sr-only">جارٍ التحميل…</span>
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-[72px] rounded-2xl skeleton-shimmer" />
             ))}
@@ -588,7 +615,12 @@ export default function AdminAlertsPage() {
             onRetry={() => refetch()}
           />
         ) : displayed.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
+          // R125 (A6 B-8): role="status" — the loaded→empty transition
+          // now announces (the shared EmptyState got the same role).
+          <div
+            role="status"
+            className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground"
+          >
             <div className="w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center">
               {filter === "unread" ? (
                 <Bell className="w-7 h-7 text-muted-foreground" />
@@ -629,9 +661,16 @@ export default function AdminAlertsPage() {
                       <div
                         key={alert.id}
                         onClick={() => !alert.isRead && markRead.mutate(alert.id)}
+                        /* R125 (A6 B-15): opacity-60 dimmed the read rows'
+                           muted message text to ≈3.6:1 dark / 2.7:1 light
+                           (1.4.3). No single opacity value passes BOTH
+                           themes, so the read-state distinction now rides
+                           the row surface alone (bg-card/40 + border/40,
+                           no shadow, no hover) — text stays at its
+                           token contrast. */
                         className={`group flex items-start gap-3 px-4 py-3 rounded-2xl border transition-all duration-150 ${
                           alert.isRead
-                            ? "bg-card/40 border-border/40 opacity-60 cursor-default"
+                            ? "bg-card/40 border-border/40 cursor-default"
                             : "bg-card border-border/60 shadow-sm cursor-pointer hover:border-border hover:shadow-md hover:shadow-black/10"
                         }`}
                       >
@@ -654,6 +693,10 @@ export default function AdminAlertsPage() {
                               className={`text-sm leading-snug ${alert.isRead ? "font-semibold text-foreground/70" : "font-bold"}`}
                             >
                               {alert.title}
+                              {/* R125 (A6 B-15): the unread state was
+                                  color-only (pulse dot + tint) — an
+                                  sr-only word makes it explicit. */}
+                              {!alert.isRead && <span className="sr-only"> — غير مقروء</span>}
                             </span>
                             <span
                               className={`text-3xs px-1.5 py-px rounded-full border shrink-0 ${meta.bg} ${meta.color} ${meta.border}`}
@@ -678,8 +721,13 @@ export default function AdminAlertsPage() {
 
                         {/* Actions — visible on hover (desktop) / always
                             visible on touch: opacity-0 makes them unreachable
-                            on phones where there is no hover. */}
-                        <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                            on phones where there is no hover.
+                            R125 (A6 B-2): sm:group-focus-within reveals
+                            the cluster when keyboard focus reaches the
+                            buttons — they were focusable but invisible
+                            through opacity-0 (2.4.7); the hover aesthetic
+                            is unchanged. */}
+                        <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
                           {!alert.isRead && (
                             <button
                               onClick={(e) => {

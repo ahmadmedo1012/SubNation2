@@ -71,6 +71,13 @@ const MEDAL_COLORS = [
   "text-amber-600  bg-amber-600/10  border-amber-600/20",
 ];
 
+/** R125-I3 (A2-5): the backend list route hardcodes LIMIT 200 with NO
+ *  page param (routes/admin/referrals.ts) — the same frozen-cap contract
+ *  as products/coupons. Mirror of the backend bound for the honest-cap
+ *  footer wording (a backend change to that LIMIT is a contract change
+ *  that must update this mirror — the products/coupons convention). */
+const REFERRALS_SERVER_CAP = 200;
+
 function TableSkeleton() {
   return (
     <SharedTableSkeleton
@@ -309,7 +316,18 @@ export default function AdminReferralsPage() {
     fetchData();
   }, [adminToken, statusFilter]);
 
+  // R125-I3 (A2-13): the mount double-fetch — the [adminToken,
+  // statusFilter] effect fires fetchData() immediately AND the [search]
+  // debounce effect schedules the SAME fetch 300ms later on mount (two
+  // identical GETs + a loading→rows→skeleton→rows flash). The debounce
+  // effect now skips its first run (the status effect already fetched);
+  // every LATER search change still debounces normally.
+  const searchEffectFirstRunRef = useRef(true);
   useEffect(() => {
+    if (searchEffectFirstRunRef.current) {
+      searchEffectFirstRunRef.current = false;
+      return;
+    }
     // 98-F7 (R98-02): every keystroke change aborts the previous in-flight
     // debounced request (GlobalSearch pattern — clearTimeout alone left the
     // request running; its response could still land and race the newer one).
@@ -494,7 +512,15 @@ export default function AdminReferralsPage() {
                   <div className="flex items-center gap-3 text-xs shrink-0">
                     <span className="text-emerald-400 font-bold">{r.credited_count} ناجحة</span>
                     <span className="text-muted-foreground">{r.total_count} إجمالي</span>
-                    <span className="text-yellow-400 font-bold">{r.credited_count * 50} نقطة</span>
+                    {/* R125-I3 (A2-7): the derived «{credited_count * 50}
+                        نقطة» column is GONE — it hardcoded the
+                        POINTS_PER_REFERRAL money constant (the backend
+                        derives it from lib/loyalty-policy, which the
+                        frontend cannot import). The rows below already
+                        show each referral's points from the API
+                        (points_earned), and the stat cards show the
+                        server-computed total_points — a policy change
+                        can no longer make this column lie. */}
                   </div>
                 </div>
               ))}
@@ -597,9 +623,19 @@ export default function AdminReferralsPage() {
               ))}
             </div>
 
-            {/* Footer count */}
+            {/* Footer count — R125-I3 (A2-5): the backend list is
+                server-capped at LIMIT 200 (routes/admin/referrals.ts)
+                with no page param, while the stat cards count the FULL
+                table — a 200-row window used to render as a bare
+                «200 إحالة» next to «إجمالي الإحالات: 340», contradicting
+                itself. The products/coupons honest-cap convention: a
+                full cap page reads «عرض N (الأحدث أولاً)». */}
             <div className="px-4 py-2.5 border-t border-border/40 bg-muted/10 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{list.length} إحالة</span>
+              <span>
+                {list.length >= REFERRALS_SERVER_CAP
+                  ? `عرض ${list.length} (الأحدث أولاً)`
+                  : `${list.length} إحالة`}
+              </span>
               <span className="flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />
                 الإحالات المعلقة بانتظار أول شحن من المُحال

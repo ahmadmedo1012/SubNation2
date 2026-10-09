@@ -1,5 +1,9 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+// R125-I5 (A3-4b): the bare spinner row adopts the shared TableSkeleton
+// (role="status" + sr-only «جارٍ التحميل…» ride along) — the accounts
+// list keeps its shape during first load like every other console list.
+import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // R124-I5 (A6 F13): the shared empty-state card — admins was the only
 // list page left with a bare text line (visual weight drifted from
 // every other console list: no icon tile, no card, no border).
@@ -116,6 +120,23 @@ export default function AdminAdminsPage() {
     }
   };
 
+  // R125-I5 (A3-9): scopes-only refetch for the dialogs' retry affordance
+  // — the catalog is a single small GET; re-pulling the accounts list
+  // too would blank-then-restore rows for no reason. A failure leaves
+  // `scopes` empty, which is exactly the state the grid's error + retry
+  // UI renders on.
+  const loadScopes = async () => {
+    try {
+      const res = await adminFetch("/api/admin/admins/scopes", { credentials: "include", headers });
+      if (!res.ok) throw new Error("failed");
+      const json = (await res.json()) as { scopes?: ScopeOption[] };
+      setScopes(Array.isArray(json.scopes) ? json.scopes : []);
+    } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
+      // Scope grid stays on its error + retry state (scopes unchanged).
+    }
+  };
+
   useEffect(() => {
     // 93-C6 / F-07 (A5 S-8/AD-1): standard guard — a logged-out visit
     // bounced to login instead of rendering an error banner.
@@ -179,10 +200,11 @@ export default function AdminAdminsPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm py-12 justify-center">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            جارٍ التحميل…
-          </div>
+          // R125-I5 (A3-4b): shared table skeleton — the bare spinner row
+          // was the last unshaped list loader in the console. Cell shapes
+          // mirror the account cards (avatar tile / identity / actions /
+          // scope chips).
+          <TableSkeleton rows={4} cells={["w-10 rounded-lg", "flex-1 w-40", "w-20", "w-16"]} />
         ) : loadError ? (
           /* 93-C6 / F-07 (A5 AD-1): a failed load is NOT "no accounts" —
              referrals.tsx error-card idiom. */
@@ -297,6 +319,7 @@ export default function AdminAdminsPage() {
       {creating && (
         <CreateAdminDialog
           scopes={scopes}
+          onRetryScopes={() => void loadScopes()}
           onClose={() => setCreating(false)}
           onCreated={() => {
             setCreating(false);
@@ -310,6 +333,7 @@ export default function AdminAdminsPage() {
         <EditAdminDialog
           admin={editing}
           scopes={scopes}
+          onRetryScopes={() => void loadScopes()}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -327,11 +351,16 @@ export default function AdminAdminsPage() {
 
 function CreateAdminDialog({
   scopes,
+  onRetryScopes,
   onClose,
   onCreated,
   headers,
 }: {
   scopes: ScopeOption[];
+  /** R125-I5 (A3-9): re-fire the scopes fetch from inside the dialog —
+   * a failed catalog load used to be a dead end for granting any
+   * scope (the page-level error card renders OUTSIDE the dialog). */
+  onRetryScopes: () => void;
   onClose: () => void;
   onCreated: () => void;
   headers: Record<string, string>;
@@ -445,7 +474,12 @@ function CreateAdminDialog({
         </div>
         <div>
           <label className="text-xs font-bold mb-1 block">الصلاحيات</label>
-          <ScopeCheckboxGrid scopes={scopes} selected={selectedScopes} onToggle={toggleScope} />
+          <ScopeCheckboxGrid
+            scopes={scopes}
+            selected={selectedScopes}
+            onToggle={toggleScope}
+            onRetry={onRetryScopes}
+          />
         </div>
         <div className="flex items-center justify-end gap-2 pt-2">
           <button
@@ -478,12 +512,15 @@ function CreateAdminDialog({
 function EditAdminDialog({
   admin,
   scopes,
+  onRetryScopes,
   onClose,
   onSaved,
   headers,
 }: {
   admin: AdminAccount;
   scopes: ScopeOption[];
+  /** R125-I5 (A3-9): same retry affordance as the create dialog. */
+  onRetryScopes: () => void;
   onClose: () => void;
   onSaved: () => void;
   headers: Record<string, string>;
@@ -575,7 +612,12 @@ function EditAdminDialog({
               </div>
             </div>
           ) : (
-            <ScopeCheckboxGrid scopes={scopes} selected={selectedScopes} onToggle={toggleScope} />
+            <ScopeCheckboxGrid
+              scopes={scopes}
+              selected={selectedScopes}
+              onToggle={toggleScope}
+              onRetry={onRetryScopes}
+            />
           )}
         </div>
         <div className="flex items-start gap-2 p-2.5 bg-muted/20 border border-border/50 rounded-lg text-2xs text-muted-foreground">
@@ -644,16 +686,35 @@ function ScopeCheckboxGrid({
   scopes,
   selected,
   onToggle,
+  onRetry,
 }: {
   scopes: ScopeOption[];
   selected: string[];
   onToggle: (id: string) => void;
+  /** R125-I5 (A3-9): retry affordance for a failed catalog load — the
+   * bare error line had no way forward, so
+   * granting any scope dead-ended inside the dialog. */
+  onRetry?: () => void;
 }) {
   if (scopes.length === 0) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground p-3 bg-muted/20 rounded-lg">
-        <XCircle className="w-3.5 h-3.5" />
-        تعذر تحميل قائمة الصلاحيات.
+      <div
+        role="alert"
+        className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground p-3 bg-muted/20 rounded-lg border border-border/50"
+      >
+        <XCircle className="w-3.5 h-3.5 shrink-0" />
+        {/* R125-I5 (A3-9): تعذّر (with shadda) — the A2-F21 standard the
+            rest of the console copy uses. */}
+        <span>تعذّر تحميل قائمة الصلاحيات.</span>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-xs font-bold text-primary-text underline underline-offset-2 hover:opacity-80"
+          >
+            إعادة المحاولة
+          </button>
+        )}
       </div>
     );
   }

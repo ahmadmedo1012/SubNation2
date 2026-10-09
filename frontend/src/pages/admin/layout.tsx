@@ -6,7 +6,9 @@ import { useAuth } from "@/lib/auth";
 // results").
 import { adminFetch, adminFetchJson } from "@/lib/admin-session";
 import { useTheme } from "@/lib/theme";
-import { formatCurrency } from "@/lib/utils";
+// R125 (A6 B-9): formatCount feeds the search palette's sr-only result
+// announcement (Arabic plural forms — «نتيجة واحدة» / «3 نتائج»).
+import { formatCount, formatCurrency } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
 // R124-I5 (A6 F12): CopilotPanel (1,676 lines + its history view) is no
@@ -166,14 +168,18 @@ function NavItem({
   const active = item.href === activeHref;
   return (
     <div>
-      <Link href={item.href} onClick={onNavigate}>
+      {/* R125 (A6 B-12): aria-current="page" — the active item was
+          visual-only (bg/border); the storefront MobileNav/Navbar already
+          expose it (A5 #3), and this is the longest-prefix `active` the
+          layout already computes. */}
+      <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined}>
         <div
           className={`
             relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold
             transition-all duration-150 group
             ${
               active
-                ? "bg-primary/15 text-primary font-bold border border-primary/20"
+                ? "bg-primary/15 text-primary-text font-bold border border-primary/20"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
             }
             ${collapsed ? "justify-center px-2" : ""}
@@ -206,7 +212,11 @@ function NavItem({
         <div className="mt-1 mr-3 space-y-0.5 border-r border-primary/15 pr-2">
           {contextActions.map((action) => (
             <Link key={action.href + action.label} href={action.href} onClick={onNavigate}>
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-primary hover:bg-primary/8 transition-all duration-100">
+              {/* R125 (A6 B-6): hover:text-primary on a muted link is
+                  the dark-theme 3.76:1 family — the text-primary-text
+                  token is the storefront sweep's fix applied to the
+                  admin context actions. */}
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-primary-text hover:bg-primary/8 transition-all duration-100">
                 <action.icon className="w-3 h-3 shrink-0" />
                 <span>{action.label}</span>
               </div>
@@ -226,6 +236,13 @@ function NavItem({
 const PAGE_TITLES: Record<string, string> = Object.fromEntries(
   NAV_SECTIONS.flatMap((s) => s.items.map((i) => [i.href, i.label])),
 );
+
+/** R125 (A6 B-1): mirrors the App-level fallback MetaTags title
+ *  (App.tsx) — restored on AdminLayout unmount so routes without a
+ *  layout (/admin/login) don't inherit the last visited page's title.
+ *  A local constant: importing it from App.tsx would be circular
+ *  (App → lazy admin pages → layout). */
+const STOREFRONT_DEFAULT_TITLE = "SubNation — سوق الاشتراكات الرقمية";
 
 /** Detail-route title fallbacks (no exact PAGE_TITLES entry possible). */
 function pageTitleFor(location: string): string {
@@ -268,6 +285,50 @@ const CONTEXT_ACTIONS: Record<string, { label: string; icon: React.ElementType; 
 
 // ── Global search component ──────────────────────────────────────────────────
 
+/** R125 (A6 B-9): Arabic plural forms for the palette's sr-only result
+ * count announcement (formatCount idiom — «نتيجة واحدة» / «نتيجتان» /
+ * «3 نتائج»). */
+const SEARCH_RESULT_FORMS = {
+  zero: "نتائج",
+  one: "نتيجة واحدة",
+  two: "نتيجتان",
+  few: "نتائج",
+  many: "نتيجة",
+  other: "نتيجة",
+};
+
+/**
+ * R125 (A6 B-9 + B-15): minimal Tab-cycle focus trap, shared by the
+ * GlobalSearch palette and the mobile nav drawer. Both claim
+ * role="dialog" aria-modal="true", and before this helper neither
+ * enforced it — Tab walked out of the "modal" into the page behind
+ * (WCAG 2.1.2). Only Tab/Shift+Tab are intercepted; every other key
+ * is left to the surface's own handlers.
+ */
+function trapTabKey(
+  container: HTMLElement,
+  e: { key: string; shiftKey: boolean; preventDefault(): void },
+): void {
+  if (e.key !== "Tab") return;
+  const focusables = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+  if (focusables.length === 0) return;
+  const current = document.activeElement as HTMLElement | null;
+  const idx = current ? focusables.indexOf(current) : -1;
+  e.preventDefault();
+  const next = e.shiftKey
+    ? idx <= 0
+      ? focusables.length - 1
+      : idx - 1
+    : idx === -1 || idx === focusables.length - 1
+      ? 0
+      : idx + 1;
+  focusables[next].focus();
+}
+
 function GlobalSearch({ onClose }: { onClose: () => void }) {
   const { hasAdminPermission } = useAuth();
   const [query, setQuery] = useState("");
@@ -281,8 +342,17 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
     products: [],
   });
   const [loading, setLoading] = useState(false);
+  // R125 (A6 B-9): the query the CURRENT results answer. Separates
+  // "not searched yet" (the 220ms debounce window — keep whatever is
+  // on screen, never flash a premature «لا نتائج") from "searched and
+  // empty" (the honest no-results message + its live announcement).
+  const [resultsFor, setResultsFor] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const inputRef = useRef<HTMLInputElement>(null);
+  // R125 (A6 B-9): the palette overlays — needed for the Tab trap and
+  // for focus-return bookkeeping below.
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const headers = useAdminHeaders();
   // 94-C2 (A2 P2-3): the footer promises «↵ اختيار» — this index backs
   // that promise with real ↑/↓/↵ navigation over the flattened result
@@ -290,7 +360,18 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
+    // R125 (A6 B-9): capture the invoker (the ⌘K trigger / sidebar
+    // button) BEFORE moving focus into the input, then return focus
+    // to it on unmount — Esc, backdrop click and Enter-navigate all
+    // used to unmount the focused input and drop keyboard users onto
+    // <body> (the top of the tab order). The Enter-navigate case is
+    // still covered downstream: ScrollToTop's location effect focuses
+    // #main-content AFTER this cleanup runs.
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
     inputRef.current?.focus();
+    return () => {
+      returnFocusRef.current?.focus();
+    };
   }, []);
 
   // R122 (A2-P2): the palette used to promise orders/users/products
@@ -326,6 +407,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
     const q = query.trim();
     if (q.length < 2) {
       setResults({ orders: [], users: [], products: [] });
+      setResultsFor(null);
       return;
     }
     // 94-C2 (A2 P2-3): every new keystroke aborts the previous request
@@ -376,6 +458,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             users: (users as AdminUser[]).slice(0, 4),
             products: (products as AdminProduct[]).slice(0, 4),
           });
+          setResultsFor(q);
         })
         .catch(() => {
           /* aborted or network — the next keystroke owns the state */
@@ -446,11 +529,18 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
   return (
     <div
+      ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-label="بحث سريع"
       className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm flex items-start justify-center pt-[8vh] sm:pt-[12vh] px-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
+      // R125 (A6 B-9): the Tab half of the aria-modal promise — focus
+      // cycles inside the palette instead of walking into the page
+      // behind it (Esc + backdrop + Enter were already handled).
+      onKeyDown={(e) => {
+        if (overlayRef.current) trapTabKey(overlayRef.current, e);
+      }}
     >
       <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[84vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Input */}
@@ -480,128 +570,171 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           </kbd>
         </div>
 
-        {/* Results */}
-        {query.length >= 2 && (
-          <div id="global-search-results" role="listbox" className="max-h-72 overflow-y-auto">
-            {!loading && total === 0 && (
-              <div className="py-10 text-center text-muted-foreground text-sm">
-                {/* R122 (A2-P2): scoped-out sections are never fetched —
-                    this empty copy only ever speaks for the sections that
-                    WERE searched (an admin with no search scope never
-                    reaches the palette; see the triggers in AdminLayout). */}
-                لا نتائج لـ "{query}"
-              </div>
-            )}
+        {/* R125 (A6 B-9): sr-only polite mirror of the result state —
+            typing used to be silent until the operator arrowed; the
+            loading → results / no-results transitions now announce
+            (4.1.3). Gated on resultsFor so the 220ms debounce window
+            never announces a premature «لا نتائج». */}
+        <div className="sr-only" aria-live="polite" role="status">
+          {query.trim().length >= 2
+            ? loading
+              ? "جارٍ البحث…"
+              : resultsFor === query.trim()
+                ? total === 0
+                  ? `لا نتائج لـ "${query.trim()}"`
+                  : formatCount(total, SEARCH_RESULT_FORMS)
+                : ""
+            : ""}
+        </div>
 
-            {results.orders.length > 0 && (
-              <div className="p-2">
-                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">الطلبات</div>
-                {results.orders.map((o, i) => (
-                  <button
-                    key={o.id}
-                    id={`global-search-option-${i}`}
-                    role="option"
-                    aria-selected={safeActive === i}
-                    onClick={goToOrders}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                      safeActive === i
-                        ? "bg-primary/10 ring-1 ring-primary/25"
-                        : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <ShoppingBag className="w-3.5 h-3.5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate">{o.product_name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">
-                        {o.order_code} · {displayUserName(userFromRow(o))}
-                      </div>
-                    </div>
-                    <span className="font-bold text-primary text-xs tabular-nums shrink-0">
-                      {formatCurrency(o.amount)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {results.users.length > 0 && (
-              <div className="p-2">
-                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">المستخدمون</div>
-                {results.users.map((u, i) => {
-                  const flatIdx = results.orders.length + i;
-                  return (
-                    <button
-                      key={u.id}
-                      id={`global-search-option-${flatIdx}`}
-                      role="option"
-                      aria-selected={safeActive === flatIdx}
-                      onClick={goToUsers}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                        safeActive === flatIdx
-                          ? "bg-primary/10 ring-1 ring-primary/25"
-                          : "hover:bg-muted/40"
-                      }`}
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-status-info/10 flex items-center justify-center shrink-0">
-                        <Users className="w-3.5 h-3.5 text-status-info" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-mono text-sm font-bold">{u.phone}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatCurrency(u.wallet_balance)} رصيد · {u.order_count} طلب
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {results.products.length > 0 && (
-              <div className="p-2">
-                <div className="px-3 py-1 text-3xs font-bold text-muted-foreground">المنتجات</div>
-                {results.products.map((p, i) => {
-                  const flatIdx = results.orders.length + results.users.length + i;
-                  return (
-                    <button
-                      key={p.id}
-                      id={`global-search-option-${flatIdx}`}
-                      role="option"
-                      aria-selected={safeActive === flatIdx}
-                      onClick={goToProducts}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                        safeActive === flatIdx
-                          ? "bg-primary/10 ring-1 ring-primary/25"
-                          : "hover:bg-muted/40"
-                      }`}
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
-                        {p.image_url ? (
-                          <img
-                            src={p.image_url}
-                            alt={p.name ?? ""}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-full h-full object-contain p-1"
-                          />
-                        ) : (
-                          <Package className="w-3.5 h-3.5 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold truncate">{p.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatCurrency(p.price)} · {p.stock_count} وحدة
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+        {/* Results — R125 (A6 B-9): the no-results message is a
+            role="status" OUTSIDE the listbox (APG listbox children are
+            options/groups only), and only renders once a search for
+            THIS query has actually completed. */}
+        {query.length >= 2 && !loading && resultsFor === query.trim() && total === 0 ? (
+          <div role="status" className="py-10 text-center text-muted-foreground text-sm">
+            {/* R122 (A2-P2): scoped-out sections are never fetched —
+                this empty copy only ever speaks for the sections that
+                WERE searched (an admin with no search scope never
+                reaches the palette; see the triggers in AdminLayout). */}
+            لا نتائج لـ "{query}"
           </div>
+        ) : (
+          query.length >= 2 && (
+            <div id="global-search-results" role="listbox" className="max-h-72 overflow-y-auto">
+              {/* R125 (A6 B-9): each section wrapper is role="group"
+                  with an aria-label — the legal non-option listbox
+                  child — and the visible header is aria-hidden so the
+                  group name is not double-read. */}
+              {results.orders.length > 0 && (
+                <div className="p-2" role="group" aria-label="الطلبات">
+                  <div
+                    aria-hidden="true"
+                    className="px-3 py-1 text-3xs font-bold text-muted-foreground"
+                  >
+                    الطلبات
+                  </div>
+                  {results.orders.map((o, i) => (
+                    <button
+                      key={o.id}
+                      id={`global-search-option-${i}`}
+                      role="option"
+                      aria-selected={safeActive === i}
+                      onClick={goToOrders}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                        safeActive === i
+                          ? "bg-primary/10 ring-1 ring-primary/25"
+                          : "hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <ShoppingBag className="w-3.5 h-3.5 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate">{o.product_name}</div>
+                        <div className="text-xs text-muted-foreground font-mono">
+                          {o.order_code} · {displayUserName(userFromRow(o))}
+                        </div>
+                      </div>
+                      {/* R125 (A6 B-6): money value on dark card — raw
+                          text-primary is 3.76:1; the text-primary-text
+                          token (5.75:1) is the storefront sweep's
+                          class applied here. */}
+                      <span className="font-bold text-primary-text text-xs tabular-nums shrink-0">
+                        {formatCurrency(o.amount)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {results.users.length > 0 && (
+                <div className="p-2" role="group" aria-label="المستخدمون">
+                  <div
+                    aria-hidden="true"
+                    className="px-3 py-1 text-3xs font-bold text-muted-foreground"
+                  >
+                    المستخدمون
+                  </div>
+                  {results.users.map((u, i) => {
+                    const flatIdx = results.orders.length + i;
+                    return (
+                      <button
+                        key={u.id}
+                        id={`global-search-option-${flatIdx}`}
+                        role="option"
+                        aria-selected={safeActive === flatIdx}
+                        onClick={goToUsers}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                          safeActive === flatIdx
+                            ? "bg-primary/10 ring-1 ring-primary/25"
+                            : "hover:bg-muted/40"
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-status-info/10 flex items-center justify-center shrink-0">
+                          <Users className="w-3.5 h-3.5 text-status-info" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-mono text-sm font-bold">{u.phone}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatCurrency(u.wallet_balance)} رصيد · {u.order_count} طلب
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {results.products.length > 0 && (
+                <div className="p-2" role="group" aria-label="المنتجات">
+                  <div
+                    aria-hidden="true"
+                    className="px-3 py-1 text-3xs font-bold text-muted-foreground"
+                  >
+                    المنتجات
+                  </div>
+                  {results.products.map((p, i) => {
+                    const flatIdx = results.orders.length + results.users.length + i;
+                    return (
+                      <button
+                        key={p.id}
+                        id={`global-search-option-${flatIdx}`}
+                        role="option"
+                        aria-selected={safeActive === flatIdx}
+                        onClick={goToProducts}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                          safeActive === flatIdx
+                            ? "bg-primary/10 ring-1 ring-primary/25"
+                            : "hover:bg-muted/40"
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
+                          {p.image_url ? (
+                            <img
+                              src={p.image_url}
+                              alt={p.name ?? ""}
+                              loading="lazy"
+                              decoding="async"
+                              className="w-full h-full object-contain p-1"
+                            />
+                          ) : (
+                            <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold truncate">{p.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatCurrency(p.price)} · {p.stock_count} وحدة
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {/* Idle hint */}
@@ -657,6 +790,10 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   const { adminToken, adminLogout, hasAdminPermission } = useAuth();
   const headers = useAdminHeaders();
   const { theme, toggleTheme } = useTheme();
+  // R125 (A6 B-11/B-15): the mobile drawer (focus move-in/return) and
+  // its hamburger toggle are wired by ref below.
+  const drawerRef = useRef<HTMLElement>(null);
+  const hamburgerRef = useRef<HTMLButtonElement>(null);
   // R123 (E3 item 4): the alerts badge + poll machinery is support-
   // scoped — the التنبيهات nav item already gates on "support"
   // (NAV_SECTIONS above), but the unread-count query and the 5-min
@@ -850,13 +987,31 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
   // 93-C7 / C-UX3 (A12 H9): ESC closes the mobile nav drawer — it was
   // the only mobile surface with no keyboard exit (backdrop-click only).
+  // R125 (A6 B-15): Tab is trapped inside the drawer while it is open —
+  // the aside claims role="dialog" aria-modal="true", and Tab previously
+  // walked out of the "modal" into the page behind it.
   useEffect(() => {
     if (!mobileOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMobileOpen(false);
+      else if (e.key === "Tab" && drawerRef.current) trapTabKey(drawerRef.current, e);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, [mobileOpen]);
+
+  // R125 (A6 B-15): the drawer announced itself (role/aria-modal/Esc)
+  // but focus never moved in — screen readers kept reading the page
+  // behind the "modal" — and closing dropped focus to <body>. Move focus
+  // into the dialog on open, return it to the hamburger (the only
+  // opener) on close. Programmatic focus on tabIndex -1 shows no
+  // :focus-visible outline (the global rule keys on focus-visible).
+  useEffect(() => {
+    if (!mobileOpen) return;
+    drawerRef.current?.focus();
+    return () => {
+      hamburgerRef.current?.focus();
+    };
   }, [mobileOpen]);
 
   // Real-time alert toasts. Round-4 (perf P1-5): the SocketInitializer's
@@ -935,6 +1090,26 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         ? `${secondsAgo} ث`
         : `${Math.round(secondsAgo / 60)} د`;
   const pageTitle = pageTitleFor(location);
+
+  // R125 (A6 B-1): per-route document.title. Admin never set one, so
+  // the App-level fallback MetaTags stamped the STOREFRONT title on
+  // every /admin/* route and the RouteAnnouncer (App.tsx) — which
+  // announces only title CHANGES — was silent on every admin→admin
+  // navigation. PAGE_TITLES already drove the top-bar heading; it now
+  // feeds the document title too, so SR users hear the destination
+  // page's name on every admin navigation (2.4.2 + 4.1.3). Ordering:
+  // this effect runs after the App-level fallback re-applies on the
+  // same commit, so the admin title is the final write. On unmount the
+  // app default is restored — /admin/login (the one admin route without
+  // AdminLayout) lands back on the honest default instead of the last
+  // visited page's name.
+  useEffect(() => {
+    document.title = `${pageTitle} — SubNation الإدارة`;
+    return () => {
+      document.title = STOREFRONT_DEFAULT_TITLE;
+    };
+  }, [pageTitle]);
+
   const activeHref = computeActiveHref(location);
   const totalBadges =
     (mergedBadges.pendingTopups ?? 0) +
@@ -969,6 +1144,10 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         )}
         <button
           onClick={() => setCollapsed((v) => !v)}
+          /* R125 (A6 B-11): icon-only control had no accessible name and
+             hid its expanded state. */
+          aria-label="تصغير القائمة الجانبية"
+          aria-expanded={!collapsed}
           className="hidden md:flex p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground shrink-0"
         >
           <ChevronRight
@@ -1072,9 +1251,12 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             onClick={() => setMobileOpen(false)}
           />
           <aside
+            id="admin-mobile-drawer"
+            ref={drawerRef}
             role="dialog"
             aria-modal="true"
             aria-label="قائمة الإدارة"
+            tabIndex={-1}
             className="md:hidden fixed right-0 top-0 bottom-0 w-[min(18rem,85vw)] bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-right-4 duration-200"
           >
             {sidebarContent}
@@ -1090,8 +1272,15 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             /* 96-F7 (R96 M12): p-2 + w-5 icons ≈ 36×36px hit area (was
                p-1.5 + w-4 ≈ 28px) — this is the screen-edge button, the
                hardest region to hit with a thumb. */
+            ref={hamburgerRef}
             className="md:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground relative"
             onClick={() => setMobileOpen((v) => !v)}
+            /* R125 (A6 B-11): icon-only with no name and no expanded
+               state — the storefront Navbar's hamburger has both (A5
+               #4). The drawer itself is #admin-mobile-drawer above. */
+            aria-label={mobileOpen ? "إغلاق قائمة الإدارة" : "فتح قائمة الإدارة"}
+            aria-expanded={mobileOpen}
+            aria-controls="admin-mobile-drawer"
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             {!mobileOpen && totalBadges > 0 && (
@@ -1121,6 +1310,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           {canGlobalSearch && (
             <button
               onClick={() => setShowSearch(true)}
+              /* R125 (A6 B-11, same 4.1.2 class): the mobile search
+                 trigger is icon-only with no accessible name. */
+              aria-label="بحث سريع"
               /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (edge-adjacent
                  target, was ~28px). */
               className="sm:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
@@ -1135,18 +1327,40 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
               errors; amber (no pulse) while a query sits in error, with
               the honest stale age; gray while the first fetch is still
               in flight (never a fake "الآن/live"). */}
+          {/* R125 (A6 B-15): below sm the colored dot was the SOLE
+              state signal (color-only, 1.4.1) — the visible pill text
+              is `hidden sm:inline`, so narrow-viewport SR users heard
+              nothing. An sr-only twin carries the same text; sm:hidden
+              removes it from the a11y tree once the visible text
+              exists (no double read on ≥sm). */}
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
             {anyBadgeQueryError ? (
               <span
+                aria-hidden="true"
                 className="w-1.5 h-1.5 rounded-full bg-status-warning inline-block"
                 title="تعذّر تحديث البيانات"
               />
             ) : lastUpdated ? (
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+              <span
+                aria-hidden="true"
+                className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"
+              />
             ) : (
-              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 inline-block" />
+              <span
+                aria-hidden="true"
+                className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 inline-block"
+              />
             )}
             <span className="hidden sm:inline">
+              {anyBadgeQueryError
+                ? lastUpdated
+                  ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
+                  : "تعذّر التحديث"
+                : lastUpdated
+                  ? refreshLabel
+                  : "جارٍ التحديث…"}
+            </span>
+            <span className="sr-only sm:hidden">
               {anyBadgeQueryError
                 ? lastUpdated
                   ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`

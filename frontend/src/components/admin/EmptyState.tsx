@@ -37,7 +37,10 @@ interface EmptyStateProps {
  */
 export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
+    // R125 (A6 B-8): role="status" — the loading→empty swap was silent
+    // to screen readers (4.1.3). Pure addition, no visual change.
     <div
+      role="status"
       className={`text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl ${className ?? ""}`}
     >
       <div className="w-12 h-12 rounded-2xl bg-muted mx-auto mb-3 flex items-center justify-center">

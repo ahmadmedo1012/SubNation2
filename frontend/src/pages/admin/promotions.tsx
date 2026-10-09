@@ -59,7 +59,10 @@ interface FlashSale {
 }
 
 const EMPTY_FORM = {
-  title: "Flash Sale",
+  // R125-I3 (A2-21): the default title is ARABIC — the old English
+  // "Flash Sale" default surfaced to customers on the storefront
+  // (flash-sales.tsx renders activeSale.title as the page headline).
+  title: "عرض سريع",
   discount_percent: "20",
   // Default to 24h from now (ISO local-style for the datetime-local input).
   ends_at: (() => {
@@ -69,6 +72,12 @@ const EMPTY_FORM = {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   })(),
 };
+
+// R125-I3 (A2-21): client-side parity with the backend's create bound
+// (routes/admin/flash-sales.ts MAX_DURATION_MS) — the hint already
+// promised «أقل من 30 يوماً» but only the 5-minute floor was validated,
+// so a 60-day sale rode a full round-trip to the server's 400.
+const MAX_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export default function AdminPromotionsPage() {
   const { adminToken } = useAuth();
@@ -145,6 +154,13 @@ export default function AdminPromotionsPage() {
       toast({ title: "وقت الانتهاء يجب أن يكون بعد 5 دقائق على الأقل.", variant: "destructive" });
       return;
     }
+    // R125-I3 (A2-21): mirror the backend's 30-day ceiling client-side
+    // (same message wording as the server's 400) — the hint promised it,
+    // the round-trip no longer has to.
+    if (endsAt.getTime() > Date.now() + MAX_DURATION_MS) {
+      toast({ title: "أقصى مدة للعرض 30 يوماً.", variant: "destructive" });
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -156,7 +172,9 @@ export default function AdminPromotionsPage() {
         method: "POST",
         headers,
         body: JSON.stringify({
-          title: form.title.trim() || "Flash Sale",
+          // R125-I3 (A2-21): Arabic default — the title renders on the
+          // storefront (flash-sales.tsx activeSale.title).
+          title: form.title.trim() || "عرض سريع",
           discount_percent: discount,
           ends_at: endsAt.toISOString(),
         }),
@@ -245,10 +263,16 @@ export default function AdminPromotionsPage() {
 
   async function handleDelete(sale: FlashSale) {
     if (!adminToken) return;
+    // R125-I3 (A2-6): permanent DELETE and reversible PAUSE shared the
+    // same confirm verb («إيقاف») and the same success toast («تم
+    // الإيقاف») — an operator who meant to pause had no signal they had
+    // just destroyed the row (and vice versa). The destructive path now
+    // names the action on both the message AND the button (the clarify
+    // rubric); pause keeps «إيقاف»/«تم الإيقاف».
     const ok = await confirm({
-      title: "إيقاف العرض السريع؟",
-      description: `سيتم إيقاف العرض "${sale.title}" نهائياً. لا يمكن التراجع عن هذه العملية.`,
-      confirmLabel: "إيقاف",
+      title: "حذف العرض نهائياً؟",
+      description: `سيتم حذف العرض "${sale.title}" نهائياً من السجل. لا يمكن التراجع عن هذه العملية — للإيقاف المؤقت استخدم زر الإيقاف.`,
+      confirmLabel: "حذف نهائي",
       destructive: true,
     });
     if (!ok) return;
@@ -257,13 +281,14 @@ export default function AdminPromotionsPage() {
       // — the failure toast keeps its Arabic envelope mapping via the
       // wrapper's getErrorMessage.
       await adminFetchJson(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });
-      // R124-I5 (A6 F1): success variant.
-      toast({ title: "تم الإيقاف", variant: "success" });
+      // R124-I5 (A6 F1): success variant. R125-I3 (A2-6): the toast
+      // names the DESTRUCTIVE outcome — «تم حذف العرض».
+      toast({ title: "تم حذف العرض", variant: "success" });
       void load();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
-        title: "تعذّر الإيقاف",
+        title: "تعذّر الحذف",
         description: err instanceof Error ? err.message : "خطأ غير معروف",
         variant: "destructive",
       });
@@ -403,8 +428,11 @@ export default function AdminPromotionsPage() {
                     </span>{" "}
                     (وفر {d}%).
                     {d >= 30 && (
-                      <span className="block mt-1 text-amber-500">
-                        ⚠ خصم كبير — راجع الهامش في حاسبة الأسعار قبل التفعيل.
+                      <span className="flex items-center gap-1 mt-1 text-amber-500">
+                        {/* R125-I3 (A2-10c): the ⚠ text glyph is gone —
+                            lucide icon, the R124 emoji convention. */}
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        خصم كبير — راجع الهامش في حاسبة الأسعار قبل التفعيل.
                       </span>
                     )}
                   </div>
@@ -555,7 +583,11 @@ export default function AdminPromotionsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDelete(s)}
-                        aria-label={`إيقاف وحذف عرض «${s.title}»`}
+                        /* R125-I3 (A2-6): the row action names the DESTRUCTIVE
+                           verb — it sat beside a reversible «إيقاف» button
+                           while being labeled the same. */
+                        aria-label={`حذف العرض «${s.title}» نهائياً`}
+                        title="حذف نهائي"
                         className="gap-1.5 text-destructive hover:text-destructive"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

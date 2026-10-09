@@ -235,6 +235,14 @@ vi.mock("@workspace/api-client-react", () => {
         }
         mutation?.onSuccess?.(h.calcResponse ?? h.safeResponse);
       },
+      // R125-I3: calculate() rides mutateAsync (the seq race-guard
+      // refactor needs the response VALUE, not just the callback) — the
+      // mock must honor both shapes.
+      mutateAsync: async (vars: { data: Record<string, unknown> }) => {
+        h.calcBodies.push(vars.data);
+        if (h.calcError) throw h.calcError;
+        return h.calcResponse ?? h.safeResponse;
+      },
     }),
     setUnauthorizedHandler: vi.fn(),
   };

@@ -39,8 +39,10 @@ import {
   Key,
   KeyRound,
   Loader2,
+  RefreshCw,
   Save,
   Shield,
+  ShieldCheck,
   ToggleLeft,
   ToggleRight,
   UserCog,
@@ -364,9 +366,36 @@ function ProviderCard({
 
 // ── 2FA Setup Component ────────────────────────────────────────────────────────
 
+/** R125-I5 (A3-9): `role` is a free varchar (default "admin"; the admin
+ * create dialog stores exactly "admin" | "super_admin", admins.ts:168).
+ * The identity card used to render the raw English token uppercased in
+ * an Arabic card — map the two known-good values onto the console's
+ * Arabic vocabulary («مسؤول رئيسي» = the «جميع الصلاحيات» wording the
+ * admins page already uses), unknown values fall back to the raw token. */
+const ROLE_LABELS: Record<string, string> = {
+  admin: "مسؤول",
+  super_admin: "مسؤول رئيسي",
+  superadmin: "مسؤول رئيسي",
+};
+
+const roleLabel = (role: string) => ROLE_LABELS[role] ?? role;
+
 function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
   const headers = useAdminHeaders();
   const jsonHeaders = useAdminHeaders({ json: true });
+  // R125-I5 (A3-1 P2): the component used to be mounted unconditionally
+  // with the same «إعداد المصادقة الثنائية» CTA for every admin — an
+  // already-enrolled admin clicked it and hit the backend's S5 gate
+  // (93-A1: POST /2fa/setup requires current_password whenever TOTP is
+  // already enabled, because rotating an enabled secret DISABLES 2FA
+  // until the new one is verified) with a guaranteed 400 and no path
+  // forward. The component now knows the enrollment state and grows an
+  // honest rotate flow: a «مفعّلة» status card + a current-password
+  // re-auth gate (the same sudo pattern /profile + /change-password
+  // already enforce) that sends `current_password` on the setup POST.
+  const [enrolled, setEnrolled] = useState<boolean | null>(null);
+  const [showRotate, setShowRotate] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [setupData, setSetupData] = useState<{
     secret: string;
     otpauth_url: string;
@@ -377,7 +406,34 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    // R125-I5 (A3-1): fetch the session's totp_enabled once on mount
+    // (the AccountTab idiom — response-exempt endpoint, reject-on-!ok).
+    // A failed probe leaves `enrolled` null: the fresh-enrollment branch
+    // renders, and if the operator is actually enrolled the backend's
+    // gate 400 below flips this component into the rotate flow instead
+    // of dead-ending.
+    let cancelled = false;
+    adminFetch("/api/admin/session", { credentials: "include", headers })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((s: { totp_enabled?: boolean }) => {
+        if (!cancelled) setEnrolled(s.totp_enabled === true);
+      })
+      .catch(() => {
+        if (!cancelled) setEnrolled(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [headers]);
+
   const startSetup = async () => {
+    // R125-I5 (A3-1): the S5 gate is client-visible too — an enrolled
+    // admin never fires the bodyless POST the backend must 400.
+    if (enrolled && !currentPassword) {
+      setError("كلمة المرور الحالية مطلوبة لإعادة إعداد المصادقة الثنائية");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -386,17 +442,29 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
         otpauth_url: string;
       }>("/api/admin/2fa/setup", {
         method: "POST",
-        headers,
+        // R125-I5: the rotate path presents the re-auth password (the
+        // backend verifies it with the change-password lockout); fresh
+        // enrollment stays bodyless (the backend's optional branch).
+        headers: enrolled ? jsonHeaders : headers,
+        body: enrolled ? JSON.stringify({ current_password: currentPassword }) : undefined,
       });
 
       import("qrcode").then((QRCode) => {
-        QRCode.default.toDataURL(data.otpauth_url, (err: Error | null, url: string) => {
+        QRCode.default.toDataURL(data.otpauth_url, (err: Error | null | undefined, url: string) => {
           if (!err) setSetupData({ ...data, qrCode: url });
         });
       });
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "حدث خطأ");
+      const message = err instanceof Error ? err.message : "حدث خطأ";
+      // R125-I5 (A3-1): belt-and-braces for a failed session probe — the
+      // backend's exact gate message means TOTP IS enabled; surface the
+      // password field instead of stranding the error with no CTA.
+      if (message.includes("كلمة المرور الحالية مطلوبة")) {
+        setEnrolled(true);
+        setShowRotate(true);
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -414,6 +482,12 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
 
       setSuccess(true);
       setSetupData(null);
+      // R125-I5 (A3-1): the new secret is now verified + enabled —
+      // reset the rotate-flow state so a re-render (or a future
+      // un-mount/mount) starts from the honest «مفعّلة» status card.
+      setEnrolled(true);
+      setShowRotate(false);
+      setCurrentPassword("");
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
       setError(err instanceof Error ? err.message : "حدث خطأ");
@@ -465,7 +539,15 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
             أدخل الرمز المكون من 6 أرقام الذي يظهر في تطبيق المصادقة.
           </p>
           <div className="flex gap-3">
+            {/* AUD103-6-F2 / R125-I5 (A6-B13): the 6-digit input was
+                placeholder-only — the step heading above is not a
+                programmatic label. The sr-only label gives the field an
+                accessible name (getByLabelText-resolvable). */}
+            <label htmlFor="settings-2fa-verify-code" className="sr-only">
+              رمز التحقق المكوّن من 6 أرقام
+            </label>
             <input
+              id="settings-2fa-verify-code"
               type="text"
               /* 96-F7 (R96 M6): numeric keypad on mobile for the 6-digit
                  TOTP verification code (+ one-time-code autocomplete so
@@ -490,6 +572,102 @@ function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
+      </div>
+    );
+  }
+
+  // R125-I5 (A3-1 P2): the enrolled branch — a «مفعّلة» status card +
+  // the rotate flow (current-password re-auth → fresh QR → verify).
+  // Before this, an enrolled admin saw the fresh-enrollment CTA and
+  // dead-ended on the backend's S5 400.
+  if (enrolled) {
+    return (
+      <div className="flex flex-col items-start gap-4">
+        <div className="w-full flex items-start gap-3 p-4 rounded-xl bg-status-success/8 border border-status-success/25">
+          <ShieldCheck className="w-5 h-5 text-status-success shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="font-bold text-sm text-status-success">المصادقة الثنائية مفعّلة</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              حسابك محمي برمز تحقق من تطبيق المصادقة عند كل تسجيل دخول.
+            </p>
+          </div>
+        </div>
+
+        {showRotate ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void startSetup();
+            }}
+            className="w-full space-y-3"
+          >
+            {/* R125-I5: rotation semantics disclosed up front — the S5
+                gate exists because overwriting an enabled secret leaves
+                2FA OFF until the new code is verified. */}
+            <p className="text-xs text-status-warning bg-status-warning/10 border border-status-warning/25 rounded-xl px-3 py-2 leading-relaxed">
+              إعادة الإعداد تُصدر مفتاحاً جديداً وتُعطّل الحماية مؤقتاً حتى تفعيل الرمز الجديد —
+              أكمل الخطوات حتى النهاية.
+            </p>
+            <div>
+              <label
+                htmlFor="settings-2fa-current-password"
+                className="text-xs font-bold mb-1 block"
+              >
+                كلمة المرور الحالية
+              </label>
+              <input
+                id="settings-2fa-current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
+                autoComplete="current-password"
+                required
+                /* R125-I5: the same lockout as change-password applies to
+                   wrong attempts (backend `admin-2fasetup:` key) — the
+                   field is the only gate, keep autofill-friendly. */
+                dir="ltr"
+              />
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={loading || !currentPassword}
+                className="flex items-center gap-2 h-10 px-5 rounded-xl bg-primary/10 text-primary-text font-bold text-sm hover:bg-primary/20 transition-all border border-primary/20 disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                متابعة
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRotate(false);
+                  setCurrentPassword("");
+                  setError("");
+                }}
+                className="px-4 py-2 text-sm font-bold text-muted-foreground hover:text-foreground"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <button
+              onClick={() => setShowRotate(true)}
+              className="flex items-center gap-2 h-10 px-5 rounded-xl bg-muted/40 text-foreground font-bold text-sm hover:bg-muted/60 transition-all border border-border/60"
+            >
+              <RefreshCw className="w-4 h-4" />
+              إعادة إعداد المصادقة الثنائية
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -693,8 +871,15 @@ function AccountTab({ adminToken: _adminToken }: { adminToken: string }) {
             <div className="font-bold text-lg">{session.display_name}</div>
             <div className="text-xs text-muted-foreground">@{session.username}</div>
           </div>
-          <div className="text-3xs font-bold uppercase bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-full">
-            {session.role}
+          {/* R125-I5 (A3-9): the raw English role token (uppercase, no
+              less) rendered in an Arabic card — now mapped through
+              ROLE_LABELS («مسؤول» / «مسؤول رئيسي»); unknown tokens fall
+              back to the raw value. Uppercase dropped (the 94-C2 A2
+              P2-10 Arabic-badge precedent) and text-primary-text per
+              A6-B6 (raw text-primary on the /10 tint is 3.56:1 on
+              dark). */}
+          <div className="text-3xs font-bold bg-primary/10 text-primary-text border border-primary/20 px-2 py-1 rounded-full">
+            {roleLabel(session.role)}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-2 border-t border-border/40">

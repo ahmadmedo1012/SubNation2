@@ -784,8 +784,13 @@ function AppRoutes() {
       />
       {/* Skip-to-content (V2-H1, WCAG 2.4.1): keyboard users otherwise
           Tab through Navbar + banner + search on EVERY page before the
-          content. Visible only on focus. */}
-      {!isAdmin && !isChromeless && (
+          content. Visible only on focus.
+          R125 (A6 B-7): the !isAdmin guard excluded the admin console —
+          whose sidebar repeats 18 nav links + search + logout before the
+          page content on EVERY route. The link targets #main-content,
+          which wraps the admin Switch too (the same <main>), so admin
+          now gets the same bypass. */}
+      {!isChromeless && (
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:inset-x-2 focus:z-[100] focus:h-11 focus:flex focus:items-center focus:justify-center focus:bg-primary focus:text-primary-foreground focus:text-sm focus:font-bold focus:rounded-xl focus:shadow-lg"

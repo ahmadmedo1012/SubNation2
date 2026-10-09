@@ -148,7 +148,11 @@ export function FetchErrorCard({
 }: FetchErrorCardProps) {
   const styles = SIZE_STYLES[size];
   return (
-    <div className={cn(styles.card, className)}>
+    // R125 (A6 B-8): role="alert" — a full-page/section load failure was
+    // silent to screen readers (only the hand-rolled stale-refresh
+    // banners announced; the shared card never did). Assertive by
+    // design: this component renders ONLY in error branches.
+    <div role="alert" className={cn(styles.card, className)}>
       <div className={styles.tile}>
         <Icon className={styles.icon} />
       </div>

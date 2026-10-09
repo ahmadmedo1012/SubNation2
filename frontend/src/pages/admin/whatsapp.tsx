@@ -21,7 +21,7 @@ import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-bad
 // empty state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
 import { AdminLayout } from "./layout";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
   Check,
@@ -79,6 +79,14 @@ function statusMeta(status: string) {
   return STATUS_META[status] ?? { label: status, tone: "neutral" as const };
 }
 
+/** R125-I5 (A3-12, display-only): WhatsApp pair codes live roughly two
+ * minutes. The backend's pair-code response carries NO expiry field
+ * (openwa.service.ts requestWhatsAppPairCode → { session, code } only),
+ * so the display layer marks the block stale after this TTL instead of
+ * promising a countdown it can't honor. Purely visual: never blocks the
+ * copy button, never touches pairing/session logic. */
+const PAIR_CODE_STALE_AFTER_MS = 120_000;
+
 export default function AdminWhatsAppPage() {
   const headers = useAdminHeaders();
   const jsonHeaders = useAdminHeaders({ json: true });
@@ -95,13 +103,36 @@ export default function AdminWhatsAppPage() {
   // B5-30 (round-92 audit): copied feedback for the pair-code copy
   // button (check-icon swap, same as the topups CopyButton idiom).
   const [pairCopied, setPairCopied] = useState(false);
+  // R125-I5 (A3-12): staleness cue for the pair-code block — see
+  // PAIR_CODE_STALE_AFTER_MS above. `issuedAt` drives a timeout that
+  // flips `stale`; every code-issuing/reset path clears both.
+  const [pairCodeIssuedAt, setPairCodeIssuedAt] = useState<number | null>(null);
+  const [pairCodeStale, setPairCodeStale] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
+  // R125-I5 (A3-4c): `loading` gates the FIRST-load skeleton only —
+  // `refreshing` is the silent-refresh indicator (header button spin)
+  // that keeps the rendered rows standing during post-action reloads.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // R125-I5 (A3-4c): tracks whether at least one load completed, so the
+  // post-action reloads below can stay silent (rows keep standing).
+  const hasLoadedRef = useRef(false);
+
   const loadSessions = useCallback(async () => {
-    setLoading(true);
+    // R125-I5 (A3-4c): every mutation handler ends with `await
+    // loadSessions()` — the old unconditional setLoading(true) collapsed
+    // the whole session list into a spinner on every create/start/pair/
+    // delete (scroll position + row context lost mid-task). Only the
+    // first load blanks the list now; refreshes keep the rows visible
+    // and the header refresh button spins via `refreshing` instead.
+    if (hasLoadedRef.current) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const body = await adminFetchJson<SessionsResponse>(
@@ -109,11 +140,13 @@ export default function AdminWhatsAppPage() {
         { headers },
       );
       setSessions(Array.isArray(body.sessions) ? body.sessions : []);
+      hasLoadedRef.current = true;
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "تعذر جلب جلسات واتساب");
+      setError(err instanceof Error ? err.message : "تعذّر جلب جلسات واتساب");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [headers]);
 
@@ -121,10 +154,30 @@ export default function AdminWhatsAppPage() {
     void loadSessions();
   }, [loadSessions]);
 
+  // R125-I5 (A3-12): the staleness timeout rides the issuance timestamp
+  // — a fresh code resets the cue, clearing/nulling the code disarms it.
+  useEffect(() => {
+    if (pairCodeIssuedAt === null) return;
+    setPairCodeStale(Date.now() - pairCodeIssuedAt >= PAIR_CODE_STALE_AFTER_MS);
+    const timer = setTimeout(
+      () => setPairCodeStale(true),
+      Math.max(0, PAIR_CODE_STALE_AFTER_MS - (Date.now() - pairCodeIssuedAt)),
+    );
+    return () => clearTimeout(timer);
+  }, [pairCodeIssuedAt]);
+
+  // R125-I5 (A3-12): one place resets the pair-code surface — every
+  // path that nulls the code also disarms the staleness cue.
+  const clearPairCode = useCallback(() => {
+    setPairCode(null);
+    setPairCopied(false);
+    setPairCodeIssuedAt(null);
+    setPairCodeStale(false);
+  }, []);
+
   const createSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setBusy("create");
-    setError(null);
     try {
       await adminFetchJson("/api/admin/diagnostics/whatsapp/sessions", {
         method: "POST",
@@ -135,7 +188,14 @@ export default function AdminWhatsAppPage() {
       await loadSessions();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "تعذر إنشاء الجلسة");
+      // R125-I5 (A3-12): action errors get the same toast treatment the
+      // successes on this page get — the old banner-only path rendered
+      // far from the pressed button (possibly off-screen). The top
+      // banner stays reserved for list-load failures.
+      toast({
+        title: err instanceof Error ? err.message : "تعذّر إنشاء الجلسة",
+        variant: "destructive",
+      });
     } finally {
       setBusy(null);
     }
@@ -143,7 +203,6 @@ export default function AdminWhatsAppPage() {
 
   const startSession = async (session: WhatsAppSession) => {
     setBusy(`${session.id}:start`);
-    setError(null);
     try {
       await adminFetchJson(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}/start`,
@@ -159,7 +218,11 @@ export default function AdminWhatsAppPage() {
       await loadSessions();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "تعذر تشغيل الجلسة");
+      // R125-I5 (A3-12): toast like the successes (see createSession).
+      toast({
+        title: err instanceof Error ? err.message : "تعذّر تشغيل الجلسة",
+        variant: "destructive",
+      });
     } finally {
       setBusy(null);
     }
@@ -169,9 +232,7 @@ export default function AdminWhatsAppPage() {
     event.preventDefault();
     if (!pairTarget) return;
     setBusy(`${pairTarget}:pair`);
-    setError(null);
-    setPairCode(null);
-    setPairCopied(false);
+    clearPairCode();
     try {
       const body = await adminFetchJson<PairCodeResponse>(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(pairTarget)}/pair-code`,
@@ -182,16 +243,27 @@ export default function AdminWhatsAppPage() {
         },
       );
       setPairCode(body.code);
+      // R125-I5 (A3-12): stamp the issuance — the staleness cue below
+      // dims the block after PAIR_CODE_STALE_AFTER_MS.
+      setPairCodeIssuedAt(Date.now());
       // R124-I5 (A6 F1): success variant.
+      // R125-I5 (A3-12): the copy no longer promises «دقيقتان» — the
+      // backend returns no expiry field, so the toast keeps a hedged
+      // short-validity hint and the code block carries the staleness
+      // cue instead of an honored-nowhere countdown.
       toast({
         title: "تم إصدار رمز الاقتران",
-        description: "أدخله في واتساب خلال دقيقتين تقريباً",
+        description: "صلاحيته قصيرة — أدخله في واتساب فوراً",
         variant: "success",
       });
       await loadSessions();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "تعذر إصدار رمز الاقتران");
+      // R125-I5 (A3-12): toast like the successes (see createSession).
+      toast({
+        title: err instanceof Error ? err.message : "تعذّر إصدار رمز الاقتران",
+        variant: "destructive",
+      });
     } finally {
       setBusy(null);
     }
@@ -199,11 +271,9 @@ export default function AdminWhatsAppPage() {
 
   const loadQr = async (session: WhatsAppSession) => {
     setBusy(`${session.id}:qr`);
-    setError(null);
     setQrImage(null);
     setPairTarget(session.id);
-    setPairCode(null);
-    setPairCopied(false);
+    clearPairCode();
     try {
       const body = await adminFetchJson<{ qrImage?: string | null }>(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}/qr`,
@@ -215,7 +285,11 @@ export default function AdminWhatsAppPage() {
       setQrImage(body.qrImage);
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "تعذر جلب QR");
+      // R125-I5 (A3-12): toast like the successes (see createSession).
+      toast({
+        title: err instanceof Error ? err.message : "تعذّر جلب QR",
+        variant: "destructive",
+      });
     } finally {
       setBusy(null);
     }
@@ -230,7 +304,6 @@ export default function AdminWhatsAppPage() {
     });
     if (!confirmed) return;
     setBusy(`${session.id}:delete`);
-    setError(null);
     try {
       await adminFetchJson(
         `/api/admin/diagnostics/whatsapp/sessions/${encodeURIComponent(session.id)}`,
@@ -238,15 +311,18 @@ export default function AdminWhatsAppPage() {
       );
       if (pairTarget === session.id) {
         setPairTarget(null);
-        setPairCode(null);
-        setPairCopied(false);
+        clearPairCode();
       }
       setQrImage(null);
       toast({ title: "تم حذف الجلسة", variant: "success" });
       await loadSessions();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "تعذر حذف الجلسة");
+      // R125-I5 (A3-12): toast like the successes (see createSession).
+      toast({
+        title: err instanceof Error ? err.message : "تعذّر حذف الجلسة",
+        variant: "destructive",
+      });
     } finally {
       setBusy(null);
     }
@@ -329,6 +405,9 @@ export default function AdminWhatsAppPage() {
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="subnation-otp"
+              /* R125-I5 (A6-B13): placeholder-only inputs get
+                  programmatic names. */
+              aria-label="اسم الجلسة"
               pattern="[A-Za-z0-9-]{3,50}"
               title="من 3 إلى 50 حرفاً إنجليزياً أو رقماً أو شرطة"
               required
@@ -351,16 +430,22 @@ export default function AdminWhatsAppPage() {
               variant="ghost"
               size="icon"
               onClick={() => void loadSessions()}
-              disabled={loading}
+              disabled={loading || refreshing}
               aria-label="تحديث"
             >
-              <RefreshCw className={loading ? "animate-spin" : ""} />
+              <RefreshCw className={loading || refreshing ? "animate-spin" : ""} />
             </Button>
           </div>
 
           {loading ? (
-            <div className="p-8 flex justify-center text-muted-foreground">
-              <Loader2 className="animate-spin" />
+            // R125-I5 (A3-4c): page-shaped skeleton for the FIRST load
+            // (the alerts.tsx card recipe + the A6-B8 role="status" /
+            // sr-only pair) — replaces the bare centered spinner.
+            <div className="p-4 space-y-3" role="status" aria-busy="true">
+              <span className="sr-only">جارٍ التحميل…</span>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-[76px] rounded-xl skeleton-shimmer" />
+              ))}
             </div>
           ) : sessions.length === 0 ? (
             <EmptyState icon={Wifi} title="لا توجد جلسات بعد" description="أنشئ جلسة أولى للبدء." />
@@ -444,6 +529,10 @@ export default function AdminWhatsAppPage() {
                             value={phone}
                             onChange={(event) => setPhone(event.target.value)}
                             placeholder="21891XXXXXXX"
+                            /* R125-I5 (A6-B13): name + tel autocomplete —
+                                the field had inputMode="tel" but neither. */
+                            aria-label="رقم واتساب بصيغة دولية"
+                            autoComplete="tel"
                             inputMode="tel"
                             dir="ltr"
                             required
@@ -459,8 +548,15 @@ export default function AdminWhatsAppPage() {
                         </div>
                         {pairCode && (
                           <div className="flex flex-wrap items-center gap-2 pt-2">
+                            {/* R125-I5 (A3-12): staleness cue — the code dims
+                                + a reissue hint appears after the TTL. The
+                                copy button stays usable ("على الأرجح" — the
+                                display can't know the true expiry; the
+                                backend sends none). */}
                             <code
-                              className="text-xl font-bold tracking-[0.25em] bg-background border border-border rounded-lg px-3 py-2"
+                              className={`text-xl font-bold tracking-[0.25em] bg-background border border-border rounded-lg px-3 py-2 transition-opacity ${
+                                pairCodeStale ? "opacity-50" : ""
+                              }`}
                               dir="ltr"
                             >
                               {pairCode}
@@ -474,6 +570,11 @@ export default function AdminWhatsAppPage() {
                               {pairCopied ? <Check /> : <Copy />}
                               {pairCopied ? "تم النسخ" : "نسخ"}
                             </Button>
+                            {pairCodeStale && (
+                              <span role="status" className="text-xs font-bold text-status-warning">
+                                انتهت صلاحية الرمز على الأرجح — أعد إصدار رمز جديد
+                              </span>
+                            )}
                           </div>
                         )}
                       </form>
@@ -484,8 +585,7 @@ export default function AdminWhatsAppPage() {
                         variant="ghost"
                         onClick={() => {
                           setPairTarget(session.id);
-                          setPairCode(null);
-                          setPairCopied(false);
+                          clearPairCode();
                           setQrImage(null);
                         }}
                       >

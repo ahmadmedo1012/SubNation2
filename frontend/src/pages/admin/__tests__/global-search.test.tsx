@@ -31,7 +31,7 @@
  * the module boundary; fetch is routed per URL.
  */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router, useLocation, useSearch } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -80,10 +80,7 @@ const ORDER = (name: string) => ({
 });
 
 /** Routes fetch: badge/poll endpoints + the three search endpoints. */
-function routeSearch(
-  respond: (q: string) => Promise<Response> | Response,
-  searchOk = true,
-) {
+function routeSearch(respond: (q: string) => Promise<Response> | Response, searchOk = true) {
   return vi.fn(async (input: unknown) => {
     const url = String(input);
     if (url.includes("/api/admin/alerts/unread-count")) {
@@ -170,8 +167,11 @@ describe("AdminLayout GlobalSearch — no more silent failures or stale races (A
 
     // The 220ms debounce fires on faked time; the failure path renders
     // the honest empty state (and never throws on the envelope body).
+    // R125 (A6 B-9): the sr-only live line mirrors the same text — the
+    // assertion accepts the twin and requires the VISIBLE one.
     await advance(220);
-    expect(screen.getByText(/لا نتائج لـ "ab"/)).toBeInTheDocument();
+    const matches = screen.getAllByText(/لا نتائج لـ "ab"/);
+    expect(matches.some((el) => !el.className.includes("sr-only"))).toBe(true);
   });
 
   it("a late-resolving OLDER response is dropped — results match the typed query", async () => {
@@ -220,5 +220,106 @@ describe("AdminLayout GlobalSearch — no more silent failures or stale races (A
     // scope; the microtask flush absorbs the post-click state updates.
     await flushAsync();
     expect(screen.getByTestId("location-probe").textContent).toBe("/admin/orders?search=abc");
+  });
+});
+
+describe("AdminLayout GlobalSearch — palette a11y contract (R125 A6 B-9)", () => {
+  /**
+   * The overlay claimed role="dialog" aria-modal="true" without
+   * enforcing any of it: Tab walked out of the "modal" into the page
+   * behind, closing it dropped focus to <body>, the listbox carried
+   * non-option children, and result changes were unannounced. The
+   * palette now traps Tab, returns focus to the invoker, groups its
+   * listbox sections, and mirrors the result state in an sr-only
+   * polite live line.
+   */
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.setItem("sn_last_alert_id", "0");
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    localStorage.removeItem("sn_last_alert_id");
+  });
+
+  it("Esc closes the palette and returns focus to the trigger (was dropped to <body>)", async () => {
+    renderLayout();
+    const trigger = screen.getByRole("button", { name: /بحث\.\.\./ });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const input = screen.getByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
+    expect(input).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await flushAsync();
+
+    expect(
+      screen.queryByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…"),
+    ).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("Tab cycles INSIDE the palette — no walk into the page behind the aria-modal", async () => {
+    renderLayout();
+    openPaletteAndType("abc");
+    await advance(220); // results land: the mock answers all three
+    // sections, so three options exist.
+
+    const input = screen.getByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
+    expect(input).toHaveFocus();
+
+    // Tab from the input moves to the FIRST option — inside the overlay.
+    fireEvent.keyDown(input, { key: "Tab" });
+    const options = screen.getAllByRole("option");
+    expect(options.length).toBe(3);
+    expect(options[0]).toHaveFocus();
+
+    // Shift+Tab from the first option wraps back to the input (the
+    // trap cycle — a native Shift+Tab would leave the palette).
+    fireEvent.keyDown(options[0], { key: "Tab", shiftKey: true });
+    expect(input).toHaveFocus();
+  });
+
+  it("result sections are role=group (legal listbox children) with labels", async () => {
+    renderLayout();
+    openPaletteAndType("abc");
+    await advance(220);
+
+    const listbox = screen.getByRole("listbox");
+    // The routed mock answers all three scoped sections with the same
+    // row shape — three groups, one per section.
+    const groups = within(listbox).getAllByRole("group");
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual([
+      "الطلبات",
+      "المستخدمون",
+      "المنتجات",
+    ]);
+    // The visible headers are aria-hidden — the group names carry them once.
+    for (const g of groups) expect(g.querySelector('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it("the sr-only live line announces the result count (and the no-results state)", async () => {
+    renderLayout();
+    openPaletteAndType("abc");
+    await advance(220);
+
+    const live = document.querySelector('div[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live!.className).toContain("sr-only");
+    // formatCount idiom: the mock answers all three sections → 3 results
+    // → Arabic plural "few" → «3 نتائج».
+    expect(live!.textContent).toBe("3 نتائج");
+
+    // The failing-search case announces the honest no-results line too.
+    const failing = routeSearch(() => [], false);
+    vi.stubGlobal("fetch", failing);
+    const input = screen.getByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
+    fireEvent.change(input, { target: { value: "zz" } });
+    await advance(220);
+    expect(live!.textContent).toBe(`لا نتائج لـ "zz"`);
   });
 });

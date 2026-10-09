@@ -436,3 +436,24 @@ describe("CartPage — R120-B2 (A4-F6 labels + A3-F4/F13 empty CTA + A1-F9 links
     expect(screen.queryByRole("link", { name: "Netflix شهر" })).not.toHaveAttribute("href", "/");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// R125-I7 (A7 B-6, computed) — the no-image fallback glyph: the
+// first-letter span rode text-primary/50 (1.65:1 dark / 2.35:1 light
+// on the bg-muted/60 tile — sub-AA even as large text). Full
+// --muted-foreground measures 7.44:1 / 6.09:1. (The fuller fix —
+// reusing ProductCard's CATEGORY_ICON — needs `category` on
+// LocalCartItem and rides with the deferred stock-snapshot work,
+// A7 B-11.)
+// ─────────────────────────────────────────────────────────────────────
+
+describe("CartPage — the no-image fallback letter is honestly readable (R125-I7 / A7 B-6)", () => {
+  it("the first-letter glyph rides full --muted-foreground, not the half-alpha primary", () => {
+    seedCart(2);
+    renderPage();
+
+    const letter = screen.getByText("N");
+    expect(letter.className).toContain("text-muted-foreground");
+    expect(letter.className).not.toMatch(/text-primary\/\d+/);
+  });
+});

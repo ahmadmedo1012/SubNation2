@@ -12,6 +12,12 @@ import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSk
 import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+// R125-I4 (A6 B-4): the desktop tier pill rides the canonical
+// StatusBadge on the --status-* tokens — tiers are domain levels, so
+// the tone map stays LOCAL (the status-badge.tsx:75-78 rule, the
+// risk.tsx LEVEL_META idiom) instead of raw cyan/yellow/slate hues
+// that collapse to 1.43–2.86:1 on the shipped light theme.
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { isAdminUnauthorized } from "@/lib/admin-session";
@@ -92,6 +98,17 @@ const SORT_OPTIONS = [
   { value: "points_desc", label: "النقاط ↓" },
   { value: "created_asc", label: "الأقدم" },
 ];
+
+/** R125-I4 (A6 B-4): tier → StatusBadge tone (theme-aware by
+ * construction — the raw cyan-400/yellow-400/slate-300/amber-600 pill
+ * failed 1.4.3 AA on the light theme). bronze→low-stock (orange),
+ * gold→warning, platinum→info, silver→neutral. */
+const TIER_TONE: Record<string, StatusBadgeVariant> = {
+  bronze: "low-stock",
+  silver: "neutral",
+  gold: "warning",
+  platinum: "info",
+};
 
 /** 94-C2 (A2 P1-1): the backend supports `page`/`limit` (clamped
  *  1..200, default 100) but the UI never sent either — the directory
@@ -206,25 +223,16 @@ const DesktopUserRow = React.memo(function DesktopUserRow({
       <td className="px-4 py-2.5">
         <ProviderBadges user={user as unknown as Record<string, unknown>} />
       </td>
-      <td className="px-4 py-2.5 font-bold text-primary tabular-nums">
+      <td className="px-4 py-2.5 font-bold text-primary-text tabular-nums">
         {formatCurrency(user.wallet_balance)}
       </td>
       <td className="px-4 py-2.5">
-        <span
-          className={`font-bold text-xs px-2 py-0.5 rounded-full border ${
-            user.loyalty_tier === "platinum"
-              ? "text-cyan-400 bg-cyan-400/10 border-cyan-400/20"
-              : user.loyalty_tier === "gold"
-                ? "text-yellow-400 bg-yellow-400/10 border-yellow-400/20"
-                : user.loyalty_tier === "silver"
-                  ? "text-slate-300 bg-slate-400/10 border-slate-400/20"
-                  : user.loyalty_tier === "bronze"
-                    ? "text-amber-600 bg-amber-600/10 border-amber-600/20"
-                    : "text-muted-foreground bg-muted/40 border-border"
-          }`}
-        >
+        {/* R125-I4 (A6 B-4 + B-6): StatusBadge on the status tokens
+            (light-theme AA) + text-primary-text on the money cell
+            (5.75:1 dark vs raw text-primary's 3.76:1). */}
+        <StatusBadge variant={TIER_TONE[user.loyalty_tier] ?? "neutral"} size="sm">
           {tierLabel(user.loyalty_tier)}
-        </span>
+        </StatusBadge>
       </td>
       <td className="px-4 py-2.5 tabular-nums text-sm">{user.loyalty_points}</td>
       <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
@@ -268,7 +276,7 @@ const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit }: User
         </div>
       </div>
       <div className="text-right shrink-0">
-        <div className="font-bold text-primary tabular-nums text-sm">
+        <div className="font-bold text-primary-text tabular-nums text-sm">
           {formatCurrency(user.wallet_balance)}
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">{user.loyalty_points} نقطة</div>
@@ -674,6 +682,14 @@ export default function AdminUsersPage() {
       // 94-C2: base key — refreshes the accumulating infinite query
       // (prefix match), not just one param-specific cache entry.
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });
+      // R125-I4 (A4-B-3): stats co-invalidation — a wallet/points save
+      // changes total_wallet_balance, and /admin/stats has no
+      // write-side invalidation (30s server cache). R125-I6 has since
+      // landed the backend `admin-stats-update` emit for users PATCH
+      // too (this comment predates it); this frontend invalidation
+      // covers the ACTING tab immediately (the socket push refreshes
+      // OTHER open tabs — SocketInitializer.tsx:82).
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       setEditingUser(null);
     } catch (err: unknown) {
       toast({
@@ -690,6 +706,26 @@ export default function AdminUsersPage() {
   }
 
   const hasFilters = tierFilter !== "" || sortBy !== "wallet_desc";
+
+  // R125-I4 (A1-1): the ONE «مسح الفلاتر» handler — clears the state
+  // AND the URL. The old empty-state CTA called setSearch/setTierFilter
+  // without syncFilterParams, so ?tier= (and ?sort=) survived in the
+  // address bar and a refresh silently resurrected a filter the
+  // operator believes they removed — state divergence on the directory
+  // that lists wallet balances. The ?search= deep-link param rides the
+  // same resurrection class (it re-prefills on mount) — strip it too.
+  // Shared by the hard EmptyState CTA and the partial-window block.
+  const clearAllFilters = () => {
+    setSearch("");
+    setTierFilter("");
+    setSortBy("wallet_desc");
+    syncFilterParams("", "wallet_desc", showFilters);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("search")) {
+      url.searchParams.delete("search");
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
 
   // R120-B4 (A2-F4): wallet + loyalty-points mutations require the
   // finance scope on the backend (PATCH /api/admin/users/:id — B1-3
@@ -791,7 +827,7 @@ export default function AdminUsersPage() {
               aria-expanded={showFilters}
               className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-semibold transition-all ${
                 hasFilters || showFilters
-                  ? "bg-primary/10 border-primary/30 text-primary"
+                  ? "bg-primary/10 border-primary/30 text-primary-text"
                   : "bg-secondary/40 border-border text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -834,7 +870,7 @@ export default function AdminUsersPage() {
                       aria-pressed={tierFilter === t.value}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         tierFilter === t.value
-                          ? "bg-primary/10 border-primary/30 text-primary font-bold"
+                          ? "bg-primary/10 border-primary/30 text-primary-text font-bold"
                           : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
                       }`}
                     >
@@ -865,7 +901,7 @@ export default function AdminUsersPage() {
                       aria-pressed={sortBy === s.value}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         sortBy === s.value
-                          ? "bg-primary/10 border-primary/30 text-primary font-bold"
+                          ? "bg-primary/10 border-primary/30 text-primary-text font-bold"
                           : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
                       }`}
                     >
@@ -1016,7 +1052,9 @@ export default function AdminUsersPage() {
                     {
                       label: "الرصيد",
                       value: formatCurrency(editingUser.wallet_balance),
-                      cls: "text-primary",
+                      // R125-I4 (A6 B-6): text-primary-text — a money
+                      // value, not a surface (5.75:1 dark vs 3.76:1).
+                      cls: "text-primary-text",
                     },
                     { label: "النقاط", value: editingUser.loyalty_points, cls: "text-foreground" },
                     {
@@ -1065,7 +1103,16 @@ export default function AdminUsersPage() {
                     </p>
                   )}
                   <div>
-                    <Label className="mb-2 block text-sm font-semibold">تعديل المحفظة (د.ل)</Label>
+                    {/* R125-I4 (A1-2 / A6 B-12): the money field itself —
+                        htmlFor↔id pair (the r103 label idiom the note
+                        + points fields already rode) + an
+                        aria-describedby hint that states the MODE
+                        (the placeholder alone is not a persistent
+                        label; screen readers announced only the
+                        mode-dependent placeholder before). */}
+                    <Label htmlFor="user-edit-wallet" className="mb-2 block text-sm font-semibold">
+                      تعديل المحفظة (د.ل)
+                    </Label>
                     <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
                       {WALLET_MODES.map((opt) => (
                         <button
@@ -1073,6 +1120,12 @@ export default function AdminUsersPage() {
                           type="button"
                           disabled={!canEditMoney}
                           title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
+                          /* R125-I4 (A6 B-10/A1-6): a money-mode
+                             control — the selected mode was purely
+                             visual. aria-pressed exposes it (the
+                             wallet-mode segmented control A10 §C-17
+                             pin). */
+                          aria-pressed={form.wallet_mode === opt.value}
                           onClick={() =>
                             setForm((f) => ({
                               ...f,
@@ -1087,11 +1140,13 @@ export default function AdminUsersPage() {
                       ))}
                     </div>
                     <Input
+                      id="user-edit-wallet"
                       type="number"
                       min="0"
                       step="0.5"
                       disabled={!canEditMoney}
                       title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
+                      aria-describedby="user-edit-wallet-hint"
                       placeholder={
                         form.wallet_mode === "set"
                           ? "الرصيد الجديد"
@@ -1104,6 +1159,16 @@ export default function AdminUsersPage() {
                       dir="ltr"
                       className="h-10"
                     />
+                    <p
+                      id="user-edit-wallet-hint"
+                      className="text-3xs text-muted-foreground mt-1 leading-relaxed"
+                    >
+                      {form.wallet_mode === "set"
+                        ? "سيحل الرصيد المُدخل محل الرصيد الحالي"
+                        : form.wallet_mode === "add"
+                          ? "سيُضاف المبلغ إلى الرصيد الحالي"
+                          : "سيُخصم المبلغ من الرصيد الحالي"}
+                    </p>
                     {/* (r110 + R115) The money-edit note: mandatory
                         whenever a wallet field OR a points change will
                         ride the PATCH (both are LYD money — the wallet
@@ -1233,29 +1298,59 @@ export default function AdminUsersPage() {
             onRetry={() => refetch()}
           />
         ) : sorted.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title={
-              search
-                ? `لا نتائج لـ "${search}"`
-                : tierFilter
-                  ? `لا مستخدمون بمستوى ${tierLabel(tierFilter)}`
-                  : "لا يوجد مستخدمون"
-            }
-            action={
-              search || tierFilter ? (
+          /* R125-I4 (A1-7): a tier can read empty while matching users
+             sit on UNLOADED pages — the tier filter runs client-side
+             over the accumulated pages (hasNextPage=true), so the hard
+             EmptyState asserted global emptiness over a partial window
+             (the exact R115 A9 P2 false-empty orders killed). The
+             orders.tsx partial-empty block: load-more stays visible +
+             the honest incompleteness hint. Search-empty stays on the
+             hard state (server-side, honest). */
+          tierFilter && hasNextPage ? (
+            <div className="text-center py-14 text-muted-foreground bg-card border border-border/60 rounded-2xl space-y-3">
+              <Users className="w-10 h-10 mx-auto opacity-20" />
+              <p className="text-sm font-bold text-foreground/80">
+                لا مستخدمين بمستوى {tierLabel(tierFilter)} ضمن الصفحات المحمّلة
+              </p>
+              <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
+              <div className="flex justify-center gap-2 flex-wrap">
+                <LoadMoreButton
+                  spinner={RefreshCw}
+                  busy={isFetchingNextPage}
+                  disabled={isLoading}
+                  onClick={() => void fetchNextPage()}
+                />
                 <button
-                  onClick={() => {
-                    setSearch("");
-                    setTierFilter("");
-                  }}
-                  className="text-xs text-primary hover:underline mt-2"
+                  onClick={clearAllFilters}
+                  className="text-xs text-primary-text hover:underline mt-1.5"
                 >
                   مسح الفلاتر
                 </button>
-              ) : undefined
-            }
-          />
+              </div>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Users}
+              title={
+                search
+                  ? `لا نتائج لـ "${search}"`
+                  : tierFilter
+                    ? /* A1-11: «لا مستخدمين» — منصوب بعد لا */
+                      `لا مستخدمين بمستوى ${tierLabel(tierFilter)}`
+                    : "لا يوجد مستخدمون"
+              }
+              action={
+                search || tierFilter ? (
+                  <button
+                    onClick={clearAllFilters}
+                    className="text-xs text-primary-text hover:underline mt-2"
+                  >
+                    مسح الفلاتر
+                  </button>
+                ) : undefined
+              }
+            />
+          )
         ) : (
           <>
             {/* Desktop table */}

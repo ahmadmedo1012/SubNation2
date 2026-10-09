@@ -126,6 +126,10 @@ export default function AdminCouponsPage() {
   // the handleCreate parity guards) — cleared on any value/type edit.
   const [valueError, setValueError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<number | null>(null);
+  // R125-I3 (A2-16): per-row busy guard for the archive DELETE — a
+  // double-click fired two DELETEs; the second 404'd and stacked an
+  // error toast on top of the success toast.
+  const [archiving, setArchiving] = useState<number | null>(null);
 
   // 98-F7 (R98-05): dirty-state guard — a half-filled coupon form is
   // un-submitted work, so a refresh/tab-close mid-edit (or with a
@@ -280,21 +284,28 @@ export default function AdminCouponsPage() {
   const handleDelete = async (coupon: Coupon) => {
     // 93-C7 / C-UX3 (A5 C-1): the native confirm named NO coupon — an
     // admin could disable the wrong row on a touch screen. The styled
-    // confirm now shows code + value + explicit تعطيل semantics.
+    // confirm now shows code + value.
+    // R125-I3 (A2-16): honest verb — DELETE /api/coupons/admin/:id is a
+    // SOFT ARCHIVE (routes/coupons.ts sets isActive:false, audits
+    // coupon.archive; PATCH can resurrect the row), NOT a hard delete.
+    // The button said «حذف» while the confirm said «تعطيل» — every
+    // surface now says «أرشفة».
     const confirmed = await confirm({
-      title: "تعطيل الكوبون؟",
-      description: `سيتم تعطيل الكوبون ${coupon.code} (${
+      title: "أرشفة الكوبون؟",
+      description: `سيتم أرشفة الكوبون ${coupon.code} (${
         coupon.type === "percentage" ? `${coupon.value}%` : formatCurrency(coupon.value)
-      }) — لن يقبله العملاء بعد الآن.`,
-      confirmLabel: "تعطيل",
+      }) — يتوقف قبوله فوراً، ويبقى في السجل ويمكن استعادته لاحقاً.`,
+      confirmLabel: "أرشفة",
       destructive: true,
     });
     if (!confirmed) return;
+    setArchiving(coupon.id);
     try {
       await adminFetchJson(`/api/coupons/admin/${coupon.id}`, { method: "DELETE", headers });
       fetchCoupons(true);
-      // R124-I5 (A6 F1): success variant.
-      toast({ title: "تم تعطيل الكوبون", variant: "success" });
+      // R124-I5 (A6 F1): success variant. R125-I3 (A2-16): the toast
+      // names the ARCHIVE outcome, matching what the API did.
+      toast({ title: "تمت أرشفة الكوبون", variant: "success" });
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
@@ -302,6 +313,8 @@ export default function AdminCouponsPage() {
         description: err instanceof Error ? err.message : "فشل تنفيذ العملية",
         variant: "destructive",
       });
+    } finally {
+      setArchiving(null);
     }
   };
 
@@ -609,23 +622,38 @@ export default function AdminCouponsPage() {
                         </div>
 
                         {/* Value */}
-                        <div className="flex items-center gap-1 font-bold text-primary text-sm">
-                          {coupon.type === "percentage" ? (
-                            <>
-                              <Percent className="w-3 h-3" />
-                              {coupon.value}%
-                            </>
-                          ) : (
-                            /* 93-C7 / C-UX5 (A5 C-3): formatCurrency instead
+                        <div>
+                          {/* R125-I3 (A2-17): the header row is hidden below
+                              md — a bare stacked "5.00 د.ل" cell was
+                              indistinguishable from الحد الأدنى. Each cell
+                              gains a text-3xs field label visible ONLY on
+                              the mobile flex-col layout. */}
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                            الخصم
+                          </span>
+                          <div className="flex items-center gap-1 font-bold text-primary text-sm">
+                            {coupon.type === "percentage" ? (
+                              <>
+                                <Percent className="w-3 h-3" />
+                                {coupon.value}%
+                              </>
+                            ) : (
+                              <>
+                                {/* 93-C7 / C-UX5 (A5 C-3): formatCurrency instead
                                of the raw `{value} د.ل` — fixed-value coupons
                                now read "5.00 د.ل" like every other money
-                               surface in the app. */
-                            <>{formatCurrency(coupon.value)}</>
-                          )}
+                               surface in the app. */}
+                                <>{formatCurrency(coupon.value)}</>
+                              </>
+                            )}
+                          </div>
                         </div>
 
                         {/* Min order */}
                         <div className="text-xs text-muted-foreground tabular-nums">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                            الحد الأدنى
+                          </span>
                           {coupon.min_order_amount > 0
                             ? formatCurrency(coupon.min_order_amount)
                             : "—"}
@@ -633,6 +661,9 @@ export default function AdminCouponsPage() {
 
                         {/* Usage */}
                         <div className="text-xs tabular-nums font-bold">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                            الاستخدام
+                          </span>
                           <span className="text-foreground">{coupon.used_count}</span>
                           {coupon.max_uses !== null && (
                             <span className="text-muted-foreground">/{coupon.max_uses}</span>
@@ -644,6 +675,9 @@ export default function AdminCouponsPage() {
 
                         {/* Expiry */}
                         <div className="text-xs text-muted-foreground">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                            الانتهاء
+                          </span>
                           {coupon.expires_at ? (
                             <span className={isExpired ? "text-destructive" : ""}>
                               {formatDate(coupon.expires_at)}
@@ -660,6 +694,9 @@ export default function AdminCouponsPage() {
                             the --status-* tokens) replaces the four
                             raw-hue pills. */}
                         <div>
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                            الحالة
+                          </span>
                           {effectivelyActive ? (
                             <StatusBadge variant="success" icon={CheckCircle}>
                               نشط
@@ -680,35 +717,49 @@ export default function AdminCouponsPage() {
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleToggle(coupon)}
-                            disabled={toggling === coupon.id}
-                            title={coupon.is_active ? "تعطيل" : "تفعيل"}
-                            aria-label={
-                              coupon.is_active
-                                ? `تعطيل الكوبون ${coupon.code}`
-                                : `تفعيل الكوبون ${coupon.code}`
-                            }
-                            aria-pressed={coupon.is_active}
-                            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                          >
-                            {toggling === coupon.id ? (
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            ) : coupon.is_active ? (
-                              <ToggleRight className="w-4 h-4 text-emerald-400" />
-                            ) : (
-                              <ToggleLeft className="w-4 h-4" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(coupon)}
-                            title="حذف"
-                            aria-label={`حذف الكوبون ${coupon.code}`}
-                            className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        <div>
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                            إجراءات
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleToggle(coupon)}
+                              disabled={toggling === coupon.id}
+                              title={coupon.is_active ? "تعطيل" : "تفعيل"}
+                              aria-label={
+                                coupon.is_active
+                                  ? `تعطيل الكوبون ${coupon.code}`
+                                  : `تفعيل الكوبون ${coupon.code}`
+                              }
+                              aria-pressed={coupon.is_active}
+                              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            >
+                              {toggling === coupon.id ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : coupon.is_active ? (
+                                <ToggleRight className="w-4 h-4 text-emerald-400" />
+                              ) : (
+                                <ToggleLeft className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(coupon)}
+                              /* R125-I3 (A2-16): «أرشفة» — the DELETE is a
+                                 soft archive (isActive:false), not a hard
+                                 delete; the old «حذف» label over-promised
+                                 destruction the API never performs. */
+                              disabled={archiving === coupon.id}
+                              title="أرشفة"
+                              aria-label={`أرشفة الكوبون ${coupon.code}`}
+                              className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                            >
+                              {archiving === coupon.id ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
