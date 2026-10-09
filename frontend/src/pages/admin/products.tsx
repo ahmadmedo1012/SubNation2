@@ -634,10 +634,19 @@ export default function AdminProductsPage() {
 
   // R124-I5 (A6 F4 — R118-B2): useCallback-stable — feeds the memoized
   // cards' onStockEditDone and the dialogs' onChanged without busting them.
-  const invalidate = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() }),
-    [queryClient],
-  );
+  // R126-L3 (A4-B-2): stats co-invalidation — every products write path
+  // funnels through here (create/update/archive mutations, both bulk
+  // loops, stock set-count via stockEditDone, variants dialog via
+  // onChanged), and each of them moves stats fields
+  // (available_stock / unsold_rows — routes/admin/stats.ts:127-131).
+  // One co-invalidation here covers the whole family at once: the
+  // acting tab's dashboard + layout stats refresh immediately (the
+  // orders/users/tickets idiom); OTHER tabs ride the R126 wave-1
+  // backend `admin-stats-update` emits on products writes.
+  const invalidate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+  }, [queryClient]);
 
   const createMutation = useCreateProduct({
     request: { headers },
@@ -925,13 +934,19 @@ export default function AdminProductsPage() {
             } | null;
             failures.push({
               id,
-              reason:
-                body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+              // R126-L3 (A2/A8): route through getErrorMessage — the
+              // Arabic guard maps the body's code/error to Arabic and
+              // collapses message-less bodies (proxy 502s) to the
+              // generic Arabic line instead of a bare English
+              // "HTTP 502" inside an Arabic toast.
+              reason: getErrorMessage(body),
             });
             continue;
           }
         } catch (e) {
-          failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
+          // R126-L3 (A2/A8): same guard for network-level failures —
+          // "Failed to fetch" used to land raw in the summary toast.
+          failures.push({ id, reason: getErrorMessage(e) });
         }
       }
       if (sessionExpired) return;
@@ -972,12 +987,14 @@ export default function AdminProductsPage() {
             } | null;
             failures.push({
               id,
-              reason:
-                body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+              // R126-L3 (A2/A8): same Arabic guard as bulkDelete — no
+              // bare "HTTP 502" fragments in the summary toast.
+              reason: getErrorMessage(body),
             });
           }
         } catch (e) {
-          failures.push({ id, reason: e instanceof Error ? e.message : "خطأ غير معروف" });
+          // R126-L3 (A2/A8): network-level failures speak Arabic too.
+          failures.push({ id, reason: getErrorMessage(e) });
         }
       }
       if (sessionExpired) return;

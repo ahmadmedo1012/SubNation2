@@ -23,6 +23,10 @@
  *      the API — the frozen «5 د.ل … + 0.50» constant is gone; before
  *      the first calculation the hint describes the mechanics without
  *      inventing numbers.
+ *   6. R126-L3 (A2-9): a FAILED recalculation keeps the last successful
+ *      result standing with a role="alert" stale-marker banner — the
+ *      old `setResult(null)` collapsed the outputs card to the false
+ *      «أدخل سعراً…» placeholder as if no calculation ever ran.
  *
  * `@workspace/api-client-react`, `@/lib/auth`, the admin shell, the
  * toast hook and the confirm hook are mocked at the module boundary
@@ -515,6 +519,108 @@ describe("AdminPricingPage — the two-step recompute (A5 P1-1)", () => {
     expect(toastMock.mock.calls[0][0].title).toBe("تعذّرت المعاينة");
     expect(screen.queryByText("معاينة إعادة الاحتساب")).not.toBeInTheDocument();
     expect(h.recomputeCalls).toBe(0);
+  });
+});
+
+/**
+ * R126-L3 (A2-9) — the calculator's failed-recalc stale-keep.
+ *
+ * `calculate()` runs on a 300ms debounce after EVERY input change, so
+ * a transient 5xx on one keystroke used to run `setResult(null)` and
+ * collapse the outputs card to «أدخل سعراً أو اختر منتجاً لرؤية
+ * الحساب.» — a false-empty claim that the operator had never
+ * calculated, right while they were READING the previous numbers.
+ * The catch now keeps the previous result standing and surfaces a
+ * role="alert" banner naming it stale (the orders/tickets stale-keep
+ * precedence); a failed FIRST calculation renders the banner instead
+ * of the placeholder (an outage is not "no input yet").
+ */
+describe("AdminPricingPage — a failed recalc keeps the last result standing (R126-L3 A2-9)", () => {
+  /** An ApiError-shaped rejection with the backend's own Arabic
+   *  wording — describeError passes Arabic messages through verbatim. */
+  const GATEWAY_BLIP = { data: { error: "خلل مؤقت في محرك التسعير" } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.calcBodies = [];
+    h.calcResponse = null;
+    h.calcError = null;
+    h.updateConfigBodies = [];
+    h.recomputeCalls = 0;
+    h.confirmCalls = [];
+    h.confirmResult = true;
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("a failed RECALC keeps the previous result + a stale-marker banner, never the false placeholder", async () => {
+    h.calcResponse = h.safeResponse;
+    renderPage();
+
+    // First calculation lands a SAFE result…
+    const priceInput = screen.getByLabelText("السعر (د.ل)");
+    fireEvent.change(priceInput, { target: { value: "100" } });
+    await calculateNow();
+    expect(screen.getByText("آمن")).toBeInTheDocument();
+
+    // …then the gateway blips on the next recalc.
+    h.calcError = GATEWAY_BLIP;
+    fireEvent.change(priceInput, { target: { value: "240" } });
+    await calculateNow();
+
+    // The destructive toast fired once for the blip…
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    // …but the STANDING surface is the banner (role=alert) + the stale
+    // result, NOT the «أدخل سعراً…» false-empty placeholder.
+    const banner = screen.getByText(/فشل تحديث الحاسبة/).closest('[role="alert"]');
+    expect(banner).not.toBeNull();
+    expect(banner).toHaveTextContent(
+      "النتيجة أدناه من آخر حساب ناجح وقد لا تطابق المدخلات الحالية",
+    );
+    expect(banner).toHaveTextContent("خلل مؤقت في محرك التسعير");
+    expect(screen.getByText("آمن")).toBeInTheDocument();
+    expect(screen.queryByText("أدخل سعراً أو اختر منتجاً لرؤية الحساب.")).not.toBeInTheDocument();
+  });
+
+  it("a recovery recalc clears the banner and lands the fresh result", async () => {
+    h.calcResponse = h.safeResponse;
+    renderPage();
+
+    const priceInput = screen.getByLabelText("السعر (د.ل)");
+    fireEvent.change(priceInput, { target: { value: "100" } });
+    await calculateNow();
+
+    h.calcError = GATEWAY_BLIP;
+    fireEvent.change(priceInput, { target: { value: "240" } });
+    await calculateNow();
+    await waitFor(() => screen.getByText(/فشل تحديث الحاسبة/));
+
+    // The gateway recovers — the next recalc succeeds.
+    h.calcError = null;
+    await calculateNow();
+
+    await waitFor(() => expect(screen.queryByText(/فشل تحديث الحاسبة/)).not.toBeInTheDocument());
+    expect(screen.getByText("آمن")).toBeInTheDocument();
+  });
+
+  it('a failed FIRST calculation renders the error banner, not the "no input yet" placeholder', async () => {
+    h.calcError = GATEWAY_BLIP;
+    renderPage();
+
+    const priceInput = screen.getByLabelText("السعر (د.ل)");
+    fireEvent.change(priceInput, { target: { value: "100" } });
+    await calculateNow();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    // The banner owns the card — an outage is not «أدخل سعراً…».
+    const banner = screen.getByText(/تعذّر تشغيل الحاسبة/).closest('[role="alert"]');
+    expect(banner).not.toBeNull();
+    expect(banner).toHaveTextContent("خلل مؤقت في محرك التسعير");
+    expect(screen.queryByText("أدخل سعراً أو اختر منتجاً لرؤية الحساب.")).not.toBeInTheDocument();
   });
 });
 

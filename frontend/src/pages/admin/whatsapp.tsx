@@ -20,6 +20,10 @@ import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-bad
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد جلسات بعد"
 // empty state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
+// R126-L3 (A2-2): a failed FIRST load renders the shared error card —
+// the page previously showed its hand-rolled banner AND the empty
+// state together (an outage masquerading as "no sessions yet").
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { AdminLayout } from "./layout";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -385,10 +389,28 @@ export default function AdminWhatsAppPage() {
           </p>
         </div>
 
-        {error && (
-          <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-3 flex gap-2 text-sm text-destructive">
+        {/* R126-L3 (A2-2): the list-load banner now follows the
+            orders/tickets stale-keep precedence — it renders ONLY when
+            rows are standing (a failed REFRESH), carries role="alert"
+            (it was silent to screen readers) and its own retry (the
+            header refresh icon was the only recovery, with nothing
+            pointing at it). A failed FIRST load renders the shared
+            FetchErrorCard inside the sessions section below instead
+            of this banner + the misleading «لا توجد جلسات بعد» pair. */}
+        {error && sessions.length > 0 && (
+          <div
+            role="alert"
+            className="rounded-xl border border-destructive/25 bg-destructive/5 p-3 flex gap-2 text-sm text-destructive"
+          >
             <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => void loadSessions()}
+              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80 shrink-0"
+            >
+              إعادة المحاولة
+            </button>
           </div>
         )}
 
@@ -446,6 +468,22 @@ export default function AdminWhatsAppPage() {
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="h-[76px] rounded-xl skeleton-shimmer" />
               ))}
+            </div>
+          ) : error && sessions.length === 0 ? (
+            /* R126-L3 (A2-2): a failed FIRST load is NOT "no sessions" —
+               the B5-04 false-empty class: the old path rendered this
+               branch's EmptyState («أنشئ جلسة أولى للبدء») right under
+               the error banner, telling the operator a broken gateway
+               was a clean empty system. The skeleton/error/empty
+               precedence every sibling page follows, with the shared
+               card's own retry. */
+            <div className="p-4">
+              <FetchErrorCard
+                size="section"
+                title="تعذّر تحميل جلسات واتساب"
+                description={`${error} — تحقّق من شبكتك ثم أعد المحاولة`}
+                onRetry={() => void loadSessions()}
+              />
             </div>
           ) : sessions.length === 0 ? (
             <EmptyState icon={Wifi} title="لا توجد جلسات بعد" description="أنشئ جلسة أولى للبدء." />

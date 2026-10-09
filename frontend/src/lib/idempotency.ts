@@ -31,9 +31,24 @@
  *   - "unique per new action" — every NEW initiation calls
  *     generateIdempotencyKey() again. Don't memoise across actions.
  *
- *   - Bulk operations: ONE key per logical bulk (a "Refund 5 orders"
- *     button is one intent), not per item. Per-item retry-safety is
- *     handled server-side by the per-record status guards.
+ *   - Bulk operations (R126-L3 docblock correction — this bullet used
+ *     to prescribe ONE key per logical bulk, which contradicts every
+ *     bulk loop in the app and would actively break them: the backend
+ *     middleware answers 409 "key reuse with new intent" when the
+ *     SAME key arrives with a different body, and each loop iteration
+ *     IS a different body): mint a FRESH key PER ITEM, inside the
+ *     loop. Each row is its own logical action — that is the actual
+ *     idiom at topups.tsx handleBulkAction/handleApproveAll ("generate
+ *     a fresh key per iteration") and both products.tsx bulk loops.
+ *     Per-item retry-safety is handled server-side by the per-record
+ *     status guards. A bulk action that is ONE HTTP request (the
+ *     orders bulk-status PATCH) takes ONE key per click/attempt —
+ *     there is no auto-retry, so the two coincide. User-facing money
+ *     flows where a MANUAL retry must not double-charge (checkout's
+ *     per-unit purchases, the users wallet-adjust save) go further and
+ *     keep a STABLE per-intent key across retries (localStorage or a
+ *     ref) — a fresh key per attempt pierces the idempotency layer
+ *     when the first attempt actually committed server-side.
  */
 
 const HEX = "0123456789abcdef";

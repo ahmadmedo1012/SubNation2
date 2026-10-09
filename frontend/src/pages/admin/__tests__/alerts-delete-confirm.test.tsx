@@ -37,10 +37,33 @@ import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminAlertsPage from "@/pages/admin/alerts";
-import { customFetch } from "@workspace/api-client-react";
+import {
+  deleteAdminAlert,
+  deleteAllAdminAlerts,
+  listAdminAlerts,
+} from "@workspace/api-client-react";
 
+// R126-L8b (A4 §C batch-C): the page rides the generated fetchers from
+// the batch-1 spec exposure — the mock follows the new module surface
+// (listAdminAlerts for the inbox query; deleteAdminAlert /
+// deleteAllAdminAlerts for the two confirm-pinned destructive actions).
 vi.mock("@workspace/api-client-react", () => ({
-  customFetch: vi.fn(),
+  listAdminAlerts: vi.fn(),
+  markAdminAlertRead: vi.fn(),
+  markAllAdminAlertsRead: vi.fn(),
+  deleteAdminAlert: vi.fn(),
+  deleteReadAdminAlerts: vi.fn(),
+  deleteAllAdminAlerts: vi.fn(),
+  ApiError: class ApiError extends Error {
+    status: number;
+    data: unknown;
+    constructor(message: string, status: number, data: unknown = null) {
+      super(message);
+      this.name = "ApiError";
+      this.status = status;
+      this.data = data;
+    }
+  },
   setUnauthorizedHandler: vi.fn(),
 }));
 
@@ -75,17 +98,6 @@ const PAGE_ONE = {
   hasMore: false,
 };
 
-function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
-    status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
-}
-
-const fetchMock = vi.fn();
-
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -111,9 +123,8 @@ async function openDeleteConfirm() {
 describe("AdminAlertsPage — single-alert delete is confirmed, not one-tap (R120-B4 A2-F6)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (customFetch as unknown as Mock).mockResolvedValue(PAGE_ONE);
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    (listAdminAlerts as unknown as Mock).mockResolvedValue(PAGE_ONE);
+    (deleteAdminAlert as unknown as Mock).mockResolvedValue({ success: true });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -134,27 +145,25 @@ describe("AdminAlertsPage — single-alert delete is confirmed, not one-tap (R12
   });
 
   it("cancel performs NO delete request", async () => {
-    fetchMock.mockResolvedValue(resLike());
     renderPage();
 
     const dialog = await openDeleteConfirm();
     fireEvent.click(dialog.getByRole("button", { name: "إلغاء" }));
 
     await waitFor(() => expect(screen.queryByText("حذف التنبيه؟")).not.toBeInTheDocument());
-    expect(fetchMock).not.toHaveBeenCalled();
+    // R126-L8b: the DELETE is the generated fetcher now — the pin is the
+    // fetcher call, not the raw fetch URL.
+    expect(deleteAdminAlert).not.toHaveBeenCalled();
   });
 
   it("confirm fires the DELETE for exactly that alert id", async () => {
-    fetchMock.mockResolvedValue(resLike({ body: { success: true } }));
     renderPage();
 
     const dialog = await openDeleteConfirm();
     fireEvent.click(dialog.getByRole("button", { name: "حذف" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/admin/alerts/7");
-    expect(init.method).toBe("DELETE");
+    await waitFor(() => expect(deleteAdminAlert).toHaveBeenCalledTimes(1));
+    expect((deleteAdminAlert as unknown as Mock).mock.calls[0][0]).toBe(7);
   });
 });
 
@@ -197,9 +206,7 @@ const PAGE_TYPES = {
 describe("AdminAlertsPage — row actions visible to keyboard focus (R125 A6 B-2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (customFetch as unknown as Mock).mockResolvedValue(PAGE_ONE);
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    (listAdminAlerts as unknown as Mock).mockResolvedValue(PAGE_ONE);
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -224,9 +231,7 @@ describe("AdminAlertsPage — row actions visible to keyboard focus (R125 A6 B-2
 describe("AdminAlertsPage — chip bars expose toggle state + every type filters (R125 A3 #6 / A6 B-10)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (customFetch as unknown as Mock).mockResolvedValue(PAGE_TYPES);
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    (listAdminAlerts as unknown as Mock).mockResolvedValue(PAGE_TYPES);
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -283,9 +288,8 @@ describe("AdminAlertsPage — chip bars expose toggle state + every type filters
 describe("AdminAlertsPage — حذف الكل rides the shared confirm (R125 A3 #6)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (customFetch as unknown as Mock).mockResolvedValue(PAGE_TYPES);
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    (listAdminAlerts as unknown as Mock).mockResolvedValue(PAGE_TYPES);
+    (deleteAllAdminAlerts as unknown as Mock).mockResolvedValue({ success: true });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -320,35 +324,29 @@ describe("AdminAlertsPage — حذف الكل rides the shared confirm (R125 A3 
   });
 
   it("cancel performs NO delete-all request", async () => {
-    fetchMock.mockResolvedValue(resLike());
     renderPage();
     const dialog = await openDeleteAllConfirm();
 
     fireEvent.click(dialog.getByRole("button", { name: "إلغاء" }));
     await waitFor(() => expect(screen.queryByText("حذف كل التنبيهات؟")).not.toBeInTheDocument());
-    expect(fetchMock).not.toHaveBeenCalled();
+    // R126-L8b: the DELETE is the generated fetcher now.
+    expect(deleteAllAdminAlerts).not.toHaveBeenCalled();
   });
 
   it("confirm fires the DELETE for the whole inbox", async () => {
-    fetchMock.mockResolvedValue(resLike({ body: { success: true } }));
     renderPage();
     const dialog = await openDeleteAllConfirm();
 
     fireEvent.click(dialog.getByRole("button", { name: "حذف الكل" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/admin/alerts");
-    expect(init.method).toBe("DELETE");
+    await waitFor(() => expect(deleteAllAdminAlerts).toHaveBeenCalledTimes(1));
   });
 });
 
 describe("AdminAlertsPage — read/unread state is not color-only (R125 A6 B-15)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (customFetch as unknown as Mock).mockResolvedValue(PAGE_TYPES);
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    (listAdminAlerts as unknown as Mock).mockResolvedValue(PAGE_TYPES);
   });
   afterEach(() => {
     vi.unstubAllGlobals();

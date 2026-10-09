@@ -422,3 +422,124 @@ describe("AdminProductsPage — server-side search + honest catalog count (R120-
     expect(input).toHaveValue("");
   });
 });
+
+/** R126-L3 (A4-B-2 + A2/A8) — products writes keep the shared stats
+ *  fresh AND bulk-failure reasons speak Arabic.
+ *
+ * A4-B-2: every products write path funnels through the page's
+ * `invalidate()` (mutations, both bulk loops, stock set-count, the
+ * variants dialog), and each moves stats fields (available_stock /
+ * unsold_rows) — but the callback used to invalidate ONLY the products
+ * list key, leaving the acting tab's dashboard + layout stats stale
+ * for up to the 300s fallback. The orders/users/tickets co-invalidation
+ * idiom now applies.
+ *
+ * A2/A8: the bulk loops' per-failure reasons used to fall back to a
+ * bare English `HTTP 502` (and raw `e.message` for network failures)
+ * inside the Arabic summary toast — they now route through
+ * getErrorMessage (the Arabic guard).
+ */
+describe("AdminProductsPage — stats co-invalidation + Arabic bulk reasons (R126-L3)", () => {
+  /** renderPage with an invalidateQueries spy on the fresh client. */
+  function renderPageWithSpy() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+    const view = render(
+      <QueryClientProvider client={client}>
+        <Router>
+          <AdminProductsPage />
+        </Router>
+      </QueryClientProvider>,
+    );
+    return { invalidateSpy, ...view };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockProductsResult(PRODUCTS);
+    (useCreateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    (useUpdateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("a bulk archive invalidates the products key AND /api/admin/stats (A4-B-2)", async () => {
+    fetchMock.mockResolvedValue(resLike({ ok: true }));
+
+    const { invalidateSpy } = renderPageWithSpy();
+
+    // Select both products, confirm the styled bulk dialog.
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Netflix 1M" }));
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
+    fireEvent.click(screen.getByRole("button", { name: "أرشفة" }));
+    const title = await screen.findByText("أرشفة المنتجات المحددة؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    if (!dialog) throw new Error("bulk confirm dialog not rendered");
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "أرشفة" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    const keys = invalidateSpy.mock.calls
+      .map((call) => call[0])
+      .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
+      .map((arg) => JSON.stringify(arg.queryKey));
+    // The products list key (the mocked getListAdminProductsQueryKey()
+    // shape)…
+    expect(keys).toContain(JSON.stringify(["/api/admin/products", null]));
+    // …AND the shared stats key — the co-invalidation the A4-B-2 audit
+    // found missing on the whole products family.
+    expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
+  });
+
+  it("a message-less failure body surfaces the Arabic generic, never a bare HTTP status (A2/A8)", async () => {
+    // A proxy 502 with an unparseable/empty body — the exact shape that
+    // used to land as "HTTP 502" inside the Arabic summary toast.
+    fetchMock.mockResolvedValue(resLike({ ok: false, status: 502, body: null }));
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Netflix 1M" }));
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
+    fireEvent.click(screen.getByRole("button", { name: "أرشفة" }));
+    const title = await screen.findByText("أرشفة المنتجات المحددة؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "أرشفة" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    const toastArg = toastMock.mock.calls[0][0];
+    expect(toastArg.variant).toBe("destructive");
+    // The Arabic guard's fallback — never the English status line.
+    expect(toastArg.description).toContain("حدث خطأ. حاول مرة أخرى");
+    expect(toastArg.description).not.toContain("HTTP 502");
+  });
+
+  it("a network-level failure surfaces the Arabic connection line, not raw e.message (A2/A8)", async () => {
+    // "Failed to fetch" — the browser's English TypeError that used to
+    // ride the catch branch verbatim.
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Netflix 1M" }));
+    fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
+    fireEvent.click(screen.getByRole("button", { name: "أرشفة" }));
+    const title = await screen.findByText("أرشفة المنتجات المحددة؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "أرشفة" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    const toastArg = toastMock.mock.calls[0][0];
+    expect(toastArg.description).toContain("تعذّر الاتصال بالخدمة");
+    expect(toastArg.description).not.toContain("Failed to fetch");
+  });
+});

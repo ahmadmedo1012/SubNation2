@@ -268,12 +268,20 @@ export default function AdminReferralsPage() {
         const params = new URLSearchParams();
         if (statusFilter) params.set("status", statusFilter);
         if (search.trim()) params.set("search", search.trim());
-        const r = await fetch(`/api/admin/referrals?${params}`, {
+        const url = `/api/admin/referrals?${params}`;
+        const r = await fetch(url, {
           headers,
           // 98-F7 (R98-02): abort support for the debounced search path —
           // mirrors the GlobalSearch controller pattern (admin/layout.tsx).
           signal: opts?.signal,
         });
+        // R126-L3 (A4-B-1): an expired session on the LIST fetch was the
+        // console's last silent-401 — it fell into the !ok branch below
+        // and rendered an Arabic error card the operator could hammer
+        // «إعادة المحاولة» on forever, instead of the uniform global
+        // «انتهت الجلسة» toast + login redirect. Same guard the credit
+        // POST 100 lines below has had since R123.
+        if (isAdminUnauthorized(r, url)) return;
         if (!r.ok) {
           // A newer request owns the state — drop the stale error.
           if (seq !== fetchSeqRef.current) return;

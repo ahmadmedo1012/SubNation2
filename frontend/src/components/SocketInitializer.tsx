@@ -46,10 +46,15 @@ export function SocketInitializer() {
   useEffect(() => {
     const handleResyncEvent = () => {
       if (!adminToken) return;
+      // R126-L3 (A2-1): same key-set as handleStatsUpdate below — a
+      // parked-socket window can carry ticket/risk writes too.
       void queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/admin/topups"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/admin/tickets"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-risk-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-risk-dashboard"] });
     };
 
     window.addEventListener(SOCKET_RESYNC_EVENT, handleResyncEvent);
@@ -58,12 +63,19 @@ export function SocketInitializer() {
 
   // ── Admin room listeners (Round-4, perf P1-3/P1-5) ────────────────────
   //
-  // The backend emits `admin-stats-update` (topup approve/reject + order
-  // bulk updates) and `admin-alert-new` (jobs/alertLogger emits on
-  // insert). With these listeners in place, the covered admin queries
-  // invalidate ON EVENT and their refetchIntervals are demoted to
-  // 5-minute heartbeat fallbacks (see dashboard/orders/topups/users
-  // pages + AdminLayout alert pollers).
+  // The backend emits `admin-stats-update` from every family whose
+  // writes move admin numbers — topup approve/reject, order bulk
+  // updates, users PATCH, ticket reply/status, risk label/bulk-label
+  // and the products write family (R125-I6 + R126 wave-1) — plus
+  // `admin-alert-new` (jobs/alertLogger emits on insert). With these
+  // listeners in place, the covered admin queries invalidate ON EVENT
+  // and their refetchIntervals are demoted to 5-minute heartbeat
+  // fallbacks (see dashboard/orders/topups/users pages + AdminLayout
+  // alert pollers). R126-L3 (A2-1/A4-B-5): the invalidation key-set
+  // now carries the tickets list + the two risk keys as well —
+  // tickets/risk-event have no polling, so without them a second
+  // operator's reply left this tab's queue stale while the layout
+  // badge (fed by stats) updated beside it.
   useEffect(() => {
     if (!adminToken) return;
     let active = true;
@@ -78,11 +90,21 @@ export function SocketInitializer() {
         const handleStatsUpdate = () => {
           // Prefix-invalidations cover every params variant of each
           // list (dashboard's {limit:8} recent orders, the orders
-          // page's {}, users' {search} variants, …).
+          // page's {}, users' {search} variants, tickets' {status}
+          // variants…). R126-L3 (A2-1/A4-B-5): the tickets list key +
+          // the two risk keys join the set — the backend emits
+          // admin-stats-update for ticket reply/status and risk label
+          // writes, and tickets/risk-event have NO polling
+          // (refetchOnWindowFocus is off app-wide), so these keys were
+          // the missing freshness path for the support/security
+          // queues on other tabs.
           void queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
           void queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
           void queryClient.invalidateQueries({ queryKey: ["/api/admin/topups"] });
           void queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+          void queryClient.invalidateQueries({ queryKey: ["/api/admin/tickets"] });
+          void queryClient.invalidateQueries({ queryKey: ["admin-risk-events"] });
+          void queryClient.invalidateQueries({ queryKey: ["admin-risk-dashboard"] });
         };
 
         const handleAlertNew = () => {

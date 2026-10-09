@@ -642,13 +642,22 @@ export default function AdminTopupsPage() {
     },
   ]);
 
-  // 94-C2 (A2 P1-1): the money queue is an accumulating infinite query
-  // over the frozen `?page=&limit=` contract (the backend historically
-  // hard-capped at the newest 100 rows with no page param — pending
-  // topups older than the cap were INVISIBLE while the sidebar badge
-  // counted the true total). The key keeps the "/api/admin/topups"
-  // prefix so the existing invalidations (approve/reject/bulk loops)
-  // still refresh the accumulated pages.
+  // R126-L3 (A1-10) + 94-C2 (A2 P1-1): the money queue is an
+  // accumulating infinite query over the frozen `?page=&limit=`
+  // contract — now with the backend `?status=` param riding the ACTIVE
+  // TAB (a per-tab query key, the tickets.tsx statusFilter idiom).
+  // Previously the fetch pulled ALL statuses and the tabs filtered
+  // client-side, so the PENDING tab over a partial window could read
+  // the hard «لا توجد طلبات قيد الانتظار» while pending rows older
+  // than the newest 100 sat on unloaded pages — and the header chip /
+  // tab count read 0 against the sidebar badge's server truth. With
+  // the server-side filter, page 1 of the pending tab IS the pending
+  // head: the tab can never false-empty while a pending row exists,
+  // and its counts describe the server-filtered window. The key keeps
+  // the "/api/admin/topups" prefix so the existing invalidations
+  // (approve/reject/bulk loops/socket) still refresh the accumulated
+  // pages of every tab.
+  const topupsListParams = { status: statusFilter || undefined, limit: TOPUPS_PAGE_SIZE };
   const {
     data: topupsPages,
     isLoading,
@@ -664,10 +673,10 @@ export default function AdminTopupsPage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery<AdminTopupRow[], Error>({
-    queryKey: ["/api/admin/topups", "load-more"],
+    queryKey: ["/api/admin/topups", "load-more", topupsListParams],
     queryFn: ({ pageParam, signal }) =>
       customFetch<AdminTopupRow[]>(
-        `/api/admin/topups?page=${pageParam}&limit=${TOPUPS_PAGE_SIZE}`,
+        `/api/admin/topups?page=${pageParam}&limit=${TOPUPS_PAGE_SIZE}${statusFilter ? `&status=${statusFilter}` : ""}`,
         {
           signal,
           headers,
@@ -805,15 +814,15 @@ export default function AdminTopupsPage() {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
 
-  // R124-I5 (A6 F14a): the status tab + the debounced search both filter
-  // client-side over the accumulated pages (useMemo — the derived array
-  // feeding the cards keeps a stable identity between keystrokes). Lives
-  // ABOVE the adminToken early-return (rules of hooks).
+  // R124-I5 (A6 F14a): the status tab now rides the SERVER-side
+  // ?status= param (R126-L3 A1-10) — only the debounced SEARCH stays
+  // client-side over the accumulated pages of the active tab (the
+  // route supports no ?search=). Lives ABOVE the adminToken
+  // early-return (rules of hooks).
   const topups = useMemo(() => {
-    const byStatus = statusFilter ? allTopups.filter((t) => t.status === statusFilter) : allTopups;
     const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return byStatus;
-    return byStatus.filter((t) =>
+    if (!q) return allTopups;
+    return allTopups.filter((t) =>
       // Search by reference / phone / user: the operator's lookup keys
       // for a single topup in the queue (payment reference, sender +
       // user phone, and the display name when present).
@@ -825,7 +834,7 @@ export default function AdminTopupsPage() {
         t.user_display_name,
       ].some((v) => (v ?? "").toLowerCase().includes(q)),
     );
-  }, [allTopups, statusFilter, debouncedSearch]);
+  }, [allTopups, debouncedSearch]);
   // R125-I2 (A5-F2): the inline per-render aggregates moved up here
   // into the memo chain — pendingTopups/statusCounts previously
   // re-filtered the full accumulated set on EVERY render (each
@@ -848,6 +857,13 @@ export default function AdminTopupsPage() {
     [allTopups],
   );
 
+  // R126-L3 (A1-10): with the per-tab server-side fetch, the loaded
+  // window speaks only for the ACTIVE tab's status. On the pending
+  // tab this is the server-filtered pending head (a real count, never
+  // a false 0 while pending rows exist); on the all-tab it is the
+  // within-window count as before; on other tabs it is not claimable
+  // — 0 keeps the chip + bulk bar hidden instead of lying, and the
+  // sidebar badge (layout's server stats) carries the global truth.
   const pendingCount = statusCounts["pending"] ?? 0;
 
   const searchActive = debouncedSearch.trim() !== "";
@@ -975,16 +991,22 @@ export default function AdminTopupsPage() {
             } | null;
             failures.push({
               id,
-              reason:
-                body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
+              // R126-L3 (A2/A8): route through getErrorMessage — the
+              // Arabic guard maps the body's code/error to Arabic and
+              // collapses message-less bodies (proxy 502s) to the
+              // generic Arabic line instead of a bare English
+              // "HTTP 502" inside the Arabic summary toast.
+              reason: getErrorMessage(body),
             });
             continue;
           }
           successCount++;
         } catch (e) {
+          // R126-L3 (A2/A8): network-level failures speak Arabic too —
+          // "Failed to fetch" used to land raw in the summary toast.
           failures.push({
             id,
-            reason: e instanceof Error ? e.message : "خطأ غير معروف",
+            reason: getErrorMessage(e),
           });
         }
       }
@@ -1073,15 +1095,18 @@ export default function AdminTopupsPage() {
               error?: string;
               code?: string;
             } | null;
-            throw new Error(
-              body && (body.error || body.code) ? getErrorMessage(body) : `HTTP ${r.status}`,
-            );
+            // R126-L3 (A2/A8): same Arabic guard as handleBulkAction —
+            // no bare "HTTP 502" fragments in the money summary toast.
+            throw new Error(getErrorMessage(body));
           }
           approvedCount++;
         } catch (e) {
+          // R126-L3 (A2/A8): the thrown reason above is already Arabic
+          // (getErrorMessage is idempotent on its own output); network
+          // TypeErrors collapse to the Arabic connection line.
           failures.push({
             id: t.id,
-            reason: e instanceof Error ? e.message : "خطأ غير معروف",
+            reason: getErrorMessage(e),
           });
         }
         setApproveAllProgress({ done: index + 1, total: pending.length });
@@ -1178,9 +1203,14 @@ export default function AdminTopupsPage() {
                   pending chip below counts the LOADED pending rows; the
                   sidebar badge carries the server-side truth. */}
               <span>
+                {/* R126-L3 (A1-10): the count line names the ACTIVE tab
+                    when one is on — with the per-tab server-side fetch
+                    the numbers describe that tab's server-filtered
+                    window, and the qualifier keeps «إجمالاً» from
+                    reading as the whole queue's total. */}
                 {knownTotal
-                  ? `${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} إجمالاً`
-                  : `عرض ${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} (الأحدث أولاً)`}
+                  ? `${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} إجمالاً${statusFilter ? ` (${statusLabel(statusFilter)})` : ""}`
+                  : `عرض ${formatCount(allTopups.length, TOPUP_COUNT_FORMS)}${statusFilter ? ` (${statusLabel(statusFilter)})` : ""} (الأحدث أولاً)`}
               </span>
               {/* R124-I5 (A6 F14a): honest search-result count — the
                   header keeps describing the loaded window; the filter's
@@ -1322,8 +1352,15 @@ export default function AdminTopupsPage() {
             {/* Status filter tabs */}
             <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1">
               {STATUS_FILTERS.map((s) => {
-                const count = s.value ? (statusCounts[s.value] ?? 0) : allTopups.length;
                 const active = statusFilter === s.value;
+                // R126-L3 (A1-10): the per-tab server-side fetch means
+                // the loaded window only speaks for the ACTIVE tab's
+                // status — an inactive tab's count is UNKNOWN (its rows
+                // are not in this window), and rendering the accidental
+                // 0 was exactly the false-count the audit flagged. The
+                // active tab keeps its live count; the sidebar badge
+                // carries the global pending truth.
+                const count = active ? allTopups.length : null;
                 return (
                   <button
                     key={s.value}
@@ -1350,7 +1387,7 @@ export default function AdminTopupsPage() {
                     }`}
                   >
                     {s.label}
-                    {count > 0 && (
+                    {count !== null && count > 0 && (
                       <span
                         className={`text-3xs font-bold ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
                       >
@@ -1412,38 +1449,75 @@ export default function AdminTopupsPage() {
             onRetry={() => refetch()}
           />
         ) : topups.length === 0 ? (
-          <EmptyState
-            icon={Clock}
-            title={
-              searchActive
-                ? `لا نتائج لـ "${debouncedSearch.trim()}"`
-                : statusFilter === "pending"
-                  ? /* R125-I2 (A1-8): the statusLabel vocabulary — the
-                     tab above reads «قيد الانتظار»; the empty claim
-                     said «معلق» for the same status (one status, one
-                     Arabic word — the status-badge invariant). */
-                    "لا توجد طلبات قيد الانتظار"
-                  : "لا توجد طلبات في هذه الفئة"
-            }
-            description={
-              searchActive
-                ? "جرّب رقم تحويل أو هاتفاً آخر — أو امسح البحث"
-                : "ستظهر الطلبات هنا عند ورودها"
-            }
-            action={
-              searchActive ? (
+          searchActive && hasNextPage ? (
+            /* R126-L3 (A1-10): the search still filters CLIENT-side over
+               the accumulated pages of the active tab, so a zero-match
+               search over a partial window is NOT global emptiness — the
+               orders.tsx:1471-1506 partial-empty block: honest wording +
+               load-more as the remedy + the one-tap search clear. The
+               status-tab empties no longer need this guard (the ?status=
+               fetch makes page 1 the tab's head — a tab-empty is a
+               server-verified claim now). */
+            <div className="text-center py-14 text-muted-foreground bg-card border border-border/60 rounded-2xl space-y-3">
+              <Clock className="w-10 h-10 mx-auto opacity-20" />
+              <p className="text-sm font-bold text-foreground/80">
+                لا طلبات مطابقة لـ &quot;{debouncedSearch.trim()}&quot; ضمن الصفحات المحمّلة
+              </p>
+              <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لتوسيع النطاق</p>
+              <div className="flex justify-center gap-2 flex-wrap">
+                <LoadMoreButton
+                  busy={isFetchingNextPage}
+                  disabled={isLoading}
+                  onClick={() => void fetchNextPage()}
+                />
                 <button
                   type="button"
                   onClick={() => setSearch("")}
-                  /* R125-I2 (A6-B6): --primary-text — raw --primary on a
-                     dark card is 3.76:1, under the 4.5:1 text floor. */
-                  className="text-xs text-primary-text hover:underline mt-1"
+                  className="text-xs text-primary-text hover:underline mt-1.5"
                 >
                   مسح البحث
                 </button>
-              ) : undefined
-            }
-          />
+              </div>
+            </div>
+          ) : (
+            /* R126-L3 (A1-10): the hard empty is now only reached over a
+               server-verified window — a status tab's page 1 was EMPTY
+               (no such rows exist at all) or the search covered a
+               complete tab window. The pending-tab wording stays the
+               statusLabel vocabulary (R125-I2 A1-8). */
+            <EmptyState
+              icon={Clock}
+              title={
+                searchActive
+                  ? `لا نتائج لـ "${debouncedSearch.trim()}"`
+                  : statusFilter === "pending"
+                    ? /* R125-I2 (A1-8): the statusLabel vocabulary — the
+                       tab above reads «قيد الانتظار»; the empty claim
+                       said «معلق» for the same status (one status, one
+                       Arabic word — the status-badge invariant). */
+                      "لا توجد طلبات قيد الانتظار"
+                    : "لا توجد طلبات في هذه الفئة"
+              }
+              description={
+                searchActive
+                  ? "جرّب رقم تحويل أو هاتفاً آخر — أو امسح البحث"
+                  : "ستظهر الطلبات هنا عند ورودها"
+              }
+              action={
+                searchActive ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    /* R125-I2 (A6-B6): --primary-text — raw --primary on a
+                       dark card is 3.76:1, under the 4.5:1 text floor. */
+                    className="text-xs text-primary-text hover:underline mt-1"
+                  >
+                    مسح البحث
+                  </button>
+                ) : undefined
+              }
+            />
+          )
         ) : (
           <div className="space-y-2.5">
             {/* R125-I2 (A5-F2): the memoized row component — see the

@@ -312,6 +312,13 @@ export default function AdminPricingPage() {
   const [couponCode, setCouponCode] = useState("");
   const [simulateReferred, setSimulateReferred] = useState(false);
   const [result, setResult] = useState<CalculatorResponse | null>(null);
+  // R126-L3 (A2-9 stale-keep): a FAILED recalculation keeps the last
+  // successful result standing (with an error banner naming it stale)
+  // instead of wiping it to the «أدخل سعراً…» placeholder — the auto-
+  // recalc effect fires on every input change, so a transient 5xx on
+  // one keystroke used to destroy a result the operator was reading
+  // and replace it with a claim that no calculation existed at all.
+  const [calcError, setCalcError] = useState<string | null>(null);
 
   const headers = useAdminHeaders();
 
@@ -587,6 +594,7 @@ export default function AdminPricingPage() {
       // response owns the result slot; drop the stale one.
       if (seq !== calcSeqRef.current) return;
       setResult(data as unknown as CalculatorResponse);
+      setCalcError(null);
     } catch (err: unknown) {
       if (seq !== calcSeqRef.current) return;
       toast({
@@ -594,7 +602,13 @@ export default function AdminPricingPage() {
         description: describeError(err),
         variant: "destructive",
       });
-      setResult(null);
+      // R126-L3 (A2-9 stale-keep): keep the previous result standing —
+      // the banner below marks it stale. The old `setResult(null)` was
+      // the false-empty half of the finding: a transient gateway error
+      // mid-typing collapsed the outputs card to «أدخل سعراً أو اختر
+      // منتجاً لرؤية الحساب.» as if the operator had never calculated
+      // (the orders/tickets stale-keep precedence, applied here).
+      setCalcError(describeError(err));
     }
   }
 
@@ -1112,10 +1126,37 @@ export default function AdminPricingPage() {
               <Sparkles className="w-4 h-4 text-primary" /> النتائج
             </h2>
 
+            {/* R126-L3 (A2-9): the persistent error surface — the toast
+                above is transient, but a failed recalc must leave a
+                STANDING marker that the numbers below are stale (or,
+                before any result, that the calculator itself failed).
+                role="alert" so screen readers hear it too. */}
+            {calcError && (
+              <div
+                role="alert"
+                className="flex items-start gap-2.5 p-3 border border-destructive/25 bg-destructive/5 rounded-xl text-destructive"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="min-w-0 text-xs leading-relaxed">
+                  <span className="font-bold">
+                    {result
+                      ? "فشل تحديث الحاسبة — النتيجة أدناه من آخر حساب ناجح وقد لا تطابق المدخلات الحالية."
+                      : "تعذّر تشغيل الحاسبة — أعد المحاولة أو حدّث الصفحة."}
+                  </span>{" "}
+                  <span className="opacity-80">{calcError}</span>
+                </div>
+              </div>
+            )}
+
             {!result ? (
-              <p className="text-xs text-muted-foreground py-8 text-center">
-                أدخل سعراً أو اختر منتجاً لرؤية الحساب.
-              </p>
+              /* R126-L3 (A2-9): with a failed FIRST calculation the bare
+                 «أدخل سعراً…» guidance is a false claim — the error
+                 banner above owns the card until a calculation lands. */
+              !calcError && (
+                <p className="text-xs text-muted-foreground py-8 text-center">
+                  أدخل سعراً أو اختر منتجاً لرؤية الحساب.
+                </p>
+              )
             ) : (
               <>
                 {/* R115 (Part 15): the risk state badge — NEVER a bare

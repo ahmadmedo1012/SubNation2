@@ -150,7 +150,9 @@ describe("AdminUsersPage — derived loyalty tier + points-as-money hints (R115)
     renderPage();
     const dialog = await openEditModal();
 
-    // A points change + valid note → the PATCH fires and is rejected.
+    // A points change + valid note → the points money-confirm (A2-5,
+    // R126-L3) opens first; confirming it fires the PATCH, which the
+    // backend rejects with its own Arabic wording.
     fireEvent.change(within(dialog).getByLabelText("نقاط الولاء"), {
       target: { value: "150" },
     });
@@ -158,6 +160,10 @@ describe("AdminUsersPage — derived loyalty tier + points-as-money hints (R115)
       target: { value: "تسوية نقاط يدوية" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
+
+    const title = await screen.findByText("تأكيد تعديل النقاط");
+    const confirmDialog = title.closest('[role="alertdialog"]') as HTMLElement;
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "تنفيذ التعديل" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     // The route's specific Arabic wording surfaces — NOT the generic

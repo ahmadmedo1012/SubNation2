@@ -2822,6 +2822,514 @@ export const UpdateAdminUserResponse = zod.object({
 });
 
 /**
+ * The alerts inbox feed (20 s poll + `admin-alert-new` socket
+ * refresh). The envelope carries the unread badge count, the
+ * honest total and `hasMore` so the FE infinite query accumulates
+ * without relying on the full-page heuristic. Cache-Control:
+ * no-store.
+ * @summary List admin alerts (requireAdmin + support scope) — paginated inbox envelope
+ */
+export const ListAdminAlertsQueryParams = zod.object({
+  page: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("1-based page number (default 1, ceiling 10 000)."),
+  limit: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Page size, clamped to [1, 200] (default 50)."),
+});
+
+export const ListAdminAlertsResponse = zod
+  .object({
+    alerts: zod.array(
+      zod
+        .object({
+          id: zod.number().int(),
+          type: zod
+            .string()
+            .describe(
+              "varchar(30) — known values: system, low_stock, no_stock,\nforecast_stockout, coupon_maxed, coupon_expiring. Kept an\nopen string (not an enum) so a new producer cannot break\nthe contract.\n",
+            ),
+          title: zod.string(),
+          message: zod.string().nullable(),
+          isRead: zod.boolean(),
+          dedupeKey: zod
+            .string()
+            .nullable()
+            .describe("Dedupe key for repeated operational alerts; null for one-offs."),
+          createdAt: zod.coerce.date(),
+        })
+        .describe(
+          "A raw admin_alerts row (drizzle select() — every column rides\nthe JSON, dedupeKey included).\n",
+        ),
+    ),
+    unreadCount: zod.number().int(),
+    total: zod.number().int(),
+    page: zod.number().int(),
+    limit: zod.number().int(),
+    hasMore: zod.boolean(),
+  })
+  .describe(
+    "The inbox envelope: one page of rows + the unread badge count +\nthe honest total + hasMore (offset + page length < total).\n",
+  );
+
+/**
+ * Wipes the whole admin_alerts table (the «حذف الكل» confirm in
+ * the inbox). This is operations-telemetry deletion, not an audit
+ * purge — audit_logs is untouched. Cache-Control: no-store.
+ * @summary Delete every admin alert (requireAdmin + support scope)
+ */
+export const DeleteAllAdminAlertsResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * The layout's unread badge (300 s staleTime + socket refresh on
+ * `admin-alert-new`). Cache-Control: no-store.
+ * @summary Count unread admin alerts (requireAdmin + support scope)
+ */
+export const GetAdminAlertsUnreadCountResponse = zod.object({
+  count: zod.number().int(),
+});
+
+/**
+ * @summary Mark every admin alert read (requireAdmin + support scope)
+ */
+export const MarkAllAdminAlertsReadResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Delete all READ admin alerts (requireAdmin + support scope)
+ */
+export const DeleteReadAdminAlertsResponse = zod.object({
+  success: zod.boolean(),
+  deleted: zod.number().int().describe("Count of read rows deleted."),
+});
+
+/**
+ * 404 when the id does not exist (silent no-op → 404 per audit §5).
+ * @summary Delete one admin alert (requireAdmin + support scope)
+ */
+
+export const DeleteAdminAlertParams = zod.object({
+  id: zod.coerce
+    .number()
+    .int()
+    .min(1)
+    .describe("Alert id (digit-exact strict parse; non-integer → 400 INVALID_DATA)."),
+});
+
+export const DeleteAdminAlertResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * @summary Mark one admin alert read (requireAdmin + support scope)
+ */
+
+export const MarkAdminAlertReadParams = zod.object({
+  id: zod.coerce
+    .number()
+    .int()
+    .min(1)
+    .describe("Alert id (digit-exact strict parse; non-integer → 400 INVALID_DATA)."),
+});
+
+export const MarkAdminAlertReadResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * Plain array (no total meta — the FE getNextPageParam uses the
+ * full-page heuristic, documented frontend-side). Each row is the
+ * identity-enriched ticket + batched reply_count / last_reply_at /
+ * has_unread_admin (true when the LATEST reply is from the user).
+ * Cache-Control: no-store.
+ * @summary List support tickets for the admin queue (requireAdmin + support scope)
+ */
+export const ListAdminTicketsQueryParams = zod.object({
+  status: zod
+    .union([
+      zod.literal("open"),
+      zod.literal("in_progress"),
+      zod.literal("closed"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe(
+      "Optional ticket_status pg-enum filter — out-of-enum values\nare 400 INVALID_DATA (round-94 A5-03), not the 500 the raw\ncolumn filter used to produce.\n",
+    ),
+  page: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("1-based page number (default 1, ceiling 10 000)."),
+  limit: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Page size, clamped to [1, 200] (default 100; ?limit=0 maps to 100)."),
+});
+
+export const ListAdminTicketsResponseItem = zod
+  .object({
+    id: zod.number().int(),
+    user_phone: zod
+      .string()
+      .describe("Empty string when the ticket's user was deleted/anonymized."),
+    user_display_name: zod.string().nullable(),
+    user_email: zod.string().nullable(),
+    user_auth_provider: zod.string().nullable(),
+    user_has_google: zod.boolean(),
+    user_has_telegram: zod.boolean(),
+    user_has_firebase: zod.boolean(),
+    user_has_whatsapp: zod.boolean(),
+    title: zod.string(),
+    category: zod
+      .string()
+      .nullable()
+      .describe(
+        "Raw varchar(50) — the user-side create route writes the\nbilling/technical/order/account/other enum (default other);\nthe admin list passes the column through unvalidated, so\nnull/legacy values are possible.\n",
+      ),
+    status: zod.enum(["open", "in_progress", "closed"]),
+    created_at: zod.string(),
+    reply_count: zod.number().int(),
+    last_reply_at: zod
+      .string()
+      .nullable()
+      .describe("ISO timestamp of the newest reply; null when the ticket has none."),
+    has_unread_admin: zod
+      .boolean()
+      .describe("True when the LATEST reply is from the user (awaiting admin)."),
+  })
+  .describe("One queue row: the ticket + identity enrichment + batched reply\nstats.\n");
+export const ListAdminTicketsResponse = zod.array(ListAdminTicketsResponseItem);
+
+/**
+ * The ticket row + every reply (oldest first). Cache-Control:
+ * no-store.
+ * @summary One ticket's full thread (requireAdmin + support scope)
+ */
+
+export const GetAdminTicketParams = zod.object({
+  id: zod.coerce
+    .number()
+    .int()
+    .min(1)
+    .describe("Ticket id (digit-exact strict parse; non-integer → 400 INVALID_DATA)."),
+});
+
+export const GetAdminTicketResponse = zod
+  .object({
+    id: zod.number().int(),
+    user_phone: zod.string(),
+    user_display_name: zod.string().nullable(),
+    user_email: zod.string().nullable(),
+    user_auth_provider: zod.string().nullable(),
+    user_has_google: zod.boolean(),
+    user_has_telegram: zod.boolean(),
+    user_has_firebase: zod.boolean(),
+    user_has_whatsapp: zod.boolean(),
+    title: zod.string(),
+    category: zod.string().nullable(),
+    status: zod.enum(["open", "in_progress", "closed"]),
+    created_at: zod.string(),
+    replies: zod
+      .array(
+        zod.object({
+          id: zod.number().int(),
+          author_type: zod.enum(["user", "admin"]),
+          message: zod.string(),
+          created_at: zod.string(),
+        }),
+      )
+      .describe("Full messages, oldest first."),
+  })
+  .describe(
+    "The detail view — the same identity-enriched ticket row + every\nreply, oldest first.\n",
+  );
+
+/**
+ * Inserts an admin reply, flips the ticket to in_progress, notifies
+ * the user, emits `admin-stats-update {type: ticket-reply}` and
+ * writes a `ticket.reply` audit row. 404 when the ticket id does
+ * not exist.
+ * @summary Reply to a ticket as admin (requireAdmin + support scope; audited)
+ */
+
+export const ReplyAdminTicketParams = zod.object({
+  id: zod.coerce
+    .number()
+    .int()
+    .min(1)
+    .describe("Ticket id (digit-exact strict parse; non-integer → 400 INVALID_DATA)."),
+});
+
+export const replyAdminTicketBodyMessageMax = 4000;
+
+export const ReplyAdminTicketBody = zod
+  .object({
+    message: zod.string().min(1).max(replyAdminTicketBodyMessageMax),
+  })
+  .describe(
+    "strict zod (AdminReplyBody) — unknown keys are 400; message is\ntrimmed and bounded 1-4000 chars.\n",
+  );
+
+export const ReplyAdminTicketResponse = zod.object({
+  id: zod.number().int(),
+  author_type: zod.enum(["user", "admin"]),
+  message: zod.string(),
+  created_at: zod.string(),
+});
+
+/**
+ * 404 when the ticket id does not exist (silent no-op → 404 per
+ * audit §5). Emits `admin-stats-update {type:
+ * ticket-status-update, status}` and writes a
+ * `ticket.status_update` audit row.
+ * @summary Flip a ticket's status (requireAdmin + support scope; audited)
+ */
+
+export const UpdateAdminTicketStatusParams = zod.object({
+  id: zod.coerce
+    .number()
+    .int()
+    .min(1)
+    .describe("Ticket id (digit-exact strict parse; non-integer → 400 INVALID_DATA)."),
+});
+
+export const UpdateAdminTicketStatusBody = zod.object({
+  status: zod.enum(["open", "in_progress", "closed"]),
+});
+
+export const UpdateAdminTicketStatusResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
+
+/**
+ * Four fixed fields — the settings page's read-only snapshot.
+ * Cache-Control: no-store.
+ * @summary Platform settings snapshot (requireAdmin + settings scope)
+ */
+export const GetAdminSettingsResponse = zod
+  .object({
+    telegram_configured: zod.boolean(),
+    platform_name: zod.string(),
+    currency: zod.string().describe("ISO currency code (LYD)."),
+    maintenance_mode: zod.boolean(),
+  })
+  .describe("The settings page's four-field snapshot (fixed values today).");
+
+/**
+ * Static provider metadata (from the PROVIDERS registry) joined
+ * with the system_settings rows: enablement + a MASKED config
+ * (secrets collapse to "[SET]", non-secrets show verbatim). The
+ * PATCH /auth/{id} sibling validates per-provider dynamically and
+ * is deliberately out of batch 1. Cache-Control: no-store.
+ * @summary Auth provider settings + masked config (requireAdmin + settings scope)
+ */
+export const GetAdminAuthSettingsResponse = zod.object({
+  providers: zod.array(
+    zod.object({
+      id: zod.string().describe("Provider registry id (google | telegram | apple today)."),
+      label: zod.string(),
+      icon: zod.string(),
+      color: zod.string(),
+      auth_type: zod.enum(["client_side", "oauth_redirect", "widget"]),
+      description: zod.string(),
+      setup_url: zod.string(),
+      fields: zod.array(
+        zod
+          .object({
+            key: zod.string(),
+            label: zod.string(),
+            isSecret: zod.boolean(),
+            placeholder: zod.string().optional(),
+          })
+          .describe("Static provider-field metadata (the form builder's source)."),
+      ),
+      enabled: zod.boolean(),
+      config: zod
+        .record(zod.string(), zod.string())
+        .describe(
+          'Masked config keyed by field key — secret fields collapse to\n"[SET]" (or "" when unset); non-secret fields show verbatim\n("" when unset).\n',
+        ),
+    }),
+  ),
+});
+
+/**
+ * Per-Tripoli-calendar-day buckets (the SQL shifts +2h before
+ * truncating to DATE, so buckets match the operator's wall clock).
+ * `date` is the RAW ISO calendar key ("2026-09-06") — display
+ * localization stays client-side. Money fields (revenue,
+ * discounts) ride the finance gate server-side (R126 A7-F1); the
+ * FE additionally never fetches this for non-finance operators.
+ * Cached 30 s per (days, day-bucket).
+ * @summary Daily chart series (requireAdmin + finance scope)
+ */
+export const GetAdminChartDataQueryParams = zod.object({
+  days: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Series length in days, clamped to [1, 365] (default 7)."),
+});
+
+export const GetAdminChartDataResponseItem = zod
+  .object({
+    date: zod
+      .string()
+      .describe(
+        'RAW ISO calendar key ("2026-09-06") — NOT localized; the FE parses and localizes.',
+      ),
+    orders: zod.number().int(),
+    revenue: zod.number().describe("Money (finance-gated surface)."),
+    users: zod.number().int(),
+    discounts: zod.number().describe("Money (finance-gated surface)."),
+    coupon_orders: zod.number().int(),
+  })
+  .describe(
+    "One Tripoli-calendar-day bucket. Zero-filled: every day in the\nrange appears, with 0s when nothing happened.\n",
+  );
+export const GetAdminChartDataResponse = zod.array(GetAdminChartDataResponseItem);
+
+/**
+ * Four counts from ONE filtered aggregate (R125-I6): total,
+ * success, failure and last-24h rows in auth_activity.
+ * Cache-Control: no-store.
+ * @summary Auth activity counts (requireAdmin + admins scope)
+ */
+export const GetAdminAuthStatsSummaryResponse = zod.object({
+  total: zod.number().int(),
+  success: zod.number().int(),
+  failure: zod.number().int(),
+  last24h: zod.number().int(),
+});
+
+/**
+ * The newest 100 rows at most (hard .limit(100), no page param —
+ * the FE discloses the window honestly). PII-lean projection: the
+ * full auth_activity row minus nothing — identifier/provider/IP/
+ * user-agent are the audit payload. Cache-Control: no-store.
+ * @summary Auth activity timeline (requireAdmin + admins scope)
+ */
+export const ListAdminAuthActivityQueryParams = zod.object({
+  action: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      'Exact action filter ("login", "register", … — free varchar;\n"all" or empty means no filter). Array-valued params are\nignored (round-94 A5-09).\n',
+    ),
+  success: zod
+    .union([zod.literal("true"), zod.literal("false"), zod.literal(null)])
+    .nullish()
+    .describe('"true"/"false" string filter; "all" or empty means no filter.'),
+  startDate: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      "Inclusive lower bound — any Date-parseable string; invalid\nvalues are 400 INVALID_DATA (round-94 A5-09).\n",
+    ),
+  endDate: zod.coerce
+    .string()
+    .nullish()
+    .describe("Inclusive upper bound (same validation as startDate)."),
+});
+
+export const ListAdminAuthActivityResponse = zod.object({
+  activities: zod.array(
+    zod
+      .object({
+        id: zod.number().int(),
+        userId: zod.number().int().nullable(),
+        identifier: zod.string(),
+        action: zod
+          .string()
+          .describe("e.g. login, register, logout, change_password, unlink_provider."),
+        provider: zod.string().nullable(),
+        success: zod.boolean(),
+        ipAddress: zod.string().nullable(),
+        userAgent: zod.string().nullable(),
+        failureReason: zod.string().nullable(),
+        createdAt: zod.coerce.date(),
+      })
+      .describe(
+        "A raw auth_activity row — the audit trail (identifier, provider,\nIP, user agent).\n",
+      ),
+  ),
+});
+
+/**
+ * Three payloads in one response: the newest-200 list (LEFT JOIN
+ * referrer/referee users), the all-time stats block, and the top
+ * 10 referrers by credited count. KNOWN WINDOW (B-7): the
+ * `search` filter runs POST-limit in JS — it only matches inside
+ * the newest-200 window, not the full history; scoped honestly in
+ * the UI copy. Cache-Control: no-store.
+ * @summary Referral events list + stats + top referrers (requireAdmin + users scope)
+ */
+export const ListAdminReferralsQueryParams = zod.object({
+  status: zod
+    .union([zod.literal("pending"), zod.literal("credited"), zod.literal(null)])
+    .nullish()
+    .describe(
+      "Optional status filter; out-of-enum values are 400\nINVALID_DATA (they used to silently return an empty list).\n",
+    ),
+  search: zod.coerce
+    .string()
+    .nullish()
+    .describe(
+      "Case-insensitive substring on referrer/referee phone —\napplied AFTER the LIMIT 200 window (see B-7 window note).\n",
+    ),
+});
+
+export const ListAdminReferralsResponse = zod.object({
+  stats: zod.object({
+    total: zod.number().int(),
+    credited: zod.number().int(),
+    pending: zod.number().int(),
+    total_points: zod
+      .number()
+      .int()
+      .describe("credited × POINTS_PER_REFERRAL (lib/loyalty-policy)."),
+  }),
+  top_referrers: zod
+    .array(
+      zod.object({
+        id: zod.number().int(),
+        phone: zod.string(),
+        credited_count: zod.number().int(),
+        total_count: zod.number().int(),
+      }),
+    )
+    .describe("Top 10 referrers by credited count."),
+  list: zod
+    .array(
+      zod.object({
+        id: zod.number().int(),
+        status: zod.enum(["pending", "credited"]),
+        created_at: zod.string(),
+        credited_at: zod.string().nullable(),
+        referrer_phone: zod.string(),
+        referrer_id: zod.number().int(),
+        referee_phone: zod.string(),
+        points_earned: zod.number().int().describe("POINTS_PER_REFERRAL when credited, else 0."),
+      }),
+    )
+    .describe("Newest 200 referral events (post-limit search window — B-7)."),
+});
+
+/**
  * Password login with an exponential-backoff lockout: repeated
  * failures lock the account and return 429 ACCOUNT_LOCKED until
  * the lock expires. Soft-disabled accounts answer 401 with the

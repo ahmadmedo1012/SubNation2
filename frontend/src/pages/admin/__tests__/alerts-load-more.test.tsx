@@ -26,13 +26,42 @@ import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { type ReactNode } from "react";
 import AdminAlertsPage from "@/pages/admin/alerts";
-import { customFetch } from "@workspace/api-client-react";
+import {
+  ApiError,
+  deleteReadAdminAlerts,
+  listAdminAlerts,
+  markAdminAlertRead,
+} from "@workspace/api-client-react";
+
+// R126-L8b (A4 §C batch-C): the page rides the generated fetchers from
+// the batch-1 spec exposure — the mock follows the new module surface
+// (listAdminAlerts for the accumulating inbox query; the mutation
+// fetchers for the five row/bulk actions). ApiError is the mock's own
+// class so the page's `err instanceof ApiError && err.status === 401`
+// quiet-catch stays instanceof-compatible and the failure paths can
+// construct realistic 5xx rejections.
+const { ApiErrorMock } = vi.hoisted(() => {
+  class ApiErrorMock extends Error {
+    status: number;
+    data: unknown;
+    constructor(message: string, status: number, data: unknown = null) {
+      super(message);
+      this.name = "ApiError";
+      this.status = status;
+      this.data = data;
+    }
+  }
+  return { ApiErrorMock };
+});
 
 vi.mock("@workspace/api-client-react", () => ({
-  // 94-C2 (A2 P1-1): the inbox is a useInfiniteQuery over the frozen
-  // `?page=&limit=` contract via customFetch — the mock follows the
-  // new module surface.
-  customFetch: vi.fn(),
+  listAdminAlerts: vi.fn(),
+  markAdminAlertRead: vi.fn(),
+  markAllAdminAlertsRead: vi.fn(),
+  deleteAdminAlert: vi.fn(),
+  deleteReadAdminAlerts: vi.fn(),
+  deleteAllAdminAlerts: vi.fn(),
+  ApiError: ApiErrorMock,
   setUnauthorizedHandler: vi.fn(),
 }));
 
@@ -80,18 +109,6 @@ const PAGE_TWO = {
   hasMore: false,
 };
 
-/** Minimal Response-like object — avoids depending on a global Response. */
-function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
-    status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
-}
-
-const fetchMock = vi.fn();
-
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -106,15 +123,13 @@ function renderPage() {
 describe("AdminAlertsPage — accumulating load-more + honest counts (A2 P1-1)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
   });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("a full page with hasMore offers تحميل المزيد; page 2 appends in place and ends the list", async () => {
-    (customFetch as unknown as Mock)
+    (listAdminAlerts as unknown as Mock)
       .mockResolvedValueOnce(PAGE_ONE)
       .mockResolvedValueOnce(PAGE_TWO);
 
@@ -129,11 +144,13 @@ describe("AdminAlertsPage — accumulating load-more + honest counts (A2 P1-1)",
 
     fireEvent.click(screen.getByRole("button", { name: "تحميل المزيد" }));
 
-    // The frozen contract: page 2 of the same limit.
+    // The frozen contract: page 2 of the same limit (the generated
+    // fetcher builds `?page=2&limit=50` from these typed params).
     await screen.findAllByText("تنبيه رقم 200");
-    expect((customFetch as unknown as Mock).mock.calls[1][0]).toBe(
-      "/api/admin/alerts?page=2&limit=50",
-    );
+    expect((listAdminAlerts as unknown as Mock).mock.calls[1][0]).toEqual({
+      page: 2,
+      limit: 50,
+    });
     // Page-1 rows survive the load-more (append, not swap).
     expect(screen.getAllByText("تنبيه رقم 0").length).toBeGreaterThan(0);
 
@@ -146,7 +163,7 @@ describe("AdminAlertsPage — accumulating load-more + honest counts (A2 P1-1)",
   });
 
   it("a short single page shows no load-more (the server said that's all)", async () => {
-    (customFetch as unknown as Mock).mockResolvedValue({
+    (listAdminAlerts as unknown as Mock).mockResolvedValue({
       ...PAGE_ONE,
       alerts: PAGE_ONE.alerts.slice(0, 5),
       total: 5,
@@ -163,17 +180,22 @@ describe("AdminAlertsPage — accumulating load-more + honest counts (A2 P1-1)",
 describe("AdminAlertsPage — mutations surface failures instead of silently resurrecting rows (A2 P2-11)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (customFetch as unknown as Mock).mockResolvedValue(PAGE_ONE);
-    fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    (listAdminAlerts as unknown as Mock).mockResolvedValue(PAGE_ONE);
   });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("a FAILED delete-read toasts the error after the confirm (was: one-tap + silent)", async () => {
-    fetchMock.mockResolvedValue(
-      resLike({ ok: false, status: 500, body: { error: "خطأ في الخادم" } }),
+    // R126-L8b: the generated fetcher rejects with customFetch's ApiError
+    // (status + parsed envelope on .data) — getErrorMessage picks the
+    // Arabic server message out of it, exactly like the adminFetchJson
+    // path it replaced.
+    (deleteReadAdminAlerts as unknown as Mock).mockRejectedValue(
+      new ApiError("HTTP 500 Internal Server Error", 500, {
+        error: "خطأ في الخادم",
+        code: "INTERNAL_ERROR",
+      }),
     );
 
     renderPage();
@@ -199,8 +221,11 @@ describe("AdminAlertsPage — mutations surface failures instead of silently res
   });
 
   it("a FAILED mark-read rolls the optimistic dot back and toasts (was: silent)", async () => {
-    fetchMock.mockResolvedValue(
-      resLike({ ok: false, status: 500, body: { error: "خطأ في الخادم" } }),
+    (markAdminAlertRead as unknown as Mock).mockRejectedValue(
+      new ApiError("HTTP 500 Internal Server Error", 500, {
+        error: "خطأ في الخادم",
+        code: "INTERNAL_ERROR",
+      }),
     );
 
     renderPage();

@@ -251,3 +251,53 @@ describe("AdminCouponsPage — value parity guards (110-M / 109-m P3)", () => {
     });
   });
 });
+
+/**
+ * R126-L3 (A4 quick-win) — the type chip bar's accessible state.
+ *
+ * The «نسبة / مبلغ» buttons were the console's last purely-visual
+ * toggle chips: the active one was only styled (bg-primary) — a screen
+ * reader announced two identical buttons with no pressed state, and
+ * the topups/orders status-tab comments that cite "the coupons.tsx
+ * chip-bar idiom" pointed at an idiom that didn't exist here yet.
+ * aria-pressed now exposes the active type and flips with it.
+ */
+describe("AdminCouponsPage — type chips expose aria-pressed (R126-L3)", () => {
+  beforeEach(() => {
+    toastMock.mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockImplementation(async (input: unknown, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST") return resLike({ body: { id: 1, code: "TEST" } });
+      return resLike({ body: [] });
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("percentage starts pressed; switching to fixed flips both states", async () => {
+    renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "كوبون جديد" }));
+
+    // The default type is percentage — pressed=true, fixed=false.
+    const pct = screen.getByRole("button", { name: "نسبة" });
+    const fixed = screen.getByRole("button", { name: "مبلغ" });
+    expect(pct).toHaveAttribute("aria-pressed", "true");
+    expect(fixed).toHaveAttribute("aria-pressed", "false");
+
+    // Switching flips the pressed states together…
+    fireEvent.click(fixed);
+    expect(screen.getByRole("button", { name: "نسبة" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "مبلغ" })).toHaveAttribute("aria-pressed", "true");
+
+    // …and the switch still re-scales the value field (the 110-M guard
+    // contract the chips drive): the fixed placeholder replaces the
+    // percentage one.
+    expect(screen.getByPlaceholderText("5.00")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("20")).not.toBeInTheDocument();
+  });
+});

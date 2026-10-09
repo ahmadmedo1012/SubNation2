@@ -1006,12 +1006,24 @@ export default function AdminOrdersPage() {
     downloadCsv(orderCsvRows(filtered), `orders_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
+  // R126-L3 (A4 quick-win): select-all membership honesty. The branch
+  // condition used to compare `selectedIds.size === filtered.length` —
+  // a SIZE test — while the rendered checkbox state one line down
+  // (and its aria-pressed) uses MEMBERSHIP (`filtered.every(o =>
+  // selectedIds.has(o.id))`). The selection legitimately carries ids
+  // OUTSIDE the current filter (rows selected before a search/status
+  // narrow), so the two could disagree: with 3 hidden-but-selected ids
+  // and 3 visible-unselected rows the unchecked button CLEARED the
+  // selection instead of selecting the visible rows; with extra hidden
+  // ids alongside a fully-selected window the checked button re-ran the
+  // select branch (a no-op set) and the operator could never deselect.
+  // The toggle now branches on the SAME membership flag it renders.
+  const allFilteredSelected = filtered.length > 0 && filtered.every((o) => selectedIds.has(o.id));
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    if (allFilteredSelected) setSelectedIds(new Set());
     else setSelectedIds(new Set(filtered.map((o) => o.id)));
   };
-
-  const allFilteredSelected = filtered.length > 0 && filtered.every((o) => selectedIds.has(o.id));
 
   const exportSelected = () => {
     const sel = filtered.filter((o) => selectedIds.has(o.id));

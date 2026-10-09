@@ -10,12 +10,17 @@
  *
  * These tests pin:
  *   1. with an adminToken: the resync event invalidates the admin
- *      families (stats/orders/topups/users) exactly once per event;
+ *      families (stats/orders/topups/users + the R126-L3 tickets/risk
+ *      keys) exactly once per event;
  *   2. a user-only session (adminToken null): the resync event is a
  *      no-op — no invalidation storms from socket-less sessions;
  *   3. listeners are cleaned up on unmount (no leaks across mounts);
  *   4. renders without touching connectAdminSocket when adminToken is
- *      null.
+ *      null;
+ *   5. R126-L3 (A2-1/A4-B-5): the connected socket's
+ *      `admin-stats-update` handler invalidates the SAME seven-key set
+ *      — the tickets list + the two risk keys were the missing
+ *      freshness path (no polling on those pages, focus refetch off).
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -89,18 +94,25 @@ describe("SocketInitializer — admin resync event (R104)", () => {
       window.dispatchEvent(new CustomEvent(RESYNC_EVENT));
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(4);
+    // R126-L3 (A2-1): the resync key-set grew to seven — the parked
+    // socket window can carry ticket reply/status + risk label writes
+    // (the backend emits admin-stats-update for both families), and
+    // the tickets/risk lists have no polling fallback of their own.
+    expect(invalidateSpy).toHaveBeenCalledTimes(7);
     const keys = invalidatedKeys(invalidateSpy);
     expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/orders"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/topups"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/users"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/tickets"]));
+    expect(keys).toContain(JSON.stringify(["admin-risk-events"]));
+    expect(keys).toContain(JSON.stringify(["admin-risk-dashboard"]));
 
     // A second event (new reconnect cycle) fires the set again.
     await act(async () => {
       window.dispatchEvent(new CustomEvent(RESYNC_EVENT));
     });
-    expect(invalidateSpy).toHaveBeenCalledTimes(8);
+    expect(invalidateSpy).toHaveBeenCalledTimes(14);
   });
 
   it("user-only session (adminToken null): resync event is a no-op", async () => {
@@ -141,5 +153,58 @@ describe("SocketInitializer — admin socket wiring stays intact", () => {
       expect(invalidateSpy).not.toHaveBeenCalled();
     });
     expect(connectAdminSocketMock).not.toHaveBeenCalled();
+  });
+});
+
+// R126-L3 (A2-1 / A4-B-5): the CONNECTED socket path — the A4 audit
+// noted this handler was entirely untested (only the resync window
+// event was). A fake socket captures the .on registrations; firing
+// the captured `admin-stats-update` handler must invalidate the full
+// seven-key set (stats/orders/topups/users + tickets + the two risk
+// keys) — the tickets list key is the one with no polling fallback,
+// so a regression here resurrects the stale-queue-vs-badge bug.
+describe("SocketInitializer — connected admin-stats-update handler (R126-L3)", () => {
+  beforeEach(() => {
+    authState.adminToken = "__cookie_admin__";
+    connectAdminSocketMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("an admin-stats-update push invalidates all seven families (incl. tickets + risk)", async () => {
+    // A minimal fake socket: capture the .on(event, handler) pairs so
+    // the test can invoke the real registered handler.
+    const onMock = vi.fn();
+    const fakeSocket = { on: onMock, off: vi.fn() };
+    connectAdminSocketMock.mockResolvedValue(fakeSocket);
+
+    const { invalidateSpy } = renderInitializer();
+
+    await waitFor(() => expect(onMock).toHaveBeenCalled());
+    // Mount itself invalidates nothing — only pushes do.
+    expect(invalidateSpy).not.toHaveBeenCalled();
+
+    const statsRegistration = onMock.mock.calls.find(([event]) => event === "admin-stats-update");
+    expect(statsRegistration).toBeTruthy();
+    const handler = statsRegistration![1] as () => void;
+
+    await act(async () => {
+      handler();
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledTimes(7);
+    const keys = invalidatedKeys(invalidateSpy);
+    expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/orders"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/topups"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/users"]));
+    // The three R126-L3 additions — the keys the tickets page
+    // ("/api/admin/tickets" prefix, tickets.tsx queryKey) and the risk
+    // pages ("admin-risk-events"/"admin-risk-dashboard") actually use.
+    expect(keys).toContain(JSON.stringify(["/api/admin/tickets"]));
+    expect(keys).toContain(JSON.stringify(["admin-risk-events"]));
+    expect(keys).toContain(JSON.stringify(["admin-risk-dashboard"]));
   });
 });

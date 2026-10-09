@@ -16,10 +16,13 @@
  *      Arabic ("login" → «تسجيل دخول») in lockstep with the filters.
  *
  * `@/lib/auth` and the admin shell are mocked at the module boundary
- * (vitest-config pattern); the page uses plain fetch + state.
+ * (vitest-config pattern). R126-L8b: the page now rides the generated
+ * client, so the REAL customFetch + hooks run against the stubbed
+ * global fetch (resLike carries the headers/text() it parses with).
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
@@ -48,12 +51,17 @@ const ACTIVITY = {
   createdAt: "2026-09-08T10:00:00.000Z",
 };
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** Minimal Response-like object — avoids depending on a global Response.
+ * R126-L8b: the page rides the generated client now, so the REAL
+ * customFetch parses these stubs — it needs headers + text() (it no
+ * longer goes through a res.json() shortcut). */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
   return {
     ok,
     status,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -61,10 +69,15 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 const fetchMock = vi.fn();
 
 function renderPage() {
+  // R126-L8b: the generated hooks need a QueryClient (retry off — the
+  // error-surface tests assert the FIRST failure, not a retried one).
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <Router>
-      <AdminSecurityDashboard />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminSecurityDashboard />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 
@@ -107,10 +120,7 @@ describe("AdminSecurityDashboard — failures surface, never console.error (A2 P
   it("a failed activities load renders the error card, NEVER the 'لا توجد أنشطة' empty state", async () => {
     routeFetch(
       () => Promise.resolve(resLike({ body: STATS })),
-      () =>
-        Promise.resolve(
-          resLike({ ok: false, status: 500, body: { error: "خطأ في الخادم" } }),
-        ),
+      () => Promise.resolve(resLike({ ok: false, status: 500, body: { error: "خطأ في الخادم" } })),
     );
 
     renderPage();
@@ -128,9 +138,7 @@ describe("AdminSecurityDashboard — failures surface, never console.error (A2 P
       () => Promise.resolve(resLike({ body: STATS })),
       () =>
         activitiesFail
-          ? Promise.resolve(
-              resLike({ ok: false, status: 503, body: { error: "تعذّر الاتصال" } }),
-            )
+          ? Promise.resolve(resLike({ ok: false, status: 503, body: { error: "تعذّر الاتصال" } }))
           : Promise.resolve(resLike({ body: { activities: [ACTIVITY] } })),
     );
 

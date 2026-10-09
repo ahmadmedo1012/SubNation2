@@ -148,6 +148,21 @@ function describeSaveError(err: unknown): string {
 }
 
 /**
+ * R126-L3 (A2-3): RFC-4180 CSV cell quoting for the users export.
+ *
+ * The export embeds grouped currency strings (formatCurrency →
+ * `"1,234.50 د.ل"`) whose embedded ASCII comma used to ride a bare
+ * `r.join(",")` — any wallet balance / lifetime spend ≥ 1,000 LYD
+ * split its cell in two and shifted every field after it for that
+ * row. Every cell (headers included) is now wrapped in double quotes
+ * with embedded quotes doubled, so commas, د.ل and quotes all stay
+ * cell-local. Exported for the users-csv-export unit test.
+ */
+export function csvCell(value: string | number): string {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+/**
  * Compact pill row showing which auth providers are linked to a given
  * user. Backed by the boolean flags surfaced in /api/admin/users
  * (has_google / has_telegram / has_firebase).
@@ -577,27 +592,47 @@ export default function AdminUsersPage() {
     // explicit confirmation BEFORE the PATCH fires — with the resulting
     // balance preview so a typo like 50-vs-5.00 is visible before it
     // lands ("set" especially overwrites a wallet in one tap).
-    if (walletValue !== null) {
-      const currentBalance = Number(editingUser.wallet_balance ?? 0) || 0;
-      const nextBalance =
-        form.wallet_mode === "set"
-          ? walletValue
-          : form.wallet_mode === "add"
-            ? currentBalance + walletValue
-            : currentBalance - walletValue;
-      const actionText =
-        form.wallet_mode === "set"
-          ? `سيتم تحديد رصيد محفظة ${editingUser.phone} إلى ${formatCurrency(walletValue)} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
-          : form.wallet_mode === "add"
-            ? `سيتم إضافة ${formatCurrency(walletValue)} إلى محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
-            : `سيتم خصم ${formatCurrency(walletValue)} من محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`;
-      const negativeWarning =
-        form.wallet_mode === "subtract" && nextBalance < 0
-          ? " تنبيه: المبلغ يتجاوز الرصيد الحالي وسيُرفض التحديث."
-          : "";
+    // R126-L3 (A2-5): the confirm now covers BOTH LYD-bearing fields.
+    // Points are LYD-convertible money (100:1 — the form itself says
+    // so at the hint below), and a points-only edit used to slip past
+    // this gate because it was keyed on `walletValue !== null` alone —
+    // a fat-fingered 100,000-point set (= 1,000 د.ل) landed in one
+    // unconfirmed tap while every adjacent money path confirmed.
+    if (walletValue !== null || pointsChanged) {
+      // R126-L3 (A2-5): the points leg of the confirm — the delta + its
+      // dinar equivalent (the same "كل 100 نقطة = 1 د.ل" idiom the
+      // form hint uses), so both currencies are named honestly when
+      // both ride the PATCH.
+      const pointsSentence = `سيتم تحديد نقاط ولاء ${editingUser.phone} إلى ${nextPoints} (الحالية: ${currentPoints}) — القيمة بالدينار عند التحويل: ${formatCurrency(nextPoints / 100)} (كل 100 نقطة = 1 د.ل).`;
+      let description: string;
+      if (walletValue !== null) {
+        const currentBalance = Number(editingUser.wallet_balance ?? 0) || 0;
+        const nextBalance =
+          form.wallet_mode === "set"
+            ? walletValue
+            : form.wallet_mode === "add"
+              ? currentBalance + walletValue
+              : currentBalance - walletValue;
+        const actionText =
+          form.wallet_mode === "set"
+            ? `سيتم تحديد رصيد محفظة ${editingUser.phone} إلى ${formatCurrency(walletValue)} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
+            : form.wallet_mode === "add"
+              ? `سيتم إضافة ${formatCurrency(walletValue)} إلى محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
+              : `سيتم خصم ${formatCurrency(walletValue)} من محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`;
+        const negativeWarning =
+          form.wallet_mode === "subtract" && nextBalance < 0
+            ? " تنبيه: المبلغ يتجاوز الرصيد الحالي وسيُرفض التحديث."
+            : "";
+        description = `${actionText} الرصيد الجديد: ${formatCurrency(nextBalance)}.${negativeWarning}${pointsChanged ? ` ${pointsSentence}` : ""}`;
+      } else {
+        // Points-only edit — the equivalent confirm the comment above
+        // always promised (A2-5): set-preview + LYD equivalent, no
+        // wallet leg to enumerate.
+        description = pointsSentence;
+      }
       const ok = await confirm({
-        title: "تأكيد تعديل المحفظة",
-        description: `${actionText} الرصيد الجديد: ${formatCurrency(nextBalance)}.${negativeWarning}`,
+        title: walletValue !== null ? "تأكيد تعديل المحفظة" : "تأكيد تعديل النقاط",
+        description,
         confirmLabel: "تنفيذ التعديل",
         destructive: form.wallet_mode === "subtract",
       });
@@ -684,11 +719,12 @@ export default function AdminUsersPage() {
       queryClient.invalidateQueries({ queryKey: getListAdminUsersQueryKey() });
       // R125-I4 (A4-B-3): stats co-invalidation — a wallet/points save
       // changes total_wallet_balance, and /admin/stats has no
-      // write-side invalidation (30s server cache). R125-I6 has since
-      // landed the backend `admin-stats-update` emit for users PATCH
-      // too (this comment predates it); this frontend invalidation
-      // covers the ACTING tab immediately (the socket push refreshes
-      // OTHER open tabs — SocketInitializer.tsx:82).
+      // write-side invalidation (30s server cache). R125-I6 landed the
+      // backend `admin-stats-update` emit for users PATCH; the socket
+      // handler refreshes BOTH the stats key and this users list
+      // family on OTHER open tabs (SocketInitializer.tsx — the
+      // R126-L3 key-set), while the invalidations here cover the
+      // ACTING tab immediately.
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       setEditingUser(null);
     } catch (err: unknown) {
@@ -771,6 +807,9 @@ export default function AdminUsersPage() {
       // an ungrouped 1234.50 the UI never showed. (The dashboard's
       // chart CSV still uses raw toFixed(2) — its copy is another
       // agent's file; noted in the R120-B4 report.)
+      // R126-L3 (A2-3): the grouped string's ASCII comma is why every
+      // cell now rides csvCell (RFC-4180 quoting) — the join below can
+      // never shift columns again.
       formatCurrency(u.wallet_balance ?? 0),
       tierLabel(u.loyalty_tier ?? ""),
       u.loyalty_points ?? 0,
@@ -778,7 +817,7 @@ export default function AdminUsersPage() {
       u.order_count ?? 0,
       u.created_at ? formatDate(u.created_at) : "",
     ]);
-    const csv = [csvHeaders, ...rows].map((r) => r.join(",")).join("\n");
+    const csv = [csvHeaders, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

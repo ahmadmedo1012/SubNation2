@@ -27,6 +27,7 @@
  */
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
@@ -62,12 +63,16 @@ function cappedActivities() {
   return Array.from({ length: 100 }, (_, i) => makeActivity(i + 1, `user-${i + 1}`));
 }
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** Minimal Response-like object — avoids depending on a global Response.
+ * R126-L8b: the page rides the generated client now, so the REAL
+ * customFetch parses these stubs — it needs headers + text(). */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
   return {
     ok,
     status,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -75,10 +80,15 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 const fetchMock = vi.fn();
 
 function renderPage() {
+  // R126-L8b: the generated hooks need a QueryClient; retry off so the
+  // deferred/race scenarios are single-flight.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <Router>
-      <AdminSecurityDashboard />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminSecurityDashboard />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 

@@ -305,3 +305,162 @@ describe("AdminOrdersPage — finance-gated refund option + menu semantics (R120
     await waitFor(() => expect(screen.getByRole("button", { name: "تغيير الحالة" })).toHaveFocus());
   });
 });
+
+/** R126-L3 (A4 quick-win) — the select-all toggle's membership honesty.
+ *
+ * `toggleSelectAll` used to branch on `selectedIds.size ===
+ * filtered.length` — a SIZE test — while the rendered button state
+ * (and its aria-pressed) uses MEMBERSHIP (`allFilteredSelected`). The
+ * selection legitimately carries ids OUTSIDE the active status tab
+ * (rows selected on «الكل», then the tab narrowed), so the two tests
+ * could disagree:
+ *
+ *   A. 2 hidden-but-selected ids + 2 visible-unselected rows: the
+ *      unchecked button CLEARED the selection instead of selecting
+ *      the visible rows (size 2 === length 2 by coincidence).
+ *   B. a fully-selected window + 1 extra hidden id: the CHECKED
+ *      button re-ran the select branch (a no-op set that silently
+ *      dropped the hidden id) — the operator could never deselect.
+ *
+ * The status tabs filter CLIENT-side over the accumulated pages (the
+ * `filtered` memo), so flipping the tab mid-selection is the natural
+ * way to hold out-of-filter ids.
+ */
+describe("AdminOrdersPage — select-all branches on MEMBERSHIP, not size (R126-L3)", () => {
+  // Two completed + two pending orders — the tabs split them 2/2 while
+  // the selection rides across the flip.
+  const MIXED = [
+    {
+      id: 1,
+      order_code: "SN-1001",
+      user_phone: "0911111111",
+      product_name: "Netflix 1M",
+      amount: 25,
+      status: "completed",
+      created_at: "2026-09-01T10:00:00.000Z",
+    },
+    {
+      id: 2,
+      order_code: "SN-1002",
+      user_phone: "0912222222",
+      product_name: "Spotify 3M",
+      amount: 40,
+      status: "completed",
+      created_at: "2026-09-02T10:00:00.000Z",
+    },
+    {
+      id: 3,
+      order_code: "SN-1003",
+      user_phone: "0913333333",
+      product_name: "Netflix 3M",
+      amount: 55,
+      status: "pending",
+      created_at: "2026-09-03T10:00:00.000Z",
+    },
+    {
+      id: 4,
+      order_code: "SN-1004",
+      user_phone: "0914444444",
+      product_name: "Spotify 1M",
+      amount: 15,
+      status: "pending",
+      created_at: "2026-09-04T10:00:00.000Z",
+    },
+  ];
+
+  /** The header select-all (F3-08: named + aria-pressed). */
+  const selectAllButton = () =>
+    screen.getByRole("button", { name: "تحديد كل الطلبات المعروضة للإجراء الجماعي" });
+
+  /** The status tab whose visible text starts with the label — the row
+   *  badges and the bulk-menu items reuse the same words, so a plain
+   *  role-name lookup collides; the aria-pressed chip bar is unique. */
+  const statusTab = (label: string): HTMLButtonElement => {
+    const tab = screen
+      .getAllByRole("button")
+      .find(
+        (b) => (b.textContent ?? "").trim().startsWith(label) && b.hasAttribute("aria-pressed"),
+      );
+    if (!tab) throw new Error(`status tab not found: ${label}`);
+    return tab as HTMLButtonElement;
+  };
+
+  /** The row selectors for an order code (desktop td + mobile card both
+   *  carry the same name) — returns their shared aria-pressed state. */
+  const rowSelected = (orderCode: string): boolean => {
+    const buttons = screen.getAllByRole("button", {
+      name: `تحديد الطلب ${orderCode} للإجراء الجماعي`,
+    });
+    const states = new Set(buttons.map((b) => b.getAttribute("aria-pressed")));
+    if (states.size !== 1) throw new Error(`row selectors disagree for ${orderCode}`);
+    return states.values().next().value === "true";
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOrdersResult(MIXED);
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/admin/orders");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/admin/orders");
+  });
+
+  it("visible-unselected rows with out-of-tab selections: select-all SELECTS the visible rows (was: cleared)", async () => {
+    renderPage();
+    await screen.findAllByText("SN-1001");
+
+    // Select the two COMPLETED rows on the «الكل» tab…
+    selectRow("SN-1001");
+    selectRow("SN-1002");
+    expect(screen.getByText("2 طلب محدد")).toBeInTheDocument();
+
+    // …then narrow the tab to «قيد الانتظار»: the two visible pending
+    // rows are UNSELECTED, yet the stale selection's SIZE (2) equals
+    // the filtered LENGTH (2) — the old size-equality trap.
+    fireEvent.click(statusTab("قيد الانتظار"));
+    await screen.findAllByText("SN-1003");
+    expect(selectAllButton()).toHaveAttribute("aria-pressed", "false");
+
+    // The unchecked select-all must SELECT the visible rows — the old
+    // branch saw 2===2 and cleared the selection instead.
+    fireEvent.click(selectAllButton());
+
+    expect(selectAllButton()).toHaveAttribute("aria-pressed", "true");
+    expect(rowSelected("SN-1003")).toBe(true);
+    expect(rowSelected("SN-1004")).toBe(true);
+    // The bulk bar still reads a live selection count.
+    expect(screen.getByText("2 طلب محدد")).toBeInTheDocument();
+  });
+
+  it("a fully-selected window with an extra hidden id: the checked select-all CLEARS (was: an unclickable no-op)", async () => {
+    renderPage();
+    await screen.findAllByText("SN-1001");
+
+    // Select three rows on «الكل»…
+    selectRow("SN-1001");
+    selectRow("SN-1002");
+    selectRow("SN-1003");
+    expect(screen.getByText("3 طلب محدد")).toBeInTheDocument();
+
+    // …then narrow to «مكتمل»: both visible rows are selected (the
+    // button reads checked) but SN-1003 rides hidden in the selection
+    // — size 3 ≠ length 2, so the old branch re-ran the SELECT side
+    // and the checked button could never clear anything.
+    fireEvent.click(statusTab("مكتمل"));
+    await waitFor(() => expect(screen.queryAllByText("SN-1003")).toHaveLength(0));
+    expect(selectAllButton()).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(selectAllButton());
+
+    // Membership-keyed: checked → cleared (and the hidden id goes with
+    // it — «إلغاء» semantics), never a silent re-select.
+    expect(selectAllButton()).toHaveAttribute("aria-pressed", "false");
+    expect(rowSelected("SN-1001")).toBe(false);
+    expect(rowSelected("SN-1002")).toBe(false);
+    // The bulk bar (gated on size > 0) is gone entirely.
+    expect(screen.queryByText(/طلب محدد/)).not.toBeInTheDocument();
+  });
+});

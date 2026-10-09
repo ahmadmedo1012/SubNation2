@@ -123,10 +123,13 @@ export default function AdminTicketsPage() {
   // R125-I4 (A4-B-3): stats co-invalidation — open_tickets feeds the
   // layout badge + the dashboard, and /admin/stats has no write-side
   // cache invalidation (30s server cache, stats.ts:129-133); without
-  // this a closed ticket left the badge lagging ≤5 min. R125-I6 has
-  // since landed the backend `admin-stats-update` emits for ticket
-  // status/reply too (this comment predates it); the frontend
-  // invalidation below still covers the acting tab immediately.
+  // this a closed ticket left the badge lagging ≤5 min. R125-I6
+  // landed the backend `admin-stats-update` emits for ticket
+  // status/reply; R126-L3 (A2-1) closed the frontend half — the
+  // socket handler now invalidates BOTH this stats key AND the
+  // "/api/admin/tickets" list family, so another admin's reply
+  // refreshes this tab's queue too (this page has no polling).
+  // The invalidations below still cover the ACTING tab immediately.
   const qc = useQueryClient();
   // R123 (E3 P3a): two-way URL filter sync (?status= / ?category=) —
   // follows the settings.tsx ?tab= idiom: URL → state on mount/param
@@ -374,6 +377,20 @@ export default function AdminTicketsPage() {
     const matchCategory = !categoryFilter || t.category === categoryFilter;
     return matchCategory;
   });
+  // R126-L3 (A2-4): the Arabic label of the active category — feeds the
+  // partial-empty block + the honest hard-empty title below (the
+  // users.tsx tierLabel idiom).
+  const categoryLabel =
+    CATEGORY_FILTERS.find((c) => c.value === categoryFilter)?.label ?? categoryFilter;
+  // R126-L3 (A2-4): the partial-empty gate — the category filter runs
+  // CLIENT-side over the accumulated pages, so a category can read
+  // empty while matching tickets sit on UNLOADED pages
+  // (hasNextPage=true). The users.tsx A1-7 partial-empty block
+  // (R125-I4) mirrors this exact class; tickets missed it — the hard
+  // «لا توجد تذاكر» asserted global emptiness over a partial window
+  // AND the load-more (inside the non-empty branch) vanished with it,
+  // leaving no path to the pages that contain the category.
+  const categoryPartialEmpty = visibleTickets.length === 0 && categoryFilter !== "" && hasNextPage;
 
   return (
     <AdminLayout onRefresh={() => void refetch()} badges={{ openTickets: openCount }}>
@@ -494,11 +511,64 @@ export default function AdminTicketsPage() {
                 onRetry={() => void refetch()}
               />
             ) : visibleTickets.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
-                <MessageSquare className="w-10 h-10 mb-3 opacity-25" />
-                <p className="font-bold">لا توجد تذاكر</p>
-                <p className="text-sm mt-1">ستظهر تذاكر الدعم هنا</p>
-              </div>
+              categoryPartialEmpty ? (
+                /* R126-L3 (A2-4): zero matches over PARTIAL data — the
+                   users.tsx:1309-1330 partial-empty idiom (R125-I4
+                   A1-7): honest incompleteness wording + the load-more
+                   STAYS VISIBLE (it was previously trapped inside the
+                   non-empty branch) + a one-tap filter escape. The
+                   ?category= URL filter makes this dead-end shareable,
+                   so the block must be the honest default. */
+                <div className="flex-1 flex flex-col items-center justify-center py-14 text-muted-foreground bg-card border border-border/60 rounded-2xl space-y-3">
+                  <MessageSquare className="w-10 h-10 mb-1 opacity-20" />
+                  <p className="text-sm font-bold text-foreground/80">
+                    لا تذاكر بفئة {categoryLabel} ضمن الصفحات المحمّلة
+                  </p>
+                  <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
+                  <div className="flex justify-center gap-2 flex-wrap">
+                    <LoadMoreButton
+                      busy={loadingMoreTickets}
+                      disabled={loading}
+                      onClick={() => void fetchNextPage()}
+                    />
+                    <button
+                      onClick={() => {
+                        setCategoryFilter("");
+                        syncFilterParams(statusFilter, "");
+                      }}
+                      className="text-xs text-primary-text hover:underline mt-1.5"
+                    >
+                      إلغاء فلتر الفئة
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* R126-L3 (A2-4): the hard empty is now only reached over
+                   a PROVABLY complete window (no more pages) or with no
+                   category filter — and its copy names the filter when
+                   one is active (the users tier-empty wording) instead
+                   of claiming the whole queue is empty. */
+                <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
+                  <MessageSquare className="w-10 h-10 mb-3 opacity-25" />
+                  <p className="font-bold">
+                    {categoryFilter ? `لا توجد تذاكر بفئة ${categoryLabel}` : "لا توجد تذاكر"}
+                  </p>
+                  <p className="text-sm mt-1">
+                    {categoryFilter ? "جرّب فئة أخرى أو أزل الفلتر" : "ستظهر تذاكر الدعم هنا"}
+                  </p>
+                  {categoryFilter && (
+                    <button
+                      onClick={() => {
+                        setCategoryFilter("");
+                        syncFilterParams(statusFilter, "");
+                      }}
+                      className="text-xs text-primary-text hover:underline mt-3"
+                    >
+                      إلغاء فلتر الفئة
+                    </button>
+                  )}
+                </div>
+              )
             ) : (
               <>
                 {visibleTickets.map((t, i) => {

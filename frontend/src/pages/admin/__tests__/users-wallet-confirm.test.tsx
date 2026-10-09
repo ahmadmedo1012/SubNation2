@@ -347,22 +347,46 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it("a loyalty-only save (no wallet change) does not open the money confirm", async () => {
+  // R126-L3 (A2-5): points are LYD-convertible money (100:1 — the
+  // form's own hint says so), so a points-only edit now rides the
+  // SAME money-confirm contract as the wallet leg. This replaces the
+  // R115-era pin ("loyalty-only save does not open the money
+  // confirm") — the A2-5 audit classified that gap as the exact
+  // unconfirmed-money class the console-wide rule forbids: a
+  // fat-fingered 100,000-point set (= 1,000 د.ل) used to land in one
+  // unconfirmed tap.
+  it("a points-only edit opens the money confirm with the LYD equivalent BEFORE any request (A2-5)", async () => {
     fetchMock.mockResolvedValue(resLike({ body: { id: 16 } }));
     renderPage();
 
     const dialog = await openEditModal();
     // R115: a points CHANGE (100 → 150) with a valid note is a
-    // loyalty-only PATCH — still no money-confirm dialog (the wallet
-    // preview confirm covers WALLET mutations), and the note rides the
-    // body (the backend 400s a points edit without one).
+    // loyalty-only PATCH — the note rides the body (the backend 400s
+    // a points edit without one).
     const pointsInput = within(dialog).getByDisplayValue("100");
     fireEvent.change(pointsInput, { target: { value: "150" } });
     fireEvent.change(noteInput(dialog), { target: { value: "تسوية نقاط يدوية" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
 
+    // The points confirm opens — set-preview + the 100:1 dinar
+    // equivalent (150 نقطة = 1.50 د.ل), the same idiom the form hint
+    // uses. No PATCH has fired yet.
+    const title = await screen.findByText("تأكيد تعديل النقاط");
+    const confirmDialog = title.closest('[role="alertdialog"]') as HTMLElement;
+    expect(confirmDialog).toBeTruthy();
+    expect(
+      within(confirmDialog).getByText(/سيتم تحديد نقاط ولاء 0913456789 إلى 150/),
+    ).toBeInTheDocument();
+    expect(
+      within(confirmDialog).getByText(/القيمة بالدينار عند التحويل: 1\.50 د\.ل/),
+    ).toBeInTheDocument();
+    expect(within(confirmDialog).getByText(/كل 100 نقطة = 1 د\.ل/)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Confirm fires the PATCH once — the points + note ride the body,
+    // loyalty_tier never does.
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "تنفيذ التعديل" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText("تأكيد تعديل المحفظة")).not.toBeInTheDocument();
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
     expect(body).toMatchObject({
       loyalty_points: 150,
@@ -371,6 +395,30 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     // R115: loyalty_tier is NEVER sent — the backend 400s any tier edit
     // (tiers derive from net spend, Part 11).
     expect(body.loyalty_tier).toBeUndefined();
+  });
+
+  // R126-L3 (A2-5): the cancel path of the points confirm — same
+  // contract as the wallet confirm (S-1): cancel = no PATCH.
+  it("canceling the points confirm performs no PATCH (A2-5)", async () => {
+    renderPage();
+
+    const dialog = await openEditModal();
+    const pointsInput = within(dialog).getByDisplayValue("100");
+    fireEvent.change(pointsInput, { target: { value: "100000" } });
+    fireEvent.change(noteInput(dialog), { target: { value: "مكافأة نقاط كبيرة" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
+
+    const title = await screen.findByText("تأكيد تعديل النقاط");
+    const confirmDialog = title.closest('[role="alertdialog"]') as HTMLElement;
+    // The LYD equivalent makes the magnitude visible BEFORE it lands:
+    // 100,000 نقطة = 1,000.00 د.ل.
+    expect(
+      within(confirmDialog).getByText(/القيمة بالدينار عند التحويل: 1,000\.00 د\.ل/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "إلغاء" }));
+    await waitFor(() => expect(screen.queryByText("تأكيد تعديل النقاط")).not.toBeInTheDocument());
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   // R115: the form pre-fills the current points balance — an untouched
@@ -429,7 +477,8 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     renderPage();
 
     const dialog = await openEditModal();
-    // Wallet left EMPTY → loyalty-only PATCH, no money confirm dialog.
+    // Wallet left EMPTY → points-only PATCH through the points confirm
+    // (A2-5) — the confirm preview shows the CLAMPED value.
     const pointsInput = within(dialog).getByDisplayValue("100");
     fireEvent.change(pointsInput, { target: { value: "-5" } });
     fireEvent.change(noteInput(dialog), { target: { value: "تصفير نقاط بالخطأ" } });
@@ -438,6 +487,15 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     // validation (jsdom blocks the click path) — the SAVE-PATH clamp is
     // the guard under test, mirroring novalidate/programmatic submits.
     fireEvent.submit(pointsInput.closest("form") as HTMLElement);
+
+    // The confirm previews the clamped set (0, not -5) + its LYD
+    // equivalent before the PATCH is allowed to fire.
+    const title = await screen.findByText("تأكيد تعديل النقاط");
+    const confirmDialog = title.closest('[role="alertdialog"]') as HTMLElement;
+    expect(
+      within(confirmDialog).getByText(/سيتم تحديد نقاط ولاء 0913456789 إلى 0/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "تنفيذ التعديل" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));

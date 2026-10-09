@@ -436,6 +436,15 @@ export default function AdminCouponsPage() {
                         setValueError(null);
                         setForm((f) => ({ ...f, type: t }));
                       }}
+                      /* R126-L3 (A4 quick-win): the active chip was purely
+                         visual (bg-primary) — a screen reader announced
+                         «نسبة / مبلغ» as two identical buttons with no
+                         state. aria-pressed exposes the toggle (the
+                         topups/orders status-tab chip idiom those pages'
+                         comments already cite as "the coupons.tsx chip-bar
+                         idiom" — the citation finally points at a real
+                         implementation). */
+                      aria-pressed={form.type === t}
                       className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold border transition-all press-spring ${
                         form.type === t
                           ? "bg-primary text-white border-primary"
