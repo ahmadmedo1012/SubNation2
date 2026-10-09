@@ -134,3 +134,38 @@ describe("RouteSkeleton width/archetype shells (R123-E4b P3-c)", () => {
     expect(root!.querySelector(".h-10")).toBeNull();
   });
 });
+
+/**
+ * B13 F-3 (R127-L6): skeleton hero radius parity. The real heroes the
+ * catalog/detail shells mirror went rounded-3xl → rounded-2xl in
+ * R125-I7 (home guest+authed hero, category, loyalty cards); the two
+ * RouteSkeleton hero bands kept 24px corners, so every cold route-load
+ * of `/` and `/category/*` popped its radius on the skeleton → content
+ * swap. Cosmetic-only (aspect/height reserved — zero CLS), but the
+ * skeleton-parity contract (product.tsx: "mirrors the real card so the
+ * grid doesn't jump on load") covers corner radius too.
+ */
+describe("RouteSkeleton hero bands — rounded-2xl parity (B13 F-3 / R127-L6)", () => {
+  it("catalog hero band is rounded-2xl (mirrors home/category heroes post-R125-I7)", () => {
+    const { container } = render(<RouteSkeleton shape="catalog" />);
+    const hero = container.querySelector(".max-w-6xl")!.firstElementChild as HTMLElement;
+    expect(hero.className).toContain("rounded-2xl");
+    expect(hero.className).toContain("h-[160px]");
+    expect(hero.className).not.toContain("rounded-3xl");
+  });
+
+  it("detail hero band is rounded-2xl (mirrors loyalty's 16px cards)", () => {
+    const { container } = render(<RouteSkeleton shape="detail" />);
+    const hero = container.querySelector(".max-w-4xl")!.firstElementChild as HTMLElement;
+    expect(hero.className).toContain("rounded-2xl");
+    expect(hero.className).not.toContain("rounded-3xl");
+  });
+
+  it("form shell KEEPS rounded-3xl — onboarding.tsx:119 is still 24px (B-12 tail)", () => {
+    const { container } = render(<RouteSkeleton shape="form" />);
+    // The faithful mirror is the one that matches the real page: the
+    // auth-card REFUSE tail is a separate batch (B-12) — flipping this
+    // skeleton before its real page would CREATE the drift F-3 fixes.
+    expect(container.querySelector(".max-w-md .rounded-3xl")).toBeInstanceOf(HTMLElement);
+  });
+});

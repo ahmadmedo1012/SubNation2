@@ -569,9 +569,17 @@ export default function HomePage() {
                   <WifiOff className="w-4 h-4 text-status-error/60 shrink-0" />
                   تعذّر تحميل آخر الطلبات
                 </div>
+                {/* B13 F-2 (R127): the strip's retry measured ~34px
+                    (text-xs + py-1.5 + border) — the last inline recovery
+                    control under the 44px floor its page-level siblings
+                    got in the R124/R125 sweeps. min-h-11 + -my-2 (the
+                    recent-searches «مسح» idiom, :1037) reaches the floor;
+                    the −16px of margins keep the row's footprint at 28px
+                    (vs the old 34px), so the 44px box bleeds into the
+                    strip's py-3 padding instead of growing the strip. */}
                 <button
                   onClick={() => refetchOrders()}
-                  className="text-xs font-bold text-primary-text border border-primary/25 px-3.5 py-1.5 rounded-lg hover:bg-primary/8 transition-colors press-spring shrink-0"
+                  className="text-xs font-bold text-primary-text border border-primary/25 px-3.5 min-h-11 -my-2 rounded-lg hover:bg-primary/8 transition-colors press-spring shrink-0"
                 >
                   إعادة المحاولة
                 </button>
@@ -1157,13 +1165,21 @@ export default function HomePage() {
           else if (category) label = categoryLabel(category);
           else if (sort) label = SORTS.find((s) => s.value === sort)?.label ?? label;
           else if (availableOnly) label = "المنتجات المتوفّرة فقط";
+          // A9-m2 (R127-B13): dir="auto" on both variants — the label
+          // interpolates the raw searchInput, and a Latin-digit or
+          // bidi-confusable query garbled the heading's direction.
           return hasFilter ? (
-            <h2 className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2">
+            <h2
+              dir="auto"
+              className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2"
+            >
               <span className="w-1 h-4 bg-primary rounded-full" />
               {label}
             </h2>
           ) : (
-            <h2 className="sr-only">{label}</h2>
+            <h2 dir="auto" className="sr-only">
+              {label}
+            </h2>
           );
         })()}
         {isLoading ? (
@@ -1215,9 +1231,14 @@ export default function HomePage() {
               </>
             )}
             {activeFilterCount > 0 && (
+              /* B13 F-2 (R127): the filtered-empty recovery CTA measured
+                 ~38px (text-sm + py-2 + border) — same 44px-floor lift as
+                 its FetchErrorCard sibling (:1187 min-h-11); standalone
+                 CTA inside the py-16 empty state, so no negative-margin
+                 compensation is needed. */
               <button
                 onClick={clearFilters}
-                className="text-sm font-bold text-primary-text border border-primary/25 px-5 py-2 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+                className="text-sm font-bold text-primary-text border border-primary/25 px-5 min-h-11 rounded-xl hover:bg-primary/8 transition-colors press-spring"
               >
                 مسح جميع الفلاتر
               </button>

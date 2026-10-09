@@ -73,7 +73,24 @@ const Toaster = ({ ...props }: ToasterProps) => {
       duration={4000}
       visibleToasts={3}
       gap={12}
-      offset="20px"
+      /* B13 F-1 (R127): the offset props feed sonner's --offset-* /
+         --mobile-offset-* CSS vars (assignOffset() in sonner/dist —
+         string values pass through raw), and the ≤600px media query
+         pins [data-y-position=top]{top:var(--mobile-offset-top)}. So
+         the calc() must ride BOTH props: `offset` alone leaves the
+         MOBILE variant at sonner's hard 16px default (the B13 one-liner
+         was half-complete — its own goal, the installed PWA's
+         Dynamic-Island overlap, is a ≤600px-only problem;
+         viewport-fit=cover + black-translucent status bar). mobileOffset
+         is deliberately the OBJECT form: a bare string would also set
+         --mobile-offset-left/right (the mobile toast's horizontal
+         insets) to the top-inset value and gut the toast's width on
+         notched phones — the object keeps left/right at the 16px
+         default. This was the one fixed layer R126-L5's safe-area pass
+         missed (Navbar, MobileNav, home's filter bar, the bell panel
+         all carry env() insets). */
+      offset="calc(env(safe-area-inset-top, 0px) + 20px)"
+      mobileOffset={{ top: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
       closeButton
       dir="rtl"
       /* R124-A5 #6 (language of component labels): Sonner's defaults are

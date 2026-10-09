@@ -408,12 +408,15 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               // eagerly — `loading="lazy"` on the LCP image is a known
               // ~400-800 ms regression on mobile Lighthouse runs.
               //
-              // The very first card (index 0) gets fetchpriority="high"
-              // so the browser prioritizes its bytes over the rest of
-              // the resource graph (CSS, JS, other images). This is
-              // the single biggest LCP lever on the storefront.
+              // The first TWO cards (index < 2) get fetchpriority="high":
+              // on the 2-col mobile grid that is the whole first row,
+              // and R127-B4's live LCP trace caught the winning mobile
+              // LCP element at index 1 with fetchpriority="auto" — the
+              // old "single biggest LCP lever" claim was only half-live
+              // (B4 D5 FE half; the App.tsx boot-catalog image warming
+              // is the other half).
               loading={index < 4 ? "eager" : "lazy"}
-              fetchPriority={index === 0 ? "high" : index < 4 ? "auto" : "low"}
+              fetchPriority={index < 2 ? "high" : index < 4 ? "auto" : "low"}
               decoding="async"
               className="absolute inset-0 z-[2] m-auto max-w-[74%] max-h-[74%] w-auto h-auto object-contain transition-transform duration-300 ease-out group-hover:scale-[1.06] drop-shadow-lg"
               onError={(e) => {
@@ -449,21 +452,44 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         </div>
 
         <div className="p-3.5 pt-3 flex flex-1 flex-col">
-          <div className="flex items-start gap-2 mb-1.5">
+          {/* R127 (B3-K1, P2): on <sm the 2-col grid leaves ~143px of
+              row and the shrink-0 Arabic category badge runs 82–112px,
+              so A4-F7's min-w-0 (kept below) left the title 20–50px and
+              long unbreakable Latin tokens ("Grammarly" 78px) clipped
+              mid-glyph — impeccable's 390px census: 16/45 titles
+              overflowed. Per the B3 prescription the badge moves to its
+              own row under the title on <sm — but ONLY where the row is
+              actually tight: the row wraps (flex-wrap) and the title's
+              flex basis is its content width (flex-auto, was
+              flex-1/basis-0), so title + badge stay side-by-side when
+              they fit and the badge reflows under the title when they
+              don't. A fitting row keeps the exact pre-fix distribution
+              (title = row − badge − gap either way), so the cards that
+              never overflowed render byte-identically. ≥sm keeps the
+              single row (sm:flex-nowrap — 0/45 desktop overflow in the
+              same census) and with the badge shrink-0 the ≥sm title
+              width is basis-independent, so flex-auto is a no-op there.
+              The badge also caps at max-w-full + truncate: at ≤320px
+              the widest badge (112px) exceeds its own wrapped line
+              (~110px of content) — ellipsis instead of a hard clip;
+              no-op at ≥360px where every badge fits its line. */}
+          <div className="flex flex-wrap items-start gap-2 mb-1.5 sm:flex-nowrap">
             {/* R120-B1 (A7-F13): h3 (was h2) so the section h2s own the
                 document outline; R120-B1 (A1-F10): 2 name lines below sm
                 (8/12 names clipped at 390px), 1 line from sm up. The
-                11px description row is hidden below sm (A1-F15) to fund
-                the second name line in the 2-col mobile grid.
+                description row is hidden below sm (A1-F15) to fund the
+                second name line in the 2-col mobile grid.
                 R124 (A4-F7): min-w-0 — a flex item's automatic minimum
-                size is its longest unbroken token, so a catalog name
+                size is its longest unbreakable token, so a catalog name
                 with one long Latin token pushed the shrink-0 category
                 badge out of the row (every other flex text chain in the
                 app already carries it; the card's overflow-hidden kept
-                the squeeze latent until such a name ships). */}
+                the squeeze latent until such a name ships). Still live:
+                a wrapped-alone title wider than the row must shrink
+                under min-w-0, never push the badge out of the card. */}
             <h3
               dir="auto"
-              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-1 min-w-0 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
+              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-auto min-w-0 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
             >
               {product.name}
             </h3>
@@ -472,14 +498,26 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                  2-up mobile grid (connected glyphs lose ح/ج/خ distinction
                  above ~40yo) — 10px + semibold keeps the badge compact
                  while staying legible. */
-              className={`text-3xs font-semibold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 ${accent.bg} ${accent.text} ${accent.border}`}
+              className={`text-3xs font-semibold px-1.5 py-0.5 rounded-full border shrink-0 mt-0.5 max-w-full truncate ${accent.bg} ${accent.text} ${accent.border}`}
             >
               {categoryLabel(product.category)}
             </span>
           </div>
 
           {product.description && (
-            <p className="hidden sm:block text-muted-foreground text-2xs line-clamp-2 leading-relaxed mb-2.5">
+            /* B3-K2 (R127): 11px/400 muted text measured 3.2–3.6:1
+               pixel-median on card backgrounds (anti-alias edge ink at
+               hairline stroke weights) despite 8:1 token math — A13's
+               computed-style pass was correct per WCAG methodology, but
+               the rendering density on the smallest text is real.
+               text-xs (12px) + font-semibold per the B3 fix directive
+               — the report's weight-500 suggestion is not implementable
+               here: the repo loads Readex Pro 400/600/700 only (the
+               design-system-css gate bans the 500 utility in .tsx; a
+               missing 500 snaps back to 400, a no-op). semibold is the
+               nearest loaded weight. The register/support fine-print cousins
+               are another lane's files. Still ≥sm-only. */
+            <p className="hidden sm:block text-muted-foreground text-xs font-semibold line-clamp-2 leading-relaxed mb-2.5">
               {product.description}
             </p>
           )}

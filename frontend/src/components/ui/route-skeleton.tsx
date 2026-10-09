@@ -87,8 +87,12 @@ function BlankShell() {
 function CatalogShell() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-5 sm:py-7">
-      {/* Hero band */}
-      <div className="rounded-3xl skeleton-shimmer h-[160px] sm:h-[200px] mb-6" />
+      {/* Hero band — rounded-2xl (B13 F-3 / R127): the real heroes it
+          mirrors (home.tsx guest+authed hero, category.tsx) went
+          24px→16px in R125-I7; the skeleton kept popping its corner
+          radius on every cold route-load of the two highest-traffic
+          pages. Zero CLS (height reserved), cosmetic parity only. */}
+      <div className="rounded-2xl skeleton-shimmer h-[160px] sm:h-[200px] mb-6" />
       {/* Filter row */}
       <div className="flex gap-2 mb-3">
         <div className="flex-1 h-10 rounded-xl skeleton-shimmer" />
@@ -160,7 +164,12 @@ function ListShell({ container = "max-w-3xl" }: { container?: string }) {
 function DetailShell() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <div className="rounded-3xl skeleton-shimmer aspect-[4/3] sm:aspect-[16/9] mb-5" />
+      {/* Hero band — rounded-2xl (B13 F-3 / R127): parity with the
+          rounded-2xl real cards this shell fronts (loyalty's hero cards
+          went 24px→16px in R125-I7). FormShell's rounded-3xl below stays
+          — onboarding.tsx:119 is still 24px (B-12 tail), so THAT mirror
+          remains faithful. */}
+      <div className="rounded-2xl skeleton-shimmer aspect-[4/3] sm:aspect-[16/9] mb-5" />
       <div className="space-y-3">
         <div className="h-7 skeleton-shimmer rounded-lg w-2/3" />
         <div className="h-4 skeleton-shimmer rounded w-full" />
