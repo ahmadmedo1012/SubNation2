@@ -15,7 +15,7 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
  *   - sync throws are reported and swallowed;
  *   - async rejections are reported (once) and resolve to undefined.
  */
-export function isolate<T extends (...args: unknown[]) => unknown>(component: string, fn: T): T {
+export function isolate<T extends (...args: any[]) => any>(component: string, fn: T): T {
   const report = (err: unknown): void => {
     monitoringErrorsTotal.inc({ component });
     logger.error({ err, component, category: "monitoring" }, "Instrumentation error");

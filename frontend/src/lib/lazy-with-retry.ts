@@ -65,7 +65,7 @@ const RELOAD_KEY_PREFIX = "sn:chunk-reload:";
  *
  *   const WalletPage = lazyWithRetry(() => import("@/pages/wallet"));
  */
-export function lazyWithRetry<T extends ComponentType<unknown>>(
+export function lazyWithRetry<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
   return lazy(async () => {

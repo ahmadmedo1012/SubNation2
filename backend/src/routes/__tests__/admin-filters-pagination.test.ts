@@ -1,8 +1,9 @@
-import express, { type Express } from "express";
+import express, { type Express, type Router } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
+  adminAlertsTable,
   adminUsersTable,
   db,
   initTestDb,
@@ -18,6 +19,7 @@ import { adminTopupsRouter } from "../admin/topups";
 import { adminOrdersRouter } from "../admin/orders";
 import { adminUsersRouter } from "../admin/users";
 import { adminTicketsRouter } from "../admin/tickets";
+import { adminAlertsRouter } from "../admin/alerts";
 
 /**
  * A5-03 (round-94): the admin list routes feed `?status=` straight into
@@ -31,7 +33,7 @@ import { adminTicketsRouter } from "../admin/tickets";
  * newest 100 rows, which hid the oldest pending money-queue entries.
  */
 
-function buildApp(...routers: Array<{ use: (path: string, r: unknown) => void }>): Express {
+function buildApp(...routers: Router[]): Express {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
@@ -273,6 +275,84 @@ describe("GET /api/admin/tickets — pg-enum status filter + pagination (A5-03/A
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
       expect((res.body as Array<{ title: string }>)[0].title).toBe("T1");
+    } finally {
+      close();
+    }
+  });
+});
+
+// R125-I6 (A8 B-5): the two routes that missed the R122 MAX_PAGE ceiling —
+// tickets + alerts hand-rolled `page` with a floor but NO 10 000 cap, so
+// `?page=100000000&limit=200` multiplied into an unbounded ~2×10¹⁰ OFFSET
+// (the exact abuse shape R122 fixed for orders/users/topups). Both now
+// ride the shared pageParam(); the boundary behavior matches the
+// orders/topups/users pin above — absurd pages clamp to 10 000 and answer
+// an honest empty page instead of a multi-second scan.
+describe("GET /api/admin/{tickets,alerts} — deep-paging ceiling (R125-I6, A8 B-5)", () => {
+  it("clamps ?page=MAX_PAGE+1 and beyond to 10 000 on /api/admin/tickets (200, empty array)", async () => {
+    const app = buildApp(adminTicketsRouter);
+    const { url, close } = await listen(app);
+    try {
+      const token = await seedAdmin();
+      const userId = await seedUser();
+      await db.insert(supportTicketsTable).values({ userId, title: "T1", status: "open" });
+
+      const boundary = await call(url, "/api/admin/tickets?page=10001&limit=200", token);
+      expect(boundary.status).toBe(200);
+      expect(boundary.body).toEqual([]);
+
+      const absurd = await call(url, "/api/admin/tickets?page=100000000&limit=200", token);
+      expect(absurd.status).toBe(200);
+      expect(absurd.body).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
+  it("clamps absurd pages on /api/admin/alerts — and the response's page field proves the clamp (10 000, not 400)", async () => {
+    // alerts mounts at /api/admin/alerts (its routes are "/"-relative) —
+    // its own app, same requireAdmin + seeded row shape as alerts-new-since.
+    const app = express();
+    app.use(express.json());
+    app.use(cookieParser());
+    app.use("/api/admin/alerts", adminAlertsRouter);
+    const { url, close } = await listen(app);
+    try {
+      const token = await seedAdmin();
+      const res = await call(url, "/api/admin/alerts?page=100000000&limit=200", token);
+      expect(res.status).toBe(200);
+      const body = res.body as { alerts: unknown[]; page: number; limit: number; hasMore: boolean };
+      // THE clamp assertion: page is clamped to the shared MAX_PAGE value
+      // (10 000), and the empty window is an honest 200 — never a 400.
+      expect(body.page).toBe(10_000);
+      expect(body.alerts).toEqual([]);
+      expect(body.limit).toBe(200);
+      expect(body.hasMore).toBe(false);
+    } finally {
+      close();
+    }
+  });
+
+  it("a sane page inside the ceiling still paginates normally on alerts (regression guard)", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use(cookieParser());
+    app.use("/api/admin/alerts", adminAlertsRouter);
+    const { url, close } = await listen(app);
+    try {
+      const token = await seedAdmin();
+      const [row] = await db
+        .insert(adminAlertsTable)
+        .values({ type: "system", title: "A1", message: "m" })
+        .returning({ id: adminAlertsTable.id });
+      expect(row).toBeTruthy();
+
+      const res = await call(url, "/api/admin/alerts?page=1&limit=50", token);
+      expect(res.status).toBe(200);
+      const body = res.body as { alerts: Array<{ id: number }>; page: number; total: number };
+      expect(body.page).toBe(1);
+      expect(body.alerts).toHaveLength(1);
+      expect(body.total).toBe(1);
     } finally {
       close();
     }
