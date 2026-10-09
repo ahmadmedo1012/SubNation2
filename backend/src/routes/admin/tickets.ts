@@ -247,7 +247,10 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
     "support",
     "رد جديد على تذكرتك",
     message.slice(0, 100),
-    `/support`,
+    // A9-1 (R126-L6): deep-link to THE ticket (support.tsx reads ?ticket=
+    // on mount and auto-opens it) — the same continuation contract as
+    // order-status notifications (/orders/:code) and topups (/wallet).
+    `/support?ticket=${id}`,
   );
 
   // R125-I6 (I4 cross-lane handoff): mirror the orders-bulk emit — an

@@ -86,3 +86,53 @@ describe("NotificationPanel mobile — 96-F5 (R96-M08 + M02)", () => {
     expect(screen.getByText("لا توجد إشعارات")).toBeInTheDocument();
   });
 });
+
+/** A row shaped like GET /api/notifications (NotificationBell's Notif). */
+const notifRow = (i: number) => ({
+  id: i,
+  type: "order",
+  title: `إشعار ${i}`,
+  message: null,
+  link: null,
+  is_read: true,
+  created_at: new Date(Date.now() - 60_000 * i).toISOString(),
+});
+
+describe("NotificationPanel footer — honest count at the 40-row cap (A9-2, R126-L6)", () => {
+  afterEach(() => {
+    // Restore the file-level default stub ([]) for the sibling describes.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as Response),
+    );
+  });
+
+  it("at the backend's 40-row cap the footer reads «آخر 40 …» — the loaded slice, not a lifetime total", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => Array.from({ length: 40 }, (_, i) => notifRow(i + 1)),
+      } as Response),
+    );
+    await openPanel();
+
+    // The endpoint caps history at 40 (routes/notifications.ts .limit(40),
+    // no pagination) — the old label read «40 إشعاراً» like a total.
+    expect(await screen.findByText(/^آخر 40 إشعاراً$/)).toBeInTheDocument();
+  });
+
+  it("below the cap the plain count stays (it IS the total — every row the user has is loaded)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => Array.from({ length: 3 }, (_, i) => notifRow(i + 1)),
+      } as Response),
+    );
+    await openPanel();
+
+    expect(await screen.findByText(/^3 إشعارات$/)).toBeInTheDocument();
+    expect(screen.queryByText(/آخر/)).not.toBeInTheDocument();
+  });
+});

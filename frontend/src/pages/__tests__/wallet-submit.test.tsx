@@ -26,7 +26,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WalletPage from "@/pages/wallet";
 import { useCreateTopup, useGetWallet } from "@workspace/api-client-react";
 
@@ -107,8 +107,13 @@ function renderPage() {
 // the mobile-transfer form and its labels never render), the wallet
 // error-state test leaves useGetWallet mocked with isError:true, and
 // mutateMock call counts leak between the idempotency tests. Reset all
-// three for EVERY test in this file (the first describe's own
+// of them for EVERY test in this file (the first describe's own
 // beforeEach repeats the same resets — harmless).
+// A9-3 (R126-L6): the method tab now MIRRORS into the URL
+// (?method=lypay via replaceState), so the lypay-switch test leaks a
+// 4th piece of state — the location itself: the next mount would seed
+// from ?method=lypay and the mobile-transfer form (and its labels)
+// would never render. Reset the URL too.
 beforeEach(() => {
   mutateMock.mockReset();
   vi.mocked(useGetWallet).mockReturnValue({
@@ -119,6 +124,13 @@ beforeEach(() => {
   } as unknown as WalletResult);
   localStorage.clear();
   sessionStorage.clear();
+  window.history.pushState(null, "", "/wallet");
+});
+afterEach(() => {
+  // A9-3 (R126-L6): belt-and-braces — a test that flips the tab mid-test
+  // (the lypay verb-pair one) leaves ?method=lypay behind even for any
+  // future hook that mounts before the next beforeEach.
+  window.history.pushState(null, "", "/wallet");
 });
 
 describe("WalletPage topup form — payment_reference reaches the server (93-C5 F-03)", () => {

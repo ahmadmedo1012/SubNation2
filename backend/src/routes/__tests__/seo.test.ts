@@ -265,6 +265,64 @@ describe("GET /sitemap.xml (R118-A5 #16)", () => {
     }
   });
 
+  // ── A11-F5 (R126-L6): per-entity lastmod, not a bulk stamp ────────────────
+
+  it("products with DIVERGENT updated_at get their OWN lastmod values (A11-F5)", async () => {
+    // The live sitemap once read as a bulk stamp (all 56 URLs inside a
+    // 20 s window) — that window is the 2026-09-20 bulk-import DATA
+    // (every row's updated_at genuinely sits there; $onUpdate bumps
+    // future edits), not a builder constant. This pin proves the
+    // builder emits each row's OWN timestamp so any future edit
+    // diverges exactly that product's lastmod.
+    const older = new Date("2026-01-05T08:00:00.000Z");
+    const newer = new Date("2026-09-20T20:15:10.000Z");
+    await db.insert(productsTable).values([
+      {
+        name: "Older Product",
+        slug: "older-lastmod",
+        price: "10.00",
+        isActive: true,
+        isArchived: false,
+        updatedAt: older,
+      },
+      {
+        name: "Newer Product",
+        slug: "newer-lastmod",
+        price: "10.00",
+        isActive: true,
+        isArchived: false,
+        updatedAt: newer,
+      },
+    ]);
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await getBody(url, "/sitemap.xml");
+      expect(res.status).toBe(200);
+
+      const entries = res.text
+        .split("<url>")
+        .slice(1)
+        .map((chunk) => chunk.split("</url>")[0] ?? "");
+      const lastmodFor = (path: string): string => {
+        const entry = entries.find((e) => e.includes(`<loc>${TEST_ORIGIN}${path}</loc>`));
+        expect(entry, `entry for ${path}`).toBeTruthy();
+        const m = entry!.match(/<lastmod>([^<]+)<\/lastmod>/);
+        expect(m, `lastmod for ${path}`).toBeTruthy();
+        return m![1]!;
+      };
+
+      // Each product carries ITS OWN row timestamp — never a shared
+      // build-time value, never the other row's.
+      expect(lastmodFor("/product/older-lastmod")).toBe(older.toISOString());
+      expect(lastmodFor("/product/newer-lastmod")).toBe(newer.toISOString());
+      // And the two DIVERGE (the bulk-stamp regression shape).
+      expect(lastmodFor("/product/older-lastmod")).not.toBe(lastmodFor("/product/newer-lastmod"));
+    } finally {
+      close();
+    }
+  });
+
   it("a newly-inserted product appears after the cache is bumped (60 s TTL bypassed by bumpSitemapCache)", async () => {
     const { url, close } = await listen(buildApp());
     try {

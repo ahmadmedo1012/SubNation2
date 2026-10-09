@@ -344,6 +344,39 @@ export default function SupportPage() {
     setForm((f) => (f.title ? f : { ...f, title: `بخصوص الطلب ${refParam}`, category: "order" }));
   }, [refParam, token]);
 
+  // A9-1 (R126-L6): the backend's reply notification deep-links to
+  // /support?ticket=<id> (admin/tickets.ts — same continuation contract
+  // as /orders/:code). Read it once at mount; once BOTH the authed
+  // ticket list has resolved AND the id belongs to the user's list,
+  // auto-open that ticket's thread — the user taps «التذكرة» in the
+  // bell and lands ON the conversation instead of visually searching
+  // the list for it. Membership is checked client-side so a foreign /
+  // stale id is a silent no-op (never a 404 toast at the user). The
+  // consumed-once ref keeps a later list refetch (e.g. after creating
+  // another ticket) from re-opening the thread after the user backed
+  // out to the list.
+  const ticketParam = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const raw = (new URLSearchParams(window.location.search).get("ticket") ?? "").trim();
+    if (!/^\d{1,9}$/.test(raw)) return null;
+    const id = Number.parseInt(raw, 10);
+    return Number.isSafeInteger(id) ? id : null;
+  }, []);
+  const ticketParamConsumedRef = useRef(false);
+  useEffect(() => {
+    if (ticketParam == null || !token || ticketParamConsumedRef.current) return;
+    if (loading) return; // list not resolved yet — retry on its arrival
+    if (!tickets.some((t) => t.id === ticketParam)) {
+      // Absent/foreign id: consume and give up silently.
+      ticketParamConsumedRef.current = true;
+      return;
+    }
+    ticketParamConsumedRef.current = true;
+    void openTicket(ticketParam);
+    // openTicket rides the deps honestly (it closes over token/headers);
+    // re-runs after consumption are no-ops via the consumed-once ref.
+  }, [ticketParam, token, loading, tickets, openTicket]);
+
   // SEO — title, canonical, OG, Twitter, robots, plus FAQPage JSON-LD
   // built from SUPPORT_FAQ. Note: the same Q&A is rendered visibly on
   // the page below (Google requires JSON-LD content to also be visible).

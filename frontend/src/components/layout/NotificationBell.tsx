@@ -31,6 +31,18 @@ interface Notif {
 }
 
 /**
+ * A9-2 (R126-L6): the history endpoint's hard cap — backend
+ * routes/notifications.ts serves `.limit(40)` with no pagination params,
+ * and this bell fetches it verbatim (no load-more). The footer count
+ * used to read «40 إشعاراً» as if it were the user's lifetime total;
+ * at exactly the cap the honest label is «آخر 40 …» (below the cap the
+ * count IS the total — every row the user has is loaded). Full history
+ * pagination (a /notifications page over ?page=) is deferred — see
+ * the R126 worklog note.
+ */
+const NOTIFICATION_HISTORY_CAP = 40;
+
+/**
  * Per-type presentation config for notification rows. Exported for the
  * status-token regression test (status-tokens.test.tsx).
  *
@@ -650,7 +662,11 @@ function NotificationPanel({
       {notifs.length > 0 && (
         <div className="px-4 py-2.5 border-t border-border/30 bg-muted/10 text-center shrink-0">
           <p className="text-xs text-muted-foreground">
-            {/* 93-C8 (A11 §3): Arabic plural paradigm via formatCount. */}
+            {/* 93-C8 (A11 §3): Arabic plural paradigm via formatCount.
+                A9-2 (R126-L6): at the backend's 40-row cap the count is
+                the LOADED slice, not the lifetime total — prefix
+                «آخر» so the label never overclaims. */}
+            {notifs.length >= NOTIFICATION_HISTORY_CAP ? "آخر " : ""}
             {formatCount(notifs.length, {
               two: "إشعاران",
               few: "إشعارات",

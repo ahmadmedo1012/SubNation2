@@ -25,6 +25,20 @@ import { Link, useLocation } from "wouter";
 
 type OrderFilter = "all" | "pending" | "completed" | "failed";
 
+/**
+ * A9-3 (R126-L6): the filter chip state mirrors into ?filter= (the
+ * home/admin deep-link idiom — R98-04). Whitelist for the mount-time
+ * read: a hand-typed ?filter=bogus must not arm a phantom bucket.
+ */
+const ORDER_FILTER_VALUES = new Set<OrderFilter>(["all", "pending", "completed", "failed"]);
+
+/** Seed the active filter chip from ?filter= (once, at mount). */
+function readInitialFilterFromUrl(): OrderFilter {
+  if (typeof window === "undefined") return "all";
+  const raw = new URLSearchParams(window.location.search).get("filter");
+  return raw && ORDER_FILTER_VALUES.has(raw as OrderFilter) ? (raw as OrderFilter) : "all";
+}
+
 // R120-B7 (reviewer finding — A6-F1 UI consumption): the route's page
 // size for the accumulating list. The backend default limit is 200 (the
 // cap that made order #201+ unreachable before ?page= existed).
@@ -170,7 +184,31 @@ function OrderCardSkeleton() {
 export default function OrdersPage() {
   const { token } = useAuth();
   const [, navigate] = useLocation();
-  const [filter, setFilter] = useState<OrderFilter>("all");
+  // A9-3 (R126-L6): seeds from ?filter= at mount (whitelisted) so a
+  // refresh / shared «قيد الانتظار» deep link keeps its bucket.
+  const [filter, setFilter] = useState<OrderFilter>(readInitialFilterFromUrl);
+
+  // A9-3 (R126-L6): mirror the active chip into ?filter= via
+  // replaceState (home.tsx's R98-04 idiom — same logical page, invisible
+  // to wouter, no history spam). The default bucket strips the param so
+  // the bare /orders URL stays canonical; unknown params a visitor
+  // carries (?utm=…, a future ?tab=) are preserved untouched.
+  useEffect(() => {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      if (filter === "all") qs.delete("filter");
+      else qs.set("filter", filter);
+      const query = qs.toString();
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
+      );
+    } catch {
+      // Exotic embedding contexts without history API — the chip still
+      // works in-memory; only the URL reflection is lost.
+    }
+  }, [filter]);
 
   // R120-B7 (reviewer finding — A6-F1 UI consumption): the list rides
   // the accumulating useInfiniteQuery idiom (admin/orders.tsx 94-C2

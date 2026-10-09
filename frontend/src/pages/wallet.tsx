@@ -221,6 +221,26 @@ const NETWORKS = [
 
 type Method = "mobile_transfer" | "lypay";
 
+/**
+ * A9-3 (R126-L6): the topup method tab seeds from ?method= and mirrors
+ * back (the home/admin ?tab= idiom — replaceState, no history spam), so
+ * a lypay user who reloads mid-form keeps the method choice (the
+ * amount/reference fields are per-session anyway) and «أرسل عبر lypay»
+ * is deep-linkable into a WhatsApp support conversation. Whitelisted —
+ * a bogus value falls to the default tab.
+ */
+const METHOD_VALUES = new Set<Method>(["mobile_transfer", "lypay"]);
+
+function readInitialMethodFromUrl(): { method: Method; fromUrl: boolean } {
+  if (typeof window === "undefined") return { method: "mobile_transfer", fromUrl: false };
+  const raw = new URLSearchParams(window.location.search).get("method");
+  const fromUrl = raw != null && METHOD_VALUES.has(raw as Method);
+  return {
+    method: fromUrl ? (raw as Method) : "mobile_transfer",
+    fromUrl,
+  };
+}
+
 function networkLabel(net?: string | null) {
   if (net === "libyana") return "ليبيانا";
   if (net === "madar") return "مدار";
@@ -741,7 +761,11 @@ export default function WalletPage() {
   });
   useSocket(me?.id);
 
-  const [method, setMethod] = useState<Method>("mobile_transfer");
+  // A9-3 (R126-L6): seeded from ?method= at mount (URL wins over stored
+  // prefs — an explicit shared/stateful link is the stronger intent).
+  const [initialMethod] = useState(readInitialMethodFromUrl);
+  const [method, setMethod] = useState<Method>(initialMethod.method);
+  const methodSeededFromUrlRef = useRef(initialMethod.fromUrl);
   const [network, setNetwork] = useState("libyana");
   const [amount, setAmount] = useState("");
   const [senderPhone, setSenderPhone] = useState("");
@@ -852,7 +876,12 @@ export default function WalletPage() {
     const prefs = getTopupPreferences();
     setNetwork(prefs.network);
     setAmount(prefs.amount);
-    if (prefs.method === "mobile_transfer" || prefs.method === "lypay") {
+    // A9-3 (R126-L6): an explicit ?method= seed outranks the stored
+    // preference — the prefs effect must not clobber the URL's choice.
+    if (
+      !methodSeededFromUrlRef.current &&
+      (prefs.method === "mobile_transfer" || prefs.method === "lypay")
+    ) {
       setMethod(prefs.method);
     }
     setSavedPhones(getSavedSenderPhones());
@@ -882,6 +911,28 @@ export default function WalletPage() {
   useEffect(() => {
     saveTopupPreferences(network, amount, method);
   }, [network, amount, method]);
+
+  // A9-3 (R126-L6): mirror the active topup method tab into ?method=
+  // (home.tsx's R98-04 replaceState idiom — same logical page, invisible
+  // to wouter, no history spam). The default tab strips the param; the
+  // ?return= deep-link param (and anything else a visitor carries) is
+  // preserved untouched — only the method key is owned here.
+  useEffect(() => {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      if (method === "mobile_transfer") qs.delete("method");
+      else qs.set("method", method);
+      const query = qs.toString();
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
+      );
+    } catch {
+      // Exotic embedding contexts without history API — the tab still
+      // works in-memory; only the URL reflection is lost.
+    }
+  }, [method]);
 
   useEffect(() => {
     // R122 (A11-F3): the guest redirect now PRESERVES the return path

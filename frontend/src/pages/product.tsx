@@ -1547,6 +1547,7 @@ export default function ProductPage() {
           }
           isPending={buyPending}
           onBuy={handleBuyIntent}
+          onAddToCart={handleAddToCart}
           onLogin={loginWithIntent}
           onWallet={walletWithReturn}
           couponInput={couponInput}
@@ -1734,48 +1735,14 @@ function CtaBlock({
   // callback would just be ceremony.
   const [, navigate] = useLocation();
 
-  if (!token) {
-    return (
-      <div className={`${compact ? "flex items-center gap-3" : "space-y-2"}`}>
-        {compact && (
-          <div className="flex-1 text-right">
-            <div className="font-bold text-primary text-xl tabular-nums">
-              {formatCurrency(displayPrice)}
-            </div>
-            <div className="text-xs text-muted-foreground">سجّل دخولك للشراء</div>
-          </div>
-        )}
-        <Button
-          onClick={onLogin}
-          className={`${compact ? "shrink-0 h-12 min-w-[8rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
-        >
-          {/* R115-I1 (A7 P3-12): the app-standard «سجّل دخولك» form
-              (cart.tsx:333 + login.tsx family) — the shadda-less
-              «سجل الدخول للشراء / سجل للشراء» were the only outliers. */}
-          {compact ? "سجّل دخولك للشراء" : "تسجيل الدخول للشراء"}
-        </Button>
-        {/* R124 (A1-F4): guests get the same add-to-cart affordance the
-            grid cards give them — the cart is local (ProductCard's CTA
-            has no auth gate), and the cart page already funnels guests
-            through /login?redirect=/checkout, so the label says WHEN
-            sign-in actually happens. Desktop CTA block only: the mobile
-            sticky bar stays a single direct action by design (it never
-            receives onAddToCart), and sold-out products keep the
-            login-only state via the is_available gate. */}
-        {!compact && onAddToCart && product.is_available && (
-          <Button
-            onClick={onAddToCart}
-            variant="outline"
-            className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-border font-bold rounded-xl gap-2"
-          >
-            <PlusCircle className="w-4 h-4" />
-            أضف للسلة — سجّل الدخول عند إتمام الطلب
-          </Button>
-        )}
-      </div>
-    );
-  }
-
+  // A9-5 (R126-L6): availability outranks auth. The sold-out branch
+  // used to sit AFTER the !token branch, so a guest on a sold-out
+  // product saw «تسجيل الدخول للشراء» promising a purchase the page's
+  // own «نفد المخزون» chip denied — and post-login the CTA flipped to
+  // the disabled state anyway. Sold-out now shows the honest disabled
+  // state (compact: strike price + «بدائل» recovery link — a better
+  // answer for guests too) for EVERYONE; the login gate only renders
+  // for products that can actually be bought.
   if (!product.is_available) {
     // Recovery hint: instead of a dead-end disabled CTA, give the user
     // a clear alternate path. On desktop the body retains a calm
@@ -1826,6 +1793,62 @@ function CtaBlock({
           تصفّح بدائل في نفس الفئة
         </Button>
         <p className="text-center text-xs text-muted-foreground">تحقّق لاحقاً، قد يعود قريباً</p>
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div className={`${compact ? "flex items-center gap-3" : "space-y-2"}`}>
+        {compact && (
+          <div className="flex-1 text-right">
+            <div className="font-bold text-primary text-xl tabular-nums">
+              {formatCurrency(displayPrice)}
+            </div>
+            <div className="text-xs text-muted-foreground">سجّل دخولك للشراء</div>
+          </div>
+        )}
+        <Button
+          onClick={onLogin}
+          className={`${compact ? "shrink-0 h-12 min-w-[8rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
+        >
+          {/* R115-I1 (A7 P3-12): the app-standard «سجّل دخولك» form
+              (cart.tsx:333 + login.tsx family) — the shadda-less
+              «سجل الدخول للشراء / سجل للشراء» were the only outliers. */}
+          {compact ? "سجّل دخولك للشراء" : "تسجيل الدخول للشراء"}
+        </Button>
+        {/* R124 (A1-F4) → A9-4 (R126-L6): guests get the same
+            add-to-cart affordance the grid cards give them — the cart is
+            local (ProductCard's CTA has no auth gate; addItem is a
+            localStorage write, never a server POST), and the cart page
+            already funnels guests through /login?redirect=/checkout, so
+            the label says WHEN sign-in actually happens. A9-4 closed the
+            desktop-only gap: the fix used to live exclusively in the
+            hidden sm:block block, so the <640px majority never saw it —
+            the compact sticky bar now carries the same guarded path
+            (outline icon-button beside the login CTA, same
+            `onAddToCart && product.is_available` gate as the desktop
+            twin). */}
+        {!compact && onAddToCart && product.is_available && (
+          <Button
+            onClick={onAddToCart}
+            variant="outline"
+            className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-border font-bold rounded-xl gap-2"
+          >
+            <PlusCircle className="w-4 h-4" />
+            أضف للسلة — سجّل الدخول عند إتمام الطلب
+          </Button>
+        )}
+        {compact && onAddToCart && product.is_available && (
+          <Button
+            onClick={onAddToCart}
+            variant="outline"
+            aria-label="أضف للسلة — سجّل الدخول عند إتمام الطلب"
+            className="shrink-0 h-12 w-12 border-border/60 text-muted-foreground hover:text-foreground hover:border-border press-spring"
+          >
+            <PlusCircle className="w-5 h-5" />
+          </Button>
+        )}
       </div>
     );
   }
@@ -1948,8 +1971,10 @@ function CtaBlock({
             ? "اشترِ"
             : `اشترِ الآن — ${formatCurrency(displayPrice)}`}
       </Button>
-      {/* Secondary path: multi-item funnel. Only in the full (non-sticky)
-          CTA — the compact sticky bar stays a single direct action. */}
+      {/* Secondary path: multi-item funnel. A9-4 (R126-L6): the compact
+          sticky bar carries it too (outline icon-button) — it used to be
+          desktop-only, leaving the mobile majority with buy-only, no
+          way to park the selection in the cart and keep shopping. */}
       {!compact && onAddToCart && product.is_available && (
         <Button
           onClick={onAddToCart}
@@ -1958,6 +1983,16 @@ function CtaBlock({
         >
           <PlusCircle className="w-4 h-4" />
           أضف للسلة — أكمل الشراء مع منتجات أخرى
+        </Button>
+      )}
+      {compact && onAddToCart && product.is_available && (
+        <Button
+          onClick={onAddToCart}
+          variant="outline"
+          aria-label="أضف للسلة"
+          className="shrink-0 h-12 w-12 border-border/60 text-muted-foreground hover:text-foreground hover:border-border press-spring"
+        >
+          <PlusCircle className="w-5 h-5" />
         </Button>
       )}
       {/* Reassurance: tells the user exactly what will be deducted and
@@ -2205,10 +2240,24 @@ function VariantSelector({
                 </span>
                 {/* R123-E4b (P3-h): text-xs — the type-scale token (12px)
                     nearest the one-off 13px; the pill's label above is
-                    text-sm so the price keeps its subordinate step. */}
+                    text-sm so the price keeps its subordinate step.
+                    A13-F12 (R126-L6): the SELECTED pill's price rode
+                    text-primary — --primary (dark: hsl(348 80% 48%) =
+                    rgb(220,24,64)) measured 3.76:1 on the dark card at
+                    12px bold (below the 4.5:1 AA floor; 12px bold is not
+                    "large"), and 3.66:1 on the pill's own primary/12
+                    tint. --status-error is the both-theme-safe red sale
+                    ink: dark rgb(236,81,81) = 5.20:1 on the card /
+                    5.05:1 on the composited pill tint; light
+                    rgb(187,27,27) = 6.39:1 on the white card (the
+                    R116-S1 measured value for this exact token) /
+                    4.76:1 on the tint. --primary-text was rejected:
+                    identical to --primary in light mode (3.95:1 on the
+                    tint) — it fixes dark only; --destructive fails
+                    light (3.73:1 on the tint). */}
                 <span
                   className={`text-xs font-bold tabular-nums leading-none ${
-                    isSelected ? "text-primary" : "text-foreground/75"
+                    isSelected ? "text-status-error" : "text-foreground/75"
                   }`}
                 >
                   {formatCurrency(eff)}

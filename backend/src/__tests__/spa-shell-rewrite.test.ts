@@ -51,6 +51,9 @@ const SPA_STUB_HTML = `<!DOCTYPE html>
 <meta name="description" content="BASELINE DESCRIPTION">
 <meta property="og:title" content="BASELINE OG TITLE">
 <meta property="og:description" content="BASELINE OG DESCRIPTION">
+<meta property="og:image" content="https://subnation.ly/opengraph.jpg">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="720">
 <link rel="canonical" href="https://subnation.ly/">
 </head>
 <body><div id="root">SUBNATION-SPA-SHELL-STUB</div></body>
@@ -329,6 +332,75 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
   it("trailing slashes are normalized (no /category/vpn/ self-duplicate)", async () => {
     const r = await get("/category/vpn/");
     expect(canonicalHref(r.body)).toBe("https://subnation.ly/category/vpn");
+  });
+});
+
+// ── A11-F3b (R126-L6): product shells ship the REAL art as og:image ────────
+
+describe("SPA shell rewrite — product og:image (A11-F3b, R126-L6)", () => {
+  it("a product with imageUrl rewrites og:image to the absolutized art URL and STRIPS the baseline og:image:width/height", async () => {
+    // activeProduct ships imageUrl "/products/expressvpn.webp" (the
+    // beforeEach seed) — site-relative, like production DB rows.
+    const r = await get(`/product/${activeProduct.slug}`);
+    expect(r.status).toBe(200);
+    expect(metaContent(r.body, "property", "og:image")).toBe(
+      "https://subnation.ly/products/expressvpn.webp",
+    );
+    // The 1280×720 pair describes the BASELINE opengraph.jpg — beside
+    // product art it would be a wrong dimension claim, so it's stripped
+    // (og:image without dimension tags is the shape the WhatsApp-proven
+    // share-card route ships).
+    expect(r.body).not.toContain('property="og:image:width"');
+    expect(r.body).not.toContain('property="og:image:height"');
+    // The rest of the og set survives untouched.
+    expect(metaContent(r.body, "property", "og:title")).toBe(
+      "ExpressVPN اشتراك اختبار — SubNation",
+    );
+    expect(canonicalHref(r.body)).toBe(`https://subnation.ly/product/${activeProduct.slug}`);
+  });
+
+  it("an already-absolute imageUrl passes through untouched (future CDN host)", async () => {
+    const [cdnRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "CDN Product",
+        slug: "cdn-image-shell-test",
+        description: "وصف",
+        price: "10.00",
+        category: "tools",
+        imageUrl: "https://cdn.example.net/art/x.webp",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${cdnRow.slug}`);
+    expect(metaContent(r.body, "property", "og:image")).toBe("https://cdn.example.net/art/x.webp");
+  });
+
+  it("a product WITHOUT imageUrl keeps the static og set (a generic card beats none)", async () => {
+    const [bareRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Bare Product",
+        slug: "bare-image-shell-test",
+        description: "وصف",
+        price: "10.00",
+        category: "tools",
+        imageUrl: null,
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${bareRow.slug}`);
+    expect(metaContent(r.body, "property", "og:image")).toBe("https://subnation.ly/opengraph.jpg");
+    // …and the baseline dimensions stay (they describe that image).
+    expect(r.body).toContain('property="og:image:width" content="1280"');
+  });
+
+  it("NON-product routes keep the static og set (the rewrite is product-scoped)", async () => {
+    const r = await get("/category/vpn");
+    expect(metaContent(r.body, "property", "og:image")).toBe("https://subnation.ly/opengraph.jpg");
+    expect(r.body).toContain('property="og:image:width" content="1280"');
   });
 });
 

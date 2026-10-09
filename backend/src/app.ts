@@ -1275,6 +1275,12 @@ export interface SpaShellMeta {
   canonical?: string | null;
   /** robots override ("noindex,follow" for auth/admin families). */
   robots?: string;
+  /** Absolute og:image URL for product pages (A11-F3b, R126-L6).
+   *  Rewrites og:image AND strips the baseline og:image:width/height
+   *  (the 1280×720 pair belongs to opengraph.jpg; product art carries
+   *  its own per-file dimensions — omitted beats wrong). Undefined
+   *  leaves the static og set untouched. */
+  ogImage?: string;
 }
 
 /**
@@ -1302,6 +1308,18 @@ function rewriteCanonical(html: string, href: string | null): string {
   return html.replace(linkRe, (tag) =>
     tag.replace(/\bhref\s*=\s*("([^"]*)"|'([^']*)')/i, `href="${escapeHtmlAttr(href)}"`),
   );
+}
+
+/**
+ * A11-F3b (R126-L6): REMOVE an existing meta tag outright (used for the
+ * baseline og:image:width/height pair when og:image points at product
+ * art — the 1280×720 numbers belong to opengraph.jpg and would be a
+ * wrong claim beside a /products/*.webp image; omitted beats wrong).
+ * Same marker contract as rewriteMetaTag: no tag, no change.
+ */
+function removeMetaTag(html: string, attr: "name" | "property", key: string): string {
+  const tagRe = new RegExp(`<meta\\b(?=[^>]*\\b${attr}\\s*=\\s*["']${key}["'])[^>]*>\\n?`, "i");
+  return html.replace(tagRe, "");
 }
 
 /**
@@ -1347,6 +1365,15 @@ export function applySpaShellMeta(html: string, meta: SpaShellMeta): string {
     }
     if (meta.robots !== undefined) {
       out = rewriteMetaTag(out, "name", "robots", meta.robots);
+    }
+    if (meta.ogImage !== undefined) {
+      out = rewriteMetaTag(out, "property", "og:image", meta.ogImage);
+      // The shipped og:image:width/height pair describes the BASELINE
+      // opengraph.jpg — next to product art it would be a wrong
+      // dimension claim. Strip (the WhatsApp-proven share card ships
+      // og:image without dimension tags too).
+      out = removeMetaTag(out, "property", "og:image:width");
+      out = removeMetaTag(out, "property", "og:image:height");
     }
     if (meta.canonical !== undefined) {
       out = rewriteCanonical(out, meta.canonical);
@@ -1407,6 +1434,19 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     // pre-R122 behavior (name — SubNation / price-suffixed share copy).
     const seoTitle = row.seoTitle?.trim() || null;
     const seoDescription = row.seoDescription?.trim() || null;
+    // A11-F3b (R126-L6): the row's real art as og:image — indexers and
+    // no-JS agents used to see only the generic /opengraph.jpg here
+    // (unfurlers were covered by the dedicated share-card route; every
+    // other consumer wasn't). The lookup already carries imageUrl, so
+    // this costs nothing extra. Absolutized exactly like the share
+    // card below: DB rows carry site-relative /products/<slug>.webp;
+    // already-absolute URLs (future CDN host) pass through untouched.
+    // Null imageUrl keeps the static og set (a generic card beats none).
+    const ogImage = row.imageUrl
+      ? row.imageUrl.startsWith("http")
+        ? row.imageUrl
+        : `${origin}${row.imageUrl.startsWith("/") ? "" : "/"}${row.imageUrl}`
+      : undefined;
     return {
       status: 200,
       title: seoTitle ? clampSeoTitleForShell(seoTitle) : `${row.name} — SubNation`,
@@ -1418,6 +1458,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
       // Prefer the row's canonical slug URL (numeric-id requests get
       // replaceState'd to it client-side — R117 F-4).
       canonical: `${origin}/product/${row.slug ?? slugOrId}`,
+      ogImage,
     };
   }
 
@@ -1459,6 +1500,16 @@ if (frontendDist) {
   app.use(
     express.static(frontendDist, {
       maxAge: "1h",
+      // A11-F2 (R126-L6): redirect:false — the art directory
+      // (frontend/public/products → dist/products) made express.static
+      // 301 /products → /products/ on the CATALOG-looking bare path,
+      // a +1-RTT double hop for every direct/external hit (and
+      // 302+301 from http). With redirects off, a directory hit falls
+      // through to the SPA fallback below, which serves the route
+      // directly (same shell family /products/ already serves). Real
+      // files under /products/<file> are unaffected — only the
+      // no-slash DIRECTORY redirect changes.
+      redirect: false,
       setHeaders(res, filePath) {
         // HTML, SW, and robots must never be cached aggressively.
         // R104 (AG11-3): registerSW.js (unhashed) joins the no-cache set —

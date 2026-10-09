@@ -6,6 +6,7 @@ import {
   auditLogsTable,
   db,
   initTestDb,
+  notificationsTable,
   resetTestDb,
   supportTicketsTable,
   usersTable,
@@ -191,6 +192,40 @@ describe("R126-L4 (A7-F4) — ticket admin writes write audit rows", () => {
       // Give the fire-and-forget chains a beat to (not) fire.
       await new Promise((r) => setImmediate(r));
       expect(await auditRows()).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+});
+
+// ── R126-L6 (A9-1): the reply notification deep-links to THE ticket ────────
+
+describe("R126-L6 (A9-1) — the reply notification link continues to the ticket", () => {
+  it("POST /tickets/:id/reply notifies with /support?ticket=<id> (not the bare list)", async () => {
+    const token = await seedAdminToken();
+    const userId = await seedUserId();
+    const ticketId = await seedTicket(userId);
+    const { url, close } = await listen();
+    try {
+      const res = await call(url, `/api/admin/tickets/${ticketId}/reply`, "POST", token, {
+        message: "رد سيصل كإشعار",
+      });
+      expect(res.status).toBe(201);
+
+      // createNotification is awaited on the reply path — the row is
+      // there once the response lands (waitFor keeps it robust).
+      await vi.waitFor(async () => {
+        const rows = await db.select().from(notificationsTable);
+        expect(rows).toHaveLength(1);
+      });
+      const [notif] = await db.select().from(notificationsTable);
+      expect(notif.userId).toBe(userId);
+      expect(notif.type).toBe("support");
+      // THE FIX: the destination names the ticket (support.tsx reads
+      // ?ticket= and auto-opens the thread) — the same continuation
+      // contract as order-status (/orders/:code) and topup (/wallet)
+      // notifications. Was: the bare "/support" list.
+      expect(notif.link).toBe(`/support?ticket=${ticketId}`);
     } finally {
       close();
     }
