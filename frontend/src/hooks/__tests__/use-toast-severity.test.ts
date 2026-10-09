@@ -92,14 +92,20 @@ describe("toast() — sonner option forwarding end-to-end (R118-B2 / A2 F-1)", (
   it("a sonner-idiomatic helper call forwards onDismiss / onAutoClose / position / closeButton", () => {
     const onDismiss = vi.fn();
     const onAutoClose = vi.fn();
-    toast.error("خطأ فادح", {
+    // The helper's `second` param TYPE is the closed ToastInput — the
+    // runtime (R117 F-6 rest-forwarding) accepts the full sonner opts
+    // bag. Widen via the declared parameter type so the forwarding
+    // contract keeps being pinned here (annotation debt in use-toast.ts,
+    // not a mock-shape lie).
+    const sonnerBag = {
       description: "الوصف",
       duration: 6_000,
       onDismiss,
       onAutoClose,
       position: "bottom-center",
       closeButton: true,
-    });
+    } as Parameters<typeof toast.error>[1];
+    toast.error("خطأ فادح", sonnerBag);
 
     const opts = optionsOf(vi.mocked(sonnerToast.error));
     expect(opts).toMatchObject({
@@ -127,7 +133,9 @@ describe("toast() — sonner option forwarding end-to-end (R118-B2 / A2 F-1)", (
 
   it("update() keeps the toast id (the replacement carries idOverride)", () => {
     const onDismiss = vi.fn();
-    const handle = toast.warning("تحذير", { onDismiss, className: "wide-toast" });
+    const handle = toast.warning("تحذير", { onDismiss, className: "wide-toast" } as Parameters<
+      typeof toast.warning
+    >[1]);
     handle.update({ title: "تحديث", description: "جديد" });
 
     // The initial call rode sonnerToast.warning with the passthrough opts…

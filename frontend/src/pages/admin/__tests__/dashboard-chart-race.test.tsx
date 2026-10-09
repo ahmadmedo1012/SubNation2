@@ -75,7 +75,9 @@ vi.mock("recharts", () => {
 
 // R122 (A2-P2): the finance scope flips per test — the auth mock reads
 // from hoisted mutable state (the admin-layout-alerts idiom).
-const { authState } = vi.hoisted(() => ({ authState: { finance: true } }));
+const { authState } = vi.hoisted(() => ({
+  authState: { finance: true } as Record<string, boolean>,
+}));
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({

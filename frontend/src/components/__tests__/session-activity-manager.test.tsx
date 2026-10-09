@@ -122,7 +122,13 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
       .map((call) => call[0])
       .filter((arg) => typeof arg?.predicate === "function");
     expect(predicateCalls).toHaveLength(1);
-    const predicate = predicateCalls[0].predicate;
+    // TS2532/TS2722 guards: [0] access AND the predicate member must be
+    // present + callable before the sweep assertions.
+    const predicateCall = predicateCalls[0];
+    if (!predicateCall || typeof predicateCall.predicate !== "function") {
+      throw new Error("predicate sweep call not captured");
+    }
+    const predicate = predicateCall.predicate;
     const queryLike = (key: unknown[]) => ({ queryKey: key }) as never;
     expect(predicate(queryLike(["/api/orders"]))).toBe(true);
     expect(predicate(queryLike(["/api/orders/SNDB-1234"]))).toBe(true);

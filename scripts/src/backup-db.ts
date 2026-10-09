@@ -345,14 +345,38 @@ async function main() {
     const { readFile } = await import("node:fs/promises");
     const body = await readFile(filepath);
     const uploadStart = Date.now();
-    const response = await fetch(presignedUrl, {
-      method: "PUT",
-      body,
-      headers: {
-        "Content-Type": "application/gzip",
-        "Content-Length": String(stats.size),
-      },
-    });
+    // R126-L7 (T3 / A10 §1.5): this PUT carried NO timeout or signal — a
+    // stalled S3 endpoint hung the production backup cron indefinitely
+    // (there is no race wrapper here, unlike validate.ts). The deadline
+    // is size-aware: 2 min base + a 1 MiB/s floor for the body —
+    // generous for a 100s-of-MB gzip on a slow uplink, finite for a
+    // dead one.
+    const uploadDeadlineMs = 120_000 + Math.ceil((stats.size / (1024 * 1024)) * 1_000);
+    console.log(
+      `  upload deadline: ${Math.round(uploadDeadlineMs / 1000)}s for ${(
+        stats.size /
+        (1024 * 1024)
+      ).toFixed(1)} MiB`,
+    );
+    let response: Response;
+    try {
+      response = await fetch(presignedUrl, {
+        method: "PUT",
+        body,
+        headers: {
+          "Content-Type": "application/gzip",
+          "Content-Length": String(stats.size),
+        },
+        signal: AbortSignal.timeout(uploadDeadlineMs),
+      });
+    } catch (err) {
+      console.error(
+        `✗ upload failed after ${((Date.now() - uploadStart) / 1000).toFixed(1)}s: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      process.exit(1);
+    }
     if (!response.ok) {
       const respBody = await response.text();
       console.error(`✗ upload failed: HTTP ${response.status} ${respBody.slice(0, 200)}`);

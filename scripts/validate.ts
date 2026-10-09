@@ -328,7 +328,12 @@ async function checkSitemap(): Promise<ValidationResult> {
       throw new Error("Sitemap URL must use HTTPS");
     }
 
-    const response = await fetch(sitemapUrl, { timeout: 10000 });
+    const response = await fetch(sitemapUrl, {
+      // R126-L7 (T3): `timeout` is NOT an undici RequestInit property — it
+      // was silently ignored, leaving the socket unbounded past the 10 s
+      // measure() race (A10 §1.5). A real abort signal kills the socket.
+      signal: AbortSignal.timeout(10_000),
+    });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -373,7 +378,11 @@ async function checkRobots(): Promise<ValidationResult> {
       throw new Error("Robots.txt URL must use HTTPS");
     }
 
-    const response = await fetch(robotsUrl, { timeout: 10000 });
+    const response = await fetch(robotsUrl, {
+      // R126-L7 (T3): same as the sitemap fetch — real abort signal, not
+      // the dead `timeout` property undici never read.
+      signal: AbortSignal.timeout(10_000),
+    });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);

@@ -17,9 +17,19 @@
  *
  * Mock idiom follows topups-approve-all.test.tsx (customFetch mocked at
  * the module boundary; the admin shell stubbed to a passthrough).
+ *
+ * R126-L7 (A10 §2.2 P2-3): migrated to vi.useFakeTimers — the suite
+ * used to sleep a real 340ms per typeSearch() call (the documented
+ * retired flake pattern; A10's top candidate on a loaded 2-CPU runner
+ * alongside referrals-search-race, converted in the same pass). The
+ * repo's established fake-timer idiom (global-search.test.tsx /
+ * whatsapp-phone-sign-in / referrals-search-race): advance via
+ * act(vi.advanceTimersByTime) + a microtask flush; NEVER waitFor/findBy
+ * (they poll on faked timers and hang). React Query resolves the mocked
+ * customFetch via microtasks, so flushAsync() drains the initial load.
  */
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -103,29 +113,51 @@ function renderPage() {
   );
 }
 
-async function typeSearch(query: string) {
-  const input = await screen.findByPlaceholderText("بحث برقم التحويل أو الهاتف…");
-  fireEvent.change(input, { target: { value: query } });
-  // Let the 300ms debounce settle inside act() (the repo idiom — a bare
-  // waitFor leaves the setState outside React's act scope).
+async function flushAsync() {
   await act(async () => {
-    await new Promise((r) => setTimeout(r, 340));
+    for (let i = 0; i < 10; i++) await Promise.resolve();
   });
+}
+
+async function typeSearch(query: string) {
+  const input = screen.getByPlaceholderText("بحث برقم التحويل أو الهاتف…");
+  fireEvent.change(input, { target: { value: query } });
+  // Advance fake time past the 300ms debounce (inside act() — the
+  // setState lands in React's act scope), then drain what it started.
+  await act(async () => {
+    vi.advanceTimersByTime(340);
+  });
+  await flushAsync();
+}
+
+/** Renders + drains the initial infinite-query load. React Query's
+ * notifyManager batches observer notifications on a macrotask tick —
+ * with fake timers that tick never fires on its own, so the drain
+ * alternates a zero-time advance (fires pending macrotask timers)
+ * with microtask flushes until the DOM settles. */
+async function renderLoaded() {
+  renderPage();
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+    await flushAsync();
+  }
 }
 
 describe("AdminTopupsPage — the money-queue search (R124-I5 A6 F14a)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     (customFetch as unknown as Mock).mockResolvedValue(PENDING);
   });
   afterEach(() => {
-    // Real timers — nothing to tear down; the repo debounce-test idiom
-    // (products-error-bulk) lets each settle inside act().
+    vi.useRealTimers();
   });
 
   it("debounced client-side filter matches by phone AND payment reference, with an honest result count", async () => {
-    renderPage();
-    expect(await screen.findByText("0911111111")).toBeInTheDocument();
+    await renderLoaded();
+    expect(screen.getByText("0911111111")).toBeInTheDocument();
     expect(screen.getByText("0912222222")).toBeInTheDocument();
 
     // Phone fragment → after the 300ms debounce only the matching card.
@@ -143,13 +175,13 @@ describe("AdminTopupsPage — the money-queue search (R124-I5 A6 F14a)", () => {
   });
 
   it("a non-matching query renders the search empty state whose مسح البحث CTA clears it", async () => {
-    renderPage();
-    expect(await screen.findByText("0911111111")).toBeInTheDocument();
+    await renderLoaded();
+    expect(screen.getByText("0911111111")).toBeInTheDocument();
 
     await typeSearch("لا-شيء-يطابق");
     // The SEARCH empty state (with the query echoed), not the generic
     // «لا توجد طلبات معلقة» claim.
-    expect(await screen.findByText(/لا نتائج لـ/)).toBeInTheDocument();
+    expect(screen.getByText(/لا نتائج لـ/)).toBeInTheDocument();
     expect(screen.queryByText("لا توجد طلبات معلقة")).not.toBeInTheDocument();
 
     // The EmptyState's text CTA (the input's icon ✕ carries the same
@@ -159,16 +191,21 @@ describe("AdminTopupsPage — the money-queue search (R124-I5 A6 F14a)", () => {
     expect(cta).toBeTruthy();
     fireEvent.click(cta as HTMLElement);
 
-    await waitFor(() => {
-      expect(screen.getByText("0911111111")).toBeInTheDocument();
+    // The clear rides the same 300ms debounce as typing (the input's
+    // value change funnels through one controlled path) — advance past
+    // it, then the rows return.
+    await act(async () => {
+      vi.advanceTimersByTime(340);
     });
+    await flushAsync();
+    expect(screen.getByText("0911111111")).toBeInTheDocument();
     expect(screen.queryByText(/لا نتائج لـ/)).not.toBeInTheDocument();
   });
 
   it("while more pages exist, the search keeps the partial-window hint visible", async () => {
     (customFetch as unknown as Mock).mockResolvedValue(fullPage());
-    renderPage();
-    expect(await screen.findByText("0910000000")).toBeInTheDocument();
+    await renderLoaded();
+    expect(screen.getByText("0910000000")).toBeInTheDocument();
 
     // A query matching exactly one row of the loaded (full) page.
     await typeSearch("0910000001");

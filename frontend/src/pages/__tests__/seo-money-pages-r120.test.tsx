@@ -81,12 +81,14 @@ const VPN_PRODUCT: Product = {
   category: "vpn",
   image_url: "/products/expressvpn.webp",
   price: 120,
+  price_from: false,
   sale_price: 90,
   discount_percent: 25,
   is_active: true,
   is_available: true,
   stock_count: 5,
   order_count: 11,
+  variants: [],
 };
 
 // ── Head readers ───────────────────────────────────────────────────────────
@@ -235,7 +237,21 @@ describe("R120-B3 A7-F2 — anonymous /support: public FAQ surface, no redirect"
     window.history.pushState({}, "", "/support");
     fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    useAuth.mockReturnValue({ token: null });
+    // Full anonymous AuthContextType (the real 12-field shape — a bare
+    // {token} stub no longer typechecks against AuthContextType).
+    useAuth.mockReturnValue({
+      token: null,
+      adminToken: null,
+      adminPermissions: [],
+      initializing: false,
+      setToken: vi.fn(),
+      setAdminToken: vi.fn(),
+      setAdminPermissions: vi.fn(),
+      hasAdminPermission: () => false,
+      logout: vi.fn(),
+      adminLogout: vi.fn(),
+      logoutAllDevices: vi.fn(),
+    });
   });
 
   afterEach(() => {

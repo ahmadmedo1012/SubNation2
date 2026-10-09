@@ -26,6 +26,11 @@ const C7_OWNED_FILES = [
   "pages/admin/risk-event.tsx",
   "pages/admin/security.tsx",
   "pages/admin/settings.tsx",
+  // R126-L9 (A3 split plan D): the settings page's tab surfaces moved to
+  // pages/admin/settings/* — the guard's coverage follows the code.
+  "pages/admin/settings/provider-card.tsx",
+  "pages/admin/settings/two-factor-setup.tsx",
+  "pages/admin/settings/account-tab.tsx",
   "pages/admin/whatsapp.tsx",
   "pages/admin/pricing.tsx",
   "pages/admin/layout.tsx",

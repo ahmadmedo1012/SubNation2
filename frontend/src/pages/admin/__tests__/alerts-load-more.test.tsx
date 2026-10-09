@@ -27,7 +27,6 @@ import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vite
 import { type ReactNode } from "react";
 import AdminAlertsPage from "@/pages/admin/alerts";
 import {
-  ApiError,
   deleteReadAdminAlerts,
   listAdminAlerts,
   markAdminAlertRead,
@@ -190,9 +189,11 @@ describe("AdminAlertsPage — mutations surface failures instead of silently res
     // R126-L8b: the generated fetcher rejects with customFetch's ApiError
     // (status + parsed envelope on .data) — getErrorMessage picks the
     // Arabic server message out of it, exactly like the adminFetchJson
-    // path it replaced.
+    // path it replaced. The real ApiError is a type-only re-export, so
+    // the rejection value is the mock's own hoisted class (what the
+    // mocked module actually serves — instanceof-exact).
     (deleteReadAdminAlerts as unknown as Mock).mockRejectedValue(
-      new ApiError("HTTP 500 Internal Server Error", 500, {
+      new ApiErrorMock("HTTP 500 Internal Server Error", 500, {
         error: "خطأ في الخادم",
         code: "INTERNAL_ERROR",
       }),
@@ -222,7 +223,7 @@ describe("AdminAlertsPage — mutations surface failures instead of silently res
 
   it("a FAILED mark-read rolls the optimistic dot back and toasts (was: silent)", async () => {
     (markAdminAlertRead as unknown as Mock).mockRejectedValue(
-      new ApiError("HTTP 500 Internal Server Error", 500, {
+      new ApiErrorMock("HTTP 500 Internal Server Error", 500, {
         error: "خطأ في الخادم",
         code: "INTERNAL_ERROR",
       }),

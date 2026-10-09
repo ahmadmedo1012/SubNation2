@@ -24,15 +24,19 @@ import {
 } from "@/components/admin/copilot/CopilotPanel";
 
 /** The module-private Conversation shape, derived from the function. */
-type Conversation = Parameters<typeof stripTransientLoading>[0];
+type Conversation = Parameters<typeof stripTransientLoading>[0][number];
+/** And its element turn — the REAL ConversationTurn shape (R126-L7 T2
+ *  mock-honesty fix: the old helper fabricated role/text/status fields
+ *  the DTO dropped rounds ago). */
+type Turn = Conversation["turns"][number];
 
-const turn = (over: Record<string, unknown> = {}) => ({
+const turn = (over: Partial<Turn> = {}): Turn => ({
   id: "t-1",
-  role: "user",
-  text: "ما المخزون؟",
-  status: "done",
-  loading: false,
+  kind: "ask",
+  question: "ما المخزون؟",
+  answer: null,
   error: null,
+  loading: false,
   ts: 1_700_000_000_000,
   ...over,
 });

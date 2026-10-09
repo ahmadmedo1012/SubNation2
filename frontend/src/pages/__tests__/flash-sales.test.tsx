@@ -39,12 +39,14 @@ const saleProduct: Product = {
   image_url: null,
   slug: "netflix-1m",
   price: 60,
+  price_from: false,
   sale_price: 45,
   discount_percent: 25,
   is_active: true,
   is_available: true,
   stock_count: 5,
   order_count: 3,
+  variants: [],
 };
 
 function mockProducts(over: Partial<ProductsResult>) {

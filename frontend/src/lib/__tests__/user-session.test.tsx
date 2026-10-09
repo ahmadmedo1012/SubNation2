@@ -27,7 +27,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { toastMock, disconnectMock, addHandlerMock } = vi.hoisted(() => ({
   toastMock: vi.fn(),
   disconnectMock: vi.fn(),
-  addHandlerMock: vi.fn(() => vi.fn()),
+  // The real addUnauthorizedHandler returns an unsubscribe function; the
+  // mock mirrors that return type so mockReturnValue(unsubscribeMock)
+  // stays variance-clean under vitest's Mock generics.
+  addHandlerMock: vi.fn((): ReturnType<typeof vi.fn> => vi.fn()),
 }));
 
 vi.mock("@/hooks/use-toast", () => ({

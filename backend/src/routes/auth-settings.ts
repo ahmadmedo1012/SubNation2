@@ -11,32 +11,25 @@
  * Admin (mount at /admin/settings):
  *   GET   /auth              → list all providers (masked secrets)
  *   PATCH /auth/:id          → update provider config
+ *
+ * R126-L9 (A3 split plan E): the business logic moved out — the
+ * system_settings persistence + masking live in
+ * services/auth-settings-store.ts, the Telegram login flows in
+ * services/telegram-auth-flow.ts, and the B1-1 callback CSRF gate in
+ * lib/telegram-callback.ts. This file owns transport only: provider
+ * metadata, the cache key/middleware, cookies, redirects, and response
+ * envelopes. Re-exports below keep the module's import surface
+ * (routers + isTelegramCallbackSameOrigin + the provider types)
+ * byte-compatible for routes/index.ts and the pinning tests.
  */
 
-import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
 import * as Sentry from "@sentry/node";
-import { eq, sql } from "drizzle-orm";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { writeAuditLog } from "../lib/audit";
-import { generateReferralCode } from "../lib/crypto";
 import { stringParam } from "../lib/http";
-import { createUserSession } from "../lib/session";
-import { logAuthActivity, getClientInfo } from "../lib/auth-activity";
+import { getClientInfo } from "../lib/auth-activity";
 import { logger } from "../lib/logger";
-import { scoreEventFireAndForget } from "../lib/risk-emit";
-// 93-A1 S3 (round-93): replay-hash claim + per-flow TTLs moved to
-// lib/telegram-replay.ts (TTL ≥ freshness + bounded no-Redis fallback).
-import {
-  TELEGRAM_WEBAPP_REPLAY_TTL_SEC,
-  TELEGRAM_WIDGET_REPLAY_TTL_SEC,
-  claimTelegramReplayHash,
-} from "../lib/telegram-replay";
-import {
-  type TelegramAuthFields,
-  verifyTelegramAuth,
-  verifyTelegramWebAppData,
-} from "../lib/telegram-auth";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import {
@@ -44,28 +37,29 @@ import {
   isWhatsAppGatewayConfigured,
 } from "../services/openwa.service";
 import { getAuthCookieOptions } from "../lib/cookie-options";
-import { getConfiguredOrigins } from "../lib/origins";
 import { cacheDelete, cacheWrap } from "../lib/cache";
+import {
+  buildMaskedConfig,
+  getAllAuthSettings,
+  getSetting,
+  upsertSetting,
+  type ProviderField,
+  type ProviderMeta,
+} from "../services/auth-settings-store";
+import { handleTelegramAuth, handleTelegramWebAppAuth } from "../services/telegram-auth-flow";
+import {
+  TELEGRAM_CALLBACK_CSRF_ERROR,
+  isTelegramCallbackSameOrigin,
+  telegramCallbackAllowedOrigins,
+} from "../lib/telegram-callback";
+
+// A3 split plan E (R126-L9): the moved predicate + provider-type shapes
+// stay importable from THIS module — routes/index.ts and the pinning
+// tests (telegram-callback-csrf.test.ts) keep resolving them here.
+export { isTelegramCallbackSameOrigin } from "../lib/telegram-callback";
+export type { ProviderField, ProviderMeta } from "../services/auth-settings-store";
 
 // ── Provider metadata ──────────────────────────────────────────────────────────
-
-export interface ProviderField {
-  key: string;
-  label: string;
-  isSecret: boolean;
-  placeholder?: string;
-}
-
-export interface ProviderMeta {
-  id: string;
-  label: string;
-  color: string;
-  icon: string;
-  auth_type: "client_side" | "oauth_redirect" | "widget";
-  description: string;
-  setup_url: string;
-  fields: ProviderField[];
-}
 
 export const PROVIDERS: ProviderMeta[] = [
   {
@@ -129,83 +123,11 @@ export const PROVIDERS: ProviderMeta[] = [
         key: "private_key",
         label: "Private Key (.p8)",
         isSecret: true,
-        placeholder: "-----BEGIN PRIVATE KEY-----\n...",
+        placeholder: "[REDACTED:ssh_private_key]\n...",
       },
     ],
   },
 ];
-
-// ── DB helpers ─────────────────────────────────────────────────────────────────
-
-async function getSetting(key: string): Promise<Record<string, any>> {
-  const result = await db.execute(
-    sql`SELECT value FROM system_settings WHERE key = ${key} LIMIT 1`,
-  );
-  const rows = Array.isArray(result) ? result : ((result as any).rows ?? []);
-  const row = rows[0] as any;
-  if (!row?.value) return {};
-  try {
-    return JSON.parse(String(row.value));
-  } catch {
-    return {};
-  }
-}
-
-/**
- * R119-B2 (A3 F-2): returns a PLAIN Record, not a Map. The value this
- * produces flows through cacheWrap → cacheSet, and cacheSet persists
- * whatever the loader returned via `JSON.stringify(value)` — and
- * `JSON.stringify(new Map()) === "{}"`. The in-memory fallback stores the
- * object reference UNserialized, which is exactly why this stayed dormant
- * while production ran Redis-less: the Map round-tripped by reference. The
- * moment REDIS_URL provisions a client (the cache layer auto-activates on
- * redis ready), every cache HIT inside the 60 s TTL would parse "{}" back
- * and the provider handler's `.get(...)` below would throw a TypeError →
- * 500 on the login page's provider list for the rest of each window. A
- * plain object survives the JSON round-trip identically on both branches;
- * consumers use index access with a `?? {}` default, which preserves the
- * exact miss semantics `Map.get()` gave them.
- */
-async function getAllAuthSettings(): Promise<Record<string, Record<string, any>>> {
-  const result = await db.execute(
-    sql`SELECT key, value FROM system_settings WHERE key LIKE 'auth.%'`,
-  );
-  const rows = Array.isArray(result) ? result : ((result as any).rows ?? []);
-  const settings: Record<string, Record<string, any>> = {};
-  for (const row of rows) {
-    const r = row as any;
-    try {
-      settings[r.key] = JSON.parse(String(r.value ?? "{}"));
-    } catch {
-      settings[r.key] = {};
-    }
-  }
-  return settings;
-}
-
-async function upsertSetting(key: string, value: Record<string, any>) {
-  const json = JSON.stringify(value);
-  await db.execute(sql`
-    INSERT INTO system_settings (key, value, updated_at)
-    VALUES (${key}, ${json}, NOW())
-    ON CONFLICT (key) DO UPDATE SET value = ${json}, updated_at = NOW()
-  `);
-}
-
-function maskSecret(v: string | undefined): string {
-  return v ? "[SET]" : "";
-}
-
-function buildMaskedConfig(
-  meta: ProviderMeta,
-  config: Record<string, any>,
-): Record<string, string> {
-  const masked: Record<string, string> = {};
-  for (const field of meta.fields) {
-    masked[field.key] = field.isSecret ? maskSecret(config[field.key]) : (config[field.key] ?? "");
-  }
-  return masked;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ROUTER  (mount at /auth in index.ts)
@@ -384,490 +306,9 @@ authProviderPublicRouter.get("/providers", authProviderCache, async (_req, res) 
 // implementation shared by the widget and Mini App flows, with per-flow
 // TTLs that are never shorter than the freshness window they guard and a
 // bounded in-memory fallback for the no-Redis production shape.
-
-/**
- * Find or create the user record for the verified Telegram identity.
- * Mirrors the linkage semantics of services/firebase-auth.service.ts:
- *   1. Match by `telegram_id` (existing Telegram-linked account).
- *   2. Otherwise insert a fresh user with `telegram_id` set. Referral
- *      signup bonuses are granted on the first approved topup —
- *      uniformly with every other channel (R115 policy B, see below).
- */
-
-/**
- * R115 (welcome-bonus policy B) — superscedes the F-16 / 93-A2 P1-3 gate.
- *
- * History: the instant 5.00 LYD referee credit was once granted at
- * signup (farmable on free Telegram accounts — 93-A2 P1-3), then gated
- * behind phone verification for Telegram ONLY (F-16), which silently
- * broke the promise for every Telegram referred signup — the deferred
- * credit was never implemented (the "C1 follow-up").
- *
- * Policy now (all channels — Google, WhatsApp, Telegram alike):
- *   signup records the relationship (users.referred_by + a pending
- *   referral_events row) and grants NOTHING; the FIRST APPROVED TOPUP
- * grants the referee's WELCOME_BONUS_LYD wallet credit AND the
- * referrer's POINTS_PER_REFERRAL in one transaction
- * (services/topup.service.ts), guarded exactly-once by
- * users.welcome_bonus_granted. Abuse economics: a farmed account must
- * now pass a manually-approved paid topup before any credit lands.
- */
-
-async function findOrCreateTelegramUser(
-  fields: TelegramAuthFields,
-  referralCode: string | undefined,
-): Promise<{ user: typeof usersTable.$inferSelect; isNewUser: boolean }> {
-  const tgId = fields.id;
-  const now = new Date();
-  const [existing] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.telegramId, tgId))
-    .limit(1);
-  if (existing) {
-    // Refresh the identity row's last_seen_at so admins see recent
-    // Telegram activity in /admin/security and the profile page's
-    // linked-accounts list reflects it.
-    await db
-      .insert(userAuthIdentitiesTable)
-      .values({
-        userId: existing.id,
-        provider: "telegram.org",
-        providerUid: tgId,
-        phone: existing.phone,
-        email: existing.email,
-        lastSeenAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [userAuthIdentitiesTable.provider, userAuthIdentitiesTable.providerUid],
-        set: { userId: existing.id, lastSeenAt: now },
-      });
-    return { user: existing, isNewUser: false };
-  }
-
-  // Apply referral if one was supplied AND it resolves to a real user.
-  let referredById: number | undefined;
-  if (referralCode) {
-    const [referrer] = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(eq(usersTable.referralCode, referralCode))
-      .limit(1);
-    if (referrer) referredById = referrer.id;
-  }
-
-  const displayName = [fields.first_name, fields.last_name].filter(Boolean).join(" ").trim();
-
-  // R115 (policy B): no instant grant on ANY channel — the referral
-  // relationship is recorded here; the welcome credit + referrer points
-  // both land on the first approved topup (topup.service.ts).
-
-  const [created] = await db.transaction(async (tx) => {
-    const [u] = await tx
-      .insert(usersTable)
-      .values({
-        // Placeholder phone — Telegram doesn't expose phone via the widget.
-        // Profile flow can later let the user add a real phone & link OTP.
-        phone: `tg_${tgId}`,
-        telegramId: tgId,
-        displayName: displayName || undefined,
-        photoUrl: fields.photo_url ?? undefined,
-        authProvider: "telegram",
-        referralCode: generateReferralCode(),
-        referredBy: referredById,
-        walletBalance: "0.00",
-        lastAuthAt: now,
-      })
-      .returning();
-
-    return [u];
-  });
-
-  // Mirror the user into user_auth_identities so /api/auth/providers/linked
-  // surfaces Telegram alongside Google and Phone OTP. Provider string
-  // matches migrate.ts's seeded mapping at line 736.
-  await db
-    .insert(userAuthIdentitiesTable)
-    .values({
-      userId: created.id,
-      provider: "telegram.org",
-      providerUid: tgId,
-      phone: created.phone,
-      email: created.email,
-      lastSeenAt: now,
-    })
-    .onConflictDoNothing();
-
-  if (referredById && referredById !== created.id) {
-    await db
-      .insert(referralEventsTable)
-      .values({ referrerId: referredById, refereeId: created.id, status: "pending" })
-      .onConflictDoNothing();
-  }
-
-  return { user: created, isNewUser: true };
-}
-
-/**
- * Shared handler used by both POST (callback mode) and GET (redirect
- * mode). The transport differs but the verification + linkage is
- * identical.
- *
- * In callback mode this returns JSON `{ token }`. In redirect mode the
- * caller sets the auth_token httpOnly cookie and 302s the user to
- * /auth/callback (no `?token=` in the URL — F-010 / security audit 004:
- * the cookie is the sole transport so the JWT does not leak into
- * browser history / Referer headers / access logs).
- */
-async function handleTelegramAuth(
-  data: Record<string, unknown>,
-  client: { ipAddress: string; userAgent: string },
-): Promise<
-  | { ok: true; token: string; isNewUser: boolean }
-  | { ok: false; status: number; error: string; reason: string }
-> {
-  const config = await getSetting("auth.telegram");
-  if (!config.enabled || typeof config.bot_token !== "string" || !config.bot_token) {
-    return {
-      ok: false,
-      status: 503,
-      error: "تسجيل الدخول عبر Telegram غير مفعّل",
-      reason: "provider_disabled",
-    };
-  }
-
-  const verification = verifyTelegramAuth(data, config.bot_token);
-  if (!verification.ok) {
-    // Single localised message regardless of internal reason — never
-    // leak whether the failure was signature vs replay vs freshness.
-    const userMsg =
-      verification.reason === "stale_auth_date"
-        ? "انتهت صلاحية الجلسة، حاول مجدداً"
-        : "فشل التحقق من Telegram";
-    await logAuthActivity({
-      identifier:
-        typeof data.id === "string" || typeof data.id === "number"
-          ? `tg:${String(data.id)}`
-          : "tg:unknown",
-      action: "login",
-      provider: "telegram",
-      success: false,
-      failureReason: verification.reason,
-      ipAddress: client.ipAddress,
-      userAgent: client.userAgent,
-    }).catch((err) => {
-      // Non-fatal — auth-telemetry insert failed. Log + breadcrumb
-      // so brute-force attempts are not silently lost.
-      logger.warn(
-        { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
-        "logAuthActivity: failed to record telegram-auth failure",
-      );
-      Sentry.addBreadcrumb({
-        category: "auth.telegram",
-        level: "error",
-        message: "logAuthActivity insert failed (failure path)",
-      });
-    });
-    Sentry.addBreadcrumb({
-      category: "auth.telegram",
-      level: "warning",
-      message: "telegram-auth failed",
-      data: { reason: verification.reason },
-    });
-    logger.warn(
-      { category: "auth", reason: verification.reason },
-      "[telegram-auth] verification failed",
-    );
-    return {
-      ok: false,
-      status:
-        verification.reason === "missing_hash" || verification.reason === "missing_id" ? 400 : 401,
-      error: userMsg,
-      reason: verification.reason,
-    };
-  }
-
-  // Replay protection — fail if the hash was already consumed.
-  // 93-A1 S3: per-flow TTL — widget payloads are only fresh for
-  // TELEGRAM_AUTH_FRESHNESS_SEC, so the store key now outlives that
-  // window (freshness + slack) instead of expiring with it.
-  const claimed = await claimTelegramReplayHash(
-    verification.fields.hash,
-    TELEGRAM_WIDGET_REPLAY_TTL_SEC,
-  );
-  if (!claimed) {
-    await logAuthActivity({
-      identifier: `tg:${verification.fields.id}`,
-      action: "login",
-      provider: "telegram",
-      success: false,
-      failureReason: "replay_detected",
-      ipAddress: client.ipAddress,
-      userAgent: client.userAgent,
-    }).catch((err) => {
-      // Non-fatal — but a replay-detection attempt that failed to
-      // record is the LEAST tolerable telemetry loss. Surface loudly.
-      logger.warn(
-        { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
-        "logAuthActivity: failed to record telegram-auth replay-detected event",
-      );
-      Sentry.addBreadcrumb({
-        category: "auth.telegram",
-        level: "error",
-        message: "logAuthActivity insert failed (replay-detected path)",
-      });
-    });
-    Sentry.addBreadcrumb({
-      category: "auth.telegram",
-      level: "error",
-      message: "telegram-auth replay detected",
-    });
-    logger.error(
-      { category: "auth", tgId: verification.fields.id },
-      "[telegram-auth] replay rejected",
-    );
-    return {
-      ok: false,
-      status: 401,
-      error: "تم استخدام هذه الجلسة من قبل، حاول مجدداً",
-      reason: "replay_detected",
-    };
-  }
-
-  // Referral code may live alongside the widget data on POST, or in
-  // the query string on GET — both paths normalise via this key.
-  const rawRef = data.referralCode;
-  const referralCode =
-    typeof rawRef === "string" ? rawRef.trim().toUpperCase().slice(0, 16) || undefined : undefined;
-
-  const { user, isNewUser } = await findOrCreateTelegramUser(verification.fields, referralCode);
-  const { token } = await createUserSession({
-    userId: user.id,
-    ipAddress: client.ipAddress,
-    userAgent: client.userAgent,
-  });
-
-  // Risk pipeline (003-anomaly-detection) — emit login_success.
-  scoreEventFireAndForget({
-    eventType: "login_success",
-    userId: user.id,
-    ipAddress: client.ipAddress ?? null,
-    userAgent: client.userAgent ?? null,
-    phone: user.phone ?? null,
-    ruleContext: {
-      event: {
-        eventType: "login_success",
-        ipAddress: client.ipAddress ?? null,
-        userAgent: client.userAgent ?? null,
-      },
-      user: { id: user.id },
-    },
-  });
-
-  await logAuthActivity({
-    userId: user.id,
-    identifier: `tg:${verification.fields.id}`,
-    action: isNewUser ? "register" : "login",
-    provider: "telegram",
-    success: true,
-    ipAddress: client.ipAddress,
-    userAgent: client.userAgent,
-  }).catch((err) => {
-    // Non-fatal — successful login still proceeds. Log so the
-    // success record's absence in auth_activity is auditable.
-    logger.warn(
-      { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
-      "logAuthActivity: failed to record telegram-auth success",
-    );
-    Sentry.addBreadcrumb({
-      category: "auth.telegram",
-      level: "warning",
-      message: "logAuthActivity insert failed (success path)",
-    });
-  });
-
-  Sentry.addBreadcrumb({
-    category: "auth.telegram",
-    level: "info",
-    message: isNewUser ? "telegram-auth register" : "telegram-auth login",
-    data: { userId: user.id },
-  });
-
-  logger.info(
-    {
-      category: "auth",
-      userId: user.id,
-      provider: "telegram",
-      isNewUser,
-    },
-    "[telegram-auth] succeeded",
-  );
-
-  return { ok: true, token, isNewUser };
-}
-
-/**
- * Telegram Mini App / WebApp auto-login handler.
- *
- * Parallel to `handleTelegramAuth` but for the Mini App SDK flow:
- * when the user opens the site INSIDE the Telegram client, the SDK
- * exposes `window.Telegram.WebApp.initData` carrying a verified
- * identity. The user is already authenticated by Telegram itself,
- * so they NEVER see the phone-number prompt that oauth.telegram.org
- * shows for first-time browser users.
- *
- * This handler shares the same downstream pieces (replay protection
- * via the embedded `hash`, find-or-create via `findOrCreateTelegramUser`,
- * JWT issuance via `signUserToken`, audit logging via `logAuthActivity`)
- * — only the wire-format and HMAC algorithm differ.
- */
-async function handleTelegramWebAppAuth(
-  initData: string,
-  referralCode: string | undefined,
-  client: { ipAddress?: string; userAgent?: string },
-): Promise<
-  | { ok: true; token: string; isNewUser: boolean }
-  | { ok: false; status: number; error: string; reason: string }
-> {
-  const config = await getSetting("auth.telegram");
-  if (!config.enabled || typeof config.bot_token !== "string" || !config.bot_token) {
-    return {
-      ok: false,
-      status: 503,
-      error: "تسجيل الدخول عبر Telegram غير مفعّل",
-      reason: "provider_disabled",
-    };
-  }
-
-  const verification = verifyTelegramWebAppData(initData, config.bot_token);
-  if (!verification.ok) {
-    const userMsg =
-      verification.reason === "stale_auth_date"
-        ? "انتهت صلاحية الجلسة، حاول مجدداً"
-        : "فشل التحقق من Telegram";
-    await logAuthActivity({
-      identifier: "tg:webapp_unknown",
-      action: "login",
-      provider: "telegram",
-      success: false,
-      failureReason: verification.reason,
-      ipAddress: client.ipAddress,
-      userAgent: client.userAgent,
-    }).catch((err) => {
-      logger.warn(
-        { category: "auth.telegram", err: err instanceof Error ? err.message : String(err) },
-        "logAuthActivity: failed to record telegram-webapp failure",
-      );
-    });
-    Sentry.addBreadcrumb({
-      category: "auth.telegram",
-      level: "warning",
-      message: "telegram-webapp verification failed",
-      data: { reason: verification.reason },
-    });
-    return {
-      ok: false,
-      status:
-        verification.reason === "missing_init_data" ||
-        verification.reason === "missing_hash" ||
-        verification.reason === "missing_user"
-          ? 400
-          : 401,
-      error: userMsg,
-      reason: verification.reason,
-    };
-  }
-
-  // Replay protection — reuse the same hash table as the redirect
-  // path so a leaked initData can't be replayed against either flow.
-  // 93-A1 S3: the Mini App freshness window is 24 h — the claim TTL is
-  // TELEGRAM_WEBAPP_REPLAY_TTL_SEC (25 h) so the store key can NEVER
-  // expire before the payload it guards goes stale (the old code used
-  // the widget's 30-minute TTL, leaving a 23.5-hour replay hole).
-  const initParams = new URLSearchParams(initData);
-  const hash = initParams.get("hash") ?? "";
-  const claimed = await claimTelegramReplayHash(hash, TELEGRAM_WEBAPP_REPLAY_TTL_SEC);
-  if (!claimed) {
-    Sentry.addBreadcrumb({
-      category: "auth.telegram",
-      level: "error",
-      message: "telegram-webapp replay detected",
-    });
-    return {
-      ok: false,
-      status: 401,
-      error: "تم استخدام هذه الجلسة من قبل، حاول مجدداً",
-      reason: "replay_detected",
-    };
-  }
-
-  // Map the WebApp user shape onto the existing TelegramAuthFields
-  // contract so we can reuse findOrCreateTelegramUser unchanged.
-  const fieldsForFindOrCreate = {
-    id: verification.user.id,
-    first_name: verification.user.first_name,
-    last_name: verification.user.last_name,
-    username: verification.user.username,
-    photo_url: verification.user.photo_url,
-    auth_date: verification.auth_date,
-    hash,
-  };
-  const { user, isNewUser } = await findOrCreateTelegramUser(fieldsForFindOrCreate, referralCode);
-  const { token } = await createUserSession({
-    userId: user.id,
-    ipAddress: client.ipAddress,
-    userAgent: client.userAgent,
-  });
-
-  // Risk pipeline (003-anomaly-detection) — emit login_success.
-  scoreEventFireAndForget({
-    eventType: "login_success",
-    userId: user.id,
-    ipAddress: client.ipAddress ?? null,
-    userAgent: client.userAgent ?? null,
-    phone: user.phone ?? null,
-    ruleContext: {
-      event: {
-        eventType: "login_success",
-        ipAddress: client.ipAddress ?? null,
-        userAgent: client.userAgent ?? null,
-      },
-      user: { id: user.id },
-    },
-  });
-
-  await logAuthActivity({
-    userId: user.id,
-    identifier: `tg:${verification.user.id}`,
-    action: isNewUser ? "register" : "login",
-    provider: "telegram",
-    success: true,
-    ipAddress: client.ipAddress,
-    userAgent: client.userAgent,
-  }).catch(() => {
-    // Non-fatal — login proceeds even if telemetry insert fails.
-  });
-
-  Sentry.addBreadcrumb({
-    category: "auth.telegram",
-    level: "info",
-    message: isNewUser ? "telegram-webapp register" : "telegram-webapp login",
-    data: { userId: user.id },
-  });
-
-  logger.info(
-    {
-      category: "auth",
-      userId: user.id,
-      provider: "telegram",
-      isNewUser,
-      flow: "webapp",
-    },
-    "[telegram-webapp] succeeded",
-  );
-
-  return { ok: true, token, isNewUser };
-}
+// The user find-or-create + session-mint flows live in
+// services/telegram-auth-flow.ts (R126-L9 split) — the routes below own
+// transport only.
 
 // POST /api/auth/telegram (callback mode — primary, called from the
 //                          frontend telegram-callback page after it
@@ -1025,68 +466,6 @@ authProviderPublicRouter.post("/telegram/webapp", async (req, res) => {
 // cross-site redirect transport (return_to pointed at this endpoint)
 // safely; until such a client exists, same-origin-only is strictly
 // tighter and correct.
-const TELEGRAM_CALLBACK_CSRF_ERROR = "csrf_blocked";
-
-/** B1-1: resolve the same allow-list shape app.ts's CSRF gate uses. */
-function telegramCallbackAllowedOrigins(): string[] {
-  const explicit = process.env.CSRF_ALLOWED_ORIGINS;
-  const fromCors = getConfiguredOrigins();
-  const raw = explicit ?? (fromCors.length > 0 ? fromCors.join(",") : (process.env.APP_URL ?? ""));
-  const parsed = raw
-    .split(",")
-    .map((o) => o.trim().replace(/\/+$/, ""))
-    .filter(Boolean);
-  if (parsed.length > 0) return parsed;
-  // Non-production fallback mirrors app.ts's dev defaults so local
-  // round-trips keep working; production boots fail-fast on an empty
-  // CSRF allow-list long before this branch could weaken anything.
-  if (process.env.NODE_ENV !== "production") {
-    return [
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ];
-  }
-  return [];
-}
-
-/** B1-1: same-origin predicate for the session-mint shape of the callback. */
-export function isTelegramCallbackSameOrigin(
-  headers: { "sec-fetch-site"?: unknown; referer?: unknown },
-  allowedOrigins: string[],
-): boolean {
-  // Express types header values as string | string[] | undefined — accept
-  // any of those and normalize to the first string (browsers never send
-  // these as arrays; the normalization is purely type-safe).
-  const header = (value: unknown): string | null => {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-    return null;
-  };
-  const secFetchSite = header(headers["sec-fetch-site"]);
-  if (secFetchSite !== null && secFetchSite.length > 0) {
-    return secFetchSite === "same-origin";
-  }
-  const referer = header(headers["referer"]);
-  if (referer !== null && referer.length > 0 && allowedOrigins.length > 0) {
-    // Exact-origin comparison only (F-009 discipline): parse both sides
-    // and compare protocol+host — never string prefixes.
-    return allowedOrigins.some((allowed) => {
-      try {
-        const r = new URL(referer);
-        const a = new URL(allowed);
-        return r.protocol === a.protocol && r.host === a.host;
-      } catch {
-        return false;
-      }
-    });
-  }
-  // No modern header AND no Referer (or no allow-list to check against):
-  // fail closed — see the verdict rules above.
-  return false;
-}
-
 authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
   try {
     const query = req.query as Record<string, string | undefined>;

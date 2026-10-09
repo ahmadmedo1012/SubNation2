@@ -23,7 +23,7 @@
  * sessionStorage is cleared per test so each init is a fresh session.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { initWebVitals } from "@/lib/web-vitals";
 
 const onCLS = vi.fn();
@@ -41,8 +41,8 @@ vi.mock("web-vitals", () => ({
 }));
 
 /** jsdom document/window listener spies (the flush pipeline). */
-let docAddSpy: ReturnType<typeof vi.spyOn>;
-let winAddSpy: ReturnType<typeof vi.spyOn>;
+let docAddSpy: MockInstance<typeof document.addEventListener>;
+let winAddSpy: MockInstance<typeof window.addEventListener>;
 
 function allSubscriptions(): number {
   return (

@@ -114,14 +114,14 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 
 const fetchMock = vi.fn();
 let sessionFixture: Record<string, unknown> = SESSION_ENROLLED;
-let setupResponse: () => Response = () =>
+let setupResponse: () => Promise<Response> = () =>
   Promise.resolve(
     resLike({ body: { secret: "JBSWY3DPEHPK3PXP", otpauth_url: "otpauth://totp/SubNation" } }),
   );
 // R126-L2 (A3-1): the backend's honest change-password 200 body — the
 // message the success path must surface verbatim.
 const CHANGE_PASSWORD_OK_MESSAGE = "تم تغيير كلمة المرور بنجاح — سيتم تسجيل خروجك من كل الجلسات";
-let changePasswordResponse: () => Response = () =>
+let changePasswordResponse: () => Promise<Response> = () =>
   Promise.resolve(resLike({ body: { success: true, message: CHANGE_PASSWORD_OK_MESSAGE } }));
 
 function renderSettingsTab(tab: string) {

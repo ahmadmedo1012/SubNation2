@@ -11,6 +11,7 @@
  */
 
 import { render, screen } from "@testing-library/react";
+import { Check } from "lucide-react";
 import { describe, expect, it } from "vitest";
 import {
   STATUS_TONE,
@@ -112,11 +113,15 @@ describe("StatusBadge v2 — purple variant + tone mapper + sizes (A12 §11.1)",
   });
 
   it("renders with an icon inside the pill (aria-hidden)", () => {
+    // A real LucideIcon — the `icon` prop is typed LucideIcon
+    // (ForwardRefExoticComponent), not an arbitrary render function.
     render(
-      <StatusBadge variant="success" icon={() => <svg data-testid="icon" />}>
+      <StatusBadge variant="success" icon={Check}>
         نشط
       </StatusBadge>,
     );
-    expect(screen.getByTestId("icon")).toBeInTheDocument();
+    const icon = document.querySelector("svg.lucide-check");
+    expect(icon).not.toBeNull();
+    expect(icon!.getAttribute("aria-hidden")).toBe("true");
   });
 });

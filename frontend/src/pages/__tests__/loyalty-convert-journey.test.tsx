@@ -124,7 +124,7 @@ async function openConvertForm(): Promise<{
   invalidateSpy: MockInstance;
 }> {
   const { invalidateSpy } = renderPage();
-  const input = await screen.findByPlaceholderText(/عدد النقاط/);
+  const input = await screen.findByPlaceholderText<HTMLInputElement>(/عدد النقاط/);
   return { input, invalidateSpy };
 }
 

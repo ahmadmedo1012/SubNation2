@@ -159,7 +159,7 @@ describe("AdminLayout GlobalSearch — no more silent failures or stale races (A
   });
 
   it("an error envelope (r.ok=false) stays an honest 'no results' — not a crash or fake rows", async () => {
-    const failing = routeSearch(() => [], false);
+    const failing = routeSearch(() => resLike({ body: [] }), false);
     vi.stubGlobal("fetch", failing);
 
     renderLayout();
@@ -315,7 +315,7 @@ describe("AdminLayout GlobalSearch — palette a11y contract (R125 A6 B-9)", () 
     expect(live!.textContent).toBe("3 نتائج");
 
     // The failing-search case announces the honest no-results line too.
-    const failing = routeSearch(() => [], false);
+    const failing = routeSearch(() => resLike({ body: [] }), false);
     vi.stubGlobal("fetch", failing);
     const input = screen.getByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
     fireEvent.change(input, { target: { value: "zz" } });

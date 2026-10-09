@@ -950,7 +950,12 @@ export default defineConfig({
             },
             telemetry: false,
             silent: false,
-            sourcemaps: { deleteSourcemapsAfterUpload: true },
+            // R126-L7 (T2 typecheck): `deleteSourcemapsAfterUpload` is NOT an
+            // option of @sentry/vite-plugin@4.x (dead config the old typecheck
+            // gap hid — maps were never plugin-deleted). The v4 equivalent is
+            // `filesToDeleteAfterUpload`; sourcemapGuardPlugin() below remains
+            // the deletion backstop either way.
+            sourcemaps: { filesToDeleteAfterUpload: "assets/*.map" },
           }),
         ]
       : []),
@@ -1099,6 +1104,9 @@ export default defineConfig({
           if (id.includes("node_modules/@sentry/")) {
             return "vendor-sentry";
           }
+          // Fall through → Rollup's default chunking (TS7030 under
+          // noImplicitReturns: make the implicit undefined explicit).
+          return undefined;
         },
       },
     },

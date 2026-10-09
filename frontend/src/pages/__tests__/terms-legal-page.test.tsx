@@ -36,7 +36,7 @@ beforeEach(() => {
 function breadcrumbSeparator(container: HTMLElement): SVGElement {
   // terms' breadcrumb is a plain <div> (category/product use <nav>);
   // the separator is the page's only chevron-left glyph.
-  const svg = container.querySelector("svg.lucide-chevron-left");
+  const svg = container.querySelector<SVGElement>("svg.lucide-chevron-left");
   expect(svg).not.toBeNull();
   return svg!;
 }

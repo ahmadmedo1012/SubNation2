@@ -160,6 +160,9 @@ const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       order_amount: number;
     };
     const handler = validateHandlers.get(body.code);
+    if (!handler) {
+      throw new Error(`no validate handler registered for coupon "${body.code}"`);
+    }
     return handler(body.order_amount);
   }
   return { ok: true, json: async () => ({}) };
@@ -189,7 +192,7 @@ function fixedCoupon(code: string, value: number) {
 }
 
 function minOrderCoupon(code: string, minOrder: number) {
-  validateHandlers.set(code, (orderAmount) => ({
+  validateHandlers.set(code, (_orderAmount) => ({
     ok: false,
     json: async () => ({
       error: `هذا الكوبون يتطلب حد أدنى للطلب ${minOrder.toFixed(2)} د.ل`,

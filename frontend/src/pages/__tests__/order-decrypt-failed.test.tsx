@@ -31,7 +31,7 @@ import { Route, Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import OrderDetailPage from "@/pages/order-detail";
 import ProductPage from "@/pages/product";
-import { useGetOrder } from "@workspace/api-client-react";
+import { useGetOrder, type Order } from "@workspace/api-client-react";
 
 const createOrderMock = vi.fn();
 const getProductMock = vi.fn();
@@ -82,8 +82,11 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 /** Completed order whose credentials failed every decrypt — the exact
- *  backend decrypt_failed contract (delivered_* all null, flag true). */
-const DECRYPT_FAILED_ORDER = {
+ *  backend decrypt_failed contract (delivered_* all null, flag true).
+ *  Typed against the REAL Order DTO (T2 mock-shape fix: the inferred
+ *  literal type was null-locked and rejected the pending/delivered
+ *  fixtures below). */
+const DECRYPT_FAILED_ORDER: Order = {
   id: 91,
   order_code: "SNDB91KEY",
   product_id: 3,
@@ -104,7 +107,7 @@ const DECRYPT_FAILED_ORDER = {
 
 /** Same shape WITHOUT the flag — a still-processing order must keep the
  *  normal «قيد الإعداد» state. */
-const PENDING_ORDER = {
+const PENDING_ORDER: Order = {
   ...DECRYPT_FAILED_ORDER,
   order_code: "SNDB92WAIT",
   status: "pending",
@@ -112,7 +115,7 @@ const PENDING_ORDER = {
 };
 
 /** Completed order with decrypted credentials and no flag — normal render. */
-const DELIVERED_ORDER = {
+const DELIVERED_ORDER: Order = {
   ...DECRYPT_FAILED_ORDER,
   order_code: "SNDB93OK",
   delivered_email: "buyer@example.com",

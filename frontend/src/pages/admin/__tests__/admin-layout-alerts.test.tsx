@@ -32,7 +32,9 @@ import { AdminLayout } from "@/pages/admin/layout";
 // scope granted, matching the pre-existing tests). R120-B4 (A2-F3):
 // the support scope joins the flip set (the openTickets badge rides
 // the same stats subscription).
-const { authState } = vi.hoisted(() => ({ authState: { finance: true } }));
+const { authState } = vi.hoisted(() => ({
+  authState: { finance: true, support: true } as Record<string, boolean>,
+}));
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
@@ -187,7 +189,7 @@ async function topupsBadgeChip(): Promise<string | null> {
  *  itself now subscribes to (through the REAL generated client —
  *  customFetch rides the stubbed global fetch). Module-scope since the
  *  R120-B4 openTickets suite rides the same router. */
-function routeFetch(over: { stats?: () => Response }) {
+function routeFetch(over: { stats: () => Response }) {
   return vi.fn((input: unknown) => {
     const url = String(input);
     if (url.includes("/api/admin/stats")) {

@@ -19,12 +19,16 @@
  *      controller pattern) so real runtimes kill the stale request at
  *      the source.
  *
- * R118 (A5 W-6 follow-up): migration to vi.useFakeTimers is still PENDING —
- * the suite still sleeps real 340/700/800ms per test (known top flake
- * candidate on a loaded 2-CPU runner; green at R118 full gates). Convert
- * using the repo's fake-timer idiom (whatsapp-phone-sign-in.test.tsx):
- * act(vi.advanceTimersByTime) + microtask flush; NEVER waitFor/findBy
- * (they poll on faked timers and hang).
+ * R118 (A5 W-6) → R126-L7 (A10 §2.2 P2-3): migrated to vi.useFakeTimers
+ * — the suite used to sleep real 340/800ms per test to orchestrate
+ * the race interleavings (the documented retired flake pattern; top
+ * candidate on a loaded 2-CPU runner). The repo's established
+ * fake-timer idiom (global-search.test.tsx / whatsapp-phone-sign-in):
+ * advance via act(vi.advanceTimersByTime) + a microtask flush; NEVER
+ * waitFor/findBy (they poll on faked timers and hang). The 300ms
+ * debounce and the mock's 700ms stale-response delay are FAKE timers,
+ * so the "older response resolves after the newer one" interleaving
+ * is driven deterministically by advancing exactly past each delay.
  *
  * Module-boundary mocks follow referrals-error-state.test.tsx.
  */
@@ -91,13 +95,31 @@ function renderPage() {
   );
 }
 
+/** Drains the promise continuations behind the mocked fetch (fake timers
+ * freeze macrotasks — the global-search.test.tsx idiom). */
+async function flushAsync() {
+  await act(async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  });
+}
+
+/** Advances fake time, then drains whatever the fired timers started. */
+async function advance(ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+  });
+  await flushAsync();
+}
+
 describe("AdminReferralsPage — debounced search races (R98-02)", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("a delayed OLDER response arriving last never overwrites the newer results", async () => {
@@ -120,19 +142,25 @@ describe("AdminReferralsPage — debounced search races (R98-02)", () => {
     });
 
     renderPage();
-    const input = await screen.findByPlaceholderText("بحث برقم المُحيل أو المُحال...");
+    await flushAsync(); // the mount fetch (no search param) settles
+    const input = screen.getByPlaceholderText("بحث برقم المُحيل أو المُحال...");
 
-    // Type "abc" — first debounce fires after 300ms.
+    // Type "abc" — the 300ms debounce fires on faked time; the "abc"
+    // request goes in flight and stays pending on its own 700ms fake
+    // timer.
     fireEvent.change(input, { target: { value: "abc" } });
-    await new Promise((r) => setTimeout(r, 340));
+    await advance(320);
 
-    // Complete to "abcd" — the newer request fires and lands.
+    // Complete to "abcd" — its debounce fires and the newer response
+    // (immediate) renders the FRESH referee phone.
     fireEvent.change(input, { target: { value: "abcd" } });
-    await screen.findByText(FRESH, { selector: "span" });
+    await advance(320);
+    expect(screen.getByText(FRESH, { selector: "span" })).toBeInTheDocument();
 
-    // Wait WELL past the older response's 700ms delay — it resolves now,
-    // after the newer one. The stale referee phone must never appear.
-    await new Promise((r) => setTimeout(r, 800));
+    // Advance WELL past the older response's 700ms delay — it resolves
+    // now, after the newer one, on a request whose signal the mock
+    // deliberately ignored. The stale referee phone must never appear.
+    await advance(800);
     expect(screen.queryByText(STALE)).not.toBeInTheDocument();
     expect(screen.getByText(FRESH, { selector: "span" })).toBeInTheDocument();
   });
@@ -141,10 +169,11 @@ describe("AdminReferralsPage — debounced search races (R98-02)", () => {
     fetchMock.mockImplementation(() => Promise.resolve(resLike(payloadFor(FRESH))));
 
     renderPage();
-    const input = await screen.findByPlaceholderText("بحث برقم المُحيل أو المُحال...");
+    await flushAsync(); // the mount fetch settles
+    const input = screen.getByPlaceholderText("بحث برقم المُحيل أو المُحال...");
 
     fireEvent.change(input, { target: { value: "abc" } });
-    await new Promise((r) => setTimeout(r, 340));
+    await advance(320);
 
     const calls = fetchMock.mock.calls.filter((c) =>
       String(c[0]).includes("/api/admin/referrals?"),
@@ -158,7 +187,7 @@ describe("AdminReferralsPage — debounced search races (R98-02)", () => {
     // Only search-typed requests get the signal (mount fetch keeps its
     // legacy no-signal shape — the refresh button / status-filter path).
     fireEvent.change(input, { target: { value: "abcd" } });
-    await new Promise((r) => setTimeout(r, 340));
+    await advance(320);
     const afterSecond = fetchMock.mock.calls.filter((c) => String(c[0]).includes("search=abcd"));
     expect(afterSecond.length).toBeGreaterThanOrEqual(1);
     expect((afterSecond[0]![1] as { signal?: AbortSignal } | undefined)?.signal).toBeInstanceOf(

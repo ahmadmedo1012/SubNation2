@@ -21,7 +21,7 @@ beforeEach(() => {
   // Wouter navigation mutates the shared jsdom URL — reset so each
   // test starts at "/" and its Link click is a real location change
   // (the progress effect early-returns when location is unchanged).
-  window.history.pushState({}, {}, "/");
+  window.history.pushState({}, "", "/");
 });
 
 beforeEach(() => {

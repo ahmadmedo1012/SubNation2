@@ -88,7 +88,7 @@ beforeEach(() => {
   authState.token = null;
   cartState.itemCount = 0;
   productsFixture.data = [];
-  window.history.pushState({}, {}, "/");
+  window.history.pushState({}, "", "/");
 });
 
 // ── MobileNav ────────────────────────────────────────────────────────────

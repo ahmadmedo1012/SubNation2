@@ -55,7 +55,12 @@ function jsonResponse(status: number, body: unknown) {
 let adminCookieLive = false;
 
 const fetchMock = vi.fn(
-  (input: unknown): Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }> => {
+  (
+    input: unknown,
+    // The verify-2fa call passes (url, RequestInit) — carrying the arg
+    // in the signature types mock.calls' [1] for the body assertion below.
+    _init?: RequestInit,
+  ): Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }> => {
     const url = typeof input === "string" ? input : String(input);
     if (url === "/api/admin/probe") {
       return Promise.resolve(
@@ -106,7 +111,12 @@ function renderLogin() {
   );
 }
 
-type LoginConfig = { mutation?: { onSuccess?: (data: unknown) => void } };
+type LoginConfig = {
+  mutation?: {
+    onSuccess?: (data: unknown) => void;
+    onError?: (err: unknown) => void;
+  };
+};
 
 /** The mutation CONFIG the page passed to useAdminLogin (last render). */
 function lastLoginConfig(): LoginConfig | undefined {

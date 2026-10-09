@@ -286,6 +286,8 @@ describe("cart money totals — cent rounding (R94-A1 #1)", () => {
           onClick={() =>
             addItem({
               productId: 3,
+              variantId: null,
+              variantLabel: null,
               name: "Fractional",
               slug: null,
               imageUrl: null,

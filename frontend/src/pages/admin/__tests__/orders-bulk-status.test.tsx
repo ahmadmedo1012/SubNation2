@@ -43,7 +43,9 @@ vi.mock("@workspace/api-client-react", () => ({
 // R120-B4 (A2-F4): the auth mock reads from hoisted mutable state so
 // the finance-gating test can flip the scope per-test (default: granted,
 // matching the pre-existing tests).
-const { authState } = vi.hoisted(() => ({ authState: { finance: true } }));
+const { authState } = vi.hoisted(() => ({
+  authState: { finance: true } as Record<string, boolean>,
+}));
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({

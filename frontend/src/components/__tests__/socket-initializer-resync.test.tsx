@@ -32,7 +32,11 @@ const authState = vi.hoisted(() => ({
 }));
 
 const { connectAdminSocketMock } = vi.hoisted(() => ({
-  connectAdminSocketMock: vi.fn(async () => null),
+  // The real connectAdminSocket resolves Socket | null; the mock is
+  // widened to Promise<unknown> so per-suite fake sockets (the R126-L3
+  // connected-handler test) can be mockResolvedValue'd without an
+  // as-cast against the inferred Promise<null>.
+  connectAdminSocketMock: vi.fn(async (): Promise<unknown> => null),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -69,8 +73,12 @@ function renderInitializer() {
   return { client, invalidateSpy, ...view };
 }
 
+/** The typed spy renderInitializer hands out (keeps mock.calls
+ * element types inferred — no implicit-any callbacks in the reader). */
+type InvalidateSpy = ReturnType<typeof renderInitializer>["invalidateSpy"];
+
 /** Invalidate call arguments shaped as { queryKey: [...] }. */
-function invalidatedKeys(invalidateSpy: ReturnType<typeof vi.spyOn>) {
+function invalidatedKeys(invalidateSpy: InvalidateSpy) {
   return invalidateSpy.mock.calls
     .map((call) => call[0])
     .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))

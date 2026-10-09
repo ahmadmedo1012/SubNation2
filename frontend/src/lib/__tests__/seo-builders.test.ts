@@ -76,9 +76,9 @@ describe("buildProductLd — offers.availability follows real stock (D2-F2)", ()
     // schema.org/Product.url — pairs with the runtime og:url/og:type=
     // product the product page's MetaTags emit, so the LD node and the
     // OG card agree on the canonical URL.
-    expect((ld as Record<string, string>).url).toBe("https://subnation.ly/product/netflix-1m");
+    expect((ld as Record<string, unknown>).url).toBe("https://subnation.ly/product/netflix-1m");
     // Legacy slug-less rows keep the numeric-id canonical form.
     const legacy = buildProductLd({ ...BASE, slug: null });
-    expect((legacy as Record<string, string>).url).toBe("https://subnation.ly/product/5");
+    expect((legacy as Record<string, unknown>).url).toBe("https://subnation.ly/product/5");
   });
 });

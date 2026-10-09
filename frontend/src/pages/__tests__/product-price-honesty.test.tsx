@@ -27,6 +27,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Route, Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Product } from "@workspace/api-client-react";
 import ProductPage from "@/pages/product";
 
 const createOrderMock = vi.fn();
@@ -35,7 +36,7 @@ const getProductMock = vi.fn();
 const refetchMock = vi.fn();
 
 /** Simple variant-less product (price 49, no sale). */
-const SIMPLE_PRODUCT = {
+const SIMPLE_PRODUCT: Product = {
   id: 5,
   slug: null,
   name: "Netflix شهر",
@@ -51,6 +52,7 @@ const SIMPLE_PRODUCT = {
   discount_percent: null,
   usage_terms: null,
   order_count: 0,
+  variants: [],
 };
 
 /** Multi-variant product modeled on the backend contract: product.price /
