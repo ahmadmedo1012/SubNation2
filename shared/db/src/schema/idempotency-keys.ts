@@ -1,4 +1,4 @@
-import { integer, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 /**
  * Durable idempotency for the customer money path (F10, round-94 A4).
@@ -67,4 +67,14 @@ export const idempotencyKeysTable = pgTable(
   // V1-M20). Pure write amplification on the checkout claim path; boot
   // twin: migrate.ts applyIndexConsolidationStage (probe-gated DROP
   // INDEX IF EXISTS).
+  (t) => ({
+    // R127-L3 (B7 P2-1 / B8 G4): idempotency-retention's
+    // `created_at < 48h` prune (jobs/idempotency-retention.ts, daily
+    // 00:00 + boot one-shot) — the table's only index WAS the
+    // order-column twin above until V1-M27 dropped it, so every prune
+    // batch was a seq scan on the money path's hottest INSERT table.
+    // Boot twin: migrate.ts applyRetentionPruneIndexesStage (V1-M31);
+    // drizzle mirror: 0020.
+    createdIdx: index("idx_idempotency_keys_created").on(t.createdAt),
+  }),
 );

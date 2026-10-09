@@ -59,7 +59,7 @@ const SUPPORT_FAQ: FaqItem[] = [
   {
     question: "كيف أشتري اشتراكاً عبر SubNation؟",
     answer:
-      "اختر المنتج من المتجر، تأكد من رصيد المحفظة، ثم اضغط شراء. سيتم خصم المبلغ من محفظتك فوراً وستصلك بيانات الاشتراك في صفحة الطلب وعبر الإشعارات.",
+      "اختر المنتج من المتجر، تأكد من رصيد المحفظة، ثم اضغط «اشترِ الآن». سيتم خصم المبلغ من محفظتك فوراً وستصلك بيانات الاشتراك في صفحة الطلب وعبر الإشعارات.",
   },
   {
     question: "ما طرق الدفع المتاحة؟",
@@ -69,7 +69,7 @@ const SUPPORT_FAQ: FaqItem[] = [
   {
     question: "متى أستلم بيانات الاشتراك بعد الشراء؟",
     answer:
-      "التسليم فوري في أغلب الحالات. إذا كان المنتج يتطلب تجهيز يدوي ستُحدَّد مدة الانتظار في صفحة الطلب وتصلك بيانات الاشتراك بمجرد الجاهزية.",
+      "التسليم فوري في أغلب الحالات. إذا كان المنتج يتطلب تجهيز يدوي ستُحدَّد مدة الانتظار في صفحة الطلب وتصلك بيانات الاشتراك فور جهوزيته.",
   },
   {
     question: "هل يمكنني استرداد المبلغ إذا واجهت مشكلة؟",
@@ -79,7 +79,7 @@ const SUPPORT_FAQ: FaqItem[] = [
   {
     question: "كم تستغرق الموافقة على شحن المحفظة؟",
     answer:
-      "عادةً خلال دقائق، وبحد أقصى 30 دقيقة خلال ساعات العمل. ستظهر حالة الطلب في صفحة المحفظة، وتصلك إشعارات بالقبول أو الرفض.",
+      "عادةً خلال دقائق، وبحد أقصى 30 دقيقة خلال ساعات العمل. ستظهر حالة الطلب في صفحة المحفظة، وتصلك إشعارات بالاعتماد أو الرفض.",
   },
   {
     /* R123-E4b (P1): the platform is passwordless — Google / Telegram /
@@ -105,7 +105,7 @@ const SUPPORT_FAQ: FaqItem[] = [
   {
     question: "هل أحصل على مكافأة عند دعوة أصدقائي؟",
     answer:
-      "نعم. عندما يعتمد فريقنا أول شحن لصديقٍ انضم عبر رمز إحالتك، تحصل أنت على نقاط ولاء قابلة للتحويل لرصيد، ويحصل صديقك على مكافأة ترحيب 5 د.ل تُضاف لمحفظته في الوقت نفسه.",
+      "نعم. عندما يعتمد فريقنا أول شحن لصديقٍ انضم عبر رمز إحالتك، تحصل أنت على نقاط الولاء قابلة للتحويل لرصيد، ويحصل صديقك على مكافأة ترحيب 5 د.ل تُضاف لمحفظته في الوقت نفسه.",
   },
   {
     question: "كيف أتواصل مع الدعم؟",
@@ -228,7 +228,7 @@ export default function SupportPage() {
       if (!res.ok || !d || !Array.isArray(d.replies)) {
         toast({
           title: "تعذّر تحميل التذكرة",
-          description: "حدث خطأ في الاتصال — أعد المحاولة",
+          description: "حدث خطأ في الاتصال — حاول مجدداً",
           variant: "destructive",
         });
         return;
@@ -239,7 +239,7 @@ export default function SupportPage() {
     } catch {
       toast({
         title: "تعذّر تحميل التذكرة",
-        description: "حدث خطأ في الاتصال — أعد المحاولة",
+        description: "حدث خطأ في الاتصال — حاول مجدداً",
         variant: "destructive",
       });
     } finally {
@@ -288,7 +288,7 @@ export default function SupportPage() {
       toast({
         title: "خطأ",
         // R111-F2 Q1: calm + actionable fallback (was the vague «فشلت العملية»).
-        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مرة أخرى",
+        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مجدداً",
         variant: "destructive",
       });
     } finally {
@@ -319,7 +319,7 @@ export default function SupportPage() {
       toast({
         title: "خطأ",
         // R111-F2 Q1 (same family as handleCreate above).
-        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مرة أخرى",
+        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مجدداً",
         variant: "destructive",
       });
     } finally {
@@ -765,7 +765,7 @@ export default function SupportPage() {
                 {submitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    جارٍ الإرسال...
+                    جارٍ الإرسال…
                   </>
                 ) : (
                   <>
@@ -793,7 +793,11 @@ export default function SupportPage() {
             <MessageSquare className="w-6 h-6 text-primary" />
           </div>
           <p className="font-bold text-sm mb-1.5 text-foreground/80">تحتاج مساعدة شخصية؟</p>
-          <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
+          {/* R127-L7 (B3-K2): 12px/400 muted ink measured 3.5:1
+              pixel-median (anti-alias density) — lifted to text-xs +
+              font-semibold (design-system gate: 400/600/700 only), same
+              treatment as register.tsx's consent line. */}
+          <p className="text-xs font-semibold text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
             سجّل الدخول لفتح تذكرة دعم ومتابعة الرد من هذه الصفحة
           </p>
           <Button
@@ -824,7 +828,7 @@ export default function SupportPage() {
             className="py-16"
             titleClassName="text-sm"
             title="تعذّر تحميل التذاكر"
-            description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+            description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم حاول مجدداً"
             retryClassName="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
             onRetry={fetchTickets}
           />

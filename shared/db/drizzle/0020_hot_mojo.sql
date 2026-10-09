@@ -1,0 +1,86 @@
+-- R127-L3 (B7 P2-1 + B8 §2 G1–G7): Drizzle 0020 — the mirror re-emit of
+-- the retention/prune-predicate index bundle the RUNTIME boot SQL
+-- (migrate.ts applyRetentionPruneIndexesStage, V1-M31) applies live.
+--
+-- The merged, deduplicated set from the two R127 auditors:
+--   B7 P2-1 (six prune predicates with no index support) +
+--   B8 §2 G1–G7 (the same set re-derived live + the admin_alerts
+--   unread-badge partial). Names follow the house fleet convention
+--   (idx_<table>_<column>, matching idx_audit_logs_created /
+--   idx_auth_activity_created / idx_whatsapp_otps_expires_at); where
+--   the two reports proposed variant names for the same index
+--   (idx_sessions_expires vs idx_sessions_expires_at,
+--   idx_notifications_created_at vs idx_notifications_created), the
+--   column-suffixed / house-style variant won.
+--
+--   - idx_sessions_expires_at          session-prune `expires_at < now()`
+--   - idx_admin_sessions_expires_at    pruneStaleAdminSessions (24h/30d)
+--   - idx_admin_sessions_revoked_at    …the revoked arm, PARTIAL on the
+--                                      IS NOT NULL minority slice (caps
+--                                      the per-insert write cost)
+--   - idx_admin_alerts_unread          countUnreadAlerts + the /new
+--                                      drawer + markStaleUnreadAlertsRead
+--                                      (B8 G2 — the only request-path
+--                                      predicate of the bundle), PARTIAL
+--                                      WHERE is_read = false, DESC per
+--                                      the drawer's ORDER BY
+--   - idx_idempotency_keys_created     idempotency-retention 48h prune
+--   - idx_login_attempts_last_attempt  auth-audit-retention 7d prune —
+--                                      THE one that matters: the only
+--                                      attacker-grown table of the set
+--                                      (1 upsert per phone:ip/username:ip
+--                                      pair; the catch-up-purge seq-scan
+--                                      amplifier B7 §7 worked through)
+--   - idx_notifications_created        notifications-retention 90d/180d
+--                                      (serves BOTH disjunction arms)
+--   - idx_forecasts_forecast_date      forecast-retention 90d prune
+--                                      (WORKER_TIER-gated, dormant in
+--                                      prod — declared so the runner
+--                                      family is index-served the day
+--                                      it is armed)
+--
+-- whatsapp_otps is deliberately NOT in this bundle: B8 G6 proposed
+-- idx_whatsapp_otps_created_at, but B7 directive 6's alternative —
+-- switching the prune predicate to the ALREADY-INDEXED expires_at
+-- column (idx_whatsapp_otps_expires_at, migrate.ts:2745) — shipped
+-- instead (services/whatsapp-otp.service.ts, this round). A created_at
+-- twin would be a second write-amplifying index on a hot-INSERT table
+-- with zero remaining readers.
+--
+-- Same conventions as 0019 (R123-E5), 0018 (R122), 0017 (R120-B6),
+-- 0016 (R118-B3) and 0013 (r110): the file as emitted by
+-- `drizzle-kit generate` is DECLARATIVE-ONLY — nothing in the repo
+-- executes shared/db/drizzle/*.sql at runtime (prod schema flows
+-- exclusively through migrate.ts), and CI only regenerates + diffs.
+-- The statements below are hand-hardened (r110 idiom) so the chain is
+-- ALSO safe the day it IS applied (manual `drizzle-kit migrate`, a
+-- chain-built fresh environment, or a future wiring):
+--
+--   - every CREATE INDEX carries IF NOT EXISTS (on the runtime shape
+--     the V1-M31 boot twin has already created every object under
+--     these exact names, so each statement no-ops);
+--
+--   - WHY NOT CONCURRENTLY (B8 F3 decision, on the record): drizzle's
+--     migrator — the only sanctioned chain applier — wraps ALL pending
+--     migration statements in ONE transaction (PgDialect.migrate →
+--     session.transaction, drizzle-orm 0.45.2), and CREATE INDEX
+--     CONCURRENTLY is invalid inside a transaction block (PG 25001):
+--     a CONCURRENTLY statement would hard-fail the chain exactly on
+--     the day someone first relies on it. A plain CREATE INDEX takes a
+--     SHARE lock that blocks writes on the table for the build
+--     duration — a non-event at current rowcounts (B8 live snapshot:
+--     sessions 43, admin_alerts 77, notifications 17, idempotency_keys
+--     4, login_attempts 5, whatsapp_otps 2, inventory_forecasts 0 —
+--     148 rows combined; every build is sub-millisecond). DOCUMENTED
+--     TRIGGER (B8 F3): the day any affected table crosses ~10⁵ rows,
+--     its build moves to CREATE INDEX CONCURRENTLY in migrate.ts
+--     (db.execute there is auto-commit, not tx-wrapped, so it CAN) and
+--     this chain twin is reworked to match.
+CREATE INDEX IF NOT EXISTS "idx_admin_alerts_unread" ON "admin_alerts" USING btree ("created_at" DESC NULLS LAST) WHERE is_read = false;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_admin_sessions_expires_at" ON "admin_sessions" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_admin_sessions_revoked_at" ON "admin_sessions" USING btree ("revoked_at") WHERE revoked_at IS NOT NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_idempotency_keys_created" ON "idempotency_keys" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_forecasts_forecast_date" ON "inventory_forecasts" USING btree ("forecast_date");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_login_attempts_last_attempt" ON "login_attempts" USING btree ("last_attempt");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_notifications_created" ON "notifications" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_sessions_expires_at" ON "sessions" USING btree ("expires_at");

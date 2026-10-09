@@ -141,6 +141,13 @@
       "when": 1791453751572,
       "tag": "0019_sturdy_omega_red",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791561878074,
+      "tag": "0020_hot_mojo",
+      "breakpoints": true
     }
   ]
 }

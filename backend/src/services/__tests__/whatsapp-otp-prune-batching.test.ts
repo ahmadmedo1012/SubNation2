@@ -1,10 +1,15 @@
 /**
  * R110-H (P3 from R109 §20) — pruneExpiredOtps was the LAST unbounded
  * retention DELETE in the repo: every other retention job already runs
- * bounded ctid batches of ≤1000 rows/statement (B7-P2-5 family). The 24 h
+ * bounded ctid batches of ≤1000 rows/statement (B7-P2-5 family). The ~24 h
  * retention window bounds the steady-state table, but the boot one-shot
  * catch-up after an extended outage could land one huge statement lock on
  * the shared Neon pooler.
+ *
+ * R127-L3 (B7 P2-6): the predicate is now expires_at-based (23 h expiry
+ * cutoff — a SUPERSET of the old 24 h created_at window) so it rides the
+ * existing idx_whatsapp_otps_expires_at instead of seq-scanning the
+ * unindexed created_at column. The superset case is pinned below.
  *
  * This suite pins the batch loop with the same technique as
  * jobs/__tests__/retention-batching.test.ts: datasets just above the batch
@@ -74,10 +79,23 @@ async function seedFreshOtp(phone: string, ageHours: number): Promise<void> {
   `);
 }
 
+/** R127-L3 (B7 P2-6): a row with a REALISTIC 5-minute TTL (the harness
+ * seedFreshOtp above uses a 5-hour TTL for convenience). */
+async function seedOtpWithTtl(phone: string, ageHours: number, ttlMinutes: number): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO whatsapp_otps (phone, code_hash, purpose, expires_at, created_at)
+    VALUES (${phone}, 'ttl-pin-hash', 'registration',
+            (now() - (${ageHours} * interval '1 hour')) + (${ttlMinutes} * interval '1 minute'),
+            now() - (${ageHours} * interval '1 hour'))
+  `);
+}
+
 describe("pruneExpiredOtps — ctid-batched ≤1000 per statement (R110-H)", () => {
   it("deletes >1000 stale rows through the batch loop (two DELETE statements) and keeps fresh rows", async () => {
     await seedStaleOtps(BATCH_BOUNDARY_ROWS);
-    // Two survivors: one minted now, one 23 h old (inside the 24 h window).
+    // Two survivors: one minted now, one 23 h old (its 5 h harness TTL
+    // puts expires_at at now()-18h — inside the 23 h expiry window the
+    // prune rides since R127-L3).
     await seedFreshOtp("0910000901", 0);
     await seedFreshOtp("0910000902", 23);
 
@@ -115,5 +133,43 @@ describe("pruneExpiredOtps — ctid-batched ≤1000 per statement (R110-H)", () 
     expect(await pruneExpiredOtps()).toBe(0);
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(await db.select().from(whatsappOtpsTable)).toHaveLength(1);
+  });
+});
+
+describe("pruneExpiredOtps — R127-L3 (B7 P2-6) expires_at predicate", () => {
+  it("rides the expiry column: a realistic 5-min-TTL row created 23.5h ago is pruned (superset of the old 24h created_at window)", async () => {
+    // expires_at = now()-23h25m < now()-23h → pruned. The OLD predicate
+    // (created_at < now()-24h) would have KEPT this row — the switch is
+    // deliberately a superset so no stale row survives the transition.
+    await seedOtpWithTtl("0915550001", 23.5, 5);
+    // expires_at = now()-22h25m — still inside the 23 h window → kept
+    // (long dead either way: 5-min TTL, single-use, consumed_at set on
+    // any successful verify; only the rate-limit window reads createdAt,
+    // and that reads RECENT rows).
+    await seedOtpWithTtl("0915550002", 22.5, 5);
+
+    expect(await pruneExpiredOtps()).toBe(1);
+
+    const survivors = await db.select().from(whatsappOtpsTable);
+    expect(survivors.map((r) => r.phone)).toEqual(["0915550002"]);
+  });
+
+  it("the DELETE predicates on expires_at, never created_at (index alignment pin)", async () => {
+    await seedOtpWithTtl("0915550003", 30, 5);
+    const execSpy = vi.spyOn(db, "execute");
+    await pruneExpiredOtps();
+    expect(execSpy.mock.calls.length).toBeGreaterThan(0);
+    for (const call of execSpy.mock.calls) {
+      // Render the drizzle SQL object the way migrate-v1m27.test.ts's
+      // recorder does (StringChunk values are string arrays, params are
+      // Date objects — only the text chunks matter for this pin).
+      const text = String(
+        (call[0] as unknown as { queryChunks?: Array<{ value: unknown }> }).queryChunks
+          ?.map((c) => (Array.isArray(c.value) ? c.value.join("") : c.value))
+          .join(""),
+      );
+      expect(text).toContain("expires_at <");
+      expect(text).not.toContain("created_at <");
+    }
   });
 });

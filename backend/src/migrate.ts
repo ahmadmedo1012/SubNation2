@@ -2130,6 +2130,111 @@ export async function applyOrganizationsRemovalStage(
   }
 }
 
+// ── V1-M31 (R127-L3, B7 P2-1 + B8 §2 G1–G7): retention/prune indexes ─────────
+//
+// The R127 auditors independently flagged the same gap class: the
+// retention/prune predicates below ran as UNINDEXED seq scans (each
+// ctid batch of ≤1000 rows = one full scan), so any catch-up purge
+// degrades to repeated full-table scans — the incident amplifier B7
+// worked through on login_attempts (an attacker-grown table: one
+// upsert per phone:ip / username:ip pair; IP-rotating stuffing at 10k
+// distinct pairs/hour for a week leaves ~1.7M rows → the next prune
+// pays ~1,700 consecutive full scans precisely while the DB is under
+// attack, keeping the 0.25 CU Neon compute permanently awake).
+//
+// The merged, deduplicated bundle (names per the house fleet
+// convention; see the drizzle 0020 header for the B7/B8 name-variant
+// merge note):
+//
+//   idx_sessions_expires_at          session-prune `expires_at < now()`
+//                                    (session-prune.ts, 05:00 + boot)
+//   idx_admin_sessions_expires_at    pruneStaleAdminSessions — expired arm
+//                                    (admin-session.ts:191-192)
+//   idx_admin_sessions_revoked_at    …the revoked arm, PARTIAL on the
+//                                    IS NOT NULL minority slice (caps the
+//                                    per-insert write cost — B7 directive 2)
+//   idx_admin_alerts_unread          countUnreadAlerts + markStaleUnread-
+//                                    AlertsRead + the /new drawer (B8 G2 —
+//                                    the only REQUEST-path predicate of the
+//                                    set, polled by the unread badge),
+//                                    PARTIAL WHERE is_read = false
+//   idx_idempotency_keys_created     idempotency-retention 48h prune
+//                                    (idempotency-retention.ts:53)
+//   idx_login_attempts_last_attempt  auth-audit-retention 7d prune
+//                                    (auth-audit-retention.ts:51) — THE
+//                                    important one (attack-grown table)
+//   idx_notifications_created        notifications-retention 90d/180d —
+//                                    idx_notifications_user leads with
+//                                    user_id, which the sweep never
+//                                    filters on (notifications-
+//                                    retention.ts:42-43)
+//   idx_forecasts_forecast_date      forecast-retention 90d prune
+//                                    (forecast-retention.ts; WORKER_TIER-
+//                                    gated + dormant — declared so the
+//                                    runner family is index-served the
+//                                    day it is armed)
+//
+// whatsapp_otps is deliberately absent: B7 directive 6's predicate
+// switch (created_at → the already-indexed expires_at, keeping the
+// 24h-created-at deletion semantics a superset via a 23h expires_at
+// cutoff) shipped in services/whatsapp-otp.service.ts this round — a
+// created_at twin (B8 G6) would be a second write-amplifying index on
+// a hot-INSERT table with zero remaining readers.
+//
+// Stage shape: the V1-M24 additive-twin form — unconditional
+// CREATE INDEX IF NOT EXISTS covers fresh installs AND the steady
+// state (already-migrated boots no-op). No probe gate needed: there is
+// no legacy shape to swap or drop, only additive objects.
+//
+// NOT CONCURRENTLY (B8 F3 decision, on the record): plain CREATE INDEX
+// takes a SHARE lock blocking writes for the build duration — a
+// non-event at current rowcounts (B8 live snapshot: 148 rows combined
+// across the eight target tables; every build sub-millisecond). The
+// documented trigger: the day any affected table crosses ~10⁵ rows,
+// its build here moves to CREATE INDEX CONCURRENTLY (db.execute is
+// auto-commit, not tx-wrapped, so it CAN) and the drizzle 0020 twin is
+// reworked to match.
+//
+// Drizzle mirror: shared/db/src/schema/*.ts declarations (this round)
+// + chain 0020.
+export async function applyRetentionPruneIndexesStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
+      ON sessions (expires_at);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at
+      ON admin_sessions (expires_at);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_admin_sessions_revoked_at
+      ON admin_sessions (revoked_at) WHERE revoked_at IS NOT NULL;
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_admin_alerts_unread
+      ON admin_alerts (created_at DESC) WHERE is_read = false;
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created
+      ON idempotency_keys (created_at);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_login_attempts_last_attempt
+      ON login_attempts (last_attempt);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_notifications_created
+      ON notifications (created_at);
+  `);
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_forecasts_forecast_date
+      ON inventory_forecasts (forecast_date);
+  `);
+  logger.info({ category: "storage" }, "V1-M31: retention/prune index bundle (idempotent)");
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -3983,6 +4088,15 @@ export async function runMigrations() {
     // table + users.organization_id + any FK on it, probe-gated (zero-DDL
     // steady state). See applyOrganizationsRemovalStage docs.
     await applyOrganizationsRemovalStage();
+
+    // ── V1-M31 (R127-L3, B7 P2-1 + B8 §2 G1–G7): the retention/prune ──
+    // predicate index bundle — sessions/admin_sessions expires_at +
+    // revoked_at, the admin_alerts unread partial, idempotency_keys /
+    // notifications / login_attempts / inventory_forecasts prune columns
+    // (login_attempts is the attack-grown one). Additive CREATE INDEX IF
+    // NOT EXISTS (V1-M24 form — zero-DDL steady state). See
+    // applyRetentionPruneIndexesStage docs.
+    await applyRetentionPruneIndexesStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

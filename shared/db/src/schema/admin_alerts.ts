@@ -1,4 +1,5 @@
 import { index, pgTable, serial, varchar, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const adminAlertsTable = pgTable(
   "admin_alerts",
@@ -32,5 +33,16 @@ export const adminAlertsTable = pgTable(
     // twin: migrate.ts must CREATE INDEX IF NOT EXISTS this name for the
     // live DB (V1-M24-class stage — see the R118-B3 report).
     createdIdx: index("idx_admin_alerts_created").on(t.createdAt.desc()),
+    // R127-L3 (B8 G2): the unread-badge family — countUnreadAlerts
+    // (alertLogger.ts, polled by /admin/alerts/unread-count),
+    // markStaleUnreadAlertsRead (unread > 14d) and the /new drawer's
+    // `is_read = false … LIMIT 50` — had no predicate-matching index
+    // (idx_admin_alerts_created is full-table, createdIdx above serves
+    // the sorted list). PARTIAL on the is_read = false minority slice,
+    // DESC to mirror the drawer's ORDER BY. Boot twin: migrate.ts
+    // applyRetentionPruneIndexesStage (V1-M31); drizzle mirror: 0020.
+    unreadIdx: index("idx_admin_alerts_unread")
+      .on(t.createdAt.desc())
+      .where(sql`is_read = false`),
   }),
 );

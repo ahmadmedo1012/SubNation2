@@ -83,3 +83,67 @@ describe("R4 — pool config carries statement_timeout + TCP keepalives", () => 
     expect(mod.dbPoolConfig.statement_timeout).toBe(60_000);
   });
 });
+
+/**
+ * R127-L3 (B8 F-P2) — the post-connect `SET statement_timeout` hook.
+ *
+ * B8 live-proved the startup-packet transport is a NO-OP on Neon (the
+ * packet is sent — pg 8.20.0 getStartupConf carries it — but the server
+ * session reports statement_timeout = 0 on both the pooler and direct
+ * endpoints; only an explicit `SET` sticks through the pooler). The
+ * fix: every new client of BOTH pools (runtime + lockPool) re-asserts
+ * the deadline on "connect".
+ *
+ * pg.Pool construction stays lazy (no connection opened — see the R4
+ * header), so the hook is exercised by emitting the pool's own
+ * "connect" event with a spy client, the same event pg fires for every
+ * real new connection.
+ */
+describe('R127 (B8 F-P2) — pool.on("connect") issues SET statement_timeout', () => {
+  /** A spy stand-in for a freshly connected pg client. */
+  function fakeClient() {
+    return { query: vi.fn().mockResolvedValue(undefined) };
+  }
+
+  it("the runtime pool SETs the resolved timeout on every new client", async () => {
+    const mod = await loadDbModule();
+    const client = fakeClient();
+    mod.pool.emit("connect", client);
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenCalledWith("SET statement_timeout = 15000");
+  });
+
+  it("the lockPool carries the SAME hook (B8: lockPool inherits the inert startup config)", async () => {
+    const mod = await loadDbModule();
+    const client = fakeClient();
+    mod.lockPool.emit("connect", client);
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenCalledWith("SET statement_timeout = 15000");
+  });
+
+  it("PG_STATEMENT_TIMEOUT_MS override flows into the SET (60000)", async () => {
+    process.env.PG_STATEMENT_TIMEOUT_MS = "60000";
+    const mod = await loadDbModule();
+    const client = fakeClient();
+    mod.pool.emit("connect", client);
+    expect(client.query).toHaveBeenCalledWith("SET statement_timeout = 60000");
+  });
+
+  it("PG_STATEMENT_TIMEOUT_MS=0 disables the hook entirely (no SET issued)", async () => {
+    process.env.PG_STATEMENT_TIMEOUT_MS = "0";
+    const mod = await loadDbModule();
+    const client = fakeClient();
+    mod.pool.emit("connect", client);
+    expect(client.query).not.toHaveBeenCalled();
+  });
+
+  it("a rejected SET never propagates (the hook must not kill the connection path)", async () => {
+    const mod = await loadDbModule();
+    const client = { query: vi.fn().mockRejectedValue(new Error("proxy rejects SET")) };
+    expect(() => mod.pool.emit("connect", client)).not.toThrow();
+    // The .catch(() => {}) swallow means no unhandled rejection either —
+    // if the hook regressed to a bare `void client.query(...)` without
+    // the catch, vitest's unhandled-rejection surface would fail here.
+    await new Promise((r) => setTimeout(r, 0));
+  });
+});

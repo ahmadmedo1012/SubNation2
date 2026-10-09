@@ -4143,6 +4143,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/audit-logs:
+    get:
+      operationId: listAdminAuditLogs
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Admin audit-trail page (requireAdmin + admins scope)
+      description: |
+        R127-L5 (B15-1): the audit_logs reader — every consequential
+        admin action is written to audit_logs by 6+ writers; this
+        endpoint is the operator-facing view of that trail (the
+        security page's «إجراءات المسؤولين» tab). Rows carry
+        actor/action/target/ip — that is the point of the feature.
+        Ordered created_at DESC (id DESC tiebreaker for stable
+        offset pages). Cache-Control: no-store.
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: |
+            Exact action filter ("topup.approve", "user.update", … —
+            free `<resource>.<verb>` varchar; "all" or empty means no
+            filter). Array-valued params are ignored (round-94 A5-09
+            single-string guard).
+        - name: actor
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            Exact admin id filter (actor_id). Digit-exact positive
+            integer; anything else is 400 INVALID_DATA.
+        - name: target
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            Exact target row id filter (target_id, across target
+            types). Digit-exact positive integer; anything else is 400
+            INVALID_DATA.
+        - name: startDate
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: |
+            Inclusive lower bound on created_at — any Date-parseable
+            string; invalid values are 400 INVALID_DATA (round-94
+            A5-09, the auth-activity idiom).
+        - name: endDate
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Inclusive upper bound (same validation as startDate).
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: 1-based page number (default 1, ceiling 10 000).
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Page size, clamped to [1, 200] (default 50).
+      responses:
+        "200":
+          description: Audit-log page envelope (rows newest first)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuditLogsPage"
+        "400":
+          description: Unparseable startDate/endDate or non-integer actor/target (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing admins permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/referrals:
     get:
       operationId: listAdminReferrals
@@ -4738,6 +4828,476 @@ paths:
                 $ref: "#/components/schemas/AdminInventoryHealthReport"
         "401":
           description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # R127-L1 (B1 §4 batch-2) — the top-cadence unexposed surface, rows
+  # 1-8 + 11-12 of the prioritized shortlist (metrics 15 s > risk
+  # dashboard 30 s > diagnostics/summary 60 s > scheduler/alerts-recent
+  # 90 s > alerts/new 5-min-per-page > forecast 5-min). Every response
+  # schema below is written field-by-field from the real handlers (never
+  # from consumer shorthand) and pinned row-per-op by the contract suite.
+  # ──────────────────────────────────────────────────────────────────────────
+  /admin/observability/metrics:
+    get:
+      operationId: getAdminObservabilityMetrics
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Prometheus registry snapshot (requireAdmin + settings scope) — LKG envelope
+      description: |
+        The System tab's 15 s poll (the highest-cadence admin endpoint).
+        The live prom registry is re-shaped into a bounded JSON snapshot
+        (lib/metrics-snapshot.ts) behind a 10 s server cache; the
+        response is the last-known-good envelope — when a snapshot
+        build fails, the previous value rides back with stale=true.
+        Per-route p95Ms in http.topRoutes is always null today (kept in
+        the shape to stay forward-compatible with a per-route
+        histogram). Cache-Control: no-store (router-level, R125-I6).
+      responses:
+        "200":
+          description: Last-known-good metrics envelope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminObservabilityMetrics"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing settings permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: |
+            Snapshot build AND last-known-good both unavailable — the
+            route's ad-hoc {error, message} envelope (predates the
+            {error, code} convention; documented handler-faithful).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [metrics_snapshot_failed]
+                  message:
+                    type: string
+                required: [error, message]
+
+  /admin/observability/summary:
+    get:
+      operationId: getAdminObservabilitySummary
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: System summary card (requireAdmin + settings scope)
+      description: |
+        The System tab's 60 s poll — release identity (7-char GIT_SHA,
+        "unknown" when unset), uptime, Redis availability, the worker
+        heartbeat age from the Redis key (null when no Redis / no key),
+        the alerts cache LKG stamp + recent count, and the three
+        dashboard deep-links (env URLs, null when unset).
+        Cache-Control: no-store.
+      responses:
+        "200":
+          description: System summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminObservabilitySummary"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing settings permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/observability/scheduler:
+    get:
+      operationId: getAdminObservabilityScheduler
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Scheduler runtime state (requireAdmin + settings scope)
+      description: |
+        The System tab's 90 s poll — the real scheduler topology
+        (embedded / single / dedicated / disabled) with the Redis
+        heartbeat framed by mode. heartbeat.expected is false when no
+        Redis client exists (R108 FH-A1 P2 F4 — the heartbeat is inert
+        by design on no-Redis deployments) and the optional note says
+        so; description is the operator-facing Arabic line.
+        Cache-Control: no-store.
+      responses:
+        "200":
+          description: Scheduler state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminObservabilityScheduler"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing settings permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/observability/alerts/recent:
+    get:
+      operationId: getAdminObservabilityAlertsRecent
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Recent alerts (requireAdmin + settings scope) — LKG envelope
+      description: |
+        The System tab's 90 s poll — the newest 50 admin_alerts rows
+        behind a 60 s server cache, in the last-known-good envelope (a
+        cache build failure serves the previous page with stale=true;
+        alerts is [] when no LKG exists). Cache-Control: no-store.
+      responses:
+        "200":
+          description: Recent alerts envelope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminObservabilityAlertsRecent"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing settings permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/diagnostics:
+    get:
+      operationId: getAdminDiagnostics
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Runtime diagnostics snapshot (requireAdmin + settings scope)
+      description: |
+        The System tab's 60 s poll — node/runtime identity, memory +
+        CPU usage, event-loop lag percentiles (null until the 5 s
+        monitor interval produces a histogram), dependency states, and
+        the four env-flag strings verbatim (including the handler's
+        "true"/"false" fallbacks when unset).
+        Cache-Control: no-store.
+      responses:
+        "200":
+          description: Diagnostics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDiagnostics"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing settings permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/alerts/new:
+    get:
+      operationId: listAdminNewAlerts
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: New-alerts polling delta (requireAdmin + support scope)
+      description: |
+        The 5-min fallback poll behind every admin page's alert drawer
+        (layout.tsx) plus the socket-triggered immediate refetch. The
+        since filter runs SQL-side (WHERE id > since ORDER BY id DESC
+        LIMIT 50, R96-A5 M15) — id is the serial PK, monotonic with
+        insert order. No envelope: just {alerts}. Cache-Control:
+        no-store.
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Last-seen alert id (default 0 → the newest 50).
+      responses:
+        "200":
+          description: Alerts newer than since (newest first, ≤50)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminNewAlerts"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing support permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Fetch failure (INTERNAL_ERROR)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/risk/dashboard:
+    get:
+      operationId: getAdminRiskDashboard
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Risk review-queue header metrics (requireAdmin + users scope)
+      description: |
+        The risk page's 30 s poll — three concurrent aggregates over the
+        lookback window: by-level counts, the unresolved backlog
+        (events with no risk_labels row), and the top-5 fired rules
+        (flattened out of the rule_fired text[] column), plus the
+        pipeline flag (RISK_PIPELINE_ENABLED). Cache-Control: no-store.
+      parameters:
+        - name: hours
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Lookback window in hours, clamped to [1, 720] (default 24).
+      responses:
+        "200":
+          description: Window aggregates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRiskDashboard"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing users permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/risk/events:
+    get:
+      operationId: listAdminRiskEvents
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Risk events review queue (requireAdmin + users scope) — keyset cursor pagination
+      description: |
+        The risk page's queue + load-more. Keyset cursor (opaque
+        "<isoCreatedAt>:<id>") over (created_at DESC, id DESC);
+        next_cursor is null on the last page. The LEFT JOIN enriches
+        each row with the user's phone/email (nullable — user_id is
+        ON DELETE SET NULL). Cache-Control: no-store.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Page size, clamped to [1, 200] (default 50).
+        - name: level
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: [low, medium, high, critical, null]
+          description: Exact level filter (out-of-enum values are ignored, not 400).
+        - name: eventType
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum:
+              - login_attempt
+              - login_success
+              - login_failure
+              - otp_request
+              - otp_verify
+              - topup_attempt
+              - topup_success
+              - order_create
+              - order_deliver
+              - coupon_apply
+              - referral_event
+              - admin_force_reauth
+              - null
+          description: |
+            Exact event-type filter — camelCase query name (matches the
+            FE caller). Unlike level, an out-of-enum value here IS 400
+            INVALID_DATA.
+        - name: userId
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Exact user filter (ignored when unparseable).
+        - name: from
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Inclusive lower bound (any Date-parseable string; unparseable values are silently ignored).
+        - name: to
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Inclusive upper bound (same semantics as from).
+        - name: cursor
+          in: query
+          schema:
+            type: ["string", "null"]
+          description: Opaque keyset cursor from a previous page's next_cursor.
+      responses:
+        "200":
+          description: Events page + next cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRiskEventsResponse"
+        "400":
+          description: Out-of-enum eventType filter (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing users permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/forecast/at-risk:
+    get:
+      operationId: listAdminForecastAtRisk
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Stockout-risk panel rows (requireAdmin + inventory scope)
+      description: |
+        The products page's 5-min StockoutRiskPanel poll — the newest
+        forecast per product where at_risk + predicted_runout_at are
+        set (non-archived, active products only), ordered by earliest
+        predicted runout. pipeline_state is honest about the cron:
+        fresh / stale (>24 h) / uninitialized (no successful run) /
+        calibrating (alerting paused by the capture-rate job).
+        Cache-Control: no-store.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Max rows, clamped to [1, 50] (default 10).
+      responses:
+        "200":
+          description: At-risk rows + pipeline state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminForecastAtRisk"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/forecast/products/{id}:
+    get:
+      operationId: getAdminForecastProduct
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Per-product forecast detail (requireAdmin + inventory scope)
+      description: |
+        The panel's on-demand drawer — the newest forecast row for one
+        product plus the explanation block (avg daily sales, DoW blend,
+        distinct days of order history, run completion stamp).
+        forecast is null when no row exists (the honest «no forecast
+        yet» drawer). Cache-Control: no-store.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Product id.
+      responses:
+        "200":
+          description: Per-product forecast (+ optional detail)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminForecastProduct"
+        "400":
+          description: Non-numeric id (INVALID_DATA)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Admin session missing/invalid (requireAdmin guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope (requirePermission guard)
           content:
             application/json:
               schema:
@@ -7122,6 +7682,77 @@ components:
           createdAt,
         ]
 
+    AdminAuditLog:
+      type: object
+      description: |
+        R127-L5 (B15-1): one audit_logs row — the WHO did WHAT WHEN
+        answer for every consequential admin action. `metadata` is the
+        writer's raw JSON string (writeAuditLog safeMetadata, ≤2 KB);
+        e.g. the Telegram webhook path carries
+        `{"source":"telegram_webhook","actor":"@ops","from_id":111111}`
+        (B11-F1). `actorUsername` is the LEFT-JOINed admin_users
+        username for the actor id (null for system/telegram actors).
+      properties:
+        id:
+          type: integer
+        actorId:
+          type: ["integer", "null"]
+          description: admin_users id when the writer rode an admin session; null for the Telegram webhook path (the actor lives in metadata).
+        actorType:
+          type: string
+          enum: [user, admin, system]
+        actorUsername:
+          type: ["string", "null"]
+        action:
+          type: string
+          description: Stable `<resource>.<verb>` string (topup.approve, user.update, …).
+        targetType:
+          type: ["string", "null"]
+        targetId:
+          type: ["integer", "null"]
+        metadata:
+          type: ["string", "null"]
+          description: Raw JSON-stringified metadata (≤2 KB per writeAuditLog).
+        ip:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          actorId,
+          actorType,
+          actorUsername,
+          action,
+          targetType,
+          targetId,
+          metadata,
+          ip,
+          createdAt,
+        ]
+
+    AdminAuditLogsPage:
+      type: object
+      description: |
+        The audit-trail page envelope (the alerts-inbox shape): one
+        page of rows + the honest total + page/limit + hasMore (offset
+        + page length < total).
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuditLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+      required: [logs, total, page, limit, hasMore]
+
     AdminReferralsStats:
       type: object
       properties:
@@ -7603,3 +8234,699 @@ components:
           type: string
           format: date-time
       required: [scanned_unsold, scanned_cap, products_with_undeliverable_units, items, checked_at]
+
+    # ── R127-L1 (B1 §4 batch-2): observability / diagnostics / alerts /
+    # risk / forecast response schemas — written field-by-field from the
+    # real handlers; the contract suite pins every row against the real
+    # app (a field the spec forgot or mistypes fails there, not in
+    # production).
+
+    # lib/scheduler-state.ts snapshot — the process's scheduler topology.
+    AdminSchedulerState:
+      type: object
+      description: |
+        The scheduler singleton's state (lib/scheduler-state.ts) — what
+        this process believes the topology is.
+      properties:
+        mode:
+          type: string
+          enum: [embedded, dedicated, single, disabled]
+        active:
+          type: boolean
+          description: Whether the scheduler loops run in THIS process.
+        isLeader:
+          type: boolean
+          description: Whether this process holds the Redis-backed leader lock.
+        instanceId:
+          type: ["string", "null"]
+          description: Stable process id (host + pid + uuid) — null before boot decides.
+        reason:
+          type: string
+          enum: [active, disabled_by_env, not_leader, redis_unavailable, unknown]
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+      required: [mode, active, isLeader, instanceId, reason, startedAt]
+
+    # GET /admin/observability/metrics — lib/metrics-snapshot.ts shape.
+    AdminMetricsSnapshot:
+      type: object
+      description: |
+        The prom registry re-shaped (lib/metrics-snapshot.ts) — bounded
+        top-N route aggregation, interpolated histogram percentiles,
+        "key:status"-joined record counters.
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        uptimeSec:
+          type: integer
+        http:
+          type: object
+          properties:
+            totalRequests:
+              type: number
+            requestsByStatusClass:
+              type: object
+              properties:
+                "2xx":
+                  type: number
+                "3xx":
+                  type: number
+                "4xx":
+                  type: number
+                "5xx":
+                  type: number
+                other:
+                  type: number
+              required: ["2xx", "3xx", "4xx", "5xx", other]
+            errorRate:
+              type: number
+              description: 5xx / total (0–1).
+            latency:
+              type: object
+              properties:
+                p50Ms:
+                  type: ["number", "null"]
+                p95Ms:
+                  type: ["number", "null"]
+                p99Ms:
+                  type: ["number", "null"]
+                meanMs:
+                  type: ["number", "null"]
+              required: [p50Ms, p95Ms, p99Ms, meanMs]
+            topRoutes:
+              type: array
+              description: Top 8 routes by request count.
+              items:
+                type: object
+                properties:
+                  route:
+                    type: string
+                  method:
+                    type: string
+                  count:
+                    type: number
+                  errorCount:
+                    type: number
+                  p95Ms:
+                    type: ["number", "null"]
+                    description: Always null today (kept for a future per-route histogram).
+                required: [route, method, count, errorCount, p95Ms]
+          required: [totalRequests, requestsByStatusClass, errorRate, latency, topRoutes]
+        auth:
+          type: object
+          properties:
+            outcomes:
+              type: object
+              description: '"method:outcome" → count (joined-string keys).'
+              additionalProperties:
+                type: number
+            totalAttempts:
+              type: number
+            failureRate:
+              type: number
+          required: [outcomes, totalAttempts, failureRate]
+        redis:
+          type: object
+          properties:
+            available:
+              type: boolean
+            opsTotal:
+              type: object
+              description: '"op:status" → count.'
+              additionalProperties:
+                type: number
+            errorsTotal:
+              type: object
+              description: reason → count.
+              additionalProperties:
+                type: number
+            pingLatencyMs:
+              type: object
+              properties:
+                p50:
+                  type: ["number", "null"]
+                p95:
+                  type: ["number", "null"]
+                p99:
+                  type: ["number", "null"]
+              required: [p50, p95, p99]
+            degradedEvents:
+              type: number
+          required: [available, opsTotal, errorsTotal, pingLatencyMs, degradedEvents]
+        socket:
+          type: object
+          properties:
+            connectedClients:
+              type: number
+            eventsTotal:
+              type: object
+              description: '"event:direction" → count.'
+              additionalProperties:
+                type: number
+          required: [connectedClients, eventsTotal]
+        worker:
+          type: object
+          properties:
+            jobsTotal:
+              type: object
+              description: '"job:status" → count.'
+              additionalProperties:
+                type: number
+          required: [jobsTotal]
+        cwv:
+          type: object
+          properties:
+            samples:
+              type: object
+              description: metric name → sample count.
+              additionalProperties:
+                type: number
+            p75:
+              type: object
+              description: metric name → p75 (ms for timings, unit-less for CLS).
+              additionalProperties:
+                type: ["number", "null"]
+          required: [samples, p75]
+        alerts:
+          type: object
+          properties:
+            dispatchedTotal:
+              type: object
+              description: '"rule:severity:outcome" → count.'
+              additionalProperties:
+                type: number
+          required: [dispatchedTotal]
+        monitoringErrors:
+          type: number
+        scheduler:
+          $ref: "#/components/schemas/AdminSchedulerState"
+      required:
+        [
+          timestamp,
+          uptimeSec,
+          http,
+          auth,
+          redis,
+          socket,
+          worker,
+          cwv,
+          alerts,
+          monitoringErrors,
+          scheduler,
+        ]
+
+    AdminObservabilityMetrics:
+      type: object
+      description: |
+        GET /admin/observability/metrics — the last-known-good envelope
+        around the snapshot (10 s server cache).
+      properties:
+        value:
+          oneOf:
+            - $ref: "#/components/schemas/AdminMetricsSnapshot"
+            - type: "null"
+          description: Null only before the first successful build AND a failed recompute.
+        lastKnownGoodAt:
+          type: ["string", "null"]
+          format: date-time
+        stale:
+          type: boolean
+      required: [value, lastKnownGoodAt, stale]
+
+    AdminObservabilitySummary:
+      type: object
+      description: GET /admin/observability/summary — the System tab summary card.
+      properties:
+        server:
+          type: object
+          properties:
+            version:
+              type: string
+              description: 7-char release SHA (GIT_SHA / RENDER_GIT_COMMIT, "unknown" when unset).
+            uptimeSec:
+              type: integer
+            nodeVersion:
+              type: string
+          required: [version, uptimeSec, nodeVersion]
+        redis:
+          type: object
+          properties:
+            available:
+              type: boolean
+          required: [available]
+        worker:
+          type: object
+          properties:
+            heartbeat:
+              oneOf:
+                - type: object
+                  properties:
+                    ageSec:
+                      type: ["integer", "null"]
+                    ts:
+                      type: ["string", "null"]
+                      format: date-time
+                  required: [ageSec, ts]
+                - type: "null"
+          required: [heartbeat]
+        alerts:
+          type: object
+          properties:
+            lastKnownGoodAt:
+              type: ["string", "null"]
+              format: date-time
+            stale:
+              type: boolean
+            recentCount:
+              type: integer
+          required: [lastKnownGoodAt, stale, recentCount]
+        dashboards:
+          type: object
+          properties:
+            render:
+              type: ["string", "null"]
+            sentry:
+              type: ["string", "null"]
+            neon:
+              type: ["string", "null"]
+          required: [render, sentry, neon]
+      required: [server, redis, worker, alerts, dashboards]
+
+    AdminObservabilityScheduler:
+      type: object
+      description: |
+        GET /admin/observability/scheduler — the topology state plus the
+        mode-framed Redis heartbeat.
+      properties:
+        mode:
+          type: string
+          enum: [embedded, dedicated, single, disabled]
+        active:
+          type: boolean
+        isLeader:
+          type: boolean
+        instanceId:
+          type: ["string", "null"]
+        reason:
+          type: string
+          enum: [active, disabled_by_env, not_leader, redis_unavailable, unknown]
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        heartbeat:
+          type: object
+          properties:
+            ageSec:
+              type: ["integer", "null"]
+            ts:
+              type: ["string", "null"]
+              format: date-time
+            healthy:
+              type: boolean
+            expected:
+              type: boolean
+              description: |
+                False whenever no Redis client exists (the heartbeat is
+                inert by design on no-Redis deployments — R108).
+            note:
+              type: string
+              description: Present only when no Redis client exists ("no Redis — heartbeat inert by design").
+          required: [ageSec, ts, healthy, expected]
+        description:
+          type: string
+          description: Operator-facing Arabic line (mode-dependent).
+      required: [mode, active, isLeader, instanceId, reason, startedAt, heartbeat, description]
+
+    AdminObservabilityAlertsRecent:
+      type: object
+      description: |
+        GET /admin/observability/alerts/recent — the newest 50
+        admin_alerts rows in the last-known-good envelope.
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAlert"
+        lastKnownGoodAt:
+          type: ["string", "null"]
+          format: date-time
+        stale:
+          type: boolean
+      required: [alerts, lastKnownGoodAt, stale]
+
+    AdminDiagnostics:
+      type: object
+      description: GET /admin/diagnostics — the runtime diagnostics snapshot.
+      properties:
+        node:
+          type: object
+          properties:
+            version:
+              type: string
+            platform:
+              type: string
+            arch:
+              type: string
+            pid:
+              type: integer
+          required: [version, platform, arch, pid]
+        runtime:
+          type: object
+          properties:
+            uptimeSec:
+              type: integer
+            version:
+              type: string
+              description: The 7-char release SHA ("unknown" when unset).
+            env:
+              type: string
+            service:
+              type: string
+              description: RENDER_SERVICE_NAME or the "web" fallback.
+          required: [uptimeSec, version, env, service]
+        memory:
+          type: object
+          properties:
+            rssMb:
+              type: integer
+            heapUsedMb:
+              type: integer
+            heapTotalMb:
+              type: integer
+            externalMb:
+              type: integer
+          required: [rssMb, heapUsedMb, heapTotalMb, externalMb]
+        cpu:
+          type: object
+          properties:
+            userMs:
+              type: integer
+            systemMs:
+              type: integer
+          required: [userMs, systemMs]
+        eventLoop:
+          oneOf:
+            - type: object
+              properties:
+                meanMs:
+                  type: number
+                p50Ms:
+                  type: number
+                p95Ms:
+                  type: number
+                p99Ms:
+                  type: number
+                maxMs:
+                  type: number
+              required: [meanMs, p50Ms, p95Ms, p99Ms, maxMs]
+            - type: "null"
+          description: Null until the 5 s monitor interval produces a histogram.
+        deps:
+          type: object
+          properties:
+            redis:
+              type: object
+              properties:
+                connected:
+                  type: boolean
+              required: [connected]
+            socket:
+              type: object
+              properties:
+                initialized:
+                  type: boolean
+              required: [initialized]
+          required: [redis, socket]
+        flags:
+          type: object
+          description: The four env-flag strings verbatim (fallbacks included).
+          properties:
+            ALERTING_ENABLED:
+              type: string
+            METRICS_ENABLED:
+              type: string
+            NEW_HEALTH_CHECKS_ENABLED:
+              type: string
+            FIREBASE_AUTH_ENABLED:
+              type: string
+          required:
+            [ALERTING_ENABLED, METRICS_ENABLED, NEW_HEALTH_CHECKS_ENABLED, FIREBASE_AUTH_ENABLED]
+      required: [node, runtime, memory, cpu, eventLoop, deps, flags]
+
+    AdminNewAlerts:
+      type: object
+      description: |
+        GET /admin/alerts/new — the drawer's polling delta; plain
+        admin_alerts rows (drizzle select(), camelCase keys), newest
+        first, ≤50.
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAlert"
+      required: [alerts]
+
+    AdminRiskDashboard:
+      type: object
+      description: GET /admin/risk/dashboard — the review-queue header aggregates.
+      properties:
+        window_hours:
+          type: integer
+          description: The clamped lookback (1–720).
+        total:
+          type: integer
+          description: Sum of the by_level counts.
+        by_level:
+          type: object
+          properties:
+            low:
+              type: integer
+            medium:
+              type: integer
+            high:
+              type: integer
+            critical:
+              type: integer
+          required: [low, medium, high, critical]
+        unresolved:
+          type: integer
+          description: Events in the window with no risk_labels row (the backlog).
+        top_rules:
+          type: array
+          description: Top ≤5 fired rules, count-descending.
+          items:
+            type: object
+            properties:
+              rule:
+                type: string
+              count:
+                type: integer
+            required: [rule, count]
+        pipeline:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              description: RISK_PIPELINE_ENABLED === "true".
+          required: [enabled]
+      required: [window_hours, total, by_level, unresolved, top_rules, pipeline]
+
+    AdminRiskEvent:
+      type: object
+      description: |
+        One risk_events review-queue row, LEFT-JOIN enriched with the
+        user's phone/email.
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: ["integer", "null"]
+          description: Null when the user was deleted (ON DELETE SET NULL).
+        user_phone:
+          type: ["string", "null"]
+        user_email:
+          type: ["string", "null"]
+        event_type:
+          type: string
+          enum:
+            - login_attempt
+            - login_success
+            - login_failure
+            - otp_request
+            - otp_verify
+            - topup_attempt
+            - topup_success
+            - order_create
+            - order_deliver
+            - coupon_apply
+            - referral_event
+            - admin_force_reauth
+        score:
+          type: integer
+          description: 0–100 (the V1-M29 CHECK bounds).
+        level:
+          type: string
+          enum: [low, medium, high, critical]
+        confidence:
+          type: number
+          description: numeric(4,3) → number, 0–1.
+        rule_fired:
+          type: array
+          items:
+            type: string
+        action_taken:
+          type: string
+          enum: [none, log, soft_block, hard_block, alert]
+        ip_address:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        shown_at:
+          type: ["string", "null"]
+          format: date-time
+          description: First investigation-view open (SC-004 triage timer); null until then.
+      required:
+        [
+          id,
+          user_id,
+          user_phone,
+          user_email,
+          event_type,
+          score,
+          level,
+          confidence,
+          rule_fired,
+          action_taken,
+          ip_address,
+          created_at,
+          shown_at,
+        ]
+
+    AdminRiskEventsResponse:
+      type: object
+      description: GET /admin/risk/events — one keyset page.
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRiskEvent"
+        next_cursor:
+          type: ["string", "null"]
+          description: Opaque "<isoCreatedAt>:<id>" — null on the last page.
+      required: [events, next_cursor]
+
+    AdminForecastRow:
+      type: object
+      description: |
+        One at-risk inventory_forecasts row joined with its product.
+        Prediction fields are null when confidence='insufficient_data'
+        (the pipeline refuses to fabricate without ≥14 days of history).
+      properties:
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        product_image_url:
+          type: ["string", "null"]
+        product_slug:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        current_stock_on_hand:
+          type: integer
+        avg_daily_sales:
+          type: ["number", "null"]
+          description: Trailing 14-day mean (numeric → number).
+        predicted_demand_7d:
+          type: ["integer", "null"]
+        predicted_demand_30d:
+          type: ["integer", "null"]
+        predicted_runout_at:
+          type: ["string", "null"]
+          description: RAW calendar date ("2026-10-01"), clamped to +90 days.
+        recommended_reorder_qty:
+          type: ["integer", "null"]
+        confidence:
+          type: string
+          enum: [high, medium, low, insufficient_data]
+        forecast_date:
+          type: string
+          description: RAW calendar date the forecast represents.
+        panel_url:
+          type: string
+          description: APP_ORIGIN-joined admin products link (?highlight=<id>).
+      required:
+        [
+          product_id,
+          product_name,
+          product_image_url,
+          product_slug,
+          category,
+          current_stock_on_hand,
+          avg_daily_sales,
+          predicted_demand_7d,
+          predicted_demand_30d,
+          predicted_runout_at,
+          recommended_reorder_qty,
+          confidence,
+          forecast_date,
+          panel_url,
+        ]
+
+    AdminForecastAtRisk:
+      type: object
+      description: GET /admin/forecast/at-risk — the stockout-risk panel feed.
+      properties:
+        pipeline_state:
+          type: string
+          enum: [fresh, stale, uninitialized, calibrating]
+        last_successful_run_at:
+          type: ["string", "null"]
+          format: date-time
+        data_freshness_hours:
+          type: ["integer", "null"]
+          description: Hours since the last successful run (null when none).
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminForecastRow"
+      required: [pipeline_state, last_successful_run_at, data_freshness_hours, rows]
+
+    AdminForecastProduct:
+      type: object
+      description: |
+        GET /admin/forecast/products/{id} — the per-product drawer; the
+        row plus the explanation block.
+      properties:
+        pipeline_state:
+          type: string
+          enum: [fresh, stale, uninitialized, calibrating]
+        forecast:
+          oneOf:
+            - allOf:
+                - $ref: "#/components/schemas/AdminForecastRow"
+                - type: object
+                  properties:
+                    explanation:
+                      type: object
+                      properties:
+                        avg_daily_sales:
+                          type: ["number", "null"]
+                        dow_blend_7d:
+                          type: ["number", "null"]
+                          description: Avg day-of-week multiplier across the next 7 days.
+                        days_of_history_available:
+                          type: integer
+                          description: Distinct days of order history (the ≥14-day hint).
+                        run_completed_at:
+                          type: ["string", "null"]
+                          format: date-time
+                      required:
+                        [avg_daily_sales, dow_blend_7d, days_of_history_available, run_completed_at]
+                  required: [explanation]
+            - type: "null"
+          description: Null when no forecast row exists for the product.
+      required: [pipeline_state, forecast]

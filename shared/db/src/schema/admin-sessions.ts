@@ -1,4 +1,5 @@
 import { index, integer, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { adminUsersTable } from "./admin_users";
 
 /**
@@ -40,5 +41,17 @@ export const adminSessionsTable = pgTable(
   },
   (t) => ({
     adminIdIdx: index("idx_admin_sessions_admin").on(t.adminId),
+    // R127-L3 (B7 P2-1): pruneStaleAdminSessions' predicate
+    // (`expires_at < now()-24h OR (revoked_at IS NOT NULL AND
+    // revoked_at < now()-30d)`, lib/admin-session.ts) had no index
+    // support — only idx_admin_sessions_admin existed. The revoked_at
+    // twin is PARTIAL (`WHERE revoked_at IS NOT NULL`) to cap the
+    // per-insert write cost: the column is NULL until first revoke.
+    // Boot twin: migrate.ts applyRetentionPruneIndexesStage (V1-M31);
+    // drizzle mirror: 0020.
+    expiresAtIdx: index("idx_admin_sessions_expires_at").on(t.expiresAt),
+    revokedAtIdx: index("idx_admin_sessions_revoked_at")
+      .on(t.revokedAt)
+      .where(sql`revoked_at IS NOT NULL`),
   }),
 );

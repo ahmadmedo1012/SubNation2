@@ -37,6 +37,14 @@ export const notificationsTable = pgTable(
     // (drop the is_read shape once, create the new shape; steady-state
     // boots send no DDL). Drizzle mirror: 0017.
     userReadIdx: index("idx_notifications_user").on(t.userId, t.createdAt.desc()),
+    // R127-L3 (B7 P2-1 / B8 G3): notifications-retention's
+    // `(is_read AND created_at < d90) OR (NOT is_read AND created_at < d180)`
+    // (jobs/notifications-retention.ts) — idx_notifications_user leads
+    // with user_id, which the retention sweep never filters on, so every
+    // prune batch was a seq scan. Plain created_at serves BOTH arms of
+    // the disjunction. Boot twin: migrate.ts applyRetentionPruneIndexesStage
+    // (V1-M31); drizzle mirror: 0020.
+    createdIdx: index("idx_notifications_created").on(t.createdAt),
   }),
 );
 

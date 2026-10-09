@@ -73,6 +73,16 @@ export const inventoryForecastsTable = pgTable(
     // migrate.ts applyIndexConsolidationStage (probe-gated DROP INDEX
     // IF EXISTS).
     runIdx: index("idx_forecasts_run").on(t.runId),
+    // R127-L3 (B8 G7): forecast-retention's `forecast_date < 90d` prune
+    // (jobs/forecast-retention.ts, WORKER_TIER-gated 03:35 slot) — the
+    // table's only date index WAS idx_forecasts_product_date, dropped
+    // in V1-M27 as a strict prefix of uq_forecast_product_date (zero
+    // readers for the pair scan). forecast_date alone had nothing.
+    // Dormant in production today (no worker tier deployed), declared
+    // so the day the runner family is armed the retention ladder is
+    // already index-served. Boot twin: migrate.ts
+    // applyRetentionPruneIndexesStage (V1-M31); drizzle mirror: 0020.
+    forecastDateIdx: index("idx_forecasts_forecast_date").on(t.forecastDate),
     productDateUnique: uniqueIndex("uq_forecast_product_date").on(t.productId, t.forecastDate),
     // R98-DB-02: the boot SQL (011 stage) creates this live; mirrored here
     // so the drizzle chain + snapshot carry it and a future push can't

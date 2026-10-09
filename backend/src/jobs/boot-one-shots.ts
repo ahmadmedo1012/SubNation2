@@ -26,6 +26,7 @@
  */
 
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 import { pruneStaleAdminSessions } from "../lib/admin-session";
 import { checkExpiringCoupons } from "./couponWatcher";
 import { cleanupOldAuthActivity } from "./cleanup-auth-activity";
@@ -56,15 +57,71 @@ async function deactivateExpiredFlashSalesCatchUp(): Promise<{ deactivated: numb
   return { deactivated: -1 };
 }
 
+/**
+ * R127-L3 (B7 P3-1): per-kind retry truth for the boot chain's failure
+ * message + Sentry capture.
+ *
+ * The old single message — "will run again at its cron slot" — was
+ * FALSE for 7 of the 17 entries, and the chain's outer catch was
+ * warn-only + uncaptured (for copilot-reaper / whatsapp-otp-prune /
+ * reencrypt-v1-credentials there was also no internal
+ * captureSchedulerFailure, unlike stockWatcher/couponWatcher/
+ * flashSaleWatcher/reportOrphanInventory — so a DB failure at boot was
+ * invisible to Sentry, contradicting the per-job Sentry-tag contract
+ * every cron slot honors).
+ *
+ * Kinds (verified against the scheduler inventory, B7 §2):
+ *   - "cron"          has a node-cron twin — the failure retries at its
+ *                     next slot (the 10 retention/advisory entries);
+ *   - "opportunistic" no cron slot, but a throttled traffic/boot twin
+ *                     exists (coupon/stock/flash-sale sweeps,
+ *                     copilot-reaper, whatsapp-otp-prune — B7 §2d);
+ *   - "boot-only"     next retry is the NEXT BOOT/DEPLOY
+ *                     (orphan-inventory-report — no other trigger site;
+ *                     reencrypt-v1-credentials — deliberately last in
+ *                     the chain, retry = next deploy).
+ */
+const BOOT_ONE_SHOT_RETRY_KINDS: Record<string, "cron" | "opportunistic" | "boot-only"> = {
+  "session-prune": "cron",
+  "security-advisories": "cron",
+  "alert-retention": "cron",
+  "risk-retention": "cron",
+  "auth-activity-retention": "cron",
+  "idempotency-retention": "cron",
+  "notifications-retention": "cron",
+  "login-attempts-retention": "cron",
+  "audit-logs-retention": "cron",
+  "admin-session-prune": "cron",
+  "coupon-sweep": "opportunistic",
+  "stock-sweep": "opportunistic",
+  "copilot-reaper": "opportunistic",
+  "whatsapp-otp-prune": "opportunistic",
+  "flash-sale-catchup": "opportunistic",
+  "orphan-inventory-report": "boot-only",
+  "reencrypt-v1-credentials": "boot-only",
+};
+
+const RETRY_MESSAGE_BY_KIND: Record<"cron" | "opportunistic" | "boot-only", string> = {
+  cron: "will retry at its next cron slot",
+  opportunistic: "no cron slot — will retry on its next throttled traffic trigger or next boot",
+  "boot-only": "boot-only — will retry on the next boot/deploy",
+};
+
 function fireOneShotsSequentially(jobs: Array<[name: string, fn: () => Promise<unknown>]>): void {
   void (async () => {
     for (const [name, fn] of jobs) {
       try {
         await fn();
       } catch (err) {
+        // R127-L3 (B7 P3-1): capture to Sentry under the same
+        // subsystem="scheduler" + job_name tag set every cron slot
+        // uses, with the boot trigger recorded; the message below is
+        // now per-kind truthful (see BOOT_ONE_SHOT_RETRY_KINDS).
+        captureSchedulerFailure(name, err, { trigger: "boot_one_shot" });
+        const kind = BOOT_ONE_SHOT_RETRY_KINDS[name] ?? "boot-only";
         logger.warn(
-          { err, category: "monitoring" },
-          `[scheduler] ${name} boot one-shot failed (will run again at its cron slot)`,
+          { err, category: "monitoring", retryKind: kind },
+          `[scheduler] ${name} boot one-shot failed (${RETRY_MESSAGE_BY_KIND[kind]})`,
         );
       }
     }

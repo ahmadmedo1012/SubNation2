@@ -60,6 +60,15 @@ const connectionTimeoutMillis = Number(process.env.DB_CONNECTION_TIMEOUT_MS ?? 1
 // guarded DDL). If a future migration legitimately needs longer, set
 // PG_STATEMENT_TIMEOUT_MS higher (or "0" to disable) on the service for
 // the deploy — env is read per boot, so a redeploy picks it up.
+//
+// R127 (B8 F-P2): the startup-packet transport above is a NO-OP on
+// Neon — live-probed on both the pooler and direct endpoints: pg 8.20.0
+// does send `statement_timeout` in getStartupConf(), but Neon ignores
+// that startup parameter and the server session reports
+// `statement_timeout = 0`. The post-connect `SET` hook below
+// (pool.on("connect")) is therefore the mechanism that actually
+// enforces the deadline; the startup packet is kept as a harmless
+// belt for non-Neon hosts that do honor it.
 const DEFAULT_STATEMENT_TIMEOUT_MS = 15_000;
 
 /**
@@ -131,6 +140,30 @@ export const lockPool = new Pool({
 lockPool.on("error", (err) => {
   console.error("[db] PostgreSQL lockPool error", err);
 });
+
+// ── R127 (B8 F-P2): post-connect statement_timeout SET ─────────────────────
+//
+// Neon DROPS the `statement_timeout` startup parameter (live-verified on
+// both the -pooler and direct endpoints: the packet is sent but the
+// server session reports `statement_timeout = 0`), so the R4 "green while
+// dead" pool-pin defense was never actually live — a live-but-stuck query
+// pinned its pool client indefinitely (TCP keepalives only catch dead
+// sockets, not live-hung queries; idle_in_transaction_session_timeout
+// covers only idle-in-tx time, not active execution).
+//
+// A per-connection `SET statement_timeout` DOES stick through the pooler
+// (probe-verified), so every new client of BOTH pools re-asserts it on
+// connect. Session homogeneity holds under PgBouncer connection reuse
+// because every client of both pools carries the same value. The catch
+// swallow is deliberate: a failed SET (e.g. a proxy that rejects session
+// commands) must never take the connection down — the query then simply
+// runs unbounded, exactly like before this hook.
+for (const p of [pool, lockPool]) {
+  p.on("connect", (client) => {
+    if (statementTimeoutMs > 0)
+      void client.query(`SET statement_timeout = ${statementTimeoutMs}`).catch(() => {});
+  });
+}
 
 // Exported for unit tests (R4) — the exact config handed to pg.Pool.
 export { poolConfig as dbPoolConfig };

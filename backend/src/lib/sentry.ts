@@ -91,6 +91,26 @@ const SENSITIVE_FIELD_NAMES = [
   "card_number",
   "cvv",
   "sender_account",
+  // PII — R127-L3 (B11-F2): phone numbers. The WhatsApp-OTP / Telegram
+  // auth paths carry raw `phone` fields; an exception on those paths
+  // would have shipped the number to a third party the moment a DSN is
+  // set. Substring match also covers phoneNumber / phone_number (and
+  // deliberately over-redacts already-masked surfaces like phone_masked
+  // — same over-redaction trade the "code" entry makes).
+  "phone",
+  // PII — R127-L3 (B11-F2): the Telegram WebApp initData blob (signed,
+  // carries the full user identity). Both spellings — camelCase
+  // (initData) lowercases to "initdata", snake_case needs its own
+  // needle. Mirrors the pino REDACT_PATHS entries.
+  "initdata",
+  "init_data",
+  // R127-L3 (B11-F2): explicit token-transport names. Already covered
+  // by the bare "token" substring above, but listed verbatim per the
+  // B11-F2 directive so the intent is discoverable (temp_token =
+  // telegram-auth-flow round-trip; link_consent_token = account-link
+  // consent) and a future narrowing of "token" can't silently drop them.
+  "temp_token",
+  "link_consent_token",
   // Provider-specific raw data we'd rather not leak verbatim
   "id_token_length", // already-truncated marker — keep for grouping
   "firebase_service_account_json",

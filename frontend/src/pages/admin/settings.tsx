@@ -14,6 +14,9 @@ import { Button } from "@/components/ui/button";
 import { AdminSessionExpiredError, adminFetchJson, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+// B14-5 (R127-L11): the auth-summary banner joins the repo's formatCount
+// plural-router idiom (wallet.tsx / topups.tsx TOPUP_COUNT_FORMS).
+import { formatCount } from "@/lib/utils";
 // 93-C7 / C-UX2 (A12 B17): configured/secret/telegram pills migrate
 // from raw emerald/yellow hues (+ a square `rounded` on the secret
 // chip) to the canonical StatusBadge on the --status-* tokens.
@@ -293,9 +296,18 @@ export default function AdminSettingsPage() {
                       copy promised users a password login that does not
                       exist; the admin's OWN password (AccountTab) is
                       untouched. */}
+                  {/* B14-5 (R127-L11): formatCount plural routing — the
+                      frozen singular rendered «2 طريقة مفعّلة»/
+                      «3 طريقة مفعّلة» for n=2/n=3. */}
                   {enabledCount === 0
                     ? "لا توجد طرق مفعّلة — سيظهر للمستخدمين الدخول برقم الهاتف (رمز تحقق) فقط"
-                    : `${enabledCount} طريقة مفعّلة إضافةً إلى الدخول برقم الهاتف (رمز تحقق)`}
+                    : `${formatCount(enabledCount, {
+                        one: "طريقة مفعّلة",
+                        two: "طريقتان مفعّلتان",
+                        few: "طرق مفعّلة",
+                        many: "طريقة مفعّلة",
+                        other: "طريقة مفعّلة",
+                      })} إضافةً إلى الدخول برقم الهاتف (رمز تحقق)`}
                 </div>
               </div>
               {/* R126-L5 (A3-4): the auth-summary pill joins the :889
@@ -564,7 +576,7 @@ export default function AdminSettingsPage() {
                       <span className="font-mono text-primary-text">TELEGRAM_CHAT_ID</span> في
                       متغيرات البيئة (Secrets)
                     </>,
-                    <>أعد تشغيل السيرفر</>,
+                    <>أعد تشغيل الخادم</>,
                   ].map((step, i) => (
                     <li key={i} className="flex gap-2">
                       <span className="w-4 h-4 rounded-full bg-muted-foreground/20 text-muted-foreground flex items-center justify-center text-3xs font-bold shrink-0 mt-0.5">
@@ -662,7 +674,7 @@ export default function AdminSettingsPage() {
                   { label: "CORS", value: "مقيّد بنطاقات APP_ORIGINS" },
                   {
                     label: "OAuth Redirect Safety",
-                    value: "كود مؤقت — يُستخدم مرة واحدة",
+                    value: "رمز مؤقت — يُستخدم مرة واحدة",
                   },
                   {
                     label: "Telegram Widget Verify",

@@ -134,7 +134,10 @@ function fireOtpDailyCapAlert(sent: number, cap: number): void {
       ),
     )
     .catch((err) =>
-      logger.warn({ err, dedupeKey: "otp-daily-cap" }, "[whatsapp-otp] daily-cap admin alert dispatch failed"),
+      logger.warn(
+        { err, dedupeKey: "otp-daily-cap" },
+        "[whatsapp-otp] daily-cap admin alert dispatch failed",
+      ),
     );
 }
 
@@ -407,9 +410,7 @@ async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<
           client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockKey]),
           new Promise<never>((_, reject) => {
             unlockTimer = setTimeout(() => {
-              reject(
-                new Error(`pg_advisory_unlock did not answer within ${unlockTimeoutMs()}ms`),
-              );
+              reject(new Error(`pg_advisory_unlock did not answer within ${unlockTimeoutMs()}ms`));
             }, unlockTimeoutMs());
           }),
         ]);
@@ -702,12 +703,7 @@ export type VerifyOtpResult =
   | {
       ok: false;
       reason:
-        | "invalid_phone"
-        | "no_active_code"
-        | "consumed"
-        | "expired"
-        | "exhausted"
-        | "mismatch";
+        "invalid_phone" | "no_active_code" | "consumed" | "expired" | "exhausted" | "mismatch";
     };
 
 interface VerifyOtpInput {
@@ -960,19 +956,32 @@ async function safeLog(params: {
  * Best-effort pruning helper. TRIGGERS (2026-09-20 free-infrastructure
  * round): the leader boot one-shot (jobs/boot-one-shots.ts) + a throttled
  * 60-min opportunistic fire at the top of startOtp() (was the hourly
- * :15 cron slot) — deletes rows older than 24 h, well past the
- * 5-minute TTL and any verify window, so no active session is at risk.
- * Idempotent. Returns the number of rows deleted.
+ * :15 cron slot) — deletes rows whose expiry passed > 23 h ago, well
+ * past the 5-minute TTL and any verify window, so no active session is
+ * at risk. Idempotent. Returns the number of rows deleted.
+ *
+ * R127-L3 (B7 P2-6): the predicate is expires_at-based and rides the
+ * EXISTING idx_whatsapp_otps_expires_at (migrate.ts 011 stage + schema
+ * twin, "Used by the cleanup job" per its own declaration comment).
+ * It was previously `created_at < now()-24h` — a column with NO index
+ * support, so every prune batch was a seq scan while the indexed
+ * expires_at sat unused. The 23 h expiry cutoff (vs the old 24 h
+ * created_at cut) keeps the deletion set a SUPERSET: expires_at =
+ * created_at + 5-min TTL, so `expires_at < now()-23h` ⟺ roughly
+ * `created_at < now()-23h05m` — everything the old window deleted,
+ * plus rows 23h05m–24h old (all long-expired, single-use, and past
+ * every rate-limit window that reads createdAt).
  */
 
 // R110-H: ctid-batch ceiling per DELETE statement — same 1000-row shape
-// as every other retention job (B7-P2-5 family). The 24 h window bounds
+// as every other retention job (B7-P2-5 family). The ~23 h window bounds
 // the steady-state table, but a boot one-shot catch-up after an extended
 // outage must not hold one unbounded statement lock on the shared pooler.
 const OTP_PRUNE_BATCH_SIZE = 1000;
 
 export async function pruneExpiredOtps(): Promise<number> {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // R127-L3 (B7 P2-6): expires_at (indexed) — see the doc comment above.
+  const cutoff = new Date(Date.now() - 23 * 60 * 60 * 1000);
   let deleted = 0;
   // Bounded batch loop (notifications-retention.ts shape): `ctid IN
   // (SELECT … LIMIT n)` until a batch comes back short, so each
@@ -983,7 +992,7 @@ export async function pruneExpiredOtps(): Promise<number> {
       DELETE FROM whatsapp_otps
       WHERE ctid IN (
         SELECT ctid FROM whatsapp_otps
-        WHERE created_at < ${cutoff}
+        WHERE expires_at < ${cutoff}
         LIMIT ${OTP_PRUNE_BATCH_SIZE}
       )
       RETURNING id

@@ -78,6 +78,18 @@ const FAKE_SECRETS = {
   national_id: "FAKE-NATIONAL-ID-1234",
   card_number: "4111-1111-1111-1111",
   cvv: "123",
+  // R127-L3 (B11-F2): the pre-activation PII set — phone + the Telegram
+  // auth-transport names. Raw phone numbers must never reach a third
+  // party the moment a Sentry DSN is activated.
+  phone: "0912345678",
+  phoneNumber: "0912345678",
+  phone_number: "+218912345678",
+  initData:
+    "query_id=AAH4FkAAAAF0-Fm&user=%7B%22id%22%3A123%7D&auth_date=1759948800&hash=fake-initdata-hash",
+  init_data:
+    "query_id=AAH4FkAAAAF1-Fm&user=%7B%22id%22%3A456%7D&auth_date=1759948801&hash=fake-init-data-hash",
+  temp_token: "telegram-temp-token-fake-1234567890",
+  link_consent_token: "account-link-consent-token-fake-0987654321",
 };
 
 // Capture pino output to a buffer so we can grep the rendered line.
@@ -311,6 +323,48 @@ describe("redaction (F-012) — Sentry deepSanitize", () => {
     expect(isSensitiveField("userId")).toBe(false);
     expect(isSensitiveField("orderId")).toBe(false);
     expect(isSensitiveField("status")).toBe(false);
+  });
+
+  it("R127-L3 (B11-F2): the phone / Telegram-PII class is denied (pre-DSN-activation guarantee)", () => {
+    // Phone — exact, cased, compound, and pre-masked shapes (the
+    // substring match deliberately over-redacts phone_masked too).
+    expect(isSensitiveField("phone")).toBe(true);
+    expect(isSensitiveField("Phone")).toBe(true);
+    expect(isSensitiveField("phoneNumber")).toBe(true);
+    expect(isSensitiveField("phone_number")).toBe(true);
+    expect(isSensitiveField("phone_masked")).toBe(true);
+    // Telegram initData — camelCase AND snake_case spellings.
+    expect(isSensitiveField("initData")).toBe(true);
+    expect(isSensitiveField("init_data")).toBe(true);
+    expect(isSensitiveField("telegram_init_data")).toBe(true);
+    // The explicit token transports (already substring-covered by
+    // "token", pinned so a future narrowing can't silently drop them).
+    expect(isSensitiveField("temp_token")).toBe(true);
+    expect(isSensitiveField("link_consent_token")).toBe(true);
+    // deepSanitize end-to-end: none of the fake values survive a walk.
+    const sanitized = deepSanitize({
+      phone: FAKE_SECRETS.phone,
+      nested: {
+        phoneNumber: FAKE_SECRETS.phoneNumber,
+        auth: { init_data: FAKE_SECRETS.init_data },
+      },
+      history: [{ initData: FAKE_SECRETS.initData }],
+    }) as Record<string, unknown>;
+    const flat = JSON.stringify(sanitized);
+    for (const key of [
+      "phone",
+      "phoneNumber",
+      "phone_number",
+      "initData",
+      "init_data",
+      "temp_token",
+      "link_consent_token",
+    ]) {
+      expect(flat, `Sentry deepSanitize leaked '${key}' value`).not.toContain(
+        FAKE_SECRETS[key as keyof typeof FAKE_SECRETS],
+      );
+    }
+    expect(flat).toContain("[REDACTED]");
   });
 
   it("preserves non-sensitive structure end-to-end", () => {

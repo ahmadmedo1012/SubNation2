@@ -66,10 +66,15 @@ export async function checkAdminTotpAdvisory(): Promise<void> {
     }
 
     const names = powerfulAdmins.map((a) => a.username).join("، ");
+    /* R127-L7 (B14-3): the feature is named «المصادقة الثنائية (2FA)»
+       on the settings/security page it points at (settings.tsx,
+       two-factor-setup.tsx) — the advisory used to cross-reference a
+       differently-named «التحقق بخطوتين», landing the operator on a
+       feature that didn't match its own label. */
     await logAdminAlert(
       "system",
-      `توصية أمنية: فعّل التحقق بخطوتين (${names})`,
-      "حساب مدير بصلاحيات كاملة يعمل دون تحقق بخطوتين. فعّله من صفحة الأمان حتى لا يبقى الوصول معتمداً على كلمة المرور وحدها.",
+      `توصية أمنية: فعّل المصادقة الثنائية (${names})`,
+      "حساب مدير بصلاحيات كاملة يعمل دون المصادقة الثنائية. فعّلها من صفحة الأمان حتى لا يبقى الوصول معتمداً على كلمة المرور وحدها.",
       { dedupeKey: "admin:no-totp", dedupeWindowMs: 7 * 24 * 60 * 60 * 1000 },
     );
     logger.info(
