@@ -86,7 +86,7 @@ describe("TopupWaitingModal — decision states are announced (96-F6 / R96 A6 #3
     const region = screen.getByRole("status");
     expect(region).toHaveAttribute("aria-live", "polite");
     // The receipt copy is inside the announced region.
-    expect(region).toHaveTextContent("تم اعتماد طلب الشحن وإيداعه في محفظتك.");
+    expect(region).toHaveTextContent("تم اعتماد طلب الشحن وإضافته إلى محفظتك.");
     expect(screen.getByText("+ 50.00 د.ل")).toBeInTheDocument();
   });
 

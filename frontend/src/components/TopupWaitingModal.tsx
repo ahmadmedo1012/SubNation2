@@ -321,7 +321,7 @@ function ApprovedBody({
         <CheckCircle2 className="w-10 h-10 text-status-success" />
         <Sparkles className="w-4 h-4 text-status-success absolute -top-1 -right-1" />
       </div>
-      <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإيداعه في محفظتك.</p>
+      <p className="text-sm text-muted-foreground mb-5">تم اعتماد طلب الشحن وإضافته إلى محفظتك.</p>
 
       <div className="bg-status-success/8 border border-status-success/25 rounded-xl px-4 py-3.5 mb-3">
         {/* 96-F6 (R96 A6 #12): /80 → full token — ≈4.0:1 on white fell

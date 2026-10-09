@@ -19,14 +19,25 @@ let socket: Socket | null = null;
 let disposeGeneration = 0;
 
 /**
- * 96-F3 (R96 M5 + A4 §2.1): window CustomEvent fired exactly ONCE per
- * documented disconnect → reconnect cycle. SocketInitializer listens
- * for it and invalidates the transactional query families (orders /
- * wallet / topups / me) so events that were emitted WHILE the phone
- * was offline (tunnel, WiFi↔cellular handoff, backgrounded tab)
- * become visible immediately instead of at the next 5-minute poll.
+ * 96-F3 (R96 M5 + A4 §2.1; consumers restored R127-B6-3): window
+ * CustomEvent fired exactly ONCE per documented disconnect → reconnect
+ * cycle, so events that were emitted WHILE the phone was offline
+ * (tunnel, WiFi↔cellular handoff) become visible immediately instead
+ * of at the next poll. Two consumers, split by session shape (R104
+ * socket policy — see lib/socket-resync.ts, the shared key-sets):
  *
- * Catalog/product queries are deliberately NOT part of the resync set.
+ *   - SessionActivityManager (mounted for EVERY authed session):
+ *     storefront token present → invalidates the transactional query
+ *     families (orders / wallet / topups / me) — the R96-M5 money-screen
+ *     recovery for wallet.tsx / order-detail.tsx (both poll-less),
+ *     restored by R127 after the R104 page-scoped split left the event
+ *     with no storefront listener.
+ *   - SocketInitializer (admin sessions only): invalidates the admin
+ *     realtime families (stats/orders/topups/users/tickets/risk/
+ *     products).
+ *
+ * Storefront catalog/product queries are deliberately NOT part of the
+ * resync set.
  */
 export const SOCKET_RESYNC_EVENT = "subnation:socket-resync";
 

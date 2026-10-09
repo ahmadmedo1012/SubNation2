@@ -48,6 +48,59 @@ afterEach(() => {
   });
 });
 
+describe("Toaster — top offset reserves the notch safe-area (B13 F-1 / R127)", () => {
+  it("offset AND mobileOffset carry calc(env(safe-area-inset-top) + 20px) on the top side", async () => {
+    // The [data-sonner-toaster] <ol> renders per-position and only
+    // while a toast exists for it — publish one first (the replay
+    // bridge then flushes it on mount).
+    shimToast.error("توست الإزاحة");
+    render(<Toaster />);
+
+    await waitFor(() => {
+      expect(screen.getByText("توست الإزاحة")).toBeInTheDocument();
+    });
+
+    // sonner's assignOffset() (dist) copies the offset/mobileOffset
+    // props RAW into the --offset-* / --mobile-offset-* custom
+    // properties on the [data-sonner-toaster] ol; the ≤600px media
+    // query pins [data-y-position=top]{top:var(--mobile-offset-top)}.
+    // The old props left a hard 20px/16px from the viewport top —
+    // every toast's icon + first line under the Dynamic Island / clock
+    // in the installed PWA (viewport-fit=cover), the one fixed layer
+    // R126-L5's safe-area pass missed.
+    const toaster = document.querySelector("[data-sonner-toaster]") as HTMLElement | null;
+    expect(toaster).not.toBeNull();
+    const read = (prop: string) => toaster!.style.getPropertyValue(prop);
+    const EXPECTED = "calc(env(safe-area-inset-top, 0px) + 20px)";
+    // BOTH top vars must carry the calc — mobile is where the notch
+    // lives, and the mobile variant reads its own var.
+    expect(read("--offset-top")).toBe(EXPECTED);
+    expect(read("--mobile-offset-top")).toBe(EXPECTED);
+    // Regression guards: no bare pixel top offset anywhere.
+    expect(read("--offset-top")).not.toBe("20px");
+    expect(read("--mobile-offset-top")).not.toBe("16px");
+  });
+
+  it("mobileOffset stays the OBJECT form — horizontal insets keep sonner's 16px default", async () => {
+    // A bare-string mobileOffset would set --mobile-offset-left/right
+    // (the ≤600px toast's horizontal insets) to the TOP-inset value —
+    // on a notched phone that's ~47-59px per side and guts the toast's
+    // width. The object form touches only the top side.
+    shimToast.success("توست العرض");
+    render(<Toaster />);
+
+    await waitFor(() => {
+      expect(screen.getByText("توست العرض")).toBeInTheDocument();
+    });
+
+    const toaster = document.querySelector("[data-sonner-toaster]") as HTMLElement | null;
+    expect(toaster).not.toBeNull();
+    expect(toaster!.style.getPropertyValue("--mobile-offset-left")).toBe("16px");
+    expect(toaster!.style.getPropertyValue("--mobile-offset-right")).toBe("16px");
+    expect(toaster!.style.getPropertyValue("--mobile-offset-left")).not.toContain("safe-area");
+  });
+});
+
 describe("Toaster — pre-mount toast replay bridge (A5-5)", () => {
   it("a toast fired BEFORE mount is lost without a Toaster (the regression this bridge fixes)", () => {
     shimToast.error("توست مبكر", { description: "قبل تحميل التوستر" });

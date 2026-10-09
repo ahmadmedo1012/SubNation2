@@ -272,3 +272,161 @@ describe("SessionActivityManager — revival + parking (R104)", () => {
     expect(socketFns.parkMock).not.toHaveBeenCalled();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R127-B6-2 — admin-family visibility resync (park→revive window).
+//
+// A deliberate park ("io client disconnect") never arms the resync
+// flag, so SOCKET_RESYNC_EVENT cannot cover the revive — this
+// component's visibility resync is the ONLY catch-up an operator's
+// parked console gets, and tickets/risk-event lists have NO polling
+// fallback (refetchOnWindowFocus off app-wide). The R126-L3 seven-key
+// admin set + products (R127-B6-6) join the storefront families on the
+// same throttled visible cadence.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("SessionActivityManager — admin-family visibility resync (R127-B6-2)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    authState.token = null;
+    authState.adminToken = "__cookie_admin__";
+    socketFns.reviveMock.mockClear();
+    socketFns.parkMock.mockClear();
+    setVisible("visible");
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("admin session returning to the tab ALSO invalidates the admin realtime families (8 keys)", async () => {
+    const { invalidateSpy } = renderManager();
+
+    await fireVisible();
+
+    // 4 storefront calls (orders predicate + wallet + topups + me — the
+    // pre-existing behavior for every authed session) + the 8-key admin
+    // set (stats/orders/topups/users/tickets/risk×2/products).
+    expect(invalidateSpy).toHaveBeenCalledTimes(12);
+    const keys = invalidateSpy.mock.calls
+      .map((call) => call[0])
+      .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
+      .map((arg) => JSON.stringify(arg.queryKey));
+    expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/orders"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/topups"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/users"]));
+    // The no-polling queues — the core of B6-2.
+    expect(keys).toContain(JSON.stringify(["/api/admin/tickets"]));
+    expect(keys).toContain(JSON.stringify(["admin-risk-events"]));
+    expect(keys).toContain(JSON.stringify(["admin-risk-dashboard"]));
+    // R127-B6-6: the products list key (60 s poll stays as fallback).
+    expect(keys).toContain(JSON.stringify(["/api/admin/products"]));
+  });
+
+  it("hidden → no admin invalidations either (a backgrounded tab must not burn data)", async () => {
+    const { invalidateSpy } = renderManager();
+    await fireHidden();
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R127-B6-3 — storefront SOCKET_RESYNC_EVENT consumer (R96-M5 recovery
+// restored). lib/socket.ts dispatches the event exactly once per
+// documented disconnect → reconnect cycle; the money screens
+// (wallet.tsx / order-detail.tsx) are poll-less, so this listener is
+// their only active-tab network-blip recovery.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("SessionActivityManager — SOCKET_RESYNC_EVENT storefront consumer (R127-B6-3)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    authState.token = "__cookie_session__";
+    authState.adminToken = null;
+    socketFns.reviveMock.mockClear();
+    socketFns.parkMock.mockClear();
+    setVisible("visible");
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it("storefront session: the resync event invalidates the transactional money families", async () => {
+    const { invalidateSpy } = renderManager();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledTimes(4);
+    const keys = invalidateSpy.mock.calls
+      .map((call) => call[0])
+      .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
+      .map((arg) => JSON.stringify(arg.queryKey));
+    expect(keys).toContain(JSON.stringify(["/api/wallet"]));
+    expect(keys).toContain(JSON.stringify(["/api/wallet/topups"]));
+    expect(keys).toContain(JSON.stringify(["/api/auth/me"]));
+    const predicateCalls = invalidateSpy.mock.calls
+      .map((call) => call[0])
+      .filter((arg) => typeof arg?.predicate === "function");
+    expect(predicateCalls).toHaveLength(1);
+  });
+
+  it("the event path is NOT throttled — each disconnect→reconnect cycle invalidates again", async () => {
+    const { invalidateSpy } = renderManager();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
+    });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledTimes(8);
+  });
+
+  it("admin-only session: SAM does NOT invalidate on the event (SocketInitializer owns the admin branch)", async () => {
+    authState.token = null;
+    authState.adminToken = "__cookie_admin__";
+    const { invalidateSpy } = renderManager();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
+    });
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("guests: the resync event is a no-op", async () => {
+    authState.token = null;
+    authState.adminToken = null;
+    const { invalidateSpy } = renderManager();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
+    });
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  it("cleans the resync listener up on unmount (a later event must not invalidate)", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+    const { unmount } = render(
+      <QueryClientProvider client={client}>
+        <SessionActivityManager />
+      </QueryClientProvider>,
+    );
+    unmount();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
+    });
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+});

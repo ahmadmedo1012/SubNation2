@@ -30,6 +30,13 @@
  * loading the 400 KB vendor): the chart components surface their
  * `data` bucket count as a data attribute so "which period's series is
  * rendered" is assertable without SVG internals.
+ *
+ * R127-L1 (B1 §3.1): the chart series rides the REAL useGetAdminChartData
+ * now (importActual spread — only the stats/orders hooks stay stubbed),
+ * so customFetch parses the deferred d7/d90 stubs (resLike carries the
+ * headers/text() it needs) and the race pins the RQ-structural
+ * last-wins: days sits in the queryKey, a chip flip swaps queries, and
+ * the stale response can only land in the OLD key's cache.
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -40,13 +47,14 @@ import { type ReactNode } from "react";
 import AdminDashboardPage from "@/pages/admin/dashboard";
 import { useGetAdminStats, useListAdminOrders } from "@workspace/api-client-react";
 
-vi.mock("@workspace/api-client-react", () => ({
-  useGetAdminStats: vi.fn(),
-  useListAdminOrders: vi.fn(),
-  getGetAdminStatsQueryKey: () => ["/api/admin/stats"],
-  getListAdminOrdersQueryKey: (params?: unknown) => ["/api/admin/orders", params ?? null],
-  setUnauthorizedHandler: vi.fn(),
-}));
+vi.mock("@workspace/api-client-react", async (importOriginal) => {
+  // R127-L1 (B1 §3.1 importActual-spread idiom): ONLY the stats + orders
+  // hooks stay stubbed — the REAL useGetAdminChartData /
+  // getGetAdminChartDataQueryKey / customFetch run against the stubbed
+  // global fetch so the chart race + single-fire pins stay fetch-level.
+  const actual = await importOriginal<typeof import("@workspace/api-client-react")>();
+  return { ...actual, useGetAdminStats: vi.fn(), useListAdminOrders: vi.fn() };
+});
 
 // R125-I2: the recharts mock — the dashboard's ONLY runtime reference
 // is the lazy ChartsLoader's dynamic import(); vi.mock intercepts it,
@@ -119,6 +127,8 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   return {
     ok,
     status,
+    headers: new Headers({ "content-type": "application/json" }),
+    text: () => Promise.resolve(JSON.stringify(body ?? null)),
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -223,7 +233,8 @@ describe("AdminDashboardPage — chart fetch race (A5-F1 / A1-3)", () => {
       ).toBe(true),
     );
 
-    // Flip to 90 days — the 7d controller is aborted, a 90d fetch starts.
+    // Flip to 90 days — the key swap makes the 7d query inactive and a
+    // 90d fetch starts (R127-L1: days sits in the queryKey).
     fireEvent.click(screen.getByRole("button", { name: "3 أشهر" }));
     await waitFor(() =>
       expect(
@@ -247,8 +258,9 @@ describe("AdminDashboardPage — chart fetch race (A5-F1 / A1-3)", () => {
     });
 
     // The SLOW 7d response resolves LAST — it must be dropped: the
-    // display keeps the 90d series and the 7d last-bucket (5 →
-    // «مستخدمين جدد اليوم») never reaches the tile.
+    // R127-L1 flip makes this structural — the response lands in the
+    // OLD key's cache; the rendered 90d series + the 7d last-bucket
+    // (5 → «مستخدمين جدد اليوم») never reach the display.
     d7.resolve(resLike({ body: series(7, 5) }));
     await new Promise((r) => setTimeout(r, 150));
     expect(screen.queryByText("5 مستخدمين جدد اليوم")).not.toBeInTheDocument();
@@ -289,11 +301,13 @@ describe("AdminDashboardPage — chart fetch race (A5-F1 / A1-3)", () => {
       ).toBe(true),
     );
 
-    // The aborted 7d request REJECTS (a real abort rejects with an
-    // AbortError). Guarded: no error banner, and the loading skeleton
-    // STAYS (an unguarded finally would flip chartLoading early → the
-    // honest «لا توجد بيانات بعد» empty block would render while the
-    // 90d request is still in flight).
+    // The in-flight 7d request REJECTS (under the flip, RQ's key swap
+    // abandons the 7d query — the manual reject below stands in for the
+    // runtime's abort rejection and settles the in-flight promise
+    // either way). Guarded: no error banner on the ACTIVE display, and
+    // the loading skeleton STAYS (isFetching belongs to the ACTIVE
+    // 90d key only — the honest «لا توجد بيانات بعد» empty block
+    // cannot render while the 90d request is still in flight).
     d7.reject(new DOMException("The user aborted a request.", "AbortError"));
     await new Promise((r) => setTimeout(r, 150));
     expect(
@@ -364,6 +378,14 @@ describe("AdminDashboardPage — handleRefresh single-fire (A1-4 / A10 pin 13)",
     await waitFor(() => expect(statsFetches).toBe(2));
     await new Promise((r) => setTimeout(r, 200));
     expect(statsFetches).toBe(2);
+
+    // R127-L1 (B1 §3.1): the chart single-fire pin — handleRefresh
+    // invalidates the chart base key (one mount fetch + one refresh
+    // refetch, never two per click).
+    const chartFetches = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes("/api/admin/chart-data"),
+    ).length;
+    expect(chartFetches).toBe(2);
   });
 });
 

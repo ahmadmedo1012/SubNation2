@@ -96,30 +96,39 @@ export function useSocket(userId?: number | string) {
           },
         );
 
-        socket.on("topup-updated", (data: { amount: number; status: string }) => {
-          // Refresh both queries the moment the server flips the topup
-          // status. The waiting modal subscribes to these queries, so
-          // approval/rejection lands on screen without waiting for the
-          // 3s polling fallback.
-          queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+        socket.on(
+          "topup-updated",
+          (data: { id: number | string; amount: number; status: string }) => {
+            // Refresh both queries the moment the server flips the topup
+            // status. The waiting modal subscribes to these queries, so
+            // approval/rejection lands on screen without waiting for the
+            // 3s polling fallback.
+            queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
 
-          if (data.status === "approved") {
-            toast({
-              title: `تم شحن المحفظة`,
-              // Round-3 (8-e §1.3): raw data.amount rendered "5" instead of
-              // the money-formatted "5.00" every other topup surface shows.
-              description: `${formatCurrency(data.amount)} أُضيفت إلى رصيدك`,
-              id: `topup-${data.amount}-approved`,
-            });
-          } else {
-            toast({
-              title: `تم رفض طلب الشحن`,
-              variant: "destructive",
-              id: `topup-${data.amount}-${data.status}`,
-            });
-          }
-        });
+            // R127-B6-7: the toast dedupe id keys on the topup ID (the
+            // payload carries it — backend topup.service.ts emits
+            // {id, status, amount}), not the amount. Two same-amount
+            // pending topups (MAX_PENDING=3 makes the pair legitimate)
+            // approved together used to collapse into ONE toast —
+            // sonner's stable-id rule silently deduped the second.
+            if (data.status === "approved") {
+              toast({
+                title: `تم اعتماد طلب الشحن`,
+                // Round-3 (8-e §1.3): raw data.amount rendered "5" instead of
+                // the money-formatted "5.00" every other topup surface shows.
+                description: `${formatCurrency(data.amount)} أُضيفت إلى رصيدك`,
+                id: `topup-${data.id}-approved`,
+              });
+            } else {
+              toast({
+                title: `تم رفض طلب الشحن`,
+                variant: "destructive",
+                id: `topup-${data.id}-${data.status}`,
+              });
+            }
+          },
+        );
 
         socket.on("notification-new", (data: { id: number; type: string }) => {
           // The bell component owns the fetch/toast/badge logic (with

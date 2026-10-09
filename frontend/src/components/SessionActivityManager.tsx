@@ -1,10 +1,9 @@
 import { useAuth } from "@/lib/auth";
-import { parkSocketIfConnected, reviveSocket } from "@/lib/socket";
+import { SOCKET_RESYNC_EVENT, parkSocketIfConnected, reviveSocket } from "@/lib/socket";
 import {
-  getGetMeQueryKey,
-  getGetWalletQueryKey,
-  getListTopupsQueryKey,
-} from "@workspace/api-client-react";
+  invalidateAdminRealtimeFamilies,
+  invalidateStorefrontTransactionalFamilies,
+} from "@/lib/socket-resync";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
@@ -31,6 +30,30 @@ import { useEffect } from "react";
  * topups, me) are invalidated so a returning user sees current state —
  * no socket required. Catalog families are deliberately excluded (same
  * anti-refetch-storm policy as the QueryClient defaults in App.tsx).
+ *
+ * R127-B6-2 (B6 sockets audit): the visibility resync now ALSO carries
+ * the admin realtime families (lib/socket-resync.ts) for admin
+ * sessions. The park docblock in lib/socket.ts always claimed "the
+ * catch-up invalidation on the next visibilitychange(visible)
+ * (SessionActivityManager) covers events that fired while parked" —
+ * but this component invalidated storefront families only, and a
+ * deliberate park ("io client disconnect") never arms the resync
+ * flag, so SOCKET_RESYNC_EVENT cannot fire on revive either. The
+ * 300 s admin pages self-healed on their polls; tickets + risk-event
+ * lists have NO polling, so a parked operator's queues stayed stale
+ * indefinitely. Admin sessions pay the extra invalidations only on
+ * the same throttled visibility cadence as everyone else.
+ *
+ * R127-B6-3: this component is also the STOREFRONT consumer of
+ * SOCKET_RESYNC_EVENT (lib/socket.ts dispatches it exactly once per
+ * documented disconnect → reconnect cycle). The R104 page-scoped
+ * split left the event with no storefront listener — the money
+ * screens (wallet.tsx / order-detail.tsx, both poll-less) stayed
+ * stale through an active-tab network blip while the lib/socket.ts
+ * docblock still promised the R96-M5 recovery. The storefront branch
+ * is token-gated; the ADMIN branch of the same event stays in
+ * SocketInitializer (admin sessions only) so neither session shape
+ * double-invalidates.
  */
 
 /** Foreground idle threshold: park the socket after this long without
@@ -44,27 +67,6 @@ const HIDDEN_PARK_MS = 15 * 60_000;
 
 /** Minimum spacing between visibility-driven resyncs (96-F3 parity). */
 const VISIBILITY_RESYNC_THROTTLE_MS = 30_000;
-
-/**
- * The TRANSACTIONAL query families — exactly the set use-socket.ts
- * invalidates on live events, reusing its key shapes:
- *   - orders list + every open order-detail (predicate sweep — the
- *     detail key is [`/api/orders/${orderCode}`]);
- *   - wallet balance ([ "/api/wallet" ]);
- *   - wallet topups ([ "/api/wallet/topups" ]);
- *   - current user ([ "/api/auth/me" ]).
- */
-function invalidateTransactionalQueries(queryClient: ReturnType<typeof useQueryClient>) {
-  void queryClient.invalidateQueries({
-    predicate: (query) => {
-      const first = query.queryKey[0];
-      return typeof first === "string" && first.startsWith("/api/orders");
-    },
-  });
-  void queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
-  void queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
-  void queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-}
 
 /**
  * Mounted once at the App root (inside <AuthGate>). Renders nothing.
@@ -106,7 +108,25 @@ export function SessionActivityManager() {
       const now = Date.now();
       if (now - lastVisibilityResyncAt < VISIBILITY_RESYNC_THROTTLE_MS) return;
       lastVisibilityResyncAt = now;
-      invalidateTransactionalQueries(queryClient);
+      invalidateStorefrontTransactionalFamilies(queryClient);
+      // R127-B6-2: a parked ADMIN tab missed admin-stats-update pushes
+      // too — and tickets/risk (below) have no polling to fall back on.
+      // Same throttled cadence as the storefront set above.
+      if (adminToken) {
+        invalidateAdminRealtimeFamilies(queryClient);
+      }
+    };
+
+    // R127-B6-3: the storefront SOCKET_RESYNC_EVENT consumer — the
+    // R96-M5 money-screen recovery restored. Fired exactly once per
+    // documented disconnect → reconnect cycle by lib/socket.ts, so no
+    // throttle is needed (the cycle itself is rate-limited by
+    // reconnects). Token-gated: the admin families on this event are
+    // SocketInitializer's branch (admin sessions only), keeping the
+    // two listeners on disjoint key-sets.
+    const handleSocketResyncEvent = () => {
+      if (!token) return;
+      invalidateStorefrontTransactionalFamilies(queryClient);
     };
 
     const handleActivity = () => {
@@ -146,6 +166,8 @@ export function SessionActivityManager() {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("online", handleOnline);
     window.addEventListener("pagehide", handlePageHide);
+    // R127-B6-3: storefront money-screen recovery on socket reconnect.
+    window.addEventListener(SOCKET_RESYNC_EVENT, handleSocketResyncEvent);
     document.addEventListener("pointerdown", handleActivity, { passive: true });
     document.addEventListener("keydown", handleActivity);
 
@@ -154,6 +176,7 @@ export function SessionActivityManager() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener(SOCKET_RESYNC_EVENT, handleSocketResyncEvent);
       document.removeEventListener("pointerdown", handleActivity);
       document.removeEventListener("keydown", handleActivity);
     };

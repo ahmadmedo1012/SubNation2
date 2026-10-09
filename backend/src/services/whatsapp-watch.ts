@@ -125,9 +125,12 @@ async function emitChannelAlert(status: string | null, sinceMs: number): Promise
   const title = isUnreachable
     ? "قناة WhatsApp OTP غير قابلة للوصول"
     : `قناة WhatsApp OTP غير جاهزة (${token})`;
+  // L8a residual (R127-L11, B14 §1): these operator alerts (and
+  // checkout.service.ts:674) now speak the layout.tsx NAV's admin-panel
+  // name — the Arabizi admin spelling is gone from the repo.
   const message = isUnreachable
-    ? `تعذّر الوصول إلى بوابة WhatsApp (probe فشل) منذ ~${minutes} دقيقة — لا يمكن تحديد حالة الجلسة. افحص خدمة البوابة على Render ثم لوحة الأدمن (قسم WhatsApp).`
-    : `حالة القناة "${token}" مستمرة منذ ~${minutes} دقيقة (ليست ready/settling). ${token === "qr_ready" ? "لم يُكمَل الاقتران — لم يُدخَل رمز QR/رمز الربط خلال هذه المدة." : "الاقتران الحالي غير صالح — القناة تحتاج إعادة ربط من لوحة الأدمن (قسم WhatsApp)."} مستخدمو الدخول عبر WhatsApp يحصلون على فشل إرسال الرمز.`;
+    ? `تعذّر الوصول إلى بوابة WhatsApp (probe فشل) منذ ~${minutes} دقيقة — لا يمكن تحديد حالة الجلسة. افحص خدمة البوابة على Render ثم لوحة الإدارة (قسم WhatsApp).`
+    : `حالة القناة "${token}" مستمرة منذ ~${minutes} دقيقة (ليست ready/settling). ${token === "qr_ready" ? "لم يُكمَل الاقتران — لم يُدخَل رمز QR/رمز الربط خلال هذه المدة." : "الاقتران الحالي غير صالح — القناة تحتاج إعادة ربط من لوحة الإدارة (قسم WhatsApp)."} مستخدمو الدخول عبر WhatsApp يحصلون على فشل إرسال الرمز.`;
   const outcome = await logAdminAlert(
     // A9-4 (R116): "whatsapp_channel" is a declared member of the
     // AlertType union now (jobs/alertLogger.ts) — no cast. The column is
@@ -273,7 +276,7 @@ async function emitSendFailureAlert(token: string, count: number): Promise<void>
   const outcome = await logAdminAlert(
     "whatsapp_channel",
     "فشل إرسال متكرر عبر قناة WhatsApp OTP",
-    `فشلت ${count} محاولات إرسال خلال آخر 60 دقيقة (آخر حالة: "${token}") رغم نجاح محاولات أخرى بينها — القناة تعمل بشكل متقطع. افحص بوابة OpenWA وسجلات الجلسة (لوحة الأدمن، قسم WhatsApp).`,
+    `فشلت ${count} محاولات إرسال خلال آخر 60 دقيقة (آخر حالة: "${token}") رغم نجاح محاولات أخرى بينها — القناة تعمل بشكل متقطع. افحص بوابة OpenWA وسجلات الجلسة (لوحة الإدارة، قسم WhatsApp).`,
     { dedupeKey: `whatsapp:sendfails:${token}` },
   );
   logger.info(
@@ -323,8 +326,9 @@ export function observeWhatsAppSendFailure(token: string): void {
   );
 }
 
-/** Test seam — await one send-failure observation's internal processing. */
-export const observeWhatsAppSendFailureForTests = recordSendFailure;
+// (R127-B2 §B.1: the observeWhatsAppSendFailureForTests alias for
+// recordSendFailure used to live here — zero references ever; the two
+// sibling seams below ARE the consumed ones. Deleted with the audit.)
 
 /**
  * Test seam — feed one observation and AWAIT the internal processing so

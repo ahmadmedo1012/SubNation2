@@ -355,3 +355,79 @@ describe("AuthProvider.adminLogout — alert cursor reset (98-F7 R98-07)", () =>
     expect(localStorage.getItem("sn_last_alert_id")).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R127-B6-5 (B6 sockets audit) — setAdminToken(null) must tear the socket
+// down, mirroring the user path's F-03 rule in setToken. Previously the
+// admin 401-expiry / adminLogout / session-guard paths cleared state and
+// removed admin queries but left the singleton CONNECTED: the server's
+// 5-minute liveness sweep was the only thing stripping the dead
+// adminSessionId from admin-room / admin-alerts-room, so a logged-out
+// browser kept receiving admin-room payloads (live order/topup PII) on
+// the transport for 0–5 minutes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("AuthProvider.setAdminToken — socket teardown on admin session end (R127-B6-5)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    disconnectMock.mockClear();
+    // Boot probes + the admin logout POST — all generic non-OK/OK bodies.
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it("setAdminToken(null) (the 401-expiry mirror path) disconnects the socket", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <AdminLogoutHarness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "دخول أدمن أ" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("jwt-admin-A");
+    });
+    // Admin LOGIN is not a teardown — a coexisting storefront user
+    // session in the same tab keeps its socket (documented asymmetry:
+    // setAdminToken(non-null) deliberately does NOT disconnect).
+    expect(disconnectMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "مسح الجلسة (401)" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("admin-signed-out");
+    });
+
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("adminLogout (the explicit logout path) disconnects the socket too — same choke point", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <AdminLogoutHarness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "دخول أدمن أ" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("jwt-admin-A");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "خروج الأدمن" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("admin-signed-out");
+    });
+
+    expect(disconnectMock).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,5 +1,7 @@
+import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { connectAdminSocket, SOCKET_RESYNC_EVENT } from "@/lib/socket";
+import { invalidateAdminRealtimeFamilies } from "@/lib/socket-resync";
 import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
@@ -34,6 +36,11 @@ import type { Socket } from "socket.io-client";
  * The transactional resync (SOCKET_RESYNC_EVENT + visibilitychange) that
  * used to live here moved to SessionActivityManager — it never needed a
  * socket and now serves ALL authed sessions, not just socket-holders.
+ * R127-B6-3: this component kept (and keeps) only the ADMIN branch of
+ * SOCKET_RESYNC_EVENT; the storefront money-screen branch lives in
+ * SessionActivityManager (mounted for every authed session — this
+ * component is adminToken-gated and never mounts for storefront
+ * sessions).
  */
 export function SocketInitializer() {
   const { adminToken } = useAuth();
@@ -46,15 +53,11 @@ export function SocketInitializer() {
   useEffect(() => {
     const handleResyncEvent = () => {
       if (!adminToken) return;
-      // R126-L3 (A2-1): same key-set as handleStatsUpdate below — a
-      // parked-socket window can carry ticket/risk writes too.
-      void queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
-      void queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["/api/admin/topups"] });
-      void queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      void queryClient.invalidateQueries({ queryKey: ["/api/admin/tickets"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin-risk-events"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin-risk-dashboard"] });
+      // R126-L3 (A2-1) + R127-B6-6: the shared key-set (8 families —
+      // the R126-L3 seven + products) also covers a parked-socket
+      // window carrying ticket/risk/product writes. The storefront
+      // branch of this event lives in SessionActivityManager.
+      invalidateAdminRealtimeFamilies(queryClient);
     };
 
     window.addEventListener(SOCKET_RESYNC_EVENT, handleResyncEvent);
@@ -75,11 +78,45 @@ export function SocketInitializer() {
   // now carries the tickets list + the two risk keys as well —
   // tickets/risk-event have no polling, so without them a second
   // operator's reply left this tab's queue stale while the layout
-  // badge (fed by stats) updated beside it.
+  // badge (fed by stats) updated beside it. R127-B6-6: the products
+  // list key joins the set (products.tsx's base-key invalidation
+  // comment always claimed socket coverage; the 60 s poll stays as
+  // the dropout fallback). The key-set itself lives in
+  // lib/socket-resync.ts (shared with SessionActivityManager's
+  // visibility + resync-event paths).
   useEffect(() => {
     if (!adminToken) return;
     let active = true;
     let socketRef: Socket | null = null;
+
+    // R127-B6-4 (B6 sockets audit): the admin socket branch had NO
+    // connection_limited / connect_error listeners — the branch that
+    // actually collides with the backend's documented CGNAT scenario
+    // (Libyan mobile carriers NAT many users behind one address; the
+    // 6th connection behind a carrier IP is politely capped, ignored,
+    // hard-disconnected, retried, re-capped… until the manager
+    // surrenders). Mirrors hooks/use-socket.ts exactly: ONE toast with
+    // a stable id per occurrence (sonner refreshes instead of stacking
+    // — no toast spam), connect_error warned to the console for
+    // DevTools/Sentry forensics without disturbing the operator.
+    // Registered/unregistered with NAMED handlers: off(event, fn)
+    // must not strip the storefront's own connection_limited /
+    // connect_error listeners on the shared singleton (use-socket.ts
+    // registers both on the same socket object).
+    const handleConnectionLimited = (data: { reason?: string; message?: string }) => {
+      toast({
+        title: "عدد الاتصالات مرتفع",
+        description:
+          data.message ?? "سنحاول إعادة الاتصال تلقائياً — أغلق التبويبات الأخرى وحاول مجدداً",
+        id: "socket-connection-limited",
+      });
+    };
+    const handleConnectError = (error: Error) => {
+      // Non-critical: Socket.IO retries automatically (bounded at 10
+      // attempts; SessionActivityManager revives on presence). Surface
+      // in DevTools for debugging without disturbing the user.
+      console.warn("[admin-socket] connect_error:", error.message);
+    };
 
     const setup = async () => {
       try {
@@ -88,23 +125,12 @@ export function SocketInitializer() {
         socketRef = socket;
 
         const handleStatsUpdate = () => {
-          // Prefix-invalidations cover every params variant of each
-          // list (dashboard's {limit:8} recent orders, the orders
-          // page's {}, users' {search} variants, tickets' {status}
-          // variants…). R126-L3 (A2-1/A4-B-5): the tickets list key +
-          // the two risk keys join the set — the backend emits
-          // admin-stats-update for ticket reply/status and risk label
-          // writes, and tickets/risk-event have NO polling
-          // (refetchOnWindowFocus is off app-wide), so these keys were
-          // the missing freshness path for the support/security
-          // queues on other tabs.
-          void queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
-          void queryClient.invalidateQueries({ queryKey: ["/api/admin/orders"] });
-          void queryClient.invalidateQueries({ queryKey: ["/api/admin/topups"] });
-          void queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-          void queryClient.invalidateQueries({ queryKey: ["/api/admin/tickets"] });
-          void queryClient.invalidateQueries({ queryKey: ["admin-risk-events"] });
-          void queryClient.invalidateQueries({ queryKey: ["admin-risk-dashboard"] });
+          // Shared 8-family set (lib/socket-resync.ts) — prefix
+          // invalidations cover every params variant of each list
+          // (dashboard's {limit:8} recent orders, the orders page's
+          // {}, users' {search} variants, tickets' {status} variants,
+          // products' list params…).
+          invalidateAdminRealtimeFamilies(queryClient);
         };
 
         const handleAlertNew = () => {
@@ -119,6 +145,8 @@ export function SocketInitializer() {
 
         socket.on("admin-stats-update", handleStatsUpdate);
         socket.on("admin-alert-new", handleAlertNew);
+        socket.on("connection_limited", handleConnectionLimited);
+        socket.on("connect_error", handleConnectError);
       } catch (err) {
         console.warn("Admin socket setup failed (non-critical):", err);
       }
@@ -131,6 +159,9 @@ export function SocketInitializer() {
       if (socketRef) {
         socketRef.off("admin-stats-update");
         socketRef.off("admin-alert-new");
+        // Precise off(event, fn) — see the note above the handlers.
+        socketRef.off("connection_limited", handleConnectionLimited);
+        socketRef.off("connect_error", handleConnectError);
       }
     };
   }, [adminToken, queryClient]);

@@ -31,8 +31,10 @@ interface AuthContextType {
    * during this window so users never see a flash of unauthenticated
    * UI on refresh / cold start / PWA resume.
    *
-   * Always becomes `false` within ~50-300 ms of mount (one same-origin
-   * /api/auth/me round-trip), regardless of authentication outcome.
+   * Always becomes `false` within one same-origin /api/auth/me
+   * round-trip of mount (measured live 0.3–0.9 s on Libyan mobile
+   * networks — R127-B4; exact-/login boots render optimistically
+   * through the probe per R127-L10), regardless of outcome.
    */
   initializing: boolean;
   setToken: (token: string | null) => void;
@@ -254,6 +256,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           // Storage unavailable (private-mode edge) — nothing to clear.
         }
+        // R127-B6-5 (B6 sockets audit): mirror the user path's F-03 rule
+        // below — an admin identity switch MUST tear the socket down.
+        // setAdminToken(null) previously left the singleton connected:
+        // the server's 5-minute liveness sweep was the only thing
+        // stripping the dead adminSessionId from admin-room /
+        // admin-alerts-room, so a logged-out browser kept receiving
+        // admin-room payloads (live order/topup PII) on the transport
+        // for 0–5 minutes (SocketInitializer's listeners were already
+        // off — but the PII still crossed the wire). The next
+        // connectAdminSocket() lazily mints a fresh singleton after the
+        // next admin login.
+        disconnectSocket();
       }
       queryClient.removeQueries({
         predicate: (query) => {

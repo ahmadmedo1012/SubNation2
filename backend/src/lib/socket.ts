@@ -738,13 +738,42 @@ function startIdentityReverification(socket: Socket): void {
  * verdict: a dead component leaves its room (and is stripped from the
  * identity), a fully dead identity is hard-disconnected. DB probe
  * failures fail open inside verifySocketIdentityLive.
+ *
+ * Exported (R127-B6-1) for direct unit testing — the periodic timer
+ * (startIdentityReverification), the legacy join-user/join-admin
+ * re-checks and this function form the one gate piece with no pure
+ * helper underneath; the alert-room scope reconciliation needed a test
+ * against the real DB probe (see socket-alert-room-reconcile.test.ts).
  */
-async function reverifyAndEnforce(socket: Socket): Promise<void> {
+export async function reverifyAndEnforce(socket: Socket): Promise<void> {
   const identity = socket.data.identity as SocketIdentity | undefined;
   if (!identity) return;
 
   const liveness = await verifySocketIdentityLive(identity);
-  if (liveness.ok) return;
+  if (liveness.ok) {
+    // AUD103-3-F2 (r103): reconcile the scope-gated alert room on every
+    // pass — a scope granted or removed mid-connection takes effect
+    // within one re-verify interval, without waiting for a reconnect.
+    // Only when the probe actually returned the live scopes (fail-open
+    // probes leave the current membership untouched).
+    //
+    // R127-B6-1 (B6 sockets audit): this block used to sit BELOW the
+    // early return above — testing liveness.ok on a path only reachable
+    // when liveness.ok is false, i.e. it could never execute. A revoked
+    // `support` scope (scope revocation ≠ session revocation — the
+    // admin stays active, liveness stays ok) kept streaming
+    // admin-alert-new PII for the life of the connection while the HTTP
+    // side 403'd. Moved onto the healthy path, exactly as the original
+    // comment promised.
+    if (identity.isAdmin && liveness.adminPermissions) {
+      if (hasAlertScope(liveness.adminPermissions)) {
+        socket.join(ADMIN_ALERTS_ROOM);
+      } else {
+        socket.leave(ADMIN_ALERTS_ROOM);
+      }
+    }
+    return;
+  }
 
   const remaining = stripIdentityForLiveness(identity, liveness);
 
@@ -756,19 +785,6 @@ async function reverifyAndEnforce(socket: Socket): Promise<void> {
   if (liveness.adminRevoked === true && identity.isAdmin) {
     socket.leave("admin-room");
     socket.leave(ADMIN_ALERTS_ROOM);
-  }
-
-  // AUD103-3-F2 (r103): reconcile the scope-gated alert room on every
-  // pass — a scope granted or removed mid-connection takes effect within
-  // one re-verify interval, without waiting for a reconnect. Only when the
-  // probe actually returned the live scopes (fail-open probes leave the
-  // current membership untouched).
-  if (liveness.ok && identity.isAdmin && liveness.adminPermissions) {
-    if (hasAlertScope(liveness.adminPermissions)) {
-      socket.join(ADMIN_ALERTS_ROOM);
-    } else {
-      socket.leave(ADMIN_ALERTS_ROOM);
-    }
   }
 
   recordRejection(liveness.reason ?? "session_revoked", {

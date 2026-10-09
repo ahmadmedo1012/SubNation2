@@ -6,21 +6,29 @@
  * listens for the `subnation:socket-resync` window event to invalidate
  * the ADMIN query families after a documented disconnect → reconnect.
  * The user-level transactional resync + visibility/online revival +
- * socket parking moved to SessionActivityManager (tested separately).
+ * socket parking moved to SessionActivityManager (tested separately —
+ * R127-B6-3 also gave SAM the storefront branch of the resync event).
  *
  * These tests pin:
  *   1. with an adminToken: the resync event invalidates the admin
  *      families (stats/orders/topups/users + the R126-L3 tickets/risk
- *      keys) exactly once per event;
- *   2. a user-only session (adminToken null): the resync event is a
- *      no-op — no invalidation storms from socket-less sessions;
+ *      keys + the R127-B6-6 products key — 8 keys) exactly once per
+ *      event;
+ *   2. a user-only session (adminToken null): this component is a
+ *      no-op on the resync event — the storefront set is
+ *      SessionActivityManager's branch (pinned in its own suite);
  *   3. listeners are cleaned up on unmount (no leaks across mounts);
  *   4. renders without touching connectAdminSocket when adminToken is
  *      null;
  *   5. R126-L3 (A2-1/A4-B-5): the connected socket's
- *      `admin-stats-update` handler invalidates the SAME seven-key set
+ *      `admin-stats-update` handler invalidates the SAME eight-key set
  *      — the tickets list + the two risk keys were the missing
- *      freshness path (no polling on those pages, focus refetch off).
+ *      freshness path (no polling on those pages, focus refetch off);
+ *   6. R127-B6-4: the admin branch registers the connection_limited
+ *      toast + connect_error console.warn (previously the capped-
+ *      operator scenario went fully silent), and unregisters BOTH with
+ *      precise off(event, fn) so the storefront's own listeners on
+ *      the shared singleton survive an adminToken flip.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -37,6 +45,14 @@ const { connectAdminSocketMock } = vi.hoisted(() => ({
   // connected-handler test) can be mockResolvedValue'd without an
   // as-cast against the inferred Promise<null>.
   connectAdminSocketMock: vi.fn(async (): Promise<unknown> => null),
+}));
+
+const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
+
+vi.mock("@/hooks/use-toast", () => ({
+  // R127-B6-4: SocketInitializer's connection_limited handler routes
+  // through the same Sonner shim use-socket.ts uses.
+  toast: toastMock,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -89,6 +105,7 @@ describe("SocketInitializer — admin resync event (R104)", () => {
   beforeEach(() => {
     authState.adminToken = "__cookie_admin__";
     connectAdminSocketMock.mockClear();
+    toastMock.mockClear();
   });
 
   afterEach(() => {
@@ -102,11 +119,13 @@ describe("SocketInitializer — admin resync event (R104)", () => {
       window.dispatchEvent(new CustomEvent(RESYNC_EVENT));
     });
 
-    // R126-L3 (A2-1): the resync key-set grew to seven — the parked
-    // socket window can carry ticket reply/status + risk label writes
-    // (the backend emits admin-stats-update for both families), and
-    // the tickets/risk lists have no polling fallback of their own.
-    expect(invalidateSpy).toHaveBeenCalledTimes(7);
+    // R126-L3 (A2-1) + R127-B6-6: the resync key-set grew to eight —
+    // the parked socket window can carry ticket reply/status + risk
+    // label + product writes (the backend emits admin-stats-update
+    // for all of those families), and the tickets/risk lists have no
+    // polling fallback of their own (products has the 60 s poll as
+    // its dropout fallback).
+    expect(invalidateSpy).toHaveBeenCalledTimes(8);
     const keys = invalidatedKeys(invalidateSpy);
     expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/orders"]));
@@ -115,15 +134,16 @@ describe("SocketInitializer — admin resync event (R104)", () => {
     expect(keys).toContain(JSON.stringify(["/api/admin/tickets"]));
     expect(keys).toContain(JSON.stringify(["admin-risk-events"]));
     expect(keys).toContain(JSON.stringify(["admin-risk-dashboard"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/products"]));
 
     // A second event (new reconnect cycle) fires the set again.
     await act(async () => {
       window.dispatchEvent(new CustomEvent(RESYNC_EVENT));
     });
-    expect(invalidateSpy).toHaveBeenCalledTimes(14);
+    expect(invalidateSpy).toHaveBeenCalledTimes(16);
   });
 
-  it("user-only session (adminToken null): resync event is a no-op", async () => {
+  it("user-only session (adminToken null): this component stays a no-op on the resync event (the storefront set is SAM's branch — R127-B6-3)", async () => {
     authState.adminToken = null;
     const { invalidateSpy } = renderInitializer();
 
@@ -181,7 +201,7 @@ describe("SocketInitializer — connected admin-stats-update handler (R126-L3)",
     cleanup();
   });
 
-  it("an admin-stats-update push invalidates all seven families (incl. tickets + risk)", async () => {
+  it("an admin-stats-update push invalidates all eight families (incl. tickets + risk + products)", async () => {
     // A minimal fake socket: capture the .on(event, handler) pairs so
     // the test can invoke the real registered handler.
     const onMock = vi.fn();
@@ -202,7 +222,7 @@ describe("SocketInitializer — connected admin-stats-update handler (R126-L3)",
       handler();
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(7);
+    expect(invalidateSpy).toHaveBeenCalledTimes(8);
     const keys = invalidatedKeys(invalidateSpy);
     expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/orders"]));
@@ -214,5 +234,89 @@ describe("SocketInitializer — connected admin-stats-update handler (R126-L3)",
     expect(keys).toContain(JSON.stringify(["/api/admin/tickets"]));
     expect(keys).toContain(JSON.stringify(["admin-risk-events"]));
     expect(keys).toContain(JSON.stringify(["admin-risk-dashboard"]));
+    // R127-B6-6: the products list key — products.tsx's base-key
+    // invalidation comment always claimed socket coverage.
+    expect(keys).toContain(JSON.stringify(["/api/admin/products"]));
+  });
+});
+
+// R127-B6-4 (B6 sockets audit): the admin socket branch now registers
+// the connection_limited toast + connect_error console.warn — the
+// capped-operator scenario (CGNAT primary market: the 6th connection
+// behind a carrier IP is politely capped, hard-disconnected, retried,
+// re-capped…) previously went dark with zero feedback on the admin
+// side. Also pins the PRECISE off(event, fn) cleanup: a blanket
+// off("connection_limited") would strip the storefront's own listener
+// on the shared singleton (use-socket.ts registers both events too).
+describe("SocketInitializer — connection_limited / connect_error on the admin branch (R127-B6-4)", () => {
+  beforeEach(() => {
+    authState.adminToken = "__cookie_admin__";
+    connectAdminSocketMock.mockReset();
+    toastMock.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("registers both handlers; connection_limited fires ONE stable-id toast; connect_error only warns", async () => {
+    const onMock = vi.fn();
+    const fakeSocket = { on: onMock, off: vi.fn() };
+    connectAdminSocketMock.mockResolvedValue(fakeSocket);
+
+    renderInitializer();
+
+    await waitFor(() => expect(onMock).toHaveBeenCalled());
+    const limitedReg = onMock.mock.calls.find(([event]) => event === "connection_limited");
+    const errorReg = onMock.mock.calls.find(([event]) => event === "connect_error");
+    expect(limitedReg).toBeTruthy();
+    expect(errorReg).toBeTruthy();
+
+    const limitedHandler = limitedReg![1] as (data: { reason?: string; message?: string }) => void;
+    const errorHandler = errorReg![1] as (error: Error) => void;
+
+    await act(async () => {
+      limitedHandler({ reason: "per_ip_cap", message: "server copy" });
+    });
+    expect(toastMock).toHaveBeenCalledTimes(1);
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "socket-connection-limited", description: "server copy" }),
+    );
+
+    // Repeats refresh the same toast id (sonner stable-id dedupe) — no
+    // per-reconnect-attempt spam.
+    await act(async () => {
+      limitedHandler({ reason: "per_ip_cap" });
+    });
+    expect(toastMock).toHaveBeenCalledTimes(2);
+    expect(toastMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "socket-connection-limited" }),
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await act(async () => {
+      errorHandler(new Error("websocket error"));
+    });
+    expect(warnSpy).toHaveBeenCalledWith("[admin-socket] connect_error:", "websocket error");
+    expect(toastMock).toHaveBeenCalledTimes(2); // connect_error never toasts
+    warnSpy.mockRestore();
+  });
+
+  it("unmount unregisters BOTH with precise off(event, fn) — never a blanket off that would strip the storefront's listeners", async () => {
+    const onMock = vi.fn();
+    const offMock = vi.fn();
+    const fakeSocket = { on: onMock, off: offMock };
+    connectAdminSocketMock.mockResolvedValue(fakeSocket);
+
+    const { unmount } = renderInitializer();
+    await waitFor(() => expect(onMock).toHaveBeenCalled());
+    unmount();
+
+    // The shared-with-use-socket events come off with their exact fn…
+    expect(offMock).toHaveBeenCalledWith("connection_limited", expect.any(Function));
+    expect(offMock).toHaveBeenCalledWith("connect_error", expect.any(Function));
+    // …while the admin-only events keep the pre-existing blanket form.
+    expect(offMock).toHaveBeenCalledWith("admin-stats-update");
+    expect(offMock).toHaveBeenCalledWith("admin-alert-new");
   });
 });
