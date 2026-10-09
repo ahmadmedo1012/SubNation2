@@ -259,7 +259,15 @@ export default function CartPage() {
                       </div>
                     </Link>
                     <div className="flex-1 min-w-[10rem]">
-                      <Link href={`/product/${it.slug ?? it.productId}`}>
+                      <Link
+                        href={`/product/${it.slug ?? it.productId}`}
+                        /* R126-L5 (A13-F10): the item-title anchor rides the
+                           24px target floor — the text-only link measured
+                           258×19 live, relying on the spacing exception.
+                           Same inline-flex min-h-6 idiom as the Footer's
+                           link band (R124-A4 #2). */
+                        className="inline-flex min-h-6 items-center"
+                      >
                         {/* R124-I4 (A5 #1): hover tint rides the text-safe
                             token — raw text-primary is 3.76:1 on the dark
                             card (AA fail on the hover state of small text). */}

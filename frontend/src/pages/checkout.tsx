@@ -1406,7 +1406,14 @@ export default function CheckoutPage() {
                               className="w-full h-full object-contain p-1"
                             />
                           ) : (
-                            <span className="text-xs font-bold text-primary/50 select-none">
+                            /* R126-L5 (A13, R125-A7 B-6 twin): the
+                               first-letter fallback rode text-primary/50
+                               — 1.65:1 dark / 2.35:1 light on the
+                               bg-muted/60 tile (the measured figures from
+                               the cart/orders twins R125-I7 fixed). Full
+                               --muted-foreground: 7.44:1 dark / 6.09:1
+                               light — the same both-theme-safe ink. */
+                            <span className="text-xs font-bold text-muted-foreground select-none">
                               {(it.name ?? "?")[0]}
                             </span>
                           )}

@@ -66,7 +66,11 @@ const STATUS_FILTERS = [
 ];
 
 const MEDAL_COLORS = [
-  "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
+  // R126-L5 (A3 item-10): the gold medal rides the --status-warning
+  // ink+tint pair — yellow-400 text fails the light theme (1.43:1 on
+  // the /10 tint, A3's figure); the token is AA both themes (index.css
+  // F3-06: 6.04:1 on white / 5.09:1 on the /12 tint light).
+  "text-status-warning bg-status-warning/10 border-status-warning/20",
   "text-slate-400  bg-slate-400/10  border-slate-400/20",
   "text-amber-600  bg-amber-600/10  border-amber-600/20",
 ];
@@ -167,7 +171,10 @@ const ReferralRowItem = React.memo(function ReferralRowItem({
             <CheckCircle className="w-2.5 h-2.5" /> ناجحة
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+          /* R126-L5 (A3 item-10): the pending pill rides the
+             --status-warning ink+tint pair (yellow-400 fails the light
+             theme at 1.43-1.53:1 — A3's measured figures). */
+          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-status-warning/10 text-status-warning border border-status-warning/20">
             <Clock className="w-2.5 h-2.5" /> معلقة
           </span>
         )}
@@ -186,7 +193,9 @@ const ReferralRowItem = React.memo(function ReferralRowItem({
       {/* Action */}
       <div>
         {credited ? (
-          <div className="flex items-center gap-1 text-xs text-yellow-400 font-bold">
+          /* R126-L5 (A3 item-10): pending-count text joins the warning
+             sweep (yellow-400 fails the light theme at ~1.5:1). */
+          <div className="flex items-center gap-1 text-xs text-status-warning font-bold">
             <Star className="w-3 h-3" />+{row.points_earned}
           </div>
         ) : (
@@ -477,8 +486,10 @@ export default function AdminReferralsPage() {
               label="قيد الانتظار"
               value={stats?.pending ?? "—"}
               icon={Clock}
-              color="text-yellow-400"
-              bg="bg-yellow-400/10 border-yellow-400/15"
+              /* R126-L5 (A3 item-10): the pending StatCard joins the
+                 warning sweep (yellow-400 fails the light theme). */
+              color="text-status-warning"
+              bg="bg-status-warning/10 border-status-warning/15"
             />
             <StatCard
               label="نقاط ممنوحة إجمالاً"

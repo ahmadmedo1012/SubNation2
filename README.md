@@ -8,6 +8,8 @@ Streaming, music, gaming and productivity subscriptions — bought with an in-ap
 wallet and delivered instantly with encrypted account credentials.
 
 [![Status](https://img.shields.io/badge/status-production_live-22c55e)](./docs/project-state/source-of-truth.md)
+[![CI](https://github.com/ahmadmedo1012/SubNation2/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmadmedo1012/SubNation2/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
 [![Stack](https://img.shields.io/badge/stack-React_19_·_Express_5_·_Postgres-3b82f6)](#tech-stack)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](#local-development)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A510-f69220)](#local-development)
@@ -25,21 +27,33 @@ It is **passwordless** for customers — sign in with **Google**, **Telegram**, 
 credentials instantly after purchase. A full **admin panel** manages products,
 inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 
-> ✅ **Status (R125, 2026-10-09): production is LIVE at
-> <https://subnation.ly>** — self-hosted Docker on Coolify (Contabo VPS) since
-> the 2026-10 cutover, with Neon Postgres staying external. Deployment chain:
-> GitHub `main` → Coolify (git-source dockerfile build, push-to-deploy webhook)
-> → Traefik → `subnation.ly`. **www→apex is a 301 permanent single-hop at the
-> edge** (re-verified live by direct curl, R124; the pre-R124-redeploy
-> answer was 308 — Coolify's Traefik regen now emits 301), **Sentry is live both sides**, and the
-> **Telegram ops channel** delivers alerts + topup approvals. Vercel/Render are
-> fully retired — pre-cutover records live under `docs/history/`. Current truth:
-> [`docs/project-state/source-of-truth.md`](./docs/project-state/source-of-truth.md);
-> architecture of record:
-> [`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md);
-> current-state summary: [Deployment status](#deployment-status-2026-10) below.
+> **ما هذا المشروع؟** SubNation متجر إلكتروني عربي بالكامل — بواجهة
+> من اليمين إلى اليسار — لبيع اشتراكات المنصّات الرقمية في السوق الليبي:
+> نتفليكس، سبوتفاي، بلايستيشن، أدوبي، مايكروسوفت 365 وغيرها. يشتري العميل بدون
+> كلمة مرور (عبر جوجل أو تيليجرام أو رمز تحقّق على واتساب) من رصيد محفظته
+> داخل التطبيق، وتُسلَّم بيانات الاشتراك فورًا بعد الشراء مشفَّرة، مع لوحة
+> إدارة شاملة للمنتجات والمخزون والطلبات والمحفظة والكوبونات والولاء
+> والإحالات والدعم الفني.
+
+> ✅ **Production is LIVE at <https://subnation.ly>** — self-hosted Docker on
+> Coolify (Contabo VM) since the 2026-10 cutover, Neon Postgres external.
+> Current truth: [`docs/project-state/source-of-truth.md`](./docs/project-state/source-of-truth.md) ·
+> round-by-round history: [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
+
+## Screenshots
+
+Live from <https://subnation.ly> (Arabic RTL, desktop 1280×800):
+
+[![Storefront — home](./docs/assets/screenshots/storefront-home.jpg)](./docs/assets/screenshots/storefront-home.jpg)
+
+[![Catalog — streaming category](./docs/assets/screenshots/storefront-category.jpg)](./docs/assets/screenshots/storefront-category.jpg)
+
+[![Product page](./docs/assets/screenshots/storefront-product.jpg)](./docs/assets/screenshots/storefront-product.jpg)
+
+*Home · category catalog · product page — full-resolution JPEGs live in
+[`docs/assets/screenshots/`](./docs/assets/screenshots/).*
 
 ## Highlights
 
@@ -53,24 +67,28 @@ inventory, orders, wallet top-ups, coupons, loyalty, referrals and support.
 - 🔒 Hardened security — Helmet/CSP, CORS allow-list, CSRF checks, multi-tier rate-limiting
   (Redis-backed when provisioned; in-process fallbacks in the no-Redis target topology), admin 2FA.
 
-## Performance (live-measured, R124–R125)
+## How it works
 
-- **Lazy Sentry Session Replay** — the rrweb recorder (126 KB) is fetched
-  only for recorded sessions (sticky 10% roll / first error) behind a real
-  dynamic-import boundary; the idle-loaded vendor chunk shrank
-  469,777 → 328,652 B raw (−30%).
-- **Lazy admin charts (R125)** — recharts (vendor-charts, 134.7 KB gz)
-  loads on demand via a dynamic-import bridge; the admin dashboard/system
-  route chunks paint their KPI tiles without it, and admin boots no longer
-  pre-fetch the storefront home chunk (~8.5 KB gz saved per admin session).
-- **Catalog list projection** — `GET /api/products?fields=list` omits the
-  variant tree (62.6% of the catalog wire bytes) and usage terms; grids read
-  `price` + `variant_count` instead.
-- **Route-chunk warm-up** — pointerenter/focusin delegation pre-imports
-  likely-next-route chunks (−150–400 ms perceived nav on 3G/4G),
-  saveData-respecting.
-- **Eager path ≈ 143 KiB gz** (entry + vendor chunks + CSS) under a CI budget
-  gate — 145 KiB warn / 160 KiB hard-fail, enforced by the production build.
+1. **Sign in passwordless** — Google (Firebase), Telegram widget/Mini App, or
+   WhatsApp OTP; the session is a JWT in an httpOnly cookie.
+2. **Top up the wallet** — operator-approved top-ups (mobile transfer with a
+   `payment_reference` guard, or manual admin credit) land in an append-only
+   ledger; the balance is derived, never a mutable number.
+3. **Buy** — checkout is one atomic transaction: wallet debit, single-writer
+   inventory claim, coupon/loyalty pricing, order row — all-or-nothing,
+   idempotent by `Idempotency-Key`.
+4. **Instant encrypted delivery** — the purchased subscription credentials
+   (AES-256-GCM at rest) appear in the order the moment it commits; domain
+   events fire only after commit.
+5. **Operate** — the admin panel (TOTP 2FA + RBAC scopes, every action
+   audited) runs products, variants, inventory, orders/refunds, top-ups,
+   coupons, flash sales, loyalty, referrals, tickets, security and
+   observability.
+
+System maps: [`docs/project-graph/00-system-overview.mmd`](./docs/project-graph/00-system-overview.mmd)
+(13 mermaid truth maps in [`docs/project-graph/`](./docs/project-graph/)) ·
+topology of record:
+[`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md).
 
 ---
 
@@ -130,6 +148,12 @@ pnpm --filter @workspace/subnation run test:run        # frontend unit tests (vi
 pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
+
+Current suite (file counts verified at HEAD, R126; CI runs both unit suites
+on every push): **frontend 148 test files / 996 tests** · **backend 231 test
+files / ~2.1k tests** (227 under `backend/src/**` + 4 under `backend/tests/`;
+2,101 at the R125 full run) · guest-only e2e **40/40** against live
+production (20 spec flows × desktop + mobile-390 projects).
 
 > **Schema note:** schema changes flow exclusively through the idempotent
 > boot migrations (`backend/src/migrate.ts`), which the dev server runs
@@ -208,52 +232,44 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
 
 ### Deployment status (2026-10)
 
-- **Production is LIVE** at `https://subnation.ly` — self-hosted Docker +
-  Coolify on a Contabo VM + Neon Postgres, serving since the 2026-10-01/02
-  cutover; **Coolify is the only deployment authority** (push-to-deploy:
+- **Production is LIVE at <https://subnation.ly>** — self-hosted Docker on
+  Coolify (Contabo VM) since the 2026-10-01/02 cutover, Neon Postgres
+  external. **Coolify is the only deployment authority** (push-to-deploy:
   GitHub `main` → webhook → build → healthcheck-gated rolling update).
-  Dated release record: [`docs/deployment/FINAL_SIGNOFF.md`](./docs/deployment/FINAL_SIGNOFF.md);
-  post-cutover audits: [`docs/history/inspection-r117/`](./docs/history/inspection-r117/)
-  and [`docs/history/inspection-r118/`](./docs/history/inspection-r118/).
-  The pre-cutover Render/Vercel stack is retired legacy — the Render
-  deploy-hook workflow and frozen `render.yaml`/`vercel.json` blueprints were
-  removed from the repo on 2026-10-05 (dated migration-era evidence remains in
-  `docs/history/`: `free-tier-optimization-2026-09-20.md`,
-  `final-audit-2026-09-20.md`, `RENDER_LEGACY_FALLBACK.md`).
-- **R125 (2026-10-09) — the deepest round:** a 12-agent admin-focused
-  audit (3 P1 + ~30 P2 + ~85 P3 — reports in
-  [`docs/inspection-r125/`](./docs/inspection-r125/)) + 8 implementation
-  lanes + an adversarial reviewer (verdict SHIP, 0 P0/P1/P2): admin
-  a11y/data-layer/memoization fixes, lazy admin charts, 2FA rotate flow,
-  pricing recompute transaction, **strictFunctionTypes enabled**, first
-  live guest-e2e run in rounds (40/40 — and it caught 2 stale spec
-  contracts); round entry at the top of
-  [`CHANGELOG.md`](./CHANGELOG.md).
-- **R124 (2026-10-09) — the biggest round:** a 10-agent audit (93 findings,
-  0 P0 — reports in [`docs/inspection-r124/`](./docs/inspection-r124/)) drove
-  ~60 fixes: performance, storefront UX/a11y, admin, code organization
-  (headline: lazy Sentry Session Replay, `?fields=list` catalog projection,
-  route-chunk warm-up — see [Performance](#performance-live-measured-r124r125));
-  round entry at the top of [`CHANGELOG.md`](./CHANGELOG.md).
-- **R121 (2026-10-07) — edge canonicalization + full observability:**
-  `www.subnation.ly` permanently redirects to the apex in a single hop
-  at the Traefik file-provider layer (`www-redirect.yml`, priority 1000,
-  path+query preserved — 301 as of the R124 redeploy, 308 before it;
-  re-verified live by direct curl in R124. The apex's own http→https hop
-  is a temporary redirect (302/307 depending on Traefik regen state) and
-  remains the one edge polish item; runbook §13);
-  **Sentry live both sides** (org `subnation`, release-pinned source maps — runbook §11);
-  **Telegram ops channel** for alerts + topup approvals (runbook §12).
-- **Repo state (as of R125):** typecheck clean (FE + BE, under the
-  newly-enabled `strictFunctionTypes`), lint 0 errors, build + budget PASS
-  in both DSN modes; **frontend 148 files / 996 tests**, **backend 227
-  test files / 2101 tests** green; guest-only e2e 40/40 vs live production.
-  The repo is **public**; GitHub
-  Actions CI is green on every push ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
+  Dated release record:
+  [`docs/deployment/FINAL_SIGNOFF.md`](./docs/deployment/FINAL_SIGNOFF.md);
+  topology of record:
+  [`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md).
+  The pre-cutover Render/Vercel stack is retired legacy (evidence under
+  `docs/history/`).
+- **CI is green on every push** ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
   secret scan, lint, typecheck, OpenAPI parity, migration + orval drift
-  gates, both unit suites, production build).
-- **Nightly backups are automated as of r110** — `scripts/backup-cron.sh`
-  (host-cron wrapper around `pnpm run db:backup`); see `docs/DISASTER_RECOVERY.md`.
+  gates, both unit suites, production build). Round-by-round deployment +
+  audit history: [`CHANGELOG.md`](./CHANGELOG.md) (latest deep rounds: R125
+  admin-focused, R124 storefront — reports in
+  [`docs/inspection-r125/`](./docs/inspection-r125/) and
+  [`docs/inspection-r124/`](./docs/inspection-r124/)).
+- **Nightly backups are automated** (`scripts/backup-cron.sh`) — see
+  [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md).
+
+---
+
+## Performance
+
+Live-measured; the full record — budgets, exact bytes, round history — lives
+in [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md):
+
+- **Lazy Sentry Session Replay** — the rrweb recorder loads only for recorded
+  sessions (sticky 10% roll / first error) behind a real dynamic-import
+  boundary; idle vendor chunk −30% (469,777 → 328,652 B raw).
+- **Lazy admin charts** — recharts (134.7 KB gz) loads on demand; admin KPI
+  routes paint without it and no longer pre-fetch the storefront home chunk.
+- **Catalog list projection** — `GET /api/products?fields=list` omits the
+  variant tree + usage terms: −62.6% of the catalog wire bytes.
+- **Route-chunk warm-up** — pointerenter/focusin delegation pre-imports the
+  likely-next route (−150–400 ms perceived nav on 3G/4G), saveData-respecting.
+- **Eager path ≈ 143 KiB gz** (entry + vendor + CSS) under a CI budget gate —
+  145 KiB warn / 160 KiB hard-fail, enforced by the production build.
 
 ---
 
@@ -300,14 +316,27 @@ and kept drift-free by CI.
 
 ## Documentation
 
-| Document                                                   | What it covers                                                                                                  |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **[`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)**     | 📌 **Start here** — on-call playbook: alert triage, dashboards, rollback, Sentry/Telegram/edge (§11–§13), backups |
-| **[`CHANGELOG.md`](./CHANGELOG.md)**                       | Round-by-round release ledger, newest first (R125 at top)                                                          |
-| **[`docs/README.md`](./docs/README.md)**                   | 📚 **Docs index** — CURRENT / HISTORY / DEPRECATED / PENDING for every doc (R122 reorg; R124 round note)            |
+| Document | What it covers |
+| -------- | -------------- |
+| **[`OPERATIONS_RUNBOOK.md`](./OPERATIONS_RUNBOOK.md)** | 📌 **Start here (on-call)** — alert triage, dashboards, rollback, Sentry/Telegram/edge (§11–§13), backups |
+| **[`CHANGELOG.md`](./CHANGELOG.md)** | Round-by-round release ledger, newest first |
+| **[`docs/README.md`](./docs/README.md)** | 📚 **Docs index** — CURRENT / HISTORY / DEPRECATED / PENDING for every doc |
+| **[`docs/ONBOARDING.md`](./docs/ONBOARDING.md)** | 🚀 **Start here (developers)** — the ordered path: repo map → setup → law docs → gates → round records |
+| [`docs/FINAL_MONEY_INVARIANTS.md`](./docs/FINAL_MONEY_INVARIANTS.md) | The money law — M1–M14 invariants every wallet/checkout change must obey |
+| [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md) | The performance record — budgets, measured numbers, round history |
+| [`docs/project-graph/`](./docs/project-graph) | 13 mermaid truth maps — system overview, data model, deployment chain, source of truth |
+| [`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md) · [`PRODUCTION_ARCHITECTURE.md`](./docs/architecture/PRODUCTION_ARCHITECTURE.md) | Topology + capacity of record |
+| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery |
+| [`docs/API.md`](./docs/API.md) | API reference |
 | [`docs/history/PROJECT_OVERVIEW.md`](./docs/history/PROJECT_OVERVIEW.md) · [`docs/history/PLATFORM.md`](./docs/history/PLATFORM.md) | Historical architecture snapshots (2026-08-25 Arabic · 2026-09-02) |
-| [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md) | Backup/restore and incident recovery                                                                             |
-| [`docs/API.md`](./docs/API.md)                             | API reference                                                                                                    |
+
+## Contributing · Security · License
+
+- **Contributing** — workspace setup, the gates to run before a PR, commit
+  and round-report conventions: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- **Security** — how to report a vulnerability (privately, please) and what's
+  in scope: [`SECURITY.md`](./SECURITY.md)
+- **License** — MIT: [`LICENSE`](./LICENSE)
 
 ---
 

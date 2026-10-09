@@ -181,8 +181,9 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
 
     // The mobile-transfer receipt field is REQUIRED — the backend has
     // hard-required payment_reference there since B4-R1 (backend
-    // wallet.ts:380-389, 400 «مرجع التحويل … مطلوب»); the UI said
-    // «اختياري» and users who skipped it hit a post-submit 400. This
+    // wallet.ts:380-392, 400 «رمز التحويل … مطلوب» — R126-L2/A8 F4
+    // canon wording); the UI said «اختياري» and users who skipped it
+    // hit a post-submit 400. This
     // FLIPS the pre-R123 pin ("omits payment_reference when blank —
     // optional field"). fireEvent.submit bypasses jsdom's constraint
     // validation (the field is `required`) — the amount tests' idiom —

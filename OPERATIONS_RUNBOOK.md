@@ -164,7 +164,7 @@ rows.
 - **Triage:** `auth_activity` and `login_attempts` tables — group by
   `ipAddress`. Coordinated brute force → consider Cloudflare/WAF.
 
-## 3. Reading Render &amp; Neon logs
+## 3. Reading logs (live stack: Docker/Coolify + Neon)
 
 > **LEGACY (pre-cutover):** the Render access below is a historical record,
 > not a rollback path (the account is billing-suspended). On the live

@@ -1267,133 +1267,145 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       {/* Main content */}
       <main className="flex-1 overflow-auto min-w-0">
         {/* Top bar */}
-        <div className="sticky top-0 z-30 border-b border-border bg-card/93 backdrop-blur-md px-4 md:px-5 h-12 flex items-center gap-3">
-          <button
-            /* 96-F7 (R96 M12): p-2 + w-5 icons ≈ 36×36px hit area (was
-               p-1.5 + w-4 ≈ 28px) — this is the screen-edge button, the
-               hardest region to hit with a thumb. */
-            ref={hamburgerRef}
-            className="md:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground relative"
-            onClick={() => setMobileOpen((v) => !v)}
-            /* R125 (A6 B-11): icon-only with no name and no expanded
-               state — the storefront Navbar's hamburger has both (A5
-               #4). The drawer itself is #admin-mobile-drawer above. */
-            aria-label={mobileOpen ? "إغلاق قائمة الإدارة" : "فتح قائمة الإدارة"}
-            aria-expanded={mobileOpen}
-            aria-controls="admin-mobile-drawer"
-          >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            {!mobileOpen && totalBadges > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
-                {totalBadges > 9 ? "9+" : totalBadges}
+        {/* R126 (A13-F11): the sticky top bar grows by the top safe-area
+            inset — the storefront Navbar's exact chrome pattern (env()
+            padding on the sticky container, fixed-height row inside).
+            viewport-fit=cover ships in the meta, and the admin console is
+            phone-reachable (A13 F6/F7 measured it at 390px): in PWA
+            standalone or landscape-Safari the h-12 bar otherwise sits
+            under the notch/Dynamic Island. env() is 0 where no inset
+            exists, so desktop is pixel-identical. */}
+        <div className="sticky top-0 z-30 border-b border-border bg-card/93 backdrop-blur-md pt-[env(safe-area-inset-top)]">
+          <div className="px-4 md:px-5 h-12 flex items-center gap-3">
+            <button
+              /* 96-F7 (R96 M12): p-2 + w-5 icons ≈ 36×36px hit area (was
+                 p-1.5 + w-4 ≈ 28px) — this is the screen-edge button, the
+                 hardest region to hit with a thumb. */
+              ref={hamburgerRef}
+              className="md:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground relative"
+              onClick={() => setMobileOpen((v) => !v)}
+              /* R125 (A6 B-11): icon-only with no name and no expanded
+                 state — the storefront Navbar's hamburger has both (A5
+                 #4). The drawer itself is #admin-mobile-drawer above. */
+              aria-label={mobileOpen ? "إغلاق قائمة الإدارة" : "فتح قائمة الإدارة"}
+              aria-expanded={mobileOpen}
+              aria-controls="admin-mobile-drawer"
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {!mobileOpen && totalBadges > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
+                  {totalBadges > 9 ? "9+" : totalBadges}
+                </span>
+              )}
+            </button>
+
+            <h1 className="font-bold text-sm flex-1 truncate">{pageTitle}</h1>
+
+            {/* Global search trigger */}
+            {canGlobalSearch && (
+              <button
+                onClick={() => setShowSearch(true)}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/70 border border-border/60 hover:border-border transition-all duration-150 text-muted-foreground text-xs group"
+              >
+                <Search className="w-3 h-3" />
+                <span>بحث...</span>
+                <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
+                  ⌘K
+                </kbd>
+              </button>
+            )}
+
+            {/* Mobile search icon */}
+            {canGlobalSearch && (
+              <button
+                onClick={() => setShowSearch(true)}
+                /* R125 (A6 B-11, same 4.1.2 class): the mobile search
+                   trigger is icon-only with no accessible name. */
+                aria-label="بحث سريع"
+                /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (edge-adjacent
+                   target, was ~28px). */
+                className="sm:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Last updated */}
+            {/* R122 (A2-P2): the dot + label now reflect query reality —
+                emerald pulse only when data landed and no badge query
+                errors; amber (no pulse) while a query sits in error, with
+                the honest stale age; gray while the first fetch is still
+                in flight (never a fake "الآن/live"). */}
+            {/* R125 (A6 B-15): below sm the colored dot was the SOLE
+                state signal (color-only, 1.4.1) — the visible pill text
+                is `hidden sm:inline`, so narrow-viewport SR users heard
+                nothing. An sr-only twin carries the same text; sm:hidden
+                removes it from the a11y tree once the visible text
+                exists (no double read on ≥sm). */}
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+              {anyBadgeQueryError ? (
+                <span
+                  aria-hidden="true"
+                  className="w-1.5 h-1.5 rounded-full bg-status-warning inline-block"
+                  title="تعذّر تحديث البيانات"
+                />
+              ) : lastUpdated ? (
+                <span
+                  aria-hidden="true"
+                  className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"
+                />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 inline-block"
+                />
+              )}
+              <span className="hidden sm:inline">
+                {anyBadgeQueryError
+                  ? lastUpdated
+                    ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
+                    : "تعذّر التحديث"
+                  : lastUpdated
+                    ? refreshLabel
+                    : "جارٍ التحديث…"}
               </span>
-            )}
-          </button>
+              <span className="sr-only sm:hidden">
+                {anyBadgeQueryError
+                  ? lastUpdated
+                    ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
+                    : "تعذّر التحديث"
+                  : lastUpdated
+                    ? refreshLabel
+                    : "جارٍ التحديث…"}
+              </span>
+            </div>
 
-          <h1 className="font-bold text-sm flex-1 truncate">{pageTitle}</h1>
-
-          {/* Global search trigger */}
-          {canGlobalSearch && (
+            {/* Theme toggle — always visible. Reuses the app-level
+                ThemeProvider context so the toggle in the public navbar
+                and this one stay in lockstep. */}
             <button
-              onClick={() => setShowSearch(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/70 border border-border/60 hover:border-border transition-all duration-150 text-muted-foreground text-xs group"
-            >
-              <Search className="w-3 h-3" />
-              <span>بحث...</span>
-              <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
-                ⌘K
-              </kbd>
-            </button>
-          )}
-
-          {/* Mobile search icon */}
-          {canGlobalSearch && (
-            <button
-              onClick={() => setShowSearch(true)}
-              /* R125 (A6 B-11, same 4.1.2 class): the mobile search
-                 trigger is icon-only with no accessible name. */
-              aria-label="بحث سريع"
-              /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (edge-adjacent
-                 target, was ~28px). */
-              className="sm:hidden p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
-            >
-              <Search className="w-5 h-5" />
-            </button>
-          )}
-
-          {/* Last updated */}
-          {/* R122 (A2-P2): the dot + label now reflect query reality —
-              emerald pulse only when data landed and no badge query
-              errors; amber (no pulse) while a query sits in error, with
-              the honest stale age; gray while the first fetch is still
-              in flight (never a fake "الآن/live"). */}
-          {/* R125 (A6 B-15): below sm the colored dot was the SOLE
-              state signal (color-only, 1.4.1) — the visible pill text
-              is `hidden sm:inline`, so narrow-viewport SR users heard
-              nothing. An sr-only twin carries the same text; sm:hidden
-              removes it from the a11y tree once the visible text
-              exists (no double read on ≥sm). */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-            {anyBadgeQueryError ? (
-              <span
-                aria-hidden="true"
-                className="w-1.5 h-1.5 rounded-full bg-status-warning inline-block"
-                title="تعذّر تحديث البيانات"
-              />
-            ) : lastUpdated ? (
-              <span
-                aria-hidden="true"
-                className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"
-              />
-            ) : (
-              <span
-                aria-hidden="true"
-                className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 inline-block"
-              />
-            )}
-            <span className="hidden sm:inline">
-              {anyBadgeQueryError
-                ? lastUpdated
-                  ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
-                  : "تعذّر التحديث"
-                : lastUpdated
-                  ? refreshLabel
-                  : "جارٍ التحديث…"}
-            </span>
-            <span className="sr-only sm:hidden">
-              {anyBadgeQueryError
-                ? lastUpdated
-                  ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
-                  : "تعذّر التحديث"
-                : lastUpdated
-                  ? refreshLabel
-                  : "جارٍ التحديث…"}
-            </span>
-          </div>
-
-          {/* Theme toggle — always visible. Reuses the app-level
-              ThemeProvider context so the toggle in the public navbar
-              and this one stay in lockstep. */}
-          <button
-            onClick={toggleTheme}
-            /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (was ~25px). */
-            className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
-            title={theme === "dark" ? "وضع نهاري" : "وضع ليلي"}
-            aria-label={theme === "dark" ? "تبديل المظهر (داكن/فاتح)" : "تبديل المظهر (فاتح/داكن)"}
-          >
-            {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-          </button>
-
-          {onRefresh && (
-            <button
-              onClick={onRefresh}
+              onClick={toggleTheme}
               /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (was ~25px). */
               className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
-              title="تحديث البيانات"
+              title={theme === "dark" ? "وضع نهاري" : "وضع ليلي"}
+              aria-label={
+                theme === "dark" ? "تبديل المظهر (داكن/فاتح)" : "تبديل المظهر (فاتح/داكن)"
+              }
             >
-              <RefreshCw className="w-5 h-5" />
+              {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-          )}
+
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (was ~25px). */
+                className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
+                title="تحديث البيانات"
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Page content */}

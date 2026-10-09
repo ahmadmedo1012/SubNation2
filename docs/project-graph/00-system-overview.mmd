@@ -1,7 +1,9 @@
-%% SubNation system overview — verified 2026-10-05 against live production (HEAD ef3d0c3 expected, f10bb9b deployed pre-Wave-1)
-%% Wave-0 snapshot (2026-10-05) — superseded where contradicted by the merge (966d70f); see docs/project-state/source-of-truth.md.
-%% (The app-2/dockerimage container below was deleted at the Wave-1 cutover — replaced by app kjxqu…, git-source build, same PORT=3000 shape.)
-%% Reality-checked: live probes + VPS docker/coolify inspection + Neon read-only queries.
+%% SubNation system overview — refreshed R126 (2026-10-09): the Wave-0-era drawing still showed
+%% the deleted app-2 container (wbgj7cszizukrlrblncq8by5, dockerimage pull); replaced with the live
+%% git-source app (kjxqu…) per 03-deployment-target.mmd, the CURRENT deployment map.
+%% Originally verified 2026-10-05 against live production via live probes + VPS docker/coolify
+%% inspection + Neon read-only queries. If this map drifts, live wins — current live state:
+%% docs/project-state/source-of-truth.md.
 graph TB
     subgraph Internet
         C[Customer / Operator browser]
@@ -13,8 +15,8 @@ graph TB
     subgraph VPS["Contabo VPS vmi3624162 (x86_64, 4c/8G) — 169.58.100.161"]
         TRA["Coolify Traefik proxy<br/>Let's Encrypt, 443"]
 
-        subgraph APP["Coolify app uuid wbgj7cszizukrlrblncq8by5 (applicationId=2 'subnation')"]
-            SN["SubNation container<br/>ghcr.io/ahmadmedo1012/subnation2:coolify-latest<br/>PORT=3000, SINGLE_INSTANCE_MODE=true<br/>SPA + API + Socket.IO + schedulers in ONE process"]
+        subgraph APP["Coolify app uuid kjxqu3ytcnwb1btmlw56la5r (applicationId=2 'subnation')"]
+            SN["SubNation container — built BY Coolify<br/>from GitHub main (repo-root Dockerfile)<br/>PORT=3000, SINGLE_INSTANCE_MODE=true<br/>SPA + API + Socket.IO + schedulers in ONE process"]
         end
 
         subgraph OPENWA_APP["Coolify app uuid 6x3ekglvh7megkkhfsnyhm8h (openwa)"]

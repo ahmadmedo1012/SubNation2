@@ -28,6 +28,16 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R126 (2026-10-09) — round record (docs/presentation lanes):** this index
+> gained the developer onboarding layer (`docs/ONBOARDING.md`), the
+> performance record (`docs/PERFORMANCE.md`), and a `specs/` visibility row;
+> `project-graph/` 00 + 12 were refreshed (00 drew the deleted app-2, 12
+> named a machine-specific clone path). Repo root gained the OSS trust
+> surface: `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`,
+> `.github/ISSUE_TEMPLATE/` + PR template, CI badge in the README.
+> (`ONBOARDING` / `PERFORMANCE` intentionally sit outside the `FINAL_*`
+> pattern — front-door entry docs in the `API.md` family.)
+
 > **R125 (2026-10-09) — round record:** the 12-audit + 8-lane + adversarial-review
 > round (3 P1 + ~30 P2 + ~85 P3; admin console focus, strictFunctionTypes
 > enabled, live guest-e2e executed) is documented in
@@ -40,10 +50,14 @@
 > with the round entry at the top of `CHANGELOG.md`.
 >
 > Repo-root companions (not under `docs/`): `README.md` (intro + deployment
-> status; truth-refreshed R124), `OPERATIONS_RUNBOOK.md` (on-call playbook —
-> §11 Sentry, §12 Telegram ops, §13 edge canonicalization, §14 pending
-> actions, §15 backups added R122), `CHANGELOG.md` (round ledger; R124 entry
-> at top, 2026-10-09). The old root snapshots `PLATFORM.md` + `PROJECT_OVERVIEW.md`
+> status; truth-refreshed R124, restructured R126), `OPERATIONS_RUNBOOK.md`
+> (on-call playbook — §11 Sentry, §12 Telegram ops, §13 edge
+> canonicalization, §14 pending actions, §15 backups added R122),
+> `CHANGELOG.md` (round ledger; newest entry at top), `LICENSE` (MIT) ·
+> `CONTRIBUTING.md` · `SECURITY.md` (added R126),
+> `.github/ISSUE_TEMPLATE/` + `PULL_REQUEST_TEMPLATE.md` (added R126),
+> `docs/assets/screenshots/` (live storefront JPEGs for the README, R126).
+> The old root snapshots `PLATFORM.md` + `PROJECT_OVERVIEW.md`
 > moved to `docs/history/`.
 
 ## Start here — for incidents
@@ -63,6 +77,11 @@ Not an incident but "what do I do next?" →
 actions 1 & 8 DONE — 8: permanent redirect live, **301 since the R124
 redeploy, was 308**; 2/3 unverified; 4–7, 9–12 open).
 
+New developer? → **[`docs/ONBOARDING.md`](./ONBOARDING.md)** — the ordered
+path: repo map → setup → the law docs (money invariants, no-`db:push`,
+orval workflow) → gates → where rounds are recorded. (Added R126 — the
+missing third journey, after incidents + auditing.)
+
 ## Pointer hierarchy (of record)
 
 `docs/README.md` (this index) = the front door →
@@ -71,7 +90,7 @@ redeploy, was 308**; 2/3 unverified; 4–7, 9–12 open).
 `OPERATIONS_RUNBOOK.md` owns on-call ops; `CHANGELOG.md` owns the round
 ledger; `docs/API.md` owns the API surface.
 
-## CURRENT (operator-facing) — 48 files in place
+## CURRENT (operator-facing) — 50 files in place
 
 ### operations/ (the runbooks you actually open)
 
@@ -114,9 +133,11 @@ ledger; `docs/API.md` owns the API surface.
 |---|---|---|
 | `DISASTER_RECOVERY.md` | THE DR source of truth | canonical-host line updated R125 (www permanently→apex; 301 since the R124 redeploy, was 308) |
 | `WHATSAPP_OPERATIONS.md` | WhatsApp gateway ops | CURRENT (R117 rewrite verified) |
-| `API.md` | Rate limits + surface (operator reference) | CURRENT |
+| `API.md` | Rate limits + surface (operator reference) | CURRENT (R126: `?fields=list` light projection + `variant_count` documented — was missing the R124-public surface) |
 | `COMPLIANCE.md` | Data-retention/backup compliance claims | CURRENT (R118-B4a corrections) |
 | `FINAL_MONEY_INVARIANTS.md` | M1–M14 money invariants | CURRENT |
+| `ONBOARDING.md` | The ordered developer path (repo map → setup → law docs → gates → round records) | CURRENT (added R126 — the missing developer journey) |
+| `PERFORMANCE.md` | The performance record — budget gates, measured numbers, round history | CURRENT (added R126; extracted from the README perf section) |
 | `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
 | `SEO_PRODUCTS.json` | The 45 curated Arabic product entries (8 original + 37 added R116) | CURRENT |
 | `loyalty/FINAL_LOYALTY_POLICY.md` · `loyalty/LOYALTY_ECONOMICS.md` | Loyalty policy + economics | CURRENT |
@@ -129,13 +150,19 @@ ledger; `docs/API.md` owns the API surface.
 |---|---|---|
 | `project-plan/` | `10-progress-log.md` (append-only; R121+ still writes to it) | THE progress ledger — 00–09 moved to `docs/deprecated/project-plan/` (all waves DONE 2026-10-05) |
 | `project-state/` | `source-of-truth.md` (current live state — part of the pointer hierarchy; R121 reconciliation + reorg note added R122), `external-integrations-final.md` | Live-state records; `wave-345-audit.md` → `docs/history/`, `embronic-adapter-design.md` → `docs/pending/` |
-| `project-graph/` | 13 `.mmd` (00–12) | Mermaid truth maps (CURRENT deployment map = `03-deployment-target.mmd`) |
+| `project-graph/` | 13 `.mmd` (00–12) | Mermaid truth maps (CURRENT deployment map = `03-deployment-target.mmd`; 00 + 12 refreshed R126 — 00 still drew the deleted app-2 container, 12 named a machine-specific clone path) |
+
+### specs/ (repo root — outside the docs tree, now visible from this index)
+
+| Tree | What it is |
+|---|---|
+| `specs/003-anomaly-detection` · `specs/004-security-audit` · `specs/008-audit-coverage-gaps` · `specs/010-ai-admin-copilot` · `specs/011-inventory-demand-forecast` · `specs/012-arabic-catalog-enrichment` | Dated spec-driven working directories (spec / plan / research / checklists / contracts per dir) — evidence records of executed work (e.g. the risk engine, the admin copilot, the forecast panel), not maintained docs. Read as history with a date, not as CURRENT guidance. |
 
 ## The 4-bucket layout (R122, 2026-10-07)
 
 | Bucket | Files | Location |
 |---|---|---|
-| **CURRENT** | 48 (34 md incl. this index + 13 mmd + 1 json) | in place (this index's tables above) |
+| **CURRENT** | 50 (36 md incl. this index + 13 mmd + 1 json) | in place (this index's tables above) |
 | **HISTORY** | 74 (incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r118, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit` |
 | **DEPRECATED** | 16 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set |
 | **PENDING** | 1 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design; `FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands) |

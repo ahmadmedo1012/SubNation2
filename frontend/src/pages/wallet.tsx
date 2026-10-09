@@ -653,8 +653,9 @@ function TransferCodePanel({
  *
  * R123-E4a (P1): the mobile_transfer flow passes required — the backend
  * has hard-required the reference there since B4-R1 (backend
- * wallet.ts:380-389, 400 «مرجع التحويل (رقم العملية من إيصال التحويل)
- * مطلوب…») while this field said «اختياري», so users on the
+ * wallet.ts:380-392, 400 «رمز التحويل (رقم العملية من إيصال التحويل)
+ * مطلوب…» — R126-L2/A8 F4 aligned the message to the «رمز التحويل»
+ * canon) while this field said «اختياري», so users on the
  * Libyana/Madar flow who skipped the receipt hit a post-submit 400.
  * lypay keeps it genuinely optional (gateway receipts are not
  * consistently exposed to users).
@@ -1796,11 +1797,7 @@ export default function WalletPage() {
 
                   <div>
                     {/* 96-F6 (R96 A6 #2 P1): step label bound to the field. */}
-                    <StepDot
-                      n={3}
-                      label="رقم حسابك (المُرسل)"
-                      htmlFor="topup-sender-account"
-                    />
+                    <StepDot n={3} label="رقم حسابك (المُرسل)" htmlFor="topup-sender-account" />
                     <Input
                       id="topup-sender-account"
                       type="text"
@@ -1896,7 +1893,7 @@ export default function WalletPage() {
                     key={i}
                     /* R125-I7 (A7 B-12 / R124-A3 #12): 2px border-l accent
                  stripe → the plain 1px border (craft-floor cap). */
-              className="bg-card border border-border rounded-xl p-4 flex items-center gap-4"
+                    className="bg-card border border-border rounded-xl p-4 flex items-center gap-4"
                   >
                     <div className="w-10 h-10 rounded-xl bg-muted skeleton-shimmer shrink-0" />
                     <div className="flex-1 space-y-2">

@@ -249,7 +249,14 @@ export default function CategoryPage() {
         aria-label="مسار التنقّل"
         className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4"
       >
-        <Link href="/" className="hover:text-foreground transition-colors press-spring">
+        {/* R126-L5 (A13-F10): the crumb link rides the 24px target floor
+            (inline-flex min-h-6) — it measured 44×16 live, relying on the
+            spacing exception; same idiom as the Footer's link band
+            (R124-A4 #2). */}
+        <Link
+          href="/"
+          className="inline-flex min-h-6 items-center hover:text-foreground transition-colors press-spring"
+        >
           الرئيسية
         </Link>
         {/* R124 (A1-F6): the breadcrumb separator denotes traversal FORWARD

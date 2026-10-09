@@ -32,6 +32,9 @@ GET  /api/auth/me                     current user
 POST /api/auth/logout                 clears session cookie
 
 GET  /api/products?category=&search=&sort=&available_only=
+     &fields=list — light grid projection (R124): omits the variant tree
+     (62.6% of catalog wire bytes, measured) + usage_terms; grid cards
+     read `price` + `variant_count` instead. Absent = full Product shape.
 GET  /api/products/:id | /by-slug/:slug
 GET  /api/products/stats | /flash-sale
 POST  /api/orders                     atomic purchase (wallet; Idempotency-Key header, 409 IDEMPOTENCY_*)

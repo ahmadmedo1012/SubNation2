@@ -249,7 +249,11 @@ export default function AdminAdminsPage() {
                           {isMe && (
                             /* 94-C2 (A2 P2-10): uppercase dropped on the
                                 Arabic badges (A11 §8). */
-                            <span className="text-3xs font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                            /* R126-L5 (A3-4): the «أنت» chip joins the
+                                totp/معطّل badge family on text-safe
+                                tokens — raw text-primary on the /10
+                                tint is 3.56:1 dark (A6-B6). */
+                            <span className="text-3xs font-bold bg-primary/10 text-primary-text px-1.5 py-0.5 rounded">
                               أنت
                             </span>
                           )}
@@ -292,7 +296,10 @@ export default function AdminAdminsPage() {
                     {(admin.permissions ?? []).length === 0 ? (
                       <span className="text-xs text-muted-foreground">لا توجد صلاحيات ممنوحة</span>
                     ) : (admin.permissions ?? []).includes("all") ? (
-                      <span className="text-3xs font-bold bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded">
+                      /* R126-L5 (A3-4): same token swap as the «أنت» chip
+                          above (raw text-primary on the /10 tint is
+                          3.56:1 dark — A6-B6's figure). */
+                      <span className="text-3xs font-bold bg-primary/10 text-primary-text border border-primary/20 px-1.5 py-0.5 rounded">
                         جميع الصلاحيات (مسؤول رئيسي)
                       </span>
                     ) : (

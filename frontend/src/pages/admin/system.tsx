@@ -179,9 +179,15 @@ const STATUS_META: Record<
     icon: CheckCircle2,
   },
   degraded: {
-    color: "text-yellow-400",
-    bg: "bg-yellow-400/10",
-    border: "border-yellow-400/20",
+    // R126-L5 (A3 item-10): the degraded cluster rides the
+    // --status-warning ink+tint pair — yellow-400 fails the light theme
+    // (1.43-1.53:1, A3's figures); the token is AA both themes (6.04:1
+    // on white / 5.09:1 on the /12 tint light, index.css F3-06). This
+    // cluster feeds the page's core degraded-health value + the two
+    // scheduler banners — the operator's most important warning state.
+    color: "text-status-warning",
+    bg: "bg-status-warning/10",
+    border: "border-status-warning/20",
     label: "متدنٍ",
     icon: AlertTriangle,
   },
@@ -1194,8 +1200,12 @@ export default function AdminSystemPage(): ReactElement | null {
                               {formatNumber(r.count)}
                             </span>
                             {errPct > 0 && (
+                              /* R126-L5 (A3 item-10): the sub-1% error
+                                 text joins the warning sweep
+                                 (yellow-400 fails the light theme at
+                                 ~1.5:1). */
                               <span
-                                className={`text-3xs font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-red-400" : "text-yellow-400"}`}
+                                className={`text-3xs font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-red-400" : "text-status-warning"}`}
                               >
                                 {errPct.toFixed(1)}% أخطاء
                               </span>
@@ -1231,10 +1241,15 @@ export default function AdminSystemPage(): ReactElement | null {
                     value={`${(metrics.auth.failureRate * 100).toFixed(1)}%`}
                     sub="فشل + قفل / إجمالي"
                     icon={AlertTriangle}
-                    color={metrics.auth.failureRate > 0.1 ? "text-red-400" : "text-yellow-400"}
-                    bg={metrics.auth.failureRate > 0.1 ? "bg-red-400/10" : "bg-yellow-400/10"}
+                    /* R126-L5 (A3 item-10): the failure-rate MetricCard's
+                       healthy branch joins the warning sweep (yellow-400
+                       fails the light theme at ~1.5:1). */
+                    color={metrics.auth.failureRate > 0.1 ? "text-red-400" : "text-status-warning"}
+                    bg={metrics.auth.failureRate > 0.1 ? "bg-red-400/10" : "bg-status-warning/10"}
                     border={
-                      metrics.auth.failureRate > 0.1 ? "border-red-400/20" : "border-yellow-400/20"
+                      metrics.auth.failureRate > 0.1
+                        ? "border-red-400/20"
+                        : "border-status-warning/20"
                     }
                     spark={authFailRate}
                     sparkColor={chart.warning}

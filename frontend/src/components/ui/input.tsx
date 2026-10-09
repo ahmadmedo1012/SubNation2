@@ -33,7 +33,14 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           // tint stays as a secondary cue only — the ring carries the
           // contrast requirement.
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:border-primary/45",
-          "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+          // R126-L5 (A13-F7): the 14px desktop size is now scoped to
+          // fine-pointer viewports ≥768px. The bare `md:text-sm` applied
+          // to TOUCH devices too — an iPad-class admin (≥768px CSS width)
+          // computed 14px and iOS Safari zooms the page on every focus.
+          // The pointer:fine guard keeps the desktop design pixel-
+          // identical while every touch device rides the 16px text-base
+          // (phones already did — md: never applied below 768px).
+          "disabled:cursor-not-allowed disabled:opacity-50 [@media(min-width:48rem)_and_(pointer:fine)]:text-sm",
           className,
         )}
         ref={ref}

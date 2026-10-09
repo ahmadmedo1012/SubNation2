@@ -5,7 +5,7 @@ import { useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
 import { cn, formatCount, formatCurrency } from "@/lib/utils";
 import { Wallet, LogOut, Menu, X, Sun, Moon, User, ShoppingCart, ChevronLeft } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Suspense } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
@@ -30,6 +30,40 @@ const DRAWER_CATEGORIES = [
   { slug: "education", label: "تعليم" },
 ] as const;
 
+/**
+ * R126 (A13-F2): minimal Tab-cycle focus trap for the guest drawer —
+ * the exact helper (and comment) the admin console's drawer + ⌘K
+ * palette share (layout.tsx trapTabKey, R125 A6 B-9/B-15), kept local
+ * because importing the admin layout into the storefront bundle would
+ * drag the whole admin shell into the eager chunk. The drawer claims
+ * role="dialog" aria-modal="true", so Tab must cycle inside it instead
+ * of walking into the page behind (WCAG 2.1.2). Only Tab/Shift+Tab are
+ * intercepted; every other key is left to the drawer's own handlers.
+ */
+function trapTabKey(
+  container: HTMLElement,
+  e: { key: string; shiftKey: boolean; preventDefault(): void },
+): void {
+  if (e.key !== "Tab") return;
+  const focusables = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+  if (focusables.length === 0) return;
+  const current = document.activeElement as HTMLElement | null;
+  const idx = current ? focusables.indexOf(current) : -1;
+  e.preventDefault();
+  const next = e.shiftKey
+    ? idx <= 0
+      ? focusables.length - 1
+      : idx - 1
+    : idx === -1 || idx === focusables.length - 1
+      ? 0
+      : idx + 1;
+  focusables[next].focus();
+}
+
 export function Navbar() {
   const { token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -37,6 +71,10 @@ export function Navbar() {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  // R126 (A13-F2): the drawer panel + its toggle, wired by ref for the
+  // dialog focus contract below (move-in on open, return on close).
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 10);
@@ -48,6 +86,37 @@ export function Navbar() {
   useEffect(() => {
     setOpen(false);
   }, [location]);
+
+  // R126 (A13-F2): ESC closes the drawer + Tab is trapped inside it
+  // while it is open — the exact admin-console drawer contract (layout.tsx,
+  // 93-C7 + R125 A6 B-15). Before this, the guest drawer was the one
+  // mobile surface with NO keyboard exit: two Esc presses left
+  // aria-expanded="true" and the body scroll-lock engaged (A13 measured)
+  // — only the toggle/X closed it.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+      else if (e.key === "Tab" && drawerRef.current) trapTabKey(drawerRef.current, e);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open]);
+
+  // R126 (A13-F2): the drawer scrolled the page behind it and locked
+  // body scroll, but focus never moved in — keyboard/SR users stayed on
+  // the toggle while the dialog opened around them — and closing dropped
+  // focus onto <body>. Move focus into the dialog on open, return it to
+  // the hamburger (the only opener) on close — the admin drawer's exact
+  // move-in/return pair. Programmatic focus on tabIndex -1 shows no
+  // :focus-visible outline (the global rule keys on focus-visible).
+  useEffect(() => {
+    if (!open) return;
+    drawerRef.current?.focus();
+    return () => {
+      menuButtonRef.current?.focus();
+    };
+  }, [open]);
 
   // R120-B1 (A3-F1): body scroll-lock while the guest drawer is open —
   // the manual equivalent of the Radix scroll-lock app-dialog rides
@@ -285,6 +354,7 @@ export function Navbar() {
               mobile-nav-clearance.test.tsx as the keyboard fallback. */}
           {!token && (
             <button
+              ref={menuButtonRef}
               className="md:hidden p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all touch-target flex items-center justify-center"
               onClick={() => setOpen((v) => !v)}
               aria-label="القائمة"
@@ -361,10 +431,18 @@ export function Navbar() {
       {/* R120-B1 (A3-F1): the drawer now carries the 7 category shortcuts
           + flash-sales + support (guests had NO category entry point on
           mobile — the desktop nav's «الكتالوج» is hidden below md) and
-          the body scroll-locks while it's open (effect above). */}
+          the body scroll-locks while it's open (effect above).
+          R126 (A13-F2): dialog semantics — the panel is a scroll-locked
+          overlay over the page, so it declares role="dialog" aria-modal
+          "true" and receives/returns focus like the admin drawer. */}
       {!token && open && (
         <div
           id="guest-menu"
+          ref={drawerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="القائمة"
+          tabIndex={-1}
           className="md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in"
         >
           {/* R124-A3 #3: full token — the /80 alpha measured 4.14:1 in

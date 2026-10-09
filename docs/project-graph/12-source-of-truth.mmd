@@ -1,8 +1,9 @@
-%% Source of truth — where each kind of truth actually lives (verified 2026-10-05)
+%% Source of truth — where each kind of truth actually lives (verified 2026-10-05;
+%% R126 2026-10-09: the local-clone node was genericized — it named a machine-specific path)
 graph TB
     subgraph Code["Code & history"]
-        GITHUB["GitHub main — canonical code + history<br/>(local clone + remote 'github', PAT in ~/.git-credentials)"]
-        LOCAL["Local clone /home/rh2011/Projects/SubNation2<br/>working copy only — never canonical"]
+        GITHUB["GitHub main — canonical code + history<br/>(local clones push to it; credentials never live in the repo)"]
+        LOCAL["Local working clone<br/>working copy only — never canonical"]
     end
 
     subgraph Runtime["Runtime state"]

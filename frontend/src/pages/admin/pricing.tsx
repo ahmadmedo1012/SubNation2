@@ -1188,7 +1188,12 @@ export default function AdminPricingPage() {
                   )}
                   <div className="flex justify-between py-2 border-t border-border/40 mt-2">
                     <span className="font-bold">السعر النهائي</span>
-                    <span className="tabular-nums font-bold text-primary text-base">
+                    {/* R126-L5 (A1-18): the headline money number rode raw
+                        text-primary — 3.76:1 on the dark card (A6-B6's
+                        measured figure), text-base is not large text, and
+                        dark is the admin DEFAULT. text-primary-text is the
+                        B-6 sweep class (AA both themes). */}
+                    <span className="tabular-nums font-bold text-primary-text text-base">
                       {fmt(result.pricing.final_price)} د.ل
                     </span>
                   </div>

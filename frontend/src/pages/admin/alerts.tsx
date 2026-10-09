@@ -64,9 +64,14 @@ const TYPE_META: Record<
   },
   low_stock: {
     icon: Package,
-    color: "text-yellow-400",
-    bg: "bg-yellow-400/10",
-    border: "border-yellow-400/20",
+    // R126-L5 (A3 item-10 / mandate 7): the low_stock cluster rides the
+    // --status-warning ink+tint pair — yellow-400 passes the dark theme
+    // (8.79:1 on the /10 tint) but fails the shipped light theme at
+    // 1.43:1 (A3's measured figures); --status-warning is AA both themes
+    // (6.04:1 on white / 5.09:1 on the /12 tint light, index.css F3-06).
+    color: "text-status-warning",
+    bg: "bg-status-warning/10",
+    border: "border-status-warning/20",
     label: "مخزون منخفض",
   },
   no_stock: {
