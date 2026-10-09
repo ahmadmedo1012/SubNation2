@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
+import { CreateCouponBody } from "../coupons";
 
 /**
  * Round-3 regression tests (audit M2): the coupon admin create/patch
@@ -7,36 +7,13 @@ import { z } from "zod";
  * Postgres as "[object Object]" (500), an invalid expires_at produced
  * Invalid Date (500), a non-string description crashed .trim() (500),
  * and a fixed-type value had NO upper bound (direct wallet-debit
- * magnitude at checkout). These tests import the exact schema shape the
- * route uses — if the route drifts from them, typecheck + this suite
- * make it loud.
+ * magnitude at checkout).
  *
- * NOTE: the schemas are declared inside routes/coupons.ts (module-scoped,
- * not exported). Rather than weakening the route's encapsulation for
- * testability, these tests re-declare the SAME contract via a shared
- * factory — the day the route exports its schemas, switch the import.
- * The regression value is identical: the contract is pinned.
+ * R124 (A9-F1): the route schema is now EXPORTED (generated
+ * @workspace/api-zod contract base + the M2 extension), so these tests
+ * pin the REAL composed schema. The old re-declared mirror that could
+ * silently drift from the route is gone.
  */
-
-// Mirrors routes/coupons.ts — kept in sync by review + the route tests.
-const MAX_FIXED_COUPON_VALUE = 10_000;
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
-
-const CreateCouponBody = z.object({
-  code: z.string().trim().min(1).max(40),
-  type: z.enum(["percentage", "fixed"]),
-  value: z.number().finite().positive().max(MAX_FIXED_COUPON_VALUE),
-  min_order_amount: z.number().finite().min(0).max(1_000_000).optional().default(0),
-  max_uses: z.number().int().min(1).max(1_000_000).nullish(),
-  expires_at: z
-    .string()
-    .regex(ISO_DATE, "ISO date")
-    .nullish()
-    .refine((v) => v === null || v === undefined || !Number.isNaN(new Date(v).getTime()), {
-      message: "invalid date",
-    }),
-  description: z.string().trim().max(200).nullish(),
-});
 
 describe("CreateCouponBody schema (coupon-admin money perimeter)", () => {
   it("accepts a sane fixed coupon", () => {
@@ -97,9 +74,9 @@ describe("CreateCouponBody schema (coupon-admin money perimeter)", () => {
       CreateCouponBody.safeParse({ code: "x", type: "fixed", value: Number.POSITIVE_INFINITY })
         .success,
     ).toBe(false);
-    expect(CreateCouponBody.safeParse({ code: "x", type: "fixed", value: Number.NaN }).success).toBe(
-      false,
-    );
+    expect(
+      CreateCouponBody.safeParse({ code: "x", type: "fixed", value: Number.NaN }).success,
+    ).toBe(false);
   });
 
   it("rejects non-integer or negative max_uses (dead-coupon class)", () => {

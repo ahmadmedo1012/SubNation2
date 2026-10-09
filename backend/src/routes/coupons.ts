@@ -1,7 +1,8 @@
+import { CreateCouponBody as GeneratedCreateCouponBody } from "@workspace/api-zod";
+import { db, couponsTable } from "@workspace/db";
+import { desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
-import { db, couponsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
 import { intParam } from "../lib/http";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { checkExpiringCoupons } from "../jobs/couponWatcher";
@@ -28,15 +29,30 @@ const router = Router();
 // description crashed `.trim()` (500), and a fixed-type value had no
 // upper bound (a 999,999 LYD "fixed" coupon is a direct wallet-debit
 // magnitude at checkout). Everything is schema-validated up front now.
-const MAX_FIXED_COUPON_VALUE = 10_000; // LYD — far above any sane coupon
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
 
-const CreateCouponBody = z.object({
+// R124 (A9-F1): ONE source of truth for the shape — the generated
+// @workspace/api-zod CreateCouponBody (shared/api-spec/openapi.yaml),
+// previously imported nowhere while this file hand-rolled a divergent
+// copy. The contract base supplies the field set, types and bounds
+// (value ≤ 10,000 LYD, max_uses ≤ 1M — openapi.yaml maximums); the
+// .extend() below layers ONLY the stricter semantics the M2 audit added
+// that openapi cannot express, so a spec regeneration is picked up here
+// (and typechecked) instead of silently drifting:
+//   - code/description `.trim()` — whitespace normalization
+//   - expires_at ISO_DATE regex + parseable-date refine — the Invalid-
+//     Date→500 gate (the spec documents "ISO date or date-time string")
+//   - min_order_amount `.default(0)` — the handler inserts
+//     String(min_order_amount); an omitted field must not reach Postgres
+//     as "undefined"
+//   - `.finite()` on the two numbers — belt-and-braces; the contract's
+//     exclusiveMinimum/maximum bounds already reject NaN/±Infinity with
+//     the same outcome
+// Exported for the schema regression suite (coupons-schema.test.ts) so
+// the suite pins the REAL composed schema, not a re-declared mirror.
+export const CreateCouponBody = GeneratedCreateCouponBody.extend({
   code: z.string().trim().min(1).max(40),
-  type: z.enum(["percentage", "fixed"]),
-  value: z.number().finite().positive().max(MAX_FIXED_COUPON_VALUE),
   min_order_amount: z.number().finite().min(0).max(1_000_000).optional().default(0),
-  max_uses: z.number().int().min(1).max(1_000_000).nullish(),
   expires_at: z
     .string()
     .regex(ISO_DATE, "ISO date")

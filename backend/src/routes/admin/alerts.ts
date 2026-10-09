@@ -119,11 +119,16 @@ router.get("/new", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/unread-count", requireAdmin, async (_req, res) => {
+router.get("/unread-count", requireAdmin, async (req, res) => {
   try {
     const c = await countUnreadAlerts();
     return res.json({ count: c });
-  } catch {
+  } catch (err) {
+    // R124 (A9-F7): this was the only unlogged 500 in the routes tree —
+    // every 500 must say why in the logs. (req.log ?? logger) fallback
+    // idiom as /new above: bare-router test mounts have no pino-http.
+    const log = (req.log ?? logger) as typeof req.log;
+    log.error({ err }, "Failed to count unread alerts");
     return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });

@@ -202,7 +202,7 @@ const baseLogger = pino({
 
 /**
  * Child logger factory that auto-binds correlation context from AsyncLocalStorage.
- * All convenience helpers (authLogger, workerLogger, etc.) use this internally.
+ * All convenience helpers (alertingLogger, cwvLogger, etc.) use this internally.
  */
 export function childLogger(bindings: Partial<StructuredLogFields>): pino.Logger {
   return baseLogger.child(bindings);
@@ -211,15 +211,10 @@ export function childLogger(bindings: Partial<StructuredLogFields>): pino.Logger
 /**
  * Convenience helpers that auto-bind category and correlation context.
  * These use childLogger internally and inherit service/version from the base logger.
+ *
+ * R124 (A9-F6): authLogger/workerLogger (zero callers repo-wide) were
+ * deleted — add a helper here only when a consumer exists.
  */
-export function authLogger(): pino.Logger {
-  return childLogger({ category: "auth" });
-}
-
-export function workerLogger(): pino.Logger {
-  return childLogger({ category: "worker" });
-}
-
 export function alertingLogger(): pino.Logger {
   return childLogger({ category: "alerting" });
 }

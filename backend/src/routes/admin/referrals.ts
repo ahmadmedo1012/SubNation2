@@ -9,6 +9,7 @@ import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { requirePermission } from "../../lib/permissions";
 import { POINTS_PER_REFERRAL } from "../../lib/loyalty-policy";
+import { logger } from "../../lib/logger";
 import { insertPointsLedgerEntry } from "../../lib/points-ledger";
 
 const router = Router();
@@ -191,7 +192,12 @@ router.post(
         }
         credited = true;
       });
-    } catch {
+    } catch (err) {
+      // R124 (A9-F7): the points-credit tx 500 was returned with no log —
+      // every 500 must say why. (req.log ?? logger) fallback idiom (see
+      // admin/alerts.ts) for bare-router test mounts without pino-http.
+      const log = (req.log ?? logger) as typeof req.log;
+      log.error({ err }, "Failed to credit referral points");
       return res
         .status(500)
         .json(createErrorResponse("حدث خطأ أثناء قيد النقاط", ErrorCode.INTERNAL_ERROR));

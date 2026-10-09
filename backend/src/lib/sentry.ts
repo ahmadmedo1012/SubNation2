@@ -29,9 +29,9 @@
  *      / git-commit context without per-call boilerplate.
  *
  *   4. Subsystem helper functions (`captureSubsystemException`,
- *      `captureAuthFailure`, `captureSchedulerFailure`,
- *      `breadcrumbSubsystem`) attach the correct tag set every time so
- *      the Sentry UI's "Group by subsystem" gives clean buckets.
+ *      `captureAuthFailure`, `captureSchedulerFailure`) attach the correct
+ *      tag set every time so the Sentry UI's "Group by subsystem" gives
+ *      clean buckets.
  *
  * Sensitive field names are SCALED — operators can extend by editing the
  * SENSITIVE_FIELD_NAMES set below. The default covers the platform's known
@@ -535,29 +535,6 @@ export function captureSchedulerFailure(
       scope.captureException(new Error(String(err)));
     }
   });
-}
-
-/**
- * Structured breadcrumb tagged with a subsystem. Cheaper than a
- * captured event — the breadcrumb only travels with a future event
- * if one occurs in the same execution context.
- */
-export function breadcrumbSubsystem(
-  subsystem: string,
-  message: string,
-  data?: Record<string, unknown>,
-  level: "info" | "warning" | "error" = "info",
-): void {
-  try {
-    Sentry.addBreadcrumb({
-      category: subsystem,
-      level,
-      message,
-      data: data ? (deepSanitize(data) as Record<string, unknown>) : undefined,
-    });
-  } catch {
-    // best-effort
-  }
 }
 
 /**

@@ -65,7 +65,8 @@ export function createCorrelationContextFromHeader(
 
 /**
  * Runs a function within a correlation context.
- * The context is accessible via getCorrelationContext() within the callback.
+ * The callback runs with the context as the active ALS store
+ * (getCorrelationId() reads the request ID from it).
  *
  * @param context - The correlation context to store
  * @param callback - The function to run within the context
@@ -73,15 +74,6 @@ export function createCorrelationContextFromHeader(
  */
 export function runWithCorrelationContext<T>(context: CorrelationContext, callback: () => T): T {
   return correlationStore.run(context, callback);
-}
-
-/**
- * Gets the current correlation context from AsyncLocalStorage.
- *
- * @returns The current CorrelationContext, or undefined if not in a request scope
- */
-export function getCorrelationContext(): CorrelationContext | undefined {
-  return correlationStore.getStore();
 }
 
 /**

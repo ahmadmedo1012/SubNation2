@@ -929,6 +929,14 @@ app.use("/api", router);
 
 // JSON 404 for unmatched /api/* routes (must come AFTER all /api routers, BEFORE static)
 app.use("/api", (_req, res) => {
+  // R124 (A7-F4): this 404 shipped with NO Cache-Control while the
+  // by-slug product 404 answers s-maxage=60 (products.ts catalogCache).
+  // no-store, not the catalog family's s-maxage=60: this fallback also
+  // covers authed admin surfaces (the no-store family), and unknown paths
+  // a future deploy may turn into real routes must never have a cached
+  // 404 shadow them. The body is a static two-field JSON — there is
+  // nothing to gain from edge caching.
+  res.set("Cache-Control", "no-store");
   res.status(404).json(createErrorResponse("المسار غير موجود", ErrorCode.NOT_FOUND));
 });
 
@@ -1178,37 +1186,37 @@ async function lookupProductForShareSurfaces(
  */
 export const SHELL_CATEGORY_META: Record<string, { metaTitle: string; metaDescription: string }> = {
   streaming: {
-    metaTitle: "اشتراكات البث المباشر في ليبيا — Netflix و Disney+ و Shahid",
+    metaTitle: "البث المباشر في ليبيا — Netflix و Disney+ | SubNation",
     metaDescription:
       "اشترِ اشتراكات Netflix و Disney+ و Shahid VIP و Amazon Prime Video بالدينار الليبي. تسليم فوري في طرابلس وبنغازي ومصراتة وكامل ليبيا.",
   },
   music: {
-    metaTitle: "اشتراكات الموسيقى في ليبيا — Spotify Premium بالدينار الليبي",
+    metaTitle: "اشتراكات الموسيقى في ليبيا — Spotify | SubNation",
     metaDescription:
       "اشترِ اشتراك Spotify Premium وخدمات الموسيقى الأخرى بالدينار الليبي. تسليم فوري، جودة صوت عالية، استماع بدون إعلانات في كامل ليبيا.",
   },
   software: {
-    metaTitle: "مفاتيح Windows ورخص برامج أصلية في ليبيا — تفعيل فوري",
+    metaTitle: "مفاتيح Windows وبرامج أصلية في ليبيا | SubNation",
     metaDescription:
       "اشترِ مفاتيح Windows 10 و WinRAR و Grammarly و cPanel أصلية بالدينار الليبي. تراخيص دائمة، تفعيل فوري، ضمان استبدال في كامل ليبيا.",
   },
   vpn: {
-    metaTitle: "اشتراكات VPN في ليبيا — ExpressVPN و CyberGhost و IPVanish",
+    metaTitle: "اشتراكات VPN في ليبيا — ExpressVPN | SubNation",
     metaDescription:
       "اشترِ اشتراكات ExpressVPN و CyberGhost و IPVanish و HMA بالدينار الليبي. تسليم فوري، تشفير كامل، خوادم عالمية، تعمل في كامل ليبيا.",
   },
   "ai-tools": {
-    metaTitle: "اشتراك ChatGPT Plus في ليبيا — الذكاء الاصطناعي بالدينار الليبي",
+    metaTitle: "اشتراك ChatGPT Plus في ليبيا | SubNation",
     metaDescription:
       "فعّل ChatGPT Plus و Shopia AI بالدينار الليبي بدون بطاقة دولية. تسليم فوري لبيانات الحساب، وصول كامل للنماذج المتقدمة، دعم في كامل ليبيا.",
   },
   "seo-tools": {
-    metaTitle: "اشتراكات Ahrefs و Semrush في ليبيا — أدوات SEO احترافية",
+    metaTitle: "أدوات SEO في ليبيا — Ahrefs و Semrush | SubNation",
     metaDescription:
       "اشترِ اشتراكات Ahrefs و Semrush الاحترافية بالدينار الليبي. تحليل روابط وكلمات مفتاحية ومنافسين، فاتورة شهرية أو سنوية، تسليم فوري في ليبيا.",
   },
   education: {
-    metaTitle: "اشتراكات Skillshare و Scribd في ليبيا — تعلم بلا حدود",
+    metaTitle: "اشتراكات Skillshare و Scribd في ليبيا | SubNation",
     metaDescription:
       "اشترِ اشتراكات Skillshare و Scribd الأصلية بالدينار الليبي. آلاف الدورات ومكتبة كتب غير محدودة، تنزيل بدون إنترنت، تسليم فوري في كامل ليبيا.",
   },
