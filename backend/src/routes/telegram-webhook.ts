@@ -21,6 +21,8 @@ import { Router } from "express";
 import { timingSafeEqual } from "crypto";
 import { eq } from "drizzle-orm";
 import { db, walletTopupsTable } from "@workspace/db";
+import { writeAuditLog } from "../lib/audit";
+import type { Request } from "express";
 import { logger } from "../lib/logger";
 import {
   answerCallbackQuery,
@@ -112,6 +114,7 @@ export function parseTopupCallback(
 
 async function handleCallbackQuery(
   cq: NonNullable<TelegramUpdate["callback_query"]>,
+  req: Request,
 ): Promise<void> {
   const botToken = getBotToken();
   if (!botToken) return;
@@ -182,6 +185,29 @@ async function handleCallbackQuery(
     return;
   }
 
+  // B11-F1 (R127): the audit row this money path lacked. The admin-UI
+  // route writes topup.approve/topup.reject rows (admin/topups.ts:159/196)
+  // — but a Telegram-tapped approval credited a wallet with NO
+  // audit_logs row, so the R127-L5 audit-trail tab (and any incident
+  // review) was blind to every webhook decision. Same fire-and-forget
+  // writeAuditLog idiom as the other money writers (best-effort, never
+  // blocks the operation); the row identifies the Telegram actor in
+  // metadata (actorId stays null — the tapper is allowlisted in
+  // TELEGRAM_ADMIN_IDS, not necessarily a console admin account) and
+  // the IP is the webhook delivery request's (Telegram's edge), which
+  // is the honest source for this path.
+  void writeAuditLog(
+    req,
+    action === "approve" ? "topup.approve" : "topup.reject",
+    "topup",
+    topupId,
+    {
+      source: "telegram_webhook",
+      actor: actorTag,
+      from_id: cq.from.id,
+    },
+  );
+
   // Update the tapped message: strip keyboard + append a status line to the
   // ORIGINAL text (Telegram includes message.text in callback queries).
   if (cq.message?.chat?.id && cq.message?.message_id) {
@@ -228,7 +254,7 @@ router.post("/telegram", async (req, res) => {
     const update = req.body as TelegramUpdate;
 
     if (update.callback_query) {
-      await handleCallbackQuery(update.callback_query);
+      await handleCallbackQuery(update.callback_query, req);
       res.json({ ok: true });
       return;
     }

@@ -69,7 +69,7 @@ describe("CopilotPanel persistence — loading:true never survives a round-trip 
 
     expect(restored[0].turns[0].loading).toBe(false);
     expect(restored[0].turns[0].error).toBeTruthy();
-    expect(String(restored[0].turns[0].error)).toContain("أعد المحاولة");
+    expect(String(restored[0].turns[0].error)).toContain("حاول مجدداً");
     // The retry path is reachable: an error renders the retry button,
     // while a bare loading:true rendered the eternal spinner.
   });

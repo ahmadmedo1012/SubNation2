@@ -3,6 +3,7 @@ import { requirePermission } from "../../lib/permissions";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { adminAdminsRouter } from "./admins";
 import { adminAlertsRouter } from "./alerts";
+import { adminAuditLogsRouter } from "./audit-logs";
 import { adminAuthRouter } from "./auth";
 import { copilotRouter } from "./copilot";
 import { adminDiagnosticsRouter } from "./diagnostics";
@@ -110,6 +111,16 @@ protectedRouter.use(
   "/",
   requirePermission("admins"),
   adminSecurityRouter, // /auth-activity, /auth-stats — admin security audit
+);
+
+// R127-L5 (B15-1): the audit-trail reader — the security family's
+// «إجراءات المسؤولين» tab. Same `admins` gate as the security router:
+// the audit log is the accountability surface for admin-scope
+// operators (every writer already sits behind an admin route).
+protectedRouter.use(
+  "/audit-logs",
+  requirePermission("admins"),
+  adminAuditLogsRouter, // /audit-logs
 );
 
 protectedRouter.use(

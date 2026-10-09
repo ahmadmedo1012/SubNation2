@@ -1222,11 +1222,45 @@ export const SHELL_CATEGORY_META: Record<string, { metaTitle: string; metaDescri
   },
 };
 
-/** Static public routes with fixed meta (mirrors each page's useSeo block). */
-const SHELL_STATIC_ROUTE_META: Record<string, { title: string; description: string }> = {
+/**
+ * Home shell meta — DUPLICATED from the runtime useSeo block in
+ * frontend/src/pages/home.tsx (title + description verbatim).
+ * B12-F1 (R127-L9): the shipped index.html baseline is the generic
+ * brand-first default («SubNation — سوق الاشتراكات الرقمية» + the
+ * R120-B3 catalog description) while the hydrated home page renders
+ * this keyword-forward copy — a split title+description signal for
+ * every non-rendering engine (the exact class R122 A7-P1-1 closed for
+ * /product/*). The backend build cannot import the frontend source
+ * (tsc rootDir: "src"), so parity is PINNED by test:
+ * src/__tests__/spa-shell-route-parity.test.ts fails when either
+ * copy drifts. Exported for that parity test.
+ */
+export const SHELL_HOME_META: { title: string; description: string } = {
+  // The money query leads («سوق الاشتراكات الرقمية في ليبيا»), brand
+  // tail, ≤60 chars — the rendered page's exact title.
+  title: "سوق الاشتراكات الرقمية في ليبيا | SubNation",
+  // Intent-led ~147-char copy: locale inside the first clause, the
+  // Arabic brand transliterations users actually type, closing with
+  // the three differentiators (LYD, instant delivery, local support).
+  description:
+    "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
+};
+
+/**
+ * Static public routes with fixed meta (mirrors each page's useSeo
+ * block). Same pinning contract as SHELL_HOME_META above: parity is
+ * PINNED by src/__tests__/spa-shell-route-parity.test.ts — keep both
+ * sides in sync when a route's meta changes. Exported for that test.
+ */
+export const SHELL_STATIC_ROUTE_META: Record<string, { title: string; description: string }> = {
   "/flash-sales": {
     title: "عروض فلاش — SubNation",
-    description: "خصومات حصرية لفترة محدودة على أفضل الاشتراكات الرقمية",
+    // R124 (A10-F3) lengthened the rendered description 53 → 140 chars
+    // but shipped frontend-only — B12-F2 (R127-L9): the shell kept
+    // serving the pre-R124 copy to every non-rendering engine. Now
+    // the runtime builder's copy verbatim.
+    description:
+      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
   },
   "/support": {
     title: "الدعم والأسئلة الشائعة — SubNation",
@@ -1388,7 +1422,20 @@ export function applySpaShellMeta(html: string, meta: SpaShellMeta): string {
  */
 export async function resolveSpaShellMeta(pathname: string, origin: string): Promise<SpaShellMeta> {
   const norm = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  if (norm === "" || norm === "/") return { status: 200 }; // homepage shell is already correct
+  if (norm === "" || norm === "/") {
+    // B12-F1 (R127-L9): the static baseline (index.html) ships the
+    // generic brand-first default while the hydrated home page renders
+    // the keyword-forward copy above — the split meta signal R122
+    // (A7-P1-1) eliminated for products. Rewrites <title> + og:title +
+    // description + og:description; the static apex canonical,
+    // index,follow robots and the og:image set are already correct for
+    // "/" and stay untouched (parity-pinned by spa-shell-route-parity).
+    return {
+      status: 200,
+      title: SHELL_HOME_META.title,
+      description: SHELL_HOME_META.description,
+    };
+  }
 
   const category = /^\/category\/([^/]+)$/.exec(norm);
   if (category) {
@@ -1500,6 +1547,18 @@ if (frontendDist) {
   app.use(
     express.static(frontendDist, {
       maxAge: "1h",
+      // B12-F1 (R127-L9): index:false — the DEFAULT directory-index serve
+      // made GET / resolve to index.html HERE, so the homepage bypassed
+      // the per-route shell rewrite below (resolveSpaShellMeta never saw
+      // "/" — its old "homepage shell is already correct" early return
+      // was dead code for real traffic, and the raw baseline shipped
+      // while every other route got its rewritten meta). Directory
+      // requests now fall through to the SPA fallback, which owns ALL
+      // html route-serving; the dist root is the only directory with an
+      // index.html, so "/" is the one path whose behavior changes.
+      // Direct file hits (manifest, icons, robots.txt, and /index.html —
+      // the known A11-F6 canonical-consolidation item) are unaffected.
+      index: false,
       // A11-F2 (R126-L6): redirect:false — the art directory
       // (frontend/public/products → dist/products) made express.static
       // 301 /products → /products/ on the CATALOG-looking bare path,
