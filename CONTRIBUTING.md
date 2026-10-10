@@ -21,14 +21,15 @@ Docker recipe. Redis is optional in development.
 
 ## Gates to run before every PR
 
-CI (`.github/workflows/ci.yml`) runs these on every push — run them locally
-first so the PR lands green:
+CI (`.github/workflows/ci.yml`) runs these on every code push (docs-only
+pushes skip the heavy jobs via the workflow's path filter) — run them
+locally first so the PR lands green:
 
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm --filter @workspace/api-server exec vitest run      # backend suite (240 files)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (168 files)
+pnpm --filter @workspace/api-server exec vitest run      # backend suite (241 files)
+pnpm --filter @workspace/subnation run test:run          # frontend suite (176 files)
 pnpm build                                               # includes the bundle budget gate
 ```
 
@@ -42,8 +43,13 @@ Contract rules the gates enforce:
   production database; regenerate Drizzle migrations so the drift gate stays
   green.
 - **Money-adjacent code** (wallet, checkout, top-ups, refunds, loyalty):
-  `docs/FINAL_MONEY_INVARIANTS.md` (M1–M14) is law — changes near it require
+  `docs/FINAL_MONEY_INVARIANTS.md` (M1–M17) is law — changes near it require
   the money suite green and an explicit note in the PR.
+- **E2e smoke (scheduled, not per-push)**: the guest-only Playwright suite
+  runs weekly + on dispatch; it needs a reachable stack via the
+  `E2E_BASE_URL` repository variable (unset, it defaults to
+  `localhost:8080` and the weekly heartbeat fails loudly — set the
+  variable to the live URL; the suite is production-safe by design).
 
 ## Conventions
 

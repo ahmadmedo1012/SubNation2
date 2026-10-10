@@ -99,8 +99,11 @@ rows.
 - **Threshold:** ≥ 1 disconnect event in 60 s.
 - **Triage:**
   1. `GET /api/healthz/redis` — current latency + failure counter.
-  2. Render Redis service status. Free tier evicts under memory
-     pressure — see scaling thresholds (§5).
+  2. The target topology runs with `REDIS_URL` **unset** (in-process
+     rate-limit/cache/idempotency fallbacks — §5). If this alert fires at
+     all, someone attached a Redis: check the Coolify env table for
+     `REDIS_URL`, decide whether to keep or unset it, and re-verify via
+     `/api/healthz/redis`.
   3. If transient (< 30 s) and self-recovering, alert is informational.
 
 ### #neon — `neon_connection_failure`
@@ -638,6 +641,20 @@ JWT) → expected `{"configured":true,"delivered":true,"attempts":1}`
 (structured failure reasons — bad token, chat_not_found, network timeout —
 come back `delivered:false` with an explanation, still HTTP 200). The §8
 synthetic alert test exercises the same delivery path.
+
+**Alert dedupe + restarts (accepted design, documented R128):** two
+dedupes exist. The **admin-alerts drawer dedupe is restart-safe** — a
+DB-level keyed lookup under an advisory xact lock with a 24 h window
+(`backend/src/jobs/alertLogger.ts:130-161`), fixed since Round-5. The
+**alerting evaluator's 5-minute side-channel dedupe** lives in a bounded
+in-process map when `REDIS_URL` is unset (the deployed shape —
+`backend/src/services/alerting.service.ts:846-848`, FIFO-evicted
+`:210-228`), so a restart mid-incident — exactly when deploys happen —
+drops the claims and can re-page Telegram **once per active rule, bounded
+≤10 rules**. Accepted: the drawer dedupe is unaffected, the re-page cap is
+small, and a false-quiet alert channel is the worse failure. If the re-page
+ever hurts in practice, the persist option is a last-dispatched-timestamp
+per rule key in `system_settings` (no live check needed — code-certain).
 
 **Approval buttons:** the topup callback parser is strict by design —
 `/^topup_(app|rej):(\d+)$/` + `Number()` validation (verified by the R121-E

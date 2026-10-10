@@ -7,6 +7,184 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R128 — المظهر (appearance) deep round: 15 auditors (7 visual dimensions) + 9 implementation lanes — admin palette unification (227 raw-hue hits → 0), coherent brand-asset suite, motion/typography closes, PWA leaks killed, cross-surface money/copy truth — 2026-10-10
+
+The appearance round ("المظهر وكل ما يخصه"). Fifteen read-only auditors:
+**7 A-lanes on visual dimensions** (A1 design tokens, A2 storefront
+visual, A3 admin visual, A4 Arabic typography, A5 motion, A6 icons +
+imagery, A7 appearance-tooling research) + **8 B-lanes** (B1 R127
+residuals, B2 perf/PWA re-measure, B3 security red-team, B4 money
+paths — the fourth full audit, B5 test quality, B6 Arabic SEO, B7 docs
++ GitHub presentation, B8 cross-surface consistency). Findings: **0 P0 ·
+0 P1**, P2 ≈ 8, P3 ≈ 28, P4 ≈ 45 (docs/inspection-r128/). Nine
+implementation lanes + parent closes landed every P2 and the
+high-value P3/P4 set; B2 re-measured the R127 boot fixes LIVE: home
+mobile LCP 4,307→3,111 ms (−28%), /login TBT 621→89 ms, all five routes
+out of POOR.
+
+### Storefront craft
+- **Bidi title anchoring (A2-F1)**: every Latin product title anchored to
+  the RTL reading edge — `text-right` alongside the existing `dir="auto"`
+  on the card h3 + PDP h1 (Latin names floated 21–97 px off the edge,
+  live-measured); `dir="auto"` added to the three truncating Latin-name
+  sites (cart/checkout line names, bell messages) so the ellipsis eats
+  the END, not the beginning.
+- **Product-404 convergence (A2-F2)** + **gate-intent banners (A2-F4)**:
+  the product 404 now rides the not-found.tsx recipe; gated
+  wallet/orders/loyalty/referrals visitors get a per-surface
+  «سجّل دخولك لمتابعة…» banner instead of cold generic chips — keyed off
+  the SANITIZED `?redirect=` (open-redirect values never reach the
+  banner). The **`/products` alias (A2-F3)** now redirects to home
+  instead of a dead 404.
+- **Typography (A4-F1/F3)**: `leading-tight` deleted from every
+  storefront h1 + the login/register banner cousins (the base layer's
+  Arabic-safe 1.3 floor owns the leading); **A4-F2 residue**: the admin
+  `muted-foreground/70` 11 px ink pair → `/85` (AA both themes) —
+  products/variants (lane) + the six coupons.tsx mobile labels (parent
+  sweep).
+- **Motion (A5-1/A5-3)**: `fill-mode: both` → `backwards` — the filled
+  animation was permanently pinning `transform` on every
+  `.card-spring`/`.press-spring` element (45 home cards, admin stat
+  cards, category chips), killing the sanctioned hover lift; the blur-in
+  reveal joined the fix. Press-spring now rides the cart steppers/trash
+  + num-pop on the cart/unread badges.
+- **Icons (A6 P4-4)**: the ✓ text-glyph residue swapped for lucide
+  `Check` (product balance line, account-tab 2FA, alerts empty-state) —
+  and the copilot tool-trace feed's emoji/✓/✗ prefixes render as lucide
+  icons (render-layer swap; the string transport untouched).
+
+### Motion
+- Folded into storefront craft above (A5-1 fill-mode + A5-3
+  press-spring/badge pop) — the motion lane's closes rode the same
+  index.css + component commits.
+
+### Brand assets
+- **One mark everywhere (A6 P2-1/2/3, R128-L2)**: the fragmented suite
+  (blank `#FF3C00` favicon, banner-lockup PWA icons reused as maskable,
+  stale screenshot og card) replaced by ONE canonical shield+play tile
+  in real token colors (`#dc1840` / white, 5.0:1): favicon.svg +
+  favicon-32 + PWA 96/192/512 any + **true maskable** 192/512 (81 px
+  safe-zone margin, pixel-scan-proven) + apple-touch 180 + a regenerated
+  **1200×630 og card** (35.7 KB — tagline, wordmark, 4 category chips)
+  + the structured-data logo (brush-streak artifact killed). MetaTags'
+  og dims follow the real file (1200×630); every manifest ↔ IHDR ↔ meta
+  dimension agrees. Scratch pipeline: `scripts/r128-l2/`.
+
+### Design tokens + DESIGN.md
+- **`frontend/DESIGN.md` (A1 §7)**: the published design-system contract
+  for humans and design-aware tooling — every color is the computed
+  equivalent of the HSL channel tokens (index.css stays the single
+  source of truth). Adopted by the `.impeccable` config as its token
+  feed.
+
+### Admin console unification
+- **The palette migration (A1-F1/A3, IMP2)**: 227 raw-palette line-hits
+  → **0** across `pages/admin/**` + `components/admin/**` (~250 class
+  tokens, 20 files). New AA-tuned both-theme tokens:
+  `--status-success-surface` (retires the hand-rolled emerald-700
+  approve button), `--status-purple`, `--tier-bronze/silver/gold/platinum`,
+  plus the canonical 9-hue `--cat-*` family replacing
+  `CATEGORY_INITIAL_COLOR` (the one true admin↔storefront hue split).
+  D1 severity maps scripted across 14 files with alphas preserved
+  byte-for-byte; topups badges → StatusBadge; layout count dots → the
+  sibling pill's AA recipe; referrals medals → tier tokens.
+- **Admin a11y/craft batch**: h1 unification across the 19 surfaces,
+  drawer/chart/table polish (A3-F1/F2/F9), formatCount stragglers,
+  skeleton lengths, the CSV export helper (`lib/csv.ts` + tests) for
+  the users page.
+
+### Backend cross-surface consistency
+- **B8-D1**: the WhatsApp/Telegram share card now renders the operator's
+  curated `seo_title`/`seo_description` (same fields + same fallbacks as
+  the shell rewriter and the hydrated page) — the #1 share channel used
+  to show raw name+description while every other surface showed the
+  curated Arabic. **B8-D2**: the folded Telegram approval card rides the
+  canon. **B8-D3**: `formatLyd`/`formatLydNumber` — the ONE backend LYD
+  display formatter (en-US grouping + «د.ل»), mirroring the web's
+  formatCurrency so the same amount renders identically on every
+  channel («1,380.00 د.ل», not «1380.00»). Rate-limit Arabic copy
+  unified («مجدداً»); copilot 403 strings ride the code-map wording
+  (B14-13/B1 item 4); «رمز التحويل» canon now 100% live in admin.
+
+### PWA + a11y + test infrastructure
+- **Both live-verified leaks killed (B5-F1/F2, B1 item 10)**:
+  `workbox.sourcemap: false` + the sourcemap-guard sweep extended to the
+  dist ROOT (`/sw.js.map` + 217 KB `workbox-*.js.map` no longer publicly
+  fetchable); `/assets/*` misses now 404 instead of soft-200ing the SPA
+  shell (pinned by `spa-static-assets-404.test.ts` through the real app
+  composition). **B5-F3**: the SW navigation-fallback denylist extended
+  to the SW's own root files. **B5-F4**: the offline reveal 2.5 s → 6 s
+  (no more flash on bandwidth-bound first visits).
+- **a11y tails (B1 item 9)**: cart badge `aria-live="polite"` (the count
+  announces), footer column titles h3→h2 (the 1→3 heading skip on short
+  pages), text-link 24 px floors.
+- **Test infra (B5)**: the evaporating cart-gate e2e assertion now HARD
+  (B5-1 — the PDP must show the pinned CTA or «نفد المخزون»); the weekly
+  e2e heartbeat rides `schedule` (B5-3 — the LIVE-prod leg had none;
+  needs the repo variable `E2E_BASE_URL`); vitest include widened to
+  `*.spec.*` (B5-5 — the latent never-run hole); negative-window sleeps
+  → the fake-timer idiom (B5-4).
+
+### Money-UX closes
+- **B4-F5**: `roundLyd` — not `+toFixed(2)` — is now the idiom at every
+  balance-mutation boundary (the five legacy sites were safe by
+  construction; a future writer can no longer reintroduce the
+  half-cent class silently).
+- **Cart stock honesty (B-11/B13 §3)**: the cart line carries a stock
+  snapshot (captured at add, refreshed by re-quote), the honest per-line
+  verdicts («نفد المخزون» / «متبقٍ N فقط») + the client-side checkout
+  block — a sold-out product no longer looks buyable until charge time.
+  Pinned by `cart-stock-snapshot.test.tsx`.
+- **Support thread freshness (B1 item 7)**: 25 s poll-while-open; **the
+  notifications page (B1 item 8)**: backend `?page=` pagination + the
+  slim `/notifications` surface.
+
+### Performance verification
+- **B2 re-measured R127's boot fixes LIVE (5 routes × 3 runs, LH
+  13.5.0)**: home LCP 4,307→3,111 ms (−28%, score 74→84), product
+  4,323→3,310, login 4,260→3,444 (TBT 621→89, score 66→84), /category
+  −675 ms, /flash-sales 2,518 (score 90) — ALL routes out of POOR into
+  NEEDS-IMPROVEMENT; vendor-sentry 0 fetches in 15/15 runs; card-image
+  warming live. Gap-to-GOOD remains the known O1 CDN + SPA-discovery
+  pair (B2 §O1). Full data: `docs/inspection-r128/B2-perf-pwa.md`.
+
+### Docs truth
+- README/CONTRIBUTING/ONBOARDING restamped (frontend **176 test files /
+  1,238 tests** · backend **241 files / 2,240 tests** — the round-close
+  recount, +8 frontend / +1 backend files over R127); latest-rounds
+  pointer now R128+R127; the R127 boot-perf story added to
+  both performance surfaces; mobile home + cart screenshots embedded.
+- `docs/README.md` gained the R127 round-record block + the R128 in-flight
+  block; the money canon (`FINAL_MONEY_INVARIANTS.md`) re-cited M1/M2/M3
+  at HEAD and folded M15-M17 into the table (suite index 32→43 files);
+  `FINAL_UX_SYSTEM.md` re-verified (11px floor, z-index code truth,
+  `.card-enter` deletion, the icon-direction contract, cross-surface
+  conventions); the on-call runbook's Redis triage no longer cites dead
+  Render; the architecture capacity row now points at the Contabo host.
+- **R127 ledger correction** (no retro-edit, per convention): OpenAPI
+  batch-2 landed **11** ops — admin family **52→63**, not 62 (56
+  admin-tagged + 7 copilot-tagged at HEAD, recounted R128; the 62 was a
+  plan-time count). The contract-suite half (38→49) verifies.
+
+### Round record
+- Gates on the merged R128 tree, run locally before push: typecheck
+  **green** (libs + backend + frontend + scripts) · ESLint **0 errors**
+  (84 pre-existing hook-deps warnings, none on touched lines) · backend
+  vitest **2,240/2,240** (241 files, ~958 s) · frontend vitest
+  **1,238/1,238** (176 files, ~461 s) · frontend production build +
+  bundle budget **pass** (eager path 145.7 KB gzip) · sourcemap guard:
+  dist root + assets **0 .map files** (the F1 fix proven at build
+  level). One test-bug found and fixed during the gates: the bare
+  `/assets` probe 301'd (express.static's default directory redirect)
+  before the new 404 guard could own it — `redirect: false` on the
+  assets mount (the A11-F2 precedent) closes it.
+- Held open at close (owner-tracked): O1 CDN origin-RTT (~870 ms TTFB
+  ceiling), GSC verification (needs the operator's real token), GitHub
+  topics/homepage/releases (operator-side, B7 §5-1), B14-C1/C2/C3
+  catalog-naming operator decisions, B15-4 ticket attribution schema.
+- Fleet + lane evidence: 15 reports in `docs/inspection-r128/` + the
+  implementation lanes' logs; worklog `round-128` entry.
+
 ## Round R127 — the deepest fleet yet: 2 research + 15 auditors (7 dimensions no prior round ran) + 12 implementation lanes + tool adoptions (impeccable gate · actionlint · zizmor · Knip) — 2026-10-09
 
 The round after "المرحلة التالية الأدق والأعمق والأكثر شمولا". Pushed

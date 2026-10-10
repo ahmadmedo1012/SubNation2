@@ -52,7 +52,15 @@ Live from <https://subnation.ly> (Arabic RTL, desktop 1280×800):
 
 [![Product page](./docs/assets/screenshots/storefront-product.jpg)](./docs/assets/screenshots/storefront-product.jpg)
 
-*Home · category catalog · product page — full-resolution JPEGs live in
+Mobile 390px — حيث يبدأ معظم عملائنا: شبكة المنتجات والسلة بتنسيق عربي
+كامل من اليمين إلى اليسار:
+
+[![Storefront — home (mobile 390px)](./docs/assets/screenshots/storefront-home-mobile.jpg)](./docs/assets/screenshots/storefront-home-mobile.jpg)
+
+[![Cart with an item (mobile 390px)](./docs/assets/screenshots/storefront-cart-mobile.jpg)](./docs/assets/screenshots/storefront-cart-mobile.jpg)
+
+*Desktop: home · category catalog · product page · Mobile: home grid · cart.
+Full-resolution JPEGs live in
 [`docs/assets/screenshots/`](./docs/assets/screenshots/).*
 
 ## Highlights
@@ -149,11 +157,13 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (file counts verified at HEAD, R126; CI runs both unit suites
-on every push): **frontend 159 test files / 1,076 tests** · **backend 234 test
-files / 2,148 tests** (230 under `backend/src/**` + 4 under `backend/tests/`;
-full-suite runs green in the R126 gates) · guest-only e2e **40/40** against
-live production (20 spec flows × desktop + mobile-390 projects).
+Current suite (recounted at the R128 round close — the round added 8
+frontend + 1 backend test files; case counts from the R128 gate run;
+CI runs both unit suites on every code push): **frontend 176
+test files / 1,238 tests** · **backend 241 test files / 2,240 tests** (237
+under `backend/src/**` + 4 under `backend/tests/`; full-suite runs green in
+the R128 gates) · guest-only e2e **40/40** against live production (20 spec
+flows × desktop + mobile-390 projects).
 
 > **Schema note:** schema changes flow exclusively through the idempotent
 > boot migrations (`backend/src/migrate.ts`), which the dev server runs
@@ -242,13 +252,21 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   [`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md).
   The pre-cutover Render/Vercel stack is retired legacy (evidence under
   `docs/history/`).
-- **CI is green on every push** ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
+- **CI is green on every code push** ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
   secret scan, lint, typecheck, OpenAPI parity, migration + orval drift
-  gates, both unit suites, production build). Round-by-round deployment +
-  audit history: [`CHANGELOG.md`](./CHANGELOG.md) (latest deep rounds: R125
-  admin-focused, R124 storefront — reports in
-  [`docs/inspection-r125/`](./docs/inspection-r125/) and
-  [`docs/inspection-r124/`](./docs/inspection-r124/)).
+  gates, both unit suites, production build, a CVE gate on prod deps, and
+  an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy jobs
+  via the workflow's path filter). Round-by-round deployment + audit
+  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest deep rounds: **R128**
+  (المظهر appearance round: 15 auditors — 7 visual dimensions — + 9
+  implementation lanes; admin palette unification 227→0 raw hues, one
+  coherent brand-asset suite, PWA leaks killed, cross-surface money/copy
+  truth), **R127** (17-agent fleet: boot performance, sockets,
+  supply-chain, audit-trail UI) and **R126** (13 agents incl. Arabic
+  quality + live a11y); reports in
+  [`docs/inspection-r128/`](./docs/inspection-r128/),
+  [`docs/inspection-r127/`](./docs/inspection-r127/) and
+  [`docs/inspection-r126/`](./docs/inspection-r126/).
 - **Nightly backups are automated** (`scripts/backup-cron.sh`) — see
   [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md).
 
@@ -259,9 +277,16 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
 Live-measured; the full record — budgets, exact bytes, round history — lives
 in [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md):
 
-- **Lazy Sentry Session Replay** — the rrweb recorder loads only for recorded
-  sessions (sticky 10% roll / first error) behind a real dynamic-import
-  boundary; idle vendor chunk −30% (469,777 → 328,652 B raw).
+- **Boot: vendor-Sentry defers to first interaction** (R127) — the 111 KB br
+  chunk (70% unused, a 221 ms LCP-phase long task) loads at the later of
+  `load`/first pointerdown with the early-crash guarantee preserved, and the
+  budget gate now measures a DSN-shaped build (production-parity bytes).
+  Measured R128-B2 (Lighthouse mobile, 3-run medians): home LCP
+  **4.3 s → 3.1 s (−28%)**, every route out of the POOR band; `/login` TBT
+  621 → 89 ms.
+- **Lazy Sentry Session Replay** (R124) — the rrweb recorder loads only for
+  recorded sessions (sticky 10% roll / first error) behind a real
+  dynamic-import boundary; idle vendor chunk −30% (469,777 → 328,652 B raw).
 - **Lazy admin charts** — recharts (134.7 KB gz) loads on demand; admin KPI
   routes paint without it and no longer pre-fetch the storefront home chunk.
 - **Catalog list projection** — `GET /api/products?fields=list` omits the
@@ -322,7 +347,7 @@ and kept drift-free by CI.
 | **[`CHANGELOG.md`](./CHANGELOG.md)** | Round-by-round release ledger, newest first |
 | **[`docs/README.md`](./docs/README.md)** | 📚 **Docs index** — CURRENT / HISTORY / DEPRECATED / PENDING for every doc |
 | **[`docs/ONBOARDING.md`](./docs/ONBOARDING.md)** | 🚀 **Start here (developers)** — the ordered path: repo map → setup → law docs → gates → round records |
-| [`docs/FINAL_MONEY_INVARIANTS.md`](./docs/FINAL_MONEY_INVARIANTS.md) | The money law — M1–M14 invariants every wallet/checkout change must obey |
+| [`docs/FINAL_MONEY_INVARIANTS.md`](./docs/FINAL_MONEY_INVARIANTS.md) | The money law — M1–M17 invariants every wallet/checkout change must obey |
 | [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md) | The performance record — budgets, measured numbers, round history |
 | [`docs/project-graph/`](./docs/project-graph) | 13 mermaid truth maps — system overview, data model, deployment chain, source of truth |
 | [`docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md`](./docs/architecture/FINAL_PRODUCTION_TOPOLOGY.md) · [`PRODUCTION_ARCHITECTURE.md`](./docs/architecture/PRODUCTION_ARCHITECTURE.md) | Topology + capacity of record |
@@ -343,4 +368,8 @@ and kept drift-free by CI.
 ## Notes
 
 - The `ruflo/` directory (optional multi-agent dev tooling) is gitignored and is
-  **not** required to build, run, or deploy SubNation.
+  **not** required to build, run, or deploy SubNation. The tracked root-level
+  AI-tooling artifacts are intentional and self-describing — `.hermes.md`
+  (the agent contract: source-of-truth hierarchy + non-negotiables), `.kiro/`
+  (dated spec/inspection artifacts), `.specify/feature.json` (a path pointer)
+  — none of them affect the build.

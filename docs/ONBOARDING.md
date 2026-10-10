@@ -1,6 +1,6 @@
 # SubNation — Developer Onboarding
 
-> Status: CURRENT @ 2026-10-09 (R126). The ordered path for a new developer:
+> Status: CURRENT @ 2026-10-10 (R128). The ordered path for a new developer:
 > read top-to-bottom, ~30 minutes of reading before the first commit. The
 > docs front door (buckets, house rules) is [`docs/README.md`](./README.md);
 > this page is the developer journey through it.
@@ -43,7 +43,7 @@ The guest-only Playwright smoke needs a running stack:
 ## 3. The law docs — read these BEFORE your first change (10 minutes)
 
 1. **[`docs/FINAL_MONEY_INVARIANTS.md`](./FINAL_MONEY_INVARIANTS.md)** —
-   M1–M14 are law: single-transaction checkout, no negative balance,
+   M1–M17 are law: single-transaction checkout, no negative balance,
    idempotent top-up, `payment_reference` guard on `mobile_transfer`,
    single-writer inventory, domain events after commit. Any change near
    wallet/orders/refunds/loyalty requires the money suite green.
@@ -60,9 +60,11 @@ The guest-only Playwright smoke needs a running stack:
    orval drift, exactly as it fails on Drizzle migration drift and
    OpenAPI↔Express route drift. Never hand-edit generated code.
 
-Also binding (from `.hermes.md` non-negotiables): no automatic deploys —
-deployment/restart/DNS/production-data actions are explicit operator-ordered
-steps; never expose secrets (gitleaks scans every push).
+Also binding (from `.hermes.md` non-negotiables): deploys are operator-owned
+— the live stack's push-to-deploy (Coolify webhook on `main`) is the one
+sanctioned pipeline, and any other deployment/restart/DNS/production-data
+action is an explicit operator-ordered step; never expose secrets (gitleaks
+scans every push).
 
 ## 4. Frontend conventions (the short version)
 
@@ -75,20 +77,22 @@ steps; never expose secrets (gitleaks scans every push).
   (`shared/api-client-react`) — if a hook is missing, the answer is
   "edit the spec", not "hand-write a fetch".
 
-## 5. The gates (run before every PR — CI runs them on every push)
+## 5. The gates (run before every PR — CI runs them on every code push;
+docs-only pushes skip the heavy jobs via ci.yml's path filter)
 
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm --filter @workspace/api-server exec vitest run      # backend suite (234 files)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (159 files)
+pnpm --filter @workspace/api-server exec vitest run      # backend suite
+pnpm --filter @workspace/subnation run test:run          # frontend suite
 pnpm build                                               # includes the bundle budget gate
 ```
 
 CI (`.github/workflows/ci.yml`) additionally runs: gitleaks secret scan,
 OpenAPI↔Express route parity, Drizzle migration drift, orval drift, CVE
-scan on prod deps, and the production build. Current suite sizes live in
-the README's *Tests* section (verified each round).
+scan on prod deps, the impeccable UI-anti-pattern gate, and the production
+build. Current suite sizes live in the README's *Tests* section (verified
+each round).
 
 ## 6. Where rounds are recorded
 

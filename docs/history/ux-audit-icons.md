@@ -1,4 +1,13 @@
 > **ARCHIVED (2026-10-07, R122 docs reorg).** Moved from `docs/ux-audit-icons.md`; dated historical record — content unchanged, not current state (see ../README.md for the current index).
+>
+> **⚠ Superseded (R124, re-documented R128):** the breadcrumb-separator row
+> below states the OLD rule (`ChevronLeft rotate-180` — separator points
+> right). R124-A1-F6 **inverted** it: separators are forward = **unrotated
+> `ChevronLeft`**, pinned by `terms-legal-page.test.tsx`. The current,
+> authoritative icon-direction contract (back=right / forward=left / size
+> tiers / stroke policy) lives in
+> [`docs/ux/FINAL_UX_SYSTEM.md` §5.1](../ux/FINAL_UX_SYSTEM.md) — read that
+> one; every other row of this table still matches code.
 
 # تدقيق اتجاه الأيقونات — التطبيق الموحّد (RTL دائم)
 

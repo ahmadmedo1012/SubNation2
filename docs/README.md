@@ -28,6 +28,41 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R128 (2026-10-10) — round record:** the appearance round
+> (**المظهر وكل ما يخصه**) — **15 read-only auditors**: 7 A-lanes on
+> visual dimensions (design tokens · storefront visual · admin visual ·
+> Arabic typography · motion · icons/imagery · appearance tooling) + 8
+> B-lanes (R127 residuals · perf/PWA · security red-team · money paths
+> — the fourth full audit · test quality · Arabic SEO · docs/repo ·
+> cross-surface), reports in `docs/inspection-r128/` (file:line-evidenced;
+> the A2 storefront pass banked 35 verified live screenshots in
+> `screenshots-a2/`). Findings 0 P0 · 0 P1. **9 implementation lanes +
+> parent closes**: admin palette unification (227 raw-hue hits → 0, new
+> `--status-success-surface`/`--status-purple`/`--tier-*`/`--cat-*`
+> tokens), the coherent one-mark brand-asset suite (favicon/PWA
+> maskable/apple-touch/1200×630 og), motion fill-mode + typography
+> leading closes, the /products alias, cart-badge live region +
+> footer heading fixes, both live-verified PWA leaks killed
+> (`/sw.js.map` + `/assets` soft-200), the hard e2e assertion + weekly
+> heartbeat, `formatLyd` cross-surface money truth + the share card's
+> curated SEO fields, cart-stock honesty, support 25 s poll + the
+> notifications page, and the docs-truth batch (this index, README,
+> canon re-cites). CHANGELOG entry: top of `CHANGELOG.md`.
+>
+> **R127 (2026-10-09) — round record:** the deepest fleet yet — 17 read-only
+> agents (2 tool-research + **15 auditors**, seven dimensions no prior round
+> ran: live Lighthouse · PWA/service-worker update-flow · socket.io
+> full-stack · cron/scheduler · database live-read-only · CI/CD
+> supply-chain (zizmor/actionlint) · Docker/build shadow-surface, plus git
+> history archaeology, SEO live, impeccable UI detection, admin
+> full-journey) + 12 implementation lanes. Findings 0 P0 · 0 P1 · ~12 P2 ·
+> ~40 P3, all closed; adversarial reviewer R127-R1: **SHIP — 0
+> P0/P1/P2**. Documented in `CHANGELOG.md` §Round R127 +
+> `docs/inspection-r127/` (15 auditor reports + the R1 review — the
+> round's headline: boot perf, `statement_timeout` made real, sockets
+> scope-leak + resync, the audit-trail UI, OpenAPI batch-2, supply-chain
+> hardening).
+>
 > **R126 (2026-10-09) — round record:** the 13-audit + 10-lane round (3 P1 +
 > ~14 P2 + ~90 P3, two NEW audit dimensions — Arabic language quality +
 > real-browser a11y vs live production; the live CSP P1 hotfix, stats RBAC
@@ -56,13 +91,15 @@
 > with the round entry at the top of `CHANGELOG.md`.
 >
 > Repo-root companions (not under `docs/`): `README.md` (intro + deployment
-> status; truth-refreshed R124, restructured R126), `OPERATIONS_RUNBOOK.md`
+> status; truth-refreshed R124, restructured R126, counts + perf +
+> latest-rounds restamped R128), `OPERATIONS_RUNBOOK.md`
 > (on-call playbook — §11 Sentry, §12 Telegram ops, §13 edge
 > canonicalization, §14 pending actions, §15 backups added R122),
 > `CHANGELOG.md` (round ledger; newest entry at top), `LICENSE` (MIT) ·
 > `CONTRIBUTING.md` · `SECURITY.md` (added R126),
 > `.github/ISSUE_TEMPLATE/` + `PULL_REQUEST_TEMPLATE.md` (added R126),
-> `docs/assets/screenshots/` (live storefront JPEGs for the README, R126).
+> `docs/assets/screenshots/` (live storefront JPEGs for the README — desktop
+> trio R126, mobile home + cart pair R128).
 > The old root snapshots `PLATFORM.md` + `PROJECT_OVERVIEW.md`
 > moved to `docs/history/`.
 
@@ -141,14 +178,14 @@ ledger; `docs/API.md` owns the API surface.
 | `WHATSAPP_OPERATIONS.md` | WhatsApp gateway ops | CURRENT (R117 rewrite verified) |
 | `API.md` | Rate limits + surface (operator reference) | CURRENT (R126: `?fields=list` light projection + `variant_count` documented — was missing the R124-public surface) |
 | `COMPLIANCE.md` | Data-retention/backup compliance claims | CURRENT (R118-B4a corrections) |
-| `FINAL_MONEY_INVARIANTS.md` | M1–M14 money invariants | CURRENT |
-| `ONBOARDING.md` | The ordered developer path (repo map → setup → law docs → gates → round records) | CURRENT (added R126 — the missing developer journey) |
-| `PERFORMANCE.md` | The performance record — budget gates, measured numbers, round history | CURRENT (added R126; extracted from the README perf section) |
+| `FINAL_MONEY_INVARIANTS.md` | M1–M17 money invariants | CURRENT (R128: M1/M2/M3 re-cited at HEAD, M15–M17 folded in, suite index re-verified — R128-B4's fourth full money audit) |
+| `ONBOARDING.md` | The ordered developer path (repo map → setup → law docs → gates → round records) | CURRENT (added R126 — the missing developer journey; suite-size counts restamped R128) |
+| `PERFORMANCE.md` | The performance record — budget gates, measured numbers, round history | CURRENT (added R126; extracted from the README perf section; R127 boot row + R128-B2 Lighthouse re-measure added R128) |
 | `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
 | `SEO_PRODUCTS.json` | The 45 curated Arabic product entries (8 original + 37 added R116) | CURRENT |
 | `loyalty/FINAL_LOYALTY_POLICY.md` · `loyalty/LOYALTY_ECONOMICS.md` | Loyalty policy + economics | CURRENT |
 | `pricing/PRICING_ECONOMICS.md` | Pricing/margin model | CURRENT |
-| `ux/FINAL_UX_SYSTEM.md` | UX/design-system policy | CURRENT |
+| `ux/FINAL_UX_SYSTEM.md` | UX/design-system policy | CURRENT (R128: 11px type floor + z-index code truth + icon-direction contract + cross-surface conventions sections added) |
 
 ### project-plan/ + project-state/ + project-graph/ (mission-era trees)
 
