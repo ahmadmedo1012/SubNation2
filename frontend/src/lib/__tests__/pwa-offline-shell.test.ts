@@ -71,7 +71,15 @@ describe("R98-08b — index.html static offline fallback", () => {
   it("is hidden by default with a DELAYED reveal (no flash on healthy boots)", () => {
     const style = html.match(/#static-offline\s*\{[\s\S]*?\}/)?.[0] ?? "";
     expect(style).toContain("opacity: 0");
-    expect(html).toMatch(/animation:\s*sn-offline-reveal[^;]*2\.5s/);
+    // R128-IMP-4 (B5-F4): 2.5s → 6s — the old delay sat INSIDE a
+    // bandwidth-bound online first paint (entry + modulepreloaded
+    // vendors still in flight), so the no-JS message flashed on healthy
+    // slow boots before main.tsx's removal landed. 6s is past every
+    // realistic online first paint; the truly-JS-never case still
+    // reveals (an inline navigator.onLine gate is impossible under the
+    // CSP src-less-script ban — see index.html's comment).
+    expect(html).toMatch(/animation:\s*sn-offline-reveal[^;]*6s/);
+    expect(html).not.toMatch(/animation:\s*sn-offline-reveal[^;]*2\.5s/);
   });
 
   it("is self-contained (inline styles + system colors — no CSS-chunk dependency)", () => {
@@ -93,5 +101,72 @@ describe("R98-08b — main.tsx removes the fallback on successful boot", () => {
     const renderIdx = main.indexOf("createRoot(");
     expect(removalIdx).toBeGreaterThan(-1);
     expect(removalIdx).toBeLessThan(renderIdx);
+  });
+});
+
+describe("R128-IMP-4 (B5-F1) — the SW bundle never ships a sourcemap", () => {
+  const configText = read("vite.config.ts");
+
+  it("workbox.sourcemap is hard-false — vite-plugin-pwa must not inherit the Vite build's sourcemap", () => {
+    // vite-plugin-pwa copies build.sourcemap into the SW bundle when
+    // workbox.sourcemap is undefined, so the token'd Docker build
+    // (sourcemap: "hidden") emitted sw.js.map + workbox-*.js.map at the
+    // dist ROOT — publicly fetchable (live probe 2026-10-10: /sw.js.map
+    // → 200 application/json 6,484 B; /workbox-5a76e2bc.js.map → 217,501 B).
+    // The SW is generated code + the workbox runtime — nothing to
+    // symbolize that isn't already public via sw.js/workbox-*.js.
+    expect(configText).toContain("sourcemap: false,");
+    // …and the pin must sit inside the workbox block (a stray
+    // `sourcemap: false` elsewhere would pass the naive contains).
+    const workboxIdx = configText.indexOf("workbox: {");
+    const sourcemapIdx = configText.indexOf("sourcemap: false,");
+    expect(workboxIdx).toBeGreaterThan(-1);
+    expect(sourcemapIdx).toBeGreaterThan(workboxIdx);
+  });
+
+  it("the sourcemap guard sweeps the dist ROOT too (belt-and-suspenders for future root-level map emitters)", () => {
+    // The pre-R128 guard resolved dist/public/assets ONLY — the SW
+    // maps live at the dist root and bypassed the sweep entirely.
+    expect(configText).toContain('const sweptDirs = [path.join(distRoot, "assets"), distRoot];');
+  });
+});
+
+describe("R128-IMP-4 (B5-F3) — navigation fallback denylist covers the SW's own root-static files", () => {
+  const configText = read("vite.config.ts");
+
+  it("the denylist pins the root-static entry (sw.js / registerSW.js / workbox-*.js / manifest.json / init.js)", () => {
+    // A top-level navigation to /sw.js is a mode-"navigate" request, so
+    // NavigationRoute used to answer it with the precached SPA shell
+    // instead of the file (curl/devtools masked it — no controlled SW
+    // context). The denylist entry below is pinned verbatim.
+    expect(configText).toContain(
+      "/^\\/(?:sw\\.js|registerSW\\.js|workbox-[^/]+\\.js|manifest\\.json|init\\.js)$/",
+    );
+  });
+
+  it("the denylist admits SPA routes (offline shell keeps serving them) and denies only root-static files", () => {
+    // A local copy of the pinned regex — the verbatim pin above guards
+    // the wiring; this matrix guards its SEMANTICS (B5-F3's design).
+    const denyRootStatic =
+      /^\/(?:sw\.js|registerSW\.js|workbox-[^/]+\.js|manifest\.json|init\.js)$/;
+    for (const denied of [
+      "/sw.js",
+      "/registerSW.js",
+      "/workbox-5a76e2bc.js",
+      "/manifest.json",
+      "/init.js",
+    ]) {
+      expect(denied).toMatch(denyRootStatic);
+    }
+    // /api/* and /assets/* stay denied (pre-existing entries); every
+    // other path — /admin included — is an SPA route that KEEPS the
+    // offline shell (the denylist must never grow into route space).
+    expect("/api/products").toMatch(/^\/api\//);
+    expect("/assets/index-abc.js").toMatch(/^\/assets\//);
+    for (const served of ["/", "/admin", "/admin/orders", "/product/netflix-1m", "/flash-sales"]) {
+      expect(served).not.toMatch(denyRootStatic);
+      expect(served).not.toMatch(/^\/api\//);
+      expect(served).not.toMatch(/^\/assets\//);
+    }
   });
 });

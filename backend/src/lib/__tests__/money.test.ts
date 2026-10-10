@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { roundLyd, roundLydString } from "../money";
+import { formatLyd, formatLydNumber, roundLyd, roundLydString } from "../money";
 
 /**
  * R118-A5 TOP-20 #20 [P3] — lib/money.ts direct contract.
@@ -84,5 +84,40 @@ describe("roundLydString — numeric(10,2)-ready insert boundary (R118-A5 #20)",
   it("passes non-finite inputs through as their string forms (String(Infinity), not a number)", () => {
     expect(roundLydString(Infinity)).toBe("Infinity");
     expect(roundLydString(NaN)).toBe("NaN");
+  });
+});
+
+/**
+ * R128 (B8-D3) — the LYD DISPLAY canon: en-US grouping, Western digits,
+ * exactly 2 fraction digits, «د.ل» suffix — mirroring the web's
+ * formatCurrency (frontend/src/lib/utils.ts) so one amount renders
+ * identically on every surface. Before R128 every backend money surface
+ * (Telegram cards, bell titles, the WhatsApp share-card price) showed
+ * raw toFixed («1380.00 د.ل») while the web showed «1,380.00 د.ل».
+ */
+describe("formatLyd / formatLydNumber — the en-US grouped display canon (R128 B8-D3)", () => {
+  it("grouping turns on at 1,000: 999.99 stays bare, 1000+ gains the comma", () => {
+    expect(formatLydNumber(999.99)).toBe("999.99");
+    expect(formatLydNumber(1000)).toBe("1,000.00");
+    expect(formatLydNumber(1380)).toBe("1,380.00");
+    expect(formatLydNumber(1_000_000)).toBe("1,000,000.00");
+  });
+
+  it("always carries exactly 2 fraction digits (79.8 → 79.80, 0 → 0.00)", () => {
+    expect(formatLydNumber(79.8)).toBe("79.80");
+    expect(formatLydNumber(0)).toBe("0.00");
+    expect(formatLydNumber(25.5)).toBe("25.50");
+  });
+
+  it("formatLyd appends the «د.ل» suffix (the exact web formatCurrency shape)", () => {
+    expect(formatLyd(1380)).toBe("1,380.00 د.ل");
+    expect(formatLyd(25.555)).toBe("25.56 د.ل");
+    expect(formatLyd(5)).toBe("5.00 د.ل");
+  });
+
+  it("negative amounts keep their sign ahead of the grouped digits (web parity)", () => {
+    // formatCurrency on the web renders -1380 the same way — the sign is
+    // never grouped apart from the leading digit group.
+    expect(formatLydNumber(-1380)).toBe("-1,380.00");
   });
 });

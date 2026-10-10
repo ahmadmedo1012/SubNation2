@@ -47,7 +47,12 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
       // R125-I6 (A8 B-2): createErrorResponse swap — bytes identical
       // (`details: undefined` is dropped by JSON serialization); the
       // ErrorCode member replaces the string literal so a typo compiles.
-      res.status(403).json(createErrorResponse("غير مصرح", ErrorCode.FORBIDDEN));
+      // R128 (B14-13 / B1 item 4): bare «غير مصرح» under the
+      // server-message-priority rule outranked the code-map's actionable
+      // form — the map's wording now rides the envelope verbatim.
+      res
+        .status(403)
+        .json(createErrorResponse("لا تملك صلاحية الوصول إلى هذه الصفحة", ErrorCode.FORBIDDEN));
       return;
     }
     clearPhaseFlagsCache();
@@ -113,7 +118,11 @@ settingsRouter.get("/copilot/settings", requireAdmin, async (req, res) => {
 settingsRouter.patch("/copilot/settings", requireAdmin, async (req: Request, res: Response) => {
   const adminReq = req as AdminAuthenticatedRequest;
   if (!hasScope(adminReq.adminPermissions ?? [], ["admins", "settings"])) {
-    res.status(403).json(createErrorResponse("غير مصرح", ErrorCode.FORBIDDEN));
+    // R128 (B14-13 / B1 item 4): the code-map's actionable FORBIDDEN
+    // wording — was bare «غير مصرح».
+    res
+      .status(403)
+      .json(createErrorResponse("لا تملك صلاحية الوصول إلى هذه الصفحة", ErrorCode.FORBIDDEN));
     return;
   }
   const body = (req.body ?? {}) as Partial<CopilotPhaseFlags>;

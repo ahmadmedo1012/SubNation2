@@ -138,12 +138,85 @@ describe('R127 (B8 F-P2) — pool.on("connect") issues SET statement_timeout', (
   });
 
   it("a rejected SET never propagates (the hook must not kill the connection path)", async () => {
-    const mod = await loadDbModule();
-    const client = { query: vi.fn().mockRejectedValue(new Error("proxy rejects SET")) };
-    expect(() => mod.pool.emit("connect", client)).not.toThrow();
-    // The .catch(() => {}) swallow means no unhandled rejection either —
-    // if the hook regressed to a bare `void client.query(...)` without
-    // the catch, vitest's unhandled-rejection surface would fail here.
-    await new Promise((r) => setTimeout(r, 0));
+    // R128 (B3-F1): the catch now LOGS (pinned below) — silence the
+    // expected console.error so this case stays noise-free.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const mod = await loadDbModule();
+      const client = { query: vi.fn().mockRejectedValue(new Error("proxy rejects SET")) };
+      expect(() => mod.pool.emit("connect", client)).not.toThrow();
+      // The swallow means no unhandled rejection either — if the hook
+      // regressed to a bare `void client.query(...)` without the catch,
+      // vitest's unhandled-rejection surface would fail here.
+      await new Promise((r) => setTimeout(r, 0));
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+});
+
+/**
+ * R128 (B3-F1) — a failed SET is LOGGED, not silently swallowed.
+ *
+ * The R127-B8 probe found the startup-packet transport had been inert
+ * on Neon for 34 rounds precisely because nothing surfaced its failure;
+ * a post-connect SET that starts failing (pooler/policy change, config
+ * regression) must not be able to return every connection to unbounded
+ * queries with zero operator signal. The catch still swallows (the
+ * connection proceeds) but now logs via the file's own console.error
+ * idiom — WITH the pool identity, so the operator sees WHICH pool is
+ * running unbounded.
+ */
+describe("R128 (B3-F1) — a failed statement_timeout SET is logged with pool identity", () => {
+  it("the runtime pool logs the failure (message names the pool) and the connection proceeds", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const mod = await loadDbModule();
+      const client = { query: vi.fn().mockRejectedValue(new Error("proxy rejects SET")) };
+      expect(() => mod.pool.emit("connect", client)).not.toThrow();
+      // The .catch log is async — let the rejected promise settle.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(client.query).toHaveBeenCalledTimes(1);
+      expect(errSpy).toHaveBeenCalledTimes(1);
+      const [message, loggedErr] = errSpy.mock.calls[0]!;
+      expect(String(message)).toContain("[db]");
+      expect(String(message)).toContain("statement_timeout SET failed");
+      expect(String(message)).toContain("runtime pool");
+      expect(String(message)).not.toContain("lockPool");
+      expect(String(message)).toContain("unbounded");
+      expect(loggedErr).toBeInstanceOf(Error);
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it("the lockPool logs the SAME class of failure naming the lockPool", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const mod = await loadDbModule();
+      const client = { query: vi.fn().mockRejectedValue(new Error("boom")) };
+      mod.lockPool.emit("connect", client);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(errSpy).toHaveBeenCalledTimes(1);
+      const [message] = errSpy.mock.calls[0]!;
+      expect(String(message)).toContain("lockPool");
+      expect(String(message)).not.toContain("runtime pool");
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it("a SUCCESSFUL SET logs nothing (no noise on the healthy path)", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const mod = await loadDbModule();
+      const client = { query: vi.fn().mockResolvedValue(undefined) };
+      mod.pool.emit("connect", client);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(client.query).toHaveBeenCalledWith("SET statement_timeout = 15000");
+      expect(errSpy).not.toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

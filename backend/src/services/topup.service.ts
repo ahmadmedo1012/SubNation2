@@ -3,7 +3,7 @@ import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
 import { POINTS_PER_REFERRAL, WELCOME_BONUS_LYD } from "../lib/loyalty-policy";
 import { insertPointsLedgerEntry } from "../lib/points-ledger";
-import { roundLyd } from "../lib/money";
+import { roundLyd, formatLyd } from "../lib/money";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
 import { notifyTopupApproved, notifyTopupRejected } from "../telegram";
@@ -143,7 +143,9 @@ export class TopupService {
         if (!freshUser) throw new ServiceError(404, "المستخدم غير موجود");
 
         const balanceBefore = parseFloat(String(freshUser.walletBalance));
-        const newBalance = +(balanceBefore + creditAmount).toFixed(2);
+        // B4-F5 (R128): roundLyd, not +toFixed(2) — identical results on
+        // today's already-2dp operands, hazard-proof for a future writer.
+        const newBalance = roundLyd(balanceBefore + creditAmount);
         const updated = await tx
           .update(usersTable)
           .set({
@@ -418,7 +420,8 @@ export class TopupService {
 
           const balanceBefore = parseFloat(String(freshUser.walletBalance));
           const topupAmount = parseFloat(String(topup.amount));
-          const newBalance = +(balanceBefore + topupAmount).toFixed(2);
+          // B4-F5 (R128): roundLyd, not +toFixed(2) — see the money.ts note.
+          const newBalance = roundLyd(balanceBefore + topupAmount);
           const updated = await tx
             .update(usersTable)
             .set({
@@ -599,7 +602,9 @@ export class TopupService {
         await createNotification(
           user.id,
           "loyalty",
-          `وصلتك مكافأة الترحيب ${WELCOME_BONUS_LYD.toFixed(2)} د.ل`,
+          // R128 (B8-D3): formatLyd — the one backend LYD display canon
+          // (en-US grouping), matching the web's formatCurrency.
+          `وصلتك مكافأة الترحيب ${formatLyd(WELCOME_BONUS_LYD)}`,
           "أُضيفت مكافأة رمز الإحالة إلى محفظتك مع أول شحن معتمد",
           "/wallet",
         );
@@ -612,7 +617,9 @@ export class TopupService {
       await createNotification(
         user.id,
         "wallet",
-        `تم اعتماد طلب الشحن (${parseFloat(String(topup.amount)).toFixed(2)} د.ل)`,
+        // R128 (B8-D3): formatLyd — en-US grouping canon (the web toast
+        // shows «1,380.00 د.ل»; the bell title used to show «1380.00»).
+        `تم اعتماد طلب الشحن (${formatLyd(parseFloat(String(topup.amount)))})`,
         "تمت إضافة الرصيد إلى محفظتك بنجاح",
         "/wallet",
       );
@@ -673,7 +680,8 @@ export class TopupService {
       await createNotification(
         rejUser.id,
         "wallet",
-        `تم رفض طلب الشحن (${parseFloat(String(topup.amount)).toFixed(2)} د.ل)`,
+        // R128 (B8-D3): formatLyd — en-US grouping canon, approve-parity.
+        `تم رفض طلب الشحن (${formatLyd(parseFloat(String(topup.amount)))})`,
         "تواصل مع الدعم إذا كنت ترى أن هذا خطأ",
         "/support",
       );

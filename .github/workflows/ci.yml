@@ -468,15 +468,23 @@ jobs:
         run: pnpm --filter @workspace/api-server run build
 
   # ─────────────────────────────────────────────────────────────────────────
-  # E2E smoke (manual-first) — R123-E2: the committed guest read-only
-  # Playwright suite (frontend/e2e/*). Opt-in by design: the specs need a
-  # RUNNING stack (E2E_BASE_URL), so this job runs on workflow_dispatch
-  # only — an operator (or a future staging job) points it at a real
-  # environment. Guest journeys only: no purchases, no topups, no
+  # E2E smoke — R123-E2: the committed guest read-only Playwright suite
+  # (frontend/e2e/*). Needs a RUNNING stack (E2E_BASE_URL), so the push/PR
+  # gates never run it. Guest journeys only: no purchases, no topups, no
   # logins, no OTP, no admin.
+  #
+  # R128-IMP-4 (B5-3): the weekly schedule now includes this job — the
+  # LIVE-prod leg of the guest contract had no automated heartbeat (the
+  # suite was workflow_dispatch-only, and d604e67 proved the drift class
+  # real: two stale contracts accumulated undetected "in rounds" until a
+  # manual live run caught them). The heartbeat needs a reachable target:
+  # set the repository variable E2E_BASE_URL (the guest suite is
+  # production-safe by design — read-only + the documented session-scoped
+  # cart-gate add). Unset, the default localhost:8080 fails the weekly
+  # run loudly — configure the variable, don't silence the heartbeat.
   # ─────────────────────────────────────────────────────────────────────────
   e2e:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # R127-L4 (B9 F1/F9): this job used to hold the repo's only 3 mutable

@@ -119,7 +119,12 @@ export async function copilotRateLimit(
 ): Promise<void> {
   const adminReq = req as AdminAuthenticatedRequest;
   if (!adminReq.adminId) {
-    res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
+    // R128 (B14-13 / B1 item 4): the code-map's actionable UNAUTHORIZED
+    // wording — was bare «غير مصرح» (server-message priority made the
+    // inline string outrank the map's «سجّل دخولك مرة أخرى وحاول»).
+    res
+      .status(401)
+      .json(createErrorResponse("غير مصرح — سجّل دخولك مرة أخرى وحاول", ErrorCode.UNAUTHORIZED));
     return;
   }
   const now = Date.now();

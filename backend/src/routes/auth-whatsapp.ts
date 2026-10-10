@@ -119,7 +119,10 @@ whatsappAuthRouter.post("/whatsapp/start", async (req, res) => {
         // 96-F1 (R96-A4 §4.2): the code WAS delivered but storing it
         // failed twice — 500 with a short cooldown instead of an instant
         // re-send that would deliver a SECOND WhatsApp message.
-        store_failed: "تم إرسال الرمز لكن تعذّر حفظه، أعد المحاولة بعد قليل",
+        // R128 (B1-retry-canon): «حاول مجدداً» — the file's three sibling
+        // retry strings (delivery_failed / both generic 500s) already ride
+        // the R127 canon verb; this one straggled on «أعد المحاولة».
+        store_failed: "تم إرسال الرمز لكن تعذّر حفظه، حاول مجدداً بعد قليل",
         gateway_disabled: "خدمة WhatsApp غير مفعّلة حالياً",
       };
       const status =

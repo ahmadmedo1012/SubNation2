@@ -52,6 +52,7 @@ import {
 } from "@workspace/db";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { logAdminAlert, type AlertType } from "../jobs/alertLogger";
+import { roundLyd } from "../lib/money";
 import { insertLedgerEntry } from "../lib/ledger";
 import { computeTier } from "../lib/loyalty-policy";
 import {
@@ -175,7 +176,9 @@ export class RefundService {
       }
 
       const balanceBefore = parseFloat(String(user.walletBalance));
-      const balanceAfter = +(balanceBefore + amount).toFixed(2);
+      // B4-F5 (R128): roundLyd, not +toFixed(2) — identical on today's
+      // already-2dp operands, hazard-proof for a future writer (lib/money.ts).
+      const balanceAfter = roundLyd(balanceBefore + amount);
 
       // R115 (Part 9): PRECISE reversal — revoke exactly the unspent
       // remainder of THIS order's award, never points from other sources.

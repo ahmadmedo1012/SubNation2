@@ -158,10 +158,25 @@ lockPool.on("error", (err) => {
 // swallow is deliberate: a failed SET (e.g. a proxy that rejects session
 // commands) must never take the connection down — the query then simply
 // runs unbounded, exactly like before this hook.
+//
+// R128 (B3-F1): the failure is now LOGGED (with the pool identity) via
+// the file's own console.error idiom — same justification as the pool
+// error handlers below (importing the backend logger from @workspace/db
+// inverts the workspace dependency direction). The R127-B8 probe found
+// the startup-packet transport had been silently inert for 34 rounds
+// precisely because nothing surfaced its failure; a SET that starts
+// failing (pooler/policy change, config regression) must not be able to
+// return every connection to unbounded queries with zero operator
+// signal.
 for (const p of [pool, lockPool]) {
   p.on("connect", (client) => {
     if (statementTimeoutMs > 0)
-      void client.query(`SET statement_timeout = ${statementTimeoutMs}`).catch(() => {});
+      void client.query(`SET statement_timeout = ${statementTimeoutMs}`).catch((err) => {
+        console.error(
+          `[db] statement_timeout SET failed on the ${p === pool ? "runtime pool" : "lockPool"} — queries on this connection run unbounded`,
+          err,
+        );
+      });
   });
 }
 

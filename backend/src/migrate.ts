@@ -2181,6 +2181,18 @@ export async function applyOrganizationsRemovalStage(
 // created_at twin (B8 G6) would be a second write-amplifying index on
 // a hot-INSERT table with zero remaining readers.
 //
+// R128 (B3-F3) — coverage honesty: the bundle indexes the admin_alerts
+// family's UNREAD arm only (idx_admin_alerts_unread, WHERE is_read =
+// false). The READ-side prune predicates — pruneReadAlerts
+// (`is_read = true AND created_at < cutoff`, the daily 00:00 cron) and
+// deleteReadAlerts (`is_read = true`, the admin "clear read" action),
+// both jobs/alertLogger.ts — run UNINDEXED seq scans. Immaterial today
+// (the daily prunes keep admin_alerts ~10² rows; B4's live snapshot:
+// 77), but the ~10⁵-row CONCURRENTLY trigger above must ALSO weigh a
+// partial WHERE is_read = true twin for admin_alerts when that review
+// happens — do not assume the family is fully covered because one arm
+// is.
+//
 // Stage shape: the V1-M24 additive-twin form — unconditional
 // CREATE INDEX IF NOT EXISTS covers fresh installs AND the steady
 // state (already-migrated boots no-op). No probe gate needed: there is

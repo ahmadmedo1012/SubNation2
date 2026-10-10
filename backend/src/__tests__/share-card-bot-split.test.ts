@@ -369,6 +369,88 @@ describe("share card price + description (R120-B3 A7-F9/A7-F17)", () => {
   });
 });
 
+// ── R128 (B8-D1 + B8-D3): curated SEO fields + grouped price ────────────────
+
+describe("share card SEO overrides + grouped price (R128 B8-D1/D3)", () => {
+  it("B8-D1: a row with seo_title/seo_description ships THEM on the card (fallbacks untouched for rows without)", async () => {
+    const [seoRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Netflix Premium",
+        slug: "netflix-seo-card-test",
+        description: "وصف عادي",
+        price: "63.84",
+        category: "streaming",
+        // The SAME curated fields the plain-UA shell + hydrated page
+        // render (spa-shell-rewrite.test.ts pins those two surfaces).
+        seoTitle: "Netflix — اشتراك أصلي بالدينار الليبي | SubNation",
+        seoDescription: "اشتراك Netflix Premium أصلي بالدينار الليبي مع تسليم فوري بعد الدفع.",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${seoRow.slug}`, UA.whatsapp);
+    expect(isCard(r)).toBe(true);
+    const ogTitle = r.body.match(/property="og:title" content="([^"]*)"/)?.[1] ?? "";
+    const title = r.body.match(/<title>([^<]*)<\/title>/)?.[1] ?? "";
+    // The operator override — NOT the old `${name} — SubNation` formula
+    // (the #1 share channel never saw the curated Arabic before R128).
+    expect(ogTitle).toBe("Netflix — اشتراك أصلي بالدينار الليبي | SubNation");
+    expect(title).toBe("Netflix — اشتراك أصلي بالدينار الليبي | SubNation");
+    // The curated description is the BODY — with the by-design price
+    // suffix still appended (the card's one money-forward line).
+    const ogDesc = r.body.match(/property="og:description" content="([^"]*)"/)?.[1] ?? "";
+    expect(ogDesc).toContain("اشتراك Netflix Premium أصلي بالدينار الليبي");
+    expect(ogDesc).toContain("السعر 63.84 د.ل");
+    expect(ogDesc.startsWith("اشتراك Netflix Premium")).toBe(true);
+  });
+
+  it("B8-D1 fallback: whitespace-only seo overrides fall back to name + raw description (trim, not truthiness — shell parity)", async () => {
+    const [blankSeoRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Fallback Card Product",
+        slug: "fallback-seo-card-test",
+        description: "وصف المنتج للبطاقة",
+        price: "12.00",
+        category: "tools",
+        seoTitle: "   ",
+        seoDescription: "",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${blankSeoRow.slug}`, UA.whatsapp);
+    expect(isCard(r)).toBe(true);
+    const ogTitle = r.body.match(/property="og:title" content="([^"]*)"/)?.[1] ?? "";
+    expect(ogTitle).toBe("Fallback Card Product — SubNation");
+    const ogDesc = r.body.match(/property="og:description" content="([^"]*)"/)?.[1] ?? "";
+    expect(ogDesc).toContain("وصف المنتج للبطاقة");
+    expect(ogDesc).toContain("السعر 12.00 د.ل");
+  });
+
+  it("B8-D3: the card price carries the en-US grouping canon (1380.00 → «1,380.00 د.ل», web formatCurrency parity)", async () => {
+    const [groupedRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Grouped Price Product",
+        slug: "grouped-price-card-test",
+        description: "وصف سعر مجمّع",
+        price: "1380.00",
+        category: "tools",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const r = await get(`/product/${groupedRow.slug}`, UA.whatsapp);
+    expect(isCard(r)).toBe(true);
+    // The grouped form (web shows «1,380.00 د.ل» via formatCurrency)…
+    expect(r.body).toContain("السعر 1,380.00 د.ل");
+    // …never the raw toFixed form the card used to ship.
+    expect(r.body).not.toContain("السعر 1380.00");
+  });
+});
+
 // ── R122 (A3-P1): the card's product lookup rides the catalog cache ─────────
 
 describe("share card product lookup — catalog-cache contract (R122 A3-P1)", () => {

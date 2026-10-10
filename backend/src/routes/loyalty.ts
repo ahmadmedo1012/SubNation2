@@ -6,6 +6,7 @@ import { pageParam } from "../lib/http";
 import { idempotency } from "../middlewares/idempotency";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { insertLedgerEntry } from "../lib/ledger";
+import { roundLyd } from "../lib/money";
 import {
   claimIdempotencyKey,
   findIdempotencyClaimed,
@@ -144,7 +145,10 @@ router.post(
         );
     }
 
-    const lydValue = +(pointsToConvert / POINTS_PER_LYD).toFixed(2);
+    // B4-F5 (R128): roundLyd, not +toFixed(2) — points/100 is 2dp-exact
+    // today, but the roundLyd idiom keeps the boundary hazard-proof
+    // (lib/money.ts).
+    const lydValue = roundLyd(pointsToConvert / POINTS_PER_LYD);
 
     // R102 (durable guard, R102-A F3): the middleware above is Redis-only
     // (pass-through during a Redis outage) — a lost response + retry

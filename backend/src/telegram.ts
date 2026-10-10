@@ -45,6 +45,7 @@
  */
 
 import { logger } from "./lib/logger";
+import { formatLyd } from "./lib/money";
 import { safeInc, telegramSendsTotal } from "./lib/metrics";
 import { captureSubsystemException } from "./lib/sentry";
 
@@ -154,6 +155,12 @@ export interface NotifyNewTopupInput {
   network: string;
   topupId?: number;
   provider?: string | null;
+  /** R128 (B8-D2): the transfer receipt reference — rides the pending
+   *  card (canon label «رمز التحويل») so the operator can compare it
+   *  against the bank statement before tapping the approve button; the
+   *  duplicate guards (exact + composite) are only actionable when the
+   *  human in the loop can SEE the value they dedupe on. */
+  paymentReference?: string | null;
 }
 
 /**
@@ -183,13 +190,19 @@ export function notifyNewTopup(input: NotifyNewTopupInput): void {
     `المبلغ: <b>${formatLyd(input.amount)}</b>`,
     netLabel ? `الشبكة: ${netLabel}` : null,
     input.topupId ? `معرّف الطلب: <code>#${input.topupId}</code>` : null,
+    // R128 (B8-D2): canon terminology «رمز التحويل» — the last
+    // operator-visible «المرجع» label rode the wallet route's now-deleted
+    // bespoke approval card (B8 unification win #4).
+    input.paymentReference
+      ? `رمز التحويل: <code>${escapeHtml(input.paymentReference)}</code>`
+      : null,
     timestampLine(),
     ``,
     `⏳ بانتظار الموافقة`,
   ]
     .filter(Boolean)
     .join("\n");
-  void dispatch("topup_new", msg, buttonsForTopup());
+  void dispatch("topup_new", msg, buttonsForTopup(input.topupId));
 }
 
 /**
@@ -525,10 +538,6 @@ function escapeHtml(value: string): string {
   return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function formatLyd(amount: number): string {
-  return `${amount.toFixed(2)} د.ل`;
-}
-
 // ── Inline-keyboard helpers ────────────────────────────────────────────────
 //
 // Telegram inline_keyboard buttons let the operator jump straight to
@@ -540,7 +549,8 @@ function formatLyd(amount: number): string {
 
 type InlineKeyboardButton = {
   text: string;
-  url: string;
+  url?: string;
+  callback_data?: string;
 };
 type InlineKeyboard = InlineKeyboardButton[][];
 
@@ -573,7 +583,23 @@ function buttonsForOrder(orderId?: number): InlineKeyboard | undefined {
   return [[{ text: "📋 فتح الطلب", url: `${origin}/admin/orders` }]];
 }
 
-function buttonsForTopup(): InlineKeyboard | undefined {
+function buttonsForTopup(topupId?: number): InlineKeyboard | undefined {
+  // R128 (B8-D2): with the topup id known, the operator acts directly
+  // from the card — the ✅/❌ keyboard whose callback_data the
+  // /api/webhook/telegram money path keys on (topup_app:<id> /
+  // topup_rej:<id>). This replaces wallet.ts's bespoke second card
+  // (raw enums, raw amount, a bespoke fetch that bypassed this module's
+  // metrics/retry pipeline) — ONE card per pending topup, buttons
+  // included. Callback buttons need no resolvable app origin, so they
+  // ship even when APP_URL/APP_ORIGIN are unset.
+  if (topupId) {
+    return [
+      [
+        { text: "✅ موافقة", callback_data: `topup_app:${topupId}` },
+        { text: "❌ رفض", callback_data: `topup_rej:${topupId}` },
+      ],
+    ];
+  }
   const origin = appUrl();
   if (!origin) return undefined;
   return [[{ text: "💰 مراجعة طلبات الشحن", url: `${origin}/admin/topups` }]];

@@ -575,6 +575,16 @@ function criticalPreloadInject(): Plugin {
  * sourcemap:false should have produced none — if maps exist anyway,
  * delete them AND fail the build (a source-exposure regression must
  * never ship silently).
+ *
+ * R128-IMP-4 (B5-F1): the sweep now ALSO covers the dist ROOT — the
+ * SW artifacts (sw.js.map, workbox-*.js.map) are emitted there by
+ * vite-plugin-pwa/workbox-build when the SW bundle inherits the Vite
+ * build's sourcemap, and the assets-only sweep never looked (live
+ * probe 2026-10-10: /sw.js.map → 200 application/json 6,484 B and
+ * /workbox-5a76e2bc.js.map → 200 application/json 217,501 B). The
+ * primary fix is workbox.sourcemap:false below; this root sweep is
+ * the belt-and-suspenders backstop for any future root-level map
+ * emitter.
  */
 function sourcemapGuardPlugin(): Plugin {
   return {
@@ -582,11 +592,19 @@ function sourcemapGuardPlugin(): Plugin {
     apply: "build",
     enforce: "post",
     closeBundle() {
-      const assetsDir = path.resolve(import.meta.dirname, "dist/public/assets");
-      if (!existsSync(assetsDir)) return;
-      const maps = readdirSync(assetsDir).filter((f) => f.endsWith(".map"));
+      const distRoot = path.resolve(import.meta.dirname, "dist/public");
+      const sweptDirs = [path.join(distRoot, "assets"), distRoot];
+      const maps: string[] = [];
+      for (const dir of sweptDirs) {
+        if (!existsSync(dir)) continue;
+        for (const f of readdirSync(dir)) {
+          if (f.endsWith(".map")) {
+            rmSync(path.join(dir, f));
+            maps.push(f);
+          }
+        }
+      }
       if (maps.length === 0) return;
-      for (const m of maps) rmSync(path.join(assetsDir, m));
       if (process.env.SENTRY_AUTH_TOKEN) {
         console.warn(
           `[sourcemap-guard] deleted ${maps.length} lingering .map file(s) from dist after the Sentry upload path — they will not deploy`,
@@ -861,6 +879,18 @@ export default defineConfig({
       // value. favicon.svg (163 B) stays.
       includeAssets: ["favicon.svg"],
       workbox: {
+        // R128-IMP-4 (B5-F1): NEVER inherit the Vite build's sourcemap.
+        // vite-plugin-pwa copies build.sourcemap into the SW bundle when
+        // this is undefined, so the token'd Docker build (sourcemap:
+        // "hidden" at the bottom of this file) emitted sw.js.map +
+        // workbox-*.js.map at the dist ROOT — publicly fetchable (the
+        // guard swept assets/ only, and the Sentry plugin's
+        // filesToDeleteAfterUpload glob is assets-scoped too). The SW is
+        // generated code + the workbox runtime — already public bytes
+        // via sw.js/workbox-*.js — so its maps are pure deploy weight
+        // (~224 KB) + container-path disclosure. Hard off, on every
+        // build shape; sourcemapGuardPlugin() stays the backstop.
+        sourcemap: false,
         // Fonts are now bundled into /assets/ via @fontsource (no longer
         // fetched from fonts.googleapis.com), so the previous
         // google-fonts-cache runtime rule has been removed. The bundled
@@ -1004,7 +1034,19 @@ export default defineConfig({
         // above (survives HTTP-cache eviction) + lazyWithRetry recovery.
         globIgnores: ["**/*.js"],
         navigateFallback: "index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/assets\//],
+        // R128-IMP-4 (B5-F3): the SW's own root-static files must not be
+        // captured by the navigation fallback — a top-level navigation
+        // to /sw.js (or /registerSW.js, /workbox-*.js, /manifest.json,
+        // /init.js) is a mode-"navigate" request, so the precached SPA
+        // shell answered instead of the file (only reproducible inside a
+        // controlled SW context — curl/devtools showed the real file).
+        // /api/* and /assets/* stay denied; every other path (incl.
+        // /admin/*) is an SPA route and KEEPS the offline shell.
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/assets\//,
+          /^\/(?:sw\.js|registerSW\.js|workbox-[^/]+\.js|manifest\.json|init\.js)$/,
+        ],
       },
     }),
     // 96-main (R96 F-8): sourcemap hygiene — 9.38 MB of hidden .map

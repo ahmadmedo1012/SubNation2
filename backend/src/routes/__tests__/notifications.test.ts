@@ -20,6 +20,12 @@ import { notificationsRouter } from "../notifications";
  *   - list shape: user-scoped, newest-first, capped at 40, DTO keys
  *     {id, type, title, message, link, is_read, created_at}, with
  *     Cache-Control: no-store (A7 round-94).
+ *
+ * A9-F2 (R128-IMP-5): the additive ?page= envelope — the audit-logs
+ * route's pagination idiom (R127-L5) pinned by its own suite's shapes:
+ * clamps, hasMore honesty, the id-DESC tiebreaker, and the OPT-IN
+ * contract that keeps the paramless response a plain array for the
+ * bell (which guards Array.isArray).
  */
 
 function buildApp(): Express {
@@ -57,6 +63,7 @@ async function seedNotification(
   userId: number,
   n: number,
   read = false,
+  createdAt?: Date,
 ): Promise<number> {
   const [row] = await db
     .insert(notificationsTable)
@@ -67,6 +74,7 @@ async function seedNotification(
       message: `رسالة ${n}`,
       link: `/orders`,
       isRead: read,
+      ...(createdAt ? { createdAt } : {}),
     })
     .returning();
   return row.id;
@@ -150,6 +158,134 @@ describe("GET /api/notifications (R118-A5 #15)", () => {
   });
 });
 
+describe("GET /api/notifications?page= — the A9-F2 paged envelope (R128-IMP-5)", () => {
+  it("401 without a token (the paged shape rides the same gate)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/notifications?page=1`);
+      expect(res.status).toBe(401);
+    } finally {
+      close();
+    }
+  });
+
+  it("?page= is OPT-IN: the paramless body stays a plain array, the paged body is the audit-logs envelope", async () => {
+    const user = await seedUser();
+    await seedNotification(user.id, 1);
+    await seedNotification(user.id, 2);
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const paramless = await fetch(`${url}/api/notifications`, {
+        headers: { Cookie: `auth_token=${user.token}` },
+      });
+      const bare = await paramless.json();
+      // The bell's byte-compatible contract: a bare ARRAY.
+      expect(Array.isArray(bare)).toBe(true);
+      expect(bare).toHaveLength(2);
+
+      const paged = await fetch(`${url}/api/notifications?page=1`, {
+        headers: { Cookie: `auth_token=${user.token}` },
+      });
+      const envelope = (await paged.json()) as Record<string, unknown>;
+      // The audit-logs envelope shape (R127-L5) over the same DTO rows.
+      expect(Array.isArray(envelope)).toBe(false);
+      expect(envelope).toMatchObject({ total: 2, page: 1, limit: 20, hasMore: false });
+      expect(
+        (envelope.notifications as Array<Record<string, unknown>>).map((n) => n.title),
+      ).toEqual(["إشعار 2", "إشعار 1"]);
+      // The paged rows carry the SAME DTO keys as the bell rows.
+      expect(
+        Object.keys((envelope.notifications as Array<Record<string, unknown>>)[0]).sort(),
+      ).toEqual(["created_at", "id", "is_read", "link", "message", "title", "type"].sort());
+      // An EMPTY ?page= value degenerates to the bell shape (documented
+      // in the route — opt-in is by NAMING the param with a value).
+      const empty = await fetch(`${url}/api/notifications?page=`, {
+        headers: { Cookie: `auth_token=${user.token}` },
+      });
+      expect(Array.isArray(await empty.json())).toBe(true);
+    } finally {
+      close();
+    }
+  });
+
+  it("page/limit slice newest-first; hasMore is honest on the last page", async () => {
+    const user = await seedUser();
+    for (let i = 1; i <= 5; i += 1) {
+      await seedNotification(user.id, i, false, new Date(Date.UTC(2026, 9, i)));
+    }
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const page1 = (await (
+        await fetch(`${url}/api/notifications?page=1&limit=2`, {
+          headers: { Cookie: `auth_token=${user.token}` },
+        })
+      ).json()) as {
+        notifications: Array<{ title: string }>;
+        total: number;
+        page: number;
+        limit: number;
+        hasMore: boolean;
+      };
+      expect(page1).toMatchObject({ total: 5, page: 1, limit: 2, hasMore: true });
+      expect(page1.notifications.map((n) => n.title)).toEqual(["إشعار 5", "إشعار 4"]);
+
+      const page3 = (await (
+        await fetch(`${url}/api/notifications?page=3&limit=2`, {
+          headers: { Cookie: `auth_token=${user.token}` },
+        })
+      ).json()) as {
+        notifications: Array<{ title: string }>;
+        total: number;
+        page: number;
+        limit: number;
+        hasMore: boolean;
+      };
+      expect(page3).toMatchObject({ total: 5, page: 3, limit: 2, hasMore: false });
+      expect(page3.notifications.map((n) => n.title)).toEqual(["إشعار 1"]);
+    } finally {
+      close();
+    }
+  });
+
+  it("garbage page/limit clamp (NaN → defaults, limit caps at 100)", async () => {
+    const user = await seedUser();
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/notifications?page=abc&limit=99999`, {
+        headers: { Cookie: `auth_token=${user.token}` },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ page: 1, limit: 100, hasMore: false });
+    } finally {
+      close();
+    }
+  });
+
+  it("same-timestamp rows order by id DESC (the stable-offset tiebreaker)", async () => {
+    const user = await seedUser();
+    const ts = new Date("2026-10-01T10:00:00Z");
+    await seedNotification(user.id, 1, false, ts);
+    await seedNotification(user.id, 2, false, ts);
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/notifications?page=1&limit=1`, {
+        headers: { Cookie: `auth_token=${user.token}` },
+      });
+      const titles = (
+        (await res.json()) as { notifications: Array<{ title: string }> }
+      ).notifications.map((n) => n.title);
+      // Same created_at → the higher id (seeded second) leads; offset
+      // pages can never shuffle the pair.
+      expect(titles).toEqual(["إشعار 2"]);
+    } finally {
+      close();
+    }
+  });
+});
+
 describe("POST /api/notifications/read-all (R118-A5 #15)", () => {
   it("marks every OWN row read, leaves the stranger's rows untouched, answers success (no count — as-coded)", async () => {
     const user = await seedUser();
@@ -200,10 +336,7 @@ describe("POST /api/notifications/:id/read (R118-A5 #15)", () => {
       });
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ success: true });
-      const [row] = await db
-        .select()
-        .from(notificationsTable)
-        .where(eq(notificationsTable.id, id));
+      const [row] = await db.select().from(notificationsTable).where(eq(notificationsTable.id, id));
       expect(row.isRead).toBe(true);
     } finally {
       close();
