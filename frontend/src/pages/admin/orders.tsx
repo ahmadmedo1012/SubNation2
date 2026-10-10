@@ -1152,7 +1152,7 @@ export default function AdminOrdersPage() {
 
                   {/* Total discounts */}
                   <div className="bg-status-success/5 rounded-2xl p-3 border border-status-success/15">
-                    <div className="flex items-center gap-1.5 text-2xs text-status-success/80 mb-1.5">
+                    <div className="flex items-center gap-1.5 text-2xs text-status-success mb-1.5">
                       <BadgePercent className="w-3 h-3" />
                       إجمالي الخصومات
                     </div>
@@ -1213,7 +1213,7 @@ export default function AdminOrdersPage() {
                             <div className="flex-1 flex items-center gap-2 min-w-0">
                               <div className="flex-1 h-1.5 bg-muted/40 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-status-success/60 rounded-full transition-all duration-500"
+                                  className="h-full bg-status-success/80 rounded-full transition-all duration-500"
                                   style={{ width: `${barWidth}%` }}
                                 />
                               </div>

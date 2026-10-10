@@ -123,11 +123,7 @@ export function userProviderBadges(user: AdminUserShape): ProviderBadge[] {
   // provider linked, so the admin sees "هاتف (قديم)" only on truly
   // historical accounts and not as visual clutter on Google-linked users
   // who happen to have a phone field too.
-  const onlyLegacyPhone =
-    !!user.has_firebase &&
-    !hasGoogle &&
-    !hasTelegram &&
-    !hasWhatsApp;
+  const onlyLegacyPhone = !!user.has_firebase && !hasGoogle && !hasTelegram && !hasWhatsApp;
   if (onlyLegacyPhone || user.auth_provider === "firebase_phone") {
     out.push({ tone: "legacy_phone", label: "هاتف (قديم)" });
   }
@@ -141,9 +137,14 @@ export function userProviderBadges(user: AdminUserShape): ProviderBadge[] {
  * theme change updates every admin badge in lockstep.
  */
 export const PROVIDER_TONE_CLASS: Record<ProviderBadgeTone, string> = {
-  google: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  telegram: "text-sky-400 bg-sky-500/10 border-sky-500/20",
-  whatsapp: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  /* R129-A3 (A3-5): the raw -400/-500 hue classes were the light-theme AA
+     fail class (computed ~1.5-2.5:1 on their /10 tints) that R128-F1
+     removed everywhere else — brand identity now rides the STATUS tokens
+     (google/telegram) and the existing WhatsApp brand tokens, which the
+     storefront's AuthProviders surface already uses. */
+  google: "text-status-info bg-status-info/10 border-status-info/20",
+  telegram: "text-status-info bg-status-info/10 border-status-info/20",
+  whatsapp: "text-brand-whatsapp-ink bg-brand-whatsapp/10 border-brand-whatsapp/20",
   legacy_phone: "text-muted-foreground bg-muted/30 border-border/40",
   none: "text-muted-foreground bg-muted/30 border-border/40",
 };

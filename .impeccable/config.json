@@ -1,0 +1,7 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": ["src/**/__tests__/**", "frontend/src/**/__tests__/**", "**/node_modules/**"],
+    "ignoreValues": []
+  }
+}

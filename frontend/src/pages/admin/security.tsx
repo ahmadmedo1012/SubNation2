@@ -566,7 +566,7 @@ export function AdminSecurityDashboard() {
                    with retry — NOT a false «لا توجد إجراءات» empty. */
                 <div className="text-center py-10 text-muted-foreground">
                   <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                    <WifiOff className="w-7 h-7 text-status-error/70" />
+                    <WifiOff className="w-7 h-7 text-status-error" />
                   </div>
                   <p className="font-bold text-base mb-1.5 text-foreground/80">
                     تعذّر تحميل سجل الإجراءات
@@ -857,7 +857,7 @@ export function AdminSecurityDashboard() {
               {activitiesError ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                    <WifiOff className="w-7 h-7 text-status-error/70" />
+                    <WifiOff className="w-7 h-7 text-status-error" />
                   </div>
                   <p className="font-bold text-base mb-1.5 text-foreground/80">
                     تعذّر تحميل سجل النشاط

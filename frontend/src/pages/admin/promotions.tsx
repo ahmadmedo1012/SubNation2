@@ -479,7 +479,7 @@ export default function AdminPromotionsPage() {
                retry — NOT the "no promotions yet" empty state. */
             <div className="bg-card border border-status-error/22 rounded-2xl p-8 text-center">
               <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                <WifiOff className="w-7 h-7 text-status-error/70" />
+                <WifiOff className="w-7 h-7 text-status-error" />
               </div>
               <p className="font-bold text-sm mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
               <p className="text-xs text-muted-foreground mb-5 max-w-xs mx-auto leading-relaxed">

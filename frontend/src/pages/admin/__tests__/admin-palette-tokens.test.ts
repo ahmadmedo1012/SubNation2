@@ -61,7 +61,7 @@ const adminSourceFiles = [
 // catches hover:/group-hover: variants; matches className strings AND
 // template map values.
 const RAW_PALETTE_RE =
-  /(?:^|[\s"'`])(?:[a-z0-9-]+:)?(?:text|bg|border|ring|shadow|from|via|to|fill|stroke|divide|outline|decoration|accent|caret)-(?:emerald|orange|amber|red|green|blue|sky|rose|violet|purple|cyan|yellow|teal|slate|gray|zinc|neutral|stone|fuchsia|indigo|lime|pink)-(?:50|100|200|300|400|500|600|700|800|900|950)\b/;
+  /(?:^|[\s"'`])(?:[a-z0-9-]+:)*(?:text|bg|border|ring|shadow|from|via|to|fill|stroke|divide|outline|decoration|accent|caret)-(?:emerald|orange|amber|red|green|blue|sky|rose|violet|purple|cyan|yellow|teal|slate|gray|zinc|neutral|stone|fuchsia|indigo|lime|pink)-(?:50|100|200|300|400|500|600|700|800|900|950)\b/;
 
 describe("admin palette discipline (R128 A1-F1) — zero raw-palette classes", () => {
   it("no non-test admin source file consumes the raw Tailwind palette", () => {
@@ -72,10 +72,12 @@ describe("admin palette discipline (R128 A1-F1) — zero raw-palette classes", (
     const offenders: string[] = [];
     for (const f of adminSourceFiles) {
       const text = readFileSync(f, "utf8");
-      for (const line of text.split("\n")) {
+      // R129-B1: enumerate with the index — the offender message printed
+      // line.LENGTH (a char count) where a line NUMBER belongs.
+      text.split("\n").forEach((line, i) => {
         const m = RAW_PALETTE_RE.exec(line);
-        if (m) offenders.push(`${m[0]} → ${f.split("src/")[1]}:${line.length}`);
-      }
+        if (m) offenders.push(`${m[0]} → ${f.split("src/")[1]}:${i + 1}`);
+      });
     }
     expect(offenders).toEqual([]);
   });

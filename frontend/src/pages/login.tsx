@@ -195,7 +195,7 @@ export default function LoginPage() {
                     ? `سجّل دخولك لإكمال شراء «${intent.productName}»`
                     : "سجّل دخولك لإكمال عملية الشراء"}
                 </p>
-                <p className="text-2xs text-primary-text/75 mt-0.5">ثوانٍ معدودة بدون كلمة مرور</p>
+                <p className="text-2xs text-primary-text mt-0.5">ثوانٍ معدودة بدون كلمة مرور</p>
               </div>
             </div>
           ) : intent.type === "account" && intent.surface ? (
@@ -209,7 +209,7 @@ export default function LoginPage() {
               </div>
               <div className="min-w-0">
                 <p className="font-bold">{intent.surface.headline}</p>
-                <p className="text-2xs text-primary-text/75 mt-0.5">ثوانٍ معدودة بدون كلمة مرور</p>
+                <p className="text-2xs text-primary-text mt-0.5">ثوانٍ معدودة بدون كلمة مرور</p>
               </div>
             </div>
           ) : (

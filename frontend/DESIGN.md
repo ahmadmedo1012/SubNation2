@@ -25,8 +25,11 @@ colors:
   muted-foreground: "#a0abba"
   input: "#212731"
   ring: "#dc1840"
-  error: "#ea3e3e"
-  on-error: "#ffffff"
+  # R129-A3 (A3-3): the old single "error" entry was a chimera — the dark
+  # hex was --destructive, the light hex was --status-error. Split 1:1.
+  destructive: "#ea3e3e"
+  on-destructive: "#ffffff"
+  status-error: "#ed5a5a"
   success: "#2dd285"
   warning: "#f6aa28"
   info: "#3491f4"
@@ -36,8 +39,9 @@ colors:
   destructive-surface: "#e72323"
   status-success-surface: "#1b7e50"
   tier-bronze: "#f7b83b"
-  tier-silver: "#acbac3"
+  tier-silver: "#acb6c3"
   tier-platinum: "#75b0f0"
+  tier-gold: "#f6aa28"
   # ── category accents (dark) ──
   cat-streaming: "#ad70eb"
   cat-music: "#42d791"
@@ -54,10 +58,12 @@ colors:
   light-foreground: "#14181f"
   light-border: "#dadce2"
   light-primary: "#d3173d"
-  light-primary-text: "#d3173d"
+  light-primary-text: "#c51639"
   light-muted-foreground: "#535c6e"
   light-secondary: "#ebecf0"
-  light-error: "#bb1b1b"
+  light-secondary-foreground: "#29303d"
+  light-destructive: "#dc1818"
+  light-status-error: "#bb1b1b"
   light-success: "#1d724a"
   light-warning: "#885907"
   light-info: "#135eae"
@@ -68,6 +74,19 @@ colors:
   light-tier-bronze: "#916308"
   light-tier-silver: "#586174"
   light-tier-platinum: "#135eae"
+  light-tier-gold: "#885907"
+  # R129-A3 (A3-4): the light cat twins — the .light block always carried
+  # them; the contract now publishes what it claims ("every semantic token
+  # has a light twin").
+  light-cat-streaming: "#802dd2"
+  light-cat-music: "#1e764d"
+  light-cat-software: "#2362c7"
+  light-cat-vpn: "#116d97"
+  light-cat-ai-tools: "#a32eb8"
+  light-cat-seo-tools: "#b83c0f"
+  light-cat-education: "#886107"
+  light-cat-gaming: "#1877dc"
+  light-cat-productivity: "#da8e0b"
   # ── brand marks (theme-independent) ──
   whatsapp: "#25d366"
   whatsapp-ink: "#054339"
@@ -232,17 +251,19 @@ a light twin (the `light-` prefixed values above). Token authority lives in
   always use the lighter `primary-text` twin (#ed5e7b / #d3173d): the surface
   value is for fills, not ink.
 - **Status family (success/warning/error/info/low-stock/purple):** one token
-  per state, consumed as `bg-<token>/12 text-<token> border-<token>/28` pill
+  per state, consumed as `bg-<token>/10-15 text-<token> border-<token>/30` pill
   recipes (StatusBadge). Never hand-roll raw palette hues for status UI.
 - **Category accents (9 hues):** per-product-category coding used by product
-  cards and category heroes at low alpha tints (10–15%); each has a
+  cards and category heroes at alpha tints (chips 10–15%, hero accents up
+to 70%); each has a
   dark-tuned (lighter) and light-tuned (darker) value. gaming and
   productivity are currently retired categories.
 - **Brand marks:** WhatsApp (#25d366 + its AA ink #054339), Google four-color
   logo, Telegram (#2aabee) are fixed identity colors — they do not theme.
 - **Elevation:** depth comes from a surface ladder
   (base → card → overlay) plus neutral black shadows, never from colored
-  glows — the only sanctioned colored light is the primary at 20–40% alpha on
+  glows — the only sanctioned colored light is the primary (and status
+accents) at 5–45% alpha where documented, on
   interactive elements (button/discount-badge glow).
 
 ## Typography
@@ -278,11 +299,11 @@ room for it reads that variable. `max-width: 320px` is the supported floor.
 Tonal first: the surface ladder (#0a0c10 base → #101318 card → #181d25
 overlay) does most of the hierarchy work, reinforced by 1px borders at
 `--border`. Shadows are neutral black with a two-stop shape language
-(shadow-sm … shadow-2xl), tuned per theme (dark shadows are heavier: 40–60%
+(shadow-sm … shadow-2xl), tuned per theme (dark shadows are heavier: 32–60%
 black; light: 6–14%). Overlays (dialogs, toasts, drawer scrims) sit on a
 backdrop blur + translucent surface. Colored shadow is reserved for the
 primary accent at low alpha on interactive elements
-(`shadow-primary/25–40`).
+(`shadow-primary/25–40`, plus the documented low-alpha tints above).
 
 ## Shapes
 

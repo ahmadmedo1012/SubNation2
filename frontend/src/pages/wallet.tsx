@@ -207,7 +207,6 @@ const NETWORKS = [
     color: "text-status-success",
     border: "border-status-success/75",
     bg: "bg-green-500/10",
-    activeBg: "bg-green-500",
   },
   {
     value: "madar",
@@ -215,7 +214,6 @@ const NETWORKS = [
     color: "text-status-info",
     border: "border-status-info/75",
     bg: "bg-blue-500/10",
-    activeBg: "bg-blue-500",
   },
 ];
 

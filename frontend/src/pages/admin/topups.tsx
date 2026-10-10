@@ -535,7 +535,7 @@ function BulkConfirmModal({
             className={`flex-1 h-9 active:scale-[0.97] shadow-sm ${
               action === "approve"
                 ? "bg-status-success-surface hover:bg-status-success-surface/90 text-white shadow-status-success-surface/20"
-                : "bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-destructive/20"
+                : "bg-destructive-surface hover:bg-destructive-surface/90 text-destructive-foreground shadow-destructive/20"
             }`}
             onClick={() => onConfirm(note)}
             disabled={loading}

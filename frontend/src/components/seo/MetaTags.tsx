@@ -5,13 +5,13 @@ export interface SeoInput {
   title: string;
   /** 120-160 chars description for meta description and og:description */
   description: string;
-  /** Absolute or relative URL of the canonical image (real /opengraph.jpg is 1280×720) */
+  /** Absolute or relative URL of the canonical image (real /opengraph.jpg is 1200×630) */
   image?: string;
-  /** og:image:width override — defaults to the REAL /opengraph.jpg (1280×720).
-   * R120-B3 (A7-F6): the hardcoded 1200×630 lied about every image.
-   * R122 (A7): dims are now declared ONLY when they are actually known —
+  /** og:image:width override — defaults to the REAL /opengraph.jpg (1200×630,
+   * regenerated R128-L2 at the spec-correct 1.91:1).
+   * R120-B3 (A7-F6): dims are declared ONLY when they are actually known —
    * a caller image without explicit dims OMITS the og:image:width/height
-   * pair entirely instead of inheriting the default 1280×720 (product
+   * pair entirely instead of inheriting a wrong default (product
    * webp art is ~450×450; mis-declared dims force scrapers into a
    * wasteful fetch to learn the truth — the exact A7-F6 class). */
   imageWidth?: number;
@@ -128,7 +128,7 @@ function upsertLink(rel: string, href: string): void {
 /** R122 (A7): the head is upsert-managed and tags are never removed on
  * unmount — a page that must NOT declare og:image dims has to actively
  * evict the pair, or the previous page's values survive the route
- * change (home's default 1280×720 would stick to every product page). */
+ * change (home's default 1200×630 would stick to every product page). */
 function removeMeta(selector: string): void {
   document.head.querySelectorAll(selector).forEach((el) => el.remove());
 }
@@ -167,7 +167,7 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   // /opengraph.jpg defaults (R120-B3 A7-F6, verified with `file`),
   // caller-provided overrides, or nothing at all. A caller image of
   // unknown size (product webp art) must not inherit the default
-  // 1280×720 declaration.
+  // 1200×630 declaration.
   const usesDefaultImage = !input.image || input.image === DEFAULT_IMAGE;
   const imageWidth = input.imageWidth ?? (usesDefaultImage ? DEFAULT_IMAGE_WIDTH : undefined);
   const imageHeight = input.imageHeight ?? (usesDefaultImage ? DEFAULT_IMAGE_HEIGHT : undefined);

@@ -1074,7 +1074,7 @@ export default function AdminDashboardPage() {
                             الخصومات
                           </span>
                           <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded bg-status-success/60 inline-block" />
+                            <span className="w-2.5 h-2.5 rounded bg-status-success inline-block" />
                             طلبات بكوبون
                           </span>
                         </div>
@@ -1133,7 +1133,7 @@ export default function AdminDashboardPage() {
                                       fill={chart.success}
                                       radius={[3, 3, 0, 0]}
                                       maxBarSize={24}
-                                      fillOpacity={0.6}
+                                      fillOpacity={0.8}
                                     />
                                   </rc.BarChart>
                                 </rc.ResponsiveContainer>
@@ -1279,7 +1279,7 @@ export default function AdminDashboardPage() {
                   className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                    <WifiOff className="w-6 h-6 text-status-error/70" />
+                    <WifiOff className="w-6 h-6 text-status-error" />
                   </div>
                   <div>
                     <p className="text-sm font-bold text-foreground/80">تعذّر تحميل الطلبات</p>

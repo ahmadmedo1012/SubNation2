@@ -335,9 +335,7 @@ const ProductCard = React.memo(function ProductCard({
                 }}
               />
             ) : (
-              <span className="text-base font-bold opacity-70">
-                {product.name.charAt(0).toUpperCase()}
-              </span>
+              <span className="text-base font-bold">{product.name.charAt(0).toUpperCase()}</span>
             )}
           </div>
           <div className="flex-1 min-w-0">
