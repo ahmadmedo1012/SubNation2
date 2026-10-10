@@ -301,7 +301,9 @@ export default function AdminRiskEventPage() {
             {labelMut.isError && (
               <div className="text-xs text-destructive">{(labelMut.error as Error).message}</div>
             )}
-            {labelMut.isSuccess && <div className="text-xs text-emerald-400">تم حفظ التصنيف.</div>}
+            {labelMut.isSuccess && (
+              <div className="text-xs text-status-success">تم حفظ التصنيف.</div>
+            )}
           </div>
         </Section>
       </div>

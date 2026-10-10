@@ -226,7 +226,7 @@ export default function AdminSettingsPage() {
     <AdminLayout>
       <div className="space-y-6 max-w-3xl">
         <div>
-          <h1 className="text-2xl font-bold mb-0.5">الإعدادات</h1>
+          <h1 className="text-xl font-bold mb-0.5">الإعدادات</h1>
           <p className="text-muted-foreground text-sm">
             إعدادات النظام والتكاملات وإدارة طرق المصادقة
           </p>
@@ -382,8 +382,8 @@ export default function AdminSettingsPage() {
           <div role="tabpanel" aria-labelledby="settings-tab-integrations" className="space-y-5">
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
               <div className="flex items-center gap-2.5 mb-5">
-                <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                  <Bot className="w-4.5 h-4.5 text-blue-400" />
+                <div className="w-9 h-9 rounded-xl bg-status-info/10 border border-status-info/20 flex items-center justify-center">
+                  <Bot className="w-4.5 h-4.5 text-status-info" />
                 </div>
                 <div>
                   <h2 className="font-bold text-sm">تيليجرام</h2>

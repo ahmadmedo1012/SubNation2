@@ -486,7 +486,10 @@ export function ProductVariantsDialog({
                       className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2"
                     >
                       السعر (د.ل)
-                      <span className="text-3xs font-normal text-muted-foreground/70">
+                      {/* R128 (A4-F2): /70 → /85 — 11px muted ink
+                          needs the AA-safe alpha pair (products.tsx's
+                          cost-price hint is the sibling). */}
+                      <span className="text-3xs font-normal text-muted-foreground/85">
                         اتركه فارغًا ليُحسب من التكلفة
                       </span>
                     </Label>
@@ -691,7 +694,7 @@ export function ProductVariantsDialog({
                             <span className="text-muted-foreground">—</span>
                           ) : drift ? (
                             <span
-                              className="inline-flex items-center gap-1 text-3xs font-bold text-amber-500 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded tabular-nums"
+                              className="inline-flex items-center gap-1 text-3xs font-bold text-status-warning bg-status-warning/15 border border-status-warning/30 px-1.5 py-0.5 rounded tabular-nums"
                               title={`السعر المحسوب بالإعدادات الحالية (${formatCurrency(
                                 v.computed_price_lyd,
                               )}) يختلف عن المخزّن — عدّل السعر/التكلفة أو أعد الاحتساب من صفحة التسعير`}

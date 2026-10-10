@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   Bell,
   BellOff,
+  Check,
   CheckCheck,
   Inbox,
   Info,
@@ -65,16 +66,16 @@ const TYPE_META: Record<
 > = {
   coupon_maxed: {
     icon: Tag,
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
-    border: "border-amber-400/20",
+    color: "text-status-warning",
+    bg: "bg-status-warning/10",
+    border: "border-status-warning/20",
     label: "كوبون استُنفد",
   },
   coupon_expiring: {
     icon: Tag,
-    color: "text-orange-400",
-    bg: "bg-orange-400/10",
-    border: "border-orange-400/20",
+    color: "text-status-low-stock",
+    bg: "bg-status-low-stock/10",
+    border: "border-status-low-stock/20",
     label: "كوبون منتهٍ",
   },
   low_stock: {
@@ -91,23 +92,23 @@ const TYPE_META: Record<
   },
   no_stock: {
     icon: AlertTriangle,
-    color: "text-red-400",
-    bg: "bg-red-400/10",
-    border: "border-red-400/20",
+    color: "text-status-error",
+    bg: "bg-status-error/10",
+    border: "border-status-error/20",
     label: "نفاد المخزون",
   },
   system: {
     icon: Info,
-    color: "text-blue-400",
-    bg: "bg-blue-400/10",
-    border: "border-blue-400/20",
+    color: "text-status-info",
+    bg: "bg-status-info/10",
+    border: "border-status-info/20",
     label: "نظام",
   },
   forecast_stockout: {
     icon: AlertTriangle,
-    color: "text-orange-400",
-    bg: "bg-orange-400/10",
-    border: "border-orange-400/20",
+    color: "text-status-low-stock",
+    bg: "bg-status-low-stock/10",
+    border: "border-status-low-stock/20",
     label: "نفاد متوقع",
   },
 };
@@ -521,9 +522,9 @@ export default function AdminAlertsPage() {
                     key={s.key}
                     onClick={() => setFilter(filter === s.key ? "all" : (s.key as FilterType))}
                     aria-pressed={filter === s.key}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-bold transition-all duration-150 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150 ${
                       filter === s.key
-                        ? `${m.bg} ${m.border} ${m.color}`
+                        ? `font-bold ${m.bg} ${m.border} ${m.color}`
                         : "bg-muted/20 border-border/40 text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -638,9 +639,17 @@ export default function AdminAlertsPage() {
                 {filter === "unread" ? "لا توجد تنبيهات غير مقروءة" : "لا توجد تنبيهات"}
               </div>
               <div className="text-xs mt-1 text-muted-foreground">
-                {filter === "unread"
-                  ? "أنت على اطلاع كامل بكل شيء ✓"
-                  : "ستظهر هنا تنبيهات المخزون والكوبونات تلقائياً"}
+                {/* R128-A6 (P4-4): ✓ text glyph → lucide Check (the
+                    product.tsx:1959 pattern) — icon on the reading line,
+                    aria-hidden, AT reads the Arabic only. */}
+                {filter === "unread" ? (
+                  <span className="inline-flex items-center gap-1 justify-center">
+                    أنت على اطلاع كامل بكل شيء
+                    <Check className="w-3 h-3 text-status-success" aria-hidden />
+                  </span>
+                ) : (
+                  "ستظهر هنا تنبيهات المخزون والكوبونات تلقائياً"
+                )}
               </div>
             </div>
           </div>
@@ -751,7 +760,7 @@ export default function AdminAlertsPage() {
                               e.stopPropagation();
                               void confirmDeleteAlert(alert);
                             }}
-                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors"
                             title="حذف"
                             aria-label={`حذف تنبيه «${alert.title}»`}
                           >

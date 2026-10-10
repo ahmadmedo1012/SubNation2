@@ -703,7 +703,7 @@ export default function AdminTicketsPage() {
                     <button
                       onClick={() => handleStatus(selected.id, "closed")}
                       disabled={statusBusy === selected.id}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/15 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-status-success/10 text-status-success border border-status-success/20 hover:bg-status-success/15 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {statusBusy === selected.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -716,7 +716,7 @@ export default function AdminTicketsPage() {
                     <button
                       onClick={() => handleStatus(selected.id, "open")}
                       disabled={statusBusy === selected.id}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/15 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-status-info/10 text-status-info border border-status-info/20 hover:bg-status-info/15 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {statusBusy === selected.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -789,7 +789,7 @@ export default function AdminTicketsPage() {
               <form onSubmit={handleReply} className="border-t border-border p-4">
                 {selected.status === "closed" && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/50 rounded-lg px-3 py-2 mb-3">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <CheckCircle className="w-3.5 h-3.5 text-status-success" />
                     هذه التذكرة مغلقة — أعد فتحها للرد
                   </div>
                 )}

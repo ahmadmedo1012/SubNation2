@@ -335,7 +335,7 @@ export default function AdminCouponsPage() {
               <Tag className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">الكوبونات والخصومات</h1>
+              <h1 className="text-xl font-bold">الكوبونات والخصومات</h1>
               <p className="text-xs text-muted-foreground">إنشاء وإدارة أكواد الخصم</p>
             </div>
           </div>
@@ -365,7 +365,7 @@ export default function AdminCouponsPage() {
             </div>
           </div>
           <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-2">
-            <div className="text-2xl font-bold text-emerald-400 tabular-nums">{activeCount}</div>
+            <div className="text-2xl font-bold text-status-success tabular-nums">{activeCount}</div>
             <div className="text-xs text-muted-foreground mt-0.5">نشطة</div>
           </div>
           <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-3">
@@ -641,7 +641,7 @@ export default function AdminCouponsPage() {
                               indistinguishable from الحد الأدنى. Each cell
                               gains a text-3xs field label visible ONLY on
                               the mobile flex-col layout. */}
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
                             الخصم
                           </span>
                           <div className="flex items-center gap-1 font-bold text-primary text-sm">
@@ -664,7 +664,7 @@ export default function AdminCouponsPage() {
 
                         {/* Min order */}
                         <div className="text-xs text-muted-foreground tabular-nums">
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
                             الحد الأدنى
                           </span>
                           {coupon.min_order_amount > 0
@@ -674,7 +674,7 @@ export default function AdminCouponsPage() {
 
                         {/* Usage */}
                         <div className="text-xs tabular-nums font-bold">
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
                             الاستخدام
                           </span>
                           <span className="text-foreground">{coupon.used_count}</span>
@@ -688,7 +688,7 @@ export default function AdminCouponsPage() {
 
                         {/* Expiry */}
                         <div className="text-xs text-muted-foreground">
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
                             الانتهاء
                           </span>
                           {coupon.expires_at ? (
@@ -707,7 +707,7 @@ export default function AdminCouponsPage() {
                             the --status-* tokens) replaces the four
                             raw-hue pills. */}
                         <div>
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
                             الحالة
                           </span>
                           {effectivelyActive ? (
@@ -731,7 +731,7 @@ export default function AdminCouponsPage() {
 
                         {/* Actions */}
                         <div>
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/70 block mb-0.5">
+                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
                             إجراءات
                           </span>
                           <div className="flex items-center gap-1.5">
@@ -750,7 +750,7 @@ export default function AdminCouponsPage() {
                               {toggling === coupon.id ? (
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               ) : coupon.is_active ? (
-                                <ToggleRight className="w-4 h-4 text-emerald-400" />
+                                <ToggleRight className="w-4 h-4 text-status-success" />
                               ) : (
                                 <ToggleLeft className="w-4 h-4" />
                               )}

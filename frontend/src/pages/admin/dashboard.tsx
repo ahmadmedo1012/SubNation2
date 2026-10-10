@@ -641,9 +641,9 @@ export default function AdminDashboardPage() {
           value: formatCurrency(stats.total_revenue ?? 0),
           sub: `${stats.total_orders ?? 0} طلب إجمالاً`,
           icon: BarChart2,
-          color: "text-emerald-400",
-          bg: "bg-emerald-400/10",
-          border: "border-emerald-400/20",
+          color: "text-status-success",
+          bg: "bg-status-success/10",
+          border: "border-status-success/20",
           link: "/admin/orders",
           sparkKey: "revenue" as keyof ChartDay,
           sparkColor: chart.success,
@@ -665,9 +665,9 @@ export default function AdminDashboardPage() {
                   other: "مستخدم جديد",
                 })} اليوم`,
           icon: Users,
-          color: "text-blue-400",
-          bg: "bg-blue-400/10",
-          border: "border-blue-400/20",
+          color: "text-status-info",
+          bg: "bg-status-info/10",
+          border: "border-status-info/20",
           link: "/admin/users",
           sparkKey: "users" as keyof ChartDay,
           sparkColor: chart.info,
@@ -677,9 +677,9 @@ export default function AdminDashboardPage() {
           value: stats.available_stock,
           sub: "وحدة في المخزون",
           icon: Package,
-          color: "text-orange-400",
-          bg: "bg-orange-400/10",
-          border: "border-orange-400/20",
+          color: "text-status-low-stock",
+          bg: "bg-status-low-stock/10",
+          border: "border-status-low-stock/20",
           link: "/admin/products",
           lowStock: (stats.available_stock ?? 0) < 5,
           sparkKey: null,
@@ -692,9 +692,9 @@ export default function AdminDashboardPage() {
           value: formatCurrency(stats.total_wallet_balance ?? 0),
           sub: "إجمالي أرصدة المستخدمين",
           icon: Wallet,
-          color: "text-cyan-400",
-          bg: "bg-cyan-400/10",
-          border: "border-cyan-400/20",
+          color: "text-status-info",
+          bg: "bg-status-info/10",
+          border: "border-status-info/20",
           link: "/admin/users",
           sparkKey: null,
           sparkColor: "",
@@ -765,7 +765,12 @@ export default function AdminDashboardPage() {
             {METRIC_CARDS.map((card, i) => (
               <Link key={card.label} href={card.link}>
                 <div
-                  className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-status-warning/25 hover:border-status-warning/40 hover:shadow-status-warning/10" : card.lowStock ? "border-orange-400/30 hover:border-orange-400/45 shadow-[0_0_0_1px_rgba(251,146,60,0.12)] hover:shadow-orange-400/15" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}
+                  /* R128 (A1-D5/F1): the low-stock card's orange KPI border
+                     + the codebase's ONLY ad-hoc rgba shadow
+                     (shadow-[0_0_0_1px_rgba(251,146,60,0.12)]) migrate to
+                     the --status-low-stock token and the urgent sibling's
+                     exact shape (border + hover border/shadow, no ring). */
+                  className={`float-in stagger-${i + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-status-warning/25 hover:border-status-warning/40 hover:shadow-status-warning/10" : card.lowStock ? "border-status-low-stock/30 hover:border-status-low-stock/45 hover:shadow-status-low-stock/15" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-2.5">
                     <div
@@ -774,7 +779,7 @@ export default function AdminDashboardPage() {
                       <card.icon className={`w-4 h-4 ${card.color}`} />
                       {card.lowStock && (
                         <span
-                          className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-orange-400 ring-2 ring-card badge-pulse"
+                          className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-status-low-stock ring-2 ring-card badge-pulse"
                           aria-label="مخزون منخفض"
                         />
                       )}
@@ -918,11 +923,11 @@ export default function AdminDashboardPage() {
                               الإيرادات
                             </span>
                             <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                              <span className="w-3 h-0.5 bg-emerald-400 rounded inline-block" />
+                              <span className="w-3 h-0.5 bg-status-success rounded inline-block" />
                               الطلبات
                             </span>
                             <span className="flex items-center gap-1 text-3xs text-muted-foreground">
-                              <span className="w-3 h-px border-t-2 border-amber-400 border-dashed inline-block" />
+                              <span className="w-3 h-px border-t-2 border-status-warning border-dashed inline-block" />
                               الخصومات
                             </span>
                           </div>
@@ -1065,11 +1070,11 @@ export default function AdminDashboardPage() {
                         </div>
                         <div className="flex items-center gap-3 text-3xs text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <span className="w-3 h-0.5 bg-amber-400 rounded inline-block" />
+                            <span className="w-3 h-0.5 bg-status-warning rounded inline-block" />
                             الخصومات
                           </span>
                           <span className="flex items-center gap-1">
-                            <span className="w-2.5 h-2.5 rounded bg-emerald-500/60 inline-block" />
+                            <span className="w-2.5 h-2.5 rounded bg-status-success/60 inline-block" />
                             طلبات بكوبون
                           </span>
                         </div>

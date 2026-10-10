@@ -301,11 +301,11 @@ export default function AdminRiskPage() {
                    aria-pressed exposes the toggle state (the
                    orders/users/tickets chip-bar idiom). */
                 aria-pressed={active}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   active
                     ? tone
-                      ? TONE_CHIP[tone.tone]
-                      : "bg-primary/15 text-primary-text border-primary/40"
+                      ? `font-bold ${TONE_CHIP[tone.tone]}`
+                      : "bg-primary/15 text-primary-text border-primary/40 font-bold"
                     : "bg-muted/30 border-border/30 hover:bg-muted/60"
                 }`}
               >
@@ -371,31 +371,37 @@ export default function AdminRiskPage() {
             <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[720px]">
-                  <thead className="bg-muted/30 text-xs text-muted-foreground">
+                  <thead
+                    /* R128 (A3-F2): the fraud queue is the longest-scanned
+                       table without the sticky-glass header — adopt the
+                       orders/users money-directory recipe (sticky glass
+                       thead, semibold th, border-b rows, one zebra value). */
+                    className="sticky top-0 z-10 text-xs text-muted-foreground bg-card/85 backdrop-blur-md border-b border-border"
+                  >
                     <tr>
                       {/* 96-F7 (R96 A6 #15 + #6): scope="col" for screen
                           readers; dates pinned to -u-nu-latn so engines
                           without ar-LY data never emit Arabic-Indic
                           numerals. */}
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                         المستوى
                       </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                         النوع
                       </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                         المستخدم
                       </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                         القاعدة
                       </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                         النقاط
                       </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                         الإجراء
                       </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-bold">
+                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
                         الوقت
                       </th>
                     </tr>
@@ -408,8 +414,8 @@ export default function AdminRiskPage() {
                       return (
                         <tr
                           key={e.id}
-                          className={`relative border-t border-border/30 hover:bg-muted/20 transition-colors cursor-pointer ${
-                            i % 2 !== 0 ? "bg-muted/5" : ""
+                          className={`relative border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer ${
+                            i % 2 !== 0 ? "bg-muted/[0.035]" : ""
                           }`}
                         >
                           <td className="px-4 py-2.5">
@@ -515,13 +521,13 @@ function DashCard({
 }) {
   const tones = {
     ok: "border-border/40 bg-card/60",
-    warn: "border-amber-500/30 bg-amber-500/5",
-    danger: "border-red-500/30 bg-red-500/5",
+    warn: "border-status-warning/30 bg-status-warning/5",
+    danger: "border-status-error/30 bg-status-error/5",
   };
   const valueColor = {
     ok: "",
-    warn: "text-amber-400",
-    danger: "text-red-400",
+    warn: "text-status-warning",
+    danger: "text-status-error",
   };
   return (
     <div className={`border rounded-xl p-3 ${tones[tone]}`}>

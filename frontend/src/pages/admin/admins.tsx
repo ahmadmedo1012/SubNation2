@@ -185,7 +185,7 @@ export default function AdminAdminsPage() {
       <div className="space-y-5 max-w-5xl">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold mb-0.5">إدارة المسؤولين</h1>
+            <h1 className="text-xl font-bold mb-0.5">إدارة المسؤولين</h1>
             <p className="text-muted-foreground text-sm">
               إنشاء وإدارة حسابات المسؤولين وصلاحياتهم
             </p>
@@ -229,7 +229,7 @@ export default function AdminAdminsPage() {
                 <div
                   key={admin.id}
                   className={`bg-card border rounded-2xl p-4 ${
-                    admin.is_active ? "border-border/60" : "border-orange-500/35 opacity-75"
+                    admin.is_active ? "border-border/60" : "border-status-low-stock/35 opacity-75"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -283,8 +283,8 @@ export default function AdminAdminsPage() {
                           onClick={() => handleToggleActive(admin)}
                           className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${
                             admin.is_active
-                              ? "border-orange-500/40 text-orange-400 hover:bg-orange-500/10"
-                              : "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                              ? "border-status-low-stock/40 text-status-low-stock hover:bg-status-low-stock/10"
+                              : "border-status-success/40 text-status-success hover:bg-status-success/10"
                           }`}
                         >
                           {admin.is_active ? "تعطيل" : "تفعيل"}

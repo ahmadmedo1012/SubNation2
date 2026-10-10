@@ -13,7 +13,7 @@ import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admi
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
-import { Eye, EyeOff, Key, Loader2, Save, UserCog } from "lucide-react";
+import { Check, Eye, EyeOff, Key, Loader2, Save, UserCog } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -255,7 +255,18 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
           <div>
             <span className="block text-foreground/50">المصادقة الثنائية</span>
             <span className="font-bold text-foreground">
-              {session.totp_enabled ? "✓ مفعّلة" : "غير مفعّلة"}
+              {/* R128-A6 (P4-4 — the product.tsx:1959 «رصيد كافٍ ✓»
+                  pattern): the ✓ text glyph swapped for the lucide
+                  Check inline-flex'd on the reading line — icon carries
+                  the success semantics, AT reads the Arabic only. */}
+              {session.totp_enabled ? (
+                <span className="inline-flex items-center gap-1">
+                  <Check className="w-3 h-3 text-status-success" aria-hidden />
+                  مفعّلة
+                </span>
+              ) : (
+                "غير مفعّلة"
+              )}
             </span>
           </div>
           {session.created_at && (

@@ -187,3 +187,41 @@ describe("AdminLayout mobile drawer — focus move-in, trap target, return (R125
     await waitFor(() => expect(screen.getByText("page-body")).toBeInTheDocument());
   });
 });
+
+describe("AdminLayout collapsed sidebar — icon-only links keep their names (R128 A6 P3-1)", () => {
+  // A6's (d) sweep: collapsing the rail hid every NavItem <span> and the
+  // logout label with NO aria-label/title — 18 unnamed controls, the one
+  // systemic 4.1.2 gap left in the app. The fix carries the expanded
+  // label verbatim via aria-label + title, ONLY while collapsed (never
+  // fighting the visible text).
+  it("collapsed: nav links + logout are findable by name and carry a hover title", () => {
+    window.history.pushState({}, "", "/admin/alerts");
+    renderLayout();
+
+    fireEvent.click(screen.getByRole("button", { name: "تصغير القائمة الجانبية" }));
+
+    const alerts = screen.getByRole("link", { name: "التنبيهات" });
+    expect(alerts).toHaveAttribute("aria-label", "التنبيهات");
+    expect(alerts).toHaveAttribute("title", "التنبيهات");
+
+    const logout = screen.getByRole("button", { name: "خروج" });
+    expect(logout).toHaveAttribute("aria-label", "خروج");
+    expect(logout).toHaveAttribute("title", "خروج");
+
+    // The active item's aria-current survives the collapse too.
+    expect(alerts).toHaveAttribute("aria-current", "page");
+  });
+
+  it("expanded: the name comes from the visible text — no aria-label override", () => {
+    renderLayout();
+
+    // Collapsed → expanded again.
+    const collapse = screen.getByRole("button", { name: "تصغير القائمة الجانبية" });
+    fireEvent.click(collapse);
+    fireEvent.click(collapse);
+
+    const alerts = screen.getByRole("link", { name: "التنبيهات" });
+    expect(alerts).not.toHaveAttribute("aria-label");
+    expect(alerts).not.toHaveAttribute("title");
+  });
+});

@@ -18,6 +18,7 @@ import { logger } from "./lib/logger";
 import { verifyUserToken } from "./lib/jwt";
 import { createResilientRateLimitStore } from "./lib/rate-limit-store";
 import { applyFlashSale } from "./lib/pricing";
+import { formatLydNumber } from "./lib/money";
 // R122 (A3-P1): the /product/:slug shell + share-card lookups ride the
 // catalog cache (60 s TTL, generation-bumped by admin CRUD) — they are
 // unauthenticated, outside every rate limiter, and were the one route
@@ -525,7 +526,7 @@ const apiLimiter = rateLimit({
   // client that assumes `r.json()`. userLimiter/authLimiter already
   // had Arabic JSON messages; this brings the last limiter in line.
   message: {
-    error: "تم تجاوز الحد الأقصى للطلبات. حاول مرة أخرى بعد دقيقة.",
+    error: "تم تجاوز الحد الأقصى للطلبات. حاول مجدداً بعد دقيقة.",
     code: "RATE_LIMITED",
   },
   skip: (req) => {
@@ -571,7 +572,7 @@ const userLimiter = rateLimit({
     return `u:${userId ?? "anon"}`;
   },
   message: {
-    error: "تم تجاوز الحد الأقصى للطلبات لهذه الجلسة. حاول مرة أخرى بعد دقيقة.",
+    error: "تم تجاوز الحد الأقصى للطلبات لهذه الجلسة. حاول مجدداً بعد دقيقة.",
     code: "RATE_LIMITED",
   },
 });
@@ -652,7 +653,7 @@ const couponValidateLimiter = rateLimit({
     return userId !== null ? `cu:${userId}` : `cu:ip:${ipKeyGenerator(req.ip ?? "unknown")}`;
   },
   message: {
-    error: "عدد كبير من محاولات التحقق من الكوبونات. حاول مرة أخرى بعد دقيقة.",
+    error: "عدد كبير من محاولات التحقق من الكوبونات. حاول مجدداً بعد دقيقة.",
     code: "RATE_LIMITED",
   },
 });
@@ -1068,7 +1069,10 @@ async function shareDisplayPrice(listPrice: string): Promise<string> {
   const base = Number(listPrice);
   if (!Number.isFinite(base)) return listPrice;
   const { flashSale, basePrice } = await applyFlashSale(base);
-  return flashSale && basePrice < base ? basePrice.toFixed(2) : listPrice;
+  // R128 (B8-D3): the grouped en-US display form («1,380.00», not
+  // «1380.00») — the same canon as the web's formatCurrency, so the
+  // WhatsApp/TG card price and the page price read identically.
+  return formatLydNumber(flashSale && basePrice < base ? basePrice : base);
 }
 
 /**
@@ -1540,6 +1544,12 @@ if (frontendDist) {
     express.static(path.join(frontendDist, "assets"), {
       maxAge: "1y",
       immutable: true,
+      // R128 (B2-F2): redirect:false — the DEFAULT directory redirect
+      // 301'd the bare /assets probe to /assets/ before the 404 guard
+      // below could own it (the A11-F2 /products precedent). With the
+      // redirect off, the directory miss falls through both static
+      // mounts to the fallback, where the /assets 404 guard answers.
+      redirect: false,
     }),
   );
 
@@ -1661,25 +1671,35 @@ if (frontendDist) {
           ? product.imageUrl
           : `${origin}${product.imageUrl.startsWith("/") ? "" : "/"}${product.imageUrl}`
         : null;
-      // R120-B3 (A7-F9 + A7-F17): prefer the live flash-sale price when
-      // one is active (shareDisplayPrice — the same lib/pricing.ts stage
-      // the catalog applies) and assemble the description inside display
-      // limits (buildShareDescription). R122 (A3-P1): the display price
-      // now rides the cached lookup (60 s TTL, admin-CRUD-bumped).
-      const desc = buildShareDescription(product.description, lookup.displayPrice);
+      // R128 (B8-D1): the operator's curated SEO overrides — the SAME
+      // fields the plain-UA shell (resolveSpaShellMeta) and the hydrated
+      // page render, with the SAME fallbacks (seo_title?.trim() ? clamped
+      // seo_title : `${name} — SubNation`; whitespace-only overrides fall
+      // back, not truthiness). The card used to show raw name+description
+      // while every other surface showed the curated Arabic — the #1
+      // share channel never saw the operator's SEO work. The price suffix
+      // on the description stays by design (the share card's one
+      // money-forward line).
+      const seoTitle = product.seoTitle?.trim() || null;
+      const seoDescription = product.seoDescription?.trim() || null;
+      const cardTitle = seoTitle ? clampSeoTitleForShell(seoTitle) : `${product.name} — SubNation`;
+      // R120-B3 (A7-F9 + A7-F17): assemble the description inside display
+      // limits (buildShareDescription) — the seo_description (when set)
+      // is the body, keeping the «— السعر X د.ل» suffix.
+      const desc = buildShareDescription(seoDescription ?? product.description, lookup.displayPrice);
       const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<title>${esc(product.name)} — SubNation</title>
+<title>${esc(cardTitle)}</title>
 <meta property="og:type" content="product">
 <meta property="og:site_name" content="SubNation">
-<meta property="og:title" content="${esc(product.name)} — SubNation">
+<meta property="og:title" content="${esc(cardTitle)}">
 <meta property="og:description" content="${esc(desc)}">
 ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 <meta property="og:url" content="${esc(canonical)}">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${esc(product.name)} — SubNation">
+<meta name="twitter:title" content="${esc(cardTitle)}">
 <meta name="twitter:description" content="${esc(desc)}">
 </head>
 <body>متجرك الرقمي الأول في ليبيا — <a href="${esc(canonical)}">${esc(product.name)}</a></body>
@@ -1698,6 +1718,19 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
   app.use(async (req, res, next) => {
     if ((req.method !== "GET" && req.method !== "HEAD") || req.path.startsWith("/api")) {
       next();
+      return;
+    }
+
+    // R128 (B2-F2): hashed /assets/* misses must 404, never soft-200 the
+    // SPA shell. express.static only answers files it FINDS — a missing
+    // /assets/index-abc123.js fell through both static mounts to this
+    // fallback and got 200 + text/html index.html (live probe 2026-10-10:
+    // /assets/missing → 200 HTML). Real asset URLs are content-hashed
+    // build artifacts: any /assets/* path that misses the mount is, by
+    // construction, a stale link or a scanner probe — the honest answer
+    // is 404 (plain text; no HTML body to mislead, no shell to cache).
+    if (req.path === "/assets" || req.path.startsWith("/assets/")) {
+      res.status(404).type("text").send("Not Found");
       return;
     }
 

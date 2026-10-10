@@ -7,34 +7,31 @@ import { signUserToken } from "../../lib/jwt";
 import { walletRouter } from "../wallet";
 
 /**
- * R123 (E1, test battery) — the outbound Telegram APPROVAL CARD on
- * POST /api/wallet/topups (routes/wallet.ts, the `initialStatus ===
- * "pending"` fire-and-forget block).
+ * R123 (E1, test battery) + R128 (B8-D2, folded) — the outbound
+ * Telegram operator card on POST /api/wallet/topups (routes/wallet.ts).
  *
- * The card is the operator's money checkpoint: it carries the ROUNDED
- * stored amount (AUD103-2-F6 display-vs-storage parity — approving
- * 25.555 credits 25.56) and the inline keyboard whose callback_data
- * the /api/webhook/telegram money path keys on (topup_app:<id> /
- * topup_rej:<id> — R121). The INBOUND half (webhook approve/reject) is
- * pinned by telegram-webhook-topup-money-path.test.ts; this suite pins
- * the OUTBOUND half, which had zero coverage:
+ * R128 (B8-D2): the card is now notifyNewTopup itself — ONE card per
+ * PENDING topup, carrying the ✅/❌ inline keyboard (the wallet route's
+ * bespoke second card, with raw enums + a bespoke fetch bypassing the
+ * telegram.ts metrics/retry pipeline, was deleted). The card is the
+ * operator's money checkpoint: ROUNDED stored amount (AUD103-2-F6
+ * display-vs-storage parity — approving 25.555 credits 25.56, shown as
+ * the formatLyd grouped canon), mapped network names (PAYMENT_NETWORK_
+ * LABELS — never raw enums), the canon «رمز التحويل» reference, and
+ * the keyboard whose callback_data the /api/webhook/telegram money
+ * path keys on (topup_app:<id> / topup_rej:<id> — R121). The INBOUND
+ * half is pinned by telegram-webhook-topup-money-path.test.ts.
  *
- *   1. a pending submission dispatches EXACTLY ONE approval card —
- *      parse_mode HTML, rounded stored amount, exact callback buttons;
+ *   1. a pending submission dispatches EXACTLY ONE sendMessage — the
+ *      folded card WITH the approve/reject keyboard;
  *   2. metacharacters in user-controlled fields are HTML-escaped
- *      (SEC-92-09 — a raw <b> in a lypay sender field used to break the
- *      whole sendMessage and silently drop the keyboard);
+ *      (SEC-92-09 — a raw <b> in a user field used to break the whole
+ *      sendMessage and silently drop the keyboard);
  *   3. auto-rejected submissions (serial-abuser heuristic) send NO
- *      card — a rejected request must never reach the approve buttons.
- *
- * Harness: fetch-splitter idiom from telegram-webhook-topup-money-path
- * .test.ts — http://127.0.0.1 goes to the real server; every
- * https://api.telegram.org call is captured and answered with
- * Telegram's success envelope. With TELEGRAM_BOT_TOKEN +
- * TELEGRAM_CHAT_ID both set, the telegram.ts business notifications
- * (notifyNewTopup) also dispatch — they are keyboard-less and are
- * filtered out; THE card is identified by its topup_app/topup_rej
- * inline keyboard.
+ *      card at all — a rejected request must never reach the approve
+ *      buttons (R128: was “a keyboard-less notifyNewTopup still fires”;
+ *      the folded card's «⏳ بانتظار الموافقة» + buttons would be false
+ *      information for a row that is already rejected).
  */
 
 function buildApp(): Express {
@@ -154,8 +151,8 @@ beforeEach(async () => {
   botApiCalls.length = 0;
 });
 
-describe("R123 (E1): the Telegram approval card on POST /api/wallet/topups", () => {
-  it("a pending submission dispatches EXACTLY ONE card: HTML mode, ROUNDED stored amount, exact approve/reject callbacks", async () => {
+describe("R123 (E1) + R128 (B8-D2): the folded Telegram operator card on POST /api/wallet/topups", () => {
+  it("a pending submission dispatches EXACTLY ONE card: HTML mode, ROUNDED stored amount, mapped network, canon reference, exact approve/reject callbacks", async () => {
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
     const { url, close } = await listen(buildApp());
@@ -174,17 +171,26 @@ describe("R123 (E1): the Telegram approval card on POST /api/wallet/topups", () 
         expect(approvalCards()).toHaveLength(1);
       });
 
+      // ONE sendMessage TOTAL (B8-D2: the bespoke approval card AND the
+      // business notification used to fire as two separate messages).
+      expect(sendMessageBodies()).toHaveLength(1);
       const card = approvalCards()[0]!;
-      // One card, one card only — a duplicate would mean two keyboards
-      // (two approvable buttons) for one transfer.
-      expect(approvalCards()).toHaveLength(1);
       expect(card.chat_id).toBe(CHAT_ID);
       expect(card.parse_mode).toBe("HTML");
-      // AUD103-2-F6: the operator sees the STORED amount (25.56) — the
-      // value approval will actually credit — never the raw 25.555.
-      expect(String(card.text)).toContain("25.56 د.ل");
-      expect(String(card.text)).not.toContain("25.555");
-      expect(String(card.text)).toContain(`طلب شحن جديد #${topupId}`);
+      const text = String(card.text);
+      // AUD103-2-F6: the operator sees the STORED amount (25.56) via the
+      // formatLyd display canon — never the raw 25.555.
+      expect(text).toContain("المبلغ: <b>25.56 د.ل</b>");
+      expect(text).not.toContain("25.555");
+      // A8 F1 / B8-D2: the human network name, never the raw enum.
+      expect(text).toContain("الشبكة: مدار");
+      expect(text).not.toContain("madar");
+      expect(text).not.toContain("mobile_transfer");
+      // B8 unification win #4: «رمز التحويل» — not «المرجع».
+      expect(text).toContain("رمز التحويل: <code>TRX-CARD-1</code>");
+      expect(text).not.toContain("المرجع");
+      expect(text).toContain(`معرّف الطلب: <code>#${topupId}</code>`);
+      expect(text).toContain("⏳ بانتظار الموافقة");
       // The webhook money path keys on these exact callback_data values.
       expect(card.reply_markup).toEqual({
         inline_keyboard: [
@@ -204,10 +210,10 @@ describe("R123 (E1): the Telegram approval card on POST /api/wallet/topups", () 
     const token = signUserToken({ userId: user.id });
     const { url, close } = await listen(buildApp());
     try {
-      // lypay: sender_phone is NOT normalized to digits (only length-
-      // bounded, B2-F2), and the receipt reference is free-form — both
-      // ride the card. A raw <b>/& used to break Telegram's parser and
-      // silently drop the whole approve/reject keyboard.
+      // lypay: the receipt reference is free-form and rides the card
+      // (R128: the folded card's one user-controlled field — the SEC-92-09
+      // class stays covered). A raw <b>/& used to break Telegram's parser
+      // and silently drop the whole approve/reject keyboard.
       const res = await postTopup(url, token, {
         amount: 20,
         payment_method: "lypay",
@@ -221,19 +227,17 @@ describe("R123 (E1): the Telegram approval card on POST /api/wallet/topups", () 
         expect(approvalCards()).toHaveLength(1);
       });
       const text = String(approvalCards()[0]!.text);
-      // Escaped forms present…
-      expect(text).toContain("&lt;b&gt;");
-      expect(text).toContain("&amp;");
-      // …raw metacharacters from the user fields absent (the only <…>
-      // in the text are the card's own markup tags).
-      expect(text).not.toContain("<b>&x");
+      // The escaped reference rides the card…
+      expect(text).toContain("رمز التحويل: <code>TRX-&lt;&amp;&gt;</code>");
+      // …and its raw metacharacters never do (the only <…> in the text
+      // are the card's own markup tags).
       expect(text).not.toContain("TRX-<&>");
     } finally {
       close();
     }
   });
 
-  it("an auto-rejected submission (serial-abuser heuristic) sends NO card", async () => {
+  it("an auto-rejected submission (serial-abuser heuristic) sends NO card at all (R128 B8-D2)", async () => {
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
     // 3 prior rejections arm the auto-reject heuristic (rejectedCount >= 3)
@@ -252,13 +256,13 @@ describe("R123 (E1): the Telegram approval card on POST /api/wallet/topups", () 
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({ status: "rejected" });
 
-      // The keyboard-less business notification (notifyNewTopup) still
-      // fires — wait for it as proof the post-insert pipeline ran past
-      // the card block, then assert no card was ever dispatched.
-      await vi.waitFor(() => {
-        expect(sendMessageBodies().length).toBeGreaterThanOrEqual(1);
-      });
-      expect(approvalCards()).toHaveLength(0);
+      // R128 (B8-D2): the folded card says «⏳ بانتظار الموافقة» and
+      // carries approve/reject buttons — for a row the heuristic ALREADY
+      // rejected, that would be false information (and a dead button).
+      // The row is honestly rejected with zero Telegram traffic; the
+      // admin queue remains the operator surface for it.
+      await new Promise((r) => setTimeout(r, 150));
+      expect(sendMessageBodies()).toHaveLength(0);
 
       // And the row is honestly rejected (no operator decision needed).
       const [row] = await db

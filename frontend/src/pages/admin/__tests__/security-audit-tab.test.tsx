@@ -138,6 +138,55 @@ describe("AdminSecurityDashboard — «إجراءات المسؤولين» tab (
     }
   });
 
+  it("the @username actor cell is bidi-isolated dir=ltr + truncated (R128 B3-F4)", async () => {
+    // A username carrying RLO/LPO bidi controls renders with reordered
+    // segments under the inherited RTL direction — visually swapping
+    // WHO approved WHAT in the accountability artifact. The HTML dir
+    // attribute implies unicode-bidi: isolate (same idiom as the
+    // metadata/action/target/ip cells around it).
+    renderPage();
+    await openAuditTab();
+
+    const actor = await screen.findByText("@ops_manager");
+    expect(actor).toHaveAttribute("dir", "ltr");
+    expect(actor.className).toContain("truncate");
+  });
+
+  it("the no-username actor fallback branch inherits the page's RTL direction (B3-F4 companion)", async () => {
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.startsWith("/api/admin/audit-logs")) {
+        return Promise.resolve(
+          resLike({
+            body: auditBody(
+              [
+                makeAuditLog({
+                  id: 12,
+                  actorId: null,
+                  actorUsername: null,
+                  action: "topup.approve",
+                }),
+              ],
+              1,
+              false,
+            ),
+          }),
+        );
+      }
+      return Promise.resolve(resLike({ body: STATS }));
+    });
+
+    renderPage();
+    await openAuditTab();
+
+    // The actor-type label («مسؤول») renders via the same div — with NO
+    // dir override (the local Arabic label reads correctly in the
+    // page's RTL base).
+    const label = await screen.findByText("مسؤول");
+    expect(label.className).toContain("truncate");
+    expect(label).not.toHaveAttribute("dir");
+  });
+
   it("a telegram-webhook row (actorId null) names the actor via the metadata line (B11-F1)", async () => {
     fetchMock.mockImplementation(async (input: unknown) => {
       const url = String(input);
@@ -292,14 +341,26 @@ describe("AdminSecurityDashboard — audit tab filters", () => {
     await screen.findByText("لا توجد إجراءات مسجّلة");
 
     // Action text — the 300 ms debounce (orders.tsx idiom).
-    await act(async () => {
-      fireEvent.change(screen.getByLabelText("الإجراء:"), {
-        target: { value: "topup.approve" },
+    // R128-IMP-4 (B5-4): the debounce used to be waited out on a REAL
+    // 350 ms sleep — the b0a9267 fake-timer idiom, SCOPED to the
+    // window: the clock is faked BEFORE the change (the debounce's
+    // setTimeout must land on the fake clock), advanced past the
+    // debounce + the refetch it triggers, microtasks drained, then
+    // real timers return for the waitFor below.
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText("الإجراء:"), {
+          target: { value: "topup.approve" },
+        });
+        vi.advanceTimersByTime(350);
       });
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+      await act(async () => {
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
     await waitFor(() =>
       expect(requests.some((r) => r.includes("action=topup.approve"))).toBe(true),
     );

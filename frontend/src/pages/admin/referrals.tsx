@@ -67,13 +67,15 @@ const STATUS_FILTERS = [
 ];
 
 const MEDAL_COLORS = [
-  // R126-L5 (A3 item-10): the gold medal rides the --status-warning
-  // ink+tint pair — yellow-400 text fails the light theme (1.43:1 on
-  // the /10 tint, A3's figure); the token is AA both themes (index.css
-  // F3-06: 6.04:1 on white / 5.09:1 on the /12 tint light).
-  "text-status-warning bg-status-warning/10 border-status-warning/20",
-  "text-slate-400  bg-slate-400/10  border-slate-400/20",
-  "text-amber-600  bg-amber-600/10  border-amber-600/20",
+  // R128 (A1-D10/F3): the medal trio rides the NEW theme-aware --tier-*
+  // inks. Gold was already the --status-warning pair (R126-L5 —
+  // yellow-400 text failed the light theme 1.43:1); silver (slate-400)
+  // and bronze (amber-600) measured 2.56:1 / 3.19:1 in light — the
+  // tier tokens are AA in both themes by construction (tier-gold =
+  // var(--status-warning), so gold is visually unchanged).
+  "text-tier-gold bg-tier-gold/10 border-tier-gold/20",
+  "text-tier-silver bg-tier-silver/10 border-tier-silver/20",
+  "text-tier-bronze bg-tier-bronze/10 border-tier-bronze/20",
 ];
 
 /** R125-I3 (A2-5): the backend list route hardcodes LIMIT 200 with NO
@@ -149,8 +151,8 @@ const ReferralRowItem = React.memo(function ReferralRowItem({
     >
       {/* Referrer */}
       <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-lg bg-blue-400/10 border border-blue-400/15 flex items-center justify-center shrink-0">
-          <Phone className="w-2.5 h-2.5 text-blue-400" />
+        <div className="w-6 h-6 rounded-lg bg-status-info/10 border border-status-info/15 flex items-center justify-center shrink-0">
+          <Phone className="w-2.5 h-2.5 text-status-info" />
         </div>
         <span className="font-mono text-sm font-bold truncate">{row.referrer_phone}</span>
       </div>
@@ -168,7 +170,7 @@ const ReferralRowItem = React.memo(function ReferralRowItem({
       {/* Status */}
       <div>
         {credited ? (
-          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-status-success/10 text-status-success border border-status-success/20">
             <CheckCircle className="w-2.5 h-2.5" /> ناجحة
           </span>
         ) : (
@@ -185,7 +187,7 @@ const ReferralRowItem = React.memo(function ReferralRowItem({
       <div className="text-xs text-muted-foreground">
         <div>{formatRelativeTime(row.created_at)}</div>
         {credited && row.credited_at && (
-          <div className="text-emerald-400/70 text-3xs mt-0.5">
+          <div className="text-status-success/70 text-3xs mt-0.5">
             قُيِّد: {formatRelativeTime(row.credited_at)}
           </div>
         )}
@@ -375,7 +377,7 @@ export default function AdminReferralsPage() {
               <Gift className="w-4.5 h-4.5 text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">برنامج الإحالة</h1>
+              <h1 className="text-xl font-bold">برنامج الإحالة</h1>
               <p className="text-xs text-muted-foreground">إدارة ومتابعة إحالات المستخدمين</p>
             </div>
           </div>
@@ -399,15 +401,15 @@ export default function AdminReferralsPage() {
               label="إجمالي الإحالات"
               value={stats?.total ?? "—"}
               icon={Users}
-              color="text-blue-400"
-              bg="bg-blue-400/10 border-blue-400/15"
+              color="text-status-info"
+              bg="bg-status-info/10 border-status-info/15"
             />
             <StatCard
               label="ناجحة (مكتسبة)"
               value={stats?.credited ?? "—"}
               icon={CheckCircle}
-              color="text-emerald-400"
-              bg="bg-emerald-400/10 border-emerald-400/15"
+              color="text-status-success"
+              bg="bg-status-success/10 border-status-success/15"
             />
             <StatCard
               label="قيد الانتظار"
@@ -432,7 +434,7 @@ export default function AdminReferralsPage() {
         {topReferrers.length > 0 && (
           <div className="bg-card border border-border/60 rounded-2xl p-4 float-in stagger-5">
             <div className="flex items-center gap-2 mb-3">
-              <Trophy className="w-3.5 h-3.5 text-yellow-400" />
+              <Trophy className="w-3.5 h-3.5 text-tier-gold" />
               <h2 className="font-bold text-sm">أكثر المستخدمين إحالةً</h2>
             </div>
             <div className="space-y-2">
@@ -448,7 +450,7 @@ export default function AdminReferralsPage() {
                   </div>
                   <span className="font-mono text-sm font-bold flex-1 truncate">{r.phone}</span>
                   <div className="flex items-center gap-3 text-xs shrink-0">
-                    <span className="text-emerald-400 font-bold">{r.credited_count} ناجحة</span>
+                    <span className="text-status-success font-bold">{r.credited_count} ناجحة</span>
                     <span className="text-muted-foreground">{r.total_count} إجمالي</span>
                     {/* R125-I3 (A2-7): the derived «{credited_count * 50}
                         نقطة» column is GONE — it hardcoded the

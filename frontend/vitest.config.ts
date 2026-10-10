@@ -44,14 +44,21 @@ export default defineConfig({
     // jsdom — give them a generous default but cap so a hung test
     // doesn't hang CI indefinitely.
     testTimeout: 10_000,
-    include: ["src/**/*.test.{ts,tsx}"],
+    // R128-IMP-4 (B5-5 / §4.1): *.spec.{ts,tsx} joins the include — the old
+    // test-only glob left a spec-named file under src/ TYPECHECKED (the
+    // tsconfig gate covers src/**/*) but NEVER EXECUTED: silently green
+    // by absence. Backend vitest has no custom include (its default
+    // catches both); the frontend now matches with an explicit widened
+    // glob. Verified 0 *.spec.* files exist under src/ today — the
+    // widening is a latent-hole closure, not a suite-shape change.
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
       exclude: [
         "node_modules/",
         "dist/",
-        "**/*.test.{ts,tsx}",
+        "**/*.{test,spec}.{ts,tsx}",
         "**/*.config.ts",
         "src/test/**",
         "src/main.tsx",

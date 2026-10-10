@@ -28,7 +28,7 @@
  * sends no bytes at all — exactly the R123 zero-bytes contract).
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -121,6 +121,34 @@ function renderPage() {
   );
 }
 
+/**
+ * R128-IMP-4 (B5-4): deterministic negative-window settle — the
+ * b0a9267 fake-timer idiom (referrals-search-race /
+ * topups-queue-search), SCOPED to the window: fake the clock, drain
+ * microtasks (any pending observer/effect chain runs until its
+ * macrotask lands on the FAKE clock), advance the original real-sleep
+ * margin (anything the window was meant to catch fires
+ * deterministically — a loaded 2-CPU runner can no longer stretch the
+ * window into a false green), drain again, restore real timers. The
+ * waitFor/findBy phases before stay on real timers.
+ */
+async function settleWindow(ms: number) {
+  vi.useFakeTimers();
+  try {
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe("AdminDashboardPage — the chart payload is finance-scoped at the FETCH level (R123 E3 item 5)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -170,7 +198,8 @@ describe("AdminDashboardPage — the chart payload is finance-scoped at the FETC
       expect(screen.getByText("المخزون المتاح")).toBeInTheDocument();
     });
     // …then give the gated fetch a beat to (not) fire.
-    await new Promise((r) => setTimeout(r, 600));
+    // R128-IMP-4 (B5-4): real 600ms sleep → deterministic settleWindow.
+    await settleWindow(600);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/chart-data"))).toBe(
       false,
     );
@@ -211,7 +240,8 @@ describe("AdminDashboardPage — the chart payload is finance-scoped at the FETC
       expect(screen.getByText("آخر الطلبات")).toBeInTheDocument();
     });
     // …then give both gated fetches a beat to (not) fire.
-    await new Promise((r) => setTimeout(r, 600));
+    // R128-IMP-4 (B5-4): real 600ms sleep → deterministic settleWindow.
+    await settleWindow(600);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/stats"))).toBe(false);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/api/admin/chart-data"))).toBe(
       false,

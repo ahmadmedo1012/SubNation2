@@ -39,7 +39,13 @@ import {
   Menu,
   Check,
   History,
+  Search,
+  FileText,
+  Package,
+  Settings,
+  Wrench,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // R123 (E3 item 1): the copilot's six raw fetches ride the session-aware
 // adminFetch wrapper. NOTE the SSE site (ask): adminFetch returns the
@@ -338,6 +344,57 @@ const SUPER_SUGGESTIONS = [
   "زد مخزون سبوتيفاي بـ 10",
   "أرشف المنتج رقم 7",
 ];
+
+// ────────────────────────────────────────────────────────────────────
+// R128-A6 (P4-4): the tool-trace progress lines were emoji-as-icon
+// residue (🔍📋📦📜✏️⚙️🔧 labels + ✓/✗ status glyphs — progressFor
+// builds plain strings, and the render printed them verbatim in the
+// mono feed). The string TRANSPORT stays untouched (SSE handler,
+// appendProgress/replaceLastProgress, persisted conversations, and
+// their tests all key off strings); the RENDER layer now swaps the
+// leading glyph for the lucide vocabulary — AT reads the Arabic label
+// only, the icon carries the tool/status semantics.
+// ────────────────────────────────────────────────────────────────────
+const PROGRESS_TOOL_ICONS: Record<string, LucideIcon> = {
+  "🔍": Search, // resolve_product / search_products
+  "📋": FileText, // get_product
+  "📦": Package, // list_low_stock / update_stock
+  "📜": History, // summarize_recent_changes
+  "✏️": Pencil, // update_product
+  "⚙️": Settings, // admin_request
+  "🔧": Wrench, // unknown-tool fallback
+};
+
+function ProgressTraceLine({ line }: { line: string }) {
+  const lineClasses = "text-2xs text-muted-foreground font-mono leading-5 flex items-center gap-1";
+  if (line.startsWith("✓ ")) {
+    return (
+      <div className={lineClasses}>
+        <Check className="w-3 h-3 shrink-0 text-status-success" aria-hidden />
+        <span>{line.slice(2)}</span>
+      </div>
+    );
+  }
+  if (line.startsWith("✗ ")) {
+    return (
+      <div className={lineClasses}>
+        <X className="w-3 h-3 shrink-0 text-destructive" aria-hidden />
+        <span>{line.slice(2)}</span>
+      </div>
+    );
+  }
+  const emoji = Object.keys(PROGRESS_TOOL_ICONS).find((glyph) => line.startsWith(glyph));
+  if (emoji) {
+    const Icon = PROGRESS_TOOL_ICONS[emoji];
+    return (
+      <div className={lineClasses}>
+        <Icon className="w-3 h-3 shrink-0" aria-hidden />
+        <span>{line.slice(emoji.length).trimStart()}</span>
+      </div>
+    );
+  }
+  return <div className="text-2xs text-muted-foreground font-mono leading-5">{line}</div>;
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // Component
@@ -1227,9 +1284,7 @@ function TurnView({
       {turn.loading && (
         <div className="space-y-1 pr-1">
           {(turn.progress ?? []).map((line, i) => (
-            <div key={i} className="text-2xs text-muted-foreground font-mono leading-5">
-              {line}
-            </div>
+            <ProgressTraceLine key={i} line={line} />
           ))}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -1511,10 +1566,13 @@ function PreviewCard({
             <button
               onClick={onDoubleConfirm}
               disabled={!cooldownDone}
-              /* 94-C2 (A2 colors): was bg-amber-500/90 + text-amber-50 ≈
-                 1.9:1 (AA fail) on the money-critical second confirm —
-                 now the primary-token treatment the StatusBadge primary
-                 variant uses (AA-safe on both themes). */
+              /* 94-C2 (A2 colors): was a raw amber-500/90 surface +
+                 amber-50 ink ≈ 1.9:1 (AA fail) on the money-critical
+                 second confirm — now the primary-token treatment the
+                 StatusBadge primary variant uses (AA-safe on both
+                 themes). (Class names paraphrased so the R128
+                 admin-palette negative guard can keep scanning this
+                 file for literal raw-hue utilities.) */
               className="flex-1 px-3 py-2 rounded-xl bg-primary/10 border border-primary/40 text-primary-text text-xs font-bold hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {/* R127-L7 (B14-4): the countdown rendered a bare number

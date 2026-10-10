@@ -22,6 +22,8 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
+// R128 (B3-F2): the shared guarded CSV escaper (was the local csvCell).
+import { csvCell } from "@/lib/csv";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import {
@@ -154,13 +156,14 @@ function describeSaveError(err: unknown): string {
  * `"1,234.50 د.ل"`) whose embedded ASCII comma used to ride a bare
  * `r.join(",")` — any wallet balance / lifetime spend ≥ 1,000 LYD
  * split its cell in two and shifted every field after it for that
- * row. Every cell (headers included) is now wrapped in double quotes
- * with embedded quotes doubled, so commas, د.ل and quotes all stay
- * cell-local. Exported for the users-csv-export unit test.
+ * row.
+ *
+ * R128 (B3-F2): the escaper moved to lib/csv.ts as the ONE shared
+ * `csvCell` (security.tsx's audit/auth exports carried a quote-only
+ * twin) and gained the formula-injection guard — a leading
+ * =/+/-/@/tab/CR gets the OWASP apostrophe prefix. Pinned by
+ * users-csv-export.test.tsx + lib/__tests__/csv.test.ts.
  */
-export function csvCell(value: string | number): string {
-  return `"${String(value).replace(/"/g, '""')}"`;
-}
 
 /**
  * Compact pill row showing which auth providers are linked to a given
@@ -894,7 +897,12 @@ export default function AdminUsersPage() {
             <div className="flex flex-wrap gap-6">
               <div>
                 <div className="text-3xs font-bold text-muted-foreground mb-2">مستوى الولاء</div>
-                <div className="flex gap-1 flex-wrap">
+                {/* R128 (A3-F1): the tier chips converge on the
+                    segmented-raised idiom (orders/topups/tickets/products
+                    chip bars) — the bordered primary-tint was the 4th
+                    filter-chip shape in the console. The value-neutral
+                    active state is the raised card chip, not a tint. */}
+                <div className="flex gap-1 flex-wrap bg-secondary/40 border border-border/60 rounded-2xl p-1">
                   {TIER_FILTERS.map((t) => (
                     <button
                       key={t.value}
@@ -907,10 +915,10 @@ export default function AdminUsersPage() {
                          visual — aria-pressed exposes the toggle state
                          (the orders.tsx/topups.tsx chip-bar idiom). */
                       aria-pressed={tierFilter === t.value}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                         tierFilter === t.value
-                          ? "bg-primary/10 border-primary/30 text-primary-text font-bold"
-                          : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                          ? "bg-card shadow-sm text-foreground font-bold"
+                          : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       {t.label}
@@ -926,7 +934,7 @@ export default function AdminUsersPage() {
                       data). Server-side sort is a documented follow-up. */}
                   الترتيب (ضمن المعروض)
                 </div>
-                <div className="flex gap-1 flex-wrap">
+                <div className="flex gap-1 flex-wrap bg-secondary/40 border border-border/60 rounded-2xl p-1">
                   {SORT_OPTIONS.map((s) => (
                     <button
                       key={s.value}
@@ -938,10 +946,10 @@ export default function AdminUsersPage() {
                       /* R124-C2 (A6 F10): same toggle-state exposure as
                          the tier chips (single-select radio behavior). */
                       aria-pressed={sortBy === s.value}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                         sortBy === s.value
-                          ? "bg-primary/10 border-primary/30 text-primary-text font-bold"
-                          : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                          ? "bg-card shadow-sm text-foreground font-bold"
+                          : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       {s.label}
@@ -988,33 +996,33 @@ export default function AdminUsersPage() {
                 label: "المستخدمون المعروضون",
                 value: formatCount(users.length, USER_COUNT_FORMS),
                 icon: Users,
-                color: "text-blue-400",
-                bg: "bg-blue-400/10",
-                border: "border-blue-400/15",
+                color: "text-status-info",
+                bg: "bg-status-info/10",
+                border: "border-status-info/15",
               },
               {
                 label: "أرصدة المعروضين",
                 value: formatCurrency(totalWallet),
                 icon: Wallet,
-                color: "text-cyan-400",
-                bg: "bg-cyan-400/10",
-                border: "border-cyan-400/15",
+                color: "text-status-info",
+                bg: "bg-status-info/10",
+                border: "border-status-info/15",
               },
               {
                 label: "إنفاق المعروضين",
                 value: formatCurrency(totalSpend),
                 icon: Star,
-                color: "text-emerald-400",
-                bg: "bg-emerald-400/10",
-                border: "border-emerald-400/15",
+                color: "text-status-success",
+                bg: "bg-status-success/10",
+                border: "border-status-success/15",
               },
               {
                 label: "متوسط الإنفاق",
                 value: formatCurrency(users.length > 0 ? totalSpend / users.length : 0),
                 icon: Star,
-                color: "text-purple-400",
-                bg: "bg-purple-400/10",
-                border: "border-purple-400/15",
+                color: "text-status-purple",
+                bg: "bg-status-purple/10",
+                border: "border-status-purple/15",
               },
             ].map((stat) => (
               <div
@@ -1118,7 +1126,7 @@ export default function AdminUsersPage() {
                   </span>
                   <span>
                     الإنفاق:{" "}
-                    <strong className="text-emerald-400">
+                    <strong className="text-status-success">
                       {formatCurrency(editingUser.lifetime_spend)}
                     </strong>
                   </span>
@@ -1137,7 +1145,7 @@ export default function AdminUsersPage() {
                       letting a users-only operator fill the form and hit
                       the finance 403 at save time. */}
                   {!canEditMoney && (
-                    <p className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2">
+                    <p className="text-xs text-status-warning bg-status-warning/10 border border-status-warning/25 rounded-xl px-3 py-2">
                       تعديل المحفظة والنقاط يتطلب صلاحية المالية — الحقول للعرض فقط
                     </p>
                   )}

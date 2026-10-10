@@ -183,9 +183,9 @@ const RISK_STATE_LABEL: Record<RiskState, string> = {
 // text — the tone classes below carry the color, riskExplanation()
 // supplies the WHY.
 const RISK_STATE_TONE: Record<RiskState, string> = {
-  SAFE: "border-emerald-500/40 bg-emerald-500/10 text-emerald-500",
-  WATCH: "border-amber-500/40 bg-amber-500/10 text-amber-500",
-  THIN: "border-orange-500/40 bg-orange-500/10 text-orange-500",
+  SAFE: "border-status-success/40 bg-status-success/10 text-status-success",
+  WATCH: "border-status-warning/40 bg-status-warning/10 text-status-warning",
+  THIN: "border-status-low-stock/40 bg-status-low-stock/10 text-status-low-stock",
   LOSS: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
@@ -275,8 +275,8 @@ function MarginRow({
       : lyd < 0
         ? "text-destructive"
         : pct != null && pct < 5
-          ? "text-amber-500"
-          : "text-emerald-500";
+          ? "text-status-warning"
+          : "text-status-success";
   const Icon = lyd == null ? Info : lyd < 0 ? TrendingDown : TrendingUp;
   return (
     <div className="flex items-center justify-between py-2.5 px-3 bg-muted/20 border border-border/40 rounded-lg">
@@ -642,7 +642,7 @@ export default function AdminPricingPage() {
             <Calculator className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="font-bold text-lg">التسعير</h1>
+            <h1 className="font-bold text-xl">التسعير</h1>
             <p className="text-xs text-muted-foreground">
               إعدادات القاعدة العامة + حاسبة أرباح للقراءة فقط تحاكي نظام الطلبات الفعلي.
             </p>
@@ -809,7 +809,7 @@ export default function AdminPricingPage() {
               variant="outline"
               onClick={() => void previewRecompute()}
               disabled={dryRunLoading || recomputeMutation.isPending}
-              className="text-amber-500 border-amber-500/25 hover:bg-amber-500/10 active:scale-[0.97] transition-transform"
+              className="text-status-warning border-status-warning/25 hover:bg-status-warning/10 active:scale-[0.97] transition-transform"
             >
               {dryRunLoading ? (
                 <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
@@ -844,11 +844,11 @@ export default function AdminPricingPage() {
             POST /recompute?dry_run=true — the operator finally sees the
             bulk mutation's impact before approving it (A5 P1-1). */}
         {dryRun && (
-          <div className="bg-card border border-amber-500/30 rounded-2xl p-5 space-y-4">
+          <div className="bg-card border border-status-warning/30 rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
-                  <Eye className="w-4 h-4 text-amber-500" />
+                <div className="w-9 h-9 rounded-xl bg-status-warning/10 border border-status-warning/20 flex items-center justify-center shrink-0">
+                  <Eye className="w-4 h-4 text-status-warning" />
                 </div>
                 <div className="min-w-0">
                   <h2 className="font-bold text-sm">معاينة إعادة الاحتساب</h2>
@@ -871,13 +871,13 @@ export default function AdminPricingPage() {
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-muted/20 border border-border/40 rounded-xl text-center">
-                    <div className="font-bold text-lg tabular-nums text-amber-500">
+                    <div className="font-bold text-lg tabular-nums text-status-warning">
                       {dryRun.variants_drifted}
                     </div>
                     <div className="text-3xs text-muted-foreground">باقة سينحرف سعرها</div>
                   </div>
                   <div className="p-3 bg-muted/20 border border-border/40 rounded-xl text-center">
-                    <div className="font-bold text-lg tabular-nums text-amber-500">
+                    <div className="font-bold text-lg tabular-nums text-status-warning">
                       {dryRun.products_affected}
                     </div>
                     <div className="text-3xs text-muted-foreground">منتجًا يتأثر</div>
@@ -912,7 +912,7 @@ export default function AdminPricingPage() {
                           </td>
                           <td
                             className={`px-3 py-2 tabular-nums font-bold ${
-                              s.delta >= 0 ? "text-emerald-500" : "text-destructive"
+                              s.delta >= 0 ? "text-status-success" : "text-destructive"
                             }`}
                             dir="ltr"
                           >
@@ -1018,7 +1018,7 @@ export default function AdminPricingPage() {
                   })}
                 </select>
                 {selectedVariants.length === 0 && (
-                  <p className="text-3xs text-amber-500 mt-1">
+                  <p className="text-3xs text-status-warning mt-1">
                     لا باقات لهذا المنتج — اختر منتجًا آخر أو استخدم السعر المخصّص.
                   </p>
                 )}
@@ -1198,13 +1198,13 @@ export default function AdminPricingPage() {
                     </span>
                   </div>
                   {result.flash_sale && (
-                    <div className="flex justify-between py-1 text-amber-500">
+                    <div className="flex justify-between py-1 text-status-warning">
                       <span>↳ تخفيضات الموقع ({result.flash_sale.discount_percent}%)</span>
                       <span className="tabular-nums">{fmt(result.pricing.base_price)} د.ل</span>
                     </div>
                   )}
                   {result.coupon && result.coupon.valid && (
-                    <div className="flex justify-between py-1 text-violet-500">
+                    <div className="flex justify-between py-1 text-status-purple">
                       <span>
                         ↳ كوبون {result.coupon.code} (
                         {result.coupon.type === "percentage"
@@ -1271,7 +1271,7 @@ export default function AdminPricingPage() {
                     one. */}
                 <div className="border-t border-border/40 pt-3">
                   <div className="flex items-center gap-1.5 mb-2">
-                    <TrendingDown className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <TrendingDown className="w-3.5 h-3.5 text-status-warning shrink-0" />
                     <h3 className="text-xs font-bold">
                       أسوأ حالة — أعمق خصم مسموح ({result.worst_case.combined_discount_pct}%)
                     </h3>
@@ -1392,10 +1392,10 @@ export default function AdminPricingPage() {
                         w.severity === "loss"
                           ? "border-destructive/40 bg-destructive/10 text-destructive"
                           : w.severity === "low_margin"
-                            ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                            ? "border-status-warning/40 bg-status-warning/10 text-status-warning"
                             : w.severity === "cap"
-                              ? "border-violet-500/40 bg-violet-500/10 text-violet-400"
-                              : "border-blue-500/40 bg-blue-500/10 text-blue-400";
+                              ? "border-status-purple/40 bg-status-purple/10 text-status-purple"
+                              : "border-status-info/40 bg-status-info/10 text-status-info";
                       return (
                         <div
                           key={i}

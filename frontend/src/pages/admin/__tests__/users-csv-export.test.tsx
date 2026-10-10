@@ -21,7 +21,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { csvCell } from "@/pages/admin/users";
+// R128 (B3-F2): csvCell moved to lib/csv.ts (the security exports rode a
+// quote-only twin) and gained the formula-injection guard — pinned in
+// lib/__tests__/csv.test.ts; this file keeps the users-export quoting
+// regressions.
+import { csvCell } from "@/lib/csv";
 import { formatCurrency } from "@/lib/utils";
 
 describe("csvCell — RFC-4180 quoting for the users export (A2-3)", () => {

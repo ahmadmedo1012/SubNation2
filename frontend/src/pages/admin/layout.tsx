@@ -172,7 +172,18 @@ function NavItem({
           visual-only (bg/border); the storefront MobileNav/Navbar already
           expose it (A5 #3), and this is the longest-prefix `active` the
           layout already computes. */}
-      <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined}>
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        /* R128 (A6 P3-1): collapsed = icon-only with NO accessible
+           name — a screen-reader admin heard "link, link, link…" down
+           the rail. The aria-label (present only when the visible
+           <span> is hidden, so it never fights the text) + title
+           restore the expanded label verbatim. */
+        aria-label={collapsed ? item.label : undefined}
+        title={collapsed ? item.label : undefined}
+      >
         <div
           className={`
             relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold
@@ -201,7 +212,13 @@ function NavItem({
             </span>
           ) : null}
           {collapsed && badge ? (
-            <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
+            /* R128 (A1-D3/F1): the solid raw-yellow corner dot (yellow
+               surface + black ink) was off-token on both axes and
+               un-derivable in light theme (black on the light warning
+               ≈ 2:1). The EXPANDED sibling pill above already ships the
+               AA warning ink-pair — the collapsed dot adopts it (one
+               vocabulary, both themes). */
+            <span className="absolute -top-0.5 -left-0.5 w-3.5 h-3.5 bg-status-warning/15 text-status-warning border border-status-warning/30 text-3xs font-bold rounded-full flex items-center justify-center">
               {badge > 9 ? "9+" : badge}
             </span>
           ) : null}
@@ -1141,7 +1158,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center relative shadow-sm shadow-primary/30">
             <Shield className="w-3.5 h-3.5 text-white" />
             {totalBadges > 0 && (
-              <span className="absolute -top-1 -left-1 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
+              /* R128 (A1-D3): same yellow-400 corner dot as the NavItem
+                 collapsed badge — migrated to the sibling AA ink-pair. */
+              <span className="absolute -top-1 -left-1 w-3.5 h-3.5 bg-status-warning/15 text-status-warning border border-status-warning/30 text-3xs font-bold rounded-full flex items-center justify-center">
                 {totalBadges > 9 ? "9+" : totalBadges}
               </span>
             )}
@@ -1223,6 +1242,10 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         )}
         <button
           onClick={adminLogout}
+          /* R128 (A6 P3-1): icon-only when collapsed — carry the expanded
+             label «خروج» (same treatment as the NavItem links). */
+          aria-label={collapsed ? "خروج" : undefined}
+          title={collapsed ? "خروج" : undefined}
           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-150 press-spring ${collapsed ? "justify-center" : ""}`}
         >
           <LogOut className="w-4 h-4 shrink-0" />
@@ -1298,7 +1321,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               {!mobileOpen && totalBadges > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-yellow-400 text-black text-3xs font-bold rounded-full flex items-center justify-center">
+                /* R128 (A1-D3): same yellow-400 corner dot family —
+                   migrated to the AA warning ink-pair. */
+                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-status-warning/15 text-status-warning border border-status-warning/30 text-3xs font-bold rounded-full flex items-center justify-center">
                   {totalBadges > 9 ? "9+" : totalBadges}
                 </span>
               )}
@@ -1357,7 +1382,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
               ) : lastUpdated ? (
                 <span
                   aria-hidden="true"
-                  className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"
+                  className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse inline-block"
                 />
               ) : (
                 <span

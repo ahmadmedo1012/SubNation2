@@ -261,6 +261,9 @@ describe("copilot error envelopes — byte-identical after the createErrorRespon
   it("PATCH /copilot/settings without admins/settings scope → 403 FORBIDDEN", async () => {
     // A support-scoped admin: authenticated, under-scoped — the string
     // literal "FORBIDDEN" is now the ErrorCode.FORBIDDEN member.
+    // R128 (B14-13 / B1 item 4): the actionable code-map wording — was
+    // bare «غير مصرح», which under the server-message-priority rule
+    // outranked the map's form.
     const token = await seedAdmin(["support"]);
     const { url, close } = await listen();
     try {
@@ -270,7 +273,9 @@ describe("copilot error envelopes — byte-identical after the createErrorRespon
         body: JSON.stringify({ phase1_enabled: true }),
       });
       expect(res.status).toBe(403);
-      expect(res.text).toBe('{"error":"غير مصرح","code":"FORBIDDEN"}');
+      expect(res.text).toBe(
+        '{"error":"لا تملك صلاحية الوصول إلى هذه الصفحة","code":"FORBIDDEN"}',
+      );
     } finally {
       close();
     }

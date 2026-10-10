@@ -18,7 +18,12 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
-import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
+import {
+  STATUS_TONE,
+  StatusBadge,
+  UNKNOWN_STATUS_TONE,
+  type StatusBadgeVariant,
+} from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
@@ -65,31 +70,44 @@ function isSessionExpiredError(err: unknown): boolean {
   return (err as { status?: unknown } | null | undefined)?.status === 401;
 }
 
+/* R128 (A1-D2/F1): both hand-rolled pills were raw-palette twins of
+ * the StatusBadge recipes (purple-400 on its tint = 2.34:1 in the light
+ * admin theme — the round's AA hole). xs size = the exact
+ * text-3xs/px-1.5/icon-2.5 scale these hand-rolled; dark theme is
+ * visually near-identical (the tokens' dark values sit within a hair of
+ * purple-400/blue-400). */
 function MethodBadge({ method }: { method: string }) {
   if (method === "lypay")
     return (
-      <span className="inline-flex items-center gap-1 text-3xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded-full font-bold">
-        <Building2 className="w-2.5 h-2.5" /> LyPay
-      </span>
+      <StatusBadge variant="purple" size="xs" icon={Building2}>
+        LyPay
+      </StatusBadge>
     );
   return (
-    <span className="inline-flex items-center gap-1 text-3xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded-full font-bold">
-      <Smartphone className="w-2.5 h-2.5" /> تحويل رصيد
-    </span>
+    <StatusBadge variant="info" size="xs" icon={Smartphone}>
+      تحويل رصيد
+    </StatusBadge>
   );
 }
 
+/* R128 (A1-D7/F1): the payment-network pills rode raw green/blue.
+ * The endgame is a --net-libyana/--net-madar brand pair; until those
+ * exist, the status tokens carry the same hue identity (libyana stays
+ * green via success, madar stays blue via info) — the exact recipe the
+ * storefront wallet's network chips already use for ink+border
+ * (wallet.tsx: text-status-success / text-status-info). Both-theme AA
+ * replaces the 1.9–2.5:1 light-theme raw pairs. */
 function NetworkBadge({ net }: { net?: string | null }) {
   if (!net) return null;
-  const map: Record<string, { label: string; cls: string }> = {
-    libyana: { label: "ليبيانا", cls: "text-green-400 bg-green-500/10 border-green-500/20" },
-    madar: { label: "مدار", cls: "text-blue-400  bg-blue-500/10  border-blue-500/20" },
+  const map: Record<string, { label: string; variant: StatusBadgeVariant }> = {
+    libyana: { label: "ليبيانا", variant: "success" },
+    madar: { label: "مدار", variant: "info" },
   };
-  const d = map[net] ?? { label: net, cls: "text-muted-foreground bg-muted border-border" };
+  const d = map[net] ?? { label: net, variant: "neutral" as const };
   return (
-    <span className={`text-3xs px-1.5 py-0.5 rounded-full border font-bold ${d.cls}`}>
+    <StatusBadge variant={d.variant} size="xs">
       {d.label}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -188,12 +206,12 @@ const TopupCard = React.memo(function TopupCard({
     <div
       className={`float-in stagger-${Math.min(idx + 1, 8)} bg-card rounded-2xl border overflow-hidden transition-all hover:shadow-md hover:shadow-black/10 ${
         t.status === "pending"
-          ? "border-yellow-400/20 shadow-sm shadow-yellow-400/4"
+          ? "border-status-warning/20 shadow-sm shadow-status-warning/4"
           : "border-border/60"
       }`}
     >
       {t.status === "pending" && (
-        <div className="h-0.5 bg-gradient-to-l from-yellow-400/50 via-yellow-400/25 to-transparent" />
+        <div className="h-0.5 bg-gradient-to-l from-status-warning/50 via-status-warning/25 to-transparent" />
       )}
 
       <div className="p-4">
@@ -300,11 +318,14 @@ const TopupCard = React.memo(function TopupCard({
             <div className="flex gap-2">
               <Button
                 size="sm"
-                /* R125-I2 (A6-B5): white on emerald-600 is 3.77:1 —
-                 * under the 4.5:1 text floor (bold 14px is NOT large
-                 * text). emerald-700 (#047857) = 5.48:1 in both themes
-                 * (the audit's computed fix). Surface-only change. */
-                className="flex-1 h-9 bg-emerald-700 hover:bg-emerald-600 text-white font-bold shadow-sm shadow-emerald-700/20 active:scale-[0.97] transition-transform"
+                /* R125-I2 (A6-B5): white on emerald-600 measured 3.77:1
+                 * — under the 4.5:1 floor (bold 14px is NOT large text);
+                 * the emerald-700 hand-roll was the stopgap. R128
+                 * (A1-F2): --status-success-surface (152 65% 30% dark /
+                 * 152 60% 28% light) = 5.05:1 with white in BOTH themes
+                 * — the token replaces the raw pair. hover rides the
+                 * Button family's /90 idiom. */
+                className="flex-1 h-9 bg-status-success-surface hover:bg-status-success-surface/90 text-white font-bold shadow-sm shadow-status-success-surface/20 active:scale-[0.97] transition-transform"
                 onClick={() => onApprove(t.id)}
                 disabled={isProcessing}
               >
@@ -314,7 +335,7 @@ const TopupCard = React.memo(function TopupCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-9 border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold active:scale-[0.97] transition-transform px-5"
+                className="h-9 border-status-error/30 text-status-error hover:bg-status-error/10 font-bold active:scale-[0.97] transition-transform px-5"
                 onClick={() => onReject(t)}
                 disabled={isProcessing}
               >
@@ -426,7 +447,7 @@ function RejectModal({
             id="topups-f1-28266"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="مثال: المرجع غير صحيح، المبلغ غير مطابق..."
+            placeholder="مثال: رمز التحويل غير صحيح، المبلغ غير مطابق..."
             className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-destructive resize-none"
             dir="rtl"
             autoFocus
@@ -513,7 +534,7 @@ function BulkConfirmModal({
           <Button
             className={`flex-1 h-9 active:scale-[0.97] shadow-sm ${
               action === "approve"
-                ? "bg-emerald-700 hover:bg-emerald-600 text-white shadow-emerald-700/20"
+                ? "bg-status-success-surface hover:bg-status-success-surface/90 text-white shadow-status-success-surface/20"
                 : "bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-destructive/20"
             }`}
             onClick={() => onConfirm(note)}
@@ -897,7 +918,7 @@ export default function AdminTopupsPage() {
       if (!t) return;
       const ok = await confirm({
         title: "تأكيد الموافقة",
-        description: `سيتم إضافة ${formatCurrency(t.amount)} إلى محفظة ${t.user_phone}${t.sender_phone ? ` · المُرسل: ${t.sender_phone}` : ""}${t.payment_reference ? ` · مرجع التحويل: ${t.payment_reference}` : ""}.`,
+        description: `سيتم إضافة ${formatCurrency(t.amount)} إلى محفظة ${t.user_phone}${t.sender_phone ? ` · المُرسل: ${t.sender_phone}` : ""}${t.payment_reference ? ` · رمز التحويل: ${t.payment_reference}` : ""}.`,
         confirmLabel: "موافقة",
       });
       if (!ok) return;
@@ -1286,14 +1307,13 @@ export default function AdminTopupsPage() {
                 <Button
                   size="sm"
                   /* R125-I2 (A6-B3): variant="outline" — the missing
-                   * variant left the DEFAULT primary gradient (hsl(348
-                   * 80% 48%)) under the emerald-400 label: 2.57:1, a
-                   * WCAG fail on the highest-stakes bulk money control.
-                   * Outline puts the emerald ink on the card surface
-                   * (9.68:1 dark / matches the reject sibling + the
-                   * approveAll button, which already had it). */
+                   * variant left the DEFAULT primary gradient under the
+                   * emerald label. Outline keeps the success ink on the
+                   * card surface (the reject sibling's recipe). R128
+                   * (A1-F1): the ink/border/hover triple moves to the
+                   * theme-aware --status-* tokens. */
                   variant="outline"
-                  className="h-9 gap-1.5 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/10 text-xs"
+                  className="h-9 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
                   onClick={() => setBulkAction("approve")}
                 >
                   <CheckCircle className="w-3.5 h-3.5" />
@@ -1302,7 +1322,7 @@ export default function AdminTopupsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-9 border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
+                  className="h-9 border-status-error/30 text-status-error hover:bg-status-error/10 text-xs"
                   onClick={() => setBulkAction("reject")}
                 >
                   <XCircle className="w-3.5 h-3.5 ml-1.5" />
@@ -1341,7 +1361,7 @@ export default function AdminTopupsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-9 gap-1.5 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/10 text-xs"
+                className="h-9 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
                 onClick={() => setBulkAction("approveAll")}
                 disabled={isApproveAllBusy}
               >

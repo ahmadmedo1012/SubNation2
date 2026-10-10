@@ -356,7 +356,7 @@ export default function AdminWhatsAppPage() {
               <Wifi className="w-4 h-4" />
               <span className="text-xs font-bold uppercase tracking-widest">WhatsApp OTP</span>
             </div>
-            <h2 className="text-2xl font-bold tracking-tight">إدارة جلسة واتساب</h2>
+            <h1 className="text-xl font-bold">إدارة جلسة واتساب</h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
               أنشئ جلسة الإرسال، شغّلها، ثم اربط رقم واتساب الخاص بالخدمة. لا تضع مفتاح API في
               المتصفح؛ الواجهة تمرّر الطلبات عبر الخادم بشكل محمي.
@@ -381,8 +381,8 @@ export default function AdminWhatsAppPage() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 flex gap-3 text-sm">
-          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+        <div className="rounded-2xl border border-status-warning/20 bg-status-warning/5 p-4 flex gap-3 text-sm">
+          <AlertTriangle className="w-5 h-5 text-status-warning shrink-0" />
           <p className="text-muted-foreground leading-6">
             رمز الاقتران يربط رقم واتساب الذي سيرسل أكواد الدخول. بعد الربط انتظر حتى تصبح الحالة
             «جاهزة». حذف الجلسة يمسح اعتمادها ويحتاج اقتراناً جديداً.

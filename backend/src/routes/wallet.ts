@@ -10,7 +10,6 @@ import {
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { pageParam } from "../lib/http";
-import { logger } from "../lib/logger";
 import { roundLydString } from "../lib/money";
 import { normalizeLibyanPhone } from "../lib/crypto";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
@@ -60,17 +59,6 @@ router.use((_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
 });
-
-/**
- * SEC-92-09 (round-92 audit): minimal HTML escape for Telegram's
- * parse_mode=HTML — same character set as telegram.ts's escapeHtml.
- * Escaping &, <, > prevents user-supplied topup fields (sender_phone,
- * payment_network) from breaking the message render or being interpreted
- * as markup.
- */
-function escapeTelegramHtml(value: string): string {
-  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
@@ -614,65 +602,6 @@ router.post(
     // to show the un-rounded value to the human checkpoint).
     const storedAmount = Number(topup.amount);
 
-    // ── Telegram approval request (fire-and-forget) ────────────────────────
-    // Operators approve/reject directly from the admin group via inline
-    // buttons; the webhook at /api/webhook/telegram executes the decision
-    // (allowlist-gated by TELEGRAM_ADMIN_IDS). Never blocks the user.
-    if ((initialStatus as string) === "pending") {
-      void (async () => {
-        try {
-          const botToken = (process.env.TELEGRAM_BOT_TOKEN ?? "").trim();
-          const chatId = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
-          if (!botToken || !chatId) return;
-          // SEC-92-09 (round-92 audit): this message previously used the
-          // legacy "Markdown" parse_mode with UNESCAPED user-controlled
-          // fields. sender_phone is only validated for mobile_transfer (a
-          // lypay submission can carry any string — now length-bounded,
-          // B2-F2), and payment_network is allowlisted (B2-F2) — one
-          // metacharacter (*, _, `, [) made Telegram's
-          // parser reject the whole sendMessage, silently dropping the
-          // approve/reject keyboard from the operator group. HTML mode +
-          // escaping (same pattern as telegram.ts's dispatch pipeline) makes
-          // the approval card render for ANY input the user submits.
-          const text =
-            `💰 <b>طلب شحن جديد #${topup.id}</b>\n` +
-            `• الهاتف: <code>${sender_phone ? escapeTelegramHtml(sender_phone) : "—"}</code>\n` +
-            `• المبلغ: <b>${storedAmount} د.ل</b>\n` +
-            `• الطريقة: ${escapeTelegramHtml(method)}` +
-            `${network ? ` (${escapeTelegramHtml(network)})` : ""}\n` +
-            // F-03 (round-93 A2): the receipt reference rides the approval card
-            // so the operator can compare it against the bank statement — the
-            // duplicate guards (exact + composite) are only actionable when
-            // the human in the loop can SEE the value they dedupe on.
-            (paymentReference
-              ? `• المرجع: <code>${escapeTelegramHtml(paymentReference)}</code>\n`
-              : "");
-          const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              text,
-              parse_mode: "HTML",
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    { text: "✅ موافقة", callback_data: `topup_app:${topup.id}` },
-                    { text: "❌ رفض", callback_data: `topup_rej:${topup.id}` },
-                  ],
-                ],
-              },
-            }),
-            signal: AbortSignal.timeout(10_000),
-          });
-          if (!res.ok)
-            logger.warn({ status: res.status }, "[wallet] telegram approval notify failed");
-        } catch (err) {
-          logger.warn({ err }, "[wallet] telegram approval notify threw");
-        }
-      })();
-    }
-
     // B6-03 (R116) hygiene: projected identity read — notifyNewTopup needs
     // phone and derivePrimaryProvider needs telegramId/firebaseUid (the
     // other identity fields ride the projection for future notify use; a
@@ -690,13 +619,23 @@ router.post(
       .from(usersTable)
       .where(eq(usersTable.id, userId))
       .limit(1);
-    if (currentUser)
+    // R128 (B8-D2): ONE operator card per PENDING topup — notifyNewTopup
+    // now carries the ✅/❌ approve/reject inline keyboard (canon labels,
+    // mapped network names, formatLyd amount, «رمز التحويل» — the field
+    // set this route's deleted bespoke approval card leaked raw enums
+    // through) and rides telegram.ts's shared dispatch pipeline
+    // (metrics + retry) instead of a bespoke fetch. An auto-rejected
+    // row (serial-abuser heuristic) is NOT awaiting approval and sends
+    // no card — its «⏳ بانتظار الموافقة» shape would be false
+    // information in a money-approval context.
+    if (currentUser && initialStatus === "pending")
       notifyNewTopup({
         phone: currentUser.phone,
         amount: storedAmount,
         network: method === "lypay" ? "LyPay" : (network ?? ""),
         topupId: topup.id,
         provider: derivePrimaryProvider(currentUser),
+        paymentReference,
       });
 
     // Risk pipeline (003-anomaly-detection) — emit topup_attempt. Never

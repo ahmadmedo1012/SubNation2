@@ -23,7 +23,7 @@
  * hoisted mutable scope state.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/pages/admin/layout";
@@ -133,9 +133,10 @@ describe("AdminLayout last-updated pill — reflects real query state (R122 A2-P
     await waitFor(() => {
       expect(visiblePillText("الآن").length).toBeGreaterThan(0);
     });
-    // Live = the emerald pulse (not the amber error dot, not the gray
-    // in-flight dot).
-    expect(pillDot(container)).toContain("bg-emerald-400");
+    // Live = the emerald-family pulse (not the amber error dot, not
+    // the gray in-flight dot). R128 (A1-D3/F1): the dot rides the
+    // theme-aware --status-success token now (bg-emerald-400 before).
+    expect(pillDot(container)).toContain("bg-status-success");
     expect(pillDot(container)).toContain("animate-pulse");
   });
 
@@ -196,11 +197,27 @@ describe("GlobalSearch — scope-honest sections (R122 A2-P2)", () => {
     fireEvent.click(trigger);
 
     const input = await screen.findByPlaceholderText("بحث في المستخدمين…");
-    fireEvent.change(input, { target: { value: "0912" } });
 
-    // The palette debounce is 220 ms real time — wait it out directly
-    // (the fetch mock records every call; no waitFor polling needed).
-    await new Promise((r) => setTimeout(r, 600));
+    // R128-IMP-4 (B5-4): the 220 ms palette debounce used to be waited
+    // out on a REAL 600 ms sleep — the b0a9267 fake-timer idiom
+    // (referrals-search-race / topups-queue-search), SCOPED to the
+    // window: the clock is faked BEFORE the change (the debounce's
+    // setTimeout must land on the fake clock), advanced past the
+    // debounce + any follow-on fetch/batch timers, microtasks drained,
+    // then real timers return. The fetch mock records every call; no
+    // waitFor polling needed for the assertions.
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.change(input, { target: { value: "0912" } });
+        vi.advanceTimersByTime(600);
+      });
+      await act(async () => {
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
     const allUrls = fetchMock.mock.calls.map((c) => String(c[0]));
     const searchUrls = allUrls.filter((u) => u.includes("?search="));
     // Only the users endpoint is ever asked…

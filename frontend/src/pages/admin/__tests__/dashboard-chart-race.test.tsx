@@ -39,7 +39,7 @@
  * the stale response can only land in the OLD key's cache.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -191,6 +191,34 @@ function renderPage() {
   );
 }
 
+/**
+ * R128-IMP-4 (B5-4): deterministic negative-window settle — the
+ * b0a9267 fake-timer idiom (referrals-search-race /
+ * topups-queue-search), SCOPED to the window: fake the clock, drain
+ * microtasks (the deferred fetch chain runs until React Query's
+ * notifyManager batch lands on the FAKE clock), advance the original
+ * real-sleep margin (any batch/effect the window was meant to catch
+ * fires deterministically — a loaded 2-CPU runner can no longer
+ * stretch the window into a false green), drain again, restore real
+ * timers. The waitFor/findBy phases before/after stay on real timers.
+ */
+async function settleWindow(ms: number) {
+  vi.useFakeTimers();
+  try {
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe("AdminDashboardPage — chart fetch race (A5-F1 / A1-3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -262,7 +290,9 @@ describe("AdminDashboardPage — chart fetch race (A5-F1 / A1-3)", () => {
     // OLD key's cache; the rendered 90d series + the 7d last-bucket
     // (5 → «مستخدمين جدد اليوم») never reach the display.
     d7.resolve(resLike({ body: series(7, 5) }));
-    await new Promise((r) => setTimeout(r, 150));
+    // R128-IMP-4 (B5-4): the old real `setTimeout(150)` settle window →
+    // deterministic fake-timer settle (settleWindow above).
+    await settleWindow(150);
     expect(screen.queryByText("5 مستخدمين جدد اليوم")).not.toBeInTheDocument();
     for (const c of screen.getAllByTestId("bar-chart")) {
       expect(Number(c.dataset.points)).toBeGreaterThan(7);
@@ -309,7 +339,8 @@ describe("AdminDashboardPage — chart fetch race (A5-F1 / A1-3)", () => {
     // 90d key only — the honest «لا توجد بيانات بعد» empty block
     // cannot render while the 90d request is still in flight).
     d7.reject(new DOMException("The user aborted a request.", "AbortError"));
-    await new Promise((r) => setTimeout(r, 150));
+    // R128-IMP-4 (B5-4): real 150ms sleep → deterministic settleWindow.
+    await settleWindow(150);
     expect(
       screen.queryByText("تعذّر تحميل بيانات الرسوم البيانية — تحقّق من الشبكة ثم أعد المحاولة"),
     ).not.toBeInTheDocument();
@@ -376,7 +407,10 @@ describe("AdminDashboardPage — handleRefresh single-fire (A1-4 / A10 pin 13)",
     // `invalidateQueries` pair fired two identical /admin/stats
     // requests per click (the R124-A6 F11 orders class).
     await waitFor(() => expect(statsFetches).toBe(2));
-    await new Promise((r) => setTimeout(r, 200));
+    // R128-IMP-4 (B5-4): real 200ms no-third-request window →
+    // deterministic settleWindow (the advance fires any refetch batch
+    // the window was meant to catch).
+    await settleWindow(200);
     expect(statsFetches).toBe(2);
 
     // R127-L1 (B1 §3.1): the chart single-fire pin — handleRefresh

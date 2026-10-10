@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 // state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
 import { useAuth } from "@/lib/auth";
+import { csvCell } from "@/lib/csv";
 import { getErrorMessage } from "@/lib/errors";
 // R126-L8b (A4 §C batch-C): both reads ride the generated client from
 // the batch-1 spec exposure — useGetAdminAuthStatsSummary (stats cards)
@@ -328,7 +329,14 @@ export function AdminSecurityDashboard() {
     // correctly. The action VALUE also localizes through actionLabel
     // (the same map the timeline + filter use — A2 P3-18), so the file
     // matches what the operator sees on screen.
-    const escapeCsvField = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    // R128 (B3-F2): both export arms ride the SHARED csvCell
+    // (lib/csv.ts) — RFC-4180 quoting PLUS the formula-injection guard
+    // (a leading =/+/-/@/tab/CR gets the OWASP apostrophe prefix).
+    // This tab's cells embed admin-controlled usernames and
+    // telegram-webhook metadata; the auth arm embeds user-controlled
+    // identifiers (phones legitimately start with +) — the exact
+    // incident-responder exfil chain B3 red-teamed. The previous local
+    // escape guarded quotes only.
 
     if (activeTab === "audit") {
       // R127-L5: the audit tab exports the LOADED page (the count line
@@ -356,8 +364,7 @@ export function AdminSecurityDashboard() {
         l.createdAt,
       ]);
       const csvContent =
-        "\uFEFF" +
-        [auditHeaders, ...auditRows].map((row) => row.map(escapeCsvField).join(",")).join("\n");
+        "\uFEFF" + [auditHeaders, ...auditRows].map((row) => row.map(csvCell).join(",")).join("\n");
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
@@ -391,7 +398,7 @@ export function AdminSecurityDashboard() {
     ]);
 
     const csvContent =
-      "\uFEFF" + [headers, ...rows].map((row) => row.map(escapeCsvField).join(",")).join("\n");
+      "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -421,7 +428,7 @@ export function AdminSecurityDashboard() {
             <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">
               <Shield className="w-5 h-5 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold">لوحة أمان المصادقة</h1>
+            <h1 className="text-xl font-bold">لوحة أمان المصادقة</h1>
           </div>
           <Button
             onClick={exportToCSV}
@@ -608,7 +615,24 @@ export function AdminSecurityDashboard() {
                         {auditLogs.map((log) => (
                           <tr key={log.id} className="border-b border-border/30 align-top">
                             <td className="py-2.5 px-3">
-                              <div className="font-semibold">
+                              {/* R128 (B3-F4): the @username attribution is
+                                  admin/webhook-controlled text that
+                                  rendered with inherited RTL direction —
+                                  a username carrying RLO/LRO bidi
+                                  controls visually reorders WHO approved
+                                  WHAT in the accountability artifact this
+                                  tab exists for. dir="ltr" implies
+                                  unicode-bidi: isolate (mirrors the
+                                  metadata/action/target/ip cells around
+                                  it); applied to the username branch only
+                                  — the fallback branches render local
+                                  Arabic labels. truncate + the metadata
+                                  line's max-w keep a long username from
+                                  blowing the column. */}
+                              <div
+                                dir={log.actorUsername ? "ltr" : undefined}
+                                className="font-semibold max-w-[240px] truncate"
+                              >
                                 {log.actorUsername
                                   ? `@${log.actorUsername}`
                                   : log.actorId !== null

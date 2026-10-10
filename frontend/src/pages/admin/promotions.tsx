@@ -309,7 +309,7 @@ export default function AdminPromotionsPage() {
               <Zap className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h1 className="font-bold text-lg">العروض السريعة</h1>
+              <h1 className="font-bold text-xl">العروض السريعة</h1>
               <p className="text-xs text-muted-foreground">
                 عرض واحد نشط في كل وقت — يطبَّق على المتجر بأكمله
               </p>
@@ -326,7 +326,7 @@ export default function AdminPromotionsPage() {
         </div>
 
         {hasActive && !showForm && (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs">
+          <div className="flex items-start gap-2.5 p-3 rounded-xl border border-status-warning/30 bg-status-warning/10 text-status-warning text-xs">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
             <span>
               يوجد عرض نشط حالياً. أوقف العرض الحالي قبل إنشاء عرض جديد — يُسمح بعرض واحد فقط في كل
@@ -428,7 +428,7 @@ export default function AdminPromotionsPage() {
                     </span>{" "}
                     (وفر {d}%).
                     {d >= 30 && (
-                      <span className="flex items-center gap-1 mt-1 text-amber-500">
+                      <span className="flex items-center gap-1 mt-1 text-status-warning">
                         {/* R125-I3 (A2-10c): the ⚠ text glyph is gone —
                             lucide icon, the R124 emoji convention. */}
                         <AlertTriangle className="w-3 h-3 shrink-0" />
@@ -512,7 +512,7 @@ export default function AdminPromotionsPage() {
                   key={s.id}
                   className={`bg-card border rounded-2xl p-4 ${
                     s.is_currently_active
-                      ? "border-emerald-500/30 ring-1 ring-emerald-500/15"
+                      ? "border-status-success/30 ring-1 ring-status-success/15"
                       : "border-border/55"
                   }`}
                 >
@@ -521,12 +521,12 @@ export default function AdminPromotionsPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-bold text-sm truncate">{s.title}</h3>
                         {s.is_currently_active && (
-                          <span className="text-3xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                          <span className="text-3xs font-bold bg-status-success/15 text-status-success border border-status-success/25 px-1.5 py-0.5 rounded-full flex items-center gap-1">
                             <CheckCircle className="w-2.5 h-2.5" /> نشط
                           </span>
                         )}
                         {expired && s.is_active && (
-                          <span className="text-3xs font-bold bg-amber-500/15 text-amber-500 border border-amber-500/25 px-1.5 py-0.5 rounded-full">
+                          <span className="text-3xs font-bold bg-status-warning/15 text-status-warning border border-status-warning/25 px-1.5 py-0.5 rounded-full">
                             منتهٍ — في انتظار التنظيف التلقائي
                           </span>
                         )}

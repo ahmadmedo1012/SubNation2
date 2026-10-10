@@ -379,7 +379,9 @@ const DesktopOrderRow = React.memo(function DesktopOrderRow({
               {order.coupon_code && (
                 <div>
                   <span className="text-muted-foreground">الكوبون: </span>
-                  <span className="font-mono font-bold text-emerald-400">{order.coupon_code}</span>
+                  <span className="font-mono font-bold text-status-success">
+                    {order.coupon_code}
+                  </span>
                   {(order.discount_amount ?? 0) > 0 && (
                     <span className="text-muted-foreground mr-1">
                       (خصم {formatCurrency(order.discount_amount ?? 0)})
@@ -1056,7 +1058,7 @@ export default function AdminOrdersPage() {
               {filtered.length !== allOrders.length && (
                 <>
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                  <span className="text-emerald-400 font-bold tabular-nums">
+                  <span className="text-status-success font-bold tabular-nums">
                     {formatCurrency(totalRevenue)}
                   </span>
                 </>
@@ -1149,12 +1151,12 @@ export default function AdminOrdersPage() {
                   </div>
 
                   {/* Total discounts */}
-                  <div className="bg-emerald-500/5 rounded-2xl p-3 border border-emerald-500/15">
-                    <div className="flex items-center gap-1.5 text-2xs text-emerald-400/80 mb-1.5">
+                  <div className="bg-status-success/5 rounded-2xl p-3 border border-status-success/15">
+                    <div className="flex items-center gap-1.5 text-2xs text-status-success/80 mb-1.5">
                       <BadgePercent className="w-3 h-3" />
                       إجمالي الخصومات
                     </div>
-                    <div className="font-bold text-base tabular-nums text-emerald-400">
+                    <div className="font-bold text-base tabular-nums text-status-success">
                       {formatCurrency(totalDiscounts)}
                     </div>
                     <div className="text-3xs text-muted-foreground mt-0.5">
@@ -1205,13 +1207,13 @@ export default function AdminOrdersPage() {
                             <span className="text-3xs font-bold text-muted-foreground w-4 shrink-0 text-center">
                               {i + 1}
                             </span>
-                            <span className="font-mono font-bold text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0 min-w-[80px] text-center">
+                            <span className="font-mono font-bold text-xs text-status-success bg-status-success/10 border border-status-success/20 px-2 py-0.5 rounded-md shrink-0 min-w-[80px] text-center">
                               {c.code}
                             </span>
                             <div className="flex-1 flex items-center gap-2 min-w-0">
                               <div className="flex-1 h-1.5 bg-muted/40 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-emerald-500/60 rounded-full transition-all duration-500"
+                                  className="h-full bg-status-success/60 rounded-full transition-all duration-500"
                                   style={{ width: `${barWidth}%` }}
                                 />
                               </div>
@@ -1219,7 +1221,7 @@ export default function AdminOrdersPage() {
                                 {c.uses}×
                               </span>
                             </div>
-                            <span className="text-xs font-bold text-emerald-400 tabular-nums shrink-0 hidden sm:block">
+                            <span className="text-xs font-bold text-status-success tabular-nums shrink-0 hidden sm:block">
                               -{formatCurrency(c.totalDiscount)}
                             </span>
                           </div>

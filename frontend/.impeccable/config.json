@@ -1,0 +1,3 @@
+{
+  "ignoreFiles": ["src/**/__tests__/**"]
+}

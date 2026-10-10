@@ -166,15 +166,22 @@ interface MetricsSnapshot {
 }
 
 // ── Visual helpers (reuse existing design tokens) ──────────────────────────
+// R128 (A1-D1/F1): this page carried the admin console's largest raw-palette
+// map set (81 lines) — every -400 ink on its /10 tint measured 1.47-2.51:1
+// in the LIGHT admin theme. All hue classes now ride the theme-aware
+// --status-* tokens (emerald→success, red→error, blue/cyan→info,
+// orange→low-stock, yellow/amber→warning, violet/purple→status-purple);
+// alphas were preserved byte-for-byte, so the DEFAULT dark theme is visually
+// near-identical (the tokens' dark values sit within a hair of the raw -400s).
 
 const STATUS_META: Record<
   CheckStatus,
   { color: string; bg: string; border: string; label: string; icon: typeof CheckCircle2 }
 > = {
   ok: {
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10",
-    border: "border-emerald-400/20",
+    color: "text-status-success",
+    bg: "bg-status-success/10",
+    border: "border-status-success/20",
     label: "متاح",
     icon: CheckCircle2,
   },
@@ -192,9 +199,9 @@ const STATUS_META: Record<
     icon: AlertTriangle,
   },
   failing: {
-    color: "text-red-400",
-    bg: "bg-red-400/10",
-    border: "border-red-400/20",
+    color: "text-status-error",
+    bg: "bg-status-error/10",
+    border: "border-status-error/20",
     label: "خلل",
     icon: XCircle,
   },
@@ -722,10 +729,10 @@ export default function AdminSystemPage(): ReactElement | null {
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
                   aggregate === "ok"
-                    ? "bg-emerald-400 animate-pulse"
+                    ? "bg-status-success animate-pulse"
                     : aggregate === "degraded"
-                      ? "bg-yellow-400"
-                      : "bg-red-400 animate-pulse"
+                      ? "bg-status-warning"
+                      : "bg-status-error animate-pulse"
                 }`}
               />
               <span className={`text-xs font-bold ${aggregateMeta.color}`}>
@@ -995,8 +1002,8 @@ export default function AdminSystemPage(): ReactElement | null {
                   ))}
                 </div>
               ) : diagQ.isError || !diag ? (
-                <div className="bg-card border border-yellow-400/20 rounded-2xl p-4 flex items-center gap-3">
-                  <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0" />
+                <div className="bg-card border border-status-warning/20 rounded-2xl p-4 flex items-center gap-3">
+                  <AlertCircle className="w-4 h-4 text-status-warning shrink-0" />
                   <span className="text-xs text-muted-foreground">
                     تعذّر جلب تشخيص وقت التشغيل (يتطلب صلاحيات إدارية).
                   </span>
@@ -1009,18 +1016,18 @@ export default function AdminSystemPage(): ReactElement | null {
                       value={formatUptime(diag.runtime.uptimeSec)}
                       sub={`بيئة: ${diag.runtime.env}`}
                       icon={Clock}
-                      color="text-emerald-400"
-                      bg="bg-emerald-400/10"
-                      border="border-emerald-400/20"
+                      color="text-status-success"
+                      bg="bg-status-success/10"
+                      border="border-status-success/20"
                     />
                     <MetricCard
                       label="الذاكرة (RSS)"
                       value={`${diag.memory.rssMb}MB`}
                       sub={`heap: ${diag.memory.heapUsedMb}/${diag.memory.heapTotalMb}MB`}
                       icon={MemoryStick}
-                      color="text-blue-400"
-                      bg="bg-blue-400/10"
-                      border="border-blue-400/20"
+                      color="text-status-info"
+                      bg="bg-status-info/10"
+                      border="border-status-info/20"
                       spark={memorySeries}
                       sparkColor={chart.info}
                     />
@@ -1035,18 +1042,18 @@ export default function AdminSystemPage(): ReactElement | null {
                       icon={Cpu}
                       color={
                         diag.eventLoop && diag.eventLoop.p99Ms > 100
-                          ? "text-red-400"
-                          : "text-cyan-400"
+                          ? "text-status-error"
+                          : "text-status-info"
                       }
                       bg={
                         diag.eventLoop && diag.eventLoop.p99Ms > 100
-                          ? "bg-red-400/10"
-                          : "bg-cyan-400/10"
+                          ? "bg-status-error/10"
+                          : "bg-status-info/10"
                       }
                       border={
                         diag.eventLoop && diag.eventLoop.p99Ms > 100
-                          ? "border-red-400/20"
-                          : "border-cyan-400/20"
+                          ? "border-status-error/20"
+                          : "border-status-info/20"
                       }
                       spark={eventLoopSeries}
                       sparkColor={chart.info}
@@ -1056,9 +1063,9 @@ export default function AdminSystemPage(): ReactElement | null {
                       value={diag.runtime.version}
                       sub={`Node ${diag.node.version} · ${diag.runtime.service}`}
                       icon={Layers}
-                      color="text-orange-400"
-                      bg="bg-orange-400/10"
-                      border="border-orange-400/20"
+                      color="text-status-low-stock"
+                      bg="bg-status-low-stock/10"
+                      border="border-status-low-stock/20"
                     />
                   </div>
 
@@ -1077,7 +1084,7 @@ export default function AdminSystemPage(): ReactElement | null {
                             key={key}
                             className={`text-3xs px-2 py-1 rounded-lg border font-mono ${
                               enabled
-                                ? "bg-emerald-400/8 border-emerald-400/20 text-emerald-400"
+                                ? "bg-status-success/8 border-status-success/20 text-status-success"
                                 : "bg-muted/30 border-border/50 text-muted-foreground"
                             }`}
                           >
@@ -1099,9 +1106,9 @@ export default function AdminSystemPage(): ReactElement | null {
             {!metrics && metricsQ.isError && (
               <div
                 role="alert"
-                className="bg-card border border-yellow-400/20 rounded-2xl p-4 flex items-center gap-3 flex-wrap"
+                className="bg-card border border-status-warning/20 rounded-2xl p-4 flex items-center gap-3 flex-wrap"
               >
-                <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-status-warning shrink-0" />
                 <span className="text-xs text-muted-foreground flex-1 min-w-40">
                   تعذّر جلب مقاييس المراقبة — قد تكون الجلسة منتهية أو الخدمة غير متاحة.
                 </span>
@@ -1135,10 +1142,16 @@ export default function AdminSystemPage(): ReactElement | null {
                     value={`${(metrics.http.errorRate * 100).toFixed(2)}%`}
                     sub={`${formatNumber(metrics.http.requestsByStatusClass["5xx"] ?? 0)} خطأ`}
                     icon={AlertCircle}
-                    color={metrics.http.errorRate > 0.01 ? "text-red-400" : "text-emerald-400"}
-                    bg={metrics.http.errorRate > 0.01 ? "bg-red-400/10" : "bg-emerald-400/10"}
+                    color={
+                      metrics.http.errorRate > 0.01 ? "text-status-error" : "text-status-success"
+                    }
+                    bg={
+                      metrics.http.errorRate > 0.01 ? "bg-status-error/10" : "bg-status-success/10"
+                    }
                     border={
-                      metrics.http.errorRate > 0.01 ? "border-red-400/20" : "border-emerald-400/20"
+                      metrics.http.errorRate > 0.01
+                        ? "border-status-error/20"
+                        : "border-status-success/20"
                     }
                     spark={errRate}
                     sparkColor={chart.error}
@@ -1149,15 +1162,19 @@ export default function AdminSystemPage(): ReactElement | null {
                     sub={`p50: ${formatMs(metrics.http.latency.p50Ms)} · p99: ${formatMs(metrics.http.latency.p99Ms)}`}
                     icon={Clock}
                     color={
-                      (metrics.http.latency.p95Ms ?? 0) > 1000 ? "text-red-400" : "text-cyan-400"
+                      (metrics.http.latency.p95Ms ?? 0) > 1000
+                        ? "text-status-error"
+                        : "text-status-info"
                     }
                     bg={
-                      (metrics.http.latency.p95Ms ?? 0) > 1000 ? "bg-red-400/10" : "bg-cyan-400/10"
+                      (metrics.http.latency.p95Ms ?? 0) > 1000
+                        ? "bg-status-error/10"
+                        : "bg-status-info/10"
                     }
                     border={
                       (metrics.http.latency.p95Ms ?? 0) > 1000
-                        ? "border-red-400/20"
-                        : "border-cyan-400/20"
+                        ? "border-status-error/20"
+                        : "border-status-info/20"
                     }
                     spark={p95Series}
                     sparkColor={chart.info}
@@ -1167,9 +1184,9 @@ export default function AdminSystemPage(): ReactElement | null {
                     value={`${formatNumber(metrics.http.requestsByStatusClass["2xx"] ?? 0)} / ${formatNumber(metrics.http.requestsByStatusClass["4xx"] ?? 0)}`}
                     sub={`2xx ناجح · 4xx خطأ من العميل`}
                     icon={ShieldCheck}
-                    color="text-emerald-400"
-                    bg="bg-emerald-400/10"
-                    border="border-emerald-400/20"
+                    color="text-status-success"
+                    bg="bg-status-success/10"
+                    border="border-status-success/20"
                   />
                 </div>
 
@@ -1205,7 +1222,7 @@ export default function AdminSystemPage(): ReactElement | null {
                                  (yellow-400 fails the light theme at
                                  ~1.5:1). */
                               <span
-                                className={`text-3xs font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-red-400" : "text-status-warning"}`}
+                                className={`text-3xs font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-status-error" : "text-status-warning"}`}
                               >
                                 {errPct.toFixed(1)}% أخطاء
                               </span>
@@ -1232,9 +1249,9 @@ export default function AdminSystemPage(): ReactElement | null {
                         .reduce((a, [, v]) => a + v, 0),
                     )} نجاح`}
                     icon={ShieldCheck}
-                    color="text-emerald-400"
-                    bg="bg-emerald-400/10"
-                    border="border-emerald-400/20"
+                    color="text-status-success"
+                    bg="bg-status-success/10"
+                    border="border-status-success/20"
                   />
                   <MetricCard
                     label="معدل الفشل"
@@ -1244,11 +1261,15 @@ export default function AdminSystemPage(): ReactElement | null {
                     /* R126-L5 (A3 item-10): the failure-rate MetricCard's
                        healthy branch joins the warning sweep (yellow-400
                        fails the light theme at ~1.5:1). */
-                    color={metrics.auth.failureRate > 0.1 ? "text-red-400" : "text-status-warning"}
-                    bg={metrics.auth.failureRate > 0.1 ? "bg-red-400/10" : "bg-status-warning/10"}
+                    color={
+                      metrics.auth.failureRate > 0.1 ? "text-status-error" : "text-status-warning"
+                    }
+                    bg={
+                      metrics.auth.failureRate > 0.1 ? "bg-status-error/10" : "bg-status-warning/10"
+                    }
                     border={
                       metrics.auth.failureRate > 0.1
-                        ? "border-red-400/20"
+                        ? "border-status-error/20"
                         : "border-status-warning/20"
                     }
                     spark={authFailRate}
@@ -1259,9 +1280,9 @@ export default function AdminSystemPage(): ReactElement | null {
                     value={formatNumber(metrics.auth.outcomes["firebase:failure"] ?? 0)}
                     sub="جلسة Firebase / OTP"
                     icon={Zap}
-                    color="text-orange-400"
-                    bg="bg-orange-400/10"
-                    border="border-orange-400/20"
+                    color="text-status-low-stock"
+                    bg="bg-status-low-stock/10"
+                    border="border-status-low-stock/20"
                   />
                   <MetricCard
                     label="حالات قفل الحساب"
@@ -1272,9 +1293,9 @@ export default function AdminSystemPage(): ReactElement | null {
                     )}
                     sub="بسبب محاولات متكررة"
                     icon={ShieldCheck}
-                    color="text-red-400"
-                    bg="bg-red-400/10"
-                    border="border-red-400/20"
+                    color="text-status-error"
+                    bg="bg-status-error/10"
+                    border="border-status-error/20"
                   />
                 </div>
               </DetailsSection>
@@ -1293,9 +1314,13 @@ export default function AdminSystemPage(): ReactElement | null {
                         : "بدون تخفيضات"
                     }
                     icon={Wifi}
-                    color={metrics.redis.available ? "text-emerald-400" : "text-red-400"}
-                    bg={metrics.redis.available ? "bg-emerald-400/10" : "bg-red-400/10"}
-                    border={metrics.redis.available ? "border-emerald-400/20" : "border-red-400/20"}
+                    color={metrics.redis.available ? "text-status-success" : "text-status-error"}
+                    bg={metrics.redis.available ? "bg-status-success/10" : "bg-status-error/10"}
+                    border={
+                      metrics.redis.available
+                        ? "border-status-success/20"
+                        : "border-status-error/20"
+                    }
                   />
                   <MetricCard
                     label="إجمالي العمليات"
@@ -1317,18 +1342,18 @@ export default function AdminSystemPage(): ReactElement | null {
                     icon={Clock}
                     color={
                       (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                        ? "text-red-400"
-                        : "text-cyan-400"
+                        ? "text-status-error"
+                        : "text-status-info"
                     }
                     bg={
                       (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                        ? "bg-red-400/10"
-                        : "bg-cyan-400/10"
+                        ? "bg-status-error/10"
+                        : "bg-status-info/10"
                     }
                     border={
                       (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                        ? "border-red-400/20"
-                        : "border-cyan-400/20"
+                        ? "border-status-error/20"
+                        : "border-status-info/20"
                     }
                   />
                   <MetricCard
@@ -1345,18 +1370,18 @@ export default function AdminSystemPage(): ReactElement | null {
                     icon={AlertCircle}
                     color={
                       Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                        ? "text-red-400"
-                        : "text-emerald-400"
+                        ? "text-status-error"
+                        : "text-status-success"
                     }
                     bg={
                       Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                        ? "bg-red-400/10"
-                        : "bg-emerald-400/10"
+                        ? "bg-status-error/10"
+                        : "bg-status-success/10"
                     }
                     border={
                       Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                        ? "border-red-400/20"
-                        : "border-emerald-400/20"
+                        ? "border-status-error/20"
+                        : "border-status-success/20"
                     }
                   />
                 </div>
@@ -1370,7 +1395,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   {/* Socket.IO */}
                   <div className="bg-card border border-border/60 rounded-2xl p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <Wifi className="w-4 h-4 text-cyan-400" />
+                      <Wifi className="w-4 h-4 text-status-info" />
                       <h3 className="text-sm font-bold">Socket.IO</h3>
                       <span className="text-3xs text-muted-foreground mr-auto">واجهات لحظية</span>
                     </div>
@@ -1379,7 +1404,7 @@ export default function AdminSystemPage(): ReactElement | null {
                         <div className="text-3xs text-muted-foreground font-bold mb-1">
                           عملاء متّصلون
                         </div>
-                        <div className="font-bold text-2xl text-cyan-400 tabular-nums">
+                        <div className="font-bold text-2xl text-status-info tabular-nums">
                           {metrics.socket.connectedClients}
                         </div>
                       </div>
@@ -1399,7 +1424,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   {/* Background jobs */}
                   <div className="bg-card border border-border/60 rounded-2xl p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <TimerReset className="w-4 h-4 text-emerald-400" />
+                      <TimerReset className="w-4 h-4 text-status-success" />
                       <h3 className="text-sm font-bold">المهام الخلفية</h3>
                       <span className="text-3xs text-muted-foreground mr-auto">
                         cron · watchers · heartbeat
@@ -1424,7 +1449,7 @@ export default function AdminSystemPage(): ReactElement | null {
                               >
                                 <span
                                   className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                    isFailed ? "bg-red-400" : "bg-emerald-400"
+                                    isFailed ? "bg-status-error" : "bg-status-success"
                                   }`}
                                 />
                                 <span
@@ -1490,10 +1515,10 @@ export default function AdminSystemPage(): ReactElement | null {
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
                               tone === "ok"
-                                ? "bg-emerald-400"
+                                ? "bg-status-success"
                                 : tone === "degraded"
-                                  ? "bg-yellow-400"
-                                  : "bg-red-400"
+                                  ? "bg-status-warning"
+                                  : "bg-status-error"
                             }`}
                           />
                         </div>
@@ -1602,7 +1627,7 @@ export default function AdminSystemPage(): ReactElement | null {
               {recentAlerts.slice(0, 5).map((alert) => (
                 <Link key={alert.id} href="/admin/alerts">
                   <div className="flex items-start gap-3 px-4 py-3 hover:bg-muted/20 transition-colors cursor-pointer">
-                    <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0 mt-0.5" />
+                    <AlertTriangle className="w-3.5 h-3.5 text-status-warning shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-bold truncate">{alert.title}</div>
                       {alert.message && (
@@ -1634,8 +1659,8 @@ export default function AdminSystemPage(): ReactElement | null {
                     rel="noopener noreferrer"
                     className="bg-card border border-border/60 hover:border-border rounded-2xl p-4 flex items-center gap-3 transition-all card-spring"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-violet-400/10 border border-violet-400/20 flex items-center justify-center">
-                      <Server className="w-4 h-4 text-violet-400" />
+                    <div className="w-9 h-9 rounded-xl bg-status-purple/10 border border-status-purple/20 flex items-center justify-center">
+                      <Server className="w-4 h-4 text-status-purple" />
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Render</div>
@@ -1651,8 +1676,8 @@ export default function AdminSystemPage(): ReactElement | null {
                     rel="noopener noreferrer"
                     className="bg-card border border-border/60 hover:border-border rounded-2xl p-4 flex items-center gap-3 transition-all card-spring"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-purple-400/10 border border-purple-400/20 flex items-center justify-center">
-                      <AlertCircle className="w-4 h-4 text-purple-400" />
+                    <div className="w-9 h-9 rounded-xl bg-status-purple/10 border border-status-purple/20 flex items-center justify-center">
+                      <AlertCircle className="w-4 h-4 text-status-purple" />
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Sentry</div>
@@ -1668,8 +1693,8 @@ export default function AdminSystemPage(): ReactElement | null {
                     rel="noopener noreferrer"
                     className="bg-card border border-border/60 hover:border-border rounded-2xl p-4 flex items-center gap-3 transition-all card-spring"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-emerald-400/10 border border-emerald-400/20 flex items-center justify-center">
-                      <Database className="w-4 h-4 text-emerald-400" />
+                    <div className="w-9 h-9 rounded-xl bg-status-success/10 border border-status-success/20 flex items-center justify-center">
+                      <Database className="w-4 h-4 text-status-success" />
                     </div>
                     <div className="flex-1">
                       <div className="text-sm font-bold">Neon</div>

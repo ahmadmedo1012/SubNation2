@@ -79,16 +79,25 @@ const EMPTY_FORM = {
   is_active: true,
 };
 
+/* R128 (A1-D4/F1): the admin fallback tile rode raw palette hues that
+ * DIVERGE from the storefront's --cat-* tokens for the same category
+ * (software: sky vs the token's 217° blue; vpn: cyan vs 199°) — the
+ * one true semantic split between the two surfaces. Migrated to the
+ * canonical 9-hue family (the storefront chip recipe — a cat hue at
+ * 10% surface + the full cat hue ink — AA-tuned in both themes by the
+ * R124 sweep). NOTE: keep any literal class mention out of this
+ * comment — a `bg-cat-STAR-SLASH-10` string would close this block
+ * comment early. */
 const CATEGORY_INITIAL_COLOR: Record<string, string> = {
-  streaming: "bg-violet-500/20 text-violet-300",
-  music: "bg-emerald-500/20 text-emerald-300",
-  software: "bg-sky-500/20 text-sky-300",
-  vpn: "bg-cyan-500/20 text-cyan-300",
-  "ai-tools": "bg-fuchsia-500/20 text-fuchsia-300",
-  "seo-tools": "bg-orange-500/20 text-orange-300",
-  education: "bg-amber-500/20 text-amber-300",
-  gaming: "bg-blue-500/20 text-blue-300",
-  productivity: "bg-amber-500/20 text-amber-300",
+  streaming: "bg-cat-streaming/10 text-cat-streaming",
+  music: "bg-cat-music/10 text-cat-music",
+  software: "bg-cat-software/10 text-cat-software",
+  vpn: "bg-cat-vpn/10 text-cat-vpn",
+  "ai-tools": "bg-cat-ai-tools/10 text-cat-ai-tools",
+  "seo-tools": "bg-cat-seo-tools/10 text-cat-seo-tools",
+  education: "bg-cat-education/10 text-cat-education",
+  gaming: "bg-cat-gaming/10 text-cat-gaming",
+  productivity: "bg-cat-productivity/10 text-cat-productivity",
 };
 
 // Seven live categories first (mirror products.category in production);
@@ -225,7 +234,7 @@ function InlineStockEdit({
         onClick={save}
         disabled={saving}
         aria-label="حفظ المخزون"
-        className="h-9 min-w-9 px-2.5 rounded-lg text-xs font-bold text-emerald-400 hover:bg-emerald-400/10 transition-colors active:scale-95 disabled:opacity-50"
+        className="h-9 min-w-9 px-2.5 rounded-lg text-xs font-bold text-status-success hover:bg-status-success/10 transition-colors active:scale-95 disabled:opacity-50"
       >
         حفظ
       </button>
@@ -284,7 +293,7 @@ const ProductCard = React.memo(function ProductCard({
           : !product.is_active
             ? "opacity-55 border-border/60"
             : product.stock_count === 0
-              ? "border-orange-500/25"
+              ? "border-status-low-stock/25"
               : "border-border/60 hover:border-border"
       }`}
     >
@@ -366,7 +375,7 @@ const ProductCard = React.memo(function ProductCard({
                 return (
                   <span
                     title="لا باقات — اضغط «الباقات» لإضافة باقة"
-                    className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-500 border-amber-500/30"
+                    className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-status-warning/15 text-status-warning border-status-warning/30"
                   >
                     بلا باقات
                   </span>
@@ -397,8 +406,8 @@ const ProductCard = React.memo(function ProductCard({
                 margin < 0
                   ? "bg-destructive/15 text-destructive border-destructive/30"
                   : pct < 10
-                    ? "bg-amber-500/15 text-amber-500 border-amber-500/30"
-                    : "bg-emerald-500/15 text-emerald-500 border-emerald-500/30";
+                    ? "bg-status-warning/15 text-status-warning border-status-warning/30"
+                    : "bg-status-success/15 text-status-success border-status-success/30";
               return (
                 <span
                   /* 96-F7 (R96 A6 #11): 9px → 10px — a
@@ -424,7 +433,7 @@ const ProductCard = React.memo(function ProductCard({
               <button
                 onClick={() => onEditStock(product.id)}
                 className={`font-bold tabular-nums hover:underline decoration-dashed underline-offset-2 transition-colors ${
-                  product.stock_count === 0 ? "text-orange-400" : "text-emerald-400"
+                  product.stock_count === 0 ? "text-status-low-stock" : "text-status-success"
                 }`}
                 /* R115 (A9 P3-7): the inline edit is an absolute
                    SET, not +N — say so on the trigger too. */
@@ -1051,7 +1060,7 @@ export default function AdminProductsPage() {
                   <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
                   {/* 93-C7 / C-UX5 (A11 §1 «{n} نفد مخزونه»): the count
                       before the verb broke the Arabic construction. */}
-                  <span className="flex items-center gap-1 text-orange-400 font-bold">
+                  <span className="flex items-center gap-1 text-status-low-stock font-bold">
                     <AlertTriangle className="w-3 h-3" />
                     نفد مخزون {lowStockCount} منتج
                   </span>
@@ -1088,7 +1097,7 @@ export default function AdminProductsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs gap-1.5 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/10"
+                className="h-7 text-xs gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10"
                 onClick={() => bulkToggleActive(true)}
                 disabled={bulkProcessing}
               >
@@ -1202,8 +1211,9 @@ export default function AdminProductsPage() {
                 >
                   سعر التكلفة (د.ل)
                   {/* 96-F7 (R96 A6 #11): 9px → 10px — functional hint
-                      text, not decoration. */}
-                  <span className="text-3xs font-normal text-muted-foreground/70">
+                      text, not decoration. R128 (A4-F2): /70 → /85 —
+                      11px muted ink needs the AA-safe alpha pair. */}
+                  <span className="text-3xs font-normal text-muted-foreground/85">
                     اختياري — للإدارة فقط، لا يظهر للمستخدم
                   </span>
                 </Label>
@@ -1229,8 +1239,8 @@ export default function AdminProductsPage() {
                         margin < 0
                           ? "text-destructive"
                           : pct < 10
-                            ? "text-amber-500"
-                            : "text-emerald-500";
+                            ? "text-status-warning"
+                            : "text-status-success";
                       return (
                         <span className={tone}>
                           {/* 96-F7 (R96 A6 #18): formatCurrency — the

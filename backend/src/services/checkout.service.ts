@@ -10,6 +10,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { roundLyd } from "../lib/money";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../lib/pricing";
 import { generateOrderCode } from "../lib/crypto";
 // R102: isEncrypted/safeDecrypt moved WITH the claim block into
@@ -271,7 +272,10 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   if (!inventoryFastCheck) return { ok: false, reason: "OUT_OF_STOCK" };
 
   // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──
-  const newBalance = +(currentBalance - finalPrice).toFixed(2);
+  // B4-F5 (R128): roundLyd, not +toFixed(2) — identical on today's
+  // already-2dp operands (finalPrice arrives rounded from computePricing),
+  // hazard-proof for a future writer. See lib/money.ts.
+  const newBalance = roundLyd(currentBalance - finalPrice);
 
   // F8 (round-94 A4): coupon-maxed side effects are DEFERRED until after
   // the transaction commits (refund.service.ts:271 establishes the
@@ -700,7 +704,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         reason: "CONCURRENCY_ERROR",
         code: "PRODUCT_STALE",
         message:
-          "تغيّرت بيانات المنتج (السعر/الحالة) أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+          "تغيّرت بيانات المنتج (السعر/الحالة) أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي.",
       };
     }
     if (order.failure === "VARIANT_STALE") {
@@ -709,7 +713,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         ok: false,
         reason: "CONCURRENCY_ERROR",
         code: "VARIANT_STALE",
-        message: "تغيّر سعر الباقة المختارة أثناء إتمام الشراء. أعد المحاولة بالسعر الحالي.",
+        message: "تغيّر سعر الباقة المختارة أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي.",
       };
     }
     if (order.failure === "IDEMPOTENT_CLAIM_CONFLICT") {
