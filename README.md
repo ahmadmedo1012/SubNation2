@@ -157,12 +157,12 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (recounted at the R128 round close — the round added 8
-frontend + 1 backend test files; case counts from the R128 gate run;
-CI runs both unit suites on every code push): **frontend 176
-test files / 1,238 tests** · **backend 241 test files / 2,240 tests** (237
+Current suite (recounted at the R129 round close; case counts from the
+R129 gate run;
+CI runs both unit suites on every code push): **frontend 178
+test files / 1,248 tests** · **backend 241 test files / 2,240 tests** (237
 under `backend/src/**` + 4 under `backend/tests/`; full-suite runs green in
-the R128 gates) · guest-only e2e **40/40** against live production (20 spec
+the R129 gates) · guest-only e2e **40/40** against live production (20 spec
 flows × desktop + mobile-390 projects).
 
 > **Schema note:** schema changes flow exclusively through the idempotent
@@ -257,7 +257,11 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   gates, both unit suites, production build, a CVE gate on prod deps, and
   an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy jobs
   via the workflow's path filter). Round-by-round deployment + audit
-  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest deep rounds: **R128**
+  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest deep rounds: **R129**
+  (verification fleet over the R128 wave: adversarial review SHIP + a11y
+  contrast census + token integrity + security delta + test-truth; the
+  unwired stock-honest-cart P1 wired end-to-end, the red CI impeccable
+  gate repaired, 15 AA closes), **R128**
   (المظهر appearance round: 15 auditors — 7 visual dimensions — + 9
   implementation lanes; admin palette unification 227→0 raw hues, one
   coherent brand-asset suite, PWA leaks killed, cross-surface money/copy

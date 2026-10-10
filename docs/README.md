@@ -28,6 +28,23 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R129 (2026-10-11) — round record:** the verification fleet over
+> R128's own output — 5 read-only lanes (adversarial review of the five
+> commits · WCAG 2.2 AA contrast census of the palette migration ·
+> design-token integrity incl. a 65-entry DESIGN.md hex audit · security
+> delta over the 9 new surfaces · test-truth with 12/12 physical
+> mutation checks), reports in `docs/inspection-r129/`. Findings: 2 P1s
+> (the B-11 stock-honest-cart lib was unwired dead code — corroborated
+> by two lanes independently; the CI impeccable gate had exited 2 on
+> both post-R128 pushes) + 1 P2 + ~10 P3 + ~15 P4 — all P1/P2 and the
+> high-value tail closed in-round (3 commits): the cart feature wired
+> end-to-end (snapshot at add + re-quote refresh + honest per-line
+> verdicts + CTA gates), the CI gate repaired (verified EXIT 0),
+> `--primary-text` light 43% + 15 AA closes, DESIGN.md fully published
+> (light twins, error split), the missing /products + copilot-trace
+> pins, provider chips tokenized. Frontend suite 178 files / 1,248
+> tests green; backend untouched.
+>
 > **R128 (2026-10-10) — round record:** the appearance round
 > (**المظهر وكل ما يخصه**) — **15 read-only auditors**: 7 A-lanes on
 > visual dimensions (design tokens · storefront visual · admin visual ·

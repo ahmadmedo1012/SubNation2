@@ -7,6 +7,94 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R129 — verification fleet over the R128 wave: adversarial review (SHIP) + a11y contrast census + token integrity + security delta + test-truth — the unwired P1, the red CI gate, and 15 AA closes — 2026-10-11
+
+The strongest-round directive ("ادفع وادخل في الجولة الاقوى والاعمق
+والاشمل") applied to R128's own output: five read-only lanes over the
+124-file wave (reports in `docs/inspection-r129/`), then parent closes.
+Findings: **1 P1 ×2-corroborated · 1 P1 CI · 1 P2 · ~10 P3 · ~15 P4** —
+every P1/P2 and the high-value P3/P4 set closed in the same round, three
+commits (`7eb9088`, `fabc7bd`, `f9fa15c`).
+
+### The P1s
+- **The B-11 "stock-honest cart" was unwired dead code** (A1-F1 + B1-1,
+  independently corroborated): the lib + 12 tests shipped in R128 but NO
+  add-site passed `stockCount`, the re-quote was price-only, and
+  `lineStockNotice`/`cartHasBlockingStock` had zero production consumers —
+  while the round record claimed the UX. **Now wired end-to-end**: both
+  add-sites capture the catalog row's stock (the same number their badges
+  render), checkout's re-quote refreshes the snapshot (loop-safe,
+  value-inequality guarded), the cart renders the honest per-line verdicts
+  («متبقٍ N فقط» / «نفد المخزون», `role="status"`), and both CTAs block
+  proven-unchargeable lines with the reason on the control. Advisory-only
+  by design: unknown snapshots never block; the server's in-tx 409 stays
+  the money authority.
+- **CI was red on both post-R128 pushes** (A3-1): the impeccable
+  bounce-easing waiver rode its own line inside the multi-line transition —
+  `detect` exited 2. Fixed on the bezier's own line (verified EXIT 0 in
+  the CI geometry); the `.impeccable` config gained the detector-wrapper
+  shape (it was a no-op) + a ROOT config (discovery is cwd-based; CI runs
+  from the repo root). GitHub Actions confirms the failed step on
+  `76017f4` was exactly "UI anti-pattern source gate (impeccable)" —
+  every other job green.
+
+### A11y contrast census (A2 — the migration's edges nobody computed)
+- `--primary-text` light **46→43%**: the never-censused primary-chip
+  family clears AA in one nudge (4.13→4.60 on /15, 4.49→5.01 on /10 —
+  12+ sites; 44% computes 4.44, NOT enough) · dark `--status-error`
+  **62→64%** (4.41→4.63 on /15) · login banner sublines drop `/75`
+  (3.65 D / 3.45 L → 5.53/4.64) · topups bulk-reject →
+  `--destructive-surface` (4.00→4.52 D) · orders discount label drops
+  `/80` (3.70→5.49 L) · coupon progress fill `/80` + dashboard legend
+  solid + bars `fillOpacity` 0.8 (2.46→3.9 L vs track) · products letter
+  avatar full-opacity (dark had regressed below AA on 5/7 hues) · the
+  WifiOff error-icon family drops `/70` (2.98→4.80 D) · copilot copy
+  chip 20→28px (WCAG 2.5.8) · provider chips tokenized (the last
+  light-AA raw-hue class; whatsapp rides the brand tokens). The
+  migration's headline pairs all verified clean (19-row register).
+
+### Token integrity + docs truth (A1-F3/F4 + A3)
+- DESIGN.md: tier-silver hex fixed (#acb6c3, the 1-of-65 mismatch) · the
+  error chimera split (destructive vs status-error; dark status-error
+  published for the first time) · the light theme FULLY published (9 cat
+  twins + tier-gold + the secondary ink — "every semantic token has a
+  light twin" is now true) · prose ranges corrected · MetaTags' doc
+  block follows the real 1200×630 og. The token spine itself verified
+  clean: all 16 new tokens defined in both themes + consumed, zero dead,
+  zero fallback bugs, admin tree 0 raw hues.
+
+### Security delta (B4) — 0 P0/P1/P2
+- All 9 new surfaces walked to conclusion: the OG card's `esc()` holds
+  against planted `seo_title` payloads (no single-quoted attributes
+  exist), `sanitizeInternalPath` kills every redirect-bypass shape,
+  notifications pagination is user-scoped + clamped, the CSV formula
+  guard is the correct OWASP idiom, `/assets` 404 leaks nothing, the
+  copilot render swap has zero `dangerouslySetInnerHTML`. The delta
+  net-RESOLVED 4 of R128-B3's 5 findings.
+
+### Test-truth (B1) + the missing pins
+- The 9 new R128 test files: 7 STRONG / 2 PARTIAL / 0 theater — 12/12
+  physical mutation checks caught, 0 assertion weakening. The two
+  partials closed: `/products` alias + copilot trace render now pinned
+  (`products-alias-r129`, `copilot-trace-line-r129` — registration +
+  replaceState semantics + per-arm icon rendering); the palette guard's
+  regex catches multi-variant classes and prints real line numbers.
+
+### Round record
+- Gates on the merged R129 tree: typecheck **green** · ESLint **0
+  errors** · impeccable detect **EXIT 0** (CI geometry, root cwd) ·
+  frontend vitest **1,248/1,248** (178 files — 176 + 2 new pins) ·
+  backend untouched this round (2,240/2,240 at R128 close stands) ·
+  build + budget pass · 0 .map in dist. Pushed `76017f4..f9fa15c`;
+  CI green expected (the gate fix), Coolify deploy + live CSS probe
+  verified.
+- Held open: O1 CDN TTFB ceiling · GSC token (operator) · GitHub
+  topics/homepage/releases (operator-side, needs the PAT UI) · B14
+  catalog naming decisions (operator) · A1-F2 bisect note (4edfbe2
+  imports eb50024's export — history kept, documented here for future
+  bisectors) · A2's P4 tails (risk error chip dark 4.41→accepted,
+  light micro-batch, bell↔notifications eventual read-state).
+
 ## Round R128 — المظهر (appearance) deep round: 15 auditors (7 visual dimensions) + 9 implementation lanes — admin palette unification (227 raw-hue hits → 0), coherent brand-asset suite, motion/typography closes, PWA leaks killed, cross-surface money/copy truth — 2026-10-10
 
 The appearance round ("المظهر وكل ما يخصه"). Fifteen read-only auditors:

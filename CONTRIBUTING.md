@@ -29,7 +29,7 @@ locally first so the PR lands green:
 pnpm lint
 pnpm typecheck
 pnpm --filter @workspace/api-server exec vitest run      # backend suite (241 files)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (176 files)
+pnpm --filter @workspace/subnation run test:run          # frontend suite (178 files)
 pnpm build                                               # includes the bundle budget gate
 ```
 
