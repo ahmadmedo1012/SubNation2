@@ -51,12 +51,13 @@ export interface SeoInput {
 // type="application/ld+json"> creation — no inline executable script.
 
 const DEFAULT_IMAGE = "/opengraph.jpg";
-/** R120-B3 (A7-F6): the REAL pixel size of /opengraph.jpg (verified with
- * `file`: 1280×720) — the previous hardcoded 1200×630 mis-declared every
- * og:image and forced scrapers into a wasteful image fetch to learn the
- * truth. Callers with a different image pass imageWidth/imageHeight. */
-const DEFAULT_IMAGE_WIDTH = 1280;
-const DEFAULT_IMAGE_HEIGHT = 720;
+/** og:image dims default to the REAL pixel size of /opengraph.jpg —
+ * scrapers shouldn't have to fetch the image to learn the truth.
+ * Callers with a different image pass imageWidth/imageHeight. */
+// R128 (L2): the og card was regenerated at the spec-correct 1200×630
+// (1.91:1) — the previous 1280×720 was the stale screenshot-era file.
+const DEFAULT_IMAGE_WIDTH = 1200;
+const DEFAULT_IMAGE_HEIGHT = 630;
 
 /** 94-C3 (A3 P3-6): the browser-chrome tint was a single raw #e11d48 —
  * a rose hex that matches NEITHER theme's --primary (dark 348 80% 48% /

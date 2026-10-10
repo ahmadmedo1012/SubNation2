@@ -159,8 +159,9 @@ describe("R120-B3 A7-F1 — CategoryPage renders its SEO block (was: useSeo disc
     );
 
     // og:image dims default to the REAL /opengraph.jpg size (A7-F6).
-    expect(metaContent('meta[property="og:image:width"]')).toBe("1280");
-    expect(metaContent('meta[property="og:image:height"]')).toBe("720");
+    // R128 (L2): the card was regenerated at spec-correct 1200×630.
+    expect(metaContent('meta[property="og:image:width"]')).toBe("1200");
+    expect(metaContent('meta[property="og:image:height"]')).toBe("630");
   });
 
   it("unknown slug → the noindex not-found surface still gets its title + robots applied", () => {
