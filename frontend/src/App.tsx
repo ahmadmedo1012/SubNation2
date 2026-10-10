@@ -571,7 +571,8 @@ const ADMIN_SESSION_GUARD_QUERY_KEY = ["admin", "session", "guard"] as const;
  * keeps owning the URL family — zero duplicate-content surface. The
  * backend keeps serving the shell at /products (R126-L6's no-301
  * contract is untouched — this runs AFTER hydration). */
-function ProductsAliasRedirect() {
+/** R129-B1: exported for the products-alias route pin test. */
+export function ProductsAliasRedirect() {
   const [, navigate] = useLocation();
   useEffect(() => {
     navigate("/", { replace: true });

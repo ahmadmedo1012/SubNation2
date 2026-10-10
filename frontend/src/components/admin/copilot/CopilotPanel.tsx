@@ -365,7 +365,8 @@ const PROGRESS_TOOL_ICONS: Record<string, LucideIcon> = {
   "🔧": Wrench, // unknown-tool fallback
 };
 
-function ProgressTraceLine({ line }: { line: string }) {
+/** R129-B1: exported for the tool-trace render pin test. */
+export function ProgressTraceLine({ line }: { line: string }) {
   const lineClasses = "text-2xs text-muted-foreground font-mono leading-5 flex items-center gap-1";
   if (line.startsWith("✓ ")) {
     return (
@@ -1376,7 +1377,7 @@ export function AskAnswer({
         <MarkdownLite text={answer} />
         <button
           onClick={() => void handleCopy()}
-          className="absolute top-1.5 left-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded-md hover:bg-secondary transition-all"
+          className="absolute top-1.5 left-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-2 rounded-md hover:bg-secondary transition-all"
           aria-label={copyFailed ? "تعذّر النسخ" : copied ? "تم النسخ" : "نسخ"}
         >
           {copyFailed ? (
