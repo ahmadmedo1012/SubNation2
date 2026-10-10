@@ -44,9 +44,12 @@
 > layers with 13 new regression tests; money-UX honesty (ceiling-aware
 > toasts + stepper), roundLyd residue ×7, edge http→https → **301**
 > (runbook §13), web-vitals off the eager path, Toaster ErrorBoundary,
-> post-purchase stock invalidation, contrast/a11y batch, gitleaks doc
-> mask. Push blocked on a dead GitHub PAT everywhere reachable —
-> operator actions in runbook §14.
+> post-purchase stock invalidation, contrast/a11y batch, gitleaks
+> scan-scope fix (push=single-commit vs dispatch=full-history; the 3
+> historical key patches commit-allowlisted). Landed on `github/main` the
+> same evening after the operator restored push credentials; the full
+> workflow ran natively (e2e 40/40 vs live prod + CVE 0-critical) and
+> `E2E_BASE_URL` is set (weekly heartbeat armed).
 >
 > **R129 (2026-10-11) — round record:** the verification fleet over
 > R128's own output — 5 read-only lanes (adversarial review of the five

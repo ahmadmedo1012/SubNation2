@@ -77,10 +77,13 @@ jobs:
           # the mechanism matrix in .gitleaks.toml). 8.27+ propagates
           # global allowlists correctly. Pin the version so the gate is
           # reproducible and the config's full allowlist set engages.
-          # R130 (A9-F1): 8.28 flags the R127 audit doc's quoted PUBLIC
-          # Firebase web key (the literal has since been masked in the doc)
-          # where 8.27.2 honors the allowlist — re-run a full-history
-          # `gitleaks detect` locally BEFORE bumping this pin.
+          # R130 (A9-F1, corrected after the first dispatch run): push
+          # events scan ONLY the pushed commit (--log-opts=-1) while
+          # schedule/dispatch scan FULL history — where three historical
+          # patches quote the public Firebase web key and the value
+          # allowlist does not suppress them (verified on 8.27.2 AND
+          # 8.28). They are commit-scoped allowlisted in .gitleaks.toml;
+          # a NEW secret anywhere still fails the gate loudly.
           GITLEAKS_VERSION: "8.27.2"
           # Action is MIT-licensed; this opts out of the (paid) Pro tier prompts.
           GITLEAKS_LICENSE: "MIT"

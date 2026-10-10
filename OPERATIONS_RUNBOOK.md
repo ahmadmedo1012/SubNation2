@@ -740,30 +740,23 @@ accounts can press them.
   `subnation`, project `javascript-react` — §11) with a replay or a
   10%-roll session recorded (`frontend/src/instrument.ts:264-271`;
   `docs/inspection-r124/R1` #8).
-- **R130 — GitHub push/CI auth is DEAD on every machine this round could
-  reach**: the PAT embedded in the VPS clone's origin
-  (`root@169.58.100.161:/data/SubNation2`) is the token R123 already marked
-  dead (`ghp_EnQJ…`, 401), every other token found on the operator's disk
-  tested 401, the Coolify GitHub App's installation token carries ZERO repo
-  permissions (pull/push/variables all false), and no SSH key is registered
-  with GitHub. Consequences: (a) pushes to `github/main` (the canonical
-  remote — `origin` is the VPS mirror and deploys NOTHING) need a fresh
-  classic PAT with `repo` scope or a fine-grained PAT with
-  Contents+Variables read/write; (b) the CI `e2e` + weekly-sweep jobs stay
-  skipped on docs-only pushes until the repo variable
-  `E2E_BASE_URL=https://subnation.ly` is set (Settings → Secrets and
-  variables → Actions → Variables — needs the same PAT/UI). The R130
-  verification gap was closed LOCALLY instead: `pnpm audit --prod` (0
-  critical) + the 40-test guest e2e suite against live production + the
-  full local gate suite (see the R130 CHANGELOG record).
-- **R130 — local git credential cache**: this workstation's
-  `credential.helper=cache` held the (now-expired) credential that pushed
-  R129's last commits from ANOTHER machine's session; local pushes after
-  the PAT refresh should re-cache it (`git push github main` once
-  interactively) or embed a fine-grained PAT in the `github` remote URL —
-  R127-B11-F2 style tokens-in-remote-URLs are tolerated on private
-  workstations but the clean-URL + cache idiom is preferred (that is what
-  this clone now uses).
+- **R130 — GitHub push/CI auth: ✅ RESOLVED 2026-10-10** (was "dead on every
+  machine"): the operator supplied fresh credentials; they live in the
+  local git credential store (`~/.git-credentials`, 0600) with the
+  `credential.helper=store` set on this clone — the `github` remote URL
+  stays CLEAN (the R127-B11-F2/F4 no-tokens-in-URLs discipline). Flow that
+  landed R130: push to `github/main` → CI + Coolify webhook fire; the
+  repo variable `E2E_BASE_URL=https://subnation.ly` is now SET (the weekly
+  e2e heartbeat is armed — R128's B5-3 closes); `workflow_dispatch` runs
+  the full intended workflow (e2e + CVE + everything). If pushes start
+  failing with 401 again, refresh the credential store entry
+  (`git credential reject` + one interactive push) — do NOT embed tokens
+  in remote URLs.
+- **R130 — CI gitleaks scan-scope (documented, no action)**: push runs
+  scan only the pushed commit; schedule/dispatch scan full history — the
+  3 historical Firebase-key patches are commit-scoped allowlisted in
+  `.gitleaks.toml` (HEAD masked; the mechanism verified against a canary
+  secret). See the A9-F1 corrected record + the CHANGELOG R130 entry.
 
 ## 15. Backups & restore drills (pointer)
 

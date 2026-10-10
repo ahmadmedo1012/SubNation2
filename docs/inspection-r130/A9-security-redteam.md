@@ -12,20 +12,26 @@ nothing authenticated, nothing mutated).
 it CLOSES inherited items (R128-B3 F1/F3/F4 verified closed in the delta
 itself).
 
-## A9-F1 [P4 — VERIFIED] gitleaks version drift: local 8.28.0 reports 3 findings CI's pinned 8.27.2 does not — FIXED R130
-All three the same documented public-by-design Firebase web API key
-(rule gcp-api-key): (1) docs/inspection-r127/B11-security-archaeology.md:23
-— HEAD-tracked (7d469d5, R127 docs): the doc quoted the public key verbatim
-instead of masking it; (2) SECRET_ROTATION_RUNBOOK.md:100 (history-only);
-(3) render.yaml:41 (history-only). CI green at fd702d6 — not a live gate
-failure; the value is the R127-B11 §1.1 public web key (gated by Authorized
-Domains + reCAPTCHA; allowlist comment carries the rotation note). Risks
-were operational: a future GITLEAKS_VERSION bump turns the gate red with 3
-noisy findings, and the doc spread the literal outside its allowlisted
-homes. **FIXED R130**: the doc's literal masked (AIza…fingerprint shape,
-pointer to the .gitleaks.toml allowlist record) + a pin comment next to
-GITLEAKS_VERSION ("8.28 flags the docs-quoted key — re-run full-history
-detect before bumping").
+## A9-F1 [P4→P3 — VERIFIED, escalated by its own CI evidence] gitleaks full-history scans fail on 3 old patches quoting the public Firebase web key — FIXED R130 (scan-scope discovery + commit-scoped allowlist)
+**The scan-scope discovery (the report's original premise was WRONG and is
+corrected here):** gitleaks-action scans ONLY the pushed commit(s) on
+`push` events (`--log-opts=-1` — the fd702d6 green run scanned exactly
+**1 commit**) but scans FULL history on `schedule`/`workflow_dispatch`
+(**745 commits**). So "CI's pinned 8.27.2 honors the allowlist" was never
+true — push runs simply never scanned history. The first R130 dispatch run
+failed with 3 `gcp-api-key` findings: (1) the R127 audit doc's verbatim
+quote (masked at HEAD in R130 — but the deletion patch itself then carries
+the literal, adding a 4th-looking instance inside commit 9fb4b1a's diff);
+(2) SECRET_ROTATION_RUNBOOK.md (file since deleted); (3) render.yaml (file
+since deleted). Empirically verified on BOTH 8.27.2-in-CI and 8.28-local:
+no value-regex allowlist suppresses these (the captured secret rides
+markdown/quote context), a combined regexes+commits entry is an AND (the
+failing half sinks the entry), and `targetRules` scoping breaks `commits`
+matching — the **commit-only global entry over exactly the 3 historical
+SHAs** is the one shape that works (verified: full-history scan green; a
+canary AWS-key shape still trips the gate). This also explains the
+failing Monday `schedule` runs since R127. History is immovable without a
+destructive rewrite; HEAD carries no literal.
 
 ## Not findings (confirmed acceptable / register discipline maintained)
 - Dirty working tree (the R130 WIP): reviewed the diff — availability-aware

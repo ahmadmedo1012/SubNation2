@@ -287,3 +287,25 @@ regexes = [
   # If this key is rotated, replace the literal below with the new value.
   '''AIzaSyDoQhcUbqwr0E6qws5vj2vwBNyDEq1EMsQ''',
 ]
+
+# R130 (A9-F1, corrected): the three HISTORY-ONLY patches that quote the
+# public Firebase web API key above. gitleaks-action scans ONLY the pushed
+# commits on `push` events (--log-opts=-1 — why every push run was green)
+# but scans FULL history on `schedule`/`workflow_dispatch` — where these
+# three old patches surface. Empirically (verified 2026-10-10 on 8.27.2-in-CI
+# and 8.28-local): NO value-regex allowlist suppresses them (the captured
+# secret rides markdown/quote context), and a commit-scoped entry with
+# `targetRules` also fails to match — the commit-only GLOBAL entry below is
+# the one shape that works. The literal is gone from HEAD (masked in R130);
+# history is immovable without a destructive rewrite. Scope is exactly three
+# historical SHAs — a NEW secret in ANY commit still fails the gate loudly:
+#   7d469d5d1d545435a006ab533b7317006bdf4acc  docs(r127): the round record quoted the key verbatim (since masked at HEAD)
+#   a719f7bf4acfcc6f90f6b33841496fcd1317ffc0  fix(ci): SECRET_ROTATION_RUNBOOK.md quoted the key (file since deleted)
+#   6bbd40c2f108f6eda95146b2fdbb71f5c90dba90  render.yaml quoted the key (file since deleted)
+[[allowlists]]
+description = "History-only commits quoting the public Firebase web key (masked at HEAD in R130; commit-only global entry — targetRules scoping breaks commits matching, verified empirically)"
+commits = [
+  "7d469d5d1d545435a006ab533b7317006bdf4acc",
+  "a719f7bf4acfcc6f90f6b33841496fcd1317ffc0",
+  "6bbd40c2f108f6eda95146b2fdbb71f5c90dba90",
+]

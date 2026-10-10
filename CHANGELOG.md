@@ -133,9 +133,18 @@ quotes a DRAINED variant with stockCount 0 so the B-11 machinery flags
   + https apex + healthz unchanged, ACME priority intact. Rollback = delete
   the file. Runbook §13 records it; §14 marks the R123 operator item
   RESOLVED.
-- A9-F1: the R127 audit doc's quoted PUBLIC Firebase web key masked (local
-  gitleaks 8.28 flagged it; CI's pinned 8.27.2 honors the allowlist) + a
-  bump-warning comment on the GITLEAKS_VERSION pin.
+- A9-F1 (escalated by its own CI evidence): the first dispatch run's
+  gitleaks FAILED on 3 old history patches quoting the public Firebase web
+  key — exposing that **push runs scan only the pushed commit
+  (`--log-opts=-1`) while schedule/dispatch scan full history** (the R129
+  "green" was a scan-scope artifact, not an allowlist victory — the R127
+  Monday schedule failures are now fully explained). HEAD literal already
+  masked; the fix is a commit-only allowlist over exactly the 3 historical
+  SHAs (value-regexes provably cannot match the context-captured secret;
+  `targetRules` provably breaks `commits` matching — both verified
+  empirically on 8.27.2 + 8.28; a canary secret still trips the gate).
+  Runbook §14's stale GitHub-auth narrative corrected with the working
+  token flow.
 - A8-F1: the DESC-index mirror divergence (chain `DESC NULLS LAST` vs boot
   plain `DESC` — the live shape is the correct one) documented as the
   canonical convention in the schema barrel; the 20-site re-declaration +
@@ -152,17 +161,14 @@ quotes a DRAINED variant with stockCount 0 so the B-11 machinery flags
   ~1.9 KB; warn-line headroom ~4.5 KB) · gitleaks clean on the delta
   (A9-F1's only finding masked; the 3 residual 8.28-only findings are
   history blobs) · e2e 40/40 vs production.
-- **Push blocker (operator):** no valid GitHub PAT exists on any machine
-  this round could reach — the VPS clone's embedded token is the one R123
-  marked dead (401), every other disk token tested 401, the Coolify GitHub
-  App's installation token has ZERO repo permissions (pull/push/variables
-  all false), and no SSH key is registered with GitHub. The R130 commits
-  therefore sit on the local main awaiting `git push github main` with a
-  fresh PAT (repo scope, or fine-grained Contents+Variables read/write —
-  the same PAT then sets the repo variable `E2E_BASE_URL=https://subnation.ly`
-  so the weekly e2e heartbeat can finally run; both steps are in runbook
-  §14). Coolify deploys only from the GitHub webhook — pushing IS the
-  deploy.
+- **Auth + landing:** the push blocker resolved mid-round (the operator
+  supplied fresh credentials — stored in the local credential store, never
+  in remote URLs); R130 landed on `github/main` the same evening, the full
+  workflow ran via `workflow_dispatch` (**e2e 40/40 natively in CI against
+  live production + CVE 0-critical natively**), and the repo variable
+  `E2E_BASE_URL=https://subnation.ly` is now set (the weekly heartbeat
+  armed). The dispatch run surfaced the gitleaks scan-scope truth (A9-F1
+  above) which was fixed and re-verified in the follow-up commit.
 - **R129 record corrections (no retro-edit, per convention):** (1) the
   "Pushed 76017f4..f9fa15c; CI green expected" claim was written against a
   run that FAILED, and the actual gate fix (fd702d6) landed after the
