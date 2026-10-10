@@ -19,6 +19,18 @@ export default function AdminLoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
 
+  // R130 (A3-F1): admin-session's expiry handler writes
+  // `?redirect=<current>` when it bounces a mid-work 401 here — both
+  // success paths used to navigate("/admin") unconditionally, stranding
+  // the operator away from the money-review/dialog they were in. The
+  // param is honored ONLY for internal admin paths (open-redirect guard:
+  // must start with "/admin" and must never be the login surface itself).
+  const returnPath = (() => {
+    const raw = new URLSearchParams(window.location.search).get("redirect");
+    if (!raw || !raw.startsWith("/admin") || raw.startsWith("/admin/login")) return "/admin";
+    return raw;
+  })();
+
   const [needs2FA, setNeeds2FA] = useState(false);
   const [tempToken, setTempToken] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -85,7 +97,7 @@ export default function AdminLoginPage() {
         // round-trip; navigate only once the cookie is confirmed live.
         void (async () => {
           if (await establishAdminSession()) {
-            navigate("/admin");
+            navigate(returnPath);
           } else {
             setError(SESSION_BOOTSTRAP_FAILED);
           }
@@ -161,12 +173,13 @@ export default function AdminLoginPage() {
 
       // Cookie confirmed via the probe round-trip (see R97-02 note
       // above) — the sentinel + permissions replace the old body-token
-      // storage, then the operator lands in the panel.
+      // storage, then the operator lands in the panel (or their
+      // pre-expiry surface — the A3-F1 return path).
       const established = await establishAdminSession();
       if (!established) {
         throw new Error(SESSION_BOOTSTRAP_FAILED);
       }
-      navigate("/admin");
+      navigate(returnPath);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "فشلت العملية");
     } finally {

@@ -26,8 +26,10 @@ vi.mock("@/lib/cart", () => ({
   // R111-F4-F1: ProductCard subscribes to the commands context only —
   // the mock provides both hooks so either wiring passes, but the
   // card's add-to-cart path is exercised through useCartCommands.
-  useCart: () => ({ addItem: (...args: unknown[]) => addItemMock(...args) }),
-  useCartCommands: () => ({ addItem: (...args: unknown[]) => addItemMock(...args) }),
+  // R130 (A1-F2): the real addItem returns whether the quantity grew —
+  // the mock honors the boolean contract (a void mock read as a refusal).
+  useCart: () => ({ addItem: (...args: unknown[]) => (addItemMock(...args), true) }),
+  useCartCommands: () => ({ addItem: (...args: unknown[]) => (addItemMock(...args), true) }),
 }));
 
 const toastMock = vi.fn();

@@ -239,6 +239,15 @@ density is deliberately higher than a typical marketing site: money surfaces
 (prices, balances, order codes) are always `tabular-nums` with Western digits
 and a «د.ل» suffix, isolated with `dir="ltr"` where codes mix with Arabic.
 
+**Money ink (R130-A2-F4):** three tiers, deliberate —
+`text-foreground` for ambient grid/card prices (the browsing layer),
+`text-primary` for the brand buy moment (the PDP price + sticky buy bar,
+large-text 3:1-safe), `text-primary-text` for LEDGER surfaces (cart lines,
+checkout totals, order totals — the AA-tuned 43%/4.60+ money ink). A new
+money surface picks by layer: browsing → foreground, buying → primary,
+transacting → primary-text. Never raw hues, never `muted-foreground` for an
+amount.
+
 ## Colors
 
 Two themes over one token spine. The **dark theme is the default** (`:root`);

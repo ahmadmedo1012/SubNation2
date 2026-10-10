@@ -539,7 +539,10 @@ export class TopupService {
             if (welcomeUpdated) {
               welcomeGranted = true;
               const balanceAfterWelcome = parseFloat(String(welcomeUpdated.walletBalance));
-              const balanceBeforeWelcome = +(balanceAfterWelcome - WELCOME_BONUS_LYD).toFixed(2);
+              // R130 (A7-F3): the ledger's balanceBefore rides the roundLyd
+              // boundary idiom (was +toFixed(2) — same value on today's
+              // already-2dp operands).
+              const balanceBeforeWelcome = roundLyd(balanceAfterWelcome - WELCOME_BONUS_LYD);
               await insertLedgerEntry(
                 {
                   userId: user.id,

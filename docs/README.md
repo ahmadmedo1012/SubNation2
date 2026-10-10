@@ -28,6 +28,26 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R130 (2026-10-10) — round record:** the verification round that had
+> to verify itself. Ground truth: local HEAD = GitHub main = live
+> Coolify container = `fd702d6`, healthz ok. Headline discovery: the
+> R129 tree had NO green CI evidence (43-second push burst + docs-only
+> path filters skipped every heavy job at the deployed SHA) — every
+> skipped gate re-run LOCALLY at that SHA (typecheck, lint, both suites,
+> builds, budget, `pnpm audit --prod` = 0 critical, and the 40-test
+> guest e2e suite against LIVE production 40/40). 9 specialist audit
+> lanes + 4 parent lanes (`docs/inspection-r130/`): 0 P0/P1 — the one
+> real defect family (variant-AVAILABILITY pricing: display min, grid
+> quick-add, and the B-11 product-level snapshot were all
+> availability-blind; the feared mischarge structurally impossible per
+> A7's pool proof; the cost was a latent buyer dead-end) fixed at all
+> layers with 13 new regression tests; money-UX honesty (ceiling-aware
+> toasts + stepper), roundLyd residue ×7, edge http→https → **301**
+> (runbook §13), web-vitals off the eager path, Toaster ErrorBoundary,
+> post-purchase stock invalidation, contrast/a11y batch, gitleaks doc
+> mask. Push blocked on a dead GitHub PAT everywhere reachable —
+> operator actions in runbook §14.
+>
 > **R129 (2026-10-11) — round record:** the verification fleet over
 > R128's own output — 5 read-only lanes (adversarial review of the five
 > commits · WCAG 2.2 AA contrast census of the palette migration ·

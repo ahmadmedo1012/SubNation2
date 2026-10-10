@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -42,7 +43,12 @@ interface CartCommandsValue {
        * snapshot. */
       stockCount?: number | null;
     },
-  ) => void;
+    /** R130 (A1-F2): the return tells the caller whether the quantity
+     * actually GREW — false = the raise cap refused the bump at the
+     * stock-aware ceiling (the add sites owe the user the honest
+     * «الحد الأقصى المتاح» toast instead of a lying success). First
+     * add of a NEW line always returns true. */
+  ) => boolean;
   removeItem: (productId: number, variantId?: number | null) => void;
   updateQuantity: (productId: number, quantity: number, variantId?: number | null) => void;
   /** 98-F2 (R98-A3 F5 — P2): refresh a line's PRICE snapshot (never its
@@ -187,8 +193,10 @@ function normalizeStockCount(value: unknown): number | null {
 /** The per-line quantity ceiling: the 99 mirror cap narrowed by a KNOWN
  * stock snapshot. Floored at 1 — a 0-stock line keeps its quantity-1
  * shape (quantity < 1 is invalid); its honest state is «نفد المخزون»
- * (the status flag blocks it — the quantity is not the messenger). */
-function stockAwareCeiling(stockCount: number | null): number {
+ * (the status flag blocks it — the quantity is not the messenger).
+ * R130 (A1-F2): exported — the cart stepper disables «+» at this ceiling
+ * instead of silently no-opping through the raise cap. */
+export function stockAwareCeiling(stockCount: number | null): number {
   if (stockCount == null) return MAX_LINE_QUANTITY;
   return Math.max(1, Math.min(stockCount, MAX_LINE_QUANTITY));
 }
@@ -306,6 +314,13 @@ export function roundToCents(value: number): number {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<LocalCartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  // R130 (A1-F2): the committed items mirror — addItem's synchronous
+  // return reads THIS, not the deferred functional updater (React runs
+  // updaters at render time; a capture inside setItems would still be
+  // false when addItem returns). The updater below keeps the exact
+  // prev-based state logic; the return is advisory UI truth.
+  const itemsRef = useRef<LocalCartItem[]>([]);
+  itemsRef.current = items;
 
   useEffect(() => {
     // v1 → v2 migration: legacy lines (no variant fields) are re-shaped
@@ -360,6 +375,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // with unknown would silently disarm the stale-stock verdicts).
       const incomingStock =
         incoming.stockCount !== undefined ? normalizeStockCount(incoming.stockCount) : null;
+      // R130 (A1-F2): the raise-refusal verdict computed from the
+      // COMMITTED state mirror (see itemsRef) so addItem can return it
+      // synchronously — React defers the functional updater, so a
+      // capture inside setItems would not be set yet at return time.
+      // The updater keeps the exact prev-based logic (authoritative for
+      // state, incl. the cross-tab race window); the return is the
+      // advisory UI contract the add sites' toasts ride.
+      const committed = itemsRef.current.find((i) => lineKey(i) === key);
+      let applied: boolean;
+      if (committed) {
+        const mergedStock =
+          incoming.stockCount !== undefined ? incomingStock : (committed.stockCount ?? null);
+        applied =
+          capRaise(
+            Math.min(committed.quantity + qty, MAX_LINE_QUANTITY),
+            committed.quantity,
+            stockAwareCeiling(mergedStock),
+          ) > committed.quantity;
+      } else {
+        applied = true;
+      }
       setItems((prev) => {
         const existing = prev.find((i) => lineKey(i) === key);
         let next: LocalCartItem[];
@@ -397,6 +433,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
         return next;
       });
+      return applied;
     },
     [],
   );

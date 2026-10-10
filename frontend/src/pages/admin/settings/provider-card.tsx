@@ -259,7 +259,13 @@ export function ProviderCard({
                       onClick={() =>
                         setShowSecret((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
                       }
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground transition-colors"
+                      /* R130 (A4-F1): the reveal sat `left-2.5` — the START
+                         of the LTR secret text (the input is dir=ltr +
+                         text-left) — so a revealed key's first characters
+                         rendered under the eye while the pr-9 reservation
+                         on the END side sat dead. The button belongs at
+                         the physical end the input already reserves. */
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground transition-colors"
                       aria-label={
                         showSecret[field.key]
                           ? `إخفاء قيمة حقل ${field.label}`

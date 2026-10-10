@@ -249,9 +249,20 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   // Catalog-2026-09-20: quick-add uses the cheapest ACTIVE variant when the
   // product has options (matches the card's displayed "تبدأ من" price and
   // the checkout's default-variant rule — no price mismatch is possible).
+  // R130 (A7-F1/A2-F1): ACTIVE and AVAILABLE are not the same — the
+  // availability-blind min surfaced «تبدأ من» prices whose variant had
+  // already drained while pricier variants held stock, and quick-add then
+  // built a line the server can only 409 at charge time. The reduce now
+  // prefers the cheapest AVAILABLE variant and only falls back to the
+  // availability-blind min when every variant is drained (the card is
+  // sold-out/non-interactive in that state — same behavior as before).
   const cheapestVariant =
     product.variants && product.variants.length > 0
-      ? product.variants.reduce((a, b) => (a.price <= b.price ? a : b))
+      ? product.variants.some((v) => v.is_available)
+        ? product.variants
+            .filter((v) => v.is_available)
+            .reduce((a, b) => (a.price <= b.price ? a : b))
+        : product.variants.reduce((a, b) => (a.price <= b.price ? a : b))
       : null;
   /* A2-F3 (R124): variant count works with or without the projected
      variant tree — the live list payloads carry variant_count only. */
@@ -261,7 +272,11 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
     const now = Date.now();
     if (lastAddTapRef.current !== null && now - lastAddTapRef.current < 500) return;
     lastAddTapRef.current = now;
-    addItem({
+    // R130 (A1-F2): the B-11 raise cap can refuse the bump at the line's
+    // stock-aware ceiling — a success toast on a refused add promised a
+    // badge change that never happened (the second quick-add of any
+    // low-stock product). Honest toast now keys on the applied result.
+    const applied = addItem({
       productId: product.id,
       variantId: cheapestVariant ? cheapestVariant.id : null,
       variantLabel: cheapestVariant ? cheapestVariant.label : null,
@@ -283,12 +298,22 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
       // storefront's single availability signal.
       stockCount: product.stock_count,
     });
-    toast({
-      title: "أُضيف إلى السلة",
-      description: cheapestVariant
-        ? `${product.name} — ${cheapestVariant.label}`
-        : (product.name ?? undefined),
-    });
+    if (applied) {
+      toast({
+        title: "أُضيف إلى السلة",
+        description: cheapestVariant
+          ? `${product.name} — ${cheapestVariant.label}`
+          : (product.name ?? undefined),
+      });
+    } else {
+      toast({
+        title: "بلغت الحد الأقصى المتاح",
+        description:
+          product.stock_count != null
+            ? `${product.name} — متبقٍ ${product.stock_count} فقط`
+            : (product.name ?? undefined),
+      });
+    }
   };
 
   // ── Accessibility ─────────────────────────────────────────────────

@@ -33,6 +33,11 @@ export function roundLydString(amount: number): string {
 // construction (already-2dp operands), but a future writer computing a
 // delta from unrounded percent math at one of them would silently
 // reintroduce the AUD103 half-cent class; they now ride roundLyd.
+// R130 (A7-F3): the R128 census missed seven more toFixed sites in the
+// same class — adjustment (computeNext ×2 + ledger delta), loyalty's
+// balance WRITE (the convert itself was converted, the write wasn't),
+// checkout's and refund's lifetimeSpend mutations, and topup's welcome
+// balanceBefore. All converted; the doc now matches the code.
 
 // ── R128 (B8-D3): the ONE backend LYD display formatter ────────────────────
 //

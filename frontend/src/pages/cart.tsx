@@ -8,6 +8,7 @@ import {
   lineStockNotice,
   lineStockBlocksCheckout,
   cartHasBlockingStock,
+  stockAwareCeiling,
   type LocalCartItem,
 } from "@/lib/cart";
 import { formatCurrency } from "@/lib/utils";
@@ -181,7 +182,7 @@ export default function CartPage() {
                most destructive control in the storefront). */
             className="min-h-11 text-status-error hover:text-status-error hover:bg-status-error/10 font-bold"
           >
-            <Trash2 className="w-3.5 h-3.5 ml-1.5" />
+            <Trash2 className="w-3.5 h-3.5 ms-1.5" />
             إفراغ السلة
           </Button>
         )}
@@ -396,8 +397,17 @@ export default function CartPage() {
                         <button
                           type="button"
                           onClick={() => handleUpdate(it, it.quantity + 1)}
-                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors press-spring text-muted-foreground hover:text-foreground flex items-center justify-center"
-                          aria-label={`زيادة كمية ${it.name}`}
+                          /* R130 (A1-F2): the raise cap silently refused
+                             the bump at the stock-aware ceiling — the «+»
+                             now says so by being disabled at the ceiling
+                             instead of no-oping on tap. */
+                          disabled={it.quantity >= stockAwareCeiling(it.stockCount ?? null)}
+                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors press-spring text-muted-foreground hover:text-foreground flex items-center justify-center disabled:opacity-35 disabled:pointer-events-none"
+                          aria-label={
+                            it.quantity >= stockAwareCeiling(it.stockCount ?? null)
+                              ? `الحد الأقصى المتاح ${it.quantity} — ${it.name}`
+                              : `زيادة كمية ${it.name}`
+                          }
                         >
                           <Plus className="w-4 h-4" />
                         </button>
@@ -449,7 +459,10 @@ export default function CartPage() {
                 mid-charge. Unknown-snapshot lines never block (the
                 server re-check answers at charge time). */}
             {cartHasBlockingStock(items) && (
-              <p className="text-2xs font-semibold text-status-error bg-status-error/8 border border-status-error/20 rounded-xl px-3 py-2 text-center">
+              <p
+                id="cart-stock-block-reason"
+                className="text-2xs font-semibold text-status-error bg-status-error/8 border border-status-error/20 rounded-xl px-3 py-2 text-center"
+              >
                 بعض العناصر نفد مخزونها — أزلها أو عدّل كميتها للمتابعة
               </p>
             )}
@@ -457,6 +470,11 @@ export default function CartPage() {
               cartHasBlockingStock(items) ? (
                 <Button
                   disabled
+                  /* R130 (A1-F4): the block reason was a visual sibling
+                     only — an SR user tabbing to the dimmed CTA heard no
+                     cause. Linked now (checkout's label-in-button idiom
+                     doesn't fit the summary column's banner shape). */
+                  aria-describedby="cart-stock-block-reason"
                   className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
                 >
                   إتمام الطلب

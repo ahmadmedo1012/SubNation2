@@ -7,6 +7,180 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R130 — the verification round that had to verify itself: the R129 CI evidence hole closed LOCALLY, the variant-availability money-UX family wired, the last edge redirect polished to 301 — 2026-10-10
+
+R130 started from a hard ground-truth check (the operator's note: «تأكد ان
+النسخة المحلية هي نفسها اخر commit فعلا»): local HEAD = GitHub main = the
+live Coolify container = `fd702d6` (SOURCE_COMMIT probed inside the
+production container), live healthz ok, www→apex 301. Then the round found
+its own headline: **the R129 tree has NO green CI evidence at all** — the
+three R129 code pushes landed within 43 s (7eb9088 17:43:56 → fabc7bd
+17:44:21 → f9fa15c 17:44:39Z), 7eb9088 and fabc7bd never produced CI runs,
+f9fa15c's run FAILED on the impeccable gate, and the two "success" runs
+after it (c95c8a6, fd702d6) were docs-only pushes whose path filter skipped
+EVERY heavy job (audit, e2e, checks, tests, build) — the gate that fabc7bd+
+fd702d6 "fixed" has never once run green, and the CVE/e2e jobs were skipped
+at the deployed SHA. With no valid GitHub token reachable from any machine
+this round could touch (see the R130 operator actions), the gap was closed
+LOCALLY instead — every skipped gate re-executed at the exact deployed SHA:
+typecheck green · ESLint 0 errors (84 warnings, the known set) · backend
+vitest 2,237/2,240 (the 3 failures are the documented load-flaky timing
+class — health-neon-warmup + web-scheduler-demotion pass 12/12 in
+isolation) · frontend vitest 1,247/1,248 (the 1 same class —
+admin-layout-alerts passes 11/11 in isolation) · backend build green ·
+frontend build + budget PASS (eager path 145,798 B gz, DSN-less) ·
+`pnpm audit --prod` replicated the skipped CVE job: **0 critical** (1 HIGH
+node-forge ≤1.4.0 via firebase-admin, no upstream fix — the accepted
+register since R120; 2 moderate uuid via google-gax — informational per
+the gate's block-on-critical policy) · **the 40-test guest e2e suite run
+against LIVE production: 40/40 in 15.3 s** (storefront journeys, SEO
+shells, Arabic search contract, API contracts, auth gates, cart guest
+gate, mobile-390 overflow) — R129's B5-3 heartbeat, exercised manually.
+
+### The fleet (9 specialist lanes + 4 parent lanes, reports in `docs/inspection-r130/`)
+A1 adversarial (R129-delta feature-truth — the wiring verified REAL in the
+live bundles) · A2 storefront visual/journeys · A4 mobile/RTL/a11y/Arabic ·
+A5 frontend architecture/performance · A7 money paths (fourth full audit) ·
+A8 database/migrations · A9 security red team (delta walked to conclusion —
+security-inert). Plus parent lanes: live SEO/edge probes, CI-truth
+forensics, production container health, and the edge redirect fix. A3
+(admin journeys) was killed twice by a provider outage and re-run
+short-handed; A6 backend semantics + A10 reliability were consolidated into
+A1/A7/A5 coverage. **Findings: 0 P0 · 0 P1 · 1 latent P3 family (variant
+availability, 3 corroborations across A1/A2/A7) · ~10 P3 · ~20 P4.**
+
+### The variant-availability family (the round's one real defect, fixed end-to-end)
+The "cheapest variant" surfaces were availability-blind in three places: the
+backend display min (both DTOs), the grid quick-add's variant pick, and the
+B-11 snapshot (product TOTAL vs variant-scoped authority). A7's structural
+proof: the feared mischarge is IMPOSSIBLE (a drained cheapest variant's
+claim pool is provably empty → pre-tx OUT_OF_STOCK 409, zero money moved;
+legacy resolution picks by PRICE, not insertion order) — the real cost was
+the buyer-facing dead end: a price the storefront blessed and the charge
+could only refuse. Latent today (live probe: zero products in the mixed
+state; inventory loading is the deferred Embronic track — the day it
+activates, so would this). **Fixed at all three layers + the legacy
+checkout path**: `displayBaseFromVariants` (both DTOs price off the cheapest
+AVAILABLE variant, drained-min fallback), `firstClaimableVariant` (legacy
+null-variant checkout resolves the cheapest variant that can actually claim
+a unit — one grouped pool query on that path only; charge-affecting for
+legacy clients, cheapest-any → cheapest-available, pinned by tests),
+ProductCard's reduce filters `is_available`, and `quoteLineFromProduct`
+quotes a DRAINED variant with stockCount 0 so the B-11 machinery flags
+«نفد المخزون» and blocks the CTA before the charge (A1-F1). Pinned by
+`variant-availability-pricing.test.ts` (6 backend cases) +
+`checkout-variant-drain.test.tsx` (the real page renders the blocked state
+— A1-F3's never-executed recipe).
+
+### Money-UX honesty (A1-F2) + the R128 rounding residue (A7-F3)
+- `addItem` now returns whether the quantity actually grew (computed from
+  the committed-state mirror — React defers functional updaters); both add
+  sites toast the honest «بلغت الحد الأقصى المتاح — متبقٍ N فقط» when the
+  raise cap refuses, and the cart «+» disables at the stock-aware ceiling
+  (`stockAwareCeiling` exported) instead of silently no-oping. Pinned by
+  `cart-add-honesty.test.tsx` (5 cases incl. the no-silent-shrink rule).
+- roundLyd completed at ALL balance-mutation boundaries: the R128 census's
+  seven missed toFixed sites (adjustment computeNext ×2 + ledger delta,
+  loyalty's balance WRITE, checkout + refund lifetimeSpend, topup welcome
+  balanceBefore) converted; money.ts's doc now matches the code.
+- Cart block reason is now ON the disabled control for screen readers
+  (`aria-describedby`, A1-F4 — the R129 record claimed it, checkout had it,
+  the cart didn't).
+
+### Admin operator-truth batch (A3)
+- Admin login now honors the `?redirect=` return path that the session-
+  expiry handler writes (both success paths; internal-admin-paths-only
+  open-redirect guard) — a mid-work 401 no longer strands the operator on
+  the dashboard (A3-F1).
+- The ⌘K GlobalSearch no longer answers an outage with the definitive
+  «لا نتائج لـ "q"» — a failed round renders «تعذّر البحث — تحقّق من
+  الاتصال وأعد المحاولة» (the B5-04 false-empty class, killed in the one
+  overlay whose job is truth; aborts + 401s exempt as designed) (A3-F3).
+- Carried from A3 (file:line in the report): risk dashboard tiles silent
+  vanish/stale (A3-F2), system.tsx six-query 403 burst + 403→"degraded"
+  health verdict (A3-F4), risk-event.tsx loader/error/scope tail (A3-F5).
+
+### Storefront + admin craft batch
+- fetch-error-card + PDP outage icon: the /70 tint that R129's census
+  missed (2.98:1 dark, 0.02 under the bar) → full `text-status-error` +
+  `aria-hidden` on the decorative icons (A2-F2).
+- Sold-out variant pills now say «— نفد» (visually + aria-label) instead of
+  dying silently next to the page's own «متوفر (N)» badge (A2-F3).
+- web-vitals rides a dynamic import (~2 KB gz off the eager path — the warn
+  canary had <1 KB of headroom; v4's buffered observers lose no early
+  metric) (A5-F1). IdleToaster wrapped in an ErrorBoundary — a sonner
+  throw can no longer unmount the whole tree (A5-F5). Successful checkout
+  now invalidates the stock surfaces it just changed
+  (`["product-by-slug"]` + `["/api/products"]`, verified against the
+  generated keys) (A5-F3).
+- Admin: provider-card secret reveal moved to the side its pr-9 already
+  reserved (it overlapped the LTR text start, A4-F1); three contrast
+  residues fixed (risk chip opacity-70 — the R129-A2F7 held-open tail;
+  whatsapp docs hint /60 + ⌘K kbd opacity-60 — the pair failing BOTH themes
+  at 2.71:1) (A4-F2).
+- Physical-direction batch: 10 confirmed icon/indent sites swapped to
+  logical ms-/me-/border-s/ps- (zero visual change in the RTL-only app;
+  A4-F9's census classifies the remaining 156 line-hits as correct-today
+  latents).
+
+### Edge + ops
+- **http→https on the apex is finally PERMANENT (301)** — the last edge
+  polish item since R122/R123: the app's Coolify label middleware answered
+  302; `/data/coolify/proxy/dynamic/apex-https-redirect.yml` (the proven
+  www-redirect pattern: file-provider router, priority 1000, http
+  entrypoint only, self-contained service, `redirectScheme.permanent=true`)
+  now answers 301 with path+query preserved. Live-verified: 1 hop, www pair
+  + https apex + healthz unchanged, ACME priority intact. Rollback = delete
+  the file. Runbook §13 records it; §14 marks the R123 operator item
+  RESOLVED.
+- A9-F1: the R127 audit doc's quoted PUBLIC Firebase web key masked (local
+  gitleaks 8.28 flagged it; CI's pinned 8.27.2 honors the allowlist) + a
+  bump-warning comment on the GITLEAKS_VERSION pin.
+- A8-F1: the DESC-index mirror divergence (chain `DESC NULLS LAST` vs boot
+  plain `DESC` — the live shape is the correct one) documented as the
+  canonical convention in the schema barrel; the 20-site re-declaration +
+  regen filed as a follow-up.
+
+### Round record
+- **Gates on the R130 tree** (all run locally — see the CI-evidence note
+  above): typecheck green (libs+backend+frontend+scripts) · ESLint 0 errors
+  · backend vitest 2,243/2,246 (242 files; the 3 load-flaky pass in
+  isolation) · frontend vitest **1,255/1,255** (180 files — the final run
+  after the full fix wave, zero failures) · 13 new regression tests (6
+  backend + 7 frontend) · backend build green · frontend build + budget
+  PASS (**eager path 143,932 B gz** — the web-vitals reclaim bought back
+  ~1.9 KB; warn-line headroom ~4.5 KB) · gitleaks clean on the delta
+  (A9-F1's only finding masked; the 3 residual 8.28-only findings are
+  history blobs) · e2e 40/40 vs production.
+- **Push blocker (operator):** no valid GitHub PAT exists on any machine
+  this round could reach — the VPS clone's embedded token is the one R123
+  marked dead (401), every other disk token tested 401, the Coolify GitHub
+  App's installation token has ZERO repo permissions (pull/push/variables
+  all false), and no SSH key is registered with GitHub. The R130 commits
+  therefore sit on the local main awaiting `git push github main` with a
+  fresh PAT (repo scope, or fine-grained Contents+Variables read/write —
+  the same PAT then sets the repo variable `E2E_BASE_URL=https://subnation.ly`
+  so the weekly e2e heartbeat can finally run; both steps are in runbook
+  §14). Coolify deploys only from the GitHub webhook — pushing IS the
+  deploy.
+- **R129 record corrections (no retro-edit, per convention):** (1) the
+  "Pushed 76017f4..f9fa15c; CI green expected" claim was written against a
+  run that FAILED, and the actual gate fix (fd702d6) landed after the
+  record; (2) the round's "backend untouched (2,240/2,240 stands)" was
+  true of the CODE but no CI or local evidence existed for any post-R128
+  SHA until R130 re-ran everything; (3) 7eb9088/fabc7bd have no CI runs at
+  all (43-second push burst + docs-only filters). The current state is
+  verified good — the ledger now says how it was verified.
+- Held open (owner-tracked): O1 CDN TTFB ceiling · GSC token (operator) ·
+  GitHub topics/homepage/releases (operator PAT UI) · B14 catalog naming ·
+  bell↔read-state parity · A4's P4 tails (referrals/pricing/order-detail
+  light inks, ErrorBoundary dump, dialog destructive tints, hover inks,
+  bell focus restore, admin label association, password-reveal size) ·
+  A7-F4 durable idempotency body-hash · A7-F5 Telegram double-tap copy ·
+  A8-F2 dead index drop (probe-gated) · A8-F3 payment_reference NOT NULL
+  stage · A8-F1 the 20-site index re-declaration · A5-F2 SW art-cache
+  bump-on-replace note.
+
 ## Round R129 — verification fleet over the R128 wave: adversarial review (SHIP) + a11y contrast census + token integrity + security delta + test-truth — the unwired P1, the red CI gate, and 15 AA closes — 2026-10-11
 
 The strongest-round directive ("ادفع وادخل في الجولة الاقوى والاعمق

@@ -642,7 +642,7 @@ function NotificationPanel({
                 </button>
 
                 {(actionHref || cfg.actionLabel) && (
-                  <div className="flex items-center gap-2 mt-2 mr-11">
+                  <div className="flex items-center gap-2 mt-2 me-11">
                     {actionHref && cfg.actionLabel && (
                       <button
                         type="button"

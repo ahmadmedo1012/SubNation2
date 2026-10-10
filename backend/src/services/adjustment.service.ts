@@ -37,6 +37,9 @@ import { db, usersTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
 import { claimIdempotencyKey, isIdempotencyKeyViolation } from "../lib/idempotency";
+// R130 (A7-F3): the balance-mutation rounding idiom — the R128-B4 F5
+// conversion reached checkout/topup/refund/loyalty but skipped this lane.
+import { roundLyd } from "../lib/money";
 
 export class AdjustmentError extends Error {
   constructor(
@@ -50,11 +53,7 @@ export class AdjustmentError extends Error {
 }
 
 export type AdjustmentErrorCode =
-  | "USER_NOT_FOUND"
-  | "NEGATIVE_BALANCE"
-  | "ZERO_DELTA"
-  | "CONCURRENCY_ERROR"
-  | "INVALID_AMOUNT";
+  "USER_NOT_FOUND" | "NEGATIVE_BALANCE" | "ZERO_DELTA" | "CONCURRENCY_ERROR" | "INVALID_AMOUNT";
 
 export interface AdjustmentResult {
   userId: number;
@@ -121,7 +120,7 @@ export class AdjustmentService {
       adminId: options.adminId,
       note: safeNote,
       idempotencyKey: options.idempotencyKey,
-      computeNext: (current) => +(current + delta).toFixed(2),
+      computeNext: (current) => roundLyd(current + delta),
     });
   }
 
@@ -145,7 +144,7 @@ export class AdjustmentService {
       adminId: options.adminId,
       note: safeNote,
       idempotencyKey: options.idempotencyKey,
-      computeNext: () => +target.toFixed(2),
+      computeNext: () => roundLyd(target),
     });
   }
 }
@@ -211,7 +210,7 @@ async function runAdjustmentTransaction(params: AdjustmentTxParams): Promise<Adj
       );
     }
 
-    const amount = +(balanceAfter - balanceBefore).toFixed(2);
+    const amount = roundLyd(balanceAfter - balanceBefore);
 
     await insertLedgerEntry(
       {

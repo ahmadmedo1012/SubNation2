@@ -1,3 +1,21 @@
+// ── Index-ordering convention (R130-A8-F1) ──────────────────────────────────
+//
+// The `.desc()` index columns below are DECLARED as `DESC NULLS LAST`
+// (what drizzle-kit 0.45 generates), but the LIVE indexes were created by
+// the boot twins (backend/src/migrate.ts V1 stages) as plain `DESC` —
+// which in Postgres means NULLS FIRST, the shape the consumers' own
+// `ORDER BY x DESC` (drizzle emits plain desc) wants. The `IF NOT EXISTS`
+// name-parity idiom makes the two tracks no-op against each other, so
+// nothing diverges at runtime today; the divergence is real only for a
+// CHAIN-built fresh environment, where the declared shape can be a hair
+// less optimal for its own ORDER BY.
+//
+// Until the follow-up re-declaration lands (rewrite each `.desc()` as a
+// raw sql`col desc` expression column so drizzle-kit emits the boot shape,
+// then regen the chain + snapshot), treat plain `DESC` as the canonical
+// index ordering and do NOT "fix" the boot twins to match the chain —
+// the live shape is the correct one.
+
 export * from "./account-link-consents";
 export * from "./admin_alerts";
 export * from "./admin-sessions";

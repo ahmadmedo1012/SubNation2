@@ -445,6 +445,14 @@ function quoteLineFromProduct(live: Product, line: LocalCartItem): LiveLineResul
   const variant =
     line.variantId != null ? (live.variants ?? []).find((v) => v.id === line.variantId) : undefined;
   if (line.variantId != null && !variant) return { status: "unavailable" };
+  // R130 (A1-F1): a DRAINED variant is the same dead end one level down.
+  // The snapshot below is the product-wide total — other variants holding
+  // stock made the line read "in stock" while the buyer's own variant had
+  // a provably empty claim pool (scoped 0 + no generic units), so the
+  // charge could only 409. A drained variant quotes with stock 0: the
+  // existing B-11 machinery flags «نفد المخزون» and blocks the CTA —
+  // the verdict the feature promised, now variant-honest. The price legs
+  // still quote from the variant (an honest label for a blocked line).
   const priceLYD = variant ? variant.price : live.price;
   const salePriceLYD = variant ? (variant.sale_price ?? null) : (live.sale_price ?? null);
   const discountPercent = variant
@@ -457,8 +465,9 @@ function quoteLineFromProduct(live: Product, line: LocalCartItem): LiveLineResul
     discountPercent,
     effectiveUnitPrice: salePriceLYD ?? priceLYD,
     // B-11 wiring: the live catalog row's stock — the same signal the
-    // PDP renders (variants carry no stock of their own).
-    stockCount: live.stock_count,
+    // PDP renders (variants carry no stock of their own). A drained
+    // variant overrides it with 0 (see above).
+    stockCount: variant && variant.is_available === false ? 0 : live.stock_count,
   };
 }
 
@@ -1091,6 +1100,13 @@ export default function CheckoutPage() {
         // /orders page) must reflect the purchase immediately, not ≤60 s
         // later. No-arg form invalidates every list param variant.
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        // R130 (A5-F3): the purchase just consumed real stock — the PDP
+        // and catalog lists held pre-purchase stock_count/is_available
+        // for up to their 3-min staleTime. Invalidate the catalog
+        // surfaces the same way the money caches are invalidated (the
+        // no-arg prefix form hits every product-by-slug/list variant).
+        queryClient.invalidateQueries({ queryKey: ["product-by-slug"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       }
 
       if (failureMessage && created.length === 0) {

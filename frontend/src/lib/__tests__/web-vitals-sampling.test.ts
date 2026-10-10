@@ -73,9 +73,11 @@ afterEach(() => {
 });
 
 describe("initWebVitals — session-level sampling (R120-B5, A5-F18)", () => {
-  it("default sampleRate 1.0 collects EVERY session (the pre-R120 behavior)", () => {
+  it("default sampleRate 1.0 collects EVERY session (the pre-R120 behavior)", async () => {
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.999999);
-    initWebVitals();
+    // R130 (A5-F1): the module rides a dynamic import — the wiring lands
+    // when the (mocked) module promise resolves, so the asserts await it.
+    await initWebVitals();
 
     // All five metric subscriptions fired…
     expect(allSubscriptions()).toBe(5);
@@ -85,9 +87,9 @@ describe("initWebVitals — session-level sampling (R120-B5, A5-F18)", () => {
     expect(randomSpy).toHaveBeenCalledTimes(1); // exactly one coin flip
   });
 
-  it("sampleRate 0 collects nothing — no subscriptions, no flush listeners", () => {
+  it("sampleRate 0 collects nothing — no subscriptions, no flush listeners", async () => {
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
-    initWebVitals({ sampleRate: 0 });
+    await initWebVitals({ sampleRate: 0 });
 
     // Math.random() (0) >= rate (0) → out of sample: the whole pipeline
     // (subscriptions AND listeners) is skipped.
@@ -97,21 +99,21 @@ describe("initWebVitals — session-level sampling (R120-B5, A5-F18)", () => {
     expect(randomSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("out-of-range rates clamp toward COLLECTION — a bogus rate never silently disables telemetry", () => {
+  it("out-of-range rates clamp toward COLLECTION — a bogus rate never silently disables telemetry", async () => {
     // NaN → clamped to 1.0: always in sample.
     vi.spyOn(Math, "random").mockReturnValue(0.999999);
-    initWebVitals({ sampleRate: Number.NaN });
+    await initWebVitals({ sampleRate: Number.NaN });
     expect(allSubscriptions()).toBe(5);
 
     // 2 (> 1) → clamped to 1.0: always in sample.
-    initWebVitals({ sampleRate: 2 });
+    await initWebVitals({ sampleRate: 2 });
     expect(allSubscriptions()).toBe(10); // 5 + 5 across the two inits
   });
 
-  it("the coin is flipped once per session, never per metric — 0.5 with a constant roll is ALL-or-nothing", () => {
+  it("the coin is flipped once per session, never per metric — 0.5 with a constant roll is ALL-or-nothing", async () => {
     // Roll lands INSIDE the sample (0.4 < 0.5): every family subscribes.
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.4);
-    initWebVitals({ sampleRate: 0.5 });
+    await initWebVitals({ sampleRate: 0.5 });
     expect(allSubscriptions()).toBe(5);
     expect(randomSpy).toHaveBeenCalledTimes(1);
 
@@ -123,7 +125,7 @@ describe("initWebVitals — session-level sampling (R120-B5, A5-F18)", () => {
     onTTFB.mockClear();
     randomSpy.mockClear();
     randomSpy.mockReturnValue(0.5);
-    initWebVitals({ sampleRate: 0.5 });
+    await initWebVitals({ sampleRate: 0.5 });
     expect(allSubscriptions()).toBe(0);
     expect(randomSpy).toHaveBeenCalledTimes(1);
   });

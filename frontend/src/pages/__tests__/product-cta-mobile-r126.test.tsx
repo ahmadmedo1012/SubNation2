@@ -117,7 +117,9 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/cart", () => ({
-  useCart: () => ({ addItem: addItemMock }),
+  // R130 (A1-F2): the real addItem returns whether the quantity grew —
+  // the mock honors the boolean contract (a void mock read as a refusal).
+  useCart: () => ({ addItem: (...args: unknown[]) => (addItemMock(...args), true) }),
 }));
 
 vi.mock("@/hooks/use-toast", () => ({

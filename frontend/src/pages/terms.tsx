@@ -24,8 +24,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="space-y-3">
       {/* R125-I7 (A7 B-12 / R124-A3 #12): border-r-2 → border-r — 1px is
-          the craft-floor cap for colored heading stripes. */}
-      <h2 className="text-base font-bold text-foreground border-r border-primary pr-3">{title}</h2>
+          the craft-floor cap for colored heading stripes. R130 (A2-F5):
+          the pair rides the logical axis (border-s/ps-) — same rendered
+          edge in this RTL-only app, future-proof for any dir switch. */}
+      <h2 className="text-base font-bold text-foreground border-s border-primary ps-3">{title}</h2>
       <div className="text-sm text-muted-foreground leading-7 space-y-2">{children}</div>
     </section>
   );

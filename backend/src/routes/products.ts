@@ -248,6 +248,26 @@ type ProductRow = typeof productsTable.$inferSelect;
 type ActiveFlashSale = Awaited<ReturnType<typeof getActiveFlashSale>>;
 
 /**
+ * R130 (A7-F1): «تبدأ من» = the cheapest BUYABLE variant's price.
+ * The availability-blind min surfaced prices whose variant had already
+ * drained (its scoped pool empty + no generic units) while pricier
+ * variants held stock — a price the grid advertised but the charge could
+ * only 409 (the variant's claim pool is provably empty then). Falls back
+ * to the availability-blind min when EVERY variant is drained (the
+ * product renders sold-out anyway) and to the product row price when no
+ * variants exist.
+ */
+function displayBaseFromVariants(
+  variants: Array<{ price: number; is_available: boolean }>,
+  basePrice: number,
+): number {
+  if (variants.length === 0) return basePrice;
+  const available = variants.filter((v) => v.is_available);
+  const pool = available.length > 0 ? available : variants;
+  return Math.min(...pool.map((v) => v.price));
+}
+
+/**
  * F-1 (R118-A6): single projection for BOTH detail routes — previously
  * two copy-pasted 30-line DTO literals, now one builder so /:id and
  * /by-slug are byte-identical by construction (the F-1 stage collapse
@@ -265,7 +285,7 @@ function buildProductDetailDto(
   const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
   const variants = projectVariantDtos(variantPool, discountPercent).get(product.id) ?? [];
   const basePrice = parseFloat(String(product.price));
-  const displayBase = variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+  const displayBase = displayBaseFromVariants(variants, basePrice);
   const salePrice =
     discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : null;
   return {
@@ -445,13 +465,15 @@ router.get("/", catalogCache, async (req, res) => {
       const stockCount = Number(p.stockCount ?? 0);
       const variants = variantsByProduct.get(p.id) ?? [];
       // "تبدأ من" semantics: when variants exist, the card price is the
-      // cheapest active variant's LYD price — the import maintains
+      // cheapest variant's LYD price — the import maintains
       // products.price = MIN(variants.price_lyd) so both agree. The flash
       // sale is applied exactly ONCE on that base (per-variant sale prices
       // are already computed by loadPublicVariants and stay authoritative
       // for the detail page selector).
-      const displayBase =
-        variants.length > 0 ? Math.min(...variants.map((v) => v.price)) : basePrice;
+      // R130 (A7-F1): "cheapest" is now availability-aware — the cheapest
+      // BUYABLE variant, falling back to the drained-min when the product
+      // is sold out (see displayBaseFromVariants).
+      const displayBase = displayBaseFromVariants(variants, basePrice);
       const displayPrice =
         discountPercent > 0 ? computeFlashSalePrice(displayBase, discountPercent) : displayBase;
       return {

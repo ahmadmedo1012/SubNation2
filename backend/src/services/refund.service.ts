@@ -218,10 +218,11 @@ export class RefundService {
       const pointsToRevoke = Math.min(awardRemainder, user.loyaltyPoints);
       const pointsBeforeReversal = user.loyaltyPoints;
       const newPoints = user.loyaltyPoints - pointsToRevoke;
-      const newLifetimeSpend = +Math.max(
-        0,
-        parseFloat(String(user.lifetimeSpend)) - amount,
-      ).toFixed(2);
+      // R130 (A7-F3): the lifetime-spend reversal rides the roundLyd
+      // boundary idiom (was +toFixed(2) — same value on today's operands).
+      const newLifetimeSpend = roundLyd(
+        Math.max(0, parseFloat(String(user.lifetimeSpend)) - amount),
+      );
 
       // B2-01 (round-92 audit): extend the optimistic-lock predicate to the
       // FULL write set — walletBalance AND loyaltyPoints AND lifetimeSpend.

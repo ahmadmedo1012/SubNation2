@@ -157,12 +157,14 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (recounted at the R129 round close; case counts from the
-R129 gate run;
-CI runs both unit suites on every code push): **frontend 178
-test files / 1,248 tests** · **backend 241 test files / 2,240 tests** (237
-under `backend/src/**` + 4 under `backend/tests/`; full-suite runs green in
-the R129 gates) · guest-only e2e **40/40** against live production (20 spec
+Current suite (recounted at the R130 round close; case counts from the
+R130 local gate run — see the CHANGELOG R130 note on why these gates were
+run locally: the docs-only push path skipped them in CI;
+CI runs both unit suites on every code push): **frontend 180
+test files / 1,255 tests** · **backend 242 test files / 2,246 tests** (238
+under `backend/src/**` + 4 under `backend/tests/`; 3 backend tests are the
+documented load-flaky timing class — all pass in isolation) ·
+guest-only e2e **40/40** against live production (20 spec
 flows × desktop + mobile-390 projects).
 
 > **Schema note:** schema changes flow exclusively through the idempotent

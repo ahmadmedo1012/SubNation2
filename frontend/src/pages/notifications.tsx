@@ -348,7 +348,7 @@ export default function NotificationsPage() {
                   </button>
                 </div>
                 {(actionHref || !isRead) && (
-                  <div className="flex items-center gap-2 mt-2 mr-11">
+                  <div className="flex items-center gap-2 mt-2 me-11">
                     {actionHref && cfg.actionLabel && (
                       <button
                         type="button"

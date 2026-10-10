@@ -660,7 +660,7 @@ export default function LoyaltyPage() {
               </div>
               <h2 className="font-bold">تحويل النقاط إلى رصيد</h2>
             </div>
-            <p className="text-sm text-muted-foreground mb-4 mr-10">
+            <p className="text-sm text-muted-foreground mb-4 me-10">
               كل{" "}
               <span className="font-bold text-foreground">
                 {data.points_rate.points_per_lyd} نقطة

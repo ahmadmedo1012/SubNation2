@@ -1055,9 +1055,17 @@ export function IdleToaster() {
   if (!mounted) return null;
 
   return (
-    <Suspense fallback={null}>
-      <Toaster />
-    </Suspense>
+    /* R130 (A5-F5): the Toaster was the one defer-mounted chrome block
+       with no boundary — a sonner render throw became an uncaught ROOT
+       error and React 19 unmounted the whole tree. Every other chrome
+       block got its fallback={null} boundary in R118-B2; the toaster
+       follows the same convention (toasts are ephemeral — losing one
+       render must never cost the app). */
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <Toaster />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

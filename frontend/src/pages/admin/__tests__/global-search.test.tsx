@@ -158,20 +158,23 @@ describe("AdminLayout GlobalSearch — no more silent failures or stale races (A
     localStorage.removeItem("sn_last_alert_id");
   });
 
-  it("an error envelope (r.ok=false) stays an honest 'no results' — not a crash or fake rows", async () => {
+  it("an error envelope (r.ok=false) renders the honest 'search failed' line — never a false 'no results' (R130 A3-F3)", async () => {
     const failing = routeSearch(() => resLike({ body: [] }), false);
     vi.stubGlobal("fetch", failing);
 
     renderLayout();
     openPaletteAndType("ab");
 
-    // The 220ms debounce fires on faked time; the failure path renders
-    // the honest empty state (and never throws on the envelope body).
-    // R125 (A6 B-9): the sr-only live line mirrors the same text — the
-    // assertion accepts the twin and requires the VISIBLE one.
+    // The 220ms debounce fires on faked time; the failure path used to
+    // collapse to «لا نتائج لـ "ab"» — asserting the order does not
+    // exist during an outage (the B5-04 false-empty class). It now
+    // renders «تعذّر البحث» instead (and never throws on the envelope
+    // body). R125 (A6 B-9): the sr-only live line mirrors the same text
+    // — the assertion accepts the twin and requires the VISIBLE one.
     await advance(220);
-    const matches = screen.getAllByText(/لا نتائج لـ "ab"/);
+    const matches = screen.getAllByText(/تعذّر البحث/);
     expect(matches.some((el) => !el.className.includes("sr-only"))).toBe(true);
+    expect(screen.queryByText(/لا نتائج لـ "ab"/)).not.toBeInTheDocument();
   });
 
   it("a late-resolving OLDER response is dropped — results match the typed query", async () => {
@@ -314,12 +317,13 @@ describe("AdminLayout GlobalSearch — palette a11y contract (R125 A6 B-9)", () 
     // → Arabic plural "few" → «3 نتائج».
     expect(live!.textContent).toBe("3 نتائج");
 
-    // The failing-search case announces the honest no-results line too.
+    // The failing-search case announces the honest failure line (R130
+    // A3-F3: an outage never announces a definitive «لا نتائج»).
     const failing = routeSearch(() => resLike({ body: [] }), false);
     vi.stubGlobal("fetch", failing);
     const input = screen.getByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
     fireEvent.change(input, { target: { value: "zz" } });
     await advance(220);
-    expect(live!.textContent).toBe(`لا نتائج لـ "zz"`);
+    expect(live!.textContent).toBe(`تعذّر البحث — أعد المحاولة`);
   });
 });

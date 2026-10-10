@@ -51,7 +51,7 @@ const SIZE_STYLES: Record<
   page: {
     card: "text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl",
     tile: "w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center",
-    icon: "w-8 h-8 text-status-error/70",
+    icon: "w-8 h-8 text-status-error",
     title: "font-bold text-lg mb-1.5 text-foreground/80",
     description: "text-sm mb-7 max-w-xs mx-auto leading-relaxed",
     retry: {
@@ -65,7 +65,7 @@ const SIZE_STYLES: Record<
   section: {
     card: "text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up",
     tile: "w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center",
-    icon: "w-6 h-6 text-status-error/70",
+    icon: "w-6 h-6 text-status-error",
     title: "font-bold text-base mb-1.5 text-foreground/80",
     description: "text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto",
     retry: {
@@ -78,7 +78,7 @@ const SIZE_STYLES: Record<
   compact: {
     card: "text-center py-10 text-muted-foreground",
     tile: "w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-3.5",
-    icon: "w-5 h-5 text-status-error/70",
+    icon: "w-5 h-5 text-status-error",
     title: "font-bold text-sm mb-1 text-foreground/80",
     description: "text-xs text-muted-foreground mb-4 leading-relaxed max-w-[240px] mx-auto",
     // min-h-11 (R124-I1 A4 P2): these retries are the only recovery
@@ -156,7 +156,11 @@ export function FetchErrorCard({
     // design: this component renders ONLY in error branches.
     <div role="alert" className={cn(styles.card, className)}>
       <div className={styles.tile}>
-        <Icon className={styles.icon} />
+        {/* R130 (A2-F2): the /70 tint sat 0.02 under the 3:1 non-text bar
+            on the error/8 tile (the R129-A2 census math reached admin pages
+            only); the adjacent bold Arabic headline carries the state, so
+            the icon is decorative and hidden from the a11y tree. */}
+        <Icon className={styles.icon} aria-hidden="true" />
       </div>
       <p className={cn(styles.title, titleClassName)}>{title}</p>
       {description !== undefined && (

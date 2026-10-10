@@ -364,6 +364,12 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   // on screen, never flash a premature «لا نتائج") from "searched and
   // empty" (the honest no-results message + its live announcement).
   const [resultsFor, setResultsFor] = useState<string | null>(null);
+  // R130 (A3-F3): the last completed round hit a real fetch failure
+  // (non-abort, non-401) — the palette must never answer an outage with
+  // the definitive «لا نتائج لـ "q"» (the B5-04 false-empty class,
+  // surviving in the one overlay whose whole job is truth under time
+  // pressure).
+  const [searchFailed, setSearchFailed] = useState(false);
   const [, navigate] = useLocation();
   const inputRef = useRef<HTMLInputElement>(null);
   // R125 (A6 B-9): the palette overlays — needed for the Tab trap and
@@ -425,6 +431,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
     if (q.length < 2) {
       setResults({ orders: [], users: [], products: [] });
       setResultsFor(null);
+      setSearchFailed(false);
       return;
     }
     // 94-C2 (A2 P2-3): every new keystroke aborts the previous request
@@ -442,6 +449,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
       // envelope, session expiry, abort) collapses to [] here — the
       // scope filter above already keeps unreachable sections out of
       // the request set entirely.
+      let fetchFailed = false;
       const jsonList = async (url: string): Promise<unknown[]> => {
         try {
           const d = await adminFetchJson<unknown>(url, {
@@ -449,9 +457,17 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             signal: controller.signal,
           });
           return Array.isArray(d) ? d : [];
-        } catch {
-          /* session-expired (global toast + redirect in flight), error
-             envelope, or aborted — the next keystroke owns the state */
+        } catch (e) {
+          /* R130 (A3-F3): aborts are the debounce contract and session
+             expiry is the global handler's — everything else is an
+             outage. Remember it: the round renders the honest
+             «تعذّر البحث» line instead of asserting the record does not
+             exist. */
+          const status = (e as { status?: number })?.status;
+          const aborted = e instanceof DOMException && e.name === "AbortError";
+          if (!aborted && status !== 401) {
+            fetchFailed = true;
+          }
           return [];
         }
       };
@@ -475,6 +491,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             users: (users as AdminUser[]).slice(0, 4),
             products: (products as AdminProduct[]).slice(0, 4),
           });
+          setSearchFailed(fetchFailed);
           setResultsFor(q);
         })
         .catch(() => {
@@ -598,7 +615,9 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
               ? "جارٍ البحث…"
               : resultsFor === query.trim()
                 ? total === 0
-                  ? `لا نتائج لـ "${query.trim()}"`
+                  ? searchFailed
+                    ? "تعذّر البحث — أعد المحاولة"
+                    : `لا نتائج لـ "${query.trim()}"`
                   : formatCount(total, SEARCH_RESULT_FORMS)
                 : ""
             : ""}
@@ -607,14 +626,22 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
         {/* Results — R125 (A6 B-9): the no-results message is a
             role="status" OUTSIDE the listbox (APG listbox children are
             options/groups only), and only renders once a search for
-            THIS query has actually completed. */}
+            THIS query has actually completed. R130 (A3-F3): a failed
+            round renders the honest failure line — never the definitive
+            «لا نتائج» over an outage. */}
         {query.length >= 2 && !loading && resultsFor === query.trim() && total === 0 ? (
           <div role="status" className="py-10 text-center text-muted-foreground text-sm">
-            {/* R122 (A2-P2): scoped-out sections are never fetched —
-                this empty copy only ever speaks for the sections that
-                WERE searched (an admin with no search scope never
-                reaches the palette; see the triggers in AdminLayout). */}
-            لا نتائج لـ "{query}"
+            {searchFailed ? (
+              <>تعذّر البحث — تحقّق من الاتصال وأعد المحاولة</>
+            ) : (
+              <>
+                {/* R122 (A2-P2): scoped-out sections are never fetched —
+                    this empty copy only ever speaks for the sections that
+                    WERE searched (an admin with no search scope never
+                    reaches the palette; see the triggers in AdminLayout). */}
+                لا نتائج لـ "{query}"
+              </>
+            )}
           </div>
         ) : (
           query.length >= 2 && (
@@ -1339,7 +1366,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
               >
                 <Search className="w-3 h-3" />
                 <span>بحث...</span>
-                <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded opacity-60 group-hover:opacity-100 transition-opacity">
+                <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded group-hover:opacity-100 transition-opacity">
                   ⌘K
                 </kbd>
               </button>

@@ -693,6 +693,18 @@ accounts can press them.
   enabled`, including `subnation-www-redirect` (priority 1000).
 - **Design + rollback record:** `docs/operations/WWW_TO_APEX_301.md`. Rollback
   = remove the file; apex is unaffected.
+- **R130 — the apex's own http→https hop is now permanent (301):** the app's
+  Coolify label middleware (`redirect-to-https`, `redirectscheme.scheme=https`
+  without `permanent`) answered **302** since the cutover — the last edge
+  polish item. `/data/coolify/proxy/dynamic/apex-https-redirect.yml` (same
+  pattern: file-provider router, priority 1000, Host(`subnation.ly`) on the
+  http entrypoint only, own `redirectScheme.permanent=true` middleware +
+  self-contained noop service) now answers **301** with path + query
+  preserved. Live-verified 2026-10-10: `http://subnation.ly/<path>?x=1` → 301
+  → https (1 hop), www pair + https apex + healthz unchanged. The internal
+  ACME challenge router keeps its max priority, so certificate renewal is
+  unaffected. **Rollback = delete the file** (Traefik watches the directory
+  and live-reloads).
 
 ## 14. Pending operator actions (R122 status; R123/R124 additions below)
 
@@ -705,15 +717,13 @@ accounts can press them.
 - **Stock + TOTP** (unverified since R118): the open items in
   `docs/operations/OPERATOR_ACTIONS_R118.md` — status header refreshed
   R122.
-- **R123 addition — http→https apex redirect is TEMPORARY (standing ops
-  item; the digit drifts with Traefik regens — 302 at the R123-A8 probe,
-  307 at the R127-B12 probe — R127-L4 N1: verify the CLASS, not the
-  digit)**: the Traefik entrypoint `redirectScheme` middleware in the
-  Coolify proxy config ships `permanent: false`. Fix = Coolify →
-  Server → Proxy → Configuration, set `permanent: true` on the
-  redirect-to-https middleware → a permanent redirect (no app redeploy).
-  Verify: `curl -sI http://subnation.ly/ | head -3` → 301 + apex Location.
-  Rollback = flip the flag back. Full steps: OPERATOR_ACTIONS_R118 #11.
+- **R123 addition — http→https apex redirect: ✅ RESOLVED R130** (was
+  "TEMPORARY — the digit drifts with Traefik regens"). The Coolify-label
+  middleware kept `permanent: false` and every probe confirmed 302; instead
+  of the UI flag flip, the edge now answers **301** via the standalone
+  `/data/coolify/proxy/dynamic/apex-https-redirect.yml` file router (§13,
+  R130 record) — live-verified 2026-10-10. No operator action remains; the
+  UI-flag path in OPERATOR_ACTIONS_R118 #11 is the documented alternative.
 - **R123 addition — copilot_actions / copilot_action_items retention
   policy is UNDECIDED** (currently unbounded; the only audit-grade tables
   without a window — jsonb before/after snapshots grow monotonically with
@@ -730,6 +740,30 @@ accounts can press them.
   `subnation`, project `javascript-react` — §11) with a replay or a
   10%-roll session recorded (`frontend/src/instrument.ts:264-271`;
   `docs/inspection-r124/R1` #8).
+- **R130 — GitHub push/CI auth is DEAD on every machine this round could
+  reach**: the PAT embedded in the VPS clone's origin
+  (`root@169.58.100.161:/data/SubNation2`) is the token R123 already marked
+  dead (`ghp_EnQJ…`, 401), every other token found on the operator's disk
+  tested 401, the Coolify GitHub App's installation token carries ZERO repo
+  permissions (pull/push/variables all false), and no SSH key is registered
+  with GitHub. Consequences: (a) pushes to `github/main` (the canonical
+  remote — `origin` is the VPS mirror and deploys NOTHING) need a fresh
+  classic PAT with `repo` scope or a fine-grained PAT with
+  Contents+Variables read/write; (b) the CI `e2e` + weekly-sweep jobs stay
+  skipped on docs-only pushes until the repo variable
+  `E2E_BASE_URL=https://subnation.ly` is set (Settings → Secrets and
+  variables → Actions → Variables — needs the same PAT/UI). The R130
+  verification gap was closed LOCALLY instead: `pnpm audit --prod` (0
+  critical) + the 40-test guest e2e suite against live production + the
+  full local gate suite (see the R130 CHANGELOG record).
+- **R130 — local git credential cache**: this workstation's
+  `credential.helper=cache` held the (now-expired) credential that pushed
+  R129's last commits from ANOTHER machine's session; local pushes after
+  the PAT refresh should re-cache it (`git push github main` once
+  interactively) or embed a fine-grained PAT in the `github` remote URL —
+  R127-B11-F2 style tokens-in-remote-URLs are tolerated on private
+  workstations but the clean-URL + cache idiom is preferred (that is what
+  this clone now uses).
 
 ## 15. Backups & restore drills (pointer)
 

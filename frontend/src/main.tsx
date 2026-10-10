@@ -73,7 +73,10 @@ function scheduleIdle(cb: () => void) {
 
 scheduleIdle(() => {
   try {
-    initWebVitals({ enabled: true });
+    // R130 (A5-F1): initWebVitals now returns a promise (the module rides
+    // a dynamic import off the eager path); fire-and-forget at this idle
+    // tick is the same contract as before.
+    void initWebVitals({ enabled: true });
   } catch {
     // CWV must never break the app — module boundary catches errors itself.
   }

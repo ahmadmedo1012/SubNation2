@@ -136,6 +136,36 @@ export interface CheckoutInput {
   idempotencyKey?: string;
 }
 
+/**
+ * R130 (A7-F1): the cheapest of `variants` (already ordered price-ASC)
+ * whose claim pool can actually yield a unit — the two-pool availability
+ * test: the variant's own scoped unsold units, OR the product's generic
+ * pool (variant_id IS NULL fulfills any variant). ONE grouped query over
+ * the product's unsold inventory; runs ONLY on the legacy null-variant
+ * resolution path. Returns null when no pool has units (caller falls
+ * back to variants[0]; the pre-tx fast-fail then answers OUT_OF_STOCK).
+ */
+async function firstClaimableVariant(
+  productId: number,
+  variants: Array<typeof productVariantsTable.$inferSelect>,
+): Promise<typeof productVariantsTable.$inferSelect | null> {
+  const poolRows = await db
+    .select({
+      variantId: inventoryTable.variantId,
+      units: sql<number>`count(*)::int`,
+    })
+    .from(inventoryTable)
+    .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
+    .groupBy(inventoryTable.variantId);
+  const scopedByVariant = new Map<number, number>();
+  let genericUnits = 0;
+  for (const row of poolRows) {
+    if (row.variantId == null) genericUnits = Number(row.units);
+    else scopedByVariant.set(row.variantId, Number(row.units));
+  }
+  return variants.find((v) => (scopedByVariant.get(v.id) ?? 0) > 0 || genericUnits > 0) ?? null;
+}
+
 export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   const { userId, productId } = input;
   const couponCode = input.couponCode;
@@ -206,9 +236,17 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     if (!variant) return { ok: false, reason: "VARIANT_NOT_FOUND" };
   } else if (productVariants.length > 0) {
     // Legacy callers that omit variantId still get a variant-aware price:
-    // the cheapest ACTIVE one (identical to the storefront's "تبدأ من"
-    // display price, so no mismatch is chargeable).
-    variant = productVariants[0];
+    // the cheapest variant that can actually CLAIM a unit. R130 (A7-F1):
+    // the old blind productVariants[0] (= cheapest ACTIVE by price) could
+    // pick a variant whose claim pool is PROVABLY empty — per-variant
+    // availability is scoped>0 OR generic>0, and the generic pool is
+    // product-wide, so "cheapest unavailable" strictly means scoped=0
+    // AND generic=0 — and the charge could only 409 (money was never at
+    // risk, but the buyer hit a dead end the storefront had blessed).
+    // Prefer the cheapest active variant with a claimable unit; fall back
+    // to productsVariants[0] when NO pool has units (the fast-fail below
+    // then answers OUT_OF_STOCK with identical semantics).
+    variant = (await firstClaimableVariant(productId, productVariants)) ?? productVariants[0];
   }
 
   /** Customer-facing purchase label, copied immutably onto the order. */
@@ -421,7 +459,10 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       }
       const claimedUnit = fulfillment.unit;
 
-      const newLifetimeSpend = +(toNumber(user.lifetimeSpend) + finalPrice).toFixed(2);
+      // R130 (A7-F3): the lifetime-spend mutation rides the roundLyd
+      // boundary idiom (was +toFixed(2) — safe by construction today,
+      // hazard-proof for future operands).
+      const newLifetimeSpend = roundLyd(toNumber(user.lifetimeSpend) + finalPrice);
       // R115: the award formula lives in lib/loyalty-policy (single source)
       // and the mutation is attributed in points_ledger below — same tx.
       const awardPoints = purchaseAwardPoints(finalPrice);

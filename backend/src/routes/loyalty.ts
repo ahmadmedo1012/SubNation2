@@ -190,7 +190,9 @@ router.post(
 
         const newPoints = user.loyaltyPoints - pointsToConvert;
         const balanceBefore = parseFloat(String(user.walletBalance));
-        const newBalance = +(balanceBefore + lydValue).toFixed(2);
+        // R130 (A7-F3): the R128-B4 F5 conversion reached lydValue below
+        // but missed the balance WRITE — the boundary idiom completes.
+        const newBalance = roundLyd(balanceBefore + lydValue);
 
         // Optimistic lock on BOTH mutated columns: a concurrent wallet or
         // loyalty write between our SELECT and UPDATE makes this match 0

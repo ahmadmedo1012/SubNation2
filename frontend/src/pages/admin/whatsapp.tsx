@@ -375,7 +375,7 @@ export default function AdminWhatsAppPage() {
           ) : (
             // 110-M (109-b): no build-time docs URL — a muted plain-text
             // hint keeps the header layout; never link a dead domain.
-            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground/60">
+            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
               وثائق البوابة
             </span>
           )}

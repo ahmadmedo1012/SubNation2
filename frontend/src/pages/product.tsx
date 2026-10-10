@@ -693,7 +693,10 @@ export default function ProductPage() {
     lastAddTapRef.current = now;
     // Variant-aware line: the selected option's price + label ride the
     // cart line so checkout charges exactly what the product page showed.
-    addItem({
+    // R130 (A1-F2): a refused raise (stock-aware ceiling) gets the honest
+    // ceiling toast — the success toast was promising a badge change the
+    // cap never made.
+    const applied = addItem({
       productId: product.id,
       variantId: selectedVariant ? selectedVariant.id : null,
       variantLabel: selectedVariant ? selectedVariant.label : null,
@@ -713,12 +716,22 @@ export default function ProductPage() {
       // so both surfaces agree. Variants carry no stock of their own.
       stockCount: product.stock_count,
     });
-    toast({
-      title: "أُضيف إلى السلة",
-      description: selectedVariant
-        ? `${product.name} — ${selectedVariant.label}`
-        : (product.name ?? undefined),
-    });
+    if (applied) {
+      toast({
+        title: "أُضيف إلى السلة",
+        description: selectedVariant
+          ? `${product.name} — ${selectedVariant.label}`
+          : (product.name ?? undefined),
+      });
+    } else {
+      toast({
+        title: "بلغت الحد الأقصى المتاح",
+        description:
+          product.stock_count != null
+            ? `${product.name} — متبقٍ ${product.stock_count} فقط`
+            : (product.name ?? undefined),
+      });
+    }
   };
 
   // SEO — called unconditionally (before the loading/not-found early
@@ -839,7 +852,7 @@ export default function ProductPage() {
     return (
       <div className="max-w-xl mx-auto px-4 py-20 text-center text-muted-foreground">
         <div className="w-16 h-16 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-4 flex items-center justify-center">
-          <Package className="w-7 h-7 text-status-error/70" />
+          <Package className="w-7 h-7 text-status-error" aria-hidden="true" />
         </div>
         <p className="font-bold mb-1 text-foreground/80">تعذّر تحميل المنتج</p>
         <p className="text-sm mb-3">حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة</p>
@@ -1122,7 +1135,7 @@ export default function ProductPage() {
                 size="lg"
                 className="flex-1"
               >
-                <ShoppingCart className="w-4 h-4 ml-1.5" />
+                <ShoppingCart className="w-4 h-4 ms-1.5" />
                 عرض طلباتي
               </Button>
               <Button variant="outline" size="lg" onClick={() => navigate("/")} className="flex-1">
@@ -1843,7 +1856,7 @@ function CtaBlock({
           aria-label="نفد المخزون — غير متاح للشراء حالياً"
           className="w-full h-12 text-base"
         >
-          <Lock className="w-4 h-4 ml-2" /> نفد المخزون
+          <Lock className="w-4 h-4 ms-2" /> نفد المخزون
         </Button>
         <Button
           onClick={() => navigate(altHref)}
@@ -1983,7 +1996,7 @@ function CtaBlock({
               variant="outline"
               className="shrink-0 h-12 min-w-[7.5rem] px-5 press-spring"
             >
-              <Wallet className="w-4 h-4 ml-1.5" /> شحن
+              <Wallet className="w-4 h-4 ms-1.5" /> شحن
             </Button>
           </>
         ) : (
@@ -2008,7 +2021,7 @@ function CtaBlock({
               variant="outline"
               className="w-full h-12 text-base press-spring"
             >
-              <Wallet className="w-5 h-5 ml-2" /> شحن المحفظة
+              <Wallet className="w-5 h-5 ms-2" /> شحن المحفظة
             </Button>
           </>
         )}
@@ -2042,7 +2055,7 @@ function CtaBlock({
         disabled={isPending}
         className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
       >
-        <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2`} />
+        <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ms-2`} />
         {isPending
           ? "جارٍ المعالجة…"
           : compact
@@ -2287,7 +2300,11 @@ function VariantSelector({
                       : "bg-card text-foreground/80 border-border/50 hover:border-primary/45 hover:text-primary-text"
                   } ${!planAvailable ? "opacity-40 pointer-events-none" : ""}`}
                 >
+                  {/* R130 (A2-F3): the page's own «متوفر (N)» badge sits right
+                      above — a dead pill with no sold-out signal read as
+                      "temporarily unavailable". */}
                   {plan}
+                  {!planAvailable && <span className="text-2xs"> — نفد</span>}
                 </button>
               );
             })}
@@ -2308,7 +2325,7 @@ function VariantSelector({
                 key={v.id}
                 type="button"
                 aria-pressed={isSelected}
-                aria-label={`${v.label} — ${formatCurrency(eff)}`}
+                aria-label={`${v.label} — ${formatCurrency(eff)}${!v.is_available ? " — نفد" : ""}`}
                 aria-disabled={!v.is_available || undefined}
                 disabled={!v.is_available}
                 onClick={() => onSelect(v.id)}
@@ -2320,6 +2337,7 @@ function VariantSelector({
               >
                 <span className="text-sm font-bold text-foreground leading-tight">
                   {v.duration_label ?? v.plan_label ?? v.label}
+                  {!v.is_available && <span className="text-2xs"> — نفد</span>}
                 </span>
                 {/* R123-E4b (P3-h): text-xs — the type-scale token (12px)
                     nearest the one-off 13px; the pill's label above is

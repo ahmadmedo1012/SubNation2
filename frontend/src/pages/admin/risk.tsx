@@ -310,7 +310,7 @@ export default function AdminRiskPage() {
                 }`}
               >
                 {f.label}
-                <span className="opacity-70 mr-1.5">({counts[f.value]})</span>
+                <span className="mr-1.5">({counts[f.value]})</span>
               </button>
             );
           })}

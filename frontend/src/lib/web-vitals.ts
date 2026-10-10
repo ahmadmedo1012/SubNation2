@@ -18,9 +18,11 @@
  * v4 API note: web-vitals v4 exports `onCLS / onFCP / onINP / onLCP / onTTFB`.
  * Earlier `getCLS / …` names are removed in v4 — using them throws at module
  * resolve time. This file uses the v4 API exclusively.
+ * R130 (A5-F1): the module is imported DYNAMICALLY inside initWebVitals —
+ * its bytes left the eager path (the budget-warn canary had <1 KB of
+ * headroom); collection was already idle/error-deferred at the call site.
  */
 
-import { onCLS, onFCP, onINP, onLCP, onTTFB } from "web-vitals";
 import { apiUrl } from "./api-config";
 
 // ── Configuration ────────────────────────────────────────────────────────────
@@ -252,10 +254,18 @@ export interface InitWebVitalsOptions {
  * Initialise CWV collection. Call once at app boot from main.tsx.
  *
  * Defaults to enabled. Pass `{ enabled: false }` to skip (e.g. in dev).
+ *
+ * Returns a promise that settles when the (sampled) pipeline is wired —
+ * R130 (A5-F1): the web-vitals module now rides a DYNAMIC import, so its
+ * ~2 KB gz left the eager graph (the bundle-budget warn canary had under
+ * 1 KB of headroom). The subscriptions land one microtask+fetch later;
+ * web-vitals v4 subscribes with `buffered: true` observers, so no early
+ * metric is lost by the deferred wiring. A module-load failure is
+ * swallowed at the boundary — telemetry can never break the app.
  */
-export function initWebVitals(options: InitWebVitalsOptions = {}): void {
+export function initWebVitals(options: InitWebVitalsOptions = {}): Promise<void> {
   const { enabled = true, sampleRate = 1 } = options;
-  if (!enabled) return;
+  if (!enabled) return Promise.resolve();
   // `endpoint` arg accepted for API parity with design.md §3.1.14;
   // routing remains the constant BEACON_ENDPOINT.
 
@@ -266,30 +276,37 @@ export function initWebVitals(options: InitWebVitalsOptions = {}): void {
   // keeps 100% of sessions. One flip per session (init runs once at
   // boot), all-or-nothing: metrics are only meaningful as a complete
   // per-visit set, never per-metric sampling.
-  if (Math.random() >= rate) return;
+  if (Math.random() >= rate) return Promise.resolve();
 
-  try {
-    onLCP((m) => collectAndSend("LCP", m.value));
-    onFCP((m) => collectAndSend("FCP", m.value));
-    onINP((m) => collectAndSend("INP", m.value));
-    onCLS((m) => collectAndSend("CLS", m.value));
-    onTTFB((m) => collectAndSend("TTFB", m.value));
-  } catch {
-    // web-vitals subscription failure must not break the app.
-    return;
-  }
+  return import("web-vitals")
+    .then(({ onCLS, onFCP, onINP, onLCP, onTTFB }) => {
+      try {
+        onLCP((m) => collectAndSend("LCP", m.value));
+        onFCP((m) => collectAndSend("FCP", m.value));
+        onINP((m) => collectAndSend("INP", m.value));
+        onCLS((m) => collectAndSend("CLS", m.value));
+        onTTFB((m) => collectAndSend("TTFB", m.value));
+      } catch {
+        // web-vitals subscription failure must not break the app.
+        return;
+      }
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      void flushBuffer();
-    }
-  });
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+          void flushBuffer();
+        }
+      });
 
-  window.addEventListener(
-    "pagehide",
-    () => {
-      void flushBuffer();
-    },
-    { capture: true },
-  );
+      window.addEventListener(
+        "pagehide",
+        () => {
+          void flushBuffer();
+        },
+        { capture: true },
+      );
+    })
+    .catch(() => {
+      // Module load failure (offline bootstrap, chunk race) — same
+      // boundary contract as before: never break the app.
+    });
 }
