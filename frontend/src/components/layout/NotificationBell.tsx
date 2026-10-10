@@ -370,7 +370,14 @@ export function NotificationBell() {
         {unread > 0 ? <BellDot className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         {unread > 0 && (
           <span className="absolute -top-0.5 -left-0.5 min-w-[16px] h-4 bg-primary text-primary-foreground text-3xs font-bold rounded-full flex items-center justify-center px-0.5 shadow-md shadow-primary/30 badge-pulse">
-            {unread > 9 ? "9+" : unread}
+            {/* R128-A5 (A5-3): the count swap pops — an inner span keyed on
+                the DISPLAYED value so num-pop replays when the visible
+                number changes without displacing the outer badge-pulse
+                (two `animation` declarations can't share one element; the
+                pulse owns the shell, the pop owns the number). */}
+            <span key={unread > 9 ? "9+" : String(unread)} className="num-pop">
+              {unread > 9 ? "9+" : unread}
+            </span>
           </span>
         )}
       </button>
@@ -615,7 +622,16 @@ function NotificationPanel({
                       )}
                     </div>
                     {n.message && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
+                      /* R128-A4 (F-1 cousin): dir="auto" on the clamped
+                         user-content line — notification bodies mix
+                         scripts freely (WhatsApp replies, Latin brand
+                         names), and in the RTL block the line-clamp's
+                         ellipsis eats a Latin run's beginning. Same
+                         isolation idiom as the product-name surfaces. */
+                      <p
+                        dir="auto"
+                        className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed"
+                      >
                         {n.message}
                       </p>
                     )}

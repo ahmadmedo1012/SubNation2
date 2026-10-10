@@ -313,6 +313,44 @@ describe("A13-F12 — the selected variant pill's sale price rides the AA status
   });
 });
 
+describe("R128-IMP-1 — RTL anchor + compact-bar craft on the PDP", () => {
+  it('A2-F1: the h1 keeps dir="auto" isolation AND pins text-right (Latin names don\'t float off the RTL reading edge)', () => {
+    renderPage();
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1).toHaveAttribute("dir", "auto");
+    // dir=auto resolves a pure-Latin name to ltr → text-align:start
+    // computed LEFT (measured 41px void off the right reading line on
+    // «Lifetime Cloud Storage»); the physical class re-anchors it.
+    expect(h1.className).toContain("text-right");
+  });
+
+  it("B13 §7.1: the guest compact price stack can't grow the bar at 320px (min-w-0 + truncate)", () => {
+    const { container } = renderPage();
+    const bar = stickyBar(container);
+    // The price stack is the flex child next to the shrink-0 CTA —
+    // without min-w-0 a 4+-digit price is an unbreakable min-content
+    // that pushes the bar past the viewport.
+    const stack = bar.querySelector("div.flex-1.min-w-0");
+    expect(stack).toBeInstanceOf(HTMLElement);
+    const priceLine = stack!.firstElementChild as HTMLElement;
+    expect(priceLine.className).toContain("truncate");
+    expect(priceLine.className).toContain("tabular-nums");
+  });
+
+  it("A6 P4-4: the solvent compact bar reads «رصيد كافٍ» with lucide Check, not a ✓ text glyph", () => {
+    authToken = "test-token";
+    renderPage();
+
+    const okLine = screen.getByText("رصيد كافٍ", { selector: "span" });
+    // The icon is a real lucide <svg>, aria-hidden decorative.
+    const icon = okLine.querySelector("svg");
+    expect(icon).not.toBeNull();
+    expect(icon!.getAttribute("aria-hidden")).toBe("true");
+    // No ✓ text-glyph survives anywhere on the page.
+    expect(screen.queryByText("✓", { exact: false })).not.toBeInTheDocument();
+  });
+});
+
 /** Exact-text lookup scoped to a container (the bar renders «بدائل»
  * inside a button; the desktop twin's label is a longer sentence). */
 function getByTextExact(container: HTMLElement, text: string): HTMLElement | null {

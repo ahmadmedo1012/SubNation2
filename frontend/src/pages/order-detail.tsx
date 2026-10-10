@@ -344,9 +344,9 @@ export default function OrderDetailPage() {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <h1 className="font-bold text-base leading-tight mb-0.5 break-words">
-                    {order.product_name}
-                  </h1>
+                  {/* R128-A4 (F-3): leading-tight removed — the base h1–h4
+                      1.3 Arabic-safe floor (index.css) owns the leading. */}
+                  <h1 className="font-bold text-base mb-0.5 break-words">{order.product_name}</h1>
                   {/* R116-S2 (P2): the purchased option as a chip under the
                       product name — the cart.tsx idiom (the API serves
                       variant_label on the order line; null for legacy

@@ -95,12 +95,13 @@ describe("tierLabel + tierColor", () => {
   it("returns tone-correct color classes per tier", () => {
     // R94-A1 #5 (P2, WCAG AA): gold's text-yellow-400 measured 1.53:1 on
     // white cards (light theme); silver/platinum -400 shades failed the
-    // same way. The tier colors now ride --status-warning / mid shades
-    // that hold AA on BOTH card colors.
-    expect(tierColor("bronze")).toBe("text-amber-600");
-    expect(tierColor("silver")).toBe("text-slate-500");
-    expect(tierColor("gold")).toBe("text-status-warning");
-    expect(tierColor("platinum")).toBe("text-cyan-600");
+    // same way. R128 (A1-F3): the family moved to the theme-aware
+    // --tier-* tokens (index.css) — AA-computed pairs for BOTH themes
+    // (the raw amber/slate/cyan palette failed cross-theme).
+    expect(tierColor("bronze")).toBe("text-tier-bronze");
+    expect(tierColor("silver")).toBe("text-tier-silver");
+    expect(tierColor("gold")).toBe("text-tier-gold");
+    expect(tierColor("platinum")).toBe("text-tier-platinum");
   });
 
   it("falls through to raw / muted-foreground for unknown tiers", () => {

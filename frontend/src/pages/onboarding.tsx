@@ -125,8 +125,10 @@ export function OnboardingPage() {
                 </div>
                 {/* R124-I4 (A3 #7): gradient text is on the REFUSE list —
                     emphasis comes from weight/size (the h1 already carries
-                    both); the brand accent rides the text-safe token. */}
-                <h1 className="text-2xl font-bold leading-tight">
+                    both); the brand accent rides the text-safe token.
+                    R128-A4 (F-3): leading-tight removed — the base h1–h4
+                    1.3 Arabic-safe floor (index.css) owns the leading. */}
+                <h1 className="text-2xl font-bold">
                   مرحباً بك في <span className="text-primary-text">SubNation</span>
                 </h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">

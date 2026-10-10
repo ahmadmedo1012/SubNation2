@@ -159,9 +159,12 @@ export function MobileNav() {
                 className="relative flex flex-col items-center justify-center h-full gap-[3px] select-none press-spring"
                 style={{ WebkitTapHighlightColor: "transparent" }}
               >
-                {/* Active pill background */}
+                {/* Active pill background — R128-A2 (§4 polish): /12 →
+                    /16 — the 12% tint was near-invisible on the dark card,
+                    weakening the pill cue under the accent bar + bold
+                    label trio. */}
                 {active && (
-                  <div className="absolute inset-x-2 inset-y-[6px] rounded-2xl bg-primary/12 tab-slide-in" />
+                  <div className="absolute inset-x-2 inset-y-[6px] rounded-2xl bg-primary/16 tab-slide-in" />
                 )}
 
                 {/* Active top accent bar — 94-C3 (A3 P3-3): same
@@ -174,7 +177,17 @@ export function MobileNav() {
                 {/* Icon — the السلة icon carries the live count badge
                     (R120-B1 / A1-F8): the same 9+ cap + inline-end
                     corner idiom as the Navbar cart/bell badges. */}
-                <span className="relative">
+                {/* R128-IMP-4 (A13-F4 / B1 item 9): the LIVE REGION is this
+                    STABLE wrapper, not the badge span — the badge is
+                    key-remounted for the num-pop emphasis (R128-A5/A5-3
+                    below), and a keyed remount mounts a FRESH live region
+                    per change (mount-time content is never announced), so
+                    aria-live on the badge itself would be dead. The
+                    wrapper persists across count changes; its text (the
+                    badge number) announces politely on N→M while both
+                    are >0. The 0→1 mount + 1→0 unmount can't announce —
+                    the add/remove toast covers those (A13's own note). */}
+                <span className="relative" aria-live={isCartTab ? "polite" : undefined}>
                   <tab.icon
                     strokeWidth={active ? 2.5 : 1.8}
                     className={`
@@ -187,7 +200,17 @@ export function MobileNav() {
                     `}
                   />
                   {isCartTab && itemCount > 0 && (
-                    <span className="absolute -top-1.5 -left-2 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-3xs font-bold leading-none tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
+                    /* R128-A5 (A5-3): the count swap pops — keying on the
+                       DISPLAYED value remounts the badge so num-pop (the
+                       sanctioned emphasis animation; the wallet-balance
+                       idiom) replays whenever the visible number changes
+                       (10→11 stays «9+» — no ghost pop). Before, the count
+                       swapped as bare text and the "it worked" confirmation
+                       rested entirely on the toast. */
+                    <span
+                      key={itemCount > 9 ? "9+" : String(itemCount)}
+                      className="absolute -top-1.5 -left-2 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-3xs font-bold leading-none tabular-nums flex items-center justify-center shadow-sm shadow-primary/30 num-pop"
+                    >
                       {itemCount > 9 ? "9+" : itemCount}
                     </span>
                   )}

@@ -1142,7 +1142,9 @@ export default function CheckoutPage() {
           <ShoppingBag className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold leading-tight">إتمام الطلب</h1>
+          {/* R128-A4 (F-3): leading-tight removed — the base h1 1.3
+              Arabic-safe floor owns the leading (same as cart's h1). */}
+          <h1 className="text-2xl font-bold">إتمام الطلب</h1>
           <p className="text-sm text-muted-foreground">راجع مشترياتك وأكمل عملية الدفع</p>
         </div>
       </div>
@@ -1419,7 +1421,14 @@ export default function CheckoutPage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-bold truncate">{it.name}</div>
+                          {/* R128-A4 (F-1): dir="auto" — Latin item names
+                              truncate from the wrong end in an RTL block
+                              (the ellipsis eats the name's beginning).
+                              Same isolation idiom as cart.tsx's it.name
+                              twin + ProductCard's h3. */}
+                          <div dir="auto" className="font-bold truncate">
+                            {it.name}
+                          </div>
                           {it.variantLabel && (
                             <div className="text-3xs font-semibold text-muted-foreground/85 truncate">
                               {it.variantLabel}

@@ -149,7 +149,11 @@ export default function CartPage() {
             <ShoppingCart className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold leading-tight">سلة المشتريات</h1>
+            {/* R128-A4 (F-3): leading-tight removed — the base layer's
+                h1–h4 1.3 Arabic-safe floor (index.css, R96 A6 #5) owns
+                the leading; the 1.25 utility clipped Readex Pro's tall
+                ascenders/harakat. */}
+            <h1 className="text-2xl font-bold">سلة المشتريات</h1>
             <p className="text-sm text-muted-foreground">
               {items.length === 0
                 ? "سلتك فارغة حالياً"
@@ -270,8 +274,17 @@ export default function CartPage() {
                       >
                         {/* R124-I4 (A5 #1): hover tint rides the text-safe
                             token — raw text-primary is 3.76:1 on the dark
-                            card (AA fail on the hover state of small text). */}
-                        <div className="font-bold text-sm leading-snug truncate group-hover:text-primary-text transition-colors">
+                            card (AA fail on the hover state of small text).
+                            R128-A4 (F-1): dir="auto" — the catalog is
+                            Latin-named, and in an RTL block the ellipsis
+                            eats the inline-end = the Latin string's
+                            BEGINNING («Lifetime Cloud Storage» rendered
+                            «…oud Storage»). Same isolation idiom as
+                            ProductCard's h3 / the PDP h1. */}
+                        <div
+                          dir="auto"
+                          className="font-bold text-sm leading-snug truncate group-hover:text-primary-text transition-colors"
+                        >
                           {it.name}
                         </div>
                       </Link>
@@ -322,13 +335,18 @@ export default function CartPage() {
                         ≥8px separation (gap-2) between the stepper cluster
                         and the trash — the old 26px buttons sat 4px apart, so
                         a rapid "+" double-tap landed on the trash and
-                        silently deleted the line. */}
+                        silently deleted the line.
+                        R128-A5 (A5-3): press-spring on the money path's
+                        most-touched controls — they carried only the
+                        hover tint while every other stepper-shaped
+                        control in the app (variant pills, quick-add,
+                        retry rows) rides the press vocabulary. */}
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="flex items-center gap-0 bg-muted/50 border border-border/40 rounded-lg overflow-hidden">
                         <button
                           type="button"
                           onClick={() => handleUpdate(it, it.quantity - 1)}
-                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center"
+                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors press-spring text-muted-foreground hover:text-foreground flex items-center justify-center"
                           aria-label={
                             it.quantity === 1 ? `حذف المنتج ${it.name}` : `إنقاص كمية ${it.name}`
                           }
@@ -348,7 +366,7 @@ export default function CartPage() {
                         <button
                           type="button"
                           onClick={() => handleUpdate(it, it.quantity + 1)}
-                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors text-muted-foreground hover:text-foreground flex items-center justify-center"
+                          className="min-h-11 min-w-11 px-2 hover:bg-secondary/70 transition-colors press-spring text-muted-foreground hover:text-foreground flex items-center justify-center"
                           aria-label={`زيادة كمية ${it.name}`}
                         >
                           <Plus className="w-4 h-4" />
@@ -357,7 +375,7 @@ export default function CartPage() {
                       <button
                         type="button"
                         onClick={() => removeWithUndo(it)}
-                        className="min-h-11 min-w-11 px-2 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors flex items-center justify-center"
+                        className="min-h-11 min-w-11 px-2 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors press-spring flex items-center justify-center"
                         aria-label={`حذف المنتج ${it.name}`}
                       >
                         <Trash2 className="w-4 h-4" />

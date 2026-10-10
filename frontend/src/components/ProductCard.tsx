@@ -489,7 +489,15 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 under min-w-0, never push the badge out of the card. */}
             <h3
               dir="auto"
-              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-auto min-w-0 text-foreground/85 group-hover:text-foreground transition-colors duration-200"
+              /* R128-A2 (F-1): text-right keeps dir="auto"'s bidi
+                 isolation but re-anchors the visual edge — pure-Latin
+                 names resolve dir=auto to ltr, so text-align:start
+                 computed LEFT and the name hugged the card's left side
+                 (measured 21–97px dead zone on the RTL reading edge
+                 where every Arabic title begins). dir=auto stays for
+                 the scrambling fix (R116-S2); only the ALIGNMENT is
+                 pinned to the page's RTL anchor. */
+              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-auto min-w-0 text-right text-foreground/85 group-hover:text-foreground transition-colors duration-200"
             >
               {product.name}
             </h3>

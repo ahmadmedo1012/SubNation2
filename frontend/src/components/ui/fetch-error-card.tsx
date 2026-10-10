@@ -18,10 +18,12 @@ import { cn } from "@/lib/utils";
  * and were deliberately NOT unified.
  *
  * Sites that drifted too far off the three families to prop-ize were
- * left in place (documented in the R124-I8 worklog): home's grid error
- * (native button + rounded-3xl/float-in), product/order-detail (two-
- * button rows), admin/dashboard (role="alert" + inner wrapper),
+ * left in place (documented in the R124-I8 worklog): product/order-detail
+ * (two-button rows), admin/dashboard (role="alert" + inner wrapper),
  * admin/promotions + admin/security (p-8 / outline-button variants).
+ * R125-I7 (A7 B-4) closed the ledger's home entry — home's grid error
+ * converged on this card (the R128 sweep verified: no bespoke grid
+ * error branch remains in home.tsx).
  */
 
 /** Visual scale of the card — the three drifted-identical families. */

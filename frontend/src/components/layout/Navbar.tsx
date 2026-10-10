@@ -411,7 +411,22 @@ export function Navbar() {
                 : "فارغة"
             }`}
           >
-            <div className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9">
+            {/* R128-IMP-4 (A13-F4 / B1 item 9): the cart badge's LIVE
+                REGION is this STABLE wrapper div, not the badge span —
+                a badge-span live region dies the day the badge becomes
+                key-remounted for an emphasis animation (mount-time
+                content is never announced; MobileNav's num-pop badge
+                already carries that keying, and this keeps both cart
+                badges on one contract). The wrapper persists across
+                count changes; its text (the badge number) announces
+                politely on N→M while both are >0. The 0→1 mount + 1→0
+                unmount can't announce — the add/remove toast covers
+                those (A13's own note: the toast remains the primary
+                signal). */}
+            <div
+              aria-live="polite"
+              className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
+            >
               <ShoppingCart className="w-4 h-4" />
               {itemCount > 0 && (
                 /* 96-F5 (R96-M20 + A6 #21): badge unified with the bell's —

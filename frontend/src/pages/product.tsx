@@ -35,11 +35,13 @@ import {
 import {
   AlertCircle,
   ArrowRight,
+  Check,
   CheckCircle,
   ChevronLeft,
   Eye,
   EyeOff,
   Headphones,
+  Home,
   Info,
   Loader2,
   Lock,
@@ -866,16 +868,64 @@ export default function ProductPage() {
             render the useSeo element never mounts, the App-level fallback
             (index,follow) wins, and the R124 A10-F1 fix is inert. */}
         {seoBlock}
-        <div className="w-16 h-16 rounded-2xl bg-muted mx-auto mb-4 flex items-center justify-center">
-          <Package className="w-7 h-7 opacity-40" />
+        {/* R128-A2 (F-2): converged on the generic 404's recipe
+            (not-found.tsx) — real h1, muted copy, size="lg" Button pair,
+            quick links. The retired branch (p.font-bold + a 14px
+            underline recovery link) shipped the HIGHER-traffic 404
+            (delisted products, dead share links) below the app's own
+            404 craft bar: no heading element, a sub-44px recovery CTA. */}
+        <div className="max-w-sm mx-auto space-y-8">
+          <div>
+            <div className="w-16 h-16 rounded-2xl bg-muted mx-auto mb-4 flex items-center justify-center">
+              <Package className="w-7 h-7 opacity-40" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-3">المنتج غير موجود</h1>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              يبدو أن هذا المنتج لم يعد متوفراً أو أن الرابط غير صحيح.
+            </p>
+          </div>
+          {/* Actions — the R116-S1 CTA recipe (not-found.tsx): primary
+              rides the canonical Button (size lg, w-full sm:w-auto);
+              secondary rides the system secondary variant. */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Button asChild size="lg" className="w-full sm:w-auto">
+              {/* Home IS the catalog (App.tsx routing) — same destination
+                  the old recovery link carried. */}
+              <Link href="/">
+                <Home className="w-4 h-4" />
+                العودة للكتالوج
+              </Link>
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => window.history.back()}
+              className="w-full sm:w-auto"
+            >
+              {/* RTL: "back" points right (not-found.tsx idiom) */}
+              <ArrowRight className="w-4 h-4" />
+              رجوع
+            </Button>
+          </div>
+          {/* Quick links — the not-found.tsx band (min-h-11 chips). */}
+          <div className="pt-2 border-t border-border/40">
+            <p className="text-2xs font-bold text-muted-foreground mb-3">روابط سريعة</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {[
+                { href: "/", label: "المتجر" },
+                { href: "/wallet", label: "المحفظة" },
+                { href: "/orders", label: "طلباتي" },
+                { href: "/support", label: "الدعم" },
+              ].map((l) => (
+                <Link key={l.href} href={l.href}>
+                  <span className="inline-flex items-center min-h-11 text-xs text-muted-foreground hover:text-foreground px-3 rounded-lg border border-border/50 hover:border-border bg-secondary/30 hover:bg-secondary/60 transition-all cursor-pointer">
+                    {l.label}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
-        <p className="font-bold mb-1">المنتج غير موجود</p>
-        <button
-          onClick={() => navigate("/")}
-          className="text-sm text-primary-text hover:underline mt-2 press-spring"
-        >
-          العودة للكتالوج
-        </button>
       </div>
     );
 
@@ -1243,8 +1293,13 @@ export default function ProductPage() {
               {/* R116-S2 (P3): dir="auto" (Latin-heavy product names were
                 scrambled by the RTL base direction) + the dead
                 leading-tight/tracking-tight overrides dropped — Arabic
-                letter-spacing tears the cursive joins. */}
-              <h1 dir="auto" className="text-fluid-2xl font-bold mb-1.5">
+                letter-spacing tears the cursive joins.
+                R128-A2 (F-1): text-right re-anchors the ALIGNMENT to
+                the RTL reading edge — pure-Latin names resolve dir=auto
+                to ltr, so text-align:start computed LEFT and the h1
+                floated up to 41px off the right line the breadcrumb and
+                labels anchor to. Same fix as ProductCard's h3. */}
+              <h1 dir="auto" className="text-fluid-2xl font-bold mb-1.5 text-right">
                 {product.name}
               </h1>
               {product.description && (
@@ -1801,8 +1856,14 @@ function CtaBlock({
     return (
       <div className={`${compact ? "flex items-center gap-3" : "space-y-2"}`}>
         {compact && (
-          <div className="flex-1 text-right">
-            <div className="font-bold text-primary text-xl tabular-nums">
+          /* R127-B13 §7.1 (via the R128 sweep): min-w-0 + truncate on the
+             compact price stack — the price is the bar's widest
+             unbreakable token, and a flex child's automatic minimum
+             width grows the bar past the viewport at 320px once a
+             4+-digit price ships (the CTA is the shrink-0 twin). The
+             full price stays visible in the buy panel above. */
+          <div className="flex-1 min-w-0 text-right">
+            <div className="font-bold text-primary text-xl tabular-nums truncate">
               {formatCurrency(displayPrice)}
             </div>
             <div className="text-xs text-muted-foreground">سجّل دخولك للشراء</div>
@@ -1902,8 +1963,10 @@ function CtaBlock({
       <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
         {compact ? (
           <>
-            <div className="flex-1 text-right">
-              <div className="font-bold text-primary text-xl tabular-nums">
+            {/* B13 §7.1 twin: min-w-0 + truncate (see the guest branch
+                above). */}
+            <div className="flex-1 min-w-0 text-right">
+              <div className="font-bold text-primary text-xl tabular-nums truncate">
                 {formatCurrency(displayPrice)}
               </div>
               <div className="text-xs text-destructive/75">
@@ -1952,11 +2015,21 @@ function CtaBlock({
     <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
       {!compact && couponField}
       {compact && (
-        <div className="flex-1 text-right">
-          <div className="font-bold text-primary text-xl tabular-nums">
+        /* B13 §7.1 twin: min-w-0 + truncate (see the guest branch above). */
+        <div className="flex-1 min-w-0 text-right">
+          <div className="font-bold text-primary text-xl tabular-nums truncate">
             {formatCurrency(displayPrice)}
           </div>
-          <div className="text-xs text-status-success">رصيد كافٍ ✓</div>
+          {/* R128-A6 (P4-4): the ✓ TEXT glyph is gone — lucide Check in
+              its place (emoji/text-glyph-as-icon is off the icon
+              contract). inline-flex keeps the icon on the reading line
+              (RTL: text first, glyph to its left). */}
+          <div className="text-xs text-status-success">
+            <span className="inline-flex items-center gap-1">
+              رصيد كافٍ
+              <Check className="w-3 h-3" aria-hidden="true" />
+            </span>
+          </div>
         </div>
       )}
       <Button
@@ -1999,7 +2072,7 @@ function CtaBlock({
           what's left after — eliminates a hesitation moment where users
           tap and pause to mentally calculate "wait, will I still have
           something for next time?". Desktop-only; the mobile sticky bar
-          already shows the balance via the "رصيد كافٍ ✓" line in compact
+          already shows the balance via the «رصيد كافٍ» line in compact
           mode. */}
       {!compact && user && (
         <p className="text-center text-xs text-muted-foreground -mt-1">
@@ -2179,7 +2252,10 @@ function VariantSelector({
       {hasPlanAxis && (
         <div>
           <p className="text-xs font-bold text-muted-foreground mb-2">نوع الباقة</p>
-          <div className="flex flex-wrap gap-2">
+          {/* R128-A2 (§4 polish): gap-3 — the page's own card-grid rhythm
+              (every card grid is 12px); the selector read one step
+              tighter than its page. */}
+          <div className="flex flex-wrap gap-3">
             {plans.map((plan) => {
               // A plan pill is enabled when ANY of its options is available;
               // it carries no price (the duration row prices the option).
@@ -2216,7 +2292,9 @@ function VariantSelector({
 
       <div>
         <p className="text-xs font-bold text-muted-foreground mb-2">المدة</p>
-        <div className="grid grid-cols-2 gap-2">
+        {/* R128-A2 (§4 polish): gap-3 — same rhythm lift as the plan row
+            above (the card grids' 12px). */}
+        <div className="grid grid-cols-2 gap-3">
           {visibleDurations.map((v) => {
             const isSelected = v.id === selectedId;
             const eff = v.sale_price ?? v.price;

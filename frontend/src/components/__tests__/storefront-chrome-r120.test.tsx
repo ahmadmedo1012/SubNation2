@@ -345,3 +345,61 @@ describe("Footer — compact category + support band above the legal row (R120-B
     expect(footer.className).toContain("mobile-nav-footer-pad");
   });
 });
+
+// ── A11y tails (R128-IMP-4 / A13-F4 + F9 — B1 item 9) ────────────────────
+describe("storefront chrome a11y tails — cart badge live regions + footer heading level (R128-IMP-4)", () => {
+  it("Navbar: the cart badge sits in a polite live region (count changes announce; A13-F4)", () => {
+    cartState.itemCount = 3;
+    render(
+      <Router>
+        <Navbar />
+      </Router>,
+    );
+    // The Link's accessible name carries the count (pre-existing idiom)…
+    const cartLink = screen.getByRole("link", { name: "السلة، 3 منتجات" });
+    expect(cartLink).toHaveAttribute("href", "/cart");
+    // …but name changes are never ANNOUNCED — the stable icon wrapper
+    // (the badge's parent) is the polite live region so N→M count
+    // changes reach SR users without re-navigating the header. It must
+    // NOT be the badge span itself: a key-remounted badge (MobileNav's
+    // num-pop idiom) mounts a fresh live region per change, which
+    // announces nothing.
+    const liveRegion = cartLink.querySelector('div[aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion!.textContent).toBe("3");
+    expect(liveRegion!.querySelector("span")).not.toHaveAttribute("aria-live");
+  });
+
+  it("MobileNav: the cart tab's badge sits in a polite live region (A13-F4)", () => {
+    authState.token = "test-token";
+    cartState.itemCount = 2;
+    render(
+      <Router>
+        <MobileNav />
+      </Router>,
+    );
+    const cartTab = screen.getByRole("link", { name: "السلة، 2 منتجان" });
+    // The STABLE icon wrapper carries the live region (the badge span
+    // itself is key-remounted per count change for the num-pop
+    // animation — a fresh live region announces nothing).
+    const liveRegion = cartTab.querySelector('span[aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion!.textContent).toBe("2");
+  });
+
+  it("Footer: column titles are h2 — no 1→3 heading skip on short pages (A13-F9)", () => {
+    render(
+      <Router>
+        <Footer />
+      </Router>,
+    );
+    // On /flash-sales and /cart the footer is the only content after the
+    // page h1, so its column titles used to produce an h1 → h3 skip.
+    // They are h2 now, and no h3 may come back.
+    const cats = screen.getByRole("navigation", { name: "الفئات" });
+    expect(cats.querySelector("h2")?.textContent).toBe("الفئات");
+    const support = screen.getByRole("navigation", { name: "المساعدة والدعم" });
+    expect(support.querySelector("h2")?.textContent).toBe("المساعدة والدعم");
+    expect(document.querySelector("footer h3")).toBeNull();
+  });
+});

@@ -21,10 +21,28 @@ export interface LocalCartItem {
   salePriceLYD: number | null;
   discountPercent: number | null;
   quantity: number;
+  /**
+   * B-11 (R128-IMP-5 / B13 §3): catalog stock snapshot captured at
+   * add-to-cart time (the list/detail payload's `stock_count`), refreshed
+   * on re-add and by checkout's mount-time re-quote (reconcileLine).
+   * Optional + null-normalized: pre-B-11 stored lines and callers that
+   * don't know stock read null = UNKNOWN — every verdict built on it is
+   * advisory UI only; the server's in-tx stock re-check
+   * (checkout.service) stays the charge authority.
+   */
+  stockCount?: number | null;
 }
 
 interface CartCommandsValue {
-  addItem: (item: Omit<LocalCartItem, "quantity"> & { quantity?: number }) => void;
+  addItem: (
+    item: Omit<LocalCartItem, "quantity" | "stockCount"> & {
+      quantity?: number;
+      /** B-11: pass the catalog row's stock_count when the caller knows
+       * it (ProductCard / the PDP do); omit to keep an existing line's
+       * snapshot. */
+      stockCount?: number | null;
+    },
+  ) => void;
   removeItem: (productId: number, variantId?: number | null) => void;
   updateQuantity: (productId: number, quantity: number, variantId?: number | null) => void;
   /** 98-F2 (R98-A3 F5 — P2): refresh a line's PRICE snapshot (never its
@@ -32,10 +50,18 @@ interface CartCommandsValue {
    * re-quote so the confirmed label can never diverge from the charged
    * amount when a flash sale ends (or a price changes) between
    * add-to-cart and confirm. No-op (same array identity) when the line
-   * no longer exists. */
+   * no longer exists.
+   *
+   * B-11 (R128-IMP-5): the pricing patch may now ALSO carry a fresh
+   * `stockCount` (key-present semantics: omit the key = leave the
+   * stored snapshot untouched; `null` = reset to unknown) so the same
+   * re-quote refreshes stock alongside price — the sold-out state can
+   * surface on the line BEFORE checkout reaches the charge. */
   reconcileLine: (
     productId: number,
-    pricing: Pick<LocalCartItem, "priceLYD" | "salePriceLYD" | "discountPercent">,
+    pricing: Pick<LocalCartItem, "priceLYD" | "salePriceLYD" | "discountPercent"> & {
+      stockCount?: number | null;
+    },
     variantId?: number | null,
   ) => void;
   clear: () => void;
@@ -70,6 +96,112 @@ function lineKey(i: Pick<LocalCartItem, "productId" | "variantId">): string {
 // Mirror of the backend quantity cap — an uncapped value (1e9 was
 // accepted) turned the per-unit checkout loop into a self-DoS.
 export const MAX_LINE_QUANTITY = 99;
+
+// ── B-11 (R128-IMP-5 / B13 §3): the stock-snapshot verdicts ────────────────
+//
+// The cart used to hold NO stock state at all: a sold-out product sat in
+// the cart looking buyable, the stepper clamped to [1, 99] with zero
+// feedback, and the buyer discovered the truth at CHARGE time (the
+// server's in-tx OUT_OF_STOCK 409). These helpers turn the add-time /
+// reconciled stockCount snapshot into the honest per-line state the cart
+// page renders («نفد المخزون» / «متبقٍ N فقط» — the ProductCard idiom)
+// and the client-side checkout gate consumes. ADVISORY ONLY: a snapshot
+// can be stale in either direction; the server re-check remains the
+// money authority and a 409 backstop is always possible.
+
+/** ProductCard's low-stock badge threshold (`stock_count <= 3` — the
+ * storefront's single definition of «متبقٍ N فقط»), reused verbatim for
+ * cart lines so both surfaces agree on when to whisper. */
+export const LOW_STOCK_THRESHOLD = 3;
+
+export type LineStockStatus =
+  /** No snapshot (legacy line / caller without the catalog row). Render
+   * nothing, block nothing — the server re-check answers at charge time. */
+  | "unknown"
+  /** Snapshot covers the line comfortably — nothing to say. */
+  | "ok"
+  /** Snapshot ≤ 3 but ≥ the line's quantity — «متبقٍ N فقط». */
+  | "low"
+  /** Snapshot > 0 but < the line's quantity — the cart asks for more
+   * than exists; blocks the line at the client-side pre-flight. */
+  | "insufficient"
+  /** Snapshot 0 — «نفد المخزون»; blocks the line. */
+  | "out";
+
+export function lineStockStatus(
+  item: Pick<LocalCartItem, "quantity" | "stockCount">,
+): LineStockStatus {
+  const stock = item.stockCount ?? null;
+  if (stock == null) return "unknown";
+  if (stock <= 0) return "out";
+  if (stock < item.quantity) return "insufficient";
+  if (stock <= LOW_STOCK_THRESHOLD) return "low";
+  return "ok";
+}
+
+/** The per-line states that make the cart UNCHARGEABLE as-is — the
+ * client-side pre-flight verdict (B-11: the failure must surface at the
+ * cart, not at the charge). Unknown/low lines never block. */
+const BLOCKING_STOCK_STATUSES: ReadonlySet<LineStockStatus> = new Set(["out", "insufficient"]);
+
+export function lineStockBlocksCheckout(
+  item: Pick<LocalCartItem, "quantity" | "stockCount">,
+): boolean {
+  return BLOCKING_STOCK_STATUSES.has(lineStockStatus(item));
+}
+
+/** true when ANY line is proven unchargeable by its stock snapshot —
+ * the gate the cart/checkout CTAs disable on. */
+export function cartHasBlockingStock(
+  items: Array<Pick<LocalCartItem, "quantity" | "stockCount">>,
+): boolean {
+  return items.some(lineStockBlocksCheckout);
+}
+
+/** The Arabic copy for a line's stock state (the ProductCard strings
+ * verbatim for the shared states); null = render nothing. Exported so
+ * the cart page and any future surface say the same sentence. */
+export function lineStockNotice(
+  item: Pick<LocalCartItem, "quantity" | "stockCount">,
+): string | null {
+  const stock = item.stockCount ?? null;
+  switch (lineStockStatus(item)) {
+    case "out":
+      return "نفد المخزون";
+    case "insufficient":
+      return `متبقٍ ${stock} فقط — عدّل الكمية`;
+    case "low":
+      return `متبقٍ ${stock} فقط`;
+    default:
+      return null;
+  }
+}
+
+/** Normalize a raw stock value into the stored shape: a non-negative
+ * integer passes, everything else (undefined / NaN / fractional /
+ * negative / non-number) reads null = UNKNOWN. */
+function normalizeStockCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/** The per-line quantity ceiling: the 99 mirror cap narrowed by a KNOWN
+ * stock snapshot. Floored at 1 — a 0-stock line keeps its quantity-1
+ * shape (quantity < 1 is invalid); its honest state is «نفد المخزون»
+ * (the status flag blocks it — the quantity is not the messenger). */
+function stockAwareCeiling(stockCount: number | null): number {
+  if (stockCount == null) return MAX_LINE_QUANTITY;
+  return Math.max(1, Math.min(stockCount, MAX_LINE_QUANTITY));
+}
+
+/** B-11 raise-cap rule: a quantity RAISE never crosses the known-stock
+ * ceiling — and never silently SHRINKS a line that is already above a
+ * snapshot that refreshed DOWN (a reconciled line with qty 5 / stock 2
+ * keeps its 5, flags insufficient, and blocks checkout; a silent
+ * quantity edit on the money path is not ours to make). Decreases
+ * always apply untouched. */
+function capRaise(requested: number, current: number, ceiling: number): number {
+  return requested > current ? Math.min(requested, Math.max(ceiling, current)) : requested;
+}
 
 // ── R111-F4-F1 (P2): context split — commands vs state ────────────────────
 //
@@ -134,6 +266,10 @@ function parseCartItems(raw: string | null): LocalCartItem[] | null {
         priceLYD: Number(i.priceLYD ?? 0),
         salePriceLYD: i.salePriceLYD ?? null,
         discountPercent: i.discountPercent ?? null,
+        // B-11: same load-time-guard treatment as every other field — a
+        // corrupt stock value (fractional/negative/string) reads as
+        // unknown, never as a fake verdict.
+        stockCount: normalizeStockCount(i.stockCount),
         quantity: Math.max(1, Math.min(Number(i.quantity ?? 1), MAX_LINE_QUANTITY)),
       }));
     return items;
@@ -211,13 +347,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addItem = useCallback(
-    (incoming: Omit<LocalCartItem, "quantity"> & { quantity?: number }) => {
+    (
+      incoming: Omit<LocalCartItem, "quantity" | "stockCount"> & {
+        quantity?: number;
+        stockCount?: number | null;
+      },
+    ) => {
       const qty = Math.min(incoming.quantity ?? 1, MAX_LINE_QUANTITY);
       const key = lineKey(incoming);
+      // B-11: the caller's snapshot wins when present; a stock-less
+      // re-add PRESERVES the line's existing snapshot (clobbering it
+      // with unknown would silently disarm the stale-stock verdicts).
+      const incomingStock =
+        incoming.stockCount !== undefined ? normalizeStockCount(incoming.stockCount) : null;
       setItems((prev) => {
         const existing = prev.find((i) => lineKey(i) === key);
         let next: LocalCartItem[];
         if (existing) {
+          const mergedStock =
+            incoming.stockCount !== undefined ? incomingStock : (existing.stockCount ?? null);
           next = prev.map((i) =>
             lineKey(i) === key
               ? {
@@ -227,12 +375,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
                   priceLYD: incoming.priceLYD,
                   salePriceLYD: incoming.salePriceLYD,
                   discountPercent: incoming.discountPercent,
-                  quantity: Math.min(i.quantity + qty, MAX_LINE_QUANTITY),
+                  stockCount: mergedStock,
+                  // B-11: the re-add's quantity bump rides the stock-aware
+                  // raise cap (identical to the old 99 clamp when the
+                  // snapshot is unknown).
+                  quantity: capRaise(
+                    Math.min(i.quantity + qty, MAX_LINE_QUANTITY),
+                    i.quantity,
+                    stockAwareCeiling(mergedStock),
+                  ),
                 }
               : i,
           );
         } else {
-          next = [...prev, { ...incoming, quantity: qty }];
+          next = [...prev, { ...incoming, stockCount: incomingStock, quantity: qty }];
         }
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -261,10 +417,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const updateQuantity = useCallback(
     (productId: number, quantity: number, variantId?: number | null) => {
       if (quantity < 1) return;
-      const safeQty = Math.min(quantity, MAX_LINE_QUANTITY);
       const key = lineKey({ productId, variantId: variantId ?? null });
       setItems((prev) => {
-        const next = prev.map((i) => (lineKey(i) === key ? { ...i, quantity: safeQty } : i));
+        // B-11: raises ride the stock-aware ceiling (the stepper cap —
+        // identical to the old 99 clamp when the snapshot is unknown);
+        // decreases always apply; a line already above a snapshot that
+        // refreshed DOWN keeps its quantity (see capRaise).
+        const next = prev.map((i) =>
+          lineKey(i) === key
+            ? {
+                ...i,
+                quantity: capRaise(
+                  Math.min(quantity, MAX_LINE_QUANTITY),
+                  i.quantity,
+                  stockAwareCeiling(i.stockCount ?? null),
+                ),
+              }
+            : i,
+        );
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         } catch {
@@ -285,16 +455,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const reconcileLine = useCallback(
     (
       productId: number,
-      pricing: Pick<LocalCartItem, "priceLYD" | "salePriceLYD" | "discountPercent">,
+      pricing: Pick<LocalCartItem, "priceLYD" | "salePriceLYD" | "discountPercent"> & {
+        stockCount?: number | null;
+      },
       variantId?: number | null,
     ) => {
       const key = lineKey({ productId, variantId: variantId ?? null });
+      // B-11 key-present semantics: omit `stockCount` (the pre-B-11
+      // caller shape) and the stored snapshot is untouched; pass a value
+      // (or null) and it is normalized + refreshed with the price.
+      const { stockCount, ...priceOnly } = pricing;
+      const hasStockPatch = "stockCount" in pricing;
+      const normalizedStock = normalizeStockCount(stockCount);
       setItems((prev) => {
         let changed = false;
         const next = prev.map((i) => {
           if (lineKey(i) !== key) return i;
           changed = true;
-          return { ...i, ...pricing };
+          return hasStockPatch
+            ? { ...i, ...priceOnly, stockCount: normalizedStock }
+            : { ...i, ...priceOnly };
         });
         if (!changed) return prev;
         try {

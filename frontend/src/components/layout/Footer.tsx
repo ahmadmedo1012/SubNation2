@@ -51,7 +51,13 @@ export function Footer() {
             alone. */}
         <div className="flex flex-col sm:flex-row sm:items-start gap-x-10 gap-y-3.5 pt-5 pb-4 sm:pt-6 sm:pb-5 border-b border-border/20">
           <nav aria-label="الفئات" className="min-w-0">
-            <h3 className="text-3xs font-bold text-muted-foreground mb-1.5">الفئات</h3>
+            {/* R128-IMP-4 (A13-F9 / B1 item 9): h3 → h2 — on short pages
+                (/flash-sales, /cart) the footer is the only content after
+                the h1, so its column titles produced a 1→3 heading skip
+                (h1 → h3). The site has no h2 between the page h1 and the
+                footer on those pages; tailwind's preflight + the explicit
+                text-3xs/font-bold classes below own the look either way. */}
+            <h2 className="text-3xs font-bold text-muted-foreground mb-1.5">الفئات</h2>
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
               {Object.values(CATEGORY_META).map((c) => (
                 <li key={c.slug}>
@@ -74,7 +80,9 @@ export function Footer() {
             </ul>
           </nav>
           <nav aria-label="المساعدة والدعم" className="min-w-0">
-            <h3 className="text-3xs font-bold text-muted-foreground mb-1.5">المساعدة والدعم</h3>
+            {/* R128-IMP-4 (A13-F9): h3 → h2 — same heading-skip fix as the
+                categories column above (site-wide footer contract). */}
+            <h2 className="text-3xs font-bold text-muted-foreground mb-1.5">المساعدة والدعم</h2>
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
               <li>
                 <Link

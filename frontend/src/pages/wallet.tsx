@@ -727,17 +727,18 @@ function PaymentReferenceField({
 // bg/border variants tierColor doesn't express, keyed ONCE so the two
 // inline conditional ladders below (dot + badge) can't drift apart
 // again (they had already drifted from tierColor's palette).
+// R128 (A1-F3): the whole family rides the theme-aware --tier-* tokens.
 const TIER_DOT_BG: Record<string, string> = {
-  bronze: "bg-amber-500",
-  silver: "bg-slate-500",
-  gold: "bg-status-warning",
-  platinum: "bg-cyan-600",
+  bronze: "bg-tier-bronze",
+  silver: "bg-tier-silver",
+  gold: "bg-tier-gold",
+  platinum: "bg-tier-platinum",
 };
 const TIER_BADGE_BORDER: Record<string, string> = {
-  bronze: "border-amber-500/25",
-  silver: "border-slate-500/25",
-  gold: "border-status-warning/25",
-  platinum: "border-cyan-600/25",
+  bronze: "border-tier-bronze/25",
+  silver: "border-tier-silver/25",
+  gold: "border-tier-gold/25",
+  platinum: "border-tier-platinum/25",
 };
 
 export default function WalletPage() {

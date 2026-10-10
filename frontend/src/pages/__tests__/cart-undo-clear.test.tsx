@@ -154,6 +154,10 @@ describe("CartPage — undo toast on line removal (96-F4 / R96 A2 P1-1)", () => 
     for (const btn of [minus, plus, trash]) {
       expect(btn.className).toContain("min-h-11");
       expect(btn.className).toContain("min-w-11");
+      // R128-A5 (A5-3): the money path's most-touched controls carry
+      // the app's press vocabulary (90-site press-spring idiom) — they
+      // rode only the hover tint before, feeling dead under the thumb.
+      expect(btn.className).toContain("press-spring");
     }
 
     // The controls wrapper separating the stepper cluster from the trash.
@@ -164,6 +168,19 @@ describe("CartPage — undo toast on line removal (96-F4 / R96 A2 P1-1)", () => 
     // Stepper still works: plus raises the stored quantity.
     fireEvent.click(plus);
     await waitFor(() => expect(readCart()[0]?.quantity).toBe(4));
+  });
+
+  it('R128-A4 (F-1): the item-name line truncates under dir="auto" — a Latin name ellipsizes at its END', async () => {
+    seedCart(3);
+    renderPage();
+    await findRow();
+
+    // The catalog is Latin-named; in the RTL block an unisolated
+    // truncate cuts the inline-end = the Latin string's BEGINNING
+    // («Lifetime Cloud Storage» rendered «…oud Storage»).
+    const name = screen.getByText("Netflix شهر");
+    expect(name).toHaveAttribute("dir", "auto");
+    expect(name.className).toContain("truncate");
   });
 
   it("M13: the row wraps (controls cluster on its own row below ~480px) and the price cluster wraps cleanly", async () => {

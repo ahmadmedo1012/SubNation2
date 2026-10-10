@@ -112,7 +112,10 @@ export default function RegisterPage() {
                 <CheckCircle className="w-3.5 h-3.5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-bold leading-tight">
+                {/* R128-A4 (F-3 cousin — the login.tsx:152 buy-banner
+                    pair): leading-tight removed — the base layer's
+                    Arabic-safe 1.3 floor owns the leading. */}
+                <p className="font-bold">
                   تم تطبيق رمز الإحالة:{" "}
                   {/* R122 (A1 P2-4): tracking-wider was a silent no-op — the
                       global Arabic letter-spacing guard (index.css:917)

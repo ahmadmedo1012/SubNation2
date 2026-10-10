@@ -30,11 +30,12 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
+// R128 (A1-F3): tier gradients ride the theme-aware --tier-* tokens.
 const TIER_GRADIENTS: Record<string, string> = {
-  bronze: "from-amber-600/14 via-card to-card border-amber-600/20",
-  silver: "from-slate-400/14 via-card to-card border-slate-400/20",
-  gold: "from-yellow-400/14 via-card to-card border-yellow-400/20",
-  platinum: "from-cyan-400/14 via-card to-card border-cyan-400/20",
+  bronze: "from-tier-bronze/14 via-card to-card border-tier-bronze/20",
+  silver: "from-tier-silver/14 via-card to-card border-tier-silver/20",
+  gold: "from-tier-gold/14 via-card to-card border-tier-gold/20",
+  platinum: "from-tier-platinum/14 via-card to-card border-tier-platinum/20",
 };
 
 // 98-F9: the ProfileUser intersection type is GONE — the generated User

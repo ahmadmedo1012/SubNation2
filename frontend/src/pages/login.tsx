@@ -5,7 +5,7 @@ import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { sanitizeInternalPath } from "@/lib/utils";
-import { Gift, ShieldCheck, ShoppingBag } from "lucide-react";
+import { Gift, Package, ShieldCheck, ShoppingBag, Users, Wallet } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 
@@ -30,11 +30,40 @@ import { Link, useLocation } from "wouter";
  * passes `?intent=buy&product=<slug>` so we can show a contextual
  * "you're signing in to buy <product>" message instead of a cold
  * "sign in" prompt — the cold variant has the highest bounce.
+ *
+ * R128-A2 (F-4): a third intent — "account" — is derived from
+ * ?redirect= when a guarded account surface (wallet/orders/loyalty/
+ * referrals) bounced the guest here, so the banner says WHY they're
+ * signing in («سجّل دخولك للوصول إلى محفظتك») instead of the generic
+ * value chips. Keyed off the redirect param the gates already pass —
+ * no new param for five gate pages to learn.
  */
 
+/** R128-A2 (F-4): the guarded account surfaces → contextual banner.
+ * Headline matches the buy variant's «سجّل دخولك…» voice; the icon
+ * mirrors each page's own header glyph (Wallet/Package/Gift/Users). */
+const ACCOUNT_SURFACES: Record<string, { headline: string; icon: typeof ShoppingBag }> = {
+  "/wallet": { headline: "سجّل دخولك للوصول إلى محفظتك", icon: Wallet },
+  "/orders": { headline: "سجّل دخولك لمتابعة طلباتك", icon: Package },
+  "/loyalty": { headline: "سجّل دخولك للوصول إلى نقاطك", icon: Gift },
+  "/referrals": { headline: "سجّل دخولك للوصول إلى برنامج الإحالات", icon: Users },
+};
+
+/** Map a sanitized ?redirect= to its account surface. A deep-linked
+ * order (/order/<id> — order-detail's gate) is the orders surface's
+ * detail page, so it reads the orders headline. */
+function accountSurfaceFor(redirect: string | null): (typeof ACCOUNT_SURFACES)[string] | undefined {
+  if (!redirect) return undefined;
+  const path = redirect.split("?")[0]!;
+  return (
+    ACCOUNT_SURFACES[path] ?? (path.startsWith("/order/") ? ACCOUNT_SURFACES["/orders"] : undefined)
+  );
+}
+
 interface LoginIntent {
-  type: "buy" | "generic";
+  type: "buy" | "account" | "generic";
   productName?: string;
+  surface?: { headline: string; icon: typeof ShoppingBag };
 }
 
 function readLoginIntent(): LoginIntent {
@@ -44,6 +73,11 @@ function readLoginIntent(): LoginIntent {
     const productName = params.get("product")?.slice(0, 80) ?? undefined;
     return { type: "buy", productName };
   }
+  // R128-A2 (F-4): buy stays the only param-driven intent; the account
+  // intent derives from the SAME sanitized ?redirect= the success path
+  // honors (open-redirect values never reach the banner logic).
+  const surface = accountSurfaceFor(sanitizeInternalPath(params.get("redirect")));
+  if (surface) return { type: "account", surface };
   return { type: "generic" };
 }
 
@@ -138,7 +172,10 @@ export default function LoginPage() {
           {/* Value-prop banner. Buy-intent variant is highest-conversion:
               it tells the user exactly why they're here ("to finish buying
               X") instead of a cold "log in to use the app" prompt.
-              Generic variant lists the three things signing in unlocks. */}
+              R128-A2 (F-4): the account variant gives the guarded account
+              surfaces (wallet/orders/loyalty/referrals) the same "why am I
+              here" line, derived from ?redirect=. Generic variant lists the
+              three things signing in unlocks. */}
           {intent.type === "buy" ? (
             <div
               role="status"
@@ -149,13 +186,29 @@ export default function LoginPage() {
                 <ShoppingBag className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
-                <p className="font-bold leading-tight">
+                {/* R128-A4 (F-3 cousin): leading-tight removed — the base
+                    layer's Arabic-safe 1.3 floor owns the leading. */}
+                <p className="font-bold">
                   {/* 93-C8 (A11 §6): «…» guillemets — the checkout page's
                       established quote style. */}
                   {intent.productName
                     ? `سجّل دخولك لإكمال شراء «${intent.productName}»`
                     : "سجّل دخولك لإكمال عملية الشراء"}
                 </p>
+                <p className="text-2xs text-primary-text/75 mt-0.5">ثوانٍ معدودة بدون كلمة مرور</p>
+              </div>
+            </div>
+          ) : intent.type === "account" && intent.surface ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-4 p-3 bg-primary/8 border border-primary/22 rounded-xl text-sm text-primary-text flex items-center gap-2.5"
+            >
+              <div className="w-7 h-7 rounded-lg bg-primary/15 border border-primary/22 flex items-center justify-center shrink-0">
+                <intent.surface.icon className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold">{intent.surface.headline}</p>
                 <p className="text-2xs text-primary-text/75 mt-0.5">ثوانٍ معدودة بدون كلمة مرور</p>
               </div>
             </div>

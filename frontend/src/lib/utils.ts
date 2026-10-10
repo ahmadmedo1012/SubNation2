@@ -128,12 +128,15 @@ export function tierLabel(tier: string): string {
 // cards (light theme) — the tier label was unreadable. gold now rides the
 // shared --status-warning token (theme-aware); silver/platinum move to
 // mid shades that hold on BOTH card colors. bronze was already amber-600.
+// R128 (A1-F3): the whole family is now the theme-aware --tier-* tokens
+// (index.css) — the raw amber/slate/cyan palette failed AA cross-theme
+// (silver 3.91:1 dark; bronze 3.19:1 / platinum 3.68:1 light).
 export function tierColor(tier: string): string {
   const colors: Record<string, string> = {
-    bronze: "text-amber-600",
-    silver: "text-slate-500",
-    gold: "text-status-warning",
-    platinum: "text-cyan-600",
+    bronze: "text-tier-bronze",
+    silver: "text-tier-silver",
+    gold: "text-tier-gold",
+    platinum: "text-tier-platinum",
   };
   return colors[tier] ?? "text-muted-foreground";
 }

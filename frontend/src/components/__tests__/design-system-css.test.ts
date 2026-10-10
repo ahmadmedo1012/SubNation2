@@ -195,3 +195,67 @@ describe("global focus system (R115-A6 #5)", () => {
     );
   });
 });
+
+describe("entrance fill-mode (R128 A5-1) — `backwards`, never `both`", () => {
+  // A filled (forwards) animation beats normal author declarations in
+  // the cascade, so `both` on an entrance class permanently pinned
+  // `transform` on every element that also carries .card-spring /
+  // .press-spring — the sanctioned hover lift and active press were
+  // dead on all 45 home product cards (live-verified R128-A5) while the
+  // border/shadow halves still fired. Every entrance keyframe ends at
+  // the natural cascade state, so `backwards` is visually identical at
+  // rest and the springs resurrect.
+  const ENTRANCE_CLASSES = [".page-in", ".float-in", ".slide-up", ".fade-in", ".reveal-up"];
+
+  it.each(ENTRANCE_CLASSES)("%s animates with fill-mode backwards", (cls) => {
+    const block = cssText.match(
+      new RegExp(`${cls.replace(".", "\\.")}\\s*\\{[^}]*animation:[^}]*\\}`),
+    );
+    expect(block, `${cls} block not found`).toBeTruthy();
+    expect(block![0]).toMatch(/animation:[^;]*\bbackwards\b/);
+    expect(block![0]).not.toMatch(/animation:[^;]*\bboth\b/);
+  });
+
+  it("the two one-shot emphasis classes keep their fill (num-pop / tab-slide-in remount or sit outside spring hosts)", () => {
+    // num-pop rides a key-remounted inner span (R128-IMP-1) and
+    // tab-slide-in lives on tab indicators — neither co-hosts a
+    // transform spring, so `both` there is harmless and intentional.
+    for (const cls of [".num-pop", ".tab-slide-in"]) {
+      const block = cssText.match(
+        new RegExp(`${cls.replace(".", "\\.")}\\s*\\{[^}]*animation:[^}]*\\}`),
+      );
+      expect(block, `${cls} block not found`).toBeTruthy();
+      expect(block![0]).toMatch(/animation:[^;]*\bboth\b/);
+    }
+  });
+
+  it("the shimmer sweep mirrors in RTL (A5-4)", () => {
+    expect(cssText).toMatch(
+      /\[dir="rtl"\]\s*\.skeleton-shimmer::after\s*\{[^}]*animation-direction:\s*reverse/,
+    );
+  });
+});
+
+describe("R128 token families (A1-F2/F3) — surface + tier channels", () => {
+  it("destructive/status-success SURFACE tokens exist in both themes (button AA pair)", () => {
+    expect(cssText).toMatch(/--destructive-surface:\s*0 80% 52%/);
+    expect(cssText).toMatch(/--status-success-surface:\s*152 65% 30%/);
+    expect(cssText).toMatch(/--destructive-surface:\s*0 80% 48%/);
+    expect(cssText).toMatch(/--status-success-surface:\s*152 60% 28%/);
+  });
+
+  it("the theme-aware tier family exists in both themes + @theme exposure", () => {
+    for (const v of [
+      "--tier-bronze: 40 92% 60%",
+      "--tier-silver: 215 16% 72%",
+      "--tier-gold: var(--status-warning)",
+      "--tier-platinum: 211 80% 70%",
+      "--tier-bronze: 40 90% 30%",
+      "--tier-silver: 220 14% 40%",
+      "--tier-platinum: 211 80% 38%",
+    ]) {
+      expect(cssText).toContain(v);
+    }
+    expect(cssText).toMatch(/--color-tier-platinum:\s*hsl\(var\(--tier-platinum\)\)/);
+  });
+});

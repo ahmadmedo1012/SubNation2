@@ -319,7 +319,9 @@ export default function OrdersPage() {
             <ShoppingBag className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold leading-tight">طلباتي</h1>
+            {/* R128-A4 (F-3): leading-tight removed — the base h1–h4 1.3
+                Arabic-safe floor (index.css) owns the leading. */}
+            <h1 className="text-2xl font-bold">طلباتي</h1>
             <p className="text-sm text-muted-foreground">سجل مشترياتك ومتابعة حالتها</p>
           </div>
         </div>

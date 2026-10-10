@@ -154,6 +154,21 @@ describe("ProductCard — chrome + imagery + type regressions (R120-B1)", () => 
   });
 });
 
+describe("ProductCard — RTL anchor on Latin names (R128-A2 F-1)", () => {
+  it('the h3 keeps dir="auto" isolation AND pins text-right — Latin titles don\'t float off the RTL reading edge', () => {
+    renderCard(AVAILABLE_PRODUCT);
+    const name = screen.getByText("ChatGPT Plus شهر");
+    // dir=auto (R116-S2) stays: Latin names resolve their own base
+    // direction instead of scrambling in the RTL block.
+    expect(name).toHaveAttribute("dir", "auto");
+    // text-right (R128-A2 F-1): with dir=auto resolving a pure-Latin
+    // name to ltr, text-align:start computed LEFT — measured 21–97px
+    // dead zones on the RTL reading edge (cPanel/Windows 8 cards).
+    // The physical class pins the visual anchor; measured live.
+    expect(name.className).toContain("text-right");
+  });
+});
+
 describe("ProductCard — storefront badge copy (R123-E4b P3-a)", () => {
   it("the 5–19 order tier reads «رائج», not «شائع»", () => {
     renderCard({ ...AVAILABLE_PRODUCT, order_count: 7 } as typeof AVAILABLE_PRODUCT);

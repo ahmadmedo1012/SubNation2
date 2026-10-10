@@ -12,8 +12,11 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-gradient-to-b from-primary to-primary/95 text-primary-foreground border border-primary-border shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30",
+        // R128 (A1-F2): the surface channel (52% dark) — white ink on the
+        // plain --destructive channel computed 3.99:1 (AA fail); the
+        // surface pair keeps ink tokens untouched.
         destructive:
-          "bg-destructive text-destructive-foreground shadow-sm border border-destructive-border",
+          "bg-destructive-surface text-destructive-foreground shadow-sm border border-destructive-border",
         outline:
           "border [border-color:var(--button-outline)] shadow-xs active:shadow-none bg-transparent",
         secondary: "border bg-secondary text-secondary-foreground border border-secondary-border",

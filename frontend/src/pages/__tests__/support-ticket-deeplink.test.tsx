@@ -13,13 +13,18 @@
  *     ticket detail is fetched and the thread AUTO-OPENS (zero taps);
  *   • a foreign id (?ticket=999, not in the user's list) is a silent
  *     no-op — no detail fetch, no error toast, the list stays;
- *   • a malformed ?ticket= value is ignored entirely.
+ *   • a malformed ?ticket= value is ignored entirely;
+ *   • B13 minor-2 (R128-IMP-5): a FAILED first list fetch does NOT
+ *     consume the link — the error state's empty `tickets` array used
+ *     to fail the membership check and eat the deep link on an outage;
+ *     the link stays armed and a successful retry still opens the
+ *     thread.
  *
  * Harness: support-open-ticket.test.tsx — raw fetch stubbed per-test
  * (support.tsx uses plain fetch, not the orval client).
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SupportPage from "@/pages/support";
@@ -149,5 +154,38 @@ describe("SupportPage — ?ticket= deep link auto-opens the thread (A9-1, R126-L
     await new Promise((r) => setImmediate(r));
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/support/tickets");
+  });
+
+  it("a FAILED first list fetch does not consume the link — a successful retry still opens the thread (B13 minor-2, R128-IMP-5)", async () => {
+    window.history.pushState(null, "", "/support?ticket=1");
+    // 1st call: the list fetch dies (outage) → error card, tickets=[].
+    // 2nd: the retry succeeds. 3rd: the armed link opens the thread.
+    fetchMock
+      .mockResolvedValueOnce(resLike({ ok: false, status: 500, body: { error: "internal" } }))
+      .mockResolvedValueOnce(resLike({ body: TICKET_LIST }))
+      .mockResolvedValueOnce(resLike({ body: TICKET_DETAIL }));
+
+    renderPage();
+
+    // The outage is an error card, NOT the empty state — and the deep
+    // link must NOT be consumed against the error state's empty list
+    // (the pre-fix membership check ate it right here).
+    expect(await screen.findByText("تعذّر تحميل التذاكر")).toBeInTheDocument();
+    expect(screen.queryByText("لا توجد تذاكر دعم")).not.toBeInTheDocument();
+
+    // The FetchErrorCard retry refetches the list; the STILL-ARMED link
+    // now opens the thread the notification promised.
+    fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("رد الدعم وصل هنا")).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/support/tickets/1",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer test-token" },
+      }),
+    );
+    expect(toastSpy).not.toHaveBeenCalled();
   });
 });

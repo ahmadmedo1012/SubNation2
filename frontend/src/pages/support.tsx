@@ -23,7 +23,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
 import { buildFaqLd, type FaqItem } from "@/lib/seo-builders";
@@ -158,6 +158,18 @@ interface TicketDetail extends Ticket {
   replies: { id: number; author_type: string; message: string; created_at: string }[];
 }
 
+/**
+ * B-10 (R128-IMP-5 / B13 §3): user-side ticket threads have NO socket
+ * event today (admin replies reach the user through the notification
+ * bell; the B6-2/B6-3 resync lane covers admin surfaces + money
+ * screens), so while an open/awaiting ticket is selected the page polls
+ * its thread at this cadence. 25 s sits between admin alerts (20 s) and
+ * risk (30 s) — the repo's polling family. Gated to visible tabs (the
+ * tick skips a hidden document, the same contract
+ * refetchIntervalInBackground:false gives the query-based pages).
+ */
+const TICKET_THREAD_POLL_MS = 25_000;
+
 function categoryLabel(cat: string | null) {
   return CATEGORIES.find((c) => c.value === cat)?.label ?? "أخرى";
 }
@@ -246,6 +258,61 @@ export default function SupportPage() {
       setTicketLoading(false);
     }
   };
+
+  // B-10 (R128-IMP-5 / B13 §3): the poll's SILENT thread refresh. It must
+  // NOT reuse openTicket — that one flashes the reply skeleton
+  // (ticketLoading), clears the reply draft and force-scrolls on every
+  // call, none of which is acceptable on a background tick. Here only
+  // setSelectedTicket swaps, and only when THIS ticket is still the
+  // selected one (an in-flight poll can resolve after the user backed
+  // out to the list or switched tickets — the functional set drops it
+  // instead of re-opening the detail view). The scroll effect below
+  // stays quiet unless a new reply actually landed (replies.length
+  // changed), which is exactly when a scroll is wanted.
+  const refreshOpenTicketSilently = useCallback(
+    async (id: number) => {
+      if (!token) return;
+      try {
+        const res = await fetch(`/api/support/tickets/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await res.json().catch(() => null);
+        // Same res.ok + shape guard as openTicket (93-C5 / F-05) — a
+        // 401/5xx envelope must never reach selectedTicket; on failure
+        // the previous thread stays and the next tick retries.
+        if (!res.ok || !d || !Array.isArray(d.replies)) return;
+        setSelectedTicket((prev) => (prev && prev.id === id ? (d as TicketDetail) : prev));
+      } catch {
+        // network blip — the next 25 s tick retries
+      }
+    },
+    [token],
+  );
+
+  // B-10 (R128-IMP-5): the poll itself. Armed ONLY while the selected
+  // ticket is still live (open / in_progress) — a closed ticket or the
+  // list view never arms the interval, and a poll that observes the
+  // ticket transition to closed disarms it on the next effect run.
+  // Deps are deliberately the SCALARS (status-liveness, ticket id): a
+  // keystroke in the reply box re-renders but must not reset the 25 s
+  // cadence, and refreshOpenTicketSilently is useCallback-stable on
+  // [token].
+  const ticketIsLive =
+    selectedTicket != null &&
+    (selectedTicket.status === "open" || selectedTicket.status === "in_progress");
+  const polledTicketId = ticketIsLive ? selectedTicket.id : null;
+  useEffect(() => {
+    if (polledTicketId == null) return;
+    const id = polledTicketId;
+    const timer = setInterval(() => {
+      // Hidden tab → no request (the bell's 60 s fallback uses the same
+      // visibility gate; refetchIntervalInBackground:false for the
+      // query-based pages).
+      if (document.hidden) return;
+      void refreshOpenTicketSilently(id);
+    }, TICKET_THREAD_POLL_MS);
+    return () => clearInterval(timer);
+  }, [polledTicketId, refreshOpenTicketSilently]);
 
   useEffect(() => {
     // R120-B3 (A7-F2 P1): NO anonymous redirect — the FAQ surface is
@@ -366,6 +433,13 @@ export default function SupportPage() {
   useEffect(() => {
     if (ticketParam == null || !token || ticketParamConsumedRef.current) return;
     if (loading) return; // list not resolved yet — retry on its arrival
+    // B13 minor-2 (R128-IMP-5): a FAILED first load is not knowledge.
+    // listError means `tickets` is the empty pre-error array, so the
+    // membership check below would consume the deep link on an outage
+    // and the notification's ?ticket=<id> would evaporate. Hold the
+    // link armed; the FetchErrorCard retry re-runs this effect after a
+    // successful refetch and the thread then opens as promised.
+    if (listError) return;
     if (!tickets.some((t) => t.id === ticketParam)) {
       // Absent/foreign id: consume and give up silently.
       ticketParamConsumedRef.current = true;
@@ -375,7 +449,7 @@ export default function SupportPage() {
     void openTicket(ticketParam);
     // openTicket rides the deps honestly (it closes over token/headers);
     // re-runs after consumption are no-ops via the consumed-once ref.
-  }, [ticketParam, token, loading, tickets, openTicket]);
+  }, [ticketParam, token, loading, listError, tickets, openTicket]);
 
   // SEO — title, canonical, OG, Twitter, robots, plus FAQPage JSON-LD
   // built from SUPPORT_FAQ. Note: the same Q&A is rendered visibly on
@@ -412,7 +486,9 @@ export default function SupportPage() {
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold leading-tight break-words">
+              {/* R128-A4 (F-3): leading-tight removed — the base h1–h4 1.3
+                  Arabic-safe floor (index.css) owns the leading. */}
+              <h1 className="text-xl font-bold break-words">
                 {selectedTicket ? selectedTicket.title : "الدعم الفني"}
               </h1>
               {!selectedTicket && openCount > 0 && (
@@ -901,6 +977,7 @@ export default function SupportPage() {
 
                       {t.last_reply && (
                         <div
+                          dir="auto"
                           className={`text-xs px-3 py-1.5 rounded-xl leading-relaxed line-clamp-1 border ${
                             hasAdminReply
                               ? "bg-primary/7 text-primary-text border-primary/15"

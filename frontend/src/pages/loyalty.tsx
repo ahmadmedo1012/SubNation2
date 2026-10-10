@@ -406,8 +406,8 @@ export default function LoyaltyPage() {
       points: "نقطة لكل 1 د.ل مدفوع",
     },
     {
-      icon: <Crown className="w-4 h-4 text-slate-400" />,
-      bg: "bg-slate-400/10",
+      icon: <Crown className="w-4 h-4 text-tier-silver" /> /* R128 (A1-F3): tier tokens */,
+      bg: "bg-tier-silver/10",
       label: `المستوى الفضي (${tierThresholds.silver} د.ل إنفاق)`,
       /* R115 (A8 #7): «مزايا إضافية» was an unbacked promise — zero perk
        * implementations exist. Tiers are progress markers for now. */
@@ -525,7 +525,8 @@ export default function LoyaltyPage() {
                   </p>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 text-xs text-cyan-600 font-bold">
+                /* R128 (A1-F3): platinum = the top tier ink, theme-aware */
+                <div className="flex items-center gap-1.5 text-xs text-tier-platinum font-bold">
                   <Crown className="w-3.5 h-3.5" />
                   أعلى مستوى
                 </div>

@@ -48,6 +48,9 @@ const ProductPage = lazyWithRetry(() => import("@/pages/product"));
 const CategoryPage = lazyWithRetry(() => import("@/pages/category"));
 const ProfilePage = lazyWithRetry(() => import("@/pages/profile"));
 const ReferralsPage = lazyWithRetry(() => import("@/pages/referrals"));
+// A9-F2 (R128-IMP-5): the full notifications page — the paged (/?page=/)
+// consumer that rides past the bell's 40-row window.
+const NotificationsPage = lazyWithRetry(() => import("@/pages/notifications"));
 const RegisterPage = lazyWithRetry(() => import("@/pages/register"));
 const SupportPage = lazyWithRetry(() => import("@/pages/support"));
 const TermsPage = lazyWithRetry(() => import("@/pages/terms"));
@@ -117,6 +120,8 @@ const ROUTE_SHAPES: Array<[RegExp, RouteSkeletonShape]> = [
   [/^\/wallet/, "list-wide"],
   [/^\/loyalty/, "detail"],
   [/^\/referrals/, "list-narrow"],
+  // A9-F2 (R128-IMP-5): max-w-3xl stacked rows — the orders list shell.
+  [/^\/notifications/, "list"],
   [/^\/support/, "list"],
   [/^\/profile/, "list-narrow"],
   [/^\/login/, "form"],
@@ -189,6 +194,10 @@ const NOINDEX_ROUTES: RegExp[] = [
   /^\/loyalty/,
   /^\/referrals/,
   /^\/profile/,
+  // A9-F2 (R128-IMP-5): user-private — mirrors the robots.txt user-private
+  // family (needs the backend seo.ts Disallow row — see the R128-IMP-5
+  // diff-report).
+  /^\/notifications/,
   /^\/admin/,
   /^\/status/,
 ];
@@ -553,6 +562,23 @@ export function isHomeBootPath(pathname: string, routerBase: string): boolean {
  */
 const ADMIN_SESSION_GUARD_QUERY_KEY = ["admin", "session", "guard"] as const;
 
+/** R128 (A2-F3): /products — the conventional e-commerce catalog URL —
+ * had NO route (home IS the catalog), so every typed/guessed link hit
+ * the styled 404 while /flash-sales-style catalog routes existed (live
+ * probe: 200 shell → client 404; sitemap honestly omits it). A tiny
+ * client redirect to home replaces the dead end; `replace` keeps the
+ * history stack clean (back skips the alias), and home's canonical
+ * keeps owning the URL family — zero duplicate-content surface. The
+ * backend keeps serving the shell at /products (R126-L6's no-301
+ * contract is untouched — this runs AFTER hydration). */
+function ProductsAliasRedirect() {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    navigate("/", { replace: true });
+  }, [navigate]);
+  return null;
+}
+
 function AdminProtectedRoutes() {
   const { adminToken, setAdminToken } = useAuth();
   const [location, navigate] = useLocation();
@@ -898,6 +924,9 @@ function AppRoutes() {
           <Suspense fallback={<RouteSuspenseFallback />}>
             <Switch>
               <Route path="/" component={HomePage} />
+              {/* R128 (A2-F3): the guessed-catalog alias → home (the
+                  catalog IS the home grid). See ProductsAliasRedirect. */}
+              <Route path="/products" component={ProductsAliasRedirect} />
               <Route path="/login" component={LoginPage} />
               <Route path="/register" component={RegisterPage} />
               <Route path="/onboarding" component={OnboardingPage} />
@@ -908,6 +937,7 @@ function AppRoutes() {
               <Route path="/orders/:orderCode" component={OrderDetailPage} />
               <Route path="/loyalty" component={LoyaltyPage} />
               <Route path="/referrals" component={ReferralsPage} />
+              <Route path="/notifications" component={NotificationsPage} />
               <Route path="/support" component={SupportPage} />
               <Route path="/status" component={StatusPage} />
               <Route path="/terms" component={TermsPage} />
