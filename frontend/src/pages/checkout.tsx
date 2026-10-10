@@ -6,7 +6,13 @@ import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
-import { readLiveCartItems, roundToCents, useCart, type LocalCartItem } from "@/lib/cart";
+import {
+  readLiveCartItems,
+  roundToCents,
+  useCart,
+  cartHasBlockingStock,
+  type LocalCartItem,
+} from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { ErrorCode } from "@workspace/error-codes";
@@ -425,6 +431,9 @@ type LiveLineResult =
       salePriceLYD: number | null;
       discountPercent: number | null;
       effectiveUnitPrice: number;
+      /** R129-A1 (F1 wiring — B-11): the live row's stock rides the quote
+       * so the re-quote refreshes the line's snapshot alongside price. */
+      stockCount: number;
     }
   | { status: "unavailable" };
 
@@ -447,6 +456,9 @@ function quoteLineFromProduct(live: Product, line: LocalCartItem): LiveLineResul
     salePriceLYD,
     discountPercent,
     effectiveUnitPrice: salePriceLYD ?? priceLYD,
+    // B-11 wiring: the live catalog row's stock — the same signal the
+    // PDP renders (variants carry no stock of their own).
+    stockCount: live.stock_count,
   };
 }
 
@@ -646,18 +658,29 @@ export default function CheckoutPage() {
               continue;
             }
             const snapshotPrice = line.salePriceLYD ?? line.priceLYD;
-            if (roundToCents(quote.effectiveUnitPrice) !== roundToCents(snapshotPrice)) {
+            const priceChanged =
+              roundToCents(quote.effectiveUnitPrice) !== roundToCents(snapshotPrice);
+            // R129-A1 (F1 wiring — B-11): the re-quote refreshes the
+            // line's stock snapshot alongside price — guarded by
+            // value-inequality because reconcileLine has no same-value
+            // identity guard (an unconditional call inside this
+            // items-dependent effect would loop). A stale «متبقٍ N فقط»
+            // / «نفد المخزون» verdict now corrects itself here, BEFORE
+            // the charge.
+            const stockChanged = line.stockCount !== quote.stockCount;
+            if (priceChanged || stockChanged) {
               reconcileLine(
                 productId,
                 {
                   priceLYD: quote.priceLYD,
                   salePriceLYD: quote.salePriceLYD,
                   discountPercent: quote.discountPercent,
+                  stockCount: quote.stockCount,
                 },
                 line.variantId,
               );
-              anyPriceChanged = true;
             }
+            if (priceChanged) anyPriceChanged = true;
           }
         }
         // Shown ONCE for the whole re-quote (subtle status, not an error —
@@ -764,6 +787,10 @@ export default function CheckoutPage() {
     setCouponNotice(null);
   };
 
+  // R129-A1 (B-11): the CTA's blocked label — surfaced INSIDE the
+  // disabled button so the reason lives on the control itself.
+  const stockBlocked = useMemo(() => cartHasBlockingStock(items), [items]);
+
   const canSubmit = useMemo(() => {
     if (!token || isEmpty || submitting) return false;
     if (insufficient) return false;
@@ -772,8 +799,14 @@ export default function CheckoutPage() {
     // (possibly stale) snapshot total. customFetch's 20 s abort bounds
     // the wait; a failed re-quote FAILS OPEN (the flag still clears).
     if (pricingRecheckInFlight) return false;
+    // R129-A1 (F1 wiring — B-11): a proven-unchargeable line (stock 0,
+    // or quantity > snapshot) blocks the charge HERE — the failure
+    // surfaces at the cart, not as a 409 mid-charge. The re-quote above
+    // just refreshed these snapshots, so the verdict is current.
+    // Unknown-snapshot lines never block (the server re-check answers).
+    if (cartHasBlockingStock(items)) return false;
     return true;
-  }, [token, isEmpty, submitting, insufficient, pricingRecheckInFlight]);
+  }, [token, isEmpty, submitting, insufficient, pricingRecheckInFlight, items]);
 
   /**
    * 93-C5 / sim P2 (navbar balance staleness after cart purchase):
@@ -1553,6 +1586,12 @@ export default function CheckoutPage() {
                       <Loader2 className="w-4 h-4 animate-spin" />
                       جارٍ تحديث الأسعار…
                     </>
+                  ) : stockBlocked ? (
+                    // R129-A1 (F1 wiring — B-11): the honest disabled
+                    // state — the label says WHY, matching the cart
+                    // page's per-line verdicts («نفد المخزون» /
+                    // «متبقٍ N فقط — عدّل الكمية»).
+                    <>بعض العناصر نفد مخزونها — راجع السلة</>
                   ) : appliedCoupon ? (
                     // R111-F2 N1: unified CTA verb — the page title, the
                     // error banner and this button all say «إتمام الطلب»

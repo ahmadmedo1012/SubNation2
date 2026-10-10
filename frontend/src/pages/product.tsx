@@ -707,6 +707,11 @@ export default function ProductPage() {
       discountPercent: selectedVariant
         ? (selectedVariant.discount_percent ?? null)
         : (product.discount_percent ?? null),
+      // R129-A1 (F1 wiring — B-11): same as the card — the PDP's own
+      // availability line («المنتج متوفر، الكمية N») reads
+      // product.stock_count; the cart snapshot captures the same number
+      // so both surfaces agree. Variants carry no stock of their own.
+      stockCount: product.stock_count,
     });
     toast({
       title: "أُضيف إلى السلة",

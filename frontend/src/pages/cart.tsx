@@ -3,7 +3,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
-import { useCart, type LocalCartItem } from "@/lib/cart";
+import {
+  useCart,
+  lineStockNotice,
+  lineStockBlocksCheckout,
+  cartHasBlockingStock,
+  type LocalCartItem,
+} from "@/lib/cart";
 import { formatCurrency } from "@/lib/utils";
 import { Minus, Plus, ShoppingCart, Trash2, X, Sparkles, Wallet } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
@@ -296,6 +302,30 @@ export default function CartPage() {
                           {it.variantLabel}
                         </div>
                       )}
+                      {/* R129-A1 (F1 wiring — B-11): the line's stock
+                          verdict — the SAME strings + threshold as
+                          ProductCard's badges («متبقٍ N فقط» warning /
+                          «نفد المخزون» error), captured at add and
+                          refreshed by checkout's re-quote. role="status"
+                          (R129-A2): AT hears the verdict when it flips;
+                          blocked lines tint error, low-stock warns. */}
+                      {(() => {
+                        const notice = lineStockNotice(it);
+                        if (!notice) return null;
+                        const blocked = lineStockBlocksCheckout(it);
+                        return (
+                          <div
+                            role="status"
+                            className={`text-2xs font-bold rounded-full px-2 py-0.5 mt-1 inline-flex items-center gap-1 leading-tight border ${
+                              blocked
+                                ? "text-status-error bg-status-error/10 border-status-error/25"
+                                : "text-status-warning bg-status-warning/10 border-status-warning/25"
+                            }`}
+                          >
+                            {notice}
+                          </div>
+                        );
+                      })()}
                       {/* 96-F4 (M13): price cluster on its own line — flex-wrap
                           keeps the trio (price / strikethrough / discount) on
                           one clean row now that the column is wide enough. */}
@@ -413,19 +443,38 @@ export default function CartPage() {
                 default min-h-9 (36px), under the 44px floor its
                 empty-state twin was fixed for. One anchor per CTA, one
                 tab stop; the primaries keep their h-12 (48px). */}
+            {/* R129-A1 (F1 wiring — B-11): a proven-unchargeable line
+                (stock 0 / quantity > snapshot) blocks the CTA — the
+                failure surfaces HERE, at the cart, not as a 409
+                mid-charge. Unknown-snapshot lines never block (the
+                server re-check answers at charge time). */}
+            {cartHasBlockingStock(items) && (
+              <p className="text-2xs font-semibold text-status-error bg-status-error/8 border border-status-error/20 rounded-xl px-3 py-2 text-center">
+                بعض العناصر نفد مخزونها — أزلها أو عدّل كميتها للمتابعة
+              </p>
+            )}
             {token ? (
-              <Button
-                asChild
-                className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
-              >
-                <Link href="/checkout">
-                  {/* R111-F2 N1: «إتمام الطلب» — the destination page's own
-                      name (checkout.tsx h1), replacing «متابعة الشراء» which
-                      sat right above the ghost «متابعة التسوق» as a
-                      near-duplicate label pair on one screen. */}
+              cartHasBlockingStock(items) ? (
+                <Button
+                  disabled
+                  className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
+                >
                   إتمام الطلب
-                </Link>
-              </Button>
+                </Button>
+              ) : (
+                <Button
+                  asChild
+                  className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
+                >
+                  <Link href="/checkout">
+                    {/* R111-F2 N1: «إتمام الطلب» — the destination page's own
+                        name (checkout.tsx h1), replacing «متابعة الشراء» which
+                        sat right above the ghost «متابعة التسوق» as a
+                        near-duplicate label pair on one screen. */}
+                    إتمام الطلب
+                  </Link>
+                </Button>
+              )
             ) : (
               <Button
                 asChild

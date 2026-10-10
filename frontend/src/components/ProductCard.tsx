@@ -275,6 +275,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
       discountPercent: cheapestVariant
         ? (cheapestVariant.discount_percent ?? null)
         : (product.discount_percent ?? null),
+      // R129-A1 (F1 wiring — B-11): the add captures the catalog row's
+      // stock snapshot — the SAME number this card's own badge renders
+      // («متبقٍ N فقط» / «نفد المخزون») — so the cart line's verdict
+      // agrees with what the buyer already saw here. Variants carry no
+      // stock of their own (CatalogVariant), product.stock_count is the
+      // storefront's single availability signal.
+      stockCount: product.stock_count,
     });
     toast({
       title: "أُضيف إلى السلة",

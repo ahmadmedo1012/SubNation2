@@ -75,6 +75,12 @@ const CART_ITEM: LocalCartItem = {
   salePriceLYD: 49, // flash-sale snapshot at add time
   discountPercent: 35,
   quantity: 2,
+  // R129-A1 (B-11 wiring): the line carries the stock snapshot captured
+  // at add time — 12, matching the live row (stock_count: 12) so the
+  // "no change" case below is genuinely identity-stable (price AND
+  // stock agree with the re-quote). The legacy no-snapshot shape is
+  // covered by the new stock-drift case.
+  stockCount: 12,
 };
 
 function seedCart() {
@@ -257,7 +263,7 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
 
   it("no change: silent — no notices, snapshot totals stand, CTA usable", async () => {
     seedCart();
-    getProductMock.mockResolvedValue(liveProduct()); // byte-identical pricing
+    getProductMock.mockResolvedValue(liveProduct()); // byte-identical pricing + stock
     renderPage();
 
     // The snapshot number stands in the line total, the subtotal AND
@@ -271,6 +277,26 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
     expect(cta.textContent).toContain("98.00 د.ل");
     // The stored snapshot was NOT rewritten (identity-stable no-op).
     expect(readCart()[0]).toEqual(CART_ITEM);
+  });
+
+  it("stock drift (B-11 wiring, R129-A1): the re-quote silently refreshes the line's stock snapshot — no price notice", async () => {
+    // A legacy line (pre-B-11 shape: no stockCount) meets a live row
+    // with stock_count 12 — the re-quote refreshes the snapshot ALONGSIDE
+    // price, silently (stock drift is not a price change; the totals
+    // stand) and stays identity-stable on the SECOND pass (no loop).
+    const legacyItem: LocalCartItem = { ...CART_ITEM, stockCount: undefined };
+    localStorage.setItem("subnation_cart_v2", JSON.stringify([legacyItem]));
+    getProductMock.mockResolvedValue(liveProduct());
+    renderPage();
+
+    const cta = await screen.findByRole("button", { name: /إتمام الطلب/ });
+    await waitFor(() => expect(cta).toBeEnabled());
+    // No price notice — only the snapshot's stock changed.
+    expect(screen.queryByText(PRICE_NOTICE)).not.toBeInTheDocument();
+    // The stored line now carries the live stock.
+    const stored = readCart()[0];
+    expect(stored.stockCount).toBe(12);
+    expect(stored.salePriceLYD).toBe(49); // price untouched
   });
 
   it("fetch failure: fail-open — the snapshot stands and the CTA still unlocks", async () => {
