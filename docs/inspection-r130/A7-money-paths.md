@@ -46,7 +46,7 @@ with identical semantics). Charge-affecting for legacy clients (cheapest-any
 for the claimable variant and fulfills from its pool; all-drained still
 fails closed).
 
-## A7-F2 [P4 — VERIFIED, dead surface today] cart.ts PATCH/GET disagree on variant pricing
+## A7-F2 [P4 — VERIFIED — FIXED R133, dead surface today] cart.ts PATCH/GET disagree on variant pricing
 PATCH (:299) omits the variant argument → variant lines re-priced off
 `productsTable.price`; GET prices the same line correctly; GET's pool loads
 inactive variants too (:123-126). Display-only (checkout re-quotes
@@ -54,6 +54,10 @@ server-side; VARIANT_NOT_FOUND fails closed) and the frontend never calls
 these routes — but it is an authenticated public contract. Smallest fix when
 touched: fetch the line's variant in PATCH (mirror GET) + add the isActive
 filter.
+**FIXED R133**: PATCH loads the line's ACTIVE variant (mirror of GET's
+pool filter); GET's pool is now active-only — a retired-variant line falls
+back to the product-level price on BOTH routes. Pinned by 3 new cases in
+`cart.test.ts` (variant pricing parity, GET fallback, PATCH fallback).
 
 ## A7-F3 [P4 — VERIFIED] roundLyd adoption incomplete at balance-mutation boundaries — FIXED R130
 money.ts's "five legacy sites" claim was true but incomplete: the census

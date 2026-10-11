@@ -35,26 +35,38 @@ global session handler's territory); the failed round renders «تعذّر ال�
 — تحقّق من الاتصال وأعد المحاولة» instead. The two tests that pinned the
 old false-empty contract updated to pin the honest one.
 
-### A3-F2 [P3 · VERIFIED, carried] The risk page's 24h dashboard tiles silently vanish on first-load failure and go silently stale on refresh failure
+### A3-F2 [P3 · VERIFIED — FIXED R133] The risk page's 24h dashboard tiles silently vanish on first-load failure and go silently stale on refresh failure
 `risk.tsx:109-122` polls the dashboard every 30s; render is
 `{dashboard.data && ...}` with no error/loading/empty branch — a refresh
 failure keeps stale critical/high counts with no stale cue; a first-load
 failure drops the tiles entirely (incl. the RISK_PIPELINE_ENABLED verdict)
 while the events list 100px below ships the full triad. Smallest fix:
 mirror the events triad (skeleton / FetchErrorCard / stale banner).
+**FIXED R133**: the dashboard section now renders its own skeleton →
+error card (retry) → stale-keep banner triad, pinned by 2 new tests in
+`risk-error-state.test.tsx`.
 
-### A3-F4 [P3 · VERIFIED, carried — re-verified OPEN (R126-A3-7 system half)] system.tsx fires all six settings-gated queries for any authenticated admin
+### A3-F4 [P3 · VERIFIED — FIXED R133] system.tsx fires all six settings-gated queries for any authenticated admin
 A scope-less deep-linker gets a synchronized 403 burst per poll cycle, and
 `healthQ`'s queryFn maps ANY failure — including 401/403 — to
 `{status:"degraded"}`: an authorization outcome renders as an
 infrastructure verdict. Fix: the `risk.tsx:107` pattern —
 `hasAdminPermission("settings")` gate → honest-reason banner + `enabled:
 false` on every query.
+**FIXED R133**: the `canViewSystem` gate (banner + `enabled` on all six
+queries) + `fetchAdminHealthReady` throws on non-503 failures (503 stays
+parsed — it IS the health verdict) + the health section renders a
+FetchErrorCard on error, pinned by `system-settings-gate.test.tsx`.
 
-### A3-F5 [P3 · VERIFIED, carried — re-verified OPEN (R126-A3-5/6/7/8)] risk-event.tsx remains the least-guarded surface
+### A3-F5 [P3 · VERIFIED — FIXED R133] risk-event.tsx remains the least-guarded surface
 Bare-text loader (:131-137), dead-end error with no retry (:138-154), no
 `hasAdminPermission("users")` gate while the backend risk family requires
 that scope, no 404-vs-outage distinction.
+**FIXED R133**: the users-scope gate (fetch-free mount), a page-shaped
+skeleton, the 404 («الحدث غير موجود» + back link, no lying retry) vs
+outage (FetchErrorCard + retry) fork — `adminFetchJson` now carries the
+HTTP status on its thrown errors (additive). Pinned by
+`risk-event-error-state.test.tsx`.
 
 ## Mission checkpoints (page-by-page, condensed)
 False-empty/retry clean everywhere except F2/F3 (11 list pages verified

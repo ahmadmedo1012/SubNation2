@@ -39,20 +39,30 @@ restores; button properly aria-labeled).
 `primary/40` (1.97 L) — both sit beside bold Arabic text; hygiene only
 (aria-hidden + drop the /60 when touched).
 
-### A4-F6 [P4 · VERIFIED-OPEN inherited] Admin password-reveal is still a 16×16px target (R126-F6 never landed)
+### A4-F6 [P4 · VERIFIED — FIXED R133] Admin password-reveal is still a 16×16px target (R126-F6 never landed)
 `admin/login.tsx:235` — the repo's own 44px idiom exists 40 lines away
 (AuthErrorBanner's `-my-2.5 h-11 w-11`).
+**FIXED R133**: `flex h-11 w-11 + touch-target` at `left-1`, the input's
+reservation widened to `pl-12`; provider-card's secret-reveal eye got the
+same treatment (`pr-12` + `right-1`).
 
-### A4-F7 [P4 · VERIFIED] NotificationBell panel: no focus restore + uncontained dialog
+### A4-F7 [P4 · VERIFIED — FIXED R133] NotificationBell panel: no focus restore + uncontained dialog
 Close (X, Esc, outside-click) never returns focus to the bell; `role="dialog"`
 without aria-modal/Tab containment (Tab walks behind the overlay). The admin
 shell does both correctly (`admin/layout.tsx:388-390,555-558`) — mirror it.
+**FIXED R133**: aria-modal + the trapTabKey idiom (third local copy) on
+Tab + returnFocusRef capture/restore on close — pinned by 3 new tests in
+`notification-bell-panel.test.tsx`.
 
-### A4-F8 [P4 · VERIFIED] Form-label association tail (admin)
+### A4-F8 [P4 · VERIFIED — FIXED R133] Form-label association tail (admin)
 `provider-card.tsx:237-242` visible `<label>` with no htmlFor + inputs
 without id/aria-label (placeholder-only names for every provider field incl.
 secrets); same on 4 admin textareas + the search-palette input
 (role="combobox" without a name). Storefront is clean.
+**FIXED R133**: provider-card htmlFor/id wiring (`provider-field-{id}-{key}`);
+aria-labels on the 4 unnamed textareas (enrichment edit-draft, risk-event
+notes, InventoryUploadDialog paste, CopilotPanel chat); the ⌘K combobox got
+`aria-label`.
 
 ### A4-F9 [P4 · VERIFIED census] Physical-direction classes: 166 line-hits across 45 files, all RTL-correct today except A4-F1
 Icon-gaps, start-anchored accents, search-input pairings, timeline indents,

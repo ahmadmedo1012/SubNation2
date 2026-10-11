@@ -28,6 +28,23 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R133 (2026-10-12) — round record:** the R132 delivery executed (live
+> PAT from the operator; `56b8bf9..6a77590` pushed, CI run #468 green,
+> Coolify webhook deployed, live-verified: the arabic-search round-2
+> behaviors + the desktop-categories disclosure live on production) +
+> the R130 open-findings close-out. Shipped: the admin state-truth trio
+> (A3-F2 risk-dashboard skeleton/error/stale triad, A3-F4 the system
+> page's settings gate + honest healthz failures — no more
+> authorization-as-«أداء متدنٍ», A3-F5 risk-event's users gate +
+> 404-vs-outage fork), the A4 a11y tail (44px password reveals,
+> NotificationBell aria-modal + focus return + Tab trap, label/name
+> wiring across provider-card + 4 textareas + the ⌘K combobox), and
+> cart.ts GET/PATCH variant-pricing parity (A7-F2).
+> `adminFetchJson` errors now carry the HTTP status (additive). Gates:
+> backend 2,305/2,305 · frontend 1,270/1,270 · lint 0 errors ·
+> typecheck green · build + budget PASS. Full detail: the CHANGELOG
+> R133 entry.
+>
 > **R132 (2026-10-12) — round record:** arabic-search round 2 + the
 > load-flaky class killed at the root + the desktop categories entry.
 > Starting truth: local was R117's `ef3d0c3`; the other agent's

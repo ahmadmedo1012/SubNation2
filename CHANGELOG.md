@@ -7,6 +7,96 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R133 — the R132 delivery executed + the R130 open-findings close-out: the admin state-truth trio, the A4 a11y tail, cart variant-pricing parity — 2026-10-12
+
+The operator supplied a live PAT and ordered «ادفع وادخل المرحلة التالية
+الأقوى والأشمل مباشرة بعد الفحص والتأكد». Starting truth re-verified:
+local `main` = `6a77590` (the five R132 commits, gates green at that
+exact tree per the R132 record), `origin/main` = `56b8bf9`, working tree
+clean, fast-forward. **The R132 push executed first**: `56b8bf9..6a77590`
+→ GitHub main, remote SHA confirmed, CI run #468 green (all jobs), the
+Coolify webhook deployed, and live verification confirmed the R132
+behaviors on production — arabic-search category intent («افلام»=17 ·
+«موسيقى»=11 · «برامج»=7 · «ذكاء اصطناعي»=2 · «سيو»=2 · «كورسات»=2) and
+mixed-script («netflix اشتراك»=1), all 0 pre-R132; the
+`desktop-categories-menu` string (R132-unique) in the live entry bundle;
+product/category/redirect/guest-gate spot checks + healthz ok. Then the
+round swept the remaining OPEN R130 findings.
+
+### A3-F2 (P3) — the risk dashboard's silent tiles
+The 24h dashboard tiles rendered only on `{dashboard.data && …}`: a
+first-load failure dropped the whole panel (including the
+RISK_PIPELINE_ENABLED verdict) while the events list below shipped the
+full triad; a refresh failure kept stale critical/high counts with no
+cue. The dashboard now mirrors the events triad — skeleton-shimmer tiles
+→ FetchErrorCard with retry → stale-keep warning banner («تعذّر تحديث
+المؤشرات — الأرقام المعروضة قديمة»). Pinned by 2 new tests (the
+existing whole-network-down test now also pins the dashboard card).
+
+### A3-F4 (P3) — system.tsx's 403 burst + fabricated degraded verdict
+All six queries on the monitoring page hit settings-scoped endpoints but
+mounted for ANY authenticated admin — a scope-less deep-linker ate a
+synchronized 403 burst per poll cycle, and `fetchAdminHealthReady`'s
+catch-all mapped EVERY failure (401/403 included) onto
+`{status:"degraded"}` — an authorization outcome rendered as the amber
+«أداء متدنٍ» infrastructure verdict. Now: the `canViewSystem` gate
+(honest-reason banner, `enabled: false` on all six queries — the
+risk.tsx idiom), `fetchAdminHealthReady` throws on non-503 failures (503
+stays parsed — it IS the health verdict), and the health section renders
+a FetchErrorCard on error instead of fake amber tiles. Pinned by 3 new
+tests (gate fires nothing / 403 → error card not «أداء متدنٍ» / retry
+recovers).
+
+### A3-F5 (P3) — risk-event.tsx, the least-guarded surface
+The detail page mounted + fetched for any authenticated admin (the
+backend risk family is users-scoped), rendered a bare-text loader, and
+answered every failure with a dead-end «فشل تحميل الحدث» banner. Now:
+the users-scope gate (fetch-free mount), a page-shaped skeleton, and the
+404-vs-outage fork — a missing event renders «الحدث غير موجود» + the
+back link with NO retry (retrying a dead id lies), an outage renders the
+FetchErrorCard with a working retry. `adminFetchJson` now carries the
+HTTP status on its thrown error (additive — existing consumers read
+.message only). Pinned by 3 new tests.
+
+### A4 tail (P4s) — hit boxes, focus, and names
+- **A4-F6**: admin login's password-reveal 16×16 hit box → the repo 44px
+  idiom (`flex h-11 w-11 + touch-target`, `pl-12` reservation);
+  provider-card's secret-reveal eye got the same treatment (`pr-12`).
+- **A4-F7**: NotificationBell's panel — `aria-modal="true"` + the
+  trapTabKey Tab cycle (third local copy of the idiom) + focus return to
+  the bell on every close path (X/Esc/outside-click). Pinned by 3 new
+  tests (aria+focus-in, focus-return, Tab wrap both directions).
+- **A4-F8**: provider-card's visible labels never reached their inputs —
+  htmlFor/id wiring (`provider-field-{id}-{key}`); aria-labels on the 4
+  unnamed admin textareas (enrichment edit-draft, risk-event notes,
+  InventoryUploadDialog paste, CopilotPanel chat); the ⌘K combobox got
+  its accessible name.
+
+### A7-F2 (P4) — cart.ts GET/PATCH variant-pricing disagreement
+PATCH re-priced variant lines off `productsTable.price` while GET priced
+the same line off the variant; GET's pool also loaded DEACTIVATED
+variants. Display-only (checkout re-quotes server-side; the frontend
+never calls these routes) but an authenticated public contract. PATCH now
+loads the line's ACTIVE variant (mirroring GET), and GET's pool is
+active-only — a retired-variant line falls back to the product-level
+price on BOTH routes. Pinned by 3 new cases in `cart.test.ts`.
+
+### Explicitly NOT taken (documented dispositions respected)
+A8-F1 (DESC-index mirror divergence — R130 pinned the convention and
+deferred the 20-site regen wave), A8-F2/F3 (probe-gated migration stages
+of their own), A8-F4 (harmless for years — trigger-list), A7-F4 (needs a
+`body_hash` column — its own stage round), A7-F5 (cosmetic Telegram
+branch), A5-F4 (bell↔read-state parity — by design), the accepted A4
+residues (F3/F4/F5/F10 + light-theme tails).
+
+### Round record (gates on the R133 tree)
+Backend vitest **242 files / 2,305 tests / 0 failures** (chunked:
+routes 788 + rest 1,500 + tests/ 17) · frontend vitest **183 files /
+1,270 tests / 0 failures** · typecheck green (backend + frontend +
+scripts) · ESLint 0 errors / 84 warnings (the known set) · `pnpm build`
+green — eager path 144,296 B gz (budget PASS, +23 B vs R132) · PWA
+precache 10 entries.
+
 ## Round R132 — arabic-search round 2 + the load-flaky class killed at the root + the desktop categories entry — 2026-10-12
 
 R132 started from the operator's ground-truth directive («افحص اخر نسخة
@@ -109,8 +199,19 @@ precache 10 entries.
 
 ### Delivery state (recorded truthfully)
 All five R132 commits are preserved on local `main` (`694f7af` …
-`95ce3bd`, fast-forward on top of `56b8bf9`). **The push to GitHub
-main is blocked**: the PAT embedded in the git remote answers 401 on
+`6a77590`, fast-forward on top of `56b8bf9`). **Post-script
+(2026-10-12, R133): the operator supplied a live PAT and the push
+executed the same day** — `56b8bf9..6a77590` → GitHub main, CI run
+#468 green, the Coolify webhook deployed, and live verification
+confirmed the R132 behaviors on production (arabic-search
+«افلام»=17 / «موسيقى»=11 / «برامج»=7 / «ذكاء اصطناعي»=2 / «سيو»=2 /
+«كورسات»=2 / «netflix اشتراك»=1 — all were 0 pre-R132 — plus the
+desktop-categories disclosure string `desktop-categories-menu` in the
+live entry bundle, product/category/redirect/guest-gate spot checks,
+healthz ok). (The original blocked-push record below is kept as the
+round's lived truth — this paragraph corrects only the stale
+self-reference SHA `95ce3bd`, an amended-commit artifact.) The push to GitHub
+main had been blocked at round end: the PAT embedded in the git remote answered 401 on
 both auth schemes (the repo is public, so anonymous fetches succeed —
 which is how the R118–R130 waves were pulled this round), and every
 other authenticated route on this machine was checked and is empty
