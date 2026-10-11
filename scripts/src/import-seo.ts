@@ -1,6 +1,6 @@
 /**
- * Import SEO content (description_long + faq) from docs/SEO_PRODUCTS.json
- * into productsTable.
+ * Import SEO content (description_long + faq + seo_title +
+ * meta_description) from docs/SEO_PRODUCTS.json into productsTable.
  *
  * Safety:
  *   - Matches each entry by `slug` first (the canonical, stable identity —
@@ -8,14 +8,27 @@
  *     exact `product_name` match. Skips any entry that matches neither,
  *     instead of inventing one. Skipped entries WARN with counts
  *     (110-F, R110) — a stale file must never shrink the import silently.
- *   - Only writes `descriptionLong` and `faq`. Never touches name, price,
- *     slug, isActive, isArchived, costPrice, etc.
+ *   - Only writes the SEO surface: descriptionLong, faq, seoTitle,
+ *     seoDescription. Never touches name, price, slug, isActive,
+ *     isArchived, costPrice, etc.
  *   - Wraps every UPDATE in a single transaction. Any failure rolls back
  *     the whole batch — partial state is impossible.
  *   - Dry-run by default. Pass `--apply` (or `IMPORT_SEO_APPLY=true`) to
  *     actually write.
- *   - Does NOT overwrite a non-empty existing descriptionLong / faq unless
- *     `--force` is passed. By default skips the field with a "kept" log.
+ *   - Does NOT overwrite a non-empty existing field unless `--force` is
+ *     passed. By default skips the field with a "kept" log.
+ *
+ * R132 (L4-F1) — the seo_title/meta_description direction, measured:
+ *   As of 2026-10-12 the LIVE DB carries operator-curated overrides for
+ *   every mapped product that are NEWER than this JSON (they follow the
+ *   site-wide «— اشتراك أصلي بالدينار الليبي | SubNation» title pattern;
+ *   the JSON holds the older research copy). The keep-unless-force rule
+ *   is therefore the load-bearing safety: a plain `--apply` can never
+ *   regress the newer DB values — only an explicit `--force` push of a
+ *   freshly curated JSON can. Refresh the JSON against the live catalog
+ *   (the 4 flagship slugs — netflix-premium, disney-standard,
+ *   amazon-prime-video, apple-tv — also want re-keying to their live
+ *   slugs) before any --force run.
  *
  * Usage:
  *   pnpm --filter @workspace/scripts exec tsx ./src/import-seo.ts            # dry run
@@ -98,8 +111,12 @@ async function main(): Promise<void> {
         productId: number;
         willWriteDesc: boolean;
         willWriteFaq: boolean;
+        willWriteTitle: boolean;
+        willWriteMetaDesc: boolean;
         keepDesc: boolean;
         keepFaq: boolean;
+        keepTitle: boolean;
+        keepMetaDesc: boolean;
       };
 
   const plans: Plan[] = [];
@@ -117,6 +134,8 @@ async function main(): Promise<void> {
         name: productsTable.name,
         descriptionLong: productsTable.descriptionLong,
         faq: productsTable.faq,
+        seoTitle: productsTable.seoTitle,
+        seoDescription: productsTable.seoDescription,
         isArchived: productsTable.isArchived,
       })
       .from(productsTable)
@@ -139,14 +158,20 @@ async function main(): Promise<void> {
 
     const hasDesc = isNonEmpty(row.descriptionLong);
     const hasFaq = isNonEmptyFaq(row.faq);
+    const hasTitle = isNonEmpty(row.seoTitle);
+    const hasMetaDesc = isNonEmpty(row.seoDescription);
     plans.push({
       kind: "update",
       entry,
       productId: row.id,
       willWriteDesc: !hasDesc || FORCE,
       willWriteFaq: !hasFaq || FORCE,
+      willWriteTitle: !hasTitle || FORCE,
+      willWriteMetaDesc: !hasMetaDesc || FORCE,
       keepDesc: hasDesc && !FORCE,
       keepFaq: hasFaq && !FORCE,
+      keepTitle: hasTitle && !FORCE,
+      keepMetaDesc: hasMetaDesc && !FORCE,
     });
   }
 
@@ -165,12 +190,16 @@ async function main(): Promise<void> {
       const parts: string[] = [];
       parts.push(p.willWriteDesc ? "desc✓" : "desc·kept");
       parts.push(p.willWriteFaq ? "faq✓" : "faq·kept");
+      parts.push(p.willWriteTitle ? "title✓" : "title·kept");
+      parts.push(p.willWriteMetaDesc ? "metadesc✓" : "metadesc·kept");
       console.log(`✅ APPLY  "${p.entry.product_name}" (id=${p.productId}) — ${parts.join(" ")}`);
     }
   }
 
   const writes = plans.filter((p): p is Extract<Plan, { kind: "update" }> => p.kind === "update");
-  const willWrite = writes.filter((p) => p.willWriteDesc || p.willWriteFaq);
+  const willWrite = writes.filter(
+    (p) => p.willWriteDesc || p.willWriteFaq || p.willWriteTitle || p.willWriteMetaDesc,
+  );
   const missingCount = plans.filter((p) => p.kind === "missing").length;
   const archivedCount = plans.filter((p) => p.kind === "archived").length;
   const skippedCount = missingCount + archivedCount;
@@ -207,9 +236,19 @@ async function main(): Promise<void> {
   // Transactional write — all-or-nothing.
   await db.transaction(async (tx) => {
     for (const p of willWrite) {
-      const patch: { descriptionLong?: string; faq?: SeoFaq[] } = {};
+      const patch: {
+        descriptionLong?: string;
+        faq?: SeoFaq[];
+        seoTitle?: string;
+        seoDescription?: string;
+      } = {};
       if (p.willWriteDesc) patch.descriptionLong = p.entry.description_long;
       if (p.willWriteFaq) patch.faq = p.entry.faq;
+      // R132 (L4-F1): the operator overrides join the same transactional
+      // keep-unless-force channel (column caps 200/320 enforced upstream
+      // by the admin zod; a curated JSON is expected to respect them).
+      if (p.willWriteTitle) patch.seoTitle = p.entry.seo_title;
+      if (p.willWriteMetaDesc) patch.seoDescription = p.entry.meta_description;
 
       await tx.update(productsTable).set(patch).where(eq(productsTable.id, p.productId));
     }
