@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkNeonWith, resetNeonFailureStreakForTests } from "../health";
 
 /**
@@ -23,6 +23,21 @@ import { checkNeonWith, resetNeonFailureStreakForTests } from "../health";
  * REDIS_URL is kept unset so the redis-side failure counters no-op and
  * the in-process streak is the authority (the documented no-Redis
  * production shape).
+ */
+
+/**
+ * R132 (test-truth): the three latency-JUDGING tests now run under FAKE
+ * TIMERS. They used to sleep real milliseconds and assert on
+ * `Date.now()` deltas (e.g. "the 5 ms measured probe reads < 500 ms"),
+ * which is only true while the event loop is timely — under the full
+ * 242-file suite's CPU contention the loop can stall > 500 ms between
+ * timer setup and firing, and a HEALTHY probe shape read "degraded"
+ * (the load-flaky class R130/R131 recorded: passes 5/5 in isolation,
+ * fails in the full run — a pass-individually/fail-together trap that
+ * said nothing about the code). Under vi.useFakeTimers() the clock
+ * advances EXACTLY with advanceTimersByTimeAsync, so the measured
+ * latency is the probe's nominal sleep — deterministic at any load.
+ * The failure-streak tests (no wall-clock dependence) keep real timers.
  */
 
 const ENV_KEYS = ["REDIS_URL", "HEALTH_CHECK_TIMEOUT_MS"] as const;
@@ -81,10 +96,21 @@ describe("checkNeonWith — warmup probe (R117 A4-P2 / R118-A5 #6)", () => {
     // "degraded" on every cold aggregate of an otherwise healthy idle
     // store. The warmup probe absorbs the resume; only the measured 5 ms
     // probe is judged.
-    const result = await checkNeonWith(coldThenWarmProbe(550, 5));
-    expect(result.status).toBe("ok");
-    expect(result.latencyMs).toBeLessThan(500);
-    expect(result.error).toBeUndefined();
+    // R132: fake clock — the measured latency is EXACTLY 5 ms, not
+    // "5 ms + however long the loaded event loop stalled".
+    vi.useFakeTimers();
+    try {
+      const pending = checkNeonWith(coldThenWarmProbe(550, 5));
+      // 550 (warmup) + 5 (measured) on the fake clock; the internal
+      // 5 s race timeouts never fire (5000 ≫ 555).
+      await vi.advanceTimersByTimeAsync(600);
+      const result = await pending;
+      expect(result.status).toBe("ok");
+      expect(result.latencyMs).toBeLessThan(500);
+      expect(result.error).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a genuinely failing probe escalates: degraded on the first miss, failing at the 2-streak — the warmup failure is not swallowed", async () => {
@@ -105,23 +131,46 @@ describe("checkNeonWith — warmup probe (R117 A4-P2 / R118-A5 #6)", () => {
     // BOTH the warmup and the measured probe are slow — steady-state
     // latency, not a cold resume — so the measured 600 ms must be judged
     // against the 500 ms threshold.
-    const result = await checkNeonWith(steadyProbe(600));
-    expect(result.status).toBe("degraded");
-    expect(result.latencyMs).toBeGreaterThanOrEqual(500);
+    // R132: fake clock — exactly 600 ms judged, deterministically.
+    vi.useFakeTimers();
+    try {
+      const pending = checkNeonWith(steadyProbe(600));
+      await vi.advanceTimersByTimeAsync(1300);
+      const result = await pending;
+      expect(result.status).toBe("degraded");
+      expect(result.latencyMs).toBeGreaterThanOrEqual(500);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a success resets the consecutive-failure streak (outage → recovery → brief blip stays degraded, not failing)", async () => {
-    // 1st failure: streak 1 → degraded.
-    expect((await checkNeonWith(alwaysFailingProbe())).status).toBe("degraded");
-    // Recovery: a fast successful probe resets the streak.
-    const ok = await checkNeonWith(coldThenWarmProbe(1, 1));
-    expect(ok.status).toBe("ok");
-    // A NEW single failure starts a fresh streak → degraded again, NOT
-    // failing (pre-escalation — the streak is consecutive by definition).
-    expect((await checkNeonWith(alwaysFailingProbe())).status).toBe("degraded");
+    // R132: the recovery leg judges a fast probe's latency (the old real
+    // sleep made its "ok" verdict load-flaky) — run the whole scenario
+    // on the fake clock: failures are instant (no timers), the recovery
+    // probe sleeps 1 ms twice.
+    vi.useFakeTimers();
+    try {
+      // 1st failure: streak 1 → degraded.
+      let pending = checkNeonWith(alwaysFailingProbe());
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await pending).status).toBe("degraded");
+      // Recovery: a fast successful probe resets the streak.
+      pending = checkNeonWith(coldThenWarmProbe(1, 1));
+      await vi.advanceTimersByTimeAsync(5);
+      const ok = await pending;
+      expect(ok.status).toBe("ok");
+      // A NEW single failure starts a fresh streak → degraded again, NOT
+      // failing (pre-escalation — the streak is consecutive by definition).
+      pending = checkNeonWith(alwaysFailingProbe());
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await pending).status).toBe("degraded");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("a probe that resolves FALSY is an honest failure (\"Query returned no result\"), not a fake ok", async () => {
+  it('a probe that resolves FALSY is an honest failure ("Query returned no result"), not a fake ok', async () => {
     const falsyProbe = async () => null;
     const result = await checkNeonWith(falsyProbe);
     expect(result.status).toBe("degraded");

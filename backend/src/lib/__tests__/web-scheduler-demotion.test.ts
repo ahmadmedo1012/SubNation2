@@ -74,6 +74,23 @@ vi.mock("../../services/whatsapp-otp.service", () => ({
 vi.mock("../../lib/admin-session", () => ({
   pruneStaleAdminSessions: vi.fn(async () => 0),
 }));
+// R132 (test-truth): the roster grew after this file was written —
+// login-attempts/audit-logs retention (R111 B1-2/B6-05) and the
+// v1→v2 credential re-encryption (R118-B1c) joined boot-one-shots with
+// REAL modules while every sibling was mocked ("the heavy job modules
+// are mocked so the test exercises web-scheduler's own wiring only").
+// The unmocked trio made the chain's drain wall-clock-dependent (their
+// real DB work runs against no test DB here and throws/awaits), which
+// is part of why this test needed patience bounds at all. Mocked like
+// every sibling, the chain is a pure microtask drain — deterministic
+// under the fake-clock advance below.
+vi.mock("../../jobs/auth-audit-retention", () => ({
+  pruneStaleLoginAttempts: vi.fn(async () => 0),
+  pruneOldAuditLogs: vi.fn(async () => 0),
+}));
+vi.mock("../../jobs/reencrypt-v1-credentials", () => ({
+  reencryptV1CredentialBlobs: vi.fn(async () => 0),
+}));
 
 import { acquireSchedulerLeadership } from "../scheduler-coordinator";
 import { initCronJobs } from "../../jobs/cron";
@@ -152,16 +169,26 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
   });
 
   it("fires the SEQUENTIAL boot one-shot chain exactly once per leadership acquisition", async () => {
-    const handle = await startWebSchedulers(fakeRedis as never);
-    trackHandle(handle);
-    expect(handle.active).toBe(true);
-
     // R104 (AG6-6): the chain is deferred BOOT_ONE_SHOT_DELAY_MS after
     // leadership (decoupled from the first real user requests of a cold
     // start) — the beforeEach sets the env override to 0, so the chain
     // fires immediately; flush the fire-and-forget microtasks.
+    //
+    // R132 (test-truth): this used to ride vi.waitFor's DEFAULT 1 s
+    // patience — fine in isolation, but under the full 242-file suite's
+    // CPU contention the 0 ms macrotask can take > 1 s of wall clock to
+    // fire and the test flaked (the R130/R131 load-flaky class). Fake
+    // timers make it deterministic: the deferred setTimeout fires when
+    // WE advance the clock, and the chain itself is sequential awaits
+    // over already-resolved mocks, so one advance drains it fully.
+    vi.useFakeTimers();
+    try {
+      const handle = await startWebSchedulers(fakeRedis as never);
+      trackHandle(handle);
+      expect(handle.active).toBe(true);
 
-    await vi.waitFor(() => {
+      await vi.advanceTimersByTimeAsync(1); // fire the deferred chain + drain microtasks
+
       expect(checkExpiringCoupons).toHaveBeenCalledTimes(1);
       expect(runStockSweep).toHaveBeenCalledTimes(1);
       // R102: the orphan-inventory report fires with the rest of the chain.
@@ -169,7 +196,9 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
       expect(deactivateExpiredFlashSales).toHaveBeenCalledTimes(1);
       expect(reapExpiredCopilotPreviews).toHaveBeenCalledTimes(1);
       expect(pruneExpiredOtps).toHaveBeenCalledTimes(1);
-    });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("onLost (leadership loss) STOPS everything — the split-brain fix", async () => {

@@ -16,7 +16,20 @@
  */
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
+
+// R132 (test-truth): raise testing-library's asyncUtilTimeout (the
+// default patience of every waitFor/findBy*) from 1 s to 5 s, in line
+// with the 10 s vitest testTimeout budget. The 1 s default is sized
+// for an idle machine; under the full 180-file jsdom suite's CPU
+// contention a healthy render+query+fetch-mock cycle can exceed it and
+// the test flakes (the R130/R131 load-flaky class: admin-layout-alerts
+// passed 11/11 in isolation while failing in the full run — a
+// pass-individually/fail-together trap). This changes NO assertion —
+// only how long the utilities keep polling before giving up — and it
+// keeps the patience bound well under the testTimeout that catches
+// genuinely hung tests.
+configure({ asyncUtilTimeout: 5_000 });
 
 afterEach(() => {
   cleanup();
