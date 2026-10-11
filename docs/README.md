@@ -28,6 +28,27 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R132 (2026-10-12) — round record:** arabic-search round 2 + the
+> load-flaky class killed at the root + the desktop categories entry.
+> Starting truth: local was R117's `ef3d0c3`; the other agent's
+> R118–R130 waves (111 commits) were fetched and reviewed and R131's
+> reported commit `858aa80` confirmed NEVER pushed — this round built
+> on the latest PUSHED tree (`56b8bf9`) and re-derived R131's
+> remaining list against the actual code. Shipped: the 3+1 load-flaky
+> failures root-caused and made deterministic by construction (fake
+> clocks, the 3 unmocked boot-one-shot roster jobs, suite-wide
+> waitFor patience), the four arabic-search gaps (category intent,
+> mixed-script, duration/tier compounds with digit-boundary
+> refinement, exact-match-first ranking) with +64 backend evaluation
+> cases + 2 deploy-race-safe e2e journeys, the desktop «الأقسام»
+> disclosure (L2-F4), measured closures for L2-F8 (verified good),
+> L4-F1 (DB is the NEWER truth — importer extended, keep-unless-force
+> load-bearing), L4-F6 (TTFB tail = client↔origin RTT, server ≲30 ms,
+> CDN stays the O1 operator item) and L4-F9 (all 45 assets are 450×450
+> — declarations truth-fixed to intrinsic). Gates: backend 2,302/2,302
+> · frontend 1,259/1,259 · lint 0 errors · typecheck green · build +
+> budget PASS. Full detail: the CHANGELOG R132 entry.
+>
 > **R130 (2026-10-10) — round record:** the verification round that had
 > to verify itself. Ground truth: local HEAD = GitHub main = live
 > Coolify container = `fd702d6`, healthz ok. Headline discovery: the
