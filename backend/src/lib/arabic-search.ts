@@ -179,6 +179,7 @@ const BRAND_ALIASES: Record<string, string> = {
   نتفليكس: "netflix", // the standard Arabic spelling
   نتفلكس: "netflix", // the site's own hero spelling (r122-a11)
   نفلكس: "netflix", // short form users type (r122-a11 §P1-1 action item)
+  نفليكس: "netflix", // R132: transposed لا variant, common Libyan typo
   سبوتيفاي: "spotify",
   سبوتفاي: "spotify",
   سبوتيفي: "spotify",
@@ -187,6 +188,7 @@ const BRAND_ALIASES: Record<string, string> = {
   امازون: "prime video", // the only Amazon storefront product in this catalog
   يوتيوب: "youtube",
   يوتوب: "youtube",
+  يوتيب: "youtube", // R132: Libyan variant
   ابل: "apple tv",
   ماكس: "hbo", // only HBO Max carries "Max" here
   "اتش بي او": "hbo",
@@ -197,6 +199,7 @@ const BRAND_ALIASES: Record<string, string> = {
   شوتايم: "showtime",
   "اي ام سي": "amc",
   سلينج: "sling",
+  سيلنج: "sling", // R132: Libyan variant
   دايركت: "directv",
   فوكس: "fox",
   فانيميشن: "funimation",
@@ -206,6 +209,7 @@ const BRAND_ALIASES: Record<string, string> = {
   // ── Music / audio / focus (10) ──
   تايدال: "tidal",
   تايدل: "tidal",
+  تيدال: "tidal", // R132: Libyan variant
   "ساوند كلاود": "soundcloud",
   باندورا: "pandora",
   نابستر: "napster",
@@ -230,8 +234,10 @@ const BRAND_ALIASES: Record<string, string> = {
   شوبيا: "shopia", // Shopia AI (sic — product name spelling)
   افريفس: "ahrefs",
   سيمراش: "semrush",
+  سيمرش: "semrush", // R132: Libyan variant
   "سكيل شير": "skillshare",
   سكريد: "scribd",
+  سكريبد: "scribd", // R132: Libyan variant
   // ── Software (7) ──
   ويندوز: "windows",
   "وين رار": "winrar",
@@ -283,7 +289,112 @@ const ALIAS_LOOKUP: ReadonlyMap<string, string> = (() => {
   return map;
 })();
 
-// ── 4. Query expansion ────────────────────────────────────────────────────
+// ── 3b. Category + modifier aliases (R132) ────────────────────────────────
+
+/**
+ * R132: Arabic CATEGORY intent → the live `products.category` enum.
+ *
+ * The R122 bridge only translated BRAND words — a customer typing the
+ * CATEGORY («افلام», «برامج», «موسيقى») got zero results because no
+ * English name token means "movies". The seven values mirror
+ * frontend/src/lib/categories.ts (verified against the live catalog).
+ * The route ORs `category = <slug>` branches beside the name ILIKEs, so
+ * «افلام» returns every streaming product — the honest answer to the
+ * intent, not a fabricated brand match.
+ *
+ * Matching mirrors the brand machinery (normalized exact token →
+ * ≥4-char containment for definite articles), but there is NO
+ * transliteration fallback: a skeleton can never name a category.
+ */
+const CATEGORY_ALIASES: Record<string, CategoryAlias> = {
+  // streaming
+  بث: "streaming",
+  افلام: "streaming",
+  مسلسلات: "streaming",
+  مسلسل: "streaming",
+  سينما: "streaming",
+  // music
+  موسيقى: "music",
+  اغاني: "music",
+  بودكاست: "music",
+  // software
+  برامج: "software",
+  برنامج: "software",
+  تطبيقات: "software",
+  تطبيق: "software",
+  مفاتيح: "software", // «مفاتيح برامج» — activation keys
+  تراخيص: "software", // «رخص / تراخيص» — licenses
+  // vpn
+  "في بي ان": "vpn", // the name-alias "vpn" only substring-matches
+  برايفت: "vpn", // «برايفت» / «شبكة برايفت» — Libyan VPN shorthand
+  // ai-tools
+  "ذكاء اصطناعي": "ai-tools",
+  ذكاء: "ai-tools",
+  // seo-tools
+  سيو: "seo-tools", // "seo" matches no product NAME — category is the only path
+  "ادوات سيو": "seo-tools",
+  // education
+  تعليم: "education",
+  كورسات: "education",
+  دورات: "education",
+  كتب: "education", // Scribd's books — education category
+};
+
+/**
+ * R132: duration/tier words → the Latin fragments the catalog's product
+ * and variant names actually carry ("1-Month", "12-Month", "1 Year",
+ * "Plus", "Pro" …). These are MODIFIERS, not brands: alone they widen
+ * the match (every month-plan product); beside a brand the route builds
+ * compound AND branches («نتفلكس شهر» → name ILIKE %netflix% AND
+ * %month%) that rank first — the customer's plan-level intent surfaces
+ * at the top instead of drowning in the OR recall.
+ *
+ * Exact/phrase matching only — no containment, no skeletons («برو»
+ * must never fire inside an unrelated word).
+ */
+const MODIFIER_ALIASES: Record<string, string> = {
+  // durations (catalog convention: "-Month" / "Year" / week / day)
+  شهر: "month",
+  شهري: "month",
+  اشهر: "month",
+  شهرين: "month",
+  سنوي: "year",
+  سنويه: "year", // normalized from «سنوية» (ة→ه)
+  سنه: "year", // normalized from «سنة»
+  اسبوع: "week",
+  اسبوعي: "week",
+  يوم: "day",
+  يومي: "day",
+  // tiers the catalog actually names
+  بريميوم: "premium",
+  برو: "pro",
+  بلس: "plus",
+  ستاندرد: "standard",
+};
+
+/** The live `products.category` enum (mirrors lib/categories.ts). */
+type CategoryAlias =
+  "streaming" | "music" | "software" | "vpn" | "ai-tools" | "seo-tools" | "education";
+
+/** Lookup for the category map — same normalization + space-collapse
+ * as ALIAS_LOOKUP (multi-word «في بي ان» ≡ «فيبيان», «ذكاء اصطناعي» ≡
+ * «ذكاءاصطناعي»). */
+const CATEGORY_LOOKUP: ReadonlyMap<string, CategoryAlias> = (() => {
+  const map = new Map<string, CategoryAlias>();
+  for (const [alias, slug] of Object.entries(CATEGORY_ALIASES)) {
+    map.set(normalizeArabicText(alias).replace(/\s+/g, ""), slug);
+  }
+  return map;
+})();
+
+/** Modifier lookup — normalized + collapsed, mirroring the two above. */
+const MODIFIER_LOOKUP: ReadonlyMap<string, string> = (() => {
+  const map = new Map<string, string>();
+  for (const [alias, term] of Object.entries(MODIFIER_ALIASES)) {
+    map.set(normalizeArabicText(alias).replace(/\s+/g, ""), term.toLowerCase());
+  }
+  return map;
+})();
 
 /**
  * R122 (A11-F2): per-request work is BOUNDED — an adversarial
@@ -306,12 +417,217 @@ const TOKEN_JUNK = /[^\u0621-\u063A\u0641-\u064Aa-zA-Z0-9]/g;
  * carries at least one Arabic letter. */
 const ARABIC_LETTER = /[\u0621-\u063A\u0641-\u064A]/;
 
+// ── 4. Query expansion ────────────────────────────────────────────────────
+
+/**
+ * R132: the structured expansion the products route consumes. Every
+ * field is independently bounded; together they cover the four gaps the
+ * R122 bridge left: category intent, mixed-script queries, duration/
+ * tier refinement, and rankable compound branches.
+ */
+export interface ArabicSearchExpansion {
+  /**
+   * Extra literal ILIKE terms for the NAME column (brand aliases +
+   * modifier fragments + transliteration skeletons) — the R122
+   * behavior, unchanged.
+   */
+  nameTerms: string[];
+  /**
+   * Live `products.category` enum values matched from Arabic category
+   * words («افلام» → "streaming"). The route ORs `category = slug`
+   * branches beside the name ILIKEs.
+   */
+  categories: string[];
+  /**
+   * Per-token Latin/digit ILIKE branches, emitted ONLY when the query
+   * also carries Arabic letters (mixed script). The raw whole-string
+   * ILIKE can never match an English name when an Arabic word rides
+   * along, so «netflix اشتراك» used to return nothing; OR-ing the
+   * Latin fragments restores the match. Pure-English queries keep
+   * their byte-identical single-ILIKE SQL (the R122 invariant).
+   */
+  latinTerms: string[];
+  /**
+   * Brand × modifier AND-branches («نتفلكس شهر» →
+   * `name ILIKE %netflix% AND name ILIKE %month%`, optionally AND
+   * `%<digits>%` for «نتفلكس ١٢ شهر»). The route ranks these first —
+   * the plan-level intent surfaces above the OR recall.
+   */
+  compounds: Array<{ brand: string; modifier: string; digits?: string }>;
+}
+
+/** R132 bounds — the OR chain stays capped for adversarial input. */
+const MAX_LATIN_TERMS = 4;
+const MAX_COMPOUNDS = 4;
+const MAX_CATEGORIES = 3;
+/** Digit tokens this short are pure noise for the compound AND. */
+const MIN_DIGIT_LENGTH = 1;
+const MAX_DIGIT_LENGTH = 3;
+
+/**
+ * R132: the full expansion. Pure-function and deterministic like its
+ * R122 sibling; see {@link ArabicSearchExpansion} for the fields.
+ *
+ * @example
+ *   expandArabicSearch("افلام")            → { nameTerms: [], categories: ["streaming"], … }
+ *   expandArabicSearch("نتفلكس شهر")       → { nameTerms: ["netflix","month"], compounds: [{brand:"netflix",modifier:"month"}], … }
+ *   expandArabicSearch("netflix اشتراك")   → { nameTerms: [], latinTerms: ["netflix"], … }
+ *   expandArabicSearch("netflix premium")  → all empty (pure English unchanged)
+ */
+export function expandArabicSearch(query: string): ArabicSearchExpansion {
+  const tokens = normalizeArabicText(query)
+    .split(/\s+/)
+    .map((t) => t.replace(TOKEN_JUNK, ""))
+    .filter((t) => t.length > 0)
+    .slice(0, MAX_TOKENS_CONSIDERED);
+  if (tokens.length === 0) {
+    return { nameTerms: [], categories: [], latinTerms: [], compounds: [] };
+  }
+
+  const hasArabicToken = tokens.some((t) => ARABIC_LETTER.test(t));
+  if (!hasArabicToken) {
+    // Pure English/digits — the R122 invariant: byte-identical SQL.
+    return { nameTerms: [], categories: [], latinTerms: [], compounds: [] };
+  }
+
+  const nameTerms: string[] = [];
+  /** Alias-derived name terms only (brand + modifier hits) — the
+   * compound candidates. Skeletons never qualify. */
+  const aliasTerms: string[] = [];
+  const seen = new Set<string>();
+  const addTerm = (term: string, fromAlias = true) => {
+    if (term && !seen.has(term)) {
+      seen.add(term);
+      nameTerms.push(term);
+      if (fromAlias) aliasTerms.push(term);
+    }
+  };
+
+  // R132 collections: modifiers, digit refinements, Latin branches,
+  // category hits.
+  const modifiers: string[] = [];
+  const digitTokens: string[] = [];
+  const latinTokens: string[] = [];
+  const categoryHits = new Set<string>();
+
+  // Whole-query collapsed forms FIRST (brand phrase, then category
+  // phrase) — a recognized multi-word phrase resolves as one unit and
+  // suppresses per-token skeleton noise («جي», «بي», «تي»).
+  const collapsed = tokens.join("");
+  const phrase = ALIAS_LOOKUP.get(collapsed);
+  const categoryPhrase = CATEGORY_LOOKUP.get(collapsed);
+
+  let translitBudget = phrase ? 0 : MAX_TRANSLIT_TERMS;
+  for (const token of tokens) {
+    if (!ARABIC_LETTER.test(token)) {
+      // R132: mixed-script — ride Latin/digit tokens along (bounded).
+      // Pure-English queries never reach here (guard above). Pure
+      // digits become compound REFINEMENTS only (a bare %1% ILIKE
+      // would match half the catalog's plan numbers as noise);
+      // ≥2-char Latin tokens become their own OR branches.
+      if (/^\d+$/.test(token)) {
+        if (token.length >= MIN_DIGIT_LENGTH && token.length <= MAX_DIGIT_LENGTH) {
+          digitTokens.push(token);
+        }
+      } else if (token.length >= 2 && latinTokens.length < MAX_LATIN_TERMS) {
+        const lower = token.toLowerCase();
+        if (!seen.has(lower) && !latinTokens.includes(lower)) latinTokens.push(lower);
+      }
+      continue;
+    }
+
+    // R132: category words — exact, then ≥4-char containment («الافلام»).
+    const catExact = CATEGORY_LOOKUP.get(token);
+    let categoryMatched: string | null = catExact ?? null;
+    if (!categoryMatched) {
+      for (const [alias, slug] of CATEGORY_LOOKUP) {
+        if (alias.length >= MIN_CONTAIN_ALIAS_LENGTH && token.includes(alias)) {
+          categoryMatched = slug;
+          break;
+        }
+      }
+    }
+    if (categoryMatched) categoryHits.add(categoryMatched);
+
+    // R132: modifier words — exact/phrase only, never containment. A
+    // matched modifier CONSUMES its token: the skeleton fallback would
+    // only add a no-match ILIKE branch («شهر» → "shhr" matches nothing).
+    const modifier = MODIFIER_LOOKUP.get(token);
+    if (modifier) {
+      if (!modifiers.includes(modifier)) {
+        modifiers.push(modifier);
+        // Alone, the modifier still widens the OR recall («شهر» → every
+        // month-plan product) — honest breadth for a modifier-only query.
+        addTerm(modifier);
+      }
+      continue;
+    }
+
+    const exact = ALIAS_LOOKUP.get(token);
+    if (exact) {
+      addTerm(exact);
+      continue;
+    }
+
+    let contained = false;
+    for (const [alias, term] of ALIAS_LOOKUP) {
+      if (alias.length >= MIN_CONTAIN_ALIAS_LENGTH && token.includes(alias)) {
+        addTerm(term);
+        contained = true;
+      }
+    }
+    if (contained) continue;
+
+    if (translitBudget > 0 && !categoryMatched) {
+      // A category-matched token is RESOLVED — its skeleton is noise.
+      const skeleton = transliterateArabicToLatin(token);
+      if (skeleton.length >= MIN_TRANSLIT_LENGTH && !seen.has(skeleton)) {
+        seen.add(skeleton);
+        nameTerms.push(skeleton); // NOT aliasTerms — skeletons never compound
+        translitBudget -= 1;
+      }
+    }
+  }
+
+  if (phrase) addTerm(phrase);
+  if (categoryPhrase) categoryHits.add(categoryPhrase);
+
+  // R132: compounds — alias-derived brand terms × modifiers, each
+  // refined by the FIRST pure-digit token when one rode along
+  // («نتفلكس ١٢ شهر» → netflix ∧ month ∧ 12). Bounded to MAX_COMPOUNDS.
+  // Modifier words themselves never act as the BRAND side (a
+  // modifier-only query must not mint "month ∧ month").
+  const brandCandidates = aliasTerms.filter((t) => !modifiers.includes(t));
+  const compounds: ArabicSearchExpansion["compounds"] = [];
+  if (modifiers.length > 0 && brandCandidates.length > 0) {
+    const digitRef = digitTokens[0];
+    outer: for (const brand of brandCandidates) {
+      for (const modifier of modifiers) {
+        if (compounds.length >= MAX_COMPOUNDS) break outer;
+        compounds.push(digitRef ? { brand, modifier, digits: digitRef } : { brand, modifier });
+      }
+    }
+  }
+
+  return {
+    nameTerms,
+    categories: Array.from(categoryHits).slice(0, MAX_CATEGORIES),
+    // Deduped against nameTerms (a Latin twin of an Arabic alias, e.g.
+    // «netflix نتفلكس», must not mint a duplicate ILIKE branch).
+    latinTerms: latinTokens.filter((t) => !seen.has(t)).slice(0, MAX_LATIN_TERMS),
+    compounds,
+  };
+}
+
 /**
  * R122 (A11-F2): expand an Arabic (or mixed-script) search query into the
  * extra literal ILIKE terms the products route ORs in beside the raw
  * query. Returns [] for pure-English/empty queries — their SQL is
  * byte-identical to the pre-R122 behavior, so English search cannot
  * regress.
+ *
+ * R132: thin compatibility wrapper over {@link expandArabicSearch}
+ * (nameTerms only) — the unit-suite pins from R122 keep their shape.
  *
  * Matching, in order:
  *   - exact token hit («نتفلكس» → netflix);
@@ -329,59 +645,5 @@ const ARABIC_LETTER = /[\u0621-\u063A\u0641-\u064A]/;
  *   expandArabicSearchTerms("netflix premium")     → []  (English unchanged)
  */
 export function expandArabicSearchTerms(query: string): string[] {
-  const tokens = normalizeArabicText(query)
-    .split(/\s+/)
-    .map((t) => t.replace(TOKEN_JUNK, ""))
-    .filter((t) => t.length > 0)
-    .slice(0, MAX_TOKENS_CONSIDERED);
-  if (tokens.length === 0) return [];
-
-  const terms: string[] = [];
-  const seen = new Set<string>();
-  const addTerm = (term: string) => {
-    if (term && !seen.has(term)) {
-      seen.add(term);
-      terms.push(term);
-    }
-  };
-
-  // Whole-query collapsed form FIRST: a recognized multi-word phrase
-  // resolves as one unit and suppresses per-token skeletons for its
-  // fragments («جي», «بي», «تي» would otherwise emit 2-char noise).
-  const phrase = ALIAS_LOOKUP.get(tokens.join(""));
-
-  let translitBudget = phrase ? 0 : MAX_TRANSLIT_TERMS;
-  for (const token of tokens) {
-    // R122 (A11-F2): Latin/digit tokens are never expanded — the raw
-    // whole-string ILIKE already covers them, and expanding them would
-    // change pure-English multi-word semantics.
-    if (!ARABIC_LETTER.test(token)) continue;
-
-    const exact = ALIAS_LOOKUP.get(token);
-    if (exact) {
-      addTerm(exact);
-      continue;
-    }
-
-    let contained = false;
-    for (const [alias, term] of ALIAS_LOOKUP) {
-      if (alias.length >= MIN_CONTAIN_ALIAS_LENGTH && token.includes(alias)) {
-        addTerm(term);
-        contained = true;
-      }
-    }
-    if (contained) continue;
-
-    if (translitBudget > 0) {
-      const skeleton = transliterateArabicToLatin(token);
-      if (skeleton.length >= MIN_TRANSLIT_LENGTH && !seen.has(skeleton)) {
-        seen.add(skeleton);
-        terms.push(skeleton);
-        translitBudget -= 1;
-      }
-    }
-  }
-
-  if (phrase) addTerm(phrase);
-  return terms;
+  return expandArabicSearch(query).nameTerms;
 }

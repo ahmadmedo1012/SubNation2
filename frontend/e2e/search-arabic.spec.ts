@@ -85,3 +85,70 @@ test.describe("arabic search — the R122 normalization contract, live DOM", () 
     await expect(page.locator("main a[href^='/product/']")).toHaveCount(0);
   });
 });
+
+/**
+ * R132 — plan-level Arabic journeys. These are DELPLOY-RACE-SAFE by
+ * construction: the CI run may execute before the Coolify webhook has
+ * finished deploying this very commit, so each case takes the API's
+ * answer as ground truth and asserts the DOM surfaces EXACTLY that
+ * (the R126-L7 honesty pattern). Post-deploy, the API answers gain the
+ * new behavior (duration compounds, category branches) and the same
+ * parity assertions keep holding — no timing dependence either way.
+ */
+test.describe("arabic search — plan-level journeys (R132, API-parity)", () => {
+  test("«نتفلكس شهر» surfaces what the API says (month-plan first once R132 is live)", async ({
+    page,
+    request,
+  }) => {
+    const api = await request.get(`/api/products?search=${encodeURIComponent("نتفلكس شهر")}`);
+    expect(api.status()).toBe(200);
+    const matches = (await api.json()) as Array<{ name: string; slug: string | null }>;
+    // Ground truth: the Netflix brand must match via the alias in BOTH
+    // the old and new engine — this is the floor, not the new behavior.
+    expect(matches.length).toBeGreaterThan(0);
+    expect(matches.some((m) => /netflix/i.test(m.name))).toBe(true);
+
+    await page.goto("/");
+    const search = page.getByLabel("البحث في المنتجات");
+    await expect(search).toBeVisible({ timeout: 15_000 });
+    await search.fill("نتفلكس شهر");
+    await search.press("Enter");
+    await expect(page).toHaveURL(/search=/, { timeout: 10_000 });
+
+    // DOM parity: the FIRST card is the API's first row (once R132 is
+    // deployed that row is a month-plan — the compound tier; before, it
+    // is whichever Netflix row the old engine returned — parity holds).
+    const card = page.locator("main a[href^='/product/']").filter({ hasText: matches[0].name });
+    await expect(card.first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("«موسيقى» — a category word either matches (post-R132) or renders the friendly empty state (pre-R132)", async ({
+    page,
+    request,
+  }) => {
+    const api = await request.get(`/api/products?search=${encodeURIComponent("موسيقى")}`);
+    expect(api.status()).toBe(200);
+    const matches = (await api.json()) as Array<{ name: string }>;
+
+    await page.goto("/");
+    const search = page.getByLabel("البحث في المنتجات");
+    await expect(search).toBeVisible({ timeout: 15_000 });
+    await search.fill("موسيقى");
+    await search.press("Enter");
+    await expect(page).toHaveURL(/search=/, { timeout: 10_000 });
+
+    if (matches.length > 0) {
+      // Post-R132: the music category branch fired — the DOM must show
+      // the API's rows (Spotify under the live catalog).
+      const card = page.locator("main a[href^='/product/']").filter({ hasText: matches[0].name });
+      await expect(card.first()).toBeVisible({ timeout: 15_000 });
+    } else {
+      // Pre-R132 engine: the empty state is honest, and the R132
+      // zero-result recovery (category escape links) still renders.
+      await expect(page.getByText("لا توجد منتجات تطابق بحثك")).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByText("أو تصفّح الأقسام:")).toBeVisible();
+    }
+  });
+});

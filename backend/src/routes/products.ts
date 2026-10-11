@@ -14,7 +14,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { escapeLikeTerm, intParam } from "../lib/http";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 // R122 (A11-F2): Arabic-brand alias expansion for the public search below.
-import { expandArabicSearchTerms } from "../lib/arabic-search";
+import { expandArabicSearch } from "../lib/arabic-search";
 
 const router = Router();
 
@@ -358,13 +358,37 @@ router.get("/", catalogCache, async (req, res) => {
   // cached. Search requests always run live — the ILIKE + LIMIT 500
   // query measured 6.5 ms on live data volumes, well within budget.
   const hasSearch = typeof search === "string" && search.trim().length > 0;
+  // R132: computed once, shared by the WHERE branches and the relevance
+  // ORDER BY below (kept out of the hasSearch block for the tier logic).
+  const rawTerm = typeof search === "string" ? search.trim() : "";
+  const expansion = hasSearch ? expandArabicSearch(rawTerm) : null;
+  /**
+   * R132: one compound branch as SQL — `brand ∧ modifier [∧ digits]`.
+   * The digit refinement uses BOUNDARY patterns (`D-%`, `% D-%`, `% D`)
+   * rather than a bare `%D%`: "1" must not match inside "12-Month"
+   * («نتفلكس ١ شهر» is the 1-month plan, and %1% would rank 12-Month
+   * equally). The three shapes cover the catalog's real conventions
+   * (leading position, space-delimited + hyphenated, space-delimited at
+   * the name end — "Windows 10").
+   */
+  const compoundCondition = ({
+    brand,
+    modifier,
+    digits,
+  }: {
+    brand: string;
+    modifier: string;
+    digits?: string;
+  }) =>
+    sql`(${productsTable.name} ILIKE ${"%" + escapeLikeTerm(brand) + "%"} AND ${productsTable.name} ILIKE ${"%" + escapeLikeTerm(modifier) + "%"}${digits ? sql` AND (${productsTable.name} ILIKE ${escapeLikeTerm(digits) + "-%"} OR ${productsTable.name} ILIKE ${"% " + escapeLikeTerm(digits) + "-%"} OR ${productsTable.name} ILIKE ${"% " + escapeLikeTerm(digits)})` : sql``})`;
   const loader = async () => {
     // Build SQL filter conditions — pushdown to the database.
     const conditions = [eq(productsTable.isActive, true), eq(productsTable.isArchived, false)];
     if (typeof category === "string" && category.trim()) {
       conditions.push(sql`LOWER(${productsTable.category}) = LOWER(${category.trim()})`);
     }
-    if (hasSearch) {
+    // (hasSearch ⇒ expansion was computed — the pair check narrows TS.)
+    if (hasSearch && expansion) {
       // A6-9 (R116): escape %/_ so a literal percent in the query can't
       // reshape the LIKE pattern (parity with the admin search sweep,
       // r103 AUD103-3-F4).
@@ -379,10 +403,32 @@ router.get("/", catalogCache, async (req, res) => {
       // expand to nothing, so their SQL — and results — are identical.
       // Search stays UNCACHEABLE exactly as before (B6-02 above): no new
       // cache keys are minted for the expanded forms.
-      const rawTerm = search.trim();
-      const likePatterns = [rawTerm, ...expandArabicSearchTerms(rawTerm)].map(
-        (term) => sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(term) + "%"}`,
-      );
+      //
+      // R132 (arabic-search round 2): the expansion is now structured
+      // (lib/arabic-search expandArabicSearch) and this condition ORs
+      // FOUR new branch families, all bounded + escapeLikeTerm'd:
+      //   - nameTerms (the R122 behavior — brand aliases + skeletons);
+      //   - latinTerms: per-token Latin ILIKEs for MIXED-script queries
+      //     only («netflix اشتراك» used to return nothing — the raw
+      //     whole-string ILIKE can never match an English name once an
+      //     Arabic word rides along);
+      //   - compounds: brand ∧ modifier AND-branches («نتفلكس شهر» →
+      //     name ILIKE %netflix% AND %month%, optionally AND %<digits>%
+      //     for «نتفلكس ١٢ شهر») — the plan-level intent;
+      //   - categories: `category = <slug>` equality for Arabic category
+      //     words («افلام» → streaming) — no English name token means
+      //     "movies", so the category IS the honest match.
+      // All branches stay inside the ≤500-row bounded list query.
+      const likePatterns = [
+        sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(rawTerm) + "%"}`,
+        ...[...expansion.nameTerms, ...expansion.latinTerms].map(
+          (term) => sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(term) + "%"}`,
+        ),
+        ...expansion.compounds.map((c) => compoundCondition(c)),
+        ...expansion.categories.map(
+          (slug) => sql`LOWER(${productsTable.category}) = LOWER(${slug})`,
+        ),
+      ];
       const searchCondition = or(...likePatterns);
       // or() types as SQL | undefined; likePatterns always holds the raw
       // pattern, so the fallback is unreachable in practice.
@@ -446,7 +492,34 @@ router.get("/", catalogCache, async (req, res) => {
     if (sort === "price_asc") query = query.orderBy(productsTable.price);
     else if (sort === "price_desc") query = query.orderBy(sql`${productsTable.price} DESC`);
     else if (sort === "popular") query = query.orderBy(sql`${orderExpr} DESC`);
-    else query = query.orderBy(sql`${productsTable.id} DESC`);
+    else if (hasSearch && expansion) {
+      // R132 (exact-match-first ranking): with a search active and no
+      // explicit sort, relevance — not insertion order — leads. Two
+      // deterministic tiers over the SAME bounded branch set the WHERE
+      // clause already computed:
+      //   tier 0: the query's compound intent matched (brand ∧ modifier,
+      //     e.g. «نتفلكس شهر» → a Netflix month plan);
+      //   tier 1: the name STARTS with the query or an expanded term
+      //     («netflix» → "Netflix Premium 1-Month" — prefix beats mere
+      //     containment);
+      //   tier 2: everything else (OR-recall breadth).
+      // Within a tier, id DESC keeps the previous default order stable,
+      // so pure-English queries see at most a promotion of prefix
+      // matches — never a shuffle. Result SETS are unchanged (ordering
+      // only); search stays uncacheable (B6-02), so no cached-order
+      // staleness exists.
+      const prefixTerms = [rawTerm, ...expansion.nameTerms, ...expansion.latinTerms];
+      const compoundTier = or(...expansion.compounds.map((c) => compoundCondition(c)));
+      const prefixTier = or(
+        ...prefixTerms.map(
+          (term) => sql`${productsTable.name} ILIKE ${escapeLikeTerm(term) + "%"}`,
+        ),
+      );
+      query = query.orderBy(
+        sql`CASE WHEN ${compoundTier ?? sql`false`} THEN 0 WHEN ${prefixTier ?? sql`false`} THEN 1 ELSE 2 END`,
+        sql`${productsTable.id} DESC`,
+      );
+    } else query = query.orderBy(sql`${productsTable.id} DESC`);
 
     const [rows, flashSale] = await Promise.all([query, getActiveFlashSale()]);
     const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;

@@ -173,3 +173,193 @@ describe("expandArabicSearchTerms (R122 A11-F2)", () => {
     expect(expandArabicSearchTerms(garbage).length).toBeLessThanOrEqual(12);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// R132 — the structured expansion: categories, mixed script, modifiers,
+// compounds, and the exact-match-first ranking inputs. Every case is
+// derived from the REAL catalog (docs/SEO_PRODUCTS.json, 45 products)
+// and the live category enum (frontend/src/lib/categories.ts).
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { expandArabicSearch } from "../arabic-search";
+
+describe("expandArabicSearch (R132) — category intent", () => {
+  it.each([
+    // (category words — the route ORs `category = slug` branches)
+    ["افلام", "streaming"],
+    ["مسلسلات", "streaming"],
+    ["الافلام", "streaming"], // definite article — containment path
+    ["موسيقى", "music"],
+    ["اغاني", "music"],
+    ["برامج", "software"],
+    ["تطبيقات", "software"],
+    ["مفاتيح", "software"],
+    ["ذكاء اصطناعي", "ai-tools"], // multi-word phrase
+    ["ذكاءاصطناعي", "ai-tools"], // …typed without a space
+    ["سيو", "seo-tools"],
+    ["ادوات سيو", "seo-tools"],
+    ["تعليم", "education"],
+    ["كورسات", "education"],
+    ["كتب", "education"],
+    ["في بي ان", "vpn"],
+    ["فيبيان", "vpn"], // collapsed form of the phrase
+    ["برايفت", "vpn"],
+  ])("expandArabicSearch(%j).categories → [%j]", (query, slug) => {
+    expect(expandArabicSearch(query).categories).toContain(slug);
+  });
+
+  it("a category word also keeps the brand-name terms it maps to («في بي ان» carries the R122 name alias)", () => {
+    const exp = expandArabicSearch("في بي ان");
+    expect(exp.nameTerms).toContain("vpn");
+    expect(exp.categories).toContain("vpn");
+  });
+
+  it("category words emit NO transliteration skeletons (a skeleton can never name a category)", () => {
+    const exp = expandArabicSearch("افلام");
+    expect(exp.categories).toEqual(["streaming"]);
+    expect(exp.nameTerms).toEqual([]);
+  });
+});
+
+describe("expandArabicSearch (R132) — mixed-script queries", () => {
+  it("«netflix اشتراك» rides the Latin token as its own ILIKE branch (the raw whole-string ILIKE can never match)", () => {
+    const exp = expandArabicSearch("netflix اشتراك");
+    expect(exp.latinTerms).toEqual(["netflix"]);
+    // the Arabic filler still yields its skeleton
+    expect(exp.nameTerms).toContain("ashtrak");
+  });
+
+  it("«نتفلكس 4k» rides the mixed digit-letter token", () => {
+    const exp = expandArabicSearch("نتفلكس 4k");
+    expect(exp.nameTerms).toContain("netflix");
+    expect(exp.latinTerms).toEqual(["4k"]);
+  });
+
+  it("a Latin twin of an Arabic alias does not mint a duplicate branch («netflix نتفلكس»)", () => {
+    const exp = expandArabicSearch("netflix نتفلكس");
+    expect(exp.latinTerms).toEqual([]); // "netflix" already a nameTerm
+    expect(exp.nameTerms).toEqual(["netflix"]);
+  });
+
+  it("pure-digit tokens are compound refinements, never standalone OR noise", () => {
+    const exp = expandArabicSearch("نتفلكس 12 شهر");
+    expect(exp.latinTerms).toEqual([]);
+    expect(exp.compounds).toEqual([{ brand: "netflix", modifier: "month", digits: "12" }]);
+  });
+
+  it("Arabic-Indic digits fold before the digit refinement («نتفلكس ١٢ شهر»)", () => {
+    expect(expandArabicSearch("نتفلكس ١٢ شهر").compounds).toEqual([
+      { brand: "netflix", modifier: "month", digits: "12" },
+    ]);
+  });
+
+  it("pure-English queries expand to NOTHING — the R122 byte-identical SQL invariant", () => {
+    for (const q of ["netflix premium", "NETFLIX", "windows 10", "100%", ""]) {
+      expect(expandArabicSearch(q)).toEqual({
+        nameTerms: [],
+        categories: [],
+        latinTerms: [],
+        compounds: [],
+      });
+    }
+  });
+});
+
+describe("expandArabicSearch (R132) — modifiers + compound branches", () => {
+  it("duration words map to the catalog's name fragments", () => {
+    expect(expandArabicSearch("شهر").nameTerms).toEqual(["month"]);
+    expect(expandArabicSearch("سنة").nameTerms).toEqual(["year"]); // ta-marbuta folded
+    expect(expandArabicSearch("سنوي").nameTerms).toEqual(["year"]);
+    expect(expandArabicSearch("اسبوع").nameTerms).toEqual(["week"]);
+    expect(expandArabicSearch("يوم").nameTerms).toEqual(["day"]);
+  });
+
+  it("tier words map to the catalog's tier fragments", () => {
+    expect(expandArabicSearch("بريميوم").nameTerms).toEqual(["premium"]);
+    expect(expandArabicSearch("برو").nameTerms).toEqual(["pro"]);
+    expect(expandArabicSearch("بلس").nameTerms).toEqual(["plus"]);
+  });
+
+  it("«نتفلكس شهر» → one compound AND branch + both plain terms", () => {
+    const exp = expandArabicSearch("نتفلكس شهر");
+    expect(exp.compounds).toEqual([{ brand: "netflix", modifier: "month" }]);
+    expect(exp.nameTerms).toEqual(["netflix", "month"]);
+  });
+
+  it("«نتفلكس بريميوم» compounds brand × tier", () => {
+    expect(expandArabicSearch("نتفلكس بريميوم").compounds).toEqual([
+      { brand: "netflix", modifier: "premium" },
+    ]);
+  });
+
+  it("a modifier-only query never mints a self-compound («شهر» has no brand side)", () => {
+    const exp = expandArabicSearch("شهر");
+    expect(exp.compounds).toEqual([]);
+    expect(exp.nameTerms).toEqual(["month"]);
+  });
+
+  it("two brands × one modifier stay bounded and pair with the modifier each", () => {
+    const exp = expandArabicSearch("نتفلكس ديزني شهر");
+    expect(exp.compounds).toEqual([
+      { brand: "netflix", modifier: "month" },
+      { brand: "disney", modifier: "month" },
+    ]);
+  });
+
+  it("skeletons never act as the brand side of a compound", () => {
+    // «خضار شهر» — an unmatched Arabic word + a modifier: no compound
+    // (the skeleton "khsar" must not mint "khsar ∧ month").
+    const exp = expandArabicSearch("خضار شهر");
+    expect(exp.compounds).toEqual([]);
+    expect(exp.nameTerms).toContain("month");
+    expect(exp.nameTerms).toContain("khsar");
+  });
+});
+
+describe("expandArabicSearch (R132) — R132 Libyan brand variants", () => {
+  it.each([
+    ["نفليكس", "netflix"], // transposed لا
+    ["يوتيب", "youtube"],
+    ["سيمرش", "semrush"],
+    ["سكريبد", "scribd"],
+    ["سيلنج", "sling"],
+    ["تيدال", "tidal"],
+  ])("expandArabicSearchTerms(%j) → [%j]", (query, term) => {
+    expect(expandArabicSearchTerms(query)).toEqual([term]);
+  });
+});
+
+describe("expandArabicSearch (R132) — adversarial bounds", () => {
+  it("every output family is hard-capped for a 20-token adversarial query", () => {
+    const tokens = [
+      "نتفلكس",
+      "ديزني",
+      "شهر",
+      "سنه",
+      "افلام",
+      "موسيقى",
+      "برامج",
+      "تعليم",
+      "سيو",
+      "كتب",
+      "كورسات",
+      "دورات",
+      "قمر",
+      "شمس",
+      "بحر",
+      "نجم",
+      "رمل",
+      "مطر",
+      "غيم",
+      "ثلج",
+    ];
+    const exp = expandArabicSearch(
+      tokens.join(" ") + " netflix disney hbo hulu prime extra1 extra2",
+    );
+    expect(exp.categories.length).toBeLessThanOrEqual(3);
+    expect(exp.latinTerms.length).toBeLessThanOrEqual(4);
+    expect(exp.compounds.length).toBeLessThanOrEqual(4);
+    // name terms keep the R122 ≤12 bound (8 tokens considered, ≤3 skeletons)
+    expect(exp.nameTerms.length).toBeLessThanOrEqual(12);
+  });
+});

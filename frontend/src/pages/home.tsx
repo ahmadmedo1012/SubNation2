@@ -1243,6 +1243,29 @@ export default function HomePage() {
                 مسح جميع الفلاتر
               </button>
             )}
+            {/* R132 (meaningful zero-results): a search dead-end now
+                offers the real catalog's category landing pages as
+                escape routes — the customer typed something we don't
+                carry; the honest recovery is showing what we DO carry
+                (the same 7 live categories the chips filter by, here as
+                Links to their landing pages — the category.tsx idiom). */}
+            {searchInput.trim() && (
+              <div className="mt-6">
+                <p className="text-xs text-muted-foreground mb-2.5">أو تصفّح الأقسام:</p>
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                  {CATEGORIES.filter((c) => c.value).map((c) => (
+                    <Link
+                      key={c.value}
+                      href={`/category/${c.value}`}
+                      className="inline-flex items-center gap-1 px-3 min-h-11 text-xs font-bold rounded-full bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:border-border/70 transition-colors press-spring"
+                    >
+                      <c.Icon className="w-3 h-3" aria-hidden="true" />
+                      {c.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
