@@ -926,3 +926,24 @@ describe("idempotency middleware — R122 (A3-P2-4): canonical body hash", () =>
     }
   });
 });
+
+describe("idempotency middleware — R134 (A7-F4): lib import-parity", () => {
+  it("the middleware's hash IS the lib's canonicalBodyHash (ONE definition across both layers)", async () => {
+    // The serializer + hasher moved to lib/idempotency-body-hash.ts so
+    // the DURABLE idempotency layer can hash with the same definition.
+    // This pins the import swap: a body cached by the Redis layer and a
+    // claim written by the durable layer must agree byte-for-byte.
+    const { canonicalBodyHash } = await import("../../lib/idempotency-body-hash");
+
+    // A non-JSON-preserving order (key order differs at every level).
+    const a = { amount: 50, nested: { z: 1, a: [3, 2, 1] }, coupon: null };
+    const b = { coupon: null, nested: { a: [3, 2, 1], z: 1 }, amount: 50 };
+
+    const hashA = canonicalBodyHash(a);
+    const hashB = canonicalBodyHash(b);
+    expect(hashA).toBe(hashB);
+    expect(hashA).toMatch(/^[0-9a-f]{64}$/);
+    expect(canonicalBodyHash({ amount: 51 })).not.toBe(hashA);
+    expect(canonicalBodyHash(null)).toBe(canonicalBodyHash(undefined));
+  });
+});

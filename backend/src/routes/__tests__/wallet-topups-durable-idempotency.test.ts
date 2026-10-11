@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   key text PRIMARY KEY,
   order_id integer,
   reference_type varchar(32) NOT NULL DEFAULT 'order',
+  body_hash varchar(64),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `;
@@ -60,6 +61,7 @@ CREATE TABLE idempotency_keys (
   key text PRIMARY KEY,
   order_id integer REFERENCES orders(id) ON DELETE CASCADE,
   reference_type varchar(32) NOT NULL DEFAULT 'order',
+  body_hash varchar(64),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `;
@@ -104,6 +106,7 @@ function topupBody() {
 async function postTopup(
   token: string,
   headers: Record<string, string> = {},
+  body: Record<string, unknown> = topupBody(),
 ): Promise<{ status: number; headers: Headers; body: any }> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
@@ -120,7 +123,7 @@ async function postTopup(
             Cookie: `auth_token=${token}`,
             ...headers,
           },
-          body: JSON.stringify(topupBody()),
+          body: JSON.stringify(body),
         });
         const text = await res.text();
         resolve({ status: res.status, headers: res.headers, body: text ? JSON.parse(text) : null });
@@ -202,6 +205,36 @@ describe("R108 — durable topup-create idempotency on the V1-M20 shape", () => 
     expect(retry.body.id).toBe(firstId);
 
     expect(await pendingRowCount(user.id)).toBe(1);
+  });
+
+  it("(d) R134 (A7-F4): same key + DIFFERENT amount → 409 IDEMPOTENCY_KEY_REUSE, exactly one pending row", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const key = { "Idempotency-Key": "topup durable reuse 0001" };
+
+    const first = await postTopup(token, key);
+    expect(first.status).toBe(201);
+    const firstId = first.body.id;
+
+    // The SAME key re-sent with a DIFFERENT amount — the durable reuse
+    // predicate answers the Redis layer's 409 envelope verbatim (no
+    // Redis in production; this is the branch that actually fires).
+    const differentBody = { ...topupBody(), amount: 75, payment_reference: "TRX-DURABLE-2" };
+    const reuse = await postTopup(token, key, differentBody);
+    expect(reuse.status).toBe(409);
+    expect(reuse.body).toMatchObject({
+      success: false,
+      code: "IDEMPOTENCY_KEY_REUSE",
+    });
+    expect(reuse.headers.get("Idempotent-Replayed")).toBeNull();
+
+    // The original pending row stands, nothing else was created.
+    expect(await pendingRowCount(user.id)).toBe(1);
+    const [row] = await db
+      .select({ id: walletTopupsTable.id })
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.userId, user.id));
+    expect(row.id).toBe(firstId);
   });
 
   it("(b) THE FK REGRESSION — a topup id with NO matching orders row claims cleanly (pre-V1-M20 this 500'd)", async () => {

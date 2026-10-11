@@ -22,6 +22,12 @@ import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 // 96-F1 (R96-A5 M2): POST /topups is the last unprotected money path —
 // same Redis-backed replay guard checkout already mounts.
 import { idempotency } from "../middlewares/idempotency";
+// R134 (A7-F4): the shared body-hash definition + reuse envelope.
+import {
+  canonicalBodyHash,
+  IDEMPOTENCY_KEY_REUSE_CODE,
+  IDEMPOTENCY_KEY_REUSE_MESSAGE,
+} from "../lib/idempotency-body-hash";
 import {
   claimIdempotencyKey,
   findIdempotentOrderId,
@@ -401,22 +407,43 @@ router.post(
     // a retry of the same Idempotency-Key now replays the original
     // pending row instead of inserting a second one.
     const scopedIdemKey = scopeIdempotencyKey(userId, req.header("Idempotency-Key"));
+    // R134 (A7-F4): the durable reuse predicate's input — hashed HERE at
+    // the route layer off req.body (the SAME definition the Redis layer
+    // uses; the services never re-derive it).
+    const idemBodyHash = canonicalBodyHash(req.body);
     if (scopedIdemKey) {
-      const replayedTopupId = await findIdempotentOrderId(scopedIdemKey, "topup.create");
-      if (replayedTopupId !== null) {
-        const [existing] = await db
-          .select()
-          .from(walletTopupsTable)
-          .where(
-            and(eq(walletTopupsTable.id, replayedTopupId), eq(walletTopupsTable.userId, userId)),
-          )
-          .limit(1);
-        if (existing) {
-          // Same contract as the checkout replay (orders.ts): 200 (not
-          // 201 — nothing new was created), Idempotent-Replayed header,
-          // the ORIGINAL formatted DTO, and NO new operator notification.
-          res.setHeader("Idempotent-Replayed", "true");
-          return res.json(formatTopup(existing));
+      const replayedClaim = await findIdempotentOrderId(scopedIdemKey, "topup.create");
+      if (replayedClaim !== null) {
+        // R134 (A7-F4): hash mismatch = same key, DIFFERENT submission —
+        // the classified 409 (the Redis layer's envelope verbatim), NOT
+        // a replay of a different intent's result. NULL hash = a legacy
+        // claim (pre-R134 writer) → replay (the ≤48h transition window).
+        if (replayedClaim.bodyHash !== null && replayedClaim.bodyHash !== idemBodyHash) {
+          return res.status(409).json({
+            success: false,
+            error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+            message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+            code: IDEMPOTENCY_KEY_REUSE_CODE,
+          });
+        }
+        const replayedTopupId = replayedClaim.orderId;
+        // R134 (A7-F4): orderId is nullable on the polymorphic column —
+        // a NULL (malformed) claim falls through to the fresh path.
+        if (replayedTopupId !== null) {
+          const [existing] = await db
+            .select()
+            .from(walletTopupsTable)
+            .where(
+              and(eq(walletTopupsTable.id, replayedTopupId), eq(walletTopupsTable.userId, userId)),
+            )
+            .limit(1);
+          if (existing) {
+            // Same contract as the checkout replay (orders.ts): 200 (not
+            // 201 — nothing new was created), Idempotent-Replayed header,
+            // the ORIGINAL formatted DTO, and NO new operator notification.
+            res.setHeader("Idempotent-Replayed", "true");
+            return res.json(formatTopup(existing));
+          }
         }
         // Key points at a topup this user no longer owns (cascade-deleted
         // user row): fall through; the in-tx claim surfaces a still-live
@@ -526,6 +553,7 @@ router.post(
             scopedIdemKey,
             topup.id,
             "topup.create",
+            idemBodyHash, // R134 (A7-F4)
           );
         } catch (err) {
           // R108 (FH-A7 P3-2): the manual `code === "23505"` check missed
@@ -547,16 +575,30 @@ router.post(
       // with two in-flight POSTs): the winner's row is the real one —
       // replay it exactly like the pre-tx path above.
       if (scopedIdemKey) {
-        const winnerId = await findIdempotentOrderId(scopedIdemKey, "topup.create");
-        if (winnerId !== null) {
-          const [existing] = await db
-            .select()
-            .from(walletTopupsTable)
-            .where(and(eq(walletTopupsTable.id, winnerId), eq(walletTopupsTable.userId, userId)))
-            .limit(1);
-          if (existing) {
-            res.setHeader("Idempotent-Replayed", "true");
-            return res.json(formatTopup(existing));
+        const winnerClaim = await findIdempotentOrderId(scopedIdemKey, "topup.create");
+        if (winnerClaim !== null) {
+          // R134 (A7-F4): the committed-concurrently twin — a winner that
+          // wrote a DIFFERENT body under this key is the classified 409,
+          // never a replay of a different intent's result.
+          if (winnerClaim.bodyHash !== null && winnerClaim.bodyHash !== idemBodyHash) {
+            return res.status(409).json({
+              success: false,
+              error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+              message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+              code: IDEMPOTENCY_KEY_REUSE_CODE,
+            });
+          }
+          const winnerId = winnerClaim.orderId;
+          if (winnerId !== null) {
+            const [existing] = await db
+              .select()
+              .from(walletTopupsTable)
+              .where(and(eq(walletTopupsTable.id, winnerId), eq(walletTopupsTable.userId, userId)))
+              .limit(1);
+            if (existing) {
+              res.setHeader("Idempotent-Replayed", "true");
+              return res.json(formatTopup(existing));
+            }
           }
         }
       }

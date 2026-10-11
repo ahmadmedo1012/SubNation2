@@ -48,6 +48,7 @@ beforeAll(async () => {
       key text PRIMARY KEY,
       order_id integer REFERENCES orders(id) ON DELETE CASCADE,
       reference_type varchar(32) NOT NULL DEFAULT 'order',
+      body_hash varchar(64),
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -341,5 +342,116 @@ describe("F10: legacy degradation while the table is missing (pre-V1-M12)", () =
 
     expect(await userBalance(user.id)).toBe(30); // two charges, legacy semantics
     expect(await db.select().from(ordersTable)).toHaveLength(2);
+  });
+});
+
+describe("R134 (A7-F4): the durable body-hash reuse predicate", () => {
+  beforeEach(async () => {
+    // The F10 legacy-degradation describe above DROPS the table; the
+    // beforeAll CREATE runs once per FILE — re-provision here so this
+    // describe is independent of file order (the reuse predicate needs
+    // the CURRENT shape, body_hash included).
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS idempotency_keys (
+        key text PRIMARY KEY,
+        order_id integer REFERENCES orders(id) ON DELETE CASCADE,
+        reference_type varchar(32) NOT NULL DEFAULT 'order',
+        body_hash varchar(64),
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    __resetIdempotencyTableProbeForTests();
+  });
+
+  it("same key + DIFFERENT body → classified 409 envelope, never a second order or debit", async () => {
+    const user = await seedUser("50.00");
+    const productA = await seedProduct("10.00");
+    const productB = await seedProduct("20.00");
+
+    const first = await CheckoutService.purchase({
+      userId: user.id,
+      productId: productA.id,
+      idempotencyKey: KEY,
+      idempotencyBodyHash: "h".repeat(64),
+    });
+    expect(first.ok).toBe(true);
+
+    // The client reuses the SAME key for a DIFFERENT product — the durable
+    // twin of the Redis layer's 409 (production runs without Redis; this
+    // branch is the one that actually fires there).
+    const second = await CheckoutService.purchase({
+      userId: user.id,
+      productId: productB.id,
+      idempotencyKey: KEY,
+      idempotencyBodyHash: "x".repeat(64),
+    });
+
+    expect(second.ok).toBe(false);
+    if (second.ok) throw new Error("expected failure");
+    expect(second.reason).toBe("CONCURRENCY_ERROR");
+    expect(second.code).toBe("IDEMPOTENCY_KEY_REUSE");
+    expect(second.message).toContain("معرف");
+
+    // Money-safety: exactly ONE order, ONE debit, ONE ledger row.
+    expect(await userBalance(user.id)).toBe(40);
+    expect(await db.select().from(ordersTable)).toHaveLength(1);
+    expect(await db.select().from(walletLedgerTable)).toHaveLength(1);
+  });
+
+  it("same key + same hash → replay (the true retry contract is unchanged)", async () => {
+    const user = await seedUser("50.00");
+    const product = await seedProduct();
+
+    const first = await CheckoutService.purchase({
+      userId: user.id,
+      productId: product.id,
+      idempotencyKey: KEY,
+      idempotencyBodyHash: "h".repeat(64),
+    });
+    expect(first.ok).toBe(true);
+
+    const second = await CheckoutService.purchase({
+      userId: user.id,
+      productId: product.id,
+      idempotencyKey: KEY,
+      idempotencyBodyHash: "h".repeat(64),
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("expected success");
+    expect(second.idempotentReplay).toBe(true);
+    expect(await userBalance(user.id)).toBe(40);
+    expect(await db.select().from(ordersTable)).toHaveLength(1);
+  });
+
+  it("a legacy NULL-hash claim (pre-R134 writer) replays — the ≤48h transition window", async () => {
+    const user = await seedUser("50.00");
+    const product = await seedProduct();
+
+    const first = await CheckoutService.purchase({
+      userId: user.id,
+      productId: product.id,
+      idempotencyKey: KEY,
+      idempotencyBodyHash: "h".repeat(64),
+    });
+    expect(first.ok).toBe(true);
+    // Simulate a claim written BEFORE R134: strip the hash.
+    await db.execute(
+      sql`UPDATE idempotency_keys SET body_hash = NULL WHERE key = ${`u${user.id}:${KEY}`}`,
+    );
+
+    const second = await CheckoutService.purchase({
+      userId: user.id,
+      productId: product.id,
+      idempotencyKey: KEY,
+      idempotencyBodyHash: "different".padEnd(64, "!"),
+    });
+    // NULL = legacy claim → replay on key-match (today's behavior), NOT
+    // the 409 — the NULL population ages out with the 48h retention
+    // prune, after which every claim carries a hash.
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("expected success");
+    expect(second.idempotentReplay).toBe(true);
+    expect(await userBalance(user.id)).toBe(40);
+    expect(await db.select().from(ordersTable)).toHaveLength(1);
   });
 });

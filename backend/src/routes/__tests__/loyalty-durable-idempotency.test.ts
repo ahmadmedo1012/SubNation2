@@ -88,6 +88,7 @@ beforeAll(async () => {
       key text PRIMARY KEY,
       order_id integer REFERENCES orders(id) ON DELETE CASCADE,
       reference_type varchar(32) NOT NULL DEFAULT 'order',
+      body_hash varchar(64),
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -140,6 +141,33 @@ describe("R102 — loyalty convert-points durable idempotency", () => {
       .from(walletLedgerTable)
       .where(sql`${walletLedgerTable.userId} = ${user.id}`);
     expect(ledgerRows).toHaveLength(1);
+  });
+
+  it("R134 (A7-F4): same key + DIFFERENT body → the reuse 409 (distinct from the already-converted 409 by code)", async () => {
+    const points = POINTS_PER_LYD * 5;
+    const user = await seedUserWithPoints(points * 2);
+    const token = signUserToken({ userId: user.id });
+    const key = { "Idempotency-Key": "loyalty-reuse-key-0001" };
+
+    const first = await call("/api/loyalty/convert-points", token, { points }, key);
+    expect(first.status).toBe(200);
+    expect(first.body.new_points).toBe(POINTS_PER_LYD * 5);
+
+    // Same key, DIFFERENT points value — the durable reuse predicate.
+    // BOTH outcomes are 409, but the codes differ: reuse vs
+    // already-converted (clients and tests distinguish on `code`).
+    const reuse = await call("/api/loyalty/convert-points", token, { points: 100 }, key);
+    expect(reuse.status).toBe(409);
+    expect(reuse.body).toMatchObject({
+      success: false,
+      code: "IDEMPOTENCY_KEY_REUSE",
+    });
+
+    // The already-converted arm (same key + same body) keeps its own
+    // distinct shape — the friendly conflict envelope.
+    const retry = await call("/api/loyalty/convert-points", token, { points }, key);
+    expect(retry.status).toBe(409);
+    expect(retry.body.code).not.toBe("IDEMPOTENCY_KEY_REUSE");
   });
 
   it("a DIFFERENT key is a fresh intent and converts again (real second conversion)", async () => {

@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   key text PRIMARY KEY,
   order_id integer,
   reference_type varchar(32) NOT NULL DEFAULT 'order',
+  body_hash varchar(64),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `;
@@ -172,6 +173,30 @@ describe("R108 — admin wallet adjustment durable idempotency (route)", () => {
     expect(retry.body.code).toBe("CONFLICT");
 
     // THE money pin: the delta was applied exactly once.
+    expect(await balanceOf(user.id)).toBe(10);
+    expect(await ledgerRowCount(user.id)).toBe(1);
+  });
+
+  it("R134 (A7-F4): same key + DIFFERENT delta → the reuse 409 (IDEMPOTENCY_KEY_REUSE), delta applied once", async () => {
+    const user = await seedUser();
+    const { token } = await seedAdmin();
+    const key = { "Idempotency-Key": "adjust reuse key 0001" };
+
+    const first = await patchAdjust(token, user.id, { wallet_adjustment: 10, note: "أول" }, key);
+    expect(first.status).toBe(200);
+    expect(await balanceOf(user.id)).toBe(10);
+
+    // The SAME key re-sent with a DIFFERENT delta — the durable reuse
+    // predicate answers the Redis layer's 409 envelope verbatim (no
+    // Redis in production; this is the branch that actually fires).
+    const reuse = await patchAdjust(token, user.id, { wallet_adjustment: 25, note: "ثانٍ" }, key);
+    expect(reuse.status).toBe(409);
+    expect(reuse.body).toMatchObject({
+      success: false,
+      code: "IDEMPOTENCY_KEY_REUSE",
+    });
+
+    // THE money pin: only the FIRST delta ever landed.
     expect(await balanceOf(user.id)).toBe(10);
     expect(await ledgerRowCount(user.id)).toBe(1);
   });

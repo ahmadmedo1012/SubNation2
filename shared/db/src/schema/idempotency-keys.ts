@@ -37,6 +37,19 @@ import { index, integer, pgTable, text, timestamp, varchar } from "drizzle-orm/p
  * The drizzle declaration therefore declares NO .references() —
  * introspection/push must not re-create the constraint.
  *
+ * R134 (A7-F4): `body_hash` — the durable twin of the R122 Redis-layer
+ * body-fingerprint defense (which never fires in production: no Redis —
+ * the middleware passes through). sha256-of-canonical-JSON of the
+ * request body (lib/idempotency-body-hash.ts, hashed at the ROUTE
+ * layer off req.body). NULLABLE on purpose: NULL = a legacy claim
+ * written pre-R134 → replay on key-match (today's behavior); the NULL
+ * population ages out with the 48h retention prune — the transition
+ * window is ≤48h by construction, no backfill needed or wanted. On
+ * lookup: hash match or NULL → replay; mismatch → 409
+ * IDEMPOTENCY_KEY_REUSE (the middleware's exact envelope). Boot twin:
+ * migrate.ts applyIdempotencyBodyHashStage (V1-M32); drizzle mirror:
+ * chain 0021.
+ *
  * Registration note (round-94 C4, updated round-98 F4): this module IS
  * re-exported from schema/index.ts (line 15 of the barrel) and the table
  * is created by migration V1-M12 (both landed with the round-94 DB fix).
@@ -59,6 +72,12 @@ export const idempotencyKeysTable = pgTable(
     orderId: integer("order_id"),
     /** R102: what the key guards — 'order' (default) or 'loyalty.convert'. */
     referenceType: varchar("reference_type", { length: 32 }).notNull().default("order"),
+    /**
+     * R134 (A7-F4): sha256-hex (64 chars) of the request body's canonical
+     * JSON — the durable reuse predicate. Nullable = legacy claim (pre-R134
+     * writer) → replay on key-match; see module docs for the 48h window.
+     */
+    bodyHash: varchar("body_hash", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   // R123-E5 (V1-M27): idx_idempotency_keys_order dropped — ZERO readers

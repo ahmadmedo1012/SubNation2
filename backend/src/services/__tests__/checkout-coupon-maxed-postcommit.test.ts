@@ -45,6 +45,7 @@ beforeAll(async () => {
       key text PRIMARY KEY,
       order_id integer REFERENCES orders(id) ON DELETE CASCADE,
       reference_type varchar(32) NOT NULL DEFAULT 'order',
+      body_hash varchar(64),
       created_at timestamptz NOT NULL DEFAULT now()
     )
   `);

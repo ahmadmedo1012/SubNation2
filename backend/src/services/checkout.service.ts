@@ -21,6 +21,12 @@ import {
   isIdempotencyKeyViolation,
   scopeIdempotencyKey,
 } from "../lib/idempotency";
+// R134 (A7-F4): the shared body-hash definition + reuse envelope — ONE
+// equivalence relation across the Redis and durable idempotency layers.
+import {
+  IDEMPOTENCY_KEY_REUSE_CODE,
+  IDEMPOTENCY_KEY_REUSE_MESSAGE,
+} from "../lib/idempotency-body-hash";
 import { insertLedgerEntry } from "../lib/ledger";
 import { logAdminAlert } from "../jobs/alertLogger";
 import { notifyCouponMaxedOut } from "../telegram";
@@ -134,6 +140,17 @@ export interface CheckoutInput {
    * with the HTTP middleware's minimum-length rule).
    */
   idempotencyKey?: string;
+  /**
+   * R134 (A7-F4): the request body's canonical hash (computed at the
+   * ROUTE layer off req.body — lib/idempotency-body-hash.ts). The
+   * durable reuse predicate: a retry reusing the key with a DIFFERENT
+   * body is the classified 409 IDEMPOTENCY_KEY_REUSE (the Redis
+   * layer's semantics — production runs without Redis, so this durable
+   * branch is the one that actually fires), never a replay of a
+   * different intent's result. Absent → the claim stores NULL → the
+   * legacy replay-on-key-match behavior (the ≤48h transition window).
+   */
+  idempotencyBodyHash?: string | null;
 }
 
 /**
@@ -187,9 +204,29 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     // OTHER intent's row here (the topup side has filtered since R104).
     // Safe for legacy rows: V1-M19 backfilled every pre-existing claim
     // to reference_type='order'.
-    const replayedOrderId = await findIdempotentOrderId(scopedIdempotencyKey, "order");
-    if (replayedOrderId !== null) {
-      const replay = await replayOriginalOrder(userId, replayedOrderId);
+    // R134 (A7-F4): the row carries the claim's bodyHash — apply the
+    // durable reuse predicate BEFORE replaying: hash match (or a NULL
+    // legacy claim, pre-R134 writer) → replay; hash mismatch → the
+    // classified 409 (never a replay of a different intent's result,
+    // never a fall-through to a fresh mutation).
+    const replayedClaim = await findIdempotentOrderId(scopedIdempotencyKey, "order");
+    if (replayedClaim !== null) {
+      if (
+        replayedClaim.bodyHash !== null &&
+        input.idempotencyBodyHash !== undefined &&
+        replayedClaim.bodyHash !== input.idempotencyBodyHash
+      ) {
+        return {
+          ok: false as const,
+          reason: "CONCURRENCY_ERROR" as const,
+          code: IDEMPOTENCY_KEY_REUSE_CODE,
+          message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+        };
+      }
+      const replay =
+        replayedClaim.orderId !== null
+          ? await replayOriginalOrder(userId, replayedClaim.orderId)
+          : null;
       if (replay) return replay;
       // The key points at an order this user no longer owns (or a
       // cascade-deleted one). Fall through to a fresh purchase; the
@@ -653,7 +690,13 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       // the request carried no usable key or the table is missing
       // (legacy deploy, pre-V1-M12).
       if (scopedIdempotencyKey) {
-        await claimIdempotencyKey(tx as unknown as typeof db, scopedIdempotencyKey, o.id);
+        await claimIdempotencyKey(
+          tx as unknown as typeof db,
+          scopedIdempotencyKey,
+          o.id,
+          "order",
+          input.idempotencyBodyHash ?? null, // R134 (A7-F4)
+        );
       }
 
       return o;
@@ -765,9 +808,28 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       // lookup raced), degrade to the retryable 409 — never a second
       // charge, never a raw 500.
       if (scopedIdempotencyKey) {
-        const winnerOrderId = await findIdempotentOrderId(scopedIdempotencyKey, "order");
-        if (winnerOrderId !== null) {
-          const replay = await replayOriginalOrder(userId, winnerOrderId);
+        const winnerClaim = await findIdempotentOrderId(scopedIdempotencyKey, "order");
+        if (winnerClaim !== null) {
+          // R134 (A7-F4): the winner wrote a DIFFERENT body under this
+          // key — the classified 409, not a replay of a different
+          // intent's result (the pre-tx twin above; this is the
+          // committed-concurrently window).
+          if (
+            winnerClaim.bodyHash !== null &&
+            input.idempotencyBodyHash !== undefined &&
+            winnerClaim.bodyHash !== input.idempotencyBodyHash
+          ) {
+            return {
+              ok: false as const,
+              reason: "CONCURRENCY_ERROR" as const,
+              code: IDEMPOTENCY_KEY_REUSE_CODE,
+              message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+            };
+          }
+          const replay =
+            winnerClaim.orderId !== null
+              ? await replayOriginalOrder(userId, winnerClaim.orderId)
+              : null;
           if (replay) return replay;
         }
       }

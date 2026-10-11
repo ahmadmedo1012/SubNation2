@@ -39,6 +39,7 @@ CREATE TABLE idempotency_keys (
   key text PRIMARY KEY,
   order_id integer REFERENCES orders(id) ON DELETE CASCADE,
   reference_type varchar(32) NOT NULL DEFAULT 'order',
+  body_hash varchar(64),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `;
@@ -169,6 +170,41 @@ describe("POST /api/orders — durable idempotency wiring (F10)", () => {
         .where(eq(ordersTable.userId, userId));
       expect(rows).toHaveLength(1);
       expect(notifyNewOrder).toHaveBeenCalledTimes(1);
+    } finally {
+      close();
+    }
+  });
+
+  it("R134 (A7-F4): same key + DIFFERENT body → 409 IDEMPOTENCY_KEY_REUSE, no replay header, no second charge", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const { id: userId, token } = await seedUser();
+      const productIdA = await seedProductWithStock();
+      const productIdB = await seedProductWithStock();
+      const key = { "Idempotency-Key": "route idem key reuse 0001" };
+
+      const first = await post(url, token, { product_id: productIdA }, key);
+      expect(first.status).toBe(201);
+
+      // The SAME key re-sent with a DIFFERENT product body — the durable
+      // reuse predicate (production runs without Redis; this is the
+      // branch that actually fires there) answers the Redis layer's 409
+      // envelope verbatim so clients see ONE shape.
+      const reuse = await post(url, token, { product_id: productIdB }, key);
+      expect(reuse.status).toBe(409);
+      expect(reuse.body).toMatchObject({
+        success: false,
+        code: "IDEMPOTENCY_KEY_REUSE",
+      });
+      expect(reuse.headers.get("Idempotent-Replayed")).toBeNull();
+
+      // Money-safety: the first purchase stands, nothing else moved.
+      expect(await balanceOf(userId)).toBe(40);
+      const rows = await db
+        .select({ id: ordersTable.id })
+        .from(ordersTable)
+        .where(eq(ordersTable.userId, userId));
+      expect(rows).toHaveLength(1);
     } finally {
       close();
     }

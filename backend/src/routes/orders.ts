@@ -7,6 +7,12 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { limitParam, pageParam, stringParam } from "../lib/http";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { idempotency } from "../middlewares/idempotency";
+// R134 (A7-F4): the canonical body hash + the shared reuse envelope.
+import {
+  canonicalBodyHash,
+  IDEMPOTENCY_KEY_REUSE_CODE,
+  IDEMPOTENCY_KEY_REUSE_MESSAGE,
+} from "../lib/idempotency-body-hash";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 // 98-B3 (round-98 wave B): the hard-block refusal layer — mounted before
 // the soft guard, see the mount comment at POST / below.
@@ -189,6 +195,11 @@ router.post(
       // claims it atomically with the purchase. The HTTP middleware above
       // is the fast Redis layer; this is the transactional backstop.
       idempotencyKey: req.header("Idempotency-Key"),
+      // R134 (A7-F4): the body's canonical hash, computed HERE (the
+      // route layer, off req.body post-express.json) — the durable
+      // reuse predicate needs the SAME equivalence relation the Redis
+      // layer hashes with (lib/idempotency-body-hash.ts).
+      idempotencyBodyHash: canonicalBodyHash(req.body),
     });
 
     if (!result.ok) {
@@ -267,6 +278,19 @@ router.post(
                   ErrorCode.CONFLICT,
                 ),
               );
+          }
+          // R134 (A7-F4): durable same-key-DIFFERENT-body — the Redis
+          // layer's 409 envelope verbatim, so clients see ONE shape
+          // whether the fast layer or the durable layer classified it
+          // (production runs without Redis; this is the branch that
+          // fires there).
+          if (result.code === IDEMPOTENCY_KEY_REUSE_CODE) {
+            return res.status(409).json({
+              success: false,
+              error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+              message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+              code: IDEMPOTENCY_KEY_REUSE_CODE,
+            });
           }
           // H5 — optimistic wallet deduction lost a race with a concurrent
           // balance mutation. Retryable by design (re-reads the balance).

@@ -54,6 +54,12 @@ import type { NextFunction, Request, Response } from "express";
 import { createHash } from "node:crypto";
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { logger } from "../lib/logger";
+// R134 (A7-F4): the canonical serializer + hasher moved to
+// lib/idempotency-body-hash.ts so the DURABLE idempotency layer can
+// hash with the SAME definition — one equivalence relation across the
+// Redis and durable layers. The middleware re-imports them; the direct
+// idempotency.test.ts suite stays green (import-parity is pinned there).
+import { canonicalBodyHash, IDEMPOTENCY_KEY_REUSE_MESSAGE } from "../lib/idempotency-body-hash";
 
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60; // 24h
 const IN_FLIGHT_TTL_SECONDS = 60; // short — covers retry-during-execution
@@ -97,47 +103,11 @@ interface SubjectAttachedRequest extends Request {
   userId?: number;
 }
 
-/**
- * R122 (A3-P2-4): canonical JSON serializer — recursively sorts object keys
- * so `bodyHash` is keyed on the VALUE of the body, not the byte order a
- * particular client's serializer happened to emit. Mirrors JSON.stringify
- * semantics for everything else (arrays keep their order — order is
- * semantic there; object keys whose value is `undefined` are dropped;
- * non-JSON primitives stringify to "null"), so the canonical form of a
- * body equals its JSON.stringify form whenever key order already agrees.
- */
-function canonicalJsonStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    // Primitives (and functions/symbols, which JSON.stringify cannot
-    // represent): delegate — undefined serializes to "null" in arrays and
-    // is dropped from objects by the caller's key filter below.
-    return JSON.stringify(value) ?? "null";
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalJsonStringify(item)).join(",")}]`;
-  }
-  const record = value as Record<string, unknown>;
-  // Sorted key set, undefined-valued keys dropped (JSON.stringify parity).
-  const keys = Object.keys(record)
-    .filter((key) => record[key] !== undefined)
-    .sort();
-  return `{${keys
-    .map((key) => `${JSON.stringify(key)}:${canonicalJsonStringify(record[key])}`)
-    .join(",")}}`;
-}
-
-function bodyHash(body: unknown): string {
-  // R122 (A3-P2-4): hash the CANONICAL form. The old raw JSON.stringify
-  // was key-order sensitive — the header comment's "the admin UI is the
-  // only sender" assumption stopped holding when the middleware was
-  // mounted on the USER routes (orders/wallet/loyalty), so a non-UI client
-  // (or a client-library upgrade that changes key order) retrying a
-  // semantically identical body got a false 409 IDEMPOTENCY_KEY_REUSE
-  // instead of the replay. Reordered-but-equal bodies now hash equal.
-  return createHash("sha256")
-    .update(canonicalJsonStringify(body ?? null))
-    .digest("hex");
-}
+// R134 (A7-F4): canonicalJsonStringify + bodyHash now live in
+// lib/idempotency-body-hash.ts (imported above) — the doc comment is
+// preserved there. The local aliases keep this file's call sites
+// byte-identical.
+const bodyHash = canonicalBodyHash;
 
 /**
  * R122 (A3-P2-4) transition window: claims cached by a pre-R122 deploy
@@ -273,13 +243,13 @@ export function idempotency(opts: IdempotencyOptions) {
       if (cached.hash !== reqHash && cached.hash !== legacyBodyHash(req.body)) {
         // R122 (A3-P2-4): the second comparison is the transition window —
         // see legacyBodyHash. Both mismatch ⇒ a genuinely different intent.
+        // R134 (A7-F4): the message constant is the SHARED one — the durable
+        // layer's 409 answers with the identical envelope.
         res.status(409).json({
           success: false,
           // Round-3 envelope drift fix: `message` → `error` (kept).
-          error:
-            "تمت إعادة استخدام معرف العملية مع طلب مختلف. استخدم معرفًا جديدًا للعمليات الجديدة.",
-          message:
-            "تمت إعادة استخدام معرف العملية مع طلب مختلف. استخدم معرفًا جديدًا للعمليات الجديدة.",
+          error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+          message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
           code: "IDEMPOTENCY_KEY_REUSE",
         });
         return;

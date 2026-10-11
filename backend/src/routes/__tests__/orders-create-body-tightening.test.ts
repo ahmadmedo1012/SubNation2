@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   key text PRIMARY KEY,
   order_id integer,
   reference_type varchar(32) NOT NULL DEFAULT 'order',
+  body_hash varchar(64),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `;

@@ -9,6 +9,12 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
 import { AdjustmentError, AdjustmentService } from "../../services/adjustment.service";
 import { findIdempotencyClaimed, scopeIdempotencyKey } from "../../lib/idempotency";
+// R134 (A7-F4): the shared body-hash definition + reuse envelope.
+import {
+  canonicalBodyHash,
+  IDEMPOTENCY_KEY_REUSE_CODE,
+  IDEMPOTENCY_KEY_REUSE_MESSAGE,
+} from "../../lib/idempotency-body-hash";
 import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
 import { insertPointsLedgerEntry } from "../../lib/points-ledger";
 
@@ -341,27 +347,48 @@ router.patch(
         // here; the in-tx claim (adjustment.service) closes the race
         // window between this check and the commit.
         const scopedAdjKey = scopeIdempotencyKey(adminId, req.header("Idempotency-Key"));
-        if (scopedAdjKey && (await findIdempotencyClaimed(scopedAdjKey))) {
-          return res
-            .status(409)
-            .json(
-              createErrorResponse(
-                "تم تطبيق هذا التعديل مسبقاً بنفس مفتاح الحفظ",
-                ErrorCode.CONFLICT,
-              ),
-            );
+        // R134 (A7-F4): the durable reuse predicate — hashed at the route
+        // layer off req.body, the SAME definition the Redis layer uses.
+        const adjBodyHash = canonicalBodyHash(req.body);
+        if (scopedAdjKey) {
+          const claimedRow = await findIdempotencyClaimed(scopedAdjKey);
+          if (claimedRow !== null) {
+            // Same key + DIFFERENT body: the classified reuse 409 (the
+            // Redis layer's envelope verbatim) — distinct from the
+            // already-applied 409 below by code + message. NULL hash = a
+            // legacy claim (pre-R134 writer) → the friendly answer (the
+            // ≤48h transition window).
+            if (claimedRow.bodyHash !== null && claimedRow.bodyHash !== adjBodyHash) {
+              return res.status(409).json({
+                success: false,
+                error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+                message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+                code: IDEMPOTENCY_KEY_REUSE_CODE,
+              });
+            }
+            return res
+              .status(409)
+              .json(
+                createErrorResponse(
+                  "تم تطبيق هذا التعديل مسبقاً بنفس مفتاح الحفظ",
+                  ErrorCode.CONFLICT,
+                ),
+              );
+          }
         }
         if (typeof wallet_adjustment === "number") {
           walletResult = await AdjustmentService.adjust(id, wallet_adjustment, {
             adminId,
             note: note.trim().slice(0, 500),
             idempotencyKey: scopedAdjKey,
+            idempotencyBodyHash: adjBodyHash, // R134 (A7-F4)
           });
         } else if (typeof wallet_balance === "number") {
           walletResult = await AdjustmentService.setBalance(id, wallet_balance, {
             adminId,
             note: note.trim().slice(0, 500),
             idempotencyKey: scopedAdjKey,
+            idempotencyBodyHash: adjBodyHash, // R134 (A7-F4)
           });
         }
       } catch (err) {

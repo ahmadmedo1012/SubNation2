@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { intParam } from "../lib/http";
-import { applyFlashSale, type FlashSaleStage } from "../lib/pricing";
+import { applyFlashSale, computeFlashSalePrice, type FlashSaleStage } from "../lib/pricing";
 
 const router = Router();
 
@@ -80,8 +80,12 @@ async function buildCartItemResponse(
   const discountPercent = flashSaleStage.flashSale
     ? parseFloat(String(flashSaleStage.flashSale.discountPercent))
     : 0;
-  const salePrice =
-    discountPercent > 0 ? +(basePrice * (1 - discountPercent / 100)).toFixed(2) : null;
+  // R134 (A4-F2): ride computeFlashSalePrice (roundLyd) — the raw
+  // toFixed twin of the AUD103 class: 89.99×50% read 44.99 here while
+  // every other surface answered the helper's 45.00. Display-only (the
+  // frontend never calls these routes; checkout re-quotes server-side)
+  // but an authenticated public contract.
+  const salePrice = discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : null;
   const effectivePrice = salePrice ?? basePrice;
 
   return {

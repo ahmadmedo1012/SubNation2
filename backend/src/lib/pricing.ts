@@ -287,7 +287,10 @@ export async function computePricing(input: ComputePricingInput): Promise<Pricin
     if (isAppliedCoupon(coupon)) discountAmount = coupon.appliedAmount;
   }
 
-  const finalPrice = +(basePrice - discountAmount).toFixed(2);
+  // R134 (A4-F3): roundLyd for idiom parity with every other money
+  // boundary — the operands are 2dp-exact so the value is unchanged
+  // today; the helper is the canon spelling (R123 E1 P3).
+  const finalPrice = roundLyd(basePrice - discountAmount);
   return {
     listPrice: input.listPrice,
     flashSale,

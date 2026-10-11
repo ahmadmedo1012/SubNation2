@@ -2247,6 +2247,58 @@ export async function applyRetentionPruneIndexesStage(
   logger.info({ category: "storage" }, "V1-M31: retention/prune index bundle (idempotent)");
 }
 
+// ── V1-M32 (R134, A7-F4): idempotency_keys.body_hash ────────────────────────
+//
+// The durable idempotency layer stored NO body fingerprint, so the R122
+// Redis-layer body-hash defense (409 on same-key-DIFFERENT-body) never
+// fired in production — production runs without Redis (documented in
+// middlewares/idempotency.ts; the middleware passes through), and a
+// client reusing one Idempotency-Key with a DIFFERENT body inside the
+// 48h retention got the ORIGINAL result replayed (200 +
+// Idempotent-Replayed) instead of the designed 409. Money-safe (no
+// second charge — scoping + ownership re-checks hold; M5/M6 suites
+// prove it), but the client's record diverged from the platform's.
+//
+// This stage adds the column the durable predicate reads: sha256-hex
+// of the request body's canonical JSON (lib/idempotency-body-hash.ts —
+// the SAME definition the Redis layer hashes with; hashed at the ROUTE
+// layer off req.body so there is exactly one equivalence relation).
+//
+// Shape: the V1-M19 catalog-probe idiom — probe
+// information_schema.columns; ALTER only when absent. Nullable, no
+// default, no backfill: NULL = a legacy claim written pre-R134 →
+// replay on key-match (today's behavior); the NULL population ages out
+// with the 48h retention prune (jobs/idempotency-retention.ts) — the
+// transition window is ≤48h by construction. IF NOT EXISTS stays on
+// the ALTER as the belt against catalog drift between probe and DDL
+// (the V1-M19/M23 house idiom). Steady-state boots issue zero DDL.
+//
+// Drizzle mirror: shared/db/src/schema/idempotency-keys.ts bodyHash +
+// chain 0021.
+export async function applyIdempotencyBodyHashStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const probeRows = extractRows(
+    await execute(sql`
+      SELECT column_name AS column_name
+      FROM information_schema.columns
+      WHERE table_name = 'idempotency_keys'
+    `),
+  );
+  const present = new Set(probeRows.map((row) => String(row.column_name)));
+  if (!present.has("body_hash")) {
+    // Belt-on-probe (V1-M19 idiom): every statement idempotent even if
+    // the catalog drifted between the probe and the ALTER.
+    await execute(
+      sql.raw(`ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS body_hash VARCHAR(64)`),
+    );
+    logger.info(
+      { category: "storage" },
+      "V1-M32: added idempotency_keys.body_hash (durable reuse predicate, A7-F4)",
+    );
+  }
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -4109,6 +4161,11 @@ export async function runMigrations() {
     // NOT EXISTS (V1-M24 form — zero-DDL steady state). See
     // applyRetentionPruneIndexesStage docs.
     await applyRetentionPruneIndexesStage();
+
+    // ── V1-M32 (R134, A7-F4): idempotency_keys.body_hash — the durable ──
+    // reuse predicate's column (catalog-probe gated, zero-DDL steady
+    // state). See applyIdempotencyBodyHashStage docs.
+    await applyIdempotencyBodyHashStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

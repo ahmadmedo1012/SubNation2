@@ -123,13 +123,16 @@ export function scopeIdempotencyKey(userId: number, rawKey: string | undefined):
 export async function findIdempotentOrderId(
   scopedKey: string,
   referenceType?: string,
-): Promise<number | null> {
+): Promise<{ orderId: number | null; bodyHash: string | null } | null> {
   if (tableMissing) return null;
   try {
     // RT-2 (R104 red team): filter by referenceType when the caller knows
     // its intent — a client reusing one Idempotency-Key across /orders and
     // /topups must never replay the OTHER intent's row. Undefined keeps
     // the historical any-type behavior for existing callers.
+    //
+    // R134 (A7-F4): the row now carries bodyHash so the caller can apply
+    // the durable reuse predicate (match/NULL → replay, mismatch → 409).
     const conditions =
       referenceType !== undefined
         ? and(
@@ -138,11 +141,13 @@ export async function findIdempotentOrderId(
           )
         : eq(idempotencyKeysTable.key, scopedKey);
     const [row] = await db
-      .select({ orderId: idempotencyKeysTable.orderId })
+      .select({ orderId: idempotencyKeysTable.orderId, bodyHash: idempotencyKeysTable.bodyHash })
       .from(idempotencyKeysTable)
       .where(conditions)
       .limit(1);
-    return row?.orderId ?? null;
+    return row?.orderId !== undefined
+      ? { orderId: row.orderId, bodyHash: row.bodyHash ?? null }
+      : null;
   } catch (err) {
     if (isUndefinedTableError(err)) {
       tableMissing = true;
@@ -158,25 +163,31 @@ export async function findIdempotentOrderId(
 /**
  * R102 (loyalty durable guard): pre-transaction existence check — has
  * this (user-scoped) key been claimed by ANY intent (order or otherwise)?
- * Unlike findIdempotentOrderId this returns a boolean, so a loyalty
- * claim (order_id NULL) is also detected. Same 42P01 tolerance.
+ * Unlike findIdempotentOrderId this covers loyalty claims (order_id
+ * NULL) too. Same 42P01 tolerance.
+ *
+ * R134 (A7-F4): returns the row (key + bodyHash) so the caller can
+ * apply the durable reuse predicate; `truthy row` still works as the
+ * old claimed/not-claimed answer.
  */
-export async function findIdempotencyClaimed(scopedKey: string): Promise<boolean> {
-  if (tableMissing) return false;
+export async function findIdempotencyClaimed(
+  scopedKey: string,
+): Promise<{ key: string; bodyHash: string | null } | null> {
+  if (tableMissing) return null;
   try {
     const [row] = await db
-      .select({ key: idempotencyKeysTable.key })
+      .select({ key: idempotencyKeysTable.key, bodyHash: idempotencyKeysTable.bodyHash })
       .from(idempotencyKeysTable)
       .where(eq(idempotencyKeysTable.key, scopedKey))
       .limit(1);
-    return row !== undefined;
+    return row ?? null;
   } catch (err) {
     if (isUndefinedTableError(err)) {
       tableMissing = true;
       logger.warn(
         "idempotency_keys table missing (pre-V1-M12) — durable idempotency degrades to legacy pass-through",
       );
-      return false;
+      return null;
     }
     throw err;
   }
@@ -192,6 +203,12 @@ export async function findIdempotencyClaimed(scopedKey: string): Promise<boolean
  * 'loyalty.convert'). Existing callers pass only (client, key, orderId)
  * and default to 'order' — byte-identical behavior.
  *
+ * R134 (A7-F4): bodyHash (trailing optional — every existing 3-4-arg
+ * call stays byte-identical) stores the request body's canonical hash
+ * so the durable reuse predicate can fire on later lookups. Computed
+ * at the ROUTE layer off req.body (lib/idempotency-body-hash.ts) and
+ * threaded through — the services never re-derive it.
+ *
  * No-op while the table is missing. A concurrent same-key winner throws
  * SQLSTATE 23505 — checkout maps it to the idempotent-replay path;
  * loyalty maps it to a 409 "already converted".
@@ -201,7 +218,10 @@ export async function claimIdempotencyKey(
   scopedKey: string,
   orderId: number | null,
   referenceType: string = "order",
+  bodyHash?: string | null,
 ): Promise<void> {
   if (tableMissing) return;
-  await client.insert(idempotencyKeysTable).values({ key: scopedKey, orderId, referenceType });
+  await client
+    .insert(idempotencyKeysTable)
+    .values({ key: scopedKey, orderId, referenceType, bodyHash: bodyHash ?? null });
 }

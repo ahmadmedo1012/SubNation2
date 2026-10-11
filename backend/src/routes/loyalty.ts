@@ -13,6 +13,12 @@ import {
   isIdempotencyKeyViolation,
   scopeIdempotencyKey,
 } from "../lib/idempotency";
+// R134 (A7-F4): the shared body-hash definition + reuse envelope.
+import {
+  canonicalBodyHash,
+  IDEMPOTENCY_KEY_REUSE_CODE,
+  IDEMPOTENCY_KEY_REUSE_MESSAGE,
+} from "../lib/idempotency-body-hash";
 import {
   POINTS_PER_LYD,
   POINTS_PER_REFERRAL,
@@ -156,15 +162,34 @@ router.post(
     // backstop (same as checkout's F10) closes it: pre-tx existence
     // check for the friendly 409, in-tx claim for the concurrent race.
     const scopedKey = scopeIdempotencyKey(userId, req.header("idempotency-key"));
-    if (scopedKey && (await findIdempotencyClaimed(scopedKey))) {
-      return res
-        .status(409)
-        .json(
-          createErrorResponse(
-            "تم تنفيذ هذا التحويل مسبقاً بنفس المفتاح — تحقق من رصيدك",
-            ErrorCode.CONFLICT,
-          ),
-        );
+    // R134 (A7-F4): the durable reuse predicate — hashed at the route
+    // layer off req.body, the SAME definition the Redis layer uses.
+    const idemBodyHash = canonicalBodyHash(req.body);
+    if (scopedKey) {
+      const claimedRow = await findIdempotencyClaimed(scopedKey);
+      if (claimedRow !== null) {
+        // Same key + DIFFERENT body: the classified reuse 409 (the
+        // Redis layer's envelope verbatim) — distinct from the
+        // already-converted 409 below by code + message. NULL hash = a
+        // legacy claim (pre-R134 writer) → the friendly already-converted
+        // answer (the ≤48h transition window).
+        if (claimedRow.bodyHash !== null && claimedRow.bodyHash !== idemBodyHash) {
+          return res.status(409).json({
+            success: false,
+            error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+            message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+            code: IDEMPOTENCY_KEY_REUSE_CODE,
+          });
+        }
+        return res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "تم تنفيذ هذا التحويل مسبقاً بنفس المفتاح — تحقق من رصيدك",
+              ErrorCode.CONFLICT,
+            ),
+          );
+      }
     }
 
     try {
@@ -253,6 +278,7 @@ router.post(
               scopedKey,
               null,
               "loyalty.convert",
+              idemBodyHash, // R134 (A7-F4)
             );
           } catch (claimErr) {
             if (isIdempotencyKeyViolation(claimErr))

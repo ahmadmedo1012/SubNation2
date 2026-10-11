@@ -76,6 +76,14 @@ export interface AdjustOptions {
    * route middleware is a pass-through) can never re-apply the delta.
    */
   idempotencyKey?: string | null;
+  /**
+   * R134 (A7-F4): the request body's canonical hash (computed at the
+   * ROUTE layer off req.body — lib/idempotency-body-hash.ts). Stored
+   * on the durable claim so the pre-tx reuse predicate can classify
+   * same-key-DIFFERENT-body as 409 IDEMPOTENCY_KEY_REUSE (the Redis
+   * layer's semantics — production runs without Redis).
+   */
+  idempotencyBodyHash?: string | null;
 }
 
 /**
@@ -120,6 +128,7 @@ export class AdjustmentService {
       adminId: options.adminId,
       note: safeNote,
       idempotencyKey: options.idempotencyKey,
+      idempotencyBodyHash: options.idempotencyBodyHash, // R134 (A7-F4)
       computeNext: (current) => roundLyd(current + delta),
     });
   }
@@ -144,6 +153,7 @@ export class AdjustmentService {
       adminId: options.adminId,
       note: safeNote,
       idempotencyKey: options.idempotencyKey,
+      idempotencyBodyHash: options.idempotencyBodyHash, // R134 (A7-F4)
       computeNext: () => roundLyd(target),
     });
   }
@@ -162,11 +172,12 @@ interface AdjustmentTxParams {
   adminId: number;
   note: string;
   idempotencyKey?: string | null;
+  idempotencyBodyHash?: string | null; // R134 (A7-F4)
   computeNext: (current: number) => number;
 }
 
 async function runAdjustmentTransaction(params: AdjustmentTxParams): Promise<AdjustmentResult> {
-  const { userId, adminId, note, idempotencyKey, computeNext } = params;
+  const { userId, adminId, note, idempotencyKey, idempotencyBodyHash, computeNext } = params;
 
   return db.transaction(async (tx) => {
     const [user] = await tx
@@ -240,6 +251,7 @@ async function runAdjustmentTransaction(params: AdjustmentTxParams): Promise<Adj
           idempotencyKey,
           null,
           "admin.adjustment",
+          idempotencyBodyHash ?? null, // R134 (A7-F4)
         );
       } catch (err) {
         if (isIdempotencyKeyViolation(err)) {

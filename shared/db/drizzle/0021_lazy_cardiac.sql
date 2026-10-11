@@ -1,0 +1,14 @@
+-- R134 (A7-F4): Drizzle 0021 — the mirror of boot stage V1-M32
+-- (migrate.ts applyIdempotencyBodyHashStage): idempotency_keys.body_hash,
+-- the durable idempotency reuse predicate's column (sha256-hex of the
+-- request body's canonical JSON; NULL = a legacy pre-R134 claim →
+-- replay, ages out with the 48h retention prune).
+--
+-- Same conventions as 0013/0016/0017 (r110 idiom): this file is
+-- DECLARATIVE-ONLY — nothing in the repo executes it at runtime (prod
+-- schema flows exclusively through migrate.ts), and CI only regenerates
+-- + diffs. The statement is hand-hardened so the chain is ALSO safe the
+-- day it IS applied: IF NOT EXISTS on the ADD (the V1-M19 belt-on-probe
+-- idiom) makes a manual chain application no-op against a runtime-shaped
+-- database where the boot stage already added the column.
+ALTER TABLE "idempotency_keys" ADD COLUMN IF NOT EXISTS "body_hash" varchar(64);
