@@ -840,13 +840,10 @@ router.get("/:id", catalogCache, async (req, res) => {
   return res.json(cached.dto);
 });
 
-// ── /api/products/by-slug/:slug ─────────────────────────────────────────────
-// SEO-friendly product lookup. Used by the new /product/<slug> frontend
-// route + sitemap-driven crawler hits. Same response shape as /:id so
-// the frontend can swap the URL pattern transparently.
-//
-// Mounted BEFORE /:id at the parent /products router level so Express's
-// route matcher hits "by-slug" before the numeric :id catch-all.
+// ── /api/products/:id/recommendations ────────────────────────────────────────
+// Same-brand fallback list for the PDP ("منتجات ذات صلة"). R104 (AG5-7):
+// 60 s in-process catalog cache, 200-only — the same contract as the
+// detail endpoints above.
 router.get("/:id/recommendations", catalogCache, async (req, res) => {
   const id = intParam(req, "id");
   if (id === null)

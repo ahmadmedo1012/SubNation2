@@ -41,48 +41,58 @@ previewsRouter.use((_req, res, next) => {
 // ────────────────────────────────────────────────────────────────────────
 // GET /previews/:id
 // ────────────────────────────────────────────────────────────────────────
-previewsRouter.get("/copilot/previews/:id", requireAdmin, async (req: Request, res: Response) => {
-  const adminReq = req as AdminAuthenticatedRequest;
-  const id = String(req.params.id ?? "");
-  const row = await getOwnedPreview(id, adminReq.adminId);
-  if (!row) {
-    // R125-I6 (A8 B-2): createErrorResponse swap — response bytes are
-    // identical (the helper's `details: undefined` is dropped by JSON
-    // serialization); the ErrorCode member replaces the string literal so
-    // a typo compiles instead of shipping.
-    res
-      .status(404)
-      .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
-    return;
-  }
-  if (row.consumedAt) {
-    res
-      .status(410)
-      .json(createErrorResponse("المعاينة استُهلكت بالفعل", ErrorCode.COPILOT_PREVIEW_CONSUMED));
-    return;
-  }
-  if (row.expiresAt < new Date()) {
-    res
-      .status(410)
-      .json(createErrorResponse("انتهت صلاحية المعاينة", ErrorCode.COPILOT_PREVIEW_EXPIRED));
-    return;
-  }
-  res.json({
-    id: row.id,
-    admin_id: row.adminId,
-    intent_text: row.intentText,
-    intent_summary:
-      (row.previewPayload as { intent_summary?: string } | null)?.intent_summary ?? "",
-    action_class: row.actionClass,
-    risk_tier: row.riskTier,
-    payload: row.previewPayload,
-    created_at: row.createdAt.toISOString(),
-    expires_at: row.expiresAt.toISOString(),
-    confirmed_once_at: row.confirmedOnceAt?.toISOString() ?? null,
-    cooldown_starts_at: row.cooldownStartsAt?.toISOString() ?? null,
-    confirmed_twice_at: row.confirmedTwiceAt?.toISOString() ?? null,
-  });
-});
+// R134 (A1-F10): GET + cancel now carry the phase3 gate their confirm
+// siblings (confirm :135, double-confirm :286) always had — the parent
+// comment says "each leaf route inside enforces its own phase + scope
+// gate", and these two were the gap (a phase3-disabled deployment still
+// served staged-mutation payloads to any admin).
+previewsRouter.get(
+  "/copilot/previews/:id",
+  requireAdmin,
+  requireCopilotPhase("phase3_enabled"),
+  async (req: Request, res: Response) => {
+    const adminReq = req as AdminAuthenticatedRequest;
+    const id = String(req.params.id ?? "");
+    const row = await getOwnedPreview(id, adminReq.adminId);
+    if (!row) {
+      // R125-I6 (A8 B-2): createErrorResponse swap — response bytes are
+      // identical (the helper's `details: undefined` is dropped by JSON
+      // serialization); the ErrorCode member replaces the string literal so
+      // a typo compiles instead of shipping.
+      res
+        .status(404)
+        .json(createErrorResponse("المعاينة غير موجودة", ErrorCode.COPILOT_PREVIEW_NOT_FOUND));
+      return;
+    }
+    if (row.consumedAt) {
+      res
+        .status(410)
+        .json(createErrorResponse("المعاينة استُهلكت بالفعل", ErrorCode.COPILOT_PREVIEW_CONSUMED));
+      return;
+    }
+    if (row.expiresAt < new Date()) {
+      res
+        .status(410)
+        .json(createErrorResponse("انتهت صلاحية المعاينة", ErrorCode.COPILOT_PREVIEW_EXPIRED));
+      return;
+    }
+    res.json({
+      id: row.id,
+      admin_id: row.adminId,
+      intent_text: row.intentText,
+      intent_summary:
+        (row.previewPayload as { intent_summary?: string } | null)?.intent_summary ?? "",
+      action_class: row.actionClass,
+      risk_tier: row.riskTier,
+      payload: row.previewPayload,
+      created_at: row.createdAt.toISOString(),
+      expires_at: row.expiresAt.toISOString(),
+      confirmed_once_at: row.confirmedOnceAt?.toISOString() ?? null,
+      cooldown_starts_at: row.cooldownStartsAt?.toISOString() ?? null,
+      confirmed_twice_at: row.confirmedTwiceAt?.toISOString() ?? null,
+    });
+  },
+);
 
 // ────────────────────────────────────────────────────────────────────────
 // POST /previews/:id/cancel
@@ -90,6 +100,7 @@ previewsRouter.get("/copilot/previews/:id", requireAdmin, async (req: Request, r
 previewsRouter.post(
   "/copilot/previews/:id/cancel",
   requireAdmin,
+  requireCopilotPhase("phase3_enabled"), // R134 (A1-F10)
   copilotRateLimit,
   async (req: Request, res: Response) => {
     const adminReq = req as AdminAuthenticatedRequest;

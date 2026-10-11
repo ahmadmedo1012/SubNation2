@@ -179,7 +179,12 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
     path: "/",
   });
 
-  return res.json({ success: true, message: "تم تسجيل الخروج من الجهاز الحالي" });
+  // R134 (A1-F4): the ALL-DEVICES branch's non-Firebase fall-through used
+  // to answer «من الجهاز الحالي» — but this branch sits BELOW the
+  // delete-all-sessions statement above, so every session row is already
+  // gone. The success message must match what actually happened (the
+  // Firebase twin above says the same thing on its own success path).
+  return res.json({ success: true, message: "تم تسجيل الخروج من جميع الأجهزة" });
 });
 
 // Get linked auth providers for current user

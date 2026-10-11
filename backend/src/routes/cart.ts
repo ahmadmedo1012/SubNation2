@@ -162,9 +162,17 @@ router.post("/items", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
   const { product_id, variant_id, quantity = 1 } = req.body ?? {};
 
-  if (!product_id || typeof product_id !== "number")
+  // R134 (A1-F5): integer honesty — a float id (12.5) used to pass the
+  // typeof check, miss the lookup, and surface as a mislabeled 404
+  // («المنتج غير موجود») instead of the contract 400. The variant twin
+  // below carries the same guard.
+  if (!product_id || typeof product_id !== "number" || !Number.isInteger(product_id))
     return res.status(400).json(createErrorResponse("معرف المنتج مطلوب", ErrorCode.INVALID_DATA));
-  if (variant_id !== undefined && variant_id !== null && typeof variant_id !== "number")
+  if (
+    variant_id !== undefined &&
+    variant_id !== null &&
+    (typeof variant_id !== "number" || !Number.isInteger(variant_id))
+  )
     return res
       .status(400)
       .json(createErrorResponse("معرف الباقة غير صالح", ErrorCode.INVALID_DATA));

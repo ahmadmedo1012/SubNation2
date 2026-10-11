@@ -12,7 +12,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
 import { computeRetailLYD, getPricingConfig } from "../../lib/pricing-config";
 import { encrypt, safeDecrypt } from "../../lib/encryption";
-import { intParam } from "../../lib/http";
+import { escapeLikeTerm, intParam } from "../../lib/http";
 import { slugifyWithId } from "../../lib/slugify";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { bumpSitemapCache } from "../seo";
@@ -78,9 +78,13 @@ const ACCOUNT_PASSWORD_PLAINTEXT_MAX = 225;
 router.get("/products", requireAdmin, async (req, res) => {
   // V4: the admin command palette sends ?search= — previously ignored
   // (the handler didn't even read req). Match name or category,
-  // case-insensitive, capped at 100 chars.
+  // case-insensitive, capped at 100 chars. R134 (A1-F2): escape LIKE
+  // wildcards — the AUD103-3-F4 idiom every sibling admin search carries
+  // (users.ts / orders.ts); a "%"/"_" in the palette used to act as a
+  // pattern wildcard here.
   const searchRaw = typeof req.query.search === "string" ? req.query.search.trim() : "";
-  const searchLike = searchRaw.length > 0 ? `%${searchRaw.toLowerCase().slice(0, 100)}%` : null;
+  const searchLike =
+    searchRaw.length > 0 ? `%${escapeLikeTerm(searchRaw.toLowerCase().slice(0, 100))}%` : null;
 
   // Use an explicit projection (mirrors routes/products.ts) so a future
   // schema column added before its migration runs cannot break this

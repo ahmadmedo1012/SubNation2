@@ -150,7 +150,12 @@ router.get("/", requireAdmin, async (req, res) => {
       hasMore: offset + alerts.length < total,
     });
   } catch (err) {
-    req.log.error({ err }, "Failed to fetch admin alerts");
+    // R134 (A1-F8): the file's own (req.log ?? logger) fallback — the
+    // six routes below predate the idiom and used bare req.log, which
+    // throws when pino-http isn't mounted (test harness / dev) instead
+    // of answering the client.
+    const log = (req.log ?? logger) as typeof req.log;
+    log.error({ err }, "Failed to fetch admin alerts");
     return res
       .status(500)
       .json(createErrorResponse("خطأ في جلب التنبيهات", ErrorCode.INTERNAL_ERROR));
@@ -162,7 +167,8 @@ router.patch("/read-all", requireAdmin, async (req, res) => {
     await markAllAlertsRead();
     return res.json({ success: true });
   } catch (err) {
-    req.log.error({ err }, "Failed to mark all alerts read");
+    const log = (req.log ?? logger) as typeof req.log; // R134 (A1-F8)
+    log.error({ err }, "Failed to mark all alerts read");
     return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
@@ -175,7 +181,8 @@ router.patch("/:id/read", requireAdmin, async (req, res) => {
     await markAlertRead(id);
     return res.json({ success: true });
   } catch (err) {
-    req.log.error({ err }, "Failed to mark alert read");
+    const log = (req.log ?? logger) as typeof req.log; // R134 (A1-F8)
+    log.error({ err }, "Failed to mark alert read");
     return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
@@ -185,7 +192,8 @@ router.delete("/read", requireAdmin, async (req, res) => {
     const deleted = await deleteReadAlerts();
     return res.json({ success: true, deleted });
   } catch (err) {
-    req.log.error({ err }, "Failed to delete read alerts");
+    const log = (req.log ?? logger) as typeof req.log; // R134 (A1-F8)
+    log.error({ err }, "Failed to delete read alerts");
     return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
@@ -205,7 +213,8 @@ router.delete("/:id", requireAdmin, async (req, res) => {
       return res.status(404).json(createErrorResponse("التنبيه غير موجود", ErrorCode.NOT_FOUND));
     return res.json({ success: true });
   } catch (err) {
-    req.log.error({ err }, "Failed to delete alert");
+    const log = (req.log ?? logger) as typeof req.log; // R134 (A1-F8)
+    log.error({ err }, "Failed to delete alert");
     return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });
@@ -215,7 +224,8 @@ router.delete("/", requireAdmin, async (req, res) => {
     await deleteAllAlerts();
     return res.json({ success: true });
   } catch (err) {
-    req.log.error({ err }, "Failed to delete all alerts");
+    const log = (req.log ?? logger) as typeof req.log; // R134 (A1-F8)
+    log.error({ err }, "Failed to delete all alerts");
     return res.status(500).json(createErrorResponse("خطأ", ErrorCode.INTERNAL_ERROR));
   }
 });

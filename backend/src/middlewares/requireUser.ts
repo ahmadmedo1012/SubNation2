@@ -31,12 +31,18 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
   const token = req.cookies?.auth_token || req.headers.authorization?.replace("Bearer ", "");
 
   if (!token) {
+    // R134 (A5-F2): 401 envelopes ship no-store — the user-side twin of
+    // the R123-E5/R126 admin fix. An intermediary could otherwise serve
+    // a stale "unauthorized" envelope for a request that now carries a
+    // valid token.
+    res.setHeader("Cache-Control", "no-store");
     res.status(401).json(createErrorResponse("غير مصرح", ErrorCode.UNAUTHORIZED));
     return;
   }
 
   const result = verifyUserTokenDetailed(token);
   if (!result.ok) {
+    res.setHeader("Cache-Control", "no-store");
     if (result.reason === "expired") {
       res.status(401).json(createErrorResponse("جلسة منتهية", ErrorCode.SESSION_EXPIRED));
     } else {
@@ -60,6 +66,7 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
           { userId: result.payload.userId, sessionId: result.payload.sessionId },
           "[auth] rejected token whose session row is gone",
         );
+        res.setHeader("Cache-Control", "no-store"); // R134 (A5-F2)
         res
           .status(401)
           .json(
@@ -96,6 +103,7 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
         { userId: result.payload.userId, category: "auth.session" },
         "[auth] rejected legacy sid-less user token (production fail-closed)",
       );
+      res.setHeader("Cache-Control", "no-store"); // R134 (A5-F2)
       res
         .status(401)
         .json(createErrorResponse("جلسة قديمة — أعد تسجيل الدخول", ErrorCode.SESSION_EXPIRED));

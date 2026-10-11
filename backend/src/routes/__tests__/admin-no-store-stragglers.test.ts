@@ -149,13 +149,17 @@ describe("R123-E5 — no-store on the four admin GET stragglers", () => {
     const admin = await seedAdmin();
     const { url, close } = await listen();
     try {
-      // No preview row seeded — the 404 path. The router-level header
-      // fires before the handler, so the error envelope carries it too
-      // (a cached 404 would be worse than a cached 200 here).
+      // R134 (A1-F10): the previews GET now carries the phase3 gate its
+      // confirm siblings always had. With no phase flag set in this
+      // harness the gate answers 503 FEATURE_DISABLED — which is exactly
+      // what a phase3-disabled deployment must do for a staged-mutation
+      // payload read. The router-level no-store header fires before the
+      // handler, so the gate envelope carries it too (a cached 503/404
+      // would be worse than a cached 200 here).
       const res = await fetch(`${url}/api/admin/copilot/previews/01NOSTORE`, {
         headers: { Authorization: `Bearer ${admin.token}` },
       });
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(503);
       expect(res.headers.get("cache-control")).toBe("no-store");
     } finally {
       close();

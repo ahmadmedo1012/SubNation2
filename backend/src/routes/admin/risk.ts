@@ -863,6 +863,12 @@ router.post("/risk/synth", requireAdmin, async (req, res) => {
   // For critical events, fire the alert path so the admin can see the
   // Discord/Telegram dispatch (or its failure) without needing real traffic.
   if (level === "critical") {
+    // R134 (A1-F9): the dispatch is still fire-and-forget (the synth
+    // route's 201 must not ride on Telegram availability), but the
+    // failure is no longer SILENT — the risk-scoring.service sibling
+    // logs the same rejection; the admin /risk/synth twin used to
+    // swallow with a bare `.catch(() => {})`, leaving a dead alert
+    // channel indistinguishable from a sent one.
     void sendCriticalRiskAlert({
       riskEventId: row.id,
       userId: body.user_id ?? null,
@@ -870,7 +876,12 @@ router.post("/risk/synth", requireAdmin, async (req, res) => {
       score,
       level: "critical",
       topFeatures: null,
-    }).catch(() => {});
+    }).catch((err) => {
+      logger.warn(
+        { err, riskEventId: row.id, category: "risk-synth" },
+        "[risk-synth] sendCriticalRiskAlert rejected (should be swallowed)",
+      );
+    });
   }
 
   res.json({

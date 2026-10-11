@@ -43,75 +43,59 @@ protectedRouter.use(requireAdmin);
 // its own phase + scope gate; the parent mount only attaches the router.
 protectedRouter.use("/", copilotRouter);
 
-// Anomaly detection (003-anomaly-detection). Risk events are user-related
-// investigative data; the `users` scope is the closest fit in the existing
-// permission catalog.
-protectedRouter.use("/", requirePermission("users"), adminRiskRouter);
+// R134 (A5-F1): the scope gates are PATH-SCOPED, never root-mounted. A
+// `use("/", requirePermission(x), router)` mount prefix-matches EVERY
+// protected admin request, so the gates composed CUMULATIVELY: a scoped
+// admin (e.g. ["orders"]) was 403'd by the first unrelated gate in mount
+// order (the `users` gate in front of the risk router) before ever
+// reaching their own scope's routes — at runtime only "all"/near-union
+// grants worked, and the R122 subset-grant story was functionally dead
+// (fail-closed over-restriction, never escalation). `use("/topups", gate)`
+// fires only for that path family; the sub-routers keep their full
+// internal paths and still mount at "/" below. Path families are
+// prefix-disjoint (verified: no admin route path starts with another
+// family's prefix), and the segment-boundary behavior ("/orders" does
+// not match "/orders2") is pinned by rbac-composition.test.ts.
+protectedRouter.use("/risk", requirePermission("users")); // 003-anomaly-detection: user-investigative data
+protectedRouter.use("/forecast", requirePermission("inventory")); // 011-inventory-demand-forecast
+protectedRouter.use("/enrichment", requirePermission("inventory")); // 012-arabic-catalog-enrichment
+protectedRouter.use("/topups", requirePermission("finance"));
+protectedRouter.use("/products", requirePermission("inventory")); // products + product-variants
+protectedRouter.use("/pricing", requirePermission("inventory")); // pricing-calculator + pricing-config
+protectedRouter.use("/flash-sales", requirePermission("inventory"));
+// B1-3 (R111): these two `users` gates cover the LIST/loyalty surfaces;
+// the MONEY writes inside (PATCH /users/:id wallet mutations, POST
+// /referrals/:id/credit) additionally require `finance` at the route
+// level — see users.ts / referrals.ts.
+protectedRouter.use("/users", requirePermission("users"));
+protectedRouter.use("/referrals", requirePermission("users"));
+protectedRouter.use("/tickets", requirePermission("support"));
+protectedRouter.use("/auth-activity", requirePermission("admins")); // admin security audit family
+protectedRouter.use("/auth-stats", requirePermission("admins"));
+protectedRouter.use("/orders", requirePermission("orders"));
 
-// Inventory demand forecasting (011-inventory-demand-forecast). Read-only
-// admin surface; gated on the existing `inventory` scope (matches the
-// /admin/products gate the panel mounts above).
-protectedRouter.use("/", requirePermission("inventory"), adminForecastRouter);
-
-// Catalog enrichment review panel (012-arabic-catalog-enrichment).
-// Admin-only review surface for batched LLM-drafted descriptions / FAQ.
-// Same `inventory` gate as the existing product-edit pages; the cron
-// itself runs separately on the worker tier.
-protectedRouter.use("/", requirePermission("inventory"), adminEnrichmentRouter);
-
+// The routers themselves — full internal paths, mounted at the root.
+protectedRouter.use("/", adminRiskRouter); // /risk/*
+protectedRouter.use("/", adminForecastRouter); // /forecast/*
+protectedRouter.use("/", adminEnrichmentRouter); // /enrichment/*
+protectedRouter.use("/", adminTopupsRouter); // /topups/*
 protectedRouter.use(
   "/",
-  requirePermission("finance"),
-  adminTopupsRouter, // /topups/*
-);
-
-protectedRouter.use(
-  "/",
-  requirePermission("inventory"),
   adminProductsRouter, // /products/*
   adminProductVariantsRouter, // /products/:id/variants/* (catalog 2026-09-20)
 );
 protectedRouter.use(
   "/",
-  requirePermission("inventory"),
   adminPricingCalculatorRouter, // /pricing/calculate
   adminPricingConfigRouter, // /pricing/config, /pricing/recompute (catalog 2026-09-20)
 );
-protectedRouter.use(
-  "/",
-  requirePermission("inventory"),
-  adminFlashSalesRouter, // /flash-sales, /flash-sales/:id
-);
-
-// B1-3 (R111, round-111 B1 audit): the `users` mount covers the LIST +
-// loyalty surfaces; the MONEY writes inside these routers carry their own
-// tighter gates — PATCH /users/:id wallet mutations and POST
-// /referrals/:id/credit both additionally require the `finance` scope
-// (see users.ts / referrals.ts). The GET/list surfaces stay `users`.
-protectedRouter.use(
-  "/",
-  requirePermission("users"),
-  adminUsersRouter, // /users/*
-);
-protectedRouter.use(
-  "/",
-  requirePermission("users"),
-  adminReferralsRouter, // /referrals/*
-);
-
-protectedRouter.use(
-  "/",
-  requirePermission("support"),
-  adminTicketsRouter, // /tickets/*
-);
+protectedRouter.use("/", adminFlashSalesRouter); // /flash-sales, /flash-sales/:id
+protectedRouter.use("/", adminUsersRouter); // /users/*
+protectedRouter.use("/", adminReferralsRouter); // /referrals/*
+protectedRouter.use("/", adminTicketsRouter); // /tickets/*
+protectedRouter.use("/", adminSecurityRouter); // /auth-activity, /auth-stats
 
 protectedRouter.use("/alerts", requirePermission("support"), adminAlertsRouter);
-
-protectedRouter.use(
-  "/",
-  requirePermission("admins"),
-  adminSecurityRouter, // /auth-activity, /auth-stats — admin security audit
-);
 
 // R127-L5 (B15-1): the audit-trail reader — the security family's
 // «إجراءات المسؤولين» tab. Same `admins` gate as the security router:
@@ -137,7 +121,6 @@ protectedRouter.use("/diagnostics", requirePermission("settings"), adminDiagnost
 
 protectedRouter.use(
   "/",
-  requirePermission("orders"),
   adminOrdersRouter, // /orders, /orders/bulk-status
 );
 

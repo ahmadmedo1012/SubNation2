@@ -530,20 +530,18 @@ const apiLimiter = rateLimit({
     code: "RATE_LIMITED",
   },
   skip: (req) => {
-    // Skip rate limiting for health checks and static assets.
+    // Skip rate limiting for health checks.
     // NOTE (round-3 audit): this middleware is mounted at `/api`, so
     // `req.path` is mount-relative — the health routes live at
     // `/healthz*` (NOT "/health", which never matched and made Render
-    // probes + admin polling burn the per-IP budget). Fixed alongside
-    // the static-asset prefixes which are already mount-relative.
+    // probes + admin polling burn the per-IP budget).
+    // R134 (A1-F6): the dead entries are gone — `/health` (no such
+    // route since the round-3 fix) and the `/assets/` + `/static/`
+    // prefixes (assets are served at the root, never under /api) could
+    // never match a mount-relative path. skip() now lists only paths
+    // that exist under this mount.
     const path = req.path;
-    if (
-      path === "/healthz" ||
-      path.startsWith("/healthz/") ||
-      path === "/health" ||
-      path.startsWith("/assets/") ||
-      path.startsWith("/static/")
-    ) {
+    if (path === "/healthz" || path.startsWith("/healthz/")) {
       return true;
     }
     // Skip when the caller has a verified user identity — the per-
@@ -1686,7 +1684,10 @@ if (frontendDist) {
       // R120-B3 (A7-F9 + A7-F17): assemble the description inside display
       // limits (buildShareDescription) — the seo_description (when set)
       // is the body, keeping the «— السعر X د.ل» suffix.
-      const desc = buildShareDescription(seoDescription ?? product.description, lookup.displayPrice);
+      const desc = buildShareDescription(
+        seoDescription ?? product.description,
+        lookup.displayPrice,
+      );
       const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>

@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler } from "express";
+import { ErrorCode } from "@workspace/error-codes";
 import { logger } from "./logger";
 import { bodyParseErrorsTotal, safeInc } from "./metrics";
 
@@ -109,8 +110,14 @@ export const bodyParserRecovery: ErrorRequestHandler = (err, req, res, next) => 
     "[body-parse] rejected malformed body",
   );
 
+  // R134 (A1-F1): the code rides the SHARED ErrorCode enum — this was
+  // the one envelope emitting an unregistered literal, so the
+  // enum-exhaustiveness contract (frontend maps every code; @workspace/
+  // error-codes is the single source) was broken. The global handler
+  // (app.ts) answers the same malformed-JSON class with INVALID_DATA —
+  // this branch now agrees, so clients see ONE code for the class.
   res.status(400).json({
     error: "بيانات الطلب غير صالحة",
-    code: "INVALID_REQUEST_BODY",
+    code: ErrorCode.INVALID_DATA,
   });
 };
