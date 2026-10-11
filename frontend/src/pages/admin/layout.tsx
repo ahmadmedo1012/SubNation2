@@ -594,6 +594,9 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             role="combobox"
+            /* R133 (A4-F8): role="combobox" promised a name it never had
+               — a placeholder is not an accessible name (4.1.2). */
+            aria-label={`بحث في ${searchPlaceholder}`}
             aria-expanded={total > 0}
             aria-controls="global-search-results"
             aria-activedescendant={total > 0 ? `global-search-option-${safeActive}` : undefined}

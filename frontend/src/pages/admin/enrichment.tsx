@@ -319,6 +319,10 @@ function DraftCard({
             value={edited}
             onChange={(e) => setEdited(e.target.value)}
             rows={Math.min(20, Math.max(6, edited.split("\n").length + 2))}
+            /* R133 (A4-F8): the edit-draft textarea had NO accessible
+               name — no label, no id, no placeholder even (the finding's
+               admin textarea tail). */
+            aria-label="تعديل نص المسودة"
             className="w-full bg-background border border-primary/40 rounded-xl px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         )}

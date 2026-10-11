@@ -228,60 +228,73 @@ export function ProviderCard({
         <div className="border-t border-border/60 px-5 py-4 space-y-4">
           {/* Fields */}
           <div className="space-y-3">
-            {provider.fields.map((field) => (
-              <div key={field.key} className="space-y-1.5">
-                <label className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
-                  {field.label}
-                  {field.isSecret && (
-                    <StatusBadge variant="warning" size="xs">
-                      سري
-                    </StatusBadge>
-                  )}
-                </label>
-                <div className="relative">
-                  <input
-                    type={field.isSecret && !showSecret[field.key] ? "password" : "text"}
-                    value={config[field.key] ?? ""}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
-                    }
-                    placeholder={
-                      config[field.key] === "[SET]"
-                        ? "••••••••••• (مُعيَّن)"
-                        : (field.placeholder ?? "")
-                    }
-                    dir="ltr"
-                    className="w-full bg-background border border-border/70 rounded-lg px-3 py-2 text-sm font-mono text-left outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground pr-9"
-                  />
-                  {field.isSecret && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowSecret((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
+            {provider.fields.map((field) => {
+              /* R133 (A4-F8): the visible label never reached the input —
+                 no htmlFor/id pair, so every provider field (secrets
+                 included) was placeholder-only named for AT. One stable
+                 id per (provider, field) wires the pair. */
+              const fieldId = `provider-field-${provider.id}-${field.key}`;
+              return (
+                <div key={field.key} className="space-y-1.5">
+                  <label
+                    htmlFor={fieldId}
+                    className="text-xs font-bold text-muted-foreground flex items-center gap-1.5"
+                  >
+                    {field.label}
+                    {field.isSecret && (
+                      <StatusBadge variant="warning" size="xs">
+                        سري
+                      </StatusBadge>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <input
+                      id={fieldId}
+                      type={field.isSecret && !showSecret[field.key] ? "password" : "text"}
+                      value={config[field.key] ?? ""}
+                      onChange={(e) =>
+                        setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
                       }
-                      /* R130 (A4-F1): the reveal sat `left-2.5` — the START
+                      placeholder={
+                        config[field.key] === "[SET]"
+                          ? "••••••••••• (مُعيَّن)"
+                          : (field.placeholder ?? "")
+                      }
+                      dir="ltr"
+                      className="w-full bg-background border border-border/70 rounded-lg px-3 py-2 text-sm font-mono text-left outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground pr-12"
+                    />
+                    {field.isSecret && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowSecret((prev) => ({ ...prev, [field.key]: !prev[field.key] }))
+                        }
+                        /* R130 (A4-F1): the reveal sat `left-2.5` — the START
                          of the LTR secret text (the input is dir=ltr +
                          text-left) — so a revealed key's first characters
                          rendered under the eye while the pr-9 reservation
                          on the END side sat dead. The button belongs at
-                         the physical end the input already reserves. */
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground transition-colors"
-                      aria-label={
-                        showSecret[field.key]
-                          ? `إخفاء قيمة حقل ${field.label}`
-                          : `إظهار قيمة حقل ${field.label}`
-                      }
-                    >
-                      {showSecret[field.key] ? (
-                        <EyeOff className="w-3.5 h-3.5" />
-                      ) : (
-                        <Eye className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                  )}
+                         the physical end the input already reserves.
+                         R133 (A4-F6 family): 14px icon-only hit box →
+                         the repo 44px idiom (pr-12 reserves the span). */
+                        className="absolute right-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center touch-target text-muted-foreground hover:text-muted-foreground transition-colors"
+                        aria-label={
+                          showSecret[field.key]
+                            ? `إخفاء قيمة حقل ${field.label}`
+                            : `إظهار قيمة حقل ${field.label}`
+                        }
+                      >
+                        {showSecret[field.key] ? (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Callback URL hint for OAuth providers */}

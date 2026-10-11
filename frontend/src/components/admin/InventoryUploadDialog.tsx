@@ -312,6 +312,9 @@ export function InventoryUploadDialog({
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            /* R133 (A4-F8): placeholder-only naming — the paste-items
+               field (one of the audit's 4 admin textareas). */
+            aria-label="عناصر المخزون الملصوقة (سطر لكل عنصر)"
             placeholder={
               "الصق العناصر هنا (سطر لكل عنصر)…\n" +
               "مثال:\n" +

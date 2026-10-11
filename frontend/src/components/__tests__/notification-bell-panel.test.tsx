@@ -13,7 +13,7 @@
  * overflow-y-auto actually engages.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationBell } from "@/components/layout/NotificationBell";
@@ -134,5 +134,115 @@ describe("NotificationPanel footer — honest count at the 40-row cap (A9-2, R12
 
     expect(await screen.findByText(/^3 إشعارات$/)).toBeInTheDocument();
     expect(screen.queryByText(/آخر/)).not.toBeInTheDocument();
+  });
+});
+
+describe("NotificationPanel dialog contract — focus return + Tab trap (A4-F7, R133)", () => {
+  /** An UNREAD row with a link — renders the row-body button + the
+   * action chip + the mark-read chip (three focusables per row). */
+  const unreadRow = (i: number) => ({
+    id: i,
+    type: "order",
+    title: `طلب جديد ${i}`,
+    message: null,
+    link: "/orders",
+    is_read: false,
+    created_at: new Date(Date.now() - 60_000 * i).toISOString(),
+  });
+
+  afterEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as Response),
+    );
+  });
+
+  it("aria-modal is set and focus moves into the panel on open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => [unreadRow(1)] } as Response),
+    );
+    render(
+      <Router>
+        <NotificationBell />
+      </Router>,
+    );
+    const bell = screen.getByRole("button", { name: /الإشعارات/ });
+    bell.focus();
+    fireEvent.click(bell);
+
+    const panel = (await screen.findByRole("dialog", {
+      name: "الإشعارات",
+    })) as HTMLElement;
+    expect(panel).toHaveAttribute("aria-modal", "true");
+    // Focus moved INTO the dialog (the C3 contract — still pinned).
+    await waitFor(() => {
+      expect(panel).toHaveFocus();
+    });
+  });
+
+  it("closing via X returns focus to the bell button (not <body>)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => [unreadRow(1)] } as Response),
+    );
+    render(
+      <Router>
+        <NotificationBell />
+      </Router>,
+    );
+    const bell = screen.getByRole("button", { name: /الإشعارات/ });
+    bell.focus();
+    fireEvent.click(bell);
+
+    await screen.findByRole("dialog", { name: "الإشعارات" });
+    fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
+
+    // Panel unmounted → cleanup refocuses the invoker.
+    await waitFor(() => {
+      expect(bell).toHaveFocus();
+    });
+  });
+
+  it("Tab from the LAST focusable wraps to the FIRST (the trap — not the page behind)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [unreadRow(1), unreadRow(2)],
+      } as Response),
+    );
+    render(
+      <Router>
+        <NotificationBell />
+      </Router>,
+    );
+    const bell = screen.getByRole("button", { name: /الإشعارات/ });
+    fireEvent.click(bell);
+
+    const panel = (await screen.findByRole("dialog", {
+      name: "الإشعارات",
+    })) as HTMLElement;
+
+    // Focusables in the panel: [mark-all, close, row1 body, row1 action,
+    // row1 mark-read, row2 body, ...] — the last one is row 2's
+    // «تحديد كمقروء».
+    const lastMarkRead = screen.getAllByRole("button", { name: "تحديد كمقروء" }).pop()!;
+    lastMarkRead.focus();
+    expect(lastMarkRead).toHaveFocus();
+
+    // Tab from the last → must wrap to the FIRST focusable inside the
+    // panel (the mark-all button), never escape to the page behind
+    // (aria-modal promise — WCAG 2.1.2).
+    fireEvent.keyDown(panel, { key: "Tab" });
+
+    const markAll = await screen.findByRole("button", { name: "تحديد الكل كمقروء" });
+    expect(markAll).toHaveFocus();
+
+    // Shift+Tab from the first → wraps back to the last.
+    fireEvent.keyDown(panel, { key: "Tab", shiftKey: true });
+    await waitFor(() => {
+      expect(lastMarkRead).toHaveFocus();
+    });
   });
 });

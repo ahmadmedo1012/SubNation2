@@ -1168,6 +1168,10 @@ export function CopilotPanel() {
                           }
                         }}
                         rows={1}
+                        /* R133 (A4-F8): placeholder-only naming — the
+                           copilot chat field (one of the audit's 4 admin
+                           textareas). */
+                        aria-label="سؤال أو أمر لمساعد الذكاء الاصطناعي"
                         placeholder={
                           flags.phase2_enabled ? "اكتب سؤالاً أو أمراً للتعديل…" : "اكتب سؤالك…"
                         }

@@ -31,6 +31,38 @@ interface Notif {
 }
 
 /**
+ * R133 (A4-F7): the Tab half of the aria-modal promise — the third
+ * local copy of the trapTabKey idiom (admin/layout.tsx palette,
+ * Navbar drawer, now the bell panel), deliberately kept local per the
+ * Navbar.tsx:47 convention. role="dialog" now pairs with
+ * aria-modal="true", so Tab must cycle inside the panel instead of
+ * walking into the page behind it (WCAG 2.1.2).
+ */
+function trapTabKey(
+  container: HTMLElement,
+  e: { key: string; shiftKey: boolean; preventDefault(): void },
+): void {
+  if (e.key !== "Tab") return;
+  const focusables = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+  if (focusables.length === 0) return;
+  const current = document.activeElement as HTMLElement | null;
+  const idx = current ? focusables.indexOf(current) : -1;
+  e.preventDefault();
+  const next = e.shiftKey
+    ? idx <= 0
+      ? focusables.length - 1
+      : idx - 1
+    : idx === -1 || idx === focusables.length - 1
+      ? 0
+      : idx + 1;
+  focusables[next].focus();
+}
+
+/**
  * A9-2 (R126-L6): the history endpoint's hard cap — backend
  * routes/notifications.ts serves `.limit(40)` with no pagination params,
  * and this bell fetches it verbatim (no load-more). The footer count
@@ -494,9 +526,21 @@ function NotificationPanel({
   // whole page before reaching the dialog. Move focus INTO the panel on
   // mount so the dialog is immediately operable (role="dialog" already
   // set below); Escape still closes it via the outer key handler.
+  //
+  // R133 (A4-F7): the OTHER half of the dialog contract — the bell
+  // button (the invoker) is captured BEFORE focus moves in, and every
+  // close path (X, Escape, outside-click) unmounts the panel whose
+  // cleanup returns focus to the bell instead of dropping the keyboard
+  // user onto <body> (the admin shell palette idiom, layout.tsx
+  // returnFocusRef).
   const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
+    return () => {
+      returnFocusRef.current?.focus();
+    };
   }, []);
 
   return (
@@ -515,7 +559,14 @@ function NotificationPanel({
       className="bg-card border border-border/70 rounded-2xl shadow-sm overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 outline-none z-50"
       style={panelStyle}
       role="dialog"
+      /* R133 (A4-F7): aria-modal completes the role="dialog" contract
+         (the outside-click + Esc closes already behave modally); the
+         onKeyDown trap keeps Tab inside — see trapTabKey above. */
+      aria-modal="true"
       aria-label="الإشعارات"
+      onKeyDown={(e) => {
+        if (panelRef.current) trapTabKey(panelRef.current, e);
+      }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/20 shrink-0">

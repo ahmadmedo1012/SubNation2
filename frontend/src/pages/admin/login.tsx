@@ -239,13 +239,21 @@ export default function AdminLoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      className="pl-10 h-11"
+                      /* R133 (A4-F6): pl-12 (48px) reserves the reveal button's
+                         full 44px span — see the button below. */
+                      className="pl-12 h-11"
                       aria-describedby={error ? "admin-login-error" : undefined}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPass((v) => !v)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      /* R133 (A4-F6 — the R126-F6 straggler finally landed):
+                         the reveal was a 16×16 icon-only hit box — 28px
+                         under the WCAG 2.5.5 floor. The repo's 44px idiom
+                         (flex h-11 w-11 + touch-target — the
+                         AuthErrorBanner/app-dialog recipe) with the icon
+                         centered; pl-12 above reserves the span. */
+                      className="absolute left-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center touch-target text-muted-foreground hover:text-foreground transition-colors"
                       aria-label={showPass ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                     >
                       {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
