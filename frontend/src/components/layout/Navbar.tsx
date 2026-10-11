@@ -4,7 +4,18 @@ import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
 import { cn, formatCount, formatCurrency } from "@/lib/utils";
-import { Wallet, LogOut, Menu, X, Sun, Moon, User, ShoppingCart, ChevronLeft } from "lucide-react";
+import {
+  Wallet,
+  LogOut,
+  Menu,
+  X,
+  Sun,
+  Moon,
+  User,
+  ShoppingCart,
+  ChevronLeft,
+  ChevronDown,
+} from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Suspense } from "react";
@@ -70,6 +81,14 @@ export function Navbar() {
   const { itemCount } = useCart();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  // R132 (L2-F4): the desktop categories dropdown — the one desktop nav
+  // surface that had NO category entry point (the hero brand chips and
+  // the footer were the only paths to /category/* pages; mobile had the
+  // drawer's shortcuts since R120-B1). A disclosure popover over the
+  // same DRAWER_CATEGORIES data.
+  const [catMenuOpen, setCatMenuOpen] = useState(false);
+  const catMenuRef = useRef<HTMLDivElement>(null);
+  const catMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [scrolled, setScrolled] = useState(false);
   // R126 (A13-F2): the drawer panel + its toggle, wired by ref for the
   // dialog focus contract below (move-in on open, return on close).
@@ -86,6 +105,42 @@ export function Navbar() {
   useEffect(() => {
     setOpen(false);
   }, [location]);
+
+  // R132 (L2-F4): the categories dropdown closes on route change too —
+  // navigating via one of its links must not leave an open popover
+  // behind over the new page.
+  useEffect(() => {
+    setCatMenuOpen(false);
+  }, [location]);
+
+  // R132 (L2-F4): click/pointer-outside closes the dropdown (the
+  // wrapper contains the trigger + panel, so any target outside it is
+  // outside the disclosure). passive pointerdown — no preventDefault.
+  useEffect(() => {
+    if (!catMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (catMenuRef.current && !catMenuRef.current.contains(e.target as Node)) {
+        setCatMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, { passive: true });
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [catMenuOpen]);
+
+  // R132 (L2-F4): ESC closes the dropdown and returns focus to its
+  // trigger (the disclosure contract — same as the drawer's ESC above,
+  // minus the modal machinery since this popover is non-modal).
+  useEffect(() => {
+    if (!catMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setCatMenuOpen(false);
+        catMenuButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [catMenuOpen]);
 
   // R126 (A13-F2): ESC closes the drawer + Tab is trapped inside it
   // while it is open — the exact admin-console drawer contract (layout.tsx,
@@ -245,6 +300,58 @@ export function Navbar() {
             rotor needs them disambiguated. */}
         <nav aria-label="التنقل الرئيسي" className="hidden md:flex items-center gap-0.5">
           {navLink("/", "الكتالوج")}
+          {/* R132 (L2-F4): the desktop categories disclosure — the 7 live
+              category landing pages, previously reachable only via the
+              hero brand chips / footer / mobile drawer. Non-modal popover:
+              aria-expanded trigger + list of links, ESC/click-outside/
+              route-change close, aria-current on the active category. */}
+          <div ref={catMenuRef} className="relative">
+            <button
+              ref={catMenuButtonRef}
+              type="button"
+              aria-expanded={catMenuOpen}
+              aria-haspopup="true"
+              aria-controls="desktop-categories-menu"
+              onClick={() => setCatMenuOpen((v) => !v)}
+              className={`relative px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 flex items-center gap-1 ${
+                catMenuOpen || location.startsWith("/category/")
+                  ? "text-primary-text font-bold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+              }`}
+            >
+              الأقسام
+              <ChevronDown
+                className={`w-3 h-3 transition-transform duration-200 ${
+                  catMenuOpen ? "rotate-180" : ""
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+            {catMenuOpen && (
+              <div
+                id="desktop-categories-menu"
+                className="absolute top-full mt-2 start-0 z-50 min-w-[190px] bg-card border border-border/60 rounded-xl shadow-xl shadow-black/20 py-2 float-in"
+              >
+                {DRAWER_CATEGORIES.map((c) => {
+                  const active = location === `/category/${c.slug}`;
+                  return (
+                    <Link
+                      key={c.slug}
+                      href={`/category/${c.slug}`}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex items-center px-4 py-2.5 min-h-11 rounded-lg mx-1.5 text-sm font-semibold transition-colors ${
+                        active
+                          ? "text-primary-text bg-primary/8 font-bold"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                      }`}
+                    >
+                      {c.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           {token && (
             <>
               {navLink("/wallet", "المحفظة")}

@@ -431,8 +431,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                   ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
                   : name;
               })()}
-              width={400}
-              height={400}
+              // L4-F9 (R132): 450 = the measured intrinsic size of every
+              // live product asset (all 45 /products/*.webp are 450×450).
+              width={450}
+              height={450}
               // ── LCP optimization ─────────────────────────────────────
               // The homepage product grid is 2-cols on mobile, 2-3-4 on
               // tablet/desktop. The visible above-fold rows fit ~4 cards

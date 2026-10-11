@@ -1248,8 +1248,20 @@ export default function ProductPage() {
                     ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
                     : name;
                 })()}
-                width={800}
-                height={800}
+                // L4-F9 (R132, measured): the intrinsic source of every
+                // live product asset is 450×450 webp (verified against
+                // https://subnation.ly/products/*.webp — all 45). The
+                // old width/height={800} was a false preload hint: it
+                // told the scanner to expect a larger resource than
+                // exists while the RENDERED box (object-contain inside
+                // the 16:9 media area, ~250-500 CSS px depending on
+                // viewport, ≤1.4 device-px upscale at DPR 2) sits close
+                // to the source. Honest intrinsic dimensions keep the
+                // aspect-ratio math truthful without regenerating
+                // artwork (no bigger sources exist; upscaling adds
+                // weight, not detail).
+                width={450}
+                height={450}
                 fetchPriority="high"
                 decoding="async"
                 className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
