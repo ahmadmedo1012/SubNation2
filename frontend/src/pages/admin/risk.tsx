@@ -238,7 +238,50 @@ export default function AdminRiskPage() {
           </Button>
         </header>
 
-        {/* Dashboard stats */}
+        {/* Dashboard stats — R133 (A3-F2): the tiles had no loading/error/
+            stale branch. A first-load failure dropped the whole panel
+            (including the RISK_PIPELINE_ENABLED verdict tile) while the
+            events list 100px below shipped the full triad, and a refresh
+            failure kept stale critical/high counts with no cue. Mirrors
+            the events triad below: skeleton → error card → stale banner. */}
+        {dashboard.isPending && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="border border-border/40 rounded-xl p-3 bg-card/60">
+                <div className="h-3 w-20 rounded-md skeleton-shimmer" />
+                <div className="h-6 w-12 rounded-md skeleton-shimmer mt-1.5" />
+              </div>
+            ))}
+          </div>
+        )}
+        {dashboard.isError && !dashboard.data && (
+          <FetchErrorCard
+            size="page"
+            retryIcon={RefreshCw}
+            title="تعذّر تحميل لوحة المؤشرات"
+            description={`${getErrorMessage(dashboard.error)} — تحقّق من شبكتك ثم أعد المحاولة`}
+            onRetry={() => void dashboard.refetch()}
+          />
+        )}
+        {/* A refresh of already-rendered tiles failed — keep the stale
+            numbers, surface the failure inline (the events stale-banner
+            idiom; warning ink because "stale" is a caution, not an error). */}
+        {dashboard.isError && dashboard.data && (
+          <div
+            role="alert"
+            className="p-3 rounded-xl bg-status-warning/10 border border-status-warning/30 text-status-warning text-xs font-bold flex items-center gap-2"
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">تعذّر تحديث المؤشرات — الأرقام المعروضة قديمة</span>
+            <button
+              type="button"
+              onClick={() => void dashboard.refetch()}
+              className="ms-auto underline underline-offset-2 hover:opacity-80"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
         {dashboard.data && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <DashCard

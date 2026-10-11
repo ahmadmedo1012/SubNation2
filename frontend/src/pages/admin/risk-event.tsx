@@ -13,7 +13,11 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // line shows the sentinel's Arabic message (truthful) instead of a raw
 // `HTTP 401`, and adminFetchJson owns the ok-guard + safe parse.
 import { adminFetchJson } from "@/lib/admin-session";
+import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/admin/EmptyState";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 // 93-C7 / C-UX2 (A12 B4): risk-event level + label pills migrate from
 // raw emerald/yellow/amber/red hues to the canonical StatusBadge on the
 // --status-* tokens. Label tones mirror STATUS_TONE (confirmed_fraud →
@@ -25,6 +29,7 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  RefreshCw,
   ShieldAlert,
   ShieldCheck,
   XCircle,
@@ -89,12 +94,19 @@ export default function AdminRiskEventPage() {
   const headersJson = useAdminHeaders({ json: true });
   const qc = useQueryClient();
   const [notes, setNotes] = useState("");
+  // R133 (A3-F5): the backend risk family is users-scoped (the list
+  // page already gates on it — risk.tsx canViewRisk); this deep link
+  // used to mount + fire the detail query for ANY authenticated admin
+  // and land on the generic «فشل تحميل الحدث» banner. The honest-reason
+  // card + a fetch-free mount close the R126-A3-8 straggler.
+  const { adminToken, hasAdminPermission } = useAuth();
+  const canViewRisk = hasAdminPermission("users");
 
   const query = useQuery<RiskEventDetail>({
     queryKey: ["admin-risk-event", id],
     queryFn: async () =>
       adminFetchJson<RiskEventDetail>(`/api/admin/risk/events/${id}`, { headers }),
-    enabled: !!id,
+    enabled: !!id && !!adminToken && canViewRisk,
   });
 
   const labelMut = useMutation({
@@ -128,14 +140,45 @@ export default function AdminRiskEventPage() {
     },
   });
 
-  if (query.isLoading) {
+  // R133 (A3-F5): the honest-reason gate — AFTER every hook (the
+  // query's enabled gate above keeps a scope-less mount fetch-free),
+  // BEFORE the loading/error returns (the risk.tsx idiom).
+  if (!canViewRisk) {
     return (
       <AdminLayout>
-        <div className="text-sm text-muted-foreground py-12 text-center">جارٍ التحميل…</div>
+        <p className="text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
+          تحقيقات المخاطر تتطلب صلاحية المستخدمين — تواصل مع مسؤول النظام
+        </p>
       </AdminLayout>
     );
   }
+
+  // R133 (A3-F5): the bare «جارٍ التحميل…» text becomes the page-shaped
+  // skeleton (the risk.tsx dashboard idiom) — the detail page is a
+  // 4-tile header + sections, and the skeleton mirrors it.
+  if (query.isPending) {
+    return (
+      <AdminLayout>
+        <div className="space-y-4 max-w-4xl" aria-hidden="true">
+          <div className="h-4 w-44 rounded-md skeleton-shimmer" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-16 rounded-xl skeleton-shimmer" />
+            ))}
+          </div>
+          <div className="h-36 rounded-2xl skeleton-shimmer" />
+          <div className="h-24 rounded-2xl skeleton-shimmer" />
+        </div>
+      </AdminLayout>
+    );
+  }
+  // R133 (A3-F5): the dead-end «فشل تحميل الحدث» banner becomes the
+  // 404-vs-outage fork — a missing/deleted event is NOT a network
+  // failure (no retry lies that one might work), and an outage is not
+  // a 404 (the retry card + refetch honesty). The status rides on the
+  // thrown error since R133 (admin-session adminFetchJson).
   if (query.isError || !query.data) {
+    const status = (query.error as (Error & { status?: number }) | null)?.status;
     return (
       <AdminLayout>
         <div className="space-y-3">
@@ -145,9 +188,21 @@ export default function AdminRiskEventPage() {
           >
             <ArrowRight className="w-3 h-3" /> رجوع لقائمة الأحداث
           </Link>
-          <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
-            <AlertTriangle className="w-4 h-4" /> فشل تحميل الحدث
-          </div>
+          {status === 404 ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title="الحدث غير موجود"
+              description="ربما حُذف السجل أو أن الرابط غير صحيح — عد إلى القائمة واختر حدثاً آخر."
+            />
+          ) : (
+            <FetchErrorCard
+              size="page"
+              retryIcon={RefreshCw}
+              title="تعذّر تحميل الحدث"
+              description={`${getErrorMessage(query.error)} — تحقّق من شبكتك ثم أعد المحاولة`}
+              onRetry={() => void query.refetch()}
+            />
+          )}
         </div>
       </AdminLayout>
     );
@@ -266,6 +321,10 @@ export default function AdminRiskEventPage() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
+              /* R133 (A4-F8): the notes field rode placeholder-only naming
+                 — a textarea needs an accessible name even when it has no
+                 visible label (the enrichment.tsx edit-draft twin). */
+              aria-label="ملاحظات التصنيف (اختيارية)"
               placeholder="ملاحظات اختيارية (1000 حرف كحد أقصى)"
               className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
             />

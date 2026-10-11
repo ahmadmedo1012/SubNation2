@@ -235,9 +235,15 @@ export async function adminFetchJson<T>(
       error?: string;
       code?: string;
     } | null;
-    throw new Error(
+    // R133 (A3-F5): the HTTP status rides on the thrown error so pages
+    // can branch "not found" from "outage" (the 404-vs-outage contract)
+    // without string-matching Arabic messages. Additive — every
+    // existing consumer reads .message only.
+    const err = new Error(
       getErrorMessage(body) || opts.fallbackError || `فشلت العملية (HTTP ${res.status})`,
-    );
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   return (await res.json()) as T;
 }

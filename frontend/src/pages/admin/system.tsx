@@ -1,4 +1,5 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { useChartColors } from "@/lib/chart-theme";
@@ -23,6 +24,7 @@ import {
   Layers,
   MemoryStick,
   Radio,
+  RefreshCw,
   Server,
   ShieldCheck,
   TimerReset,
@@ -433,7 +435,14 @@ function DetailsSection({
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function AdminSystemPage(): ReactElement | null {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R133 (A3-F4, the system half): the six queries below hit
+  // settings-scoped endpoints (/healthz/ready + the /admin/diagnostics
+  // + /admin/observability family — health.ts:820 + the admin mounts),
+  // but mounted for ANY authenticated admin: a scope-less deep-linker
+  // ate a synchronized 403 burst every poll cycle. The risk.tsx:107
+  // idiom — gate the queries AND render the honest reason.
+  const canViewSystem = hasAdminPermission("settings");
   const [, navigate] = useLocation();
   const headers = useAdminHeaders();
   // R115-A6 #7: sparklines / rps chart / tooltip ride the theme tokens
@@ -463,18 +472,31 @@ export default function AdminSystemPage(): ReactElement | null {
 
   // /api/healthz/ready is now admin-gated. Build an admin-aware fetcher
   // wrapping the shared robust pattern from lib/healthz.
+  // R133 (A3-F4): the old catch-all mapped EVERY failure — 401/403
+  // included — onto `{status:"degraded"}`, so an authorization outcome
+  // rendered as an infrastructure verdict (an amber «أداء متدنٍ» pill
+  // during a pure scope rejection). Failures now land in the query
+  // error state and the section renders its FetchErrorCard; 503 stays
+  // parsed — it IS the health verdict (a degraded aggregate with a
+  // real JSON body).
   async function fetchAdminHealthReady(): Promise<HealthzReadyResponse> {
+    let res: Response;
     try {
-      const res = await fetch("/api/healthz/ready", { headers });
-      if (!res.ok && res.status !== 503) {
-        // 401/403 here means token expired — treat as degraded silently.
-        return { status: "degraded", checks: {}, version: "unknown", uptimeSec: 0 };
-      }
-      const body = await res.json();
-      return body as HealthzReadyResponse;
+      res = await fetch("/api/healthz/ready", { headers });
     } catch {
-      return { status: "degraded", checks: {}, version: "unknown", uptimeSec: 0 };
+      throw new Error("HEALTHZ_READY_NETWORK");
     }
+    if (isAdminUnauthorized(res, "/api/healthz/ready")) {
+      // Handled globally (toast + redirect); the query error state
+      // below just keeps the panel out of "live" rendering.
+      throw new Error("SESSION_EXPIRED");
+    }
+    if (!res.ok && res.status !== 503) {
+      // 403 (scope loss mid-session) / 404 / 5xx — an honest error, not
+      // a fabricated degraded verdict.
+      throw new Error(`HEALTHZ_READY_HTTP_${res.status}`);
+    }
+    return (await res.json()) as HealthzReadyResponse;
   }
 
   // Existing queries (unchanged) ───────────────────────────────────────────
@@ -488,7 +510,8 @@ export default function AdminSystemPage(): ReactElement | null {
     refetchIntervalInBackground: false,
     staleTime: 30_000,
     retry: false,
-    enabled: !!adminToken,
+    // R133 (A3-F4): settings scope gates this query too.
+    enabled: !!adminToken && canViewSystem,
   });
 
   const diagQ = useQuery<DiagnosticsResponse>({
@@ -498,7 +521,8 @@ export default function AdminSystemPage(): ReactElement | null {
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     staleTime: 30_000,
-    enabled: !!adminToken,
+    // R133 (A3-F4): settings scope gates this query too.
+    enabled: !!adminToken && canViewSystem,
   });
 
   const summaryQ = useQuery<ObservabilitySummary>({
@@ -509,7 +533,8 @@ export default function AdminSystemPage(): ReactElement | null {
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     staleTime: 30_000,
-    enabled: !!adminToken,
+    // R133 (A3-F4): settings scope gates this query too.
+    enabled: !!adminToken && canViewSystem,
   });
 
   const recentAlertsQ = useQuery<{ alerts: RecentAlert[]; stale: boolean }>({
@@ -527,7 +552,8 @@ export default function AdminSystemPage(): ReactElement | null {
     refetchInterval: 90_000,
     refetchIntervalInBackground: false,
     staleTime: 45_000,
-    enabled: !!adminToken,
+    // R133 (A3-F4): settings scope gates this query too.
+    enabled: !!adminToken && canViewSystem,
   });
 
   // New queries ────────────────────────────────────────────────────────────
@@ -554,7 +580,8 @@ export default function AdminSystemPage(): ReactElement | null {
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
     staleTime: 7_000,
-    enabled: !!adminToken,
+    // R133 (A3-F4): settings scope gates this query too.
+    enabled: !!adminToken && canViewSystem,
   });
 
   const schedulerQ = useQuery<SchedulerResponse>({
@@ -565,7 +592,8 @@ export default function AdminSystemPage(): ReactElement | null {
     refetchInterval: 90_000,
     refetchIntervalInBackground: false,
     staleTime: 45_000,
-    enabled: !!adminToken,
+    // R133 (A3-F4): settings scope gates this query too.
+    enabled: !!adminToken && canViewSystem,
   });
 
   // Rolling buffer ─────────────────────────────────────────────────────────
@@ -602,6 +630,21 @@ export default function AdminSystemPage(): ReactElement | null {
   }, [adminToken, navigate]);
 
   if (!adminToken) return null;
+
+  // R133 (A3-F4): the deep-link honest-reason card (the risk.tsx
+  // canViewRisk idiom) — the nav already hides «حالة النظام» for
+  // scope-less admins (layout.tsx NAV_SECTIONS), but a URL used to
+  // mount the page and fire the 403 burst. Sits AFTER every hook
+  // (the queries' enabled gates keep a scope-less mount fetch-free).
+  if (!canViewSystem) {
+    return (
+      <AdminLayout>
+        <p className="text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
+          مركز المراقبة يتطلب صلاحية الإعدادات — تواصل مع مسؤول النظام
+        </p>
+      </AdminLayout>
+    );
+  }
 
   const handleRefresh = () => {
     healthQ.refetch();
@@ -760,7 +803,21 @@ export default function AdminSystemPage(): ReactElement | null {
             <span className="text-3xs text-muted-foreground">تحديث تلقائي</span>
           </div>
 
-          {healthQ.isLoading || !health ? (
+          {healthQ.isError ? (
+            // R133 (A3-F4): an unreachable /healthz/ready is an ERROR —
+            // the old silent "degraded" fallback fabricated an
+            // infrastructure verdict out of an authorization outcome or
+            // an outage (the amber pill + amber tiles looked like real
+            // readings). The FetchErrorCard is the family's honest
+            // shape; the 60 s poll keeps retrying behind it.
+            <FetchErrorCard
+              size="section"
+              retryIcon={RefreshCw}
+              title="تعذّر جلب حالة الصحة"
+              description="تعذّر الوصول إلى فحوص الجهوزية — تحقّق من الاتصال بالخادم ثم أعد المحاولة"
+              onRetry={() => void healthQ.refetch()}
+            />
+          ) : healthQ.isLoading || !health ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
               {Array.from({ length: 7 }).map((_, i) => (
                 <div key={i} className="h-[56px] rounded-xl skeleton-shimmer" />

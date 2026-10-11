@@ -1,0 +1,208 @@
+/**
+ * R133 (A3-F4) — System page settings-scope gate + honest healthz failure.
+ *
+ * The page's six queries hit settings-scoped endpoints but mounted for ANY
+ * authenticated admin: a scope-less deep-linker ate a synchronized 403
+ * burst every poll cycle, and healthQ's catch-all mapped every failure —
+ * 401/403 included — onto `{status:"degraded"}`, so an authorization
+ * outcome rendered as an infrastructure verdict (the amber «أداء متدنٍ»
+ * pill + amber tiles that looked like real readings).
+ *
+ * Pins:
+ *   1. A settings-scope-less admin sees the honest-reason banner and
+ *      fires NOTHING (no fetch, no customFetch).
+ *   2. /healthz/ready answering 403 renders the FetchErrorCard — the
+ *      fabricated «أداء متدنٍ» verdict is gone.
+ *   3. The error card's retry refetches (recovery is one click away).
+ */
+
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Router } from "wouter";
+import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { type ReactNode } from "react";
+import AdminSystemPage from "@/pages/admin/system";
+import { customFetch } from "@workspace/api-client-react";
+
+const authState: Record<string, boolean> = {};
+vi.mock("@/lib/auth", () => ({
+  useAuth: () => ({
+    adminToken: "test-admin-token",
+    hasAdminPermission: (scope: string) => authState[scope] !== false,
+  }),
+}));
+
+vi.mock("@workspace/api-client-react", () => ({
+  customFetch: vi.fn(),
+}));
+
+vi.mock("@/hooks/use-admin-headers", () => ({
+  useAdminHeaders: () => ({ Authorization: "Bearer test-admin-token" }),
+}));
+
+vi.mock("@/pages/admin/layout", () => ({
+  AdminLayout: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+}));
+
+function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
+  const { ok = true, status = 200, body = {} } = over;
+  return {
+    ok,
+    status,
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}
+
+const DIAG_PAYLOAD = {
+  node: { version: "v22", platform: "linux", arch: "arm64", pid: 1 },
+  runtime: { uptimeSec: 10, version: "testsha", env: "test", service: "web" },
+  memory: { rssMb: 1, heapUsedMb: 1, heapTotalMb: 2, externalMb: 0 },
+  cpu: { userMs: 1, systemMs: 1 },
+  eventLoop: null,
+  deps: { redis: { connected: false }, socket: { initialized: false } },
+  flags: {},
+};
+
+const SUMMARY_PAYLOAD = {
+  server: { version: "testsha", uptimeSec: 10, nodeVersion: "v22" },
+  redis: { available: false },
+  worker: { heartbeat: null },
+  alerts: { lastKnownGoodAt: null, stale: false, recentCount: 0 },
+  dashboards: { render: null, sentry: null, neon: null },
+};
+
+const SCHEDULER_OK = {
+  mode: "single",
+  active: true,
+  isLeader: true,
+  instanceId: "single-instance-1",
+  reason: "active",
+  startedAt: "2026-09-22T00:00:00.000Z",
+  heartbeat: { ageSec: null, ts: null, healthy: false, expected: false },
+  description: "الجدولة أحادية الخادم نشطة.",
+};
+
+const fetchMock = vi.fn();
+
+function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminSystemPage />
+      </Router>
+    </QueryClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubGlobal("fetch", fetchMock);
+  (customFetch as unknown as Mock).mockImplementation((url: string) => {
+    if (url === "/api/admin/diagnostics") return Promise.resolve(DIAG_PAYLOAD);
+    if (url === "/api/admin/observability/summary") return Promise.resolve(SUMMARY_PAYLOAD);
+    return Promise.resolve({});
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  for (const k of Object.keys(authState)) delete authState[k];
+});
+
+describe("AdminSystemPage — settings-scope gate + honest healthz failure (A3-F4, R133)", () => {
+  it("a settings-scope-less admin sees the honest-reason banner and fires NOTHING", async () => {
+    authState.settings = false;
+
+    renderPage();
+
+    expect(
+      await screen.findByText("مركز المراقبة يتطلب صلاحية الإعدادات — تواصل مع مسؤول النظام"),
+    ).toBeInTheDocument();
+    // The 403 burst is dead by construction — no query even started.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(customFetch).not.toHaveBeenCalled();
+  });
+
+  it("a 403 from /healthz/ready renders the honest error card — the fabricated «أداء متدنٍ» verdict is gone", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/healthz/ready") {
+        return Promise.resolve(resLike({ ok: false, status: 403, body: { error: "forbidden" } }));
+      }
+      if (url === "/api/admin/observability/scheduler") {
+        return Promise.resolve(resLike({ body: SCHEDULER_OK }));
+      }
+      if (url === "/api/admin/observability/alerts/recent") {
+        return Promise.resolve(resLike({ body: { alerts: [], stale: false } }));
+      }
+      return Promise.resolve(resLike({ ok: false, status: 500, body: {} }));
+    });
+
+    renderPage();
+
+    // The honest error card (NOT the silent degraded fallback). Scoped
+    // to the health section — the system page renders OTHER error
+    // fallbacks with their own retry buttons when their endpoints fail
+    // (the metrics 500 here); the assertion is about THIS section.
+    const section = (await screen.findByText("نظرة سريعة على الصحة")).closest("section");
+    expect(section).not.toBeNull();
+    // findBy — the query's rejection lands asynchronously after the
+    // section header paints.
+    expect(
+      await within(section as HTMLElement).findByText("تعذّر جلب حالة الصحة"),
+    ).toBeInTheDocument();
+    expect(
+      within(section as HTMLElement).getByRole("button", { name: "إعادة المحاولة" }),
+    ).toBeInTheDocument();
+    // The old fabricated infrastructure verdict must NOT render — an
+    // authorization outcome is not a health reading.
+    expect(screen.queryByText("أداء متدنٍ")).not.toBeInTheDocument();
+  });
+
+  it("the error card's retry refetches /healthz/ready and recovers when the API answers", async () => {
+    let readyCalls = 0;
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/healthz/ready") {
+        readyCalls += 1;
+        // 500 — a server error (NOT 503, which is the real degraded
+        // health verdict and stays parsed by design).
+        if (readyCalls === 1) {
+          return Promise.resolve(resLike({ ok: false, status: 500, body: { error: "boom" } }));
+        }
+        return Promise.resolve(
+          resLike({ body: { status: "ok", checks: {}, version: "testsha", uptimeSec: 5 } }),
+        );
+      }
+      if (url === "/api/admin/observability/scheduler") {
+        return Promise.resolve(resLike({ body: SCHEDULER_OK }));
+      }
+      if (url === "/api/admin/observability/alerts/recent") {
+        return Promise.resolve(resLike({ body: { alerts: [], stale: false } }));
+      }
+      return Promise.resolve(resLike({ ok: false, status: 500, body: {} }));
+    });
+
+    renderPage();
+
+    // Scoped to the health section — the metrics 500 renders its own
+    // retry elsewhere on the page; this test is the health card's.
+    const section = (await screen.findByText("نظرة سريعة على الصحة")).closest("section");
+    expect(section).not.toBeNull();
+    const retry = await within(section as HTMLElement).findByRole("button", {
+      name: "إعادة المحاولة",
+    });
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(readyCalls).toBeGreaterThanOrEqual(2);
+    });
+    // Recovered: the error card is gone and the health section renders
+    // the real tiles (the aggregate pill with the ok verdict).
+    await waitFor(() => {
+      expect(screen.queryByText("تعذّر جلب حالة الصحة")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("النظام يعمل")).toBeInTheDocument();
+    });
+  });
+});

@@ -114,7 +114,11 @@ describe("AdminRiskPage — an error is an error, never a false empty queue (A3-
     });
     // Crucially NOT "no fraud events" — an outage is not an empty risk queue.
     expect(screen.queryByText("لا توجد أحداث في النطاق المحدد")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+    // R133 (A3-F2): with the whole network down, the dashboard's OWN
+    // error card renders too — both surfaces are honest now, so a bare
+    // getByRole would find TWO retry buttons.
+    expect(screen.getByText("تعذّر تحميل لوحة المؤشرات")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "إعادة المحاولة" }).length).toBeGreaterThan(0);
   });
 
   it("retry re-fetches and recovers the events once the API responds", async () => {
@@ -180,5 +184,71 @@ describe("AdminRiskPage — an error is an error, never a false empty queue (A3-
     expect(screen.getByRole("link", { name: "فتح تحقيق الحدث رقم 1" })).toBeInTheDocument();
     // And the banner's own retry (A3-2: the old banner had no action).
     expect(screen.getAllByRole("button", { name: "إعادة المحاولة" }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("AdminRiskPage — dashboard tiles triad (A3-F2, R133)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    for (const k of Object.keys(authState)) delete authState[k];
+  });
+
+  it("a failed first dashboard load renders the error card with retry — the tiles never silently vanish while the events list renders", async () => {
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("/risk/dashboard")) throw new Error("network down");
+      return resLike({ body: { events: [EVENT(1)], next_cursor: null } });
+    });
+
+    renderPage();
+
+    // The events list succeeds (its rows render)…
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "فتح تحقيق الحدث رقم 1" })).toBeInTheDocument();
+    });
+    // …while the dashboard's OWN failure surfaces as its error card…
+    await waitFor(() => {
+      expect(screen.getByText("تعذّر تحميل لوحة المؤشرات")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+    // …and the pipeline verdict tile (RISK_PIPELINE_ENABLED) is NOT
+    // fabricated from nothing.
+    expect(screen.queryByText("خط الأنابيب مفعَّل")).not.toBeInTheDocument();
+    expect(screen.queryByText(/معطَّل \(RISK_PIPELINE_ENABLED/)).not.toBeInTheDocument();
+  });
+
+  it("a failed dashboard refresh keeps the rendered tiles + surfaces the stale banner", async () => {
+    let dashboardCalls = 0;
+    fetchMock.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("/risk/dashboard")) {
+        dashboardCalls += 1;
+        if (dashboardCalls === 1) return resLike({ body: DASHBOARD });
+        throw new Error("network down");
+      }
+      return resLike({ body: { events: [EVENT(1)], next_cursor: null } });
+    });
+
+    renderPage();
+
+    // First load lands — the tiles render (the pipeline hint is the
+    // dashboard tile's own copy).
+    await waitFor(() => {
+      expect(screen.getByText("خط الأنابيب مفعَّل")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "تحديث" }));
+
+    // The refresh fails: the tiles stay + the stale banner appears
+    // (the old code kept the stale counts with NO cue).
+    await waitFor(() => {
+      expect(screen.getByText("تعذّر تحديث المؤشرات — الأرقام المعروضة قديمة")).toBeInTheDocument();
+    });
+    expect(screen.getByText("خط الأنابيب مفعَّل")).toBeInTheDocument();
+    expect(screen.getByText("إجمالي 24 ساعة")).toBeInTheDocument();
   });
 });

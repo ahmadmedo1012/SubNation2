@@ -37,7 +37,13 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  // R133 (A3-F4): the page now gates on hasAdminPermission("settings") —
+  // the scheduler suite runs as a settings-scoped admin (the harness's
+  // original adminToken-only mock predates the gate).
+  useAuth: () => ({
+    adminToken: "test-admin-token",
+    hasAdminPermission: () => true,
+  }),
 }));
 
 vi.mock("@/hooks/use-admin-headers", () => ({
