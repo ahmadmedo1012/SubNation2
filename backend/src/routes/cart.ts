@@ -123,7 +123,17 @@ router.get("/", requireUser, async (req, res) => {
     db
       .select()
       .from(productVariantsTable)
-      .where(inArray(productVariantsTable.productId, productIds)),
+      // R133 (A7-F2): active-only pool — POST requires isActive for NEW
+      // adds, but this pool used to hand DEACTIVATED variants to the
+      // pricer, so a line whose variant was retired kept quoting a
+      // price the platform would refuse at checkout. Retired-variant
+      // lines now fall back to the product-level price (PATCH parity).
+      .where(
+        and(
+          inArray(productVariantsTable.productId, productIds),
+          eq(productVariantsTable.isActive, true),
+        ),
+      ),
   ]);
   const productById = new Map(products.map((p) => [p.id, p]));
   const variantById = new Map(variants.map((v) => [v.id, v]));
@@ -296,7 +306,36 @@ router.patch("/items/:id", requireUser, async (req, res) => {
     .where(eq(productsTable.id, item.productId))
     .limit(1);
 
-  const response = await buildCartItemResponse(item, product, await getFlashSaleStageCached());
+  // R133 (A7-F2): the line's variant is loaded on the PATCH path too —
+  // GET priced variant lines off the variant while PATCH re-priced the
+  // SAME line off productsTable.price (the two routes disagreed about
+  // one row; display-only since checkout re-quotes server-side and
+  // VARIANT_NOT_FOUND fails closed, but this is an authenticated public
+  // contract). Mirrors GET exactly: variant-scoped price when the line
+  // carries an ACTIVE variant, product-level fallback otherwise (the
+  // isActive filter matches the GET pool + the POST add contract).
+  let variant: typeof productVariantsTable.$inferSelect | undefined;
+  if (item.variantId != null) {
+    const [v] = await db
+      .select()
+      .from(productVariantsTable)
+      .where(
+        and(
+          eq(productVariantsTable.id, item.variantId),
+          eq(productVariantsTable.productId, item.productId),
+          eq(productVariantsTable.isActive, true),
+        ),
+      )
+      .limit(1);
+    variant = v;
+  }
+
+  const response = await buildCartItemResponse(
+    item,
+    product,
+    await getFlashSaleStageCached(),
+    variant,
+  );
   return res.json(response);
 });
 

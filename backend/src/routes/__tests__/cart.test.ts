@@ -6,10 +6,12 @@ import {
   initTestDb,
   resetTestDb,
   cartItemsTable,
+  productVariantsTable,
   productsTable,
   usersTable,
 } from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
+import { eq } from "drizzle-orm";
 import { cartRouter } from "../cart";
 
 /**
@@ -266,6 +268,111 @@ describe("GET /api/cart — populated", () => {
     });
     const resB = await call<{ items: unknown[] }>(app, "GET", "/api/cart", { token: tokenB });
     expect(resB.body.items).toEqual([]);
+  });
+});
+
+// ── R133 (A7-F2): variant-pricing parity between GET and PATCH ──────────
+// PATCH used to omit the line's variant → re-priced variant lines off
+// productsTable.price while GET priced the SAME line off the variant;
+// GET's pool also loaded DEACTIVATED variants. Parity now: the ACTIVE
+// variant's price when the line carries one, product-level fallback
+// otherwise — on BOTH routes.
+
+describe("cart variant pricing — GET/PATCH parity (A7-F2, R133)", () => {
+  async function seedVariant(
+    productId: number,
+    over: Partial<{ priceLyd: string; planLabel: string; isActive: boolean }> = {},
+  ) {
+    const [v] = await db
+      .insert(productVariantsTable)
+      .values({
+        productId,
+        costPrice: "5.00",
+        priceLyd: over.priceLyd ?? "18.00",
+        planLabel: over.planLabel ?? "Family",
+        durationLabel: "1 Month",
+        isActive: over.isActive ?? true,
+      })
+      .returning();
+    return v;
+  }
+
+  it("PATCH prices a variant line off the VARIANT (18×3=54), not the product price (30×3=90)", async () => {
+    const token = signUserToken({ userId: userA.id });
+    const variant = await seedVariant(product1.id, { priceLyd: "18.00" });
+
+    const created = await call<{ id: number; price: number; subtotal: number }>(
+      app,
+      "POST",
+      "/api/cart/items",
+      { token, body: { product_id: product1.id, variant_id: variant.id, quantity: 1 } },
+    );
+    expect(created.status).toBe(201);
+    expect(created.body.price).toBe(18);
+
+    const res = await call<{ price: number; subtotal: number; quantity: number }>(
+      app,
+      "PATCH",
+      `/api/cart/items/${created.body.id}`,
+      { token, body: { quantity: 3 } },
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.quantity).toBe(3);
+    // The OLD PATCH priced this 30×3=90 (productsTable.price fallback).
+    expect(res.body.price).toBe(18);
+    expect(res.body.subtotal).toBe(54);
+  });
+
+  it("GET falls back to the product price when the line's variant was deactivated", async () => {
+    const token = signUserToken({ userId: userA.id });
+    const variant = await seedVariant(product1.id, { priceLyd: "18.00" });
+    await call(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: product1.id, variant_id: variant.id, quantity: 1 },
+    });
+
+    // The variant retires after the line was added.
+    await db
+      .update(productVariantsTable)
+      .set({ isActive: false })
+      .where(eq(productVariantsTable.id, variant.id));
+
+    const res = await call<{ items: { price: number; product_id: number }[] }>(
+      app,
+      "GET",
+      "/api/cart",
+      { token },
+    );
+    expect(res.status).toBe(200);
+    const line = res.body.items.find((i) => i.product_id === product1.id)!;
+    // Product-level fallback (30) — NOT the retired variant's 18: the
+    // old pool quoted a price the platform would refuse at checkout.
+    expect(line.price).toBe(30);
+  });
+
+  it("PATCH falls back to the product price identically when the variant was deactivated", async () => {
+    const token = signUserToken({ userId: userA.id });
+    const variant = await seedVariant(product1.id, { priceLyd: "18.00" });
+    const created = await call<{ id: number }>(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: product1.id, variant_id: variant.id, quantity: 1 },
+    });
+
+    await db
+      .update(productVariantsTable)
+      .set({ isActive: false })
+      .where(eq(productVariantsTable.id, variant.id));
+
+    const res = await call<{ price: number; subtotal: number }>(
+      app,
+      "PATCH",
+      `/api/cart/items/${created.body.id}`,
+      { token, body: { quantity: 2 } },
+    );
+    expect(res.status).toBe(200);
+    // Same fallback as GET (30) — the two routes agree on one row.
+    expect(res.body.price).toBe(30);
+    expect(res.body.subtotal).toBe(60);
   });
 });
 
