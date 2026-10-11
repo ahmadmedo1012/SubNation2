@@ -32,7 +32,7 @@ export const adminAlertsTable = pgTable(
     // fine on the same btree. DESC mirrors the dominant ORDER BY. Boot
     // twin: migrate.ts must CREATE INDEX IF NOT EXISTS this name for the
     // live DB (V1-M24-class stage — see the R118-B3 report).
-    createdIdx: index("idx_admin_alerts_created").on(t.createdAt.desc()),
+    createdIdx: index("idx_admin_alerts_created").on(sql`created_at DESC`),
     // R127-L3 (B8 G2): the unread-badge family — countUnreadAlerts
     // (alertLogger.ts, polled by /admin/alerts/unread-count),
     // markStaleUnreadAlertsRead (unread > 14d) and the /new drawer's
@@ -42,7 +42,7 @@ export const adminAlertsTable = pgTable(
     // DESC to mirror the drawer's ORDER BY. Boot twin: migrate.ts
     // applyRetentionPruneIndexesStage (V1-M31); drizzle mirror: 0020.
     unreadIdx: index("idx_admin_alerts_unread")
-      .on(t.createdAt.desc())
+      .on(sql`created_at DESC`)
       .where(sql`is_read = false`),
   }),
 );

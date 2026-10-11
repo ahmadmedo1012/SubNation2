@@ -8,6 +8,7 @@ import {
   timestamp,
   integer,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const authActivityTable = pgTable(
   "auth_activity",
@@ -31,6 +32,6 @@ export const authActivityTable = pgTable(
     identifierIdx: index("idx_auth_activity_identifier").on(table.identifier),
     actionIdx: index("idx_auth_activity_action").on(table.action),
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
-    createdIdx: index("idx_auth_activity_created").on(table.createdAt.desc()),
+    createdIdx: index("idx_auth_activity_created").on(sql`created_at DESC`),
   }),
 );

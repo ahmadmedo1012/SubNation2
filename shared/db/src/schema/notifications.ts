@@ -8,6 +8,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 
 export const notificationsTable = pgTable(
@@ -36,7 +37,7 @@ export const notificationsTable = pgTable(
     // → the boot twin is the V1-M17-style probe-gated swap in migrate.ts
     // (drop the is_read shape once, create the new shape; steady-state
     // boots send no DDL). Drizzle mirror: 0017.
-    userReadIdx: index("idx_notifications_user").on(t.userId, t.createdAt.desc()),
+    userReadIdx: index("idx_notifications_user").on(t.userId, sql`created_at DESC`),
     // R127-L3 (B7 P2-1 / B8 G3): notifications-retention's
     // `(is_read AND created_at < d90) OR (NOT is_read AND created_at < d180)`
     // (jobs/notifications-retention.ts) — idx_notifications_user leads

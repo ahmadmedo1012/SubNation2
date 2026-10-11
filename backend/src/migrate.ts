@@ -2299,6 +2299,39 @@ export async function applyIdempotencyBodyHashStage(
   }
 }
 
+// ── V1-M33 (R134, A8-F2): drop the zero-consumer wallet_ledger.type ───────
+// index — pure write amplification on the money INSERT table.
+//
+// R130's consumer analysis (grep = 0 — no query touches
+// wallet_ledger.type as a predicate; wallet.ts:209 reads e.type as a
+// display label only) re-verified at R134: still zero consumers.
+// idx_wallet_ledger_type taxed EVERY money ledger INSERT (topups,
+// refunds, adjustments, loyalty, checkout) for an index nothing ever
+// read. The drizzle declaration (schema/wallet_ledger.ts typeIdx) is
+// deleted in the same round — chain 0022 folds the DROP INDEX.
+//
+// Shape: the V1-M27 probe-gated DROP idiom — pg_indexes probe, drop
+// only if genuinely present (steady-state boots send no DDL at all).
+export async function applyWalletLedgerTypeIndexDropStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const presentRows = extractRows(
+    await execute(sql`
+      SELECT indexname AS indexname FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND indexname = 'idx_wallet_ledger_type'
+    `),
+  );
+  const present = new Set(presentRows.map((row) => String(row.indexname)));
+  if (present.has("idx_wallet_ledger_type")) {
+    await execute(sql.raw(`DROP INDEX IF EXISTS idx_wallet_ledger_type`));
+    logger.info(
+      { category: "storage" },
+      "V1-M33: dropped zero-consumer idx_wallet_ledger_type (A8-F2)",
+    );
+  }
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -4166,6 +4199,11 @@ export async function runMigrations() {
     // reuse predicate's column (catalog-probe gated, zero-DDL steady
     // state). See applyIdempotencyBodyHashStage docs.
     await applyIdempotencyBodyHashStage();
+
+    // ── V1-M33 (R134, A8-F2): idx_wallet_ledger_type dropped — zero ──
+    // consumers, pure write amplification on the money INSERT table.
+    // Probe-gated (V1-M27 idiom). See applyWalletLedgerTypeIndexDropStage.
+    await applyWalletLedgerTypeIndexDropStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

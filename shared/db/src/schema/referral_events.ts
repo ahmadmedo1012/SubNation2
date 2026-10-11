@@ -29,7 +29,10 @@ export const referralEventsTable = pgTable(
     // (referrer_id, created_at DESC) composite the referrals surface
     // (loyalty.ts) and the copilot referral tool sort on; boot twin:
     // migrate.ts applyIndexConsolidationStage.
-    referrerCreatedIdx: index("idx_referral_referrer_created").on(t.referrerId, t.createdAt.desc()),
+    referrerCreatedIdx: index("idx_referral_referrer_created").on(
+      t.referrerId,
+      sql`created_at DESC`,
+    ),
     // R123-E5 (V1-M29): the two-state lifecycle (pending → credited) the
     // loyalty/topup writers already enforce; the CHECK closes the bypass
     // writers. Boot twin: migrate.ts applyDomainCheckConstraintsStage

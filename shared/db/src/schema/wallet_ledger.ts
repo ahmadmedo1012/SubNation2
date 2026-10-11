@@ -46,9 +46,8 @@ export const walletLedgerTable = pgTable(
     // R123-E5 (V1-M27): idx_wallet_ledger_user dropped — a strict prefix
     // of idx_wallet_ledger_user_created below; boot twin: migrate.ts
     // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
-    typeIdx: index("idx_wallet_ledger_type").on(t.type),
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
-    createdIdx: index("idx_wallet_ledger_created").on(t.createdAt.desc()),
+    createdIdx: index("idx_wallet_ledger_created").on(sql`created_at DESC`),
     // Round-3 (8-c §4.3): per-user "recent ledger" reads (copilot tools,
     // future wallet statement pages) sort a user's full ledger by date —
     // one row per money event, so this index keeps that O(log n) as the

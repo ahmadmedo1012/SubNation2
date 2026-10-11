@@ -8,6 +8,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { adminUsersTable } from "./admin_users";
 import { copilotPreviewsTable } from "./copilot_previews";
 
@@ -80,7 +81,7 @@ export const copilotActionsTable = pgTable(
   },
   (t) => ({
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
-    adminCreatedIdx: index("idx_copilot_actions_admin_created").on(t.adminId, t.createdAt.desc()),
+    adminCreatedIdx: index("idx_copilot_actions_admin_created").on(t.adminId, sql`created_at DESC`),
     actionClassIdx: index("idx_copilot_actions_action_class").on(t.actionClass),
     outcomeIdx: index("idx_copilot_actions_outcome").on(t.outcome),
     previewIdx: index("idx_copilot_actions_preview").on(t.previewId),

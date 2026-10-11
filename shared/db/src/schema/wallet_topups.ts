@@ -58,7 +58,7 @@ export const walletTopupsTable = pgTable(
     // idx_topups_status_created, user by idx_topups_user_created — the
     // (user_id, created_at DESC) shape GET /api/wallet/topups sorts on);
     // boot twin: migrate.ts applyIndexConsolidationStage.
-    userCreatedIdx: index("idx_topups_user_created").on(t.userId, t.createdAt.desc()),
+    userCreatedIdx: index("idx_topups_user_created").on(t.userId, sql`created_at DESC`),
     statusCreatedIdx: index("idx_topups_status_created").on(t.status, t.createdAt),
     // D8 closure (round-97 F7): mirrors the live partial unique index
     // created by applyMoneyConstraintStage (V1-M9, B8-01) — one APPROVED

@@ -47,8 +47,8 @@ export const enrichmentRunsTable = pgTable(
   },
   (t) => ({
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
-    startedAtIdx: index("idx_enrichment_runs_started_at").on(t.startedAt.desc()),
-    outcomeIdx: index("idx_enrichment_runs_outcome").on(t.outcome, t.startedAt.desc()),
+    startedAtIdx: index("idx_enrichment_runs_started_at").on(sql`started_at DESC`),
+    outcomeIdx: index("idx_enrichment_runs_outcome").on(t.outcome, sql`started_at DESC`),
     // R123-E5 (V1-M29): the three-state run lifecycle the runner already
     // enforces ('in_flight' mutates exactly once to 'success'/'failure');
     // the CHECK closes the bypass writers. Boot twin: migrate.ts

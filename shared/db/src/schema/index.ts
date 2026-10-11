@@ -1,20 +1,23 @@
-// ── Index-ordering convention (R130-A8-F1) ──────────────────────────────────
+// ── Index-ordering convention (R130-A8-F1, LANDED R134) ─────────────────────
 //
-// The `.desc()` index columns below are DECLARED as `DESC NULLS LAST`
-// (what drizzle-kit 0.45 generates), but the LIVE indexes were created by
-// the boot twins (backend/src/migrate.ts V1 stages) as plain `DESC` —
-// which in Postgres means NULLS FIRST, the shape the consumers' own
-// `ORDER BY x DESC` (drizzle emits plain desc) wants. The `IF NOT EXISTS`
-// name-parity idiom makes the two tracks no-op against each other, so
-// nothing diverges at runtime today; the divergence is real only for a
-// CHAIN-built fresh environment, where the declared shape can be a hair
-// less optimal for its own ORDER BY.
+// Plain `DESC` is the CANONICAL index ordering — the shape the boot twins
+// (backend/src/migrate.ts V1 stages) create and the consumers' own
+// `ORDER BY x DESC` wants. R134 landed the R130 follow-up: every
+// divergent `.desc()` declaration (which drizzle-kit 0.31.9 serializes
+// as `DESC NULLS LAST`) was rewritten as a raw `sql`col DESC``
+// expression column — the emitter passes expression columns through
+// VERBATIM with no NULLS suffix, so the declared shape now converges to
+// the boot shape (drizzle mirror: chain 0022). On NOT NULL columns the
+// two spellings are order-identical anyway; the wave's value is
+// chain↔boot parity (one source of truth).
 //
-// Until the follow-up re-declaration lands (rewrite each `.desc()` as a
-// raw sql`col desc` expression column so drizzle-kit emits the boot shape,
-// then regen the chain + snapshot), treat plain `DESC` as the canonical
-// index ordering and do NOT "fix" the boot twins to match the chain —
-// the live shape is the correct one.
+// ONE deliberate exception: risk.ts `idx_risk_events_created_id_desc`
+// keeps `.desc()` — its boot twin (migrate.ts) is itself
+// `DESC NULLS LAST`, i.e. chain == boot for that index; rewriting it
+// would CREATE a divergence.
+//
+// Do NOT "fix" the boot twins to match any declaration — the live shape
+// is the correct one.
 
 export * from "./account-link-consents";
 export * from "./admin_alerts";

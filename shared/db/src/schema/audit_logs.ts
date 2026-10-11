@@ -8,6 +8,7 @@ import {
   timestamp,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const auditActorTypeEnum = pgEnum("audit_actor_type", ["user", "admin", "system"]);
 
@@ -32,6 +33,6 @@ export const auditLogsTable = pgTable(
     actionIdx: index("idx_audit_logs_action").on(t.action),
     actorIdx: index("idx_audit_logs_actor").on(t.actorId, t.actorType),
     targetIdx: index("idx_audit_logs_target").on(t.targetType, t.targetId),
-    createdIdx: index("idx_audit_logs_created").on(t.createdAt.desc()),
+    createdIdx: index("idx_audit_logs_created").on(sql`created_at DESC`),
   }),
 );

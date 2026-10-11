@@ -105,9 +105,22 @@ function sqlText(chunk: SQL | undefined): string {
   return String(chunks?.map((c) => (Array.isArray(c.value) ? c.value.join("") : c.value)).join(""));
 }
 
-/** Column names an index is declared on (drizzle IndexedColumn.name). */
+/**
+ * Column spellings an index is declared on. R134 (A8-F1): the DESC-wave
+ * rewrites made the sort column a raw sql`col DESC` expression — an SQL
+ * object whose queryChunks are (Name("col"), " DESC"). Both spellings are
+ * surfaced: plain columns as their name, expressions as their emitted
+ * text ("created_at DESC" — the boot twins' bytes).
+ */
 function indexColumns(index: { config: { columns: unknown[] } }): string[] {
-  return index.config.columns.map((c) => String((c as { name?: string }).name));
+  return index.config.columns.map((c) => {
+    const col = c as { name?: string; queryChunks?: Array<{ value?: string }> };
+    if (col.name !== undefined) return String(col.name);
+    if (Array.isArray(col.queryChunks)) {
+      return col.queryChunks.map((ch) => ch?.value ?? String(ch)).join("");
+    }
+    return "unknown";
+  });
 }
 
 async function constraintCount(name: string): Promise<number> {
@@ -260,7 +273,7 @@ describe("R118-B3: the TS schema declares the mirror (compile-level)", () => {
     );
     expect(idx).toBeDefined();
     expect(idx!.config.unique).toBe(false);
-    expect(indexColumns(idx!)).toEqual(["created_at"]);
+    expect(indexColumns(idx!)).toEqual(["created_at DESC"]);
   });
 
   it("F4: the boot-owned NND object stays declared under its live name + columns", () => {

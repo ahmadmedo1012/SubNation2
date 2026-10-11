@@ -143,9 +143,22 @@ describe("R120-B6 — the drizzle 0017 mirror (chain follows the schema)", () =>
       .filter((s) => s.length > 0);
   }
 
-  /** Column names an index is declared on (drizzle IndexedColumn.name). */
+  /**
+   * Column spellings an index is declared on. R134 (A8-F1): the DESC-wave
+   * rewrites made the sort column a raw sql`col DESC` expression — an SQL
+   * object whose queryChunks are (Name("col"), " DESC"). Both spellings are
+   * surfaced: plain columns as their name, expressions as their emitted
+   * text ("created_at DESC" — the boot twins' bytes).
+   */
   function indexColumns(index: { config: { columns: unknown[] } }): string[] {
-    return index.config.columns.map((c) => String((c as { name?: string }).name));
+    return index.config.columns.map((c) => {
+      const col = c as { name?: string; queryChunks?: Array<{ value?: string }> };
+      if (col.name !== undefined) return String(col.name);
+      if (Array.isArray(col.queryChunks)) {
+        return col.queryChunks.map((ch) => ch?.value ?? String(ch)).join("");
+      }
+      return "unknown";
+    });
   }
 
   it("the journal carries 0016 → 0017 in order", async () => {
@@ -186,14 +199,14 @@ describe("R120-B6 — the drizzle 0017 mirror (chain follows the schema)", () =>
     );
     expect(notifIdx).toBeDefined();
     expect(notifIdx!.config.unique).toBe(false);
-    expect(indexColumns(notifIdx!)).toEqual(["user_id", "created_at"]);
+    expect(indexColumns(notifIdx!)).toEqual(["user_id", "created_at DESC"]);
 
     const ticketsIdx = getTableConfig(supportTicketsTable as unknown as PgTable).indexes.find(
       (i) => i.config.name === "idx_tickets_status_updated",
     );
     expect(ticketsIdx).toBeDefined();
     expect(ticketsIdx!.config.unique).toBe(false);
-    expect(indexColumns(ticketsIdx!)).toEqual(["status", "updated_at"]);
+    expect(indexColumns(ticketsIdx!)).toEqual(["status", "updated_at DESC"]);
   });
 
   it("0017 executes cleanly + idempotently on the runtime shape (live-boot dry-run)", async () => {
