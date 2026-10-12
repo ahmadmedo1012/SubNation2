@@ -7,6 +7,98 @@ history: `git log`, the release ledger `docs/deployment/FINAL_SIGNOFF.md`,
 and the round reports indexed in `docs/README.md` (historical rounds now
 live under `docs/history/` — executed R122).
 
+## Round R134 — the fleet-audit fix wave: path-scoped RBAC, the durable idempotency body-hash, the DESC-index regen, the admin scope-gate + storefront one-concept-one-word sweeps — 2026-10-12
+
+The operator ordered «ادخل في المرحلة التالية الاعمق والاشمل والاكثر
+تفصيلا لكل مافي المشروع». Seven read-only auditors (A1–A8) swept the
+whole tree at `5d5227c` — backend contracts, storefront UX + Arabic copy,
+admin console, money paths, security/CI, perf/DB, SEO/docs — and this
+round landed the fixes. **Starting truth**: `origin/main` = `5d5227c`
+(R133's docs record was the last push — the seven R134 inspection reports
+landed with the first fix commit), local ahead by the backend trio below,
+plus an in-flight admin frontend wave completed this round.
+
+### The backend trio (committed first, R134's own gates green)
+- **A5-F1 [P2] RBAC path-scoped mounts** — every root-mounted
+  `requirePermission` gate prefix-matched EVERY protected admin request
+  (an orders-scoped admin was 403'd by the users gate in front of the
+  risk router); gates are now path-scoped over 12 disjoint family
+  prefixes, pinned by `rbac-composition.test.ts` (6 cases incl. the
+  `/orders2` 404 boundary + the all-wildcard)
+- **A7-F4 durable idempotency body-hash (the R122 defense finally
+  fires)** — `idempotency_keys.body_hash` (V1-M32, drizzle chain 0021):
+  same-key-DIFFERENT-body inside the 48h window now answers the
+  classified 409 instead of replaying the original's 200; hash-match or
+  NULL (pre-R134 claims) replay as before; all four writer paths carry
+  the hash
+- **A8-F1/A8-F2 the DESC-index regen wave** — 18 `.desc()` declarations
+  rewritten as raw `sql\`col DESC\`` expression columns (chain ↔ boot
+  parity for a chain-built fresh environment; on NOT NULL columns the
+  spellings are order-identical) + the zero-consumer
+  `idx_wallet_ledger_type` dropped (boot stage V1-M33, chain 0022);
+  next deploy runs exactly one full ~141-statement no-op boot reconcile
+  by design (r110), then the new marker persists
+- **A1 contract-honesty batch** — admin `?search=` LIKE-escape,
+  logout-all-devices honest message, the 400 envelope on the shared
+  ErrorCode enum, cart POST integer honesty, copilot previews GET/cancel
+  phase gates, alerts req.log fallbacks, the risk/synth dispatch log,
+  dead apiLimiter skip entries
+
+### The frontend waves (this round's work)
+- **A3-F1..F5 [P3×3 + P4×2] the admin console wave** — the
+  AdminScopeGate honest-reason banner on all 14 ungated pages (a
+  scope-less deep link used to fire a synchronized 403 burst read as an
+  outage), the CopilotPanel overlay joining the dialog contract
+  (role/aria-modal/Tab-trap/focus-return, the shared `lib/a11y`
+  helper), the InventoryUploadDialog dedup-probe disclosure, the
+  account-tab 44px reveal, and the copy micro-batch (retry verb,
+  risk-tier wording, Arabic QR alt, ONE trigger accessible name, the
+  whatsapp h1 joining the nav label); the socket-resync close-out adds
+  the chart-data/referrals/pricing-config families
+- **A2-F1..F9 [P3×2 + P4×7] the storefront batch** — category labels
+  derive from `categoryLabel()` everywhere (the «برامج»/«VPN وشبكات»/
+  «تعليم»/«ذكاء اصطناعي» drift across chips/drawer/dropdown vs their
+  own filter results), نقطة count agreement on the wallet card + the
+  loyalty ledger (the word-only `arabicCountWord` half of formatCount),
+  the search-history popup's combobox/listbox semantics, the «كمية N»
+  stock pill + its aria voice, «متبقٍ N فقط» badge parity, the honest
+  default grid heading («كل الاشتراكات» — the grid lists all 45), the
+  FAQ's Latin gloss dropped, the PDP pre-buy re-quote 404 aborts
+  (refetch + toast; network failures keep the fail-open contract), and
+  two copy nits
+- **A7-F7 the admin SEO form's 60-char budget cue** — the column
+  accepts 200 but every display surface clamps at 60; the warn surfaces
+  exactly at the budget
+
+### Money + CI + docs
+- **A4-F2/F1/F4** — the cart display folds join roundLyd (no-op today,
+  canonical spelling) + the 89.99×50%→45.00 half-cent pin (with a
+  `__resetFlashSaleCacheForTests` export so a later-seeded sale beats
+  the 30 s stage cache); FINAL_MONEY_INVARIANTS.md re-anchored at the
+  R134 fix tree (the fifth full money audit; suite index 43→45)
+- **A5-F3** — impeccable@4.1.0 becomes a lockfile-pinned devDependency
+  (the gate runs `pnpm exec` through the frozen lockfile instead of
+  `npx -y` fetching the engine from the registry inside the job);
+  **A7-F9** the branch filters go main-only (the R119 queue; develop
+  never existed); **A5-F4** the .dockerignore dedupe
+- **A7-F6** — the dead-slug 404 shell stamps noindex,follow (the
+  raw/SPA pair agrees for the last 404 family)
+- **the A7 docs truth batch** — README's 301 correction, the
+  SEO_PRODUCTS.json STALE row, .hermes.md's ~3,600+ test heuristic, the
+  R132 curation pass in runbook §14, FINAL_PRODUCTION_ENV's empty-tag
+  truth, both operator-list open-sets aligned (open: 4–7, 9–10, 12)
+
+### Gates
+lint 0 errors · typecheck green · backend **2,396/2,396** (245 files,
+chunked) · frontend **1,279/1,279** (184 files) · build green · OpenAPI
+parity 84 operations · drizzle + orval drift CLEAN · impeccable exit 0 ·
+staged-diff secret scan clean. Three test files re-aligned to the R134
+backend contracts with real root causes (copilot phase3 fixture, the
+V1-M32 chain in the idempotency suites) — assertions kept or
+strengthened. **Push note:** the R133-era PAT was dead at push time
+(401 on the git-receive endpoint); the six R134 fix commits sit local
+ready to push — see the delivery note in the round report.
+
 ## Round R133 — the R132 delivery executed + the R130 open-findings close-out: the admin state-truth trio, the A4 a11y tail, cart variant-pricing parity — 2026-10-12
 
 The operator supplied a live PAT and ordered «ادفع وادخل المرحلة التالية

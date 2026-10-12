@@ -28,6 +28,26 @@
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
 >
+> **R134 (2026-10-12) — round record:** the fleet-audit fix wave — seven
+> read-only auditors (A1–A8) swept the whole tree at `5d5227c` and the
+> round landed the fixes: path-scoped RBAC mounts (A5-F1 P2 — scoped
+> grants work at runtime for the first time since R122), the durable
+> idempotency body-hash (A7-F4 — the R122 409 defense finally fires in
+> production), the DESC-index regen wave + zero-consumer index drop
+> (A8-F1/F2, chain 0022 + boot V1-M33), the A1 contract-honesty batch,
+> the admin scope-gate + dialog-contract wave (A3-F1..F5 — all 14 pages
+> honest-reason gated, the CopilotPanel dialog contract, the socket-
+> resync close-out), the storefront one-concept-one-word batch (A2-F1..F9
+> — category labels derive from one source, نقطة agreement, combobox
+> semantics, honest stock pills, the PDP 404 re-quote abort), the cart
+> half-cent pin + invariants re-anchor (A4, the fifth full money audit),
+> the artifact-pinned impeccable gate (A5-F3) + main-only CI filters
+> (A7-F9), the shell 404 noindex parity (A7-F6), and the A7 docs truth
+> batch. Gates: backend 2,396/2,396 · frontend 1,279/1,279 · lint 0
+> errors · typecheck green · build green · drift gates CLEAN ·
+> impeccable exit 0. **Push blocked:** the PAT was dead at push time
+> (401 git-receive) — the nine R134 commits sit local, ready.
+>
 > **R133 (2026-10-12) — round record:** the R132 delivery executed (live
 > PAT from the operator; `56b8bf9..6a77590` pushed, CI run #468 green,
 > Coolify webhook deployed, live-verified: the arabic-search round-2
