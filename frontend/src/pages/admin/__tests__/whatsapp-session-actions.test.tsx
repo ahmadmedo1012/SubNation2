@@ -22,7 +22,9 @@ import { type ReactNode } from "react";
 import AdminWhatsAppPage from "@/pages/admin/whatsapp";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({ adminToken: "test-admin-token",
+    hasAdminPermission: () => true,
+  }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -183,7 +185,8 @@ describe("AdminWhatsAppPage — gateway docs deep-link degradation (110-M / 109-
 
   it("renders a plain hint (no anchor) when the docs URL is unset — never the onrender default", async () => {
     renderPage();
-    expect(await screen.findByText("إدارة جلسة واتساب")).toBeInTheDocument();
+    // R134 (A3-F5e): the h1 joins the nav's exact label («جلسة واتساب»).
+    expect(await screen.findByText("جلسة واتساب")).toBeInTheDocument();
 
     const link = screen.queryByRole("link", { name: /وثائق البوابة/ });
     if (docsUrl) {

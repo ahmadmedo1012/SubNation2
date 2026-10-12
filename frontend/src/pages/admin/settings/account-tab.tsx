@@ -400,18 +400,24 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
                 type={pwShowNew ? "text" : "password"}
                 value={pwNew}
                 onChange={(e) => setPwNew(e.target.value)}
-                className="w-full px-3 py-2 pr-9 bg-background border border-border/60 rounded-lg text-sm"
+                className="w-full px-3 py-2 pl-12 bg-background border border-border/60 rounded-lg text-sm"
                 autoComplete="new-password"
                 minLength={8}
                 required
               />
+              {/* R134 (A3-F4 — the A4-F6 twin R133 missed): the reveal
+                  was a ~14px icon-only hit box. The repo 44px idiom
+                  (flex h-11 w-11 + touch-target, the R133 login.tsx
+                  recipe) with the icon centered; pl-12 above reserves
+                  the span on the physical-LEFT side where the button
+                  sits. */}
               <button
                 type="button"
                 onClick={() => setPwShowNew((v) => !v)}
-                className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-                aria-label={pwShowNew ? "إخفاء" : "إظهار"}
+                className="absolute left-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center touch-target text-muted-foreground hover:text-foreground transition-colors"
+                aria-label={pwShowNew ? "إخفاء كلمة المرور الجديدة" : "إظهار كلمة المرور الجديدة"}
               >
-                {pwShowNew ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {pwShowNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>

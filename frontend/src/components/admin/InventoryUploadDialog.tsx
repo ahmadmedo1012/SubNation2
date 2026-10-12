@@ -65,6 +65,14 @@ export function InventoryUploadDialog({
   const [existingKeys, setExistingKeys] = useState<Set<string>>(() => new Set<string>());
   const [fetchedCount, setFetchedCount] = useState<number | null>(null);
   const [loadingExisting, setLoadingExisting] = useState(true);
+  // R134 (A3-F3): the probe's soft-fail is now DISCLOSED — the preview
+  // counts (جاهز للإضافة / مكرر) are computed against `existingKeys`, and
+  // an empty set from a FAILED probe used to over-promise silently
+  // (DB-duplicates rendered «جديد»; the operator only learned the
+  // truth from the server's smaller post-submit count). The muted
+  // status line keeps the submit contract unchanged — the server still
+  // dedups.
+  const [dedupAvailable, setDedupAvailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +84,7 @@ export function InventoryUploadDialog({
         if (!res.ok) {
           // Soft-fail: dedup-against-DB just won't be available;
           // the in-batch dedup + server-side dedup at submit still work.
+          // R134 (A3-F3): the state is disclosed now (see the status line).
           if (!cancelled) setLoadingExisting(false);
           return;
         }
@@ -96,6 +105,7 @@ export function InventoryUploadDialog({
           ),
         );
         setFetchedCount(data.total);
+        if (!cancelled) setDedupAvailable(true);
       } catch {
         // Network error or session expiry (global handler already
         // toasted + redirected) → soft-fail (same rationale as above).
@@ -382,6 +392,18 @@ export function InventoryUploadDialog({
               muted={parsed.errors.length === 0}
             />
           </div>
+        )}
+
+        {/* R134 (A3-F3): the dedup-probe disclosure — when the
+            existing-inventory probe soft-failed, the «مكرر» count above
+            only reflects IN-BATCH duplicates; the muted line says so
+            instead of over-promising («جديد» on a DB-duplicate was a
+            lie the operator discovered post-submit). */}
+        {parsed.totalLines > 0 && !loadingExisting && !dedupAvailable && (
+          <p className="text-xs text-muted-foreground bg-muted/40 border border-border/60 rounded-lg px-3 py-2">
+            لم يُمكن جلب المخزون الحالي — لن تُوسم العناصر المكررة مع قاعدة البيانات قبل
+            الرفع (يظل فحص التكرار عند الخادم قائماً)
+          </p>
         )}
 
         {/* Preview table */}

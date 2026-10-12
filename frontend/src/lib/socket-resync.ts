@@ -89,4 +89,15 @@ export function invalidateAdminRealtimeFamilies(queryClient: QueryClient): void 
   void queryClient.invalidateQueries({ queryKey: ["admin-risk-events"] });
   void queryClient.invalidateQueries({ queryKey: ["admin-risk-dashboard"] });
   void queryClient.invalidateQueries({ queryKey: ["/api/admin/products"] });
+  // R134 (the R126-A1-1 + A1-26 close-out): the three react-query families
+  // the socket set never carried — another operator's approve used to tick
+  // the KPI tiles (stats key) while the revenue chart below kept the
+  // pre-approve series, and referrals/pricing-config tabs stayed stale
+  // until manual refresh. Prefix keys: chart-data matches every
+  // days-variant; pricing-config covers the config family. Coupons stays
+  // raw-local-state (no query key to invalidate — its fold into
+  // react-query is the remaining A1-26 half).
+  void queryClient.invalidateQueries({ queryKey: ["/api/admin/chart-data"] });
+  void queryClient.invalidateQueries({ queryKey: ["/api/admin/referrals"] });
+  void queryClient.invalidateQueries({ queryKey: ["/api/admin/pricing/config"] });
 }

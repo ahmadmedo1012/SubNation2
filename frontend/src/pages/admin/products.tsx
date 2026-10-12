@@ -59,6 +59,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 const EMPTY_FORM = {
   name: "",
@@ -501,7 +502,9 @@ const ProductCard = React.memo(function ProductCard({
 });
 
 export default function AdminProductsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("inventory");
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -626,7 +629,7 @@ export default function AdminProductsPage() {
   } = useListAdminProducts(listParams, {
     query: {
       queryKey: getListAdminProductsQueryKey(listParams),
-      enabled: !!adminToken,
+      enabled: !!adminToken && canView,
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,
     },
@@ -991,8 +994,13 @@ export default function AdminProductsPage() {
     let sessionExpired = false;
     try {
       for (const id of selectedIds) {
-        const p = products.find((pr) => pr.id === id);
-        if (!p) continue;
+        // R134 (the R126-A2-9 close-out): the dead `products.find`
+        // lookup used to SKIP selected ids outside the loaded window —
+        // and summarizeBulk counted the skips as successes (a row
+        // selected on page 1, then paged past, "succeeded" without a
+        // request). The PATCH goes to the id directly; the server is
+        // the guard; every selected id now lands in successes OR
+        // failures — never silently in neither.
         const url = `/api/admin/products/${id}`;
         try {
           const r = await fetch(url, {
@@ -1030,6 +1038,14 @@ export default function AdminProductsPage() {
       setBulkProcessing(false);
     }
   };
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="inventory" />;
+  }
 
   return (
     <AdminLayout onRefresh={() => refetch()}>
@@ -1372,6 +1388,20 @@ export default function AdminProductsPage() {
                 <p className="text-3xs mt-1 text-muted-foreground">
                   يظهر كعنوان صفحة المنتج في محركات البحث ومشاركات الروابط — فارغ يعني العنوان
                   الافتراضي ({200 - form.seo_title.length} حرف متبقٍ).
+                  {/* R134 (A7-F7): the DB column accepts 200 but every
+                      DISPLAY surface clamps at 60 chars (MetaTags.clamp —
+                      the raw shell, og:title and the share card share the
+                      budget); an operator title past 60 truncates
+                      mid-brand on ALL surfaces with no cue at write
+                      time. The warn surfaces exactly at the budget. */}
+                  {form.seo_title.length > 60 && (
+                    <span className="text-status-warning font-bold">
+                      {" "}
+                      تنبيه: تجاوزت حد العرض (60 حرفاً من أصل{" "}
+                      {form.seo_title.length}) — كل الأسطح تقتطع العنوان عند حدود الكلمة
+                      بما فيها ذيل العلامة «| SubNation»؛ قصِّر العنوان لضمان ظهوره كاملاً.
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="md:col-span-2">

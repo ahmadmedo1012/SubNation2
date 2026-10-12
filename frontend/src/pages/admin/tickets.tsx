@@ -58,6 +58,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 // Ticket status rendering now derives from the shared canonical maps:
 // tone = STATUS_TONE[status] (info/warning/neutral on the --status-*
@@ -125,7 +126,9 @@ export default function AdminTicketsPage() {
   // on the logged-out render path. Hoisted to the top of the component.
   const [statusBusy, setStatusBusy] = useState<number | null>(null);
 
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("support");
   const [, navigate] = useLocation();
   // R125-I4 (A4-B-3): stats co-invalidation — open_tickets feeds the
   // layout badge + the dashboard, and /admin/stats has no write-side
@@ -208,7 +211,7 @@ export default function AdminTicketsPage() {
     // short/empty page is the definite end.
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length === TICKETS_PAGE_SIZE ? allPages.length + 1 : undefined,
-    enabled: !!adminToken,
+    enabled: !!adminToken && canView,
   });
 
   // Accumulated queue — dedup by id (the previous loadMoreTickets guard,
@@ -400,6 +403,14 @@ export default function AdminTicketsPage() {
   // AND the load-more (inside the non-empty branch) vanished with it,
   // leaving no path to the pages that contain the category.
   const categoryPartialEmpty = visibleTickets.length === 0 && categoryFilter !== "" && hasNextPage;
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="support" />;
+  }
 
   return (
     <AdminLayout onRefresh={() => void refetch()} badges={{ openTickets: openCount }}>

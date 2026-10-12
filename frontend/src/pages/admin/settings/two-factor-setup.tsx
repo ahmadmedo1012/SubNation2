@@ -149,7 +149,7 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
         <div className="flex flex-col md:flex-row items-center gap-6 p-6 bg-muted/20 border border-border/50 rounded-xl">
           <div className="shrink-0 bg-white p-3 rounded-xl shadow-sm">
             {setupData.qrCode ? (
-              <img src={setupData.qrCode} alt="QR Code" className="w-32 h-32" />
+              <img src={setupData.qrCode} alt="رمز الاستجابة السريعة للتحقق بخطوتين"  /* R134 (A3-F5): Arabic — the flow around it is Arabic */ className="w-32 h-32" />
             ) : (
               // QR is generated client-side after the backend mints the
               // 2FA secret — usually <100ms, but on slow devices the

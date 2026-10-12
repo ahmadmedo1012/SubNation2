@@ -40,6 +40,7 @@ import {
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 import { formatCount, formatDate } from "@/lib/utils";
 
 // R126-L8b: customFetch rejects 401s with its ApiError — type-only from
@@ -189,7 +190,9 @@ function auditMetadataLine(metadata: string | null): string | null {
 }
 
 export function AdminSecurityDashboard() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("admins");
   const headers = useAdminHeaders();
   const [filters, setFilters] = useState({
     action: "all",
@@ -232,7 +235,7 @@ export function AdminSecurityDashboard() {
   // 94-C2 (A2 P3-18): stats are UNFILTERED — one key, one mount fetch;
   // manual refresh refetches it.
   const statsQuery = useGetAdminAuthStatsSummary({
-    query: { enabled: !!adminToken },
+    query: { enabled: !!adminToken && canView },
     request: { headers },
   });
 
@@ -248,7 +251,7 @@ export function AdminSecurityDashboard() {
     },
     {
       query: {
-        enabled: !!adminToken,
+        enabled: !!adminToken && canView,
         // R125-I5 parity: while a flipped filter's window is in flight,
         // the PREVIOUS rows keep rendering (the old code simply never
         // touched `activities` until the new response landed) — no
@@ -276,7 +279,7 @@ export function AdminSecurityDashboard() {
     },
     {
       query: {
-        enabled: !!adminToken && activeTab === "audit",
+        enabled: !!adminToken && canView && activeTab === "audit",
         placeholderData: keepPreviousData,
       },
       request: { headers },
@@ -411,6 +414,14 @@ export function AdminSecurityDashboard() {
   // (the previous bare centered div appeared before the layout — a
   // flash of structure-less text on every visit).
   // (refreshAll above replaced the old fetchStats/fetchActivities pair.)
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="admins" />;
+  }
 
   return (
     <AdminLayout onRefresh={refreshAll}>

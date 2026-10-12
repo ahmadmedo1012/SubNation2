@@ -25,7 +25,9 @@ import { type ReactNode } from "react";
 import AdminPromotionsPage from "@/pages/admin/promotions";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({ adminToken: "test-admin-token",
+    hasAdminPermission: () => true,
+  }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({

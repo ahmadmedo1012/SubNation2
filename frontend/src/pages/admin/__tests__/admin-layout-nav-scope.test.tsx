@@ -66,11 +66,18 @@ describe("AdminLayout nav scope ↔ API permission parity (R120-B4 A2-F1)", () =
     expect(item).toBeDefined();
     expect(item?.scope).toBe("inventory");
 
-    // The promotions page rides the adminFlashSalesRouter mount, gated
-    // requirePermission("inventory") in admin/index.ts.
+    // The promotions page rides the adminFlashSalesRouter mount. R134
+    // (A5-F1): the root-mounted `use("/", requirePermission(x), router)`
+    // gates became PATH-SCOPED gate mounts (they used to prefix-match
+    // every protected admin request — see the backend commit); the
+    // parity under test is unchanged, only the spelling: the flash-sales
+    // family's gate is the "/flash-sales" path-scoped mount, and the
+    // router itself mounts ungated at the root below.
     const src = backendSource("routes/admin/index.ts");
-    const mountMatch = src.match(/requirePermission\("inventory"\),\s*\n\s*adminFlashSalesRouter/s);
-    expect(mountMatch).not.toBeNull();
+    const gateMatch = src.match(/protectedRouter\.use\("\/flash-sales", requirePermission\("inventory"\)\);/);
+    expect(gateMatch).not.toBeNull();
+    const routerMatch = src.match(/protectedRouter\.use\("\/", adminFlashSalesRouter\); \/\/ \/flash-sales/);
+    expect(routerMatch).not.toBeNull();
   });
 
   it("every scoped nav item carries a scope from the permission catalog (no typos, no orphans)", () => {

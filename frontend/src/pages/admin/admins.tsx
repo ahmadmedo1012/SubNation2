@@ -39,6 +39,7 @@ import {
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 interface AdminAccount {
   id: number;
@@ -57,7 +58,9 @@ interface ScopeOption {
 }
 
 export default function AdminAdminsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("admins");
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -82,6 +85,8 @@ export default function AdminAdminsPage() {
   const headers = useAdminHeaders({ json: true });
 
   const reload = async () => {
+    // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
+    if (!canView) return;
     try {
       const [listRes, scopesRes, sessionRes] = await Promise.all([
         adminFetch("/api/admin/admins", { credentials: "include", headers }),
@@ -179,6 +184,14 @@ export default function AdminAdminsPage() {
       });
     }
   };
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="admins" />;
+  }
 
   return (
     <AdminLayout onRefresh={reload}>

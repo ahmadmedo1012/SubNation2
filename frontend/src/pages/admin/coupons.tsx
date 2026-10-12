@@ -40,6 +40,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 interface Coupon {
   id: number;
@@ -103,7 +104,9 @@ const EMPTY_FORM: CreateForm = {
 const MAX_FIXED_COUPON_VALUE = 10_000; // LYD — mirror of the backend bound
 
 export default function AdminCouponsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("finance");
   const [, navigate] = useLocation();
   const { toast } = useToast();
   // 93-C7 / C-UX3 (A12 §1.3 + A5 C-1): the raw window.confirm on
@@ -149,7 +152,8 @@ export default function AdminCouponsPage() {
 
   const fetchCoupons = useCallback(
     async (silent = false) => {
-      if (!adminToken) return;
+      // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
+      if (!adminToken || !canView) return;
       if (!silent) setLoading(true);
       try {
         // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe
@@ -324,6 +328,14 @@ export default function AdminCouponsPage() {
 
   const activeCount = coupons.filter((c) => c.is_active).length;
   const totalUsed = coupons.reduce((a, c) => a + c.used_count, 0);
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="finance" />;
+  }
 
   return (
     <AdminLayout onRefresh={() => fetchCoupons()}>

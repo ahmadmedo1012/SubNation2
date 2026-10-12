@@ -25,6 +25,8 @@ import { EmptyState } from "@/components/admin/EmptyState";
 // state together (an outage masquerading as "no sessions yet").
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
+import { useAuth } from "../../lib/auth";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertTriangle,
@@ -94,6 +96,13 @@ const PAIR_CODE_STALE_AFTER_MS = 120_000;
 export default function AdminWhatsAppPage() {
   const headers = useAdminHeaders();
   const jsonHeaders = useAdminHeaders({ json: true });
+  const { hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the whatsapp console rides the settings-scoped
+  // diagnostics mount (backend routes/admin/index.ts) — the nav hides
+  // it from scope-less admins, but a deep link used to fire loadSessions
+  // into a synchronized 403 burst. The gate keeps a scope-less mount
+  // fetch-free and answers the honest reason instead.
+  const canView = hasAdminPermission("settings");
   const { toast } = useToast();
   // B5-05 (round-92 audit): the raw window.confirm on session delete is
   // replaced by the shared styled AlertDialog hook used by admins.tsx /
@@ -126,6 +135,8 @@ export default function AdminWhatsAppPage() {
   const hasLoadedRef = useRef(false);
 
   const loadSessions = useCallback(async () => {
+    // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
+    if (!canView) return;
     // R125-I5 (A3-4c): every mutation handler ends with `await
     // loadSessions()` — the old unconditional setLoading(true) collapsed
     // the whole session list into a spinner on every create/start/pair/
@@ -347,6 +358,12 @@ export default function AdminWhatsAppPage() {
     setTimeout(() => setPairCopied(false), 1800);
   };
 
+  // R134 (A3-F1): the deep-link honest-reason gate — sits AFTER every
+  // hook (loadSessions' own guard keeps a scope-less mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="settings" />;
+  }
+
   return (
     <AdminLayout onRefresh={() => void loadSessions()}>
       <div className="space-y-5">
@@ -356,7 +373,10 @@ export default function AdminWhatsAppPage() {
               <Wifi className="w-4 h-4" />
               <span className="text-xs font-bold uppercase tracking-widest">WhatsApp OTP</span>
             </div>
-            <h1 className="text-xl font-bold">إدارة جلسة واتساب</h1>
+            {/* R134 (A3-F5e): h1 joins the nav's exact label («جلسة
+                واتساب» — every sibling page keeps h1 === nav: المنتجات/
+                الطلبات/…); the «إدارة…» form was the lone split. */}
+            <h1 className="text-xl font-bold">جلسة واتساب</h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
               أنشئ جلسة الإرسال، شغّلها، ثم اربط رقم واتساب الخاص بالخدمة. لا تضع مفتاح API في
               المتصفح؛ الواجهة تمرّر الطلبات عبر الخادم بشكل محمي.

@@ -57,6 +57,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 type AdminTopupRow = AdminTopup & { payment_method?: string; sender_account?: string };
 
@@ -518,7 +519,7 @@ function BulkConfirmModal({
         if (!o) onCancel();
       }}
       title={action === "approve" ? "تأكيد الموافقة الجماعية" : "تأكيد الرفض الجماعي"}
-      description={`${count} طلب سيتم معالجته`}
+      description={`${formatCount(count, TOPUP_COUNT_FORMS)} سيتم معالجته`}
       dismissable={!loading}
       size="sm"
       footer={
@@ -596,7 +597,9 @@ function BulkConfirmModal({
 }
 
 export default function AdminTopupsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("finance");
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
@@ -717,7 +720,7 @@ export default function AdminTopupsPage() {
     // the next page MIGHT exist; a short page is the definite end.
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length === TOPUPS_PAGE_SIZE ? allPages.length + 1 : undefined,
-    enabled: !!adminToken,
+    enabled: !!adminToken && canView,
     // Round-4 (perf P1-3): the admin-room socket listener invalidates
     // topups on every `admin-stats-update` push (approve/reject) —
     // 5-min fallback only (was 20 s).
@@ -780,8 +783,13 @@ export default function AdminTopupsPage() {
       // while their bulk equivalents (below) render green.
       toast({
         title: "تمت الموافقة",
+        // R134 (the R126-A1-13 close-out): the actor preposition is
+        // unified — approve and reject describe the SAME actor-action
+        // pair, so both read «من» (the transfer came FROM the user's
+        // phone); «لـ» implied crediting the phone, which approve does
+        // not do.
         description: t
-          ? `${formatCurrency(t.amount)} لـ ${t.user_phone}`
+          ? `${formatCurrency(t.amount)} من ${t.user_phone}`
           : "تمت الموافقة على الطلب",
         variant: "success",
       });
@@ -1144,7 +1152,7 @@ export default function AdminTopupsPage() {
       // Summary toast: "X نجحت / Y فشلت" + per-item failure reasons.
       if (failures.length === 0) {
         toast({
-          title: `تمت الموافقة على ${approvedCount} طلب`,
+          title: `تمت الموافقة على ${formatCount(approvedCount, TOPUP_COUNT_FORMS)}`,
           variant: "success",
         });
       } else {
@@ -1168,6 +1176,14 @@ export default function AdminTopupsPage() {
       setSelectedIds(new Set());
     }
   };
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="finance" />;
+  }
 
   return (
     <AdminLayout onRefresh={() => refetch()} badges={{ pendingTopups: pendingCount }}>
@@ -1372,7 +1388,14 @@ export default function AdminTopupsPage() {
                 )}
                 {isApproveAllBusy && approveAllProgress
                   ? `جاري ${approveAllProgress.done}/${approveAllProgress.total}...`
-                  : `موافقة الكل (${pendingCount})`}
+                  : /* R134 (the R126-A1-11 close-out): while more pages
+                       remain unloaded, «الكل» over-promises — the loop
+                       only iterates the loaded window. The label now
+                       says what will actually run; the count shown is
+                       at least accurate for the window. */
+                    hasNextPage
+                    ? `موافقة المعروض (${pendingCount})`
+                    : `موافقة الكل (${pendingCount})`}
               </Button>
             )}
 

@@ -31,7 +31,9 @@ import { type ReactNode } from "react";
 import AdminWhatsAppPage from "@/pages/admin/whatsapp";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({ adminToken: "test-admin-token",
+    hasAdminPermission: () => true,
+  }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({

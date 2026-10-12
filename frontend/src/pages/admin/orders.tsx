@@ -45,6 +45,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 /** API may return extra delivery / coupon fields */
 type AdminOrderRow = AdminOrder & {
@@ -527,6 +528,8 @@ const MobileOrderCard = React.memo(function MobileOrderCard({
 
 export default function AdminOrdersPage() {
   const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("orders");
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
@@ -650,7 +653,7 @@ export default function AdminOrdersPage() {
     // first short/empty page is the definite end.
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length === ORDERS_PAGE_SIZE ? allPages.length + 1 : undefined,
-    enabled: !!adminToken,
+    enabled: !!adminToken && canView,
     // Round-4 (perf P1-3): the admin-room socket listener invalidates
     // orders on every `admin-stats-update` push — 5-min fallback only.
     refetchInterval: 300_000,
@@ -1031,6 +1034,14 @@ export default function AdminOrdersPage() {
     const sel = filtered.filter((o) => selectedIds.has(o.id));
     downloadCsv(orderCsvRows(sel), `orders_selected_${new Date().toISOString().slice(0, 10)}.csv`);
   };
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="orders" />;
+  }
 
   return (
     <AdminLayout onRefresh={() => refetch()}>

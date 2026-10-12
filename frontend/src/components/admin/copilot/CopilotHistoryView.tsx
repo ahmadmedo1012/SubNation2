@@ -136,7 +136,10 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
                 {/* 94-C2 (A2 colors): raw amber-400 → the --status-warning
                     token (same meaning, AA-safe on both themes). */}
                 {e.risk_tier === "high" && (
-                  <span className="text-3xs text-status-warning">عالي</span>
+                  /* R134 (A3-F5): «عالية الخطورة» — the CopilotPanel
+                     confirmation's own wording; one risk-tier concept,
+                     one phrase across the two adjacent surfaces. */
+                  <span className="text-3xs text-status-warning">عالية الخطورة</span>
                 )}
                 <span className="mr-auto text-3xs text-muted-foreground">
                   {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —

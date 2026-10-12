@@ -306,9 +306,10 @@ describe("SessionActivityManager — admin-family visibility resync (R127-B6-2)"
     await fireVisible();
 
     // 4 storefront calls (orders predicate + wallet + topups + me — the
-    // pre-existing behavior for every authed session) + the 8-key admin
-    // set (stats/orders/topups/users/tickets/risk×2/products).
-    expect(invalidateSpy).toHaveBeenCalledTimes(12);
+    // pre-existing behavior for every authed session) + the 11-key admin
+    // set (stats/orders/topups/users/tickets/risk×2/products — the R134
+    // additions: chart-data + referrals + pricing/config).
+    expect(invalidateSpy).toHaveBeenCalledTimes(15);
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
@@ -323,6 +324,10 @@ describe("SessionActivityManager — admin-family visibility resync (R127-B6-2)"
     expect(keys).toContain(JSON.stringify(["admin-risk-dashboard"]));
     // R127-B6-6: the products list key (60 s poll stays as fallback).
     expect(keys).toContain(JSON.stringify(["/api/admin/products"]));
+    // R134 (A1-1 + A1-26): the three families the socket set gained.
+    expect(keys).toContain(JSON.stringify(["/api/admin/chart-data"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/referrals"]));
+    expect(keys).toContain(JSON.stringify(["/api/admin/pricing/config"]));
   });
 
   it("hidden → no admin invalidations either (a backgrounded tab must not burn data)", async () => {

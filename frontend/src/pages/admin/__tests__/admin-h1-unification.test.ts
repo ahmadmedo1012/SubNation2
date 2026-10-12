@@ -46,7 +46,9 @@ describe("admin page h1s — one size family (R128 A3 §1)", () => {
 
   it("whatsapp carries a real h1 (the A3-F6 hierarchy inversion stays fixed)", () => {
     const text = readFileSync(resolve(dir, "whatsapp.tsx"), "utf8");
-    expect(text).toMatch(/<h1[^>]*text-xl font-bold[^>]*>إدارة جلسة واتساب<\/h1>/);
+    // R134 (A3-F5e): the label joins the nav's exact wording — h1 === nav
+    // on every admin sibling page.
+    expect(text).toMatch(/<h1[^>]*text-xl font-bold[^>]*>جلسة واتساب<\/h1>/);
     // tracking-tight severs Arabic letter connections (the layout's own
     // group-label rationale, layout.tsx:1179-1186).
     expect(text).not.toContain("tracking-tight");

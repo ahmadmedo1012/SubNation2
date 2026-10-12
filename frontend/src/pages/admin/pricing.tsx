@@ -45,6 +45,7 @@ import {
   X,
 } from "lucide-react";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 /**
  * Admin Pricing Calculator + global pricing rule
@@ -298,7 +299,9 @@ function MarginRow({
 }
 
 export default function AdminPricingPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("inventory");
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -332,7 +335,7 @@ export default function AdminPricingPage() {
     isError: configLoadError,
     refetch: refetchConfig,
   } = useGetAdminPricingConfig({
-    query: { queryKey: getGetAdminPricingConfigQueryKey(), enabled: !!adminToken },
+    query: { queryKey: getGetAdminPricingConfigQueryKey(), enabled: !!adminToken && canView },
     request: { headers },
   });
 
@@ -528,7 +531,7 @@ export default function AdminPricingPage() {
   const { data: products = [] } = useListAdminProducts(undefined, {
     query: {
       queryKey: getListAdminProductsQueryKey(),
-      enabled: !!adminToken,
+      enabled: !!adminToken && canView,
       refetchIntervalInBackground: false,
     },
     request: { headers },
@@ -626,6 +629,14 @@ export default function AdminPricingPage() {
   }, [productId, variantId, customPrice, customCost, couponCode, simulateReferred, canCalculate]);
 
   if (!adminToken) return null;
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="inventory" />;
+  }
 
   return (
     <AdminLayout

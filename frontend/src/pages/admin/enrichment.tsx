@@ -54,6 +54,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
+import { useAuth } from "../../lib/auth";
 
 type FieldName = "description" | "description_long" | "faq";
 
@@ -91,6 +93,13 @@ export default function AdminEnrichmentPage() {
   const headers = useAdminHeaders();
   const headersJson = useAdminHeaders({ json: true });
   const qc = useQueryClient();
+  // R134 (A3-F1): the enrichment console is inventory-scoped (backend
+  // routes/admin/index.ts /enrichment mount). No useAuth here before —
+  // the page rode useAdminHeaders only; the gate needs the permission
+  // check, and the infinite query gets its fetch-free mount.
+  const { hasAdminPermission } = useAuth();
+  const canView = hasAdminPermission("inventory");
+
 
   // R125-I3 (A2-1): the queue is CURSOR-paginated server-side
   // (routes/admin/enrichment.ts — ?cursor= + next_cursor) but the page
@@ -112,6 +121,8 @@ export default function AdminEnrichmentPage() {
       ),
     initialPageParam: "" as string,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
+    enabled: canView,
   });
 
   const drafts = useMemo(() => query.data?.pages.flatMap((p) => p.drafts) ?? [], [query.data]);
@@ -121,6 +132,14 @@ export default function AdminEnrichmentPage() {
     query.data && query.data.pages.length > 0
       ? (query.data.pages[query.data.pages.length - 1].pending_count ?? null)
       : null;
+
+  // R134 (A3-F1): the deep-link honest-reason gate — the nav hides
+  // this page from scope-less admins; a deep link used to fire the
+  // queue query into a 403 dressed as a load failure. Sits AFTER every
+  // hook (the query's enabled gate keeps the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="inventory" />;
+  }
 
   return (
     <AdminLayout>

@@ -48,7 +48,9 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token" }),
+  useAuth: () => ({ adminToken: "test-admin-token",
+    hasAdminPermission: () => true,
+  }),
 }));
 
 // The admin shell (sidebar / socket / copilot) is out of scope for
@@ -160,7 +162,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     fireEvent.click(await screen.findByRole("button", { name: /موافقة الكل/ }));
 
     // The styled modal opened with the pending count — not the native dialog.
-    expect(bulkDialog().getByText("3 طلب سيتم معالجته")).toBeInTheDocument();
+    expect(bulkDialog().getByText("3 طلبات سيتم معالجته")).toBeInTheDocument();
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
@@ -252,7 +254,7 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
-    expect(toastMock.mock.calls[0][0].title).toBe("تمت الموافقة على 3 طلب");
+    expect(toastMock.mock.calls[0][0].title).toBe("تمت الموافقة على 3 طلبات");
     expect(toastMock.mock.calls[0][0].variant).toBe("success");
     // Exactly one summary toast — not one per item, not a second error toast.
     expect(toastMock).toHaveBeenCalledTimes(1);

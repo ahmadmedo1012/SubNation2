@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 type AlertType =
   "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system" | "forecast_stockout";
@@ -211,7 +212,9 @@ function groupByDate(alerts: AdminAlertItem[]): { label: string; items: AdminAle
 }
 
 export default function AdminAlertsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("support");
   const qc = useQueryClient();
   const headers = useAdminHeaders();
   const { toast } = useToast();
@@ -258,7 +261,7 @@ export default function AdminAlertsPage() {
             : undefined,
     refetchInterval: 20_000,
     refetchIntervalInBackground: false,
-    enabled: !!adminToken,
+    enabled: !!adminToken && canView,
   });
 
   const invalidateAll = () => {
@@ -427,6 +430,14 @@ export default function AdminAlertsPage() {
   });
 
   const groups = groupByDate(displayed);
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="support" />;
+  }
 
   return (
     <AdminLayout badges={{ unreadAlerts: unreadCount }}>

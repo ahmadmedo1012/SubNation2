@@ -56,6 +56,8 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // quietly — no fake "request failed" bubble on a page being left).
 import { AdminSessionExpiredError, adminFetch } from "@/lib/admin-session";
 import { getErrorMessage } from "@/lib/errors";
+// R134 (A3-F2): the shared Tab-trap (the NotificationBell idiom).
+import { trapTabKey } from "@/lib/a11y/trap-tab-key";
 import { copyToClipboard, formatCount } from "@/lib/utils";
 // 93-C7 / C-UX2 (A12 B13): the copilot phase pill migrates from raw
 // emerald/amber/blue hues to the canonical StatusBadge tones on the
@@ -577,6 +579,20 @@ export function CopilotPanel() {
     if (open) inputRef.current?.focus();
   }, [open, current.id]);
 
+  // R134 (A3-F2): the dialog contract's OTHER halves — the invoker (the
+  // trigger button) is captured when the panel opens, and every close
+  // path (X, Escape, outside-click, layer-peel) restores focus to it
+  // instead of dropping the keyboard user onto <body> (the
+  // NotificationBell R133 A4-F7 idiom).
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const invoker = document.activeElement as HTMLElement | null;
+    return () => {
+      invoker?.focus();
+    };
+  }, [open]);
+
   useEffect(() => {
     turnsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns.length, turns]);
@@ -983,8 +999,13 @@ export function CopilotPanel() {
         <button
           onClick={() => setOpen(true)}
           className="fixed bottom-6 left-6 z-30 group"
-          title="المساعد الذكي (Ctrl/Cmd+J)"
-          aria-label="فتح المساعد الذكي"
+          /* R134 (A3-F5b): ONE accessible name — the B15-11 class. The
+             tooltip carried the shortcut while the SR name carried a
+             different verb form; both now read identical so a sighted
+             mouse user and a screen-reader user hear/see the same
+             button. */
+          title="المساعد الذكي (فتح — Ctrl/Cmd+J)"
+          aria-label="المساعد الذكي (فتح — Ctrl/Cmd+J)"
         >
           <span className="absolute inset-0 rounded-full bg-primary/40 blur-xl group-hover:bg-primary/60 transition-colors" />
           <span className="relative w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-2xl group-hover:scale-110 active:scale-95 transition-transform flex items-center justify-center ring-2 ring-primary/30">
@@ -1001,7 +1022,20 @@ export function CopilotPanel() {
             onClick={() => setOpen(false)}
           />
           <aside
-            className={`fixed top-0 bottom-0 left-0 ${panelWidth} ${panelHeight} bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-left-8 duration-200 flex`}
+            ref={panelRef}
+            tabIndex={-1}
+            role="dialog"
+            /* R134 (A3-F2): aria-modal completes the role="dialog"
+               contract (outside-click + Esc already behave modally); the
+               onKeyDown trap keeps Tab inside (the NotificationBell
+               idiom) — the overlay was the console's LAST modal without
+               dialog semantics, and it can execute catalog writes. */
+            aria-modal="true"
+            aria-label="المساعد الذكي"
+            onKeyDown={(e) => {
+              if (panelRef.current) trapTabKey(panelRef.current, e);
+            }}
+            className={`fixed top-0 bottom-0 left-0 ${panelWidth} ${panelHeight} bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-left-8 duration-200 flex outline-none`}
           >
             {/* History sidebar (collapsible) */}
             {showHistory && (
@@ -1305,9 +1339,11 @@ function TurnView({
           <button
             onClick={onRetry}
             className="text-2xs hover:underline shrink-0 flex items-center gap-1"
-            title="حاول مجدداً"
+            /* R134 (A3-F5): the console's canonical retry label — one
+               concept one word (fetch-error-card's «إعادة المحاولة»). */
+            title="إعادة المحاولة"
           >
-            <RefreshCw className="w-3 h-3" /> إعادة
+            <RefreshCw className="w-3 h-3" /> إعادة المحاولة
           </button>
         </div>
       )}

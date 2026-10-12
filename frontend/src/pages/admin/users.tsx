@@ -60,6 +60,7 @@ import { useLocation, useSearch } from "wouter";
 // R123 (E3 P3c): the wallet-edit dialog's dirty guard (below).
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 interface EditUserForm {
   wallet_mode: "set" | "add" | "subtract";
@@ -315,6 +316,8 @@ const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit }: User
 
 export default function AdminUsersPage() {
   const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("users");
   const jsonHeaders = useAdminHeaders({ json: true });
   const headers = useAdminHeaders();
   const [, navigate] = useLocation();
@@ -461,7 +464,7 @@ export default function AdminUsersPage() {
     // the next page MIGHT exist; a short page is the definite end.
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length === USERS_PAGE_SIZE ? allPages.length + 1 : undefined,
-    enabled: !!adminToken,
+    enabled: !!adminToken && canView,
     // Round-4 (perf P1-3): the admin-room socket listener invalidates
     // users on every `admin-stats-update` push (wallet/loyalty writes
     // change user rows) — 5-min fallback only.
@@ -829,6 +832,14 @@ export default function AdminUsersPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="users" />;
+  }
 
   return (
     <AdminLayout onRefresh={() => refetch()}>

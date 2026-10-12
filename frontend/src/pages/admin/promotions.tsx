@@ -34,6 +34,7 @@ import {
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 /**
  * Admin Promotions / Flash Sales
@@ -80,7 +81,9 @@ const EMPTY_FORM = {
 const MAX_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export default function AdminPromotionsPage() {
-  const { adminToken } = useAuth();
+  const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("inventory");
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [, navigate] = useLocation();
@@ -112,6 +115,8 @@ export default function AdminPromotionsPage() {
   const headers = useAdminHeaders({ json: true });
 
   async function load() {
+    // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
+    if (!canView) return;
     if (!adminToken) return;
     setLoading(true);
     setLoadError(null);
@@ -298,6 +303,14 @@ export default function AdminPromotionsPage() {
   if (!adminToken) return null;
 
   const hasActive = sales.some((s) => s.is_currently_active);
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="inventory" />;
+  }
 
   return (
     <AdminLayout onRefresh={load}>

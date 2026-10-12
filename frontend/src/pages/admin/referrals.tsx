@@ -43,6 +43,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
+import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 
 // R127-L1: the hand-rolled row interface is the generated
 // AdminReferralEventRow (field-identical — the batch-1 contract row
@@ -229,6 +230,8 @@ const ReferralRowItem = React.memo(function ReferralRowItem({
 
 export default function AdminReferralsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
+  // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
+  const canView = hasAdminPermission("users");
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -266,7 +269,7 @@ export default function AdminReferralsPage() {
   const listQuery = useListAdminReferrals(referralsParams, {
     query: {
       queryKey: getListAdminReferralsQueryKey(referralsParams),
-      enabled: !!adminToken,
+      enabled: !!adminToken && canView,
       // Old-rows-stay parity: while a flipped filter's window is in
       // flight, the PREVIOUS rows keep rendering — no skeleton flash,
       // no false «لا توجد إحالات» between filters (security.tsx:87).
@@ -366,6 +369,14 @@ export default function AdminReferralsPage() {
   // (canBulkRefund). Same idiom: disabled up front with the honest
   // reason instead.
   const canCredit = hasAdminPermission("finance");
+
+  // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
+  // idiom, now shared) — the nav hides this page from scope-less admins;
+  // a deep link used to fire every query into a synchronized 403 burst.
+  // Sits AFTER every hook (the enabled/load guards keep the mount fetch-free).
+  if (!canView) {
+    return <AdminScopeGate scope="users" />;
+  }
 
   return (
     <AdminLayout onRefresh={() => void listQuery.refetch()}>
