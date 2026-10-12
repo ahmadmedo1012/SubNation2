@@ -2,6 +2,7 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
+import { SkeletonText } from "@/components/ui/Skeleton";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 // R123→R126-L8b: the five mutation fetches ride the orval-generated
@@ -613,16 +614,17 @@ export default function AdminAlertsPage() {
           </div>
         )}
         {isLoading ? (
-          // R125 (A6 B-8): the loading→loaded swap was silent to screen
-          // readers — the page-shaped skeleton now carries the same
-          // role="status" + sr-only label pair the shared TableSkeleton
-          // got (4.1.3).
-          <div className="space-y-3" role="status">
-            <span className="sr-only">جارٍ التحميل…</span>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-[72px] rounded-2xl skeleton-shimmer" />
-            ))}
-          </div>
+          /* R136 (UX-1): SkeletonText — R125's page-shaped skeleton. Same
+              DOM: ONE announcing wrapper (role=status + sr-only
+              preserved) + 4 plain card rows, geometry verbatim — the
+              loading→loaded swap keeps announcing to screen readers
+              (4.1.3), the pair the shared TableSkeleton got. */
+          <SkeletonText
+            count={4}
+            wrapperClassName="space-y-3"
+            className="h-[72px] rounded-2xl"
+            lastShorter={false}
+          />
         ) : isError && alerts.length === 0 ? (
           <FetchErrorCard
             size="page"

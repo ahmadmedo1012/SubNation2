@@ -13,6 +13,7 @@ import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admi
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Check, Eye, EyeOff, Key, Loader2, Save, UserCog } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -209,11 +210,17 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
 
   if (loading) {
     return (
+      /* R136 (UX-1): per-block Skeletons — the form stack's four
+         field-shaped blocks differ (h-5 w-40 label / h-4 w-64 hint /
+         two h-10 inputs), so each rides its own Skeleton with the
+         geometry verbatim; the wrapper keeps its aria-busy. The
+         blocks' role="status" + sr-only pair is net-new (the swap
+         was silent). */
       <div className="space-y-3 py-2" aria-busy="true">
-        <div className="h-5 w-40 skeleton-shimmer rounded-lg" />
-        <div className="h-4 w-64 skeleton-shimmer rounded" />
-        <div className="h-10 skeleton-shimmer rounded-xl mt-2" />
-        <div className="h-10 skeleton-shimmer rounded-xl" />
+        <Skeleton className="h-5 w-40 rounded-lg" />
+        <Skeleton className="h-4 w-64 rounded" />
+        <Skeleton className="h-10 rounded-xl mt-2" />
+        <Skeleton className="h-10 rounded-xl" />
       </div>
     );
   }

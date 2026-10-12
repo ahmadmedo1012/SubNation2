@@ -4,6 +4,7 @@ import { SessionManager } from "@/components/SessionManager";
 import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useToast } from "@/hooks/use-toast";
@@ -260,7 +261,10 @@ export default function ProfilePage() {
       <div className="space-y-4">
         {/* ── User identity card ──────────────────────────────── */}
         {isLoading ? (
-          <div className="rounded-2xl h-36 skeleton-shimmer border border-border/45" />
+          /* R136 (UX-1): Skeleton — the identity-card placeholder's
+             geometry rides className verbatim; role="status" + sr-only
+             «جارٍ التحميل…» is net-new (the swap was silent). */
+          <Skeleton className="rounded-2xl h-36 border border-border/45" />
         ) : meError ? (
           /* R115 (A8 #4): a failed /auth/me probe must not quietly remove
              the identity card — same error-card idiom as the wallet

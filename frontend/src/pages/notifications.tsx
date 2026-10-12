@@ -1,7 +1,9 @@
+import { EmptyHero } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
+import { SkeletonText } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatRelativeTime } from "@/lib/utils";
@@ -256,11 +258,15 @@ export default function NotificationsPage() {
 
       {/* Loading */}
       {isLoading ? (
-        <div className="space-y-2.5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-20 rounded-2xl skeleton-shimmer border border-border/35" />
-          ))}
-        </div>
+        /* R136 (UX-1): SkeletonText — the 4-row card stack moves its
+           geometry verbatim into className; role="status" + sr-only
+           «جارٍ التحميل…» is net-new (the swap was silent). */
+        <SkeletonText
+          count={4}
+          wrapperClassName="space-y-2.5"
+          className="h-20 rounded-2xl border border-border/35"
+          lastShorter={false}
+        />
       ) : isError ? (
         /* Distinct from "no notifications": an outage must never read as
            an empty history (the 93-C5 / F-05 class). */
@@ -273,18 +279,15 @@ export default function NotificationsPage() {
           onRetry={() => refetch()}
         />
       ) : rows.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
-          <div className="relative w-20 h-20 mx-auto mb-5">
-            <div className="absolute inset-0 rounded-2xl bg-primary/6 blur-xl" />
-            <div className="relative w-20 h-20 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center">
-              <CheckCheck className="w-9 h-9 opacity-25" aria-hidden="true" />
-            </div>
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">لا توجد إشعارات</p>
-          <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
-            ستظهر هنا تنبيهات طلباتك وشحن محفظتك وردود الدعم
-          </p>
-        </div>
+        /* R136 (UX-1): EmptyHero — this page's hand-rolled hero WAS one
+           of the four byte-identical first-run sites the component
+           canonized (py-20 + w-20 glow tile + text-lg title); adoption
+           nets role="status" on the loading→empty swap. */
+        <EmptyHero
+          icon={CheckCheck}
+          title="لا توجد إشعارات"
+          description="ستظهر هنا تنبيهات طلباتك وشحن محفظتك وردود الدعم"
+        />
       ) : (
         <div className="space-y-2.5">
           {rows.map((n, i) => {

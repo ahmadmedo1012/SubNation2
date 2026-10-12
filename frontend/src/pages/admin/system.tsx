@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { Skeleton, SkeletonText } from "@/components/ui/Skeleton";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { useChartColors } from "@/lib/chart-theme";
@@ -818,11 +819,15 @@ export default function AdminSystemPage(): ReactElement | null {
               onRetry={() => void healthQ.refetch()}
             />
           ) : healthQ.isLoading || !health ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="h-[56px] rounded-xl skeleton-shimmer" />
-              ))}
-            </div>
+            /* R136 (UX-1): SkeletonText — the 7-tile health grid becomes
+               one announcing wrapper (role=status + sr-only, net-new)
+               with the grid classes + tile geometry verbatim. */
+            <SkeletonText
+              count={7}
+              wrapperClassName="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2"
+              className="h-[56px] rounded-xl"
+              lastShorter={false}
+            />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
               {/* DB / Neon */}
@@ -1053,11 +1058,14 @@ export default function AdminSystemPage(): ReactElement | null {
             {/* ── Panel 3: Runtime diagnostics grid ── */}
             <DetailsSection title="وقت التشغيل والذاكرة (RSS · event-loop · إصدار · أعلام)">
               {diagQ.isLoading ? (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="h-[88px] rounded-2xl skeleton-shimmer" />
-                  ))}
-                </div>
+                /* R136 (UX-1): SkeletonText — the 8-tile diagnostics
+                   grid, same one-wrapper treatment as the health grid. */
+                <SkeletonText
+                  count={8}
+                  wrapperClassName="grid grid-cols-2 lg:grid-cols-4 gap-3"
+                  className="h-[88px] rounded-2xl"
+                  lastShorter={false}
+                />
               ) : diagQ.isError || !diag ? (
                 <div className="bg-card border border-status-warning/20 rounded-2xl p-4 flex items-center gap-3">
                   <AlertCircle className="w-4 h-4 text-status-warning shrink-0" />
@@ -1606,8 +1614,13 @@ export default function AdminSystemPage(): ReactElement | null {
                   </div>
                   {/* R125-I2 (A5-F3): the rps trend rides the lazy
                       recharts bridge (see the ChartsLoader comment at the
-                      top of the file) with a height-reserved fallback. */}
-                  <Suspense fallback={<div className="h-[120px] skeleton-shimmer rounded-lg" />}>
+                      top of the file) with a height-reserved fallback.
+                      R136 (UX-1): the fallback is a Skeleton block now —
+                      geometry verbatim, the pair net-new. (The sparkline
+                      slot's fallback above stays a bare aria-hidden div:
+                      a decorative slot inside an already-live card must
+                      not become its own live region.) */}
+                  <Suspense fallback={<Skeleton className="h-[120px] rounded-lg" />}>
                     <ChartsLoader>
                       {(rc) => (
                         <rc.ResponsiveContainer width="100%" height={120}>
@@ -1669,11 +1682,14 @@ export default function AdminSystemPage(): ReactElement | null {
             </Link>
           </div>
           {recentAlertsQ.isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-[56px] rounded-xl skeleton-shimmer" />
-              ))}
-            </div>
+            /* R136 (UX-1): SkeletonText — the 3-row alerts stack,
+               geometry verbatim; the pair is net-new. */
+            <SkeletonText
+              count={3}
+              wrapperClassName="space-y-2"
+              className="h-[56px] rounded-xl"
+              lastShorter={false}
+            />
           ) : recentAlerts.length === 0 ? (
             <div className="bg-card border border-border/60 rounded-2xl p-6 flex flex-col items-center gap-2 text-muted-foreground">
               <Inbox className="w-6 h-6 opacity-30" />

@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { SkeletonText } from "@/components/ui/Skeleton";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد أنشطة" empty
 // state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
@@ -564,14 +565,22 @@ export function AdminSecurityDashboard() {
               </div>
 
               {auditLoading ? (
-                // First-load pane skeleton (A6-B8 role=status + the
-                // page-shaped shimmer idiom).
-                <div className="space-y-3" role="status" aria-busy="true">
-                  <span className="sr-only">جارٍ التحميل…</span>
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="h-14 rounded-lg skeleton-shimmer" />
-                  ))}
-                </div>
+                /* R136 (UX-1): SkeletonText — the first-load pane
+                   skeleton. Same DOM as the hand-rolled R125-I5 block
+                   (ONE announcing wrapper + 6 plain rows, role=status +
+                   sr-only preserved; the wrapper's aria-busy rides off —
+                   the region's content already says «جارٍ التحميل…», the
+                   pair TableSkeleton carries). The page-shaped
+                   first-load tree below keeps its own wrapper and stays
+                   hand-rolled: its children would nest live regions
+                   inside it (double announce + getByRole("status")
+                   breakage). */
+                <SkeletonText
+                  count={6}
+                  wrapperClassName="space-y-3"
+                  className="h-14 rounded-lg"
+                  lastShorter={false}
+                />
               ) : auditError ? (
                 /* 94-C2 (A2 P2-1) idiom: a failed load is an error card
                    with retry — NOT a false «لا توجد إجراءات» empty. */

@@ -1,5 +1,6 @@
 import { fetchHealthzSummary, type CheckStatus, type HealthzSummary } from "@/lib/healthz";
 import { formatTime } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useSeo } from "@/hooks/useSeo";
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
@@ -147,7 +148,10 @@ export default function StatusPage(): ReactElement {
         </div>
 
         {/* Loading */}
-        {isLoading && <div className="h-[120px] rounded-2xl skeleton-shimmer" />}
+        {/* R136 (UX-1): Skeleton — the aggregate-banner placeholder,
+           geometry verbatim; the pair is net-new (status-page.test
+           pins the loaded branches, untouched). */}
+        {isLoading && <Skeleton className="h-[120px] rounded-2xl" />}
 
         {/* Aggregate banner */}
         {!isLoading && (

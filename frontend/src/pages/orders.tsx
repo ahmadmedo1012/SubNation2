@@ -1,8 +1,9 @@
+import { EmptyHero, EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
-import { EmptyState } from "@/components/EmptyState";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
@@ -158,29 +159,11 @@ function FilterChip({
   );
 }
 
-function OrderCardSkeleton() {
-  return (
-    /* R125-I7 (A7 B-12 / R124-A3 #12): the skeleton row rode a 2px
-       border-r accent stripe — the craft-floor cap for colored side
-       stripes is 1px (the plain border already provides the edge). */
-    <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-xl bg-muted skeleton-shimmer shrink-0" />
-        <div className="flex-1 space-y-2">
-          <div className="h-4 bg-muted skeleton-shimmer rounded-lg w-2/5" />
-          <div className="flex gap-2">
-            <div className="h-3 bg-muted skeleton-shimmer rounded w-24" />
-            <div className="h-3 bg-muted skeleton-shimmer rounded w-20" />
-          </div>
-        </div>
-        <div className="shrink-0 space-y-1.5 text-right">
-          <div className="h-4 bg-muted skeleton-shimmer rounded w-16" />
-          <div className="h-5 bg-muted skeleton-shimmer rounded-full w-14" />
-        </div>
-      </div>
-    </div>
-  );
-}
+// R136 (UX-1): OrderCardSkeleton moved verbatim into ui/Skeleton's
+// SkeletonCard (the geometry this page's card skeleton defined — tile +
+// title line + chip pair; the R125-I7 1px-stripe history note moved with
+// it). The loading render below rides the primitive, which carries the
+// role="status" + sr-only pair the hand-rolled card lacked.
 
 export default function OrdersPage() {
   const { token } = useAuth();
@@ -407,11 +390,7 @@ export default function OrdersPage() {
 
       {/* Loading */}
       {isLoading ? (
-        <div className="space-y-2.5">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <OrderCardSkeleton key={i} />
-          ))}
-        </div>
+        <SkeletonCard count={4} wrapperClassName="space-y-2.5" />
       ) : isError ? (
         /* Distinct from "no orders": an API outage / expired session
            previously fell into the empty state below — an incident read
@@ -430,27 +409,26 @@ export default function OrdersPage() {
         />
       ) : /* Empty state */
       orders.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
-          <div className="relative w-20 h-20 mx-auto mb-5">
-            <div className="absolute inset-0 rounded-2xl bg-primary/6 blur-xl" />
-            <div className="relative w-20 h-20 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center">
-              <Package className="w-9 h-9 opacity-25" />
-            </div>
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">لا توجد طلبات بعد</p>
-          <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
-            ابدأ بتصفح الكتالوج واشترِ أول اشتراك رقمي
-          </p>
-          {/* R120-B7 (reviewer finding — A4-F1 sweep completion): asChild
-              composition (cart.tsx ghost-CTA idiom) instead of Link>Button
-              nesting — one anchor, one tab stop, identical styling. */}
-          <Button asChild className="min-h-11 gap-2">
-            <Link href="/">
-              <Sparkles className="w-4 h-4" />
-              تصفح الكتالوج
-            </Link>
-          </Button>
-        </div>
+        /* R136 (UX-1): EmptyHero — this page's hand-rolled hero WAS the
+           geometry source for the component (py-20 + w-20 glow tile +
+           text-lg title, the Sparkles CTA in the bare action slot);
+           adoption nets role="status" on the loading→empty swap. */
+        <EmptyHero
+          icon={Package}
+          title="لا توجد طلبات بعد"
+          description="ابدأ بتصفح الكتالوج واشترِ أول اشتراك رقمي"
+          action={
+            /* R120-B7 (reviewer finding — A4-F1 sweep completion): asChild
+                composition (cart.tsx ghost-CTA idiom) instead of Link>Button
+                nesting — one anchor, one tab stop, identical styling. */
+            <Button asChild className="min-h-11 gap-2">
+              <Link href="/">
+                <Sparkles className="w-4 h-4" />
+                تصفح الكتالوج
+              </Link>
+            </Button>
+          }
+        />
       ) : visibleOrders.length === 0 ? (
         hasNextPage ? (
           /* R120-B7 (A6-F1, admin/orders.tsx R115 A9 P2 pattern): the

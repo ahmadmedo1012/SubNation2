@@ -79,3 +79,78 @@ export function EmptyState({ icon: Icon, title, description, action, className }
     </div>
   );
 }
+
+interface EmptyHeroProps {
+  /**
+   * Lucide icon component. Optional — renders the hero tile
+   * (`w-9 h-9 opacity-25` inside a `w-20 h-20` rounded tile with the
+   * `bg-primary/6 blur-xl` glow behind it) only when passed; every
+   * first-run hero in the family carries one.
+   */
+  icon?: LucideIcon;
+  title: string;
+  /**
+   * Optional second line, `text-sm text-muted-foreground mb-7` — the
+   * mb-7 is part of the family's rhythm (it holds whether or not an
+   * action follows; notifications ships without a CTA and keeps it).
+   */
+  description?: ReactNode;
+  /**
+   * Optional CTA below the description, rendered BARE (no wrapper div)
+   * — the family's CTAs sit flush under the mb-7 description, so an
+   * extra wrapper would change the DOM the adopted sites render.
+   * Caller-owned, like EmptyState's action slot.
+   */
+  action?: ReactNode;
+  /**
+   * Extra classes appended to the outer card (entrance animations /
+   * spacing overrides). Same sparing-use rule as EmptyState.
+   */
+  className?: string;
+}
+
+/**
+ * R136 (UX-1): the first-run hero variant — the FIRST exclusion
+ * EmptyState's own docblock lists ("page-level zero-data heroes … a
+ * bigger, first-run moment"). That family was hand-rolled four times
+ * (orders «لا توجد طلبات بعد», notifications «لا توجد إشعارات», cart
+ * «سلتك فارغة», flash-sales) with byte-identical geometry: py-20
+ * padding, the w-20 glow tile (bg-primary/6 blur-xl behind a
+ * bg-muted/70 bordered tile, w-9 icon at opacity-25), text-lg title at
+ * text-foreground/80, text-sm description at mb-7. This is that shape
+ * as a component — geometry verbatim from the four sites, so each
+ * adoption is a pure swap.
+ *
+ * Like EmptyState: role="status" is net-new at adoption (the family
+ * was silent — the loading→empty swap now announces, R125 A6-B8), the
+ * icon is decorative (aria-hidden; the title carries the meaning), and
+ * the RTL story is text-center + mx-auto (direction-agnostic). The
+ * compact EmptyState stays the default for in-card empties; this is
+ * ONLY the page-level "you have nothing yet" moment.
+ */
+export function EmptyHero({ icon: Icon, title, description, action, className }: EmptyHeroProps) {
+  return (
+    <div
+      role="status"
+      className={`text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up ${className ?? ""}`}
+    >
+      {Icon && (
+        /* Decorative glow tile — aria-hidden on the svg keeps the live
+           region's announcement to the title (the EmptyState decision). */
+        <div className="relative w-20 h-20 mx-auto mb-5">
+          <div className="absolute inset-0 rounded-2xl bg-primary/6 blur-xl" />
+          <div className="relative w-20 h-20 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center">
+            <Icon className="w-9 h-9 opacity-25" aria-hidden="true" />
+          </div>
+        </div>
+      )}
+      <p className="font-bold text-lg mb-1.5 text-foreground/80">{title}</p>
+      {description && (
+        <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
+          {description}
+        </p>
+      )}
+      {action}
+    </div>
+  );
+}

@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Button } from "@/components/ui/button";
+import { SkeletonText } from "@/components/ui/Skeleton";
 // R123 (E3 item 1): the seven raw fetches ride the session-aware
 // wrappers — a settings cookie expiring mid-work now gets the global
 // «انتهت الجلسة» toast + redirect instead of a per-form error line,
@@ -321,11 +322,14 @@ export default function AdminSettingsPage() {
             </div>
 
             {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-16 skeleton-shimmer rounded-2xl" />
-                ))}
-              </div>
+              /* R136 (UX-1): SkeletonText — the 3-row provider stack,
+                 geometry verbatim; the pair is net-new. */
+              <SkeletonText
+                count={3}
+                wrapperClassName="space-y-3"
+                className="h-16 rounded-2xl"
+                lastShorter={false}
+              />
             ) : loadError ? (
               /* R120-B4 (A2-F10): the shared error-card idiom — a failed
                   providers load is NOT an empty provider list. */
@@ -402,11 +406,14 @@ export default function AdminSettingsPage() {
               </div>
 
               {loading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-12 bg-muted skeleton-shimmer rounded-2xl" />
-                  ))}
-                </div>
+                /* R136 (UX-1): SkeletonText — the 3-row settings stack
+                   (bg-muted tint rides along), geometry verbatim. */
+                <SkeletonText
+                  count={3}
+                  wrapperClassName="space-y-2"
+                  className="h-12 bg-muted rounded-2xl"
+                  lastShorter={false}
+                />
               ) : loadError ? (
                 /* R120-B4 (A2-F10): a failed settings load is NOT
                     «غير موجود» per key — the error card names the

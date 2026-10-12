@@ -24,6 +24,7 @@ import { EmptyState } from "@/components/admin/EmptyState";
 // the page previously showed its hand-rolled banner AND the empty
 // state together (an outage masquerading as "no sessions yet").
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { SkeletonText } from "@/components/ui/Skeleton";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 import { useAuth } from "../../lib/auth";
@@ -480,15 +481,17 @@ export default function AdminWhatsAppPage() {
           </div>
 
           {loading ? (
-            // R125-I5 (A3-4c): page-shaped skeleton for the FIRST load
-            // (the alerts.tsx card recipe + the A6-B8 role="status" /
-            // sr-only pair) — replaces the bare centered spinner.
-            <div className="p-4 space-y-3" role="status" aria-busy="true">
-              <span className="sr-only">جارٍ التحميل…</span>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-[76px] rounded-xl skeleton-shimmer" />
-              ))}
-            </div>
+            /* R136 (UX-1): SkeletonText — R125-I5's page-shaped skeleton
+               (the alerts.tsx card recipe). Same DOM: ONE announcing
+               wrapper (role=status + sr-only preserved; the wrapper's
+               aria-busy rides off — the pair is what TableSkeleton
+               carries) + 3 plain rows, geometry verbatim. */
+            <SkeletonText
+              count={3}
+              wrapperClassName="p-4 space-y-3"
+              className="h-[76px] rounded-xl"
+              lastShorter={false}
+            />
           ) : error && sessions.length === 0 ? (
             /* R126-L3 (A2-2): a failed FIRST load is NOT "no sessions" —
                the B5-04 false-empty class: the old path rendered this

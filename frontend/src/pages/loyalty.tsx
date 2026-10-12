@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Input } from "@/components/ui/input";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
+import { SkeletonText } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { generateIdempotencyKey } from "@/lib/idempotency";
@@ -64,9 +65,10 @@ interface PointsLedgerEntry {
   created_at: string;
 }
 
-function StatSkeleton() {
-  return <div className="bg-card border border-border rounded-2xl h-[108px] skeleton-shimmer" />;
-}
+// R136 (UX-1): StatSkeleton moved into ui/Skeleton's SkeletonText —
+// the 3-tile stats grid renders as one announcing wrapper (role=status
+// + sr-only «جارٍ التحميل…», net-new) + plain tiles with the same
+// bg-card/border/rounded-2xl/h-[108px] geometry, verbatim.
 
 // ── AUD103-2-F3 (r103): durable conversion-intent key ──────────────────────
 //
@@ -460,11 +462,12 @@ export default function LoyaltyPage() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <StatSkeleton key={i} />
-          ))}
-        </div>
+        <SkeletonText
+          count={3}
+          wrapperClassName="grid grid-cols-1 sm:grid-cols-3 gap-4"
+          className="bg-card border border-border rounded-2xl h-[108px]"
+          lastShorter={false}
+        />
       ) : loadError ? (
         /* Distinct from "no data": an outage/expired session previously
            fell through to a blank page under the header — same error

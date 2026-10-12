@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 
@@ -324,7 +325,12 @@ export default function ReferralsPage() {
                     رمز الإحالة الخاص بك
                   </p>
                   {loading ? (
-                    <div className="h-8 w-32 bg-muted/40 rounded-lg skeleton-shimmer" />
+                    /* R136 (UX-1): Skeleton — the referral-code
+                       placeholder, geometry verbatim; the pair is
+                       net-new. (SkeletonRow below stays hand-rolled:
+                       composite row layout, a documented
+                       non-adoption.) */
+                    <Skeleton className="h-8 w-32 bg-muted/40 rounded-lg" />
                   ) : (
                     <div
                       dir="ltr"

@@ -12,6 +12,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton, SkeletonText } from "@/components/ui/Skeleton";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
 import { useQueryClient, keepPreviousData } from "@tanstack/react-query";
 // R127-L1 (B1 §3.1): the chart-data series rides the generated client
@@ -95,9 +96,12 @@ const ChartsLoader = lazyWithRetry(() =>
 
 /** Shared Suspense fallbacks: height-reserved shimmer blocks so the
  * lazy vendor-charts fetch never shifts layout (charts) and the KPI
- * sparkline rows keep their 32px slot. */
+ * sparkline rows keep their 32px slot.
+ * R136 (UX-1): the block is a ui/Skeleton now — geometry verbatim
+ * (the dashboard-chart-race pin reads .skeleton-shimmer, which the
+ * primitive keeps), the role=status + sr-only pair net-new. */
 function ChartPanelFallback({ heightClass }: { heightClass: string }) {
-  return <div className={`${heightClass} skeleton-shimmer rounded-lg`} />;
+  return <Skeleton className={`${heightClass} rounded-lg`} />;
 }
 
 /** R125 (A6-B10 / A1-6 + the chart-race pins): the granularity/period
@@ -752,14 +756,15 @@ export default function AdminDashboardPage() {
 
         {/* KPI cards */}
         {statsLoading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="bg-card border border-border rounded-2xl h-28 skeleton-shimmer"
-              />
-            ))}
-          </div>
+          /* R136 (UX-1): SkeletonText — the 6-card KPI grid becomes one
+             announcing wrapper with the grid classes + card geometry
+             (bg-card border rounded-2xl h-28) verbatim. */
+          <SkeletonText
+            count={6}
+            wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-3"
+            className="bg-card border border-border rounded-2xl h-28"
+            lastShorter={false}
+          />
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {METRIC_CARDS.map((card, i) => (

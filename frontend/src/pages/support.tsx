@@ -3,6 +3,7 @@ import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyState } from "@/components/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton, SkeletonText } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatCount, formatDate, formatRelativeTime } from "@/lib/utils";
@@ -583,13 +584,13 @@ export default function SupportPage() {
               aria-busy="true"
             >
               <div className="flex justify-start">
-                <div className="h-12 w-3/5 skeleton-shimmer rounded-2xl" />
+                <Skeleton className="h-12 w-3/5 rounded-2xl" />
               </div>
               <div className="flex justify-end">
-                <div className="h-16 w-2/3 skeleton-shimmer rounded-2xl" />
+                <Skeleton className="h-16 w-2/3 rounded-2xl" />
               </div>
               <div className="flex justify-start">
-                <div className="h-10 w-1/2 skeleton-shimmer rounded-2xl" />
+                <Skeleton className="h-10 w-1/2 rounded-2xl" />
               </div>
             </div>
           ) : (
@@ -891,11 +892,16 @@ export default function SupportPage() {
       {!selectedTicket &&
         isAuthenticated &&
         (loading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-24 rounded-2xl skeleton-shimmer border border-border/35" />
-            ))}
-          </div>
+          /* R136 (UX-1): SkeletonText — the 3-row ticket stack, geometry
+             verbatim; the pair is net-new. (The chat-transcript skeleton
+             above stays hand-rolled: alternating sender alignment is
+             page structure, not repeating row geometry.) */
+          <SkeletonText
+            count={3}
+            wrapperClassName="space-y-3"
+            className="h-24 rounded-2xl border border-border/35"
+            lastShorter={false}
+          />
         ) : listError ? (
           /* 93-C5 / F-05: distinct from "no tickets" — an outage/expired
              session previously read as "لا توجد تذاكر دعم". Same error-card

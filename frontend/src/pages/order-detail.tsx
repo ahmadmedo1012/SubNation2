@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import {
@@ -207,12 +208,18 @@ export default function OrderDetailPage() {
 
   if (isLoading)
     return (
+      /* R136 (UX-1): per-block Skeletons — the section trio's heights
+         differ (180/140/80px), so no uniform-row shape fits; each
+         block's geometry rides className verbatim and each gains the
+         role="status" + sr-only pair (the in-page loading swap was
+         silent — the !token phase above already announces via
+         RouteSkeleton's aria-label). */
       <div className="max-w-2xl mx-auto px-4 py-10">
-        <div className="h-4 skeleton-shimmer rounded w-24 mb-6" />
+        <Skeleton className="h-4 w-24 rounded mb-6" />
         <div className="space-y-3">
-          <div className="h-[180px] skeleton-shimmer rounded-2xl border border-border/35" />
-          <div className="h-[140px] skeleton-shimmer rounded-2xl border border-border/35" />
-          <div className="h-[80px] skeleton-shimmer rounded-2xl border border-border/35" />
+          <Skeleton className="h-[180px] rounded-2xl border border-border/35" />
+          <Skeleton className="h-[140px] rounded-2xl border border-border/35" />
+          <Skeleton className="h-[80px] rounded-2xl border border-border/35" />
         </div>
       </div>
     );

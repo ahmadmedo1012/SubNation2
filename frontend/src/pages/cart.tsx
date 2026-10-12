@@ -1,4 +1,6 @@
+import { EmptyHero } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useSeo } from "@/hooks/useSeo";
@@ -140,7 +142,13 @@ export default function CartPage() {
   if (!isLoaded) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="h-7 w-40 bg-muted skeleton-shimmer rounded-lg mb-6" />
+        {/* R136 (UX-1): Skeleton — the heading block's geometry rides
+           className verbatim; the pair is net-new (the pre-hydration
+           flash was silent). CartSkeleton stays hand-rolled: its rows
+           are a composite flex layout (icon + two lines + trailing
+           price), the family ui/Skeleton's docblock lists as a
+           deliberate non-adoption. */}
+        <Skeleton className="h-7 w-40 bg-muted rounded-lg mb-6" />
         <CartSkeleton />
       </div>
     );
@@ -189,32 +197,27 @@ export default function CartPage() {
       </div>
 
       {items.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
-          <div className="relative w-20 h-20 mx-auto mb-5">
-            <div className="absolute inset-0 rounded-2xl bg-primary/6 blur-xl" />
-            <div className="relative w-20 h-20 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center">
-              <ShoppingCart className="w-9 h-9 opacity-25" />
-            </div>
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">سلتك فارغة</p>
-          <p className="text-sm text-muted-foreground mb-7 max-w-xs mx-auto leading-relaxed">
-            ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة
-          </p>
-          {/* A3-F4 + A3-F13 (R120-B2): asChild composition — the previous
-              Link>Button nesting rendered TWO same-named «متابعة التسوق»
-              elements (anchor 152×20 + button 152×38 measured live), and
-              the button shipped 38px. One anchor styled as the 44px
-              primary CTA: one tab stop, one target. */}
-          <Button
-            asChild
-            className="min-h-11 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-          >
-            <Link href="/">
-              <Sparkles className="w-4 h-4" />
-              متابعة التسوق
-            </Link>
-          </Button>
-        </div>
+        /* R136 (UX-1): EmptyHero — this page's hand-rolled hero was one
+           of the four byte-identical first-run sites the component
+           canonized; the asChild CTA rides the bare action slot
+           verbatim (one anchor, one tab stop — the A3-F4/A3-F13 fix
+           stays exactly as it was). */
+        <EmptyHero
+          icon={ShoppingCart}
+          title="سلتك فارغة"
+          description="ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة"
+          action={
+            <Button
+              asChild
+              className="min-h-11 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
+            >
+              <Link href="/">
+                <Sparkles className="w-4 h-4" />
+                متابعة التسوق
+              </Link>
+            </Button>
+          }
+        />
       ) : (
         <>
           {/* Items */}
