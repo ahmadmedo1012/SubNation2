@@ -31,6 +31,18 @@ import {
 } from "../lib/whatsapp-otp";
 import { buildChatId, sendWhatsAppMessage } from "./openwa.service";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
+// R136 (BE-2): the daily-send ceiling moved to lib/otp-daily-cap.ts; the
+// generic advisory-lock machinery to lib/pg-advisory-lock.ts. This module
+// keeps the OTP orchestration + the pool RESOLUTION + its test seams
+// (resolveDbPool's lazy @workspace/db import is pinned by the
+// lock-pool-wiring source-contract suite and by the module-boundary
+// mocks the pglite suites ride on).
+import { fireOtpDailyCapAlert, otpDailySendCap, otpDailyStateForToday } from "../lib/otp-daily-cap";
+import {
+  DEFAULT_UNLOCK_TIMEOUT_MS,
+  withAdvisoryLock,
+  type PoolLike,
+} from "../lib/pg-advisory-lock";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -61,85 +73,19 @@ export function getServerSecret(): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// R120-B6/A8-F5: process-wide daily send ceiling
+// R120-B6/A8-F5: process-wide daily send ceiling → lib/otp-daily-cap.ts
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Every pre-existing OTP cap is keyed per-phone (cooldown, hourly limit)
 // or per-IP (the /start limiter in app.ts). A distributed attacker
 // rotating IPs can hit a distinct number under each — no individual cap
 // ever trips, while the gateway burns quota and real phones receive
-// spam. This is the global brake the identifier-keyed caps cannot
-// provide: a single in-memory counter of ACTUAL sends (successful
-// dispatches only — a failed delivery consumed nothing), reset at the
-// UTC day boundary (TZ=UTC is pinned in the Dockerfile runtime stage).
-//
-// In-memory by design: the deployment is single-replica
-// (SINGLE_INSTANCE_MODE, R108), so process state IS the global state,
-// and a restart legitimately re-arms the brake (a restart is also a
-// fresh operator-visible event). Concurrency note: different phones do
-// not share the per-phone start lock, so a burst racing at count =
-// cap-1 may overshoot by a few concurrent sends before the gate trips —
-// acceptable for an abuse brake, not a billing meter.
-
-interface OtpDailySendState {
-  /** UTC calendar day (YYYY-MM-DD) the counter belongs to. */
-  utcDay: string;
-  /** Successful sends this UTC day, process-wide (all phones/purposes). */
-  sent: number;
-  /** True once the cap-trip error + admin alert have fired for this day. */
-  capTripAnnounced: boolean;
-}
-
-const otpDailySendState: OtpDailySendState = {
-  utcDay: new Date().toISOString().slice(0, 10),
-  sent: 0,
-  capTripAnnounced: false,
-};
-
-/** Env-tunable ceiling (OTP_DAILY_SEND_CAP; documented in config/env.example). */
-const DEFAULT_OTP_DAILY_SEND_CAP = 500;
-
-function otpDailySendCap(): number {
-  const raw = Number(process.env.OTP_DAILY_SEND_CAP);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_OTP_DAILY_SEND_CAP;
-}
-
-/** Roll the counter at the UTC day boundary — lazily, on first touch of the day. */
-function otpDailyStateForToday(): OtpDailySendState {
-  const today = new Date().toISOString().slice(0, 10);
-  if (otpDailySendState.utcDay !== today) {
-    otpDailySendState.utcDay = today;
-    otpDailySendState.sent = 0;
-    otpDailySendState.capTripAnnounced = false;
-  }
-  return otpDailySendState;
-}
-
-/**
- * A8-F5: deduped operator alert on the cap trip — same lazy-dynamic-import
- * pattern as fireLockPoolAlert (the module-boundary mocks used by this
- * service's test suites export no adminAlertsTable). logAdminAlert's
- * dedupeKey ("otp-daily-cap") collapses repeats within its 24 h window;
- * the call-site capTripAnnounced flag makes the firing itself once per
- * UTC day even before the DB dedupe engages.
- */
-function fireOtpDailyCapAlert(sent: number, cap: number): void {
-  import("../jobs/alertLogger")
-    .then(({ logAdminAlert }) =>
-      logAdminAlert(
-        "system",
-        "بلوغ الحد اليومي لإرسال رموز واتساب",
-        `تم إيقاف إرسال رموز التحقق عبر واتساب مؤقتاً: بلغ العدد اليومي المُرسل الحد الأقصى (${sent}/${cap}، بتوقيت UTC). الطلبات الجديدة تُرفض برمز 429 حتى بداية اليوم التالي بتوقيت UTC. إن كان هذا مفاجئاً فراجع سجل النشاط (auth_activity) بحثاً عن إساءة استخدام من عناوين IP متعددة.`,
-        { dedupeKey: "otp-daily-cap" },
-      ),
-    )
-    .catch((err) =>
-      logger.warn(
-        { err, dedupeKey: "otp-daily-cap" },
-        "[whatsapp-otp] daily-cap admin alert dispatch failed",
-      ),
-    );
-}
+// spam. The global brake (in-memory counter of ACTUAL sends, reset at
+// the UTC day boundary) lives in lib/otp-daily-cap.ts; startOtpLocked
+// consults it BEFORE the generate+send so a tripped cap burns nothing on
+// the gateway, and counts the send the moment the message actually went
+// out (NOT at row-insert time — a store_failed send still consumed
+// gateway quota and still landed on somebody's phone).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // startOtp — generate + send
@@ -260,59 +206,14 @@ export async function startOtp(input: StartOtpInput): Promise<StartOtpResult> {
  * those contexts the gate is skipped (single-process tests serialize
  * via the event loop and mock the boundary). Production always has the
  * node-postgres lockPool (shared/db/src/index.ts exports it).
+ *
+ * R136 (BE-2): the acquire/release mechanics (bounded unlock race,
+ * destroy-on-unlock-failure, saturation alerts) are the GENERIC
+ * lib/pg-advisory-lock.ts machinery — this module keeps only the OTP
+ * key namespacing, the pool resolution + its test seam, and the
+ * busy-verdict mapping below.
  */
 const OTP_START_LOCK_RETRY_SEC = 15;
-
-interface PoolClientLike {
-  query: (
-    text: string,
-    values?: readonly unknown[],
-  ) => Promise<{
-    rows: Array<Record<string, unknown>>;
-  }>;
-  release: (destroy?: boolean) => void;
-}
-
-interface PoolLike {
-  connect: () => Promise<PoolClientLike>;
-}
-
-// F-4 (R118-A1): bound on the finally-branch unlock query. The lock
-// pool sets only an acquisition timeout (connectionTimeoutMillis) — no
-// statement timeout — so a silently-dead connection used to leave the
-// `SELECT pg_advisory_unlock` await hanging until TCP keepalives error
-// out. Env-overridable for tests + ops (same pattern as
-// HEALTH_AGGREGATE_TIMEOUT_MS in routes/health.ts).
-const DEFAULT_UNLOCK_TIMEOUT_MS = 5_000;
-
-function unlockTimeoutMs(): number {
-  const raw = Number(process.env.OTP_UNLOCK_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_UNLOCK_TIMEOUT_MS;
-}
-
-/**
- * F-5 (R118-A1): lock-pool failure paths previously surfaced ONLY as
- * warn lines — a sustained pathology (pool saturation, unlock failures)
- * stayed invisible to the alerts drawer while every comparable
- * condition (inventory-corrupt, coupon-maxed, credentials-sweep)
- * alerts. Fire-and-forget by design: logAdminAlert never rejects (its
- * own catch swallows DB failures), so the .catch here only guards the
- * module load itself. Dynamic import — same lazy pattern the socket
- * emits use — keeps alertLogger (and its @workspace/db import) out of
- * this module's import graph: the module-boundary mocks used by the
- * test suite export no adminAlertsTable, and the lock path is the one
- * place this service runs under them.
- *
- * Deduped per branch ("otp:lockpool" / "otp:lockpool:saturation") so a
- * burst of failures collapses to one drawer row per 24 h window.
- */
-function fireLockPoolAlert(dedupeKey: string, title: string, message: string): void {
-  import("../jobs/alertLogger")
-    .then(({ logAdminAlert }) => logAdminAlert("system", title, message, { dedupeKey }))
-    .catch((err) =>
-      logger.warn({ err, dedupeKey }, "[whatsapp-otp] lock-pool admin alert dispatch failed"),
-    );
-}
 
 let cachedPool: PoolLike | null | undefined;
 
@@ -337,113 +238,63 @@ async function resolveDbPool(): Promise<PoolLike | null> {
   return cachedPool;
 }
 
+/**
+ * Serialize the /start critical section (probe → send → insert) per
+ * phone via lib/pg-advisory-lock's withAdvisoryLock on the DEDICATED
+ * lock pool resolved above. The generic gate owns the acquire/release
+ * mechanics: bounded unlock race (F-4), destroy-on-unlock-failure
+ * (R117 A1-P3), saturation fail-fast + the deduped F-5 admin alerts
+ * (texts below are this gate's operator copy).
+ *
+ * Busy (lock lost OR pool saturated) → the existing rate-limit style
+ * verdict (`cooldown` + a short retryAfterSec; the route answers 429 +
+ * Retry-After) — by the time the client retries, the winner's row
+ * backs the real cooldown probe. A pool-less context (pglite harness /
+ * module-boundary mocks) runs the body ungated ("skipped" outcome) —
+ * single-process behavior unchanged.
+ */
 async function withPhoneStartLock(phone: string, input: StartOtpInput): Promise<StartOtpResult> {
   const pool = await resolveDbPool();
-  if (pool === null) {
-    // No lock pool (test harness / module-boundary mocks) — no cross-process
-    // gate. Single-process behavior is unchanged.
-    return startOtpLocked(input, phone);
-  }
-  const lockKey = `otp-start:${phone}`;
-  // R117 (A1-P2): lock-pool saturation (burst of concurrent starts, or the
-  // DB briefly unreachable) fails fast into the SAME busy verdict as a lock
-  // loser — retryable, honest ("try again in a moment"), and it never 500s
-  // the auth path. A genuinely down DB still surfaces loudly through every
-  // other query path + the neon health check.
-  let client: PoolClientLike;
-  try {
-    client = await pool.connect();
-  } catch (err) {
-    logger.warn(
-      {
-        category: "whatsapp.otp",
-        err: err instanceof Error ? err.message : String(err),
+  const outcome = await withAdvisoryLock(
+    {
+      pool,
+      key: `otp-start:${phone}`,
+      logCategory: "whatsapp.otp",
+      logPrefix: "[whatsapp-otp]",
+      unlockTimeoutEnv: "OTP_UNLOCK_TIMEOUT_MS",
+      unlockTimeoutDefaultMs: DEFAULT_UNLOCK_TIMEOUT_MS,
+      // F-5 (R118-A1) operator copy, deduped per branch so a burst of
+      // failures collapses to one drawer row per 24 h window.
+      saturationAlert: {
+        dedupeKey: "otp:lockpool:saturation",
+        title: "ضغط على مجموعة أقفال رموز واتساب",
+        message:
+          "فشل الحصول على اتصال من مجموعة الأقفال المخصّصة لبدء رمز التحقق (lockPool) — تم الرد على الطلب بحالة «مشغول» قابلة لإعادة المحاولة. قد يشير هذا إلى تشبّه المجموعة (حدّ اتصالَين) أو تعذّر الوصول إلى قاعدة البيانات.",
       },
-      "[whatsapp-otp] start-lock pool saturated — answering busy (retryable)",
-    );
-    // F-5 (R118-A1): the warn line alone is invisible to the operator's
-    // alert drawer — a sustained saturation (burst traffic or a sick
-    // DB) deserves a deduped admin alert.
-    fireLockPoolAlert(
-      "otp:lockpool:saturation",
-      "ضغط على مجموعة أقفال رموز واتساب",
-      "فشل الحصول على اتصال من مجموعة الأقفال المخصّصة لبدء رمز التحقق (lockPool) — تم الرد على الطلب بحالة «مشغول» قابلة لإعادة المحاولة. قد يشير هذا إلى تشبّه المجموعة (حدّ اتصالَين) أو تعذّر الوصول إلى قاعدة البيانات.",
-    );
-    return { ok: false, reason: "cooldown", retryAfterSec: OTP_START_LOCK_RETRY_SEC };
-  }
-  let acquired = false;
-  try {
-    const res = await client.query("SELECT pg_try_advisory_lock(hashtext($1)) AS acquired", [
-      lockKey,
-    ]);
-    acquired = Boolean(res.rows?.[0]?.acquired);
-    if (!acquired) {
-      // Same phone already has a start in flight — the rate-limit style
-      // verdict. The loser never reaches the send path.
-      await safeLog({
-        identifier: `wa:${phone}`,
-        action: "register",
-        success: false,
-        failureReason: "cooldown",
-        ipAddress: input.ipAddress,
-        userAgent: input.userAgent,
-      });
-      return { ok: false, reason: "cooldown", retryAfterSec: OTP_START_LOCK_RETRY_SEC };
-    }
-    return await startOtpLocked(input, phone);
-  } finally {
-    if (acquired) {
-      let unlockOk = true;
-      // F-4 (R118-A1): race the unlock against a bounded timer. Without
-      // the race, a silently-dead connection hung this await until TCP
-      // keepalives error out — the /start response was delayed AND one
-      // of the two lock-pool slots stayed pinned the whole time (a
-      // second such hang 429'd every OTP start with the busy verdict).
-      // A timeout takes the SAME unlockOk=false path as a rejected
-      // query: release(true) destroys the client, closing the session
-      // so Postgres drops the advisory lock server-side. The losing
-      // (still-pending) query promise stays race-observed, so its late
-      // settlement can never surface as an unhandled rejection.
-      let unlockTimer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        await Promise.race([
-          client.query("SELECT pg_advisory_unlock(hashtext($1))", [lockKey]),
-          new Promise<never>((_, reject) => {
-            unlockTimer = setTimeout(() => {
-              reject(new Error(`pg_advisory_unlock did not answer within ${unlockTimeoutMs()}ms`));
-            }, unlockTimeoutMs());
-          }),
-        ]);
-      } catch (err) {
-        unlockOk = false;
-        logger.warn(
-          {
-            category: "whatsapp.otp",
-            err: err instanceof Error ? err.message : String(err),
-          },
-          "[whatsapp-otp] start-lock advisory unlock failed — destroying the client so Postgres drops the session lock server-side",
-        );
-        // F-5 (R118-A1): surface the pathology in the admin alerts
-        // drawer too — repeated unlock failures point at a sick
-        // lock-pool/DB connection, not a one-off blip.
-        fireLockPoolAlert(
-          "otp:lockpool",
-          "فشل تحرير قفل بدء رمز واتساب",
+      unlockFailureAlert: {
+        dedupeKey: "otp:lockpool",
+        title: "فشل تحرير قفل بدء رمز واتساب",
+        message:
           "فشل أو تجاوز مهلة أمر تحرير القفل الاستشاري (pg_advisory_unlock) لبدء رمز التحقق — تم تدمير الاتصال لضمان إسقاط القفل من جهة Postgres. تكرار هذا التنبيه قد يدل على مشكلة في الاتصال بقاعدة البيانات.",
-        );
-      } finally {
-        if (unlockTimer !== undefined) clearTimeout(unlockTimer);
-      }
-      // R117 (A1-P3): a session-scoped advisory lock dies with the SESSION.
-      // A plain release() would return a still-locked live session to the
-      // pool — that phone would then 429 "cooldown" on every future start
-      // until process restart. On unlock failure release(true) destroys the
-      // client (closing the session → server drops the lock) instead.
-      client.release(!unlockOk);
-    } else {
-      client.release();
-    }
+      },
+    },
+    () => startOtpLocked(input, phone),
+  );
+  if (outcome.kind === "ran" || outcome.kind === "skipped") return outcome.value;
+  // pool_saturated already warn-logged + fired its deduped admin alert
+  // inside the gate; the lock LOSER logs the audit-trail line (the
+  // loser never reaches the send path or the cooldown probe).
+  if (outcome.cause === "lock_lost") {
+    await safeLog({
+      identifier: `wa:${phone}`,
+      action: "register",
+      success: false,
+      failureReason: "cooldown",
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+    });
   }
+  return { ok: false, reason: "cooldown", retryAfterSec: OTP_START_LOCK_RETRY_SEC };
 }
 
 /** The pre-A9-3 startOtp body — always called with the phone-start gate
