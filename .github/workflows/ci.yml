@@ -1,10 +1,14 @@
 name: CI
 
 on:
+  # R134 (A7-F9 — the queued config-touch landed): the develop filter is
+  # GONE (.hermes.md: "Branch: main only — no develop branch exists" —
+  # it referenced a branch this repo never had). main-only, the first
+  # intentional filter shape since the file was born.
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
   # FH-A12 F-4/F-5: manual full run (October renewal smoke test) — bypasses
   # the path filters, so every job runs.
   workflow_dispatch: {}
@@ -309,20 +313,27 @@ jobs:
       - name: UI anti-pattern source gate (impeccable)
         # R127-L4 (B3 Phase 1): regex-mode scan of the frontend source for
         # AI-slop tells (bounce easings, slop gradients, glow shadows).
-        # Version-pinned — the npx shim downloads a version-locked engine
-        # binary; an unpinned ref would drift the rule set between runs.
-        # Exit semantics (impeccable's own): 0 = clean · 2 = findings →
-        # this step FAILS (blocks the PR) · 1 = operational error (the
-        # scan itself could not run) → also fails; NEVER `|| true` — a
-        # masked 1 silently switches the gate off. Only warning-severity
-        # findings affect the exit code (advisories print, never block).
-        # Sanctioned exceptions carry inline `impeccable-disable-line`
-        # waivers at the site (frontend/src/index.css — the FINAL_UX_SYSTEM
-        # §2 spring vocabulary); triage + kept findings:
+        # R134 (A5-F3): the engine is now a lockfile-pinned workspace
+        # devDependency (impeccable@4.1.0 + its @impeccable/cli-*
+        # platform binaries as optionalDependencies) resolved by the
+        # `pnpm install --frozen-lockfile` step above — every tarball is
+        # integrity-hash-verified against the committed lockfile. The old
+        # `npx -y impeccable@4.1.0` shim fetched the artifact from the
+        # public registry on every run: version-pinned but not
+        # artifact-pinned, so a compromised package/mirror executed inside
+        # this job. Exit semantics (impeccable's own): 0 = clean · 2 =
+        # findings → this step FAILS (blocks the PR) · 1 = operational
+        # error (the scan itself could not run) → also fails; NEVER
+        # `|| true` — a masked 1 silently switches the gate off. Only
+        # warning-severity findings affect the exit code (advisories
+        # print, never block). Sanctioned exceptions carry inline
+        # `impeccable-disable-line` waivers at the site
+        # (frontend/src/index.css — the FINAL_UX_SYSTEM §2 spring
+        # vocabulary); triage + kept findings:
         # docs/inspection-r127/B3-impeccable-ui.md. Verified exit 0 on the
         # R127 tree before this gate landed. Source mode only (no browser)
         # — rendered-mode scans stay a separate B3 Phase 2 decision.
-        run: npx -y impeccable@4.1.0 detect frontend/src/
+        run: pnpm exec impeccable detect frontend/src/
 
       - name: Lint
         run: pnpm run lint

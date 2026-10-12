@@ -51,12 +51,13 @@ Thumbs.db
 zipFile/
 
 # R104 (AG12-7): non-build content excluded from the build context —
-# ~2.3 MB of docs/specs/tooling the builder never reads.
+# ~2.3 MB of docs/specs/tooling the builder never reads. (.github is
+# already excluded in the top VCS block — the duplicate here was dead
+# weight, R134 A5-F4.)
 docs
 specs
 .kiro
 .husky
 .specify
-.github
 *.md
 .gitleaks.toml
