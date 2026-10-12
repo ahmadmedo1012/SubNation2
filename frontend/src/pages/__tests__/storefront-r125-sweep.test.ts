@@ -28,7 +28,7 @@
  *            shells on the swept storefront files.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -41,10 +41,20 @@ function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 }
 
+// R135 (FE-3): the product page's markup was decomposed into
+// src/components/product/*.tsx — the extracted product components join
+// the swept list so the B-2 (raw hover:text-primary) and B-6
+// (half-alpha fallback ink) nets keep covering the SAME rendered
+// markup wherever it lives. Pure-extension: every pre-R135 entry stays.
+const PRODUCT_COMPONENTS = readdirSync(resolve(process.cwd(), "src/components/product"))
+  .filter((f) => f.endsWith(".tsx"))
+  .map((f) => `src/components/product/${f}`);
+
 const SWEPT_FILES = [
   "src/pages/home.tsx",
   "src/pages/category.tsx",
   "src/pages/product.tsx",
+  ...PRODUCT_COMPONENTS,
   "src/pages/orders.tsx",
   "src/pages/order-detail.tsx",
   "src/pages/cart.tsx",

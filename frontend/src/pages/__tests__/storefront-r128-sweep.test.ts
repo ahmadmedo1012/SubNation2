@@ -42,11 +42,35 @@ function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 }
 
-/** Every storefront page (top level only — admin is its own lane). */
+/** Every storefront page (top level only — admin is its own lane).
+ * R135 (FE-3): the product page's markup was decomposed into
+ * src/components/product/*.tsx — those extracts ARE storefront page
+ * surface (they render the money page's h1/h2/h3 today), so they join
+ * the scan. Pure-extension: every pre-R135 file keeps being swept. */
 function storefrontPages(): string[] {
-  return readdirSync(resolve(process.cwd(), "src/pages"))
+  const pages = readdirSync(resolve(process.cwd(), "src/pages"))
     .filter((f) => f.endsWith(".tsx"))
     .map((f) => `src/pages/${f}`);
+  const productComponents = readdirSync(resolve(process.cwd(), "src/components/product"))
+    .filter((f) => f.endsWith(".tsx"))
+    .map((f) => `src/components/product/${f}`);
+  return [...pages, ...productComponents];
+}
+
+/** R135 (FE-3): the product page surface is now product.tsx + its
+ * extracted components under src/components/product/ — the R128 pins
+ * below (no ✓ glyph, the lucide Check line, the 12px pill rhythm) must
+ * keep guarding the SAME rendered markup wherever it lives. Union of
+ * the comment-stripped sources; assertion strength unchanged (the
+ * patterns must exist in the surface, and nothing banned may return). */
+function productSurfaceSource(): string {
+  const files = [
+    "src/pages/product.tsx",
+    ...readdirSync(resolve(process.cwd(), "src/components/product"))
+      .filter((f) => f.endsWith(".tsx"))
+      .map((f) => `src/components/product/${f}`),
+  ];
+  return files.map((f) => stripComments(read(f))).join("\n");
 }
 
 describe("storefront R128 sweep — h1–h4 honor the Arabic-safe 1.3 leading floor (A4-F3)", () => {
@@ -73,8 +97,11 @@ describe("storefront R128 sweep — bidi isolation on the money-path name trunca
 });
 
 describe("storefront R128 sweep — no text-glyph icons on the product page (A6 P4-4)", () => {
-  it("product.tsx carries no ✓ glyph (the «رصيد كافٍ» line rides lucide Check)", () => {
-    const src = stripComments(read("src/pages/product.tsx"));
+  it("the product surface carries no ✓ glyph (the «رصيد كافٍ» line rides lucide Check)", () => {
+    // R135 (FE-3): scans the product page surface (product.tsx +
+    // components/product/*) — the compact CTA moved to CtaBlock.tsx in
+    // the decomposition; the pin follows the markup, same assertions.
+    const src = productSurfaceSource();
     expect(src).not.toContain("✓");
     // …and the lucide replacement is live at the compact-bar line.
     expect(src).toMatch(/رصيد كافٍ[\s\S]{0,140}?<Check /);
@@ -83,7 +110,9 @@ describe("storefront R128 sweep — no text-glyph icons on the product page (A6 
 
 describe("storefront R128 sweep — rhythm + tint polish (A2 §4)", () => {
   it("the PDP variant selector rides the page's 12px gap rhythm (plan row + duration grid)", () => {
-    const src = stripComments(read("src/pages/product.tsx"));
+    // R135 (FE-3): the selector moved to components/product/
+    // VariantSelector.tsx — the pin scans the product surface union.
+    const src = productSurfaceSource();
     expect(src).toContain("flex flex-wrap gap-3");
     expect(src).toContain("grid grid-cols-2 gap-3");
   });

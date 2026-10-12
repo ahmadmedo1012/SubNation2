@@ -1,7 +1,34 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
-import { CopyButton } from "@/components/CopyButton";
+// R135 (FE-3 decomposition): the page's self-contained subcomponents and
+// pure helpers moved to @/components/product/* (verbatim moves — the money
+// path, state atoms and every handler stay HERE; the extracts render the
+// byte-identical DOM they rendered inline yesterday). Import surface:
+//   • buy-intent-key / category-presentation — the page's pure modules
+//   • CopyField/CouponField/CtaBlock/VariantSelector/Recommendations —
+//     the page's own already-encapsulated subtrees
+//   • OrderSuccessScreen/ProductMediaSection/PriceStockPanel/
+//     TrustSignals/FaqAccordion — this round's section extractions
+import {
+  buyIntentFingerprint,
+  clearBuyIntentKey,
+  loadBuyIntentKey,
+  persistBuyIntentKey,
+  toCents,
+} from "@/components/product/buy-intent-key";
+import { KNOWN_CATEGORIES, categoryMetaFor } from "@/components/product/category-presentation";
+import { CouponField, type CouponResult } from "@/components/product/CouponField";
+import { CtaBlock } from "@/components/product/CtaBlock";
+import { FaqAccordion } from "@/components/product/FaqAccordion";
+import {
+  OrderSuccessScreen,
+  type PurchaseSummary,
+} from "@/components/product/OrderSuccessScreen";
+import { PriceStockPanel } from "@/components/product/PriceStockPanel";
+import { ProductMediaSection } from "@/components/product/ProductMediaSection";
+import { RecommendationsSection } from "@/components/product/RecommendationsSection";
+import { TrustSignals } from "@/components/product/TrustSignals";
+import { VariantSelector } from "@/components/product/VariantSelector";
 import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -9,7 +36,6 @@ import { useCart } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { buildBreadcrumbLd, buildFaqLd, buildProductLd } from "@/lib/seo-builders";
-import { CATEGORY_META } from "@/lib/categories";
 import { categoryLabel, formatCurrency } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
@@ -19,271 +45,19 @@ import {
   customFetch,
   getGetMeQueryKey,
   getGetProductQueryKey,
-  getGetProductRecommendationsQueryKey,
   getGetWalletQueryKey,
   getListOrdersQueryKey,
   getMe,
   getProduct,
   type CreateOrderBody,
+  type Order,
   type Product,
-  type ProductRecommendation,
-  type User,
   useGetMe,
   useGetProduct,
-  useGetProductRecommendations,
 } from "@workspace/api-client-react";
-import {
-  AlertCircle,
-  ArrowRight,
-  Check,
-  CheckCircle,
-  ChevronLeft,
-  Eye,
-  EyeOff,
-  Headphones,
-  Home,
-  Info,
-  Loader2,
-  Lock,
-  Package,
-  PlusCircle,
-  ShieldCheck,
-  ShoppingCart,
-  Tag,
-  Truck,
-  Wallet,
-  X,
-} from "lucide-react";
+import { AlertCircle, ArrowRight, ChevronLeft, Home, Info, Package } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
-
-// Category-tinted hero gradients on the product page. Ride the shared
-// --cat-* tokens (defined in index.css, exposed to Tailwind via @theme)
-// so the hero re-tones correctly on the light theme — the previous
-// `from-violet-950 via-violet-900/60 to-violet-800/20` style produced
-// a near-black slab on light backgrounds because the 800/900/950
-// palette is dark-only by design.
-const CATEGORY_GRADIENTS: Record<string, string> = {
-  streaming: "from-cat-streaming/30 via-cat-streaming/15 to-transparent",
-  music: "from-cat-music/30 via-cat-music/15 to-transparent",
-  software: "from-cat-software/30 via-cat-software/15 to-transparent",
-  vpn: "from-cat-vpn/30 via-cat-vpn/15 to-transparent",
-  "ai-tools": "from-cat-ai-tools/30 via-cat-ai-tools/15 to-transparent",
-  "seo-tools": "from-cat-seo-tools/30 via-cat-seo-tools/15 to-transparent",
-  education: "from-cat-education/30 via-cat-education/15 to-transparent",
-  // Retired categories — kept so archived products still render a
-  // themed gradient if the operator previews them from admin.
-  gaming: "from-cat-gaming/30 via-cat-gaming/15 to-transparent",
-  productivity: "from-cat-productivity/30 via-cat-productivity/15 to-transparent",
-};
-
-/**
- * Categories that have a dedicated landing page at /category/<slug>.
- * The breadcrumb middle segment links to the category page only when
- * the product's category is in this set; unknown categories fall back
- * to "/" so the breadcrumb never produces a broken link.
- */
-const KNOWN_CATEGORIES = new Set(Object.keys(CATEGORY_META));
-
-/** The product's category landing-page meta (label + slug route) when it
- * has one — null for retired/unknown categories so the visible breadcrumb
- * and the back affordance below degrade to the home path instead of a
- * broken /category/<retired> link (the JSON-LD breadcrumb follows the same
- * KNOWN_CATEGORIES rule). */
-const categoryMetaFor = (cat: string | null | undefined) =>
-  cat && KNOWN_CATEGORIES.has(cat) ? CATEGORY_META[cat as keyof typeof CATEGORY_META] : null;
-
-// Empty-image fallback foreground tint per category. Mirrors the
-// gradient palette above so the giant first-letter glyph reads as
-// "this is a [category] product" without needing the actual image.
-const CATEGORY_INITIAL_COLOR: Record<string, string> = {
-  streaming: "text-cat-streaming",
-  music: "text-cat-music",
-  software: "text-cat-software",
-  vpn: "text-cat-vpn",
-  "ai-tools": "text-cat-ai-tools",
-  "seo-tools": "text-cat-seo-tools",
-  education: "text-cat-education",
-  // Retired — same rationale as CATEGORY_GRADIENTS above.
-  gaming: "text-cat-gaming",
-  productivity: "text-cat-productivity",
-};
-
-const TRUST_SIGNALS = [
-  { icon: Truck, label: "تسليم فوري", desc: "حصل عليه فور الدفع" },
-  { icon: ShieldCheck, label: "دفع آمن", desc: "من محفظتك المشحونة" },
-  { icon: Headphones, label: "دعم متاح", desc: "تواصل معنا أي وقت" },
-];
-
-// ── 97-F5 (R97-A4 §2 / F-02 — money P2): stable single-purchase intent key ──
-//
-// The buy-intent Idempotency-Key used to live in a useRef — it died with
-// the component, so a refresh / back-navigation / PWA cold-resume after
-// a NETWORK-level failure (response lost, wallet already charged) minted
-// a FRESH key on the re-tap → a second order and a second deduction (the
-// exact window 96-F4 closed for checkout, which stores its keys in
-// sessionStorage — this page now mirrors that pattern exactly).
-//
-// Lifecycle (lazy — minted on the intent's first attempt):
-//   • read:   a stored key is REUSED verbatim when still valid → the retry
-//             of an unresolved intent replays the server's cached response
-//             instead of charging again (this is the double-charge fix).
-//   • write:  BEFORE the request, under subnation_buykey:{productId},
-//             stamped with the mint time + the intent fingerprint
-//             (productId × effective price × coupon code).
-//   • delete: ONLY at a definitive resolution —
-//       - 2xx success (the order was created and shown);
-//       - an HTTP-level ApiError rejection (the server definitively
-//         refused — a re-tap is a NEW intent and must not be answered
-//         forever by the cached rejection).
-//     A network-level failure (server state unknown) deliberately KEEPS
-//     the stored key — the retry must replay, not re-charge.
-//   • staleness guards (F-07's lesson, applied here at birth):
-//       - TTL: a key older than 10 minutes no longer represents the
-//         user's live intent and is ignored (minted fresh instead) — a
-//         stale key must not swallow a NEW purchase hours later via the
-//         server's 24 h replay window;
-//       - fingerprint: a price/coupon change invalidates the stored key
-//         so a stale intent is never replayed onto changed data (and the
-//         backend's same-key-different-body 409 branch stays unreachable).
-//
-// localStorage (durable) rather than sessionStorage (per-tab) — R102
-// (R102-A1 F1 / P1, mirroring checkout.tsx): the retry token must
-// outlive the tab exactly as long as the user's intent can — a network-
-// level loss (server committed, response lost) followed by tab death
-// used to mint a FRESH key on the next visit and charge twice. The
-// TTL + fingerprint guards minted at birth (97-F5) already make stale
-// keys inert, so durability costs nothing. Every access is
-// try/catch-guarded: a private-mode / quota failure degrades to the old
-// unstable-key behavior and never blocks the money path.
-const BUY_KEY_PREFIX = "subnation_buykey:";
-/** 97-F5 (F-02): retry-token TTL — mirrors the inspection's 10 min guidance. */
-const BUY_KEY_TTL_MS = 10 * 60 * 1000;
-
-interface StoredBuyIntent {
-  /** The Idempotency-Key header value. */
-  k: string;
-  /** Date.now() at mint time — the TTL stamp. */
-  t: number;
-  /** Intent fingerprint — productId | effective price | coupon code. */
-  f: string;
-}
-
-function buyIntentKeyId(productId: number): string {
-  return `${BUY_KEY_PREFIX}${productId}`;
-}
-
-/** Binds the stored key to WHAT the user is buying right now — a replay
- * must only answer the intent it was minted for. */
-function buyIntentFingerprint(
-  productId: number,
-  effectivePrice: number | null | undefined,
-  couponCode?: string | null,
-  variantId?: number | null,
-): string {
-  return `${productId}|${effectivePrice ?? ""}|${(couponCode ?? "").trim().toUpperCase()}|${variantId ?? ""}`;
-}
-
-/** R115-I1 (A7 P2-2): cent-exact price equality for the pre-buy
- * re-quote — floating-point sums must never turn an unchanged price
- * into a spurious "price changed" abort. */
-function toCents(value: number): number {
-  return Math.round(value * 100);
-}
-
-function loadBuyIntentKey(productId: number, fingerprint: string): string | null {
-  try {
-    const raw = localStorage.getItem(buyIntentKeyId(productId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredBuyIntent>;
-    if (typeof parsed.k !== "string" || !parsed.k) return null;
-    // TTL — a key minted >10 min ago is a stale intent, not this retry.
-    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
-    if (Date.now() - parsed.t > BUY_KEY_TTL_MS) return null;
-    // Intent binding — the product's price (or the coupon) changed since
-    // the key was minted: replaying it onto the new data would either
-    // swallow a genuinely new purchase or trip the 409 body-mismatch.
-    if (parsed.f !== fingerprint) return null;
-    return parsed.k;
-  } catch {
-    // Corrupted entry / storage failure — degrade to a fresh key.
-    return null;
-  }
-}
-
-function persistBuyIntentKey(productId: number, fingerprint: string, key: string): void {
-  try {
-    const entry: StoredBuyIntent = { k: key, t: Date.now(), f: fingerprint };
-    localStorage.setItem(buyIntentKeyId(productId), JSON.stringify(entry));
-  } catch {
-    // degraded: unstable keys (pre-fix behavior) — never throw on money path
-  }
-}
-
-function clearBuyIntentKey(productId: number): void {
-  try {
-    localStorage.removeItem(buyIntentKeyId(productId));
-  } catch {
-    // ignore
-  }
-}
-
-function CopyField({
-  label,
-  value,
-  secret = false,
-}: {
-  label: string;
-  value: string;
-  /** 93-C5 / F-15 (A4 #11): mask the value until explicitly revealed —
-   * ported from order-detail's CopyField (V2-H10) so the paid password
-   * isn't shoulder-surfable in the first second after purchase on this
-   * screen too. Previously rendered in cleartext here while order-detail
-   * masked the exact same credential. */
-  secret?: boolean;
-}) {
-  const [revealed, setRevealed] = useState(!secret);
-  return (
-    <div className="flex items-start justify-between gap-3 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        {/* 96-F4 (R96 A6 #1): no uppercase/tracking-wider on Arabic labels —
-            letter-spacing tears the cursive joins (ج/ح/خ disconnect). */}
-        <div className="text-3xs text-muted-foreground font-bold mb-0.5">{label}</div>
-        {/* 96-F4 (R96 A2 P1-5): the credential VALUE lives in a NON-button
-            selectable element (select-text + break-all) — the old markup
-            trapped it inside the copy <button> (unselectable on iOS) and
-            clipped it at max-w-[160px] truncate, leaving zero fallback
-            when copy failed. dir="ltr" isolation kept from V2-H10: the
-            exact data the user PAID for must read (and copy) correctly. */}
-        <div
-          dir="ltr"
-          className="font-mono font-bold text-sm break-all leading-snug text-left select-text"
-        >
-          {revealed ? value : "•".repeat(Math.min(value.length, 12))}
-        </div>
-        {secret && (
-          /* 96-F4 (R96 A2 P1-4): reveal is its own 44px control on the
-              LABEL side — visually separated from the copy affordance on
-              the opposite side (they used to be twin pills; a mis-tap hit
-              the neighbor's identical pill). */
-          <button
-            type="button"
-            onClick={() => setRevealed((r) => !r)}
-            aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary-text hover:border-primary/22"
-          >
-            {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            {revealed ? "إخفاء" : "إظهار"}
-          </button>
-        )}
-      </div>
-      {/* 96-F4 (R96 A2 P1-3): the shared CopyButton (size="md", min-h-11)
-          replaces the local reimplementation — copy failure now announces
-          itself («تعذّر النسخ») instead of silently keeping the label. */}
-      <CopyButton text={value} size="md" />
-    </div>
-  );
-}
 
 export default function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -292,26 +66,24 @@ export default function ProductPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { addItem } = useCart();
-  const [orderResult, setOrderResult] = useState<any>(null);
+  // R135 (FE-3): the order-result atom was previously UNTYPED (a bare
+  // null-initialized state) — now the orval-generated Order
+  // contract from @workspace/api-client-react (createOrder's response
+  // type). Every field the success receipt reads (order_code, amount,
+  // delivered_*, decrypt_failed) lives on it — a typing change only,
+  // zero runtime difference.
+  const [orderResult, setOrderResult] = useState<Order | null>(null);
   // R115-I1 (A7 P3-8): the buy-success money receipt — the charged amount
   // + the post-charge wallet balance. balanceAfter stays null until the
   // cache:"no-store" /me refresh lands: a STALE pre-purchase balance
   // must never be presented as "remaining" on the success screen.
-  const [purchaseSummary, setPurchaseSummary] = useState<{
-    charged: number;
-    balanceAfter: number | null;
-  } | null>(null);
+  const [purchaseSummary, setPurchaseSummary] = useState<PurchaseSummary | null>(null);
   const [error, setError] = useState("");
   const [couponInput, setCouponInput] = useState("");
   const [couponValidating, setCouponValidating] = useState(false);
-  const [couponResult, setCouponResult] = useState<null | {
-    code: string;
-    discount_amount: number;
-    final_amount: number;
-    type: string;
-    value: number;
-    description: string | null;
-  }>(null);
+  // R135 (FE-3): the inline validate-response shape moved to CouponField's
+  // exported CouponResult — one source for the page state + the CTA props.
+  const [couponResult, setCouponResult] = useState<CouponResult | null>(null);
   const [couponError, setCouponError] = useState("");
   // R98-01 (r98 frontend-deep §2 — P1): validation-generation counter.
   // validateCoupon() stamps the generation it started in; the
@@ -400,8 +172,9 @@ export default function ProductPage() {
 
   // 96-F4 (R96 A4 §2.3 — money P1) + 97-F5 (R97-A4 §2 / F-02): one
   // Idempotency-Key per buy-intent, stable across refresh / back-nav /
-  // PWA resume via sessionStorage (see the helpers' docblock above for
-  // the full lifecycle: TTL + price/coupon fingerprint + terminal-only
+  // PWA resume via durable localStorage (R135/FE-3: the helpers moved to
+  // @/components/product/buy-intent-key.ts — see that module's docblock
+  // for the full lifecycle: TTL + price/coupon fingerprint + terminal-only
   // deletion). Sent via createOrder's second argument — the exact shape
   // checkout.tsx's per-unit loop uses.
   const [buyPending, setBuyPending] = useState(false);
@@ -980,10 +753,6 @@ export default function ProductPage() {
   const displayPrice = selectedVariant
     ? (selectedVariant.sale_price ?? selectedVariant.price)
     : (product.sale_price ?? product.price);
-  const gradientClass =
-    CATEGORY_GRADIENTS[product.category ?? "streaming"] ??
-    "from-primary/20 via-primary/8 to-transparent";
-  const initialColorClass = CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "text-white/30";
 
   // R94-A1 #7 (P2): both CTA surfaces (desktop block + mobile sticky bar)
   // must carry the SAME buy-intent (?intent=buy&product=) and wallet-return
@@ -1006,173 +775,11 @@ export default function ProductPage() {
     navigate(`/wallet?return=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`);
 
   // ── Order success ─────────────────────────────────────────────────────────
+  // R135 (FE-3): the receipt's markup moved verbatim to OrderSuccessScreen —
+  // the page still owns orderResult/purchaseSummary (handleBuyIntent seeds
+  // them after the charge) and passes them down as values.
   if (orderResult) {
-    return (
-      <div className="max-w-xl mx-auto px-4 py-8 sm:py-10">
-        <div
-          role="status"
-          aria-live="polite"
-          className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in"
-        >
-          {/* Success header */}
-          <div className="p-6 text-center border-b border-border/40 bg-gradient-to-b from-status-success/8 to-transparent">
-            {/* Animated ring */}
-            <div className="relative w-20 h-20 mx-auto mb-4">
-              <div className="absolute inset-0 rounded-full bg-status-success/15 success-ring" />
-              <div className="absolute inset-0 rounded-full bg-status-success/8" />
-              <div className="w-full h-full bg-status-success/15 rounded-full flex items-center justify-center ring-4 ring-status-success/12">
-                <CheckCircle className="w-9 h-9 text-status-success" />
-              </div>
-            </div>
-            <h1 className="text-xl font-bold mb-1.5">تم الشراء بنجاح!</h1>
-            <p className="text-muted-foreground text-sm flex items-center justify-center gap-1.5 flex-wrap">
-              رقم الطلب:
-              {/* R116-S2 (P3): the shared CopyButton owns the
-                  idle → copied → failed lifecycle (the old local
-                  copyField helper + bare button announced nothing when
-                  the clipboard denied the call). */}
-              <span
-                dir="ltr"
-                className="font-mono font-bold text-foreground inline-flex items-center gap-1"
-              >
-                {orderResult.order_code}
-              </span>
-              <CopyButton text={orderResult.order_code} label="نسخ" />
-            </p>
-          </div>
-
-          <div className="p-5 space-y-4">
-            {/* R115-I1 (A7 P3-8): money receipt — what was charged and
-                what's left in the wallet. The charged amount comes from
-                the order itself; the remaining balance appears the
-                moment the post-charge /me refresh lands (never a stale
-                pre-purchase number). */}
-            <div className="bg-muted/20 border border-border/50 rounded-xl divide-y divide-border/30">
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <span className="text-xs font-bold text-muted-foreground">المبلغ المخصوم</span>
-                <span className="font-bold text-sm tabular-nums text-foreground">
-                  {formatCurrency(purchaseSummary?.charged ?? orderResult.amount ?? 0)}
-                </span>
-              </div>
-              {purchaseSummary?.balanceAfter != null && (
-                <div className="flex items-center justify-between gap-3 px-4 py-3">
-                  <span className="text-xs font-bold text-muted-foreground">رصيدك المتبقي</span>
-                  <span className="font-bold text-sm tabular-nums text-status-success">
-                    {formatCurrency(purchaseSummary.balanceAfter)}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Credentials box */}
-            {(orderResult.delivered_email || orderResult.delivered_password) && (
-              <div className="bg-muted/20 border border-border/50 rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-border/30 bg-muted/20 flex items-center gap-2">
-                  <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
-                  {/* 96-F4 (R96 A6 #1): uppercase/tracking-wider removed —
-                      no-op on Arabic but tears the letter joins visually.
-                      R116-S2 (P3): h3 → h2 — the receipt jumps h1 → h3
-                      (a skipped level); «بيانات الحساب» is the receipt's
-                      section heading directly under the h1. */}
-                  <h2 className="text-xs font-bold text-muted-foreground">بيانات الحساب</h2>
-                </div>
-                <div className="divide-y divide-border/25">
-                  {orderResult.delivered_email && (
-                    <CopyField label="البريد الإلكتروني" value={orderResult.delivered_email} />
-                  )}
-                  {orderResult.delivered_password && (
-                    <CopyField label="كلمة المرور" value={orderResult.delivered_password} secret />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* R118-B2 (A2 fix, buyer side): the purchase succeeded and the
-                order completed, but the credential payload could not be
-                decrypted (backend decrypt_failed:true — delivered_* null).
-                Previously the receipt just omitted the credentials box
-                entirely, implying the product ships without account data.
-                The honest notice rides the usage-terms warning idiom
-                (status-warning card + icon) and hands the buyer the
-                support link — support can re-deliver the credentials. */}
-            {orderResult.decrypt_failed &&
-              !orderResult.delivered_email &&
-              !orderResult.delivered_password && (
-                <div
-                  role="alert"
-                  className="bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5 flex items-start gap-2.5"
-                >
-                  <AlertCircle className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-status-warning leading-relaxed">
-                      تعذّر فك تشفير بيانات التسليم
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-relaxed mt-0.5 mb-2.5">
-                      طلبك مكتمل ومحفوظ، لكن بيانات الحساب تعذّر فك تشفيرها حالياً. تواصل مع الدعم
-                      وستصلك بياناتك فوراً.
-                    </p>
-                    {/* A3-F13 (R120-B2): asChild — the old Link>Button
-                        nesting rendered TWO same-named «تواصل مع الدعم»
-                        elements (the anchor + an invalid
-                        interactive-in-interactive button). One anchor,
-                        one tab stop; order-decrypt-failed.test.tsx pins
-                        the link role + label. */}
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className="h-9 px-4 gap-1.5 rounded-xl font-bold"
-                    >
-                      <Link href="/support">
-                        <Headphones className="w-3.5 h-3.5" />
-                        تواصل مع الدعم
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-            {orderResult.delivered_extra_details && (
-              /* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-
-                 direction runs (activation links / PIN codes inside Arabic
-                 sentences) — dir="auto" + start alignment let the bidi
-                 algorithm pick the base direction from the first strong
-                 character instead of scrambling the visual order. */
-              <div
-                dir="auto"
-                className="bg-muted/15 border border-border/40 rounded-xl px-4 py-3 text-sm text-muted-foreground leading-relaxed text-start"
-              >
-                {orderResult.delivered_extra_details}
-              </div>
-            )}
-
-            {orderResult.delivered_usage_terms && (
-              <div className="flex gap-2.5 text-sm bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
-                <Info className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
-                <span className="text-status-warning leading-relaxed">
-                  {orderResult.delivered_usage_terms}
-                </span>
-              </div>
-            )}
-
-            <div className="flex gap-2.5 pt-1">
-              <Button
-                onClick={() => navigate("/orders")}
-                /* R116-S2 CTA recipe: size=lg owns the primary surface. */
-                size="lg"
-                className="flex-1"
-              >
-                <ShoppingCart className="w-4 h-4 ms-1.5" />
-                عرض طلباتي
-              </Button>
-              <Button variant="outline" size="lg" onClick={() => navigate("/")} className="flex-1">
-                تصفّح المزيد
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <OrderSuccessScreen order={orderResult} purchaseSummary={purchaseSummary} />;
   }
 
   // ── Product page ──────────────────────────────────────────────────────────
@@ -1253,158 +860,11 @@ export default function ProductPage() {
       <div
         className={`flex flex-col max-lg:gap-4 max-lg:bg-card max-lg:border max-lg:border-border/55 max-lg:rounded-2xl max-lg:overflow-hidden float-in max-lg:shadow-xl lg:grid lg:grid-cols-2 lg:items-start lg:gap-6`}
       >
-        {/* ── START column (RTL first = right): media + description ── */}
-        <section className="max-lg:contents lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
-          {/* Image — max-lg:-mb-4 cancels the wrapper gap so the media stays
-            flush against the card body exactly like the pre-split layout. */}
-          <div
-            className={`order-1 max-lg:-mb-4 aspect-[16/9] bg-gradient-to-b ${gradientClass} flex items-center justify-center relative overflow-hidden group/img`}
-          >
-            {/* Ambient inner glow */}
-            <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-black/20 pointer-events-none" />
-
-            {product.image_url ? (
-              <img
-                src={product.image_url}
-                alt={(() => {
-                  const name = (product.name ?? "").trim();
-                  const cat = categoryLabel(product.category);
-                  if (!name) return cat ? `اشتراك ${cat}` : "اشتراك رقمي";
-                  const hasSub = /اشتراك/.test(name);
-                  return cat && cat !== "عام"
-                    ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
-                    : name;
-                })()}
-                // L4-F9 (R132, measured): the intrinsic source of every
-                // live product asset is 450×450 webp (verified against
-                // https://subnation.ly/products/*.webp — all 45). The
-                // old width/height={800} was a false preload hint: it
-                // told the scanner to expect a larger resource than
-                // exists while the RENDERED box (object-contain inside
-                // the 16:9 media area, ~250-500 CSS px depending on
-                // viewport, ≤1.4 device-px upscale at DPR 2) sits close
-                // to the source. Honest intrinsic dimensions keep the
-                // aspect-ratio math truthful without regenerating
-                // artwork (no bigger sources exist; upscaling adds
-                // weight, not detail).
-                width={450}
-                height={450}
-                fetchPriority="high"
-                decoding="async"
-                className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
-                // B4 P1-6: mirror ProductCard's fallback — a dead enrichment
-                // URL swaps to the initial-letter tile instead of painting the
-                // browser's broken-image glyph inside the page's largest
-                // visual element. width/height (above) already pin the box.
-                onError={(e) => {
-                  const el = e.target as HTMLImageElement;
-                  el.style.display = "none";
-                  const fallback = el.nextElementSibling as HTMLElement | null;
-                  if (fallback) fallback.style.display = "flex";
-                }}
-              />
-            ) : null}
-
-            {/* No-image fallback — always mounted (hidden when an image URL
-              exists) so an onError above can reveal it without a re-render,
-              exactly like ProductCard's category-icon fallback. */}
-            <div
-              style={{ display: product.image_url ? "none" : "flex" }}
-              className="absolute inset-0 z-[2] items-center justify-center pointer-events-none"
-            >
-              <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-lg">
-                <span
-                  className={`text-5xl sm:text-6xl font-bold select-none drop-shadow-lg ${initialColorClass}`}
-                >
-                  {(product.name || "؟")[0]}
-                </span>
-              </div>
-            </div>
-
-            {/* Top badges — z-[3] keeps them above the z-[2] fallback layer
-              (same stacking discipline as ProductCard's media area). */}
-            <div className="absolute top-3 right-3 z-[3] bg-black/55 backdrop-blur-sm text-white/85 text-2xs font-bold px-2.5 py-1 rounded-full border border-white/8">
-              {categoryLabel(product.category)}
-            </div>
-            {product.discount_percent && (
-              /* R123-E4b (P3-h): text-primary-foreground — the shared token
-                 every other primary-surface badge rides; raw text-white
-                 broke the theme-tinted primary of the R115 palette. */
-              <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
-                <Tag className="w-3 h-3" />
-                خصم {product.discount_percent}%
-              </div>
-            )}
-
-            {/* Fade into card body */}
-            <div className="absolute inset-x-0 bottom-0 z-[3] h-20 bg-gradient-to-t from-card to-transparent" />
-          </div>
-
-          {/* R116-S2: below lg this dissolves (max-lg:contents) so its
-            children join the wrapper's flex flow; at lg it is the START
-            column's padded content stack (the image stays full-bleed
-            above it inside the section card). */}
-          <div className="max-lg:contents lg:p-5 lg:space-y-4">
-            {/* Title */}
-            <div className="order-2 max-lg:px-5 max-lg:pt-5">
-              {/* R116-S2 (P3): dir="auto" (Latin-heavy product names were
-                scrambled by the RTL base direction) + the dead
-                leading-tight/tracking-tight overrides dropped — Arabic
-                letter-spacing tears the cursive joins.
-                R128-A2 (F-1): text-right re-anchors the ALIGNMENT to
-                the RTL reading edge — pure-Latin names resolve dir=auto
-                to ltr, so text-align:start computed LEFT and the h1
-                floated up to 41px off the right line the breadcrumb and
-                labels anchor to. Same fix as ProductCard's h3. */}
-              <h1 dir="auto" className="text-fluid-2xl font-bold mb-1.5 text-right">
-                {product.name}
-              </h1>
-              {product.description && (
-                <p className="text-muted-foreground leading-relaxed text-sm">
-                  {product.description}
-                </p>
-              )}
-            </div>
-
-            {/* Long-form description (Phase 2 SEO content) — rendered ONLY
-              when an editor has provided one. Mirrors the value embedded
-              in the Product JSON-LD so on-page text matches the
-              structured data Google ingests. */}
-            {productAny?.description_long && (
-              <div className="order-3 max-lg:px-5 rounded-xl border border-border/45 bg-muted/15 p-4 text-sm text-foreground/85 leading-relaxed whitespace-pre-line">
-                {productAny.description_long}
-              </div>
-            )}
-
-            {/* Feature checklist (catalog 2026-09-20) — the imported Arabic
-              bullets. Rendered as a real list (a11y: listitem semantics) with
-              check icons; Google reads the same text into the product's
-              content signals. */}
-            {Array.isArray(productAny?.features) && productAny.features.length > 0 && (
-              <ul className="order-4 max-lg:px-5 grid sm:grid-cols-2 gap-2 list-none">
-                {productAny.features.map((feature: string) => (
-                  <li
-                    key={feature}
-                    className="flex items-start gap-2 rounded-xl border border-border/40 bg-muted/10 px-3.5 py-2.5 text-sm text-foreground/85 leading-relaxed"
-                  >
-                    <CheckCircle
-                      className="w-4 h-4 mt-0.5 shrink-0 text-status-success"
-                      aria-hidden="true"
-                    />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* R117 (F-3): the FAQ accordion now lives in the END (buy panel)
-            column, directly after the trust grid — moving it there made
-            the mobile DOM/reading order match the visual order (it used
-            to sit here in DOM, right after the features list, while
-            rendering visually after the trust grid — a WCAG 1.3.2
-            divergence). See the R117 (F-3) comment at its new home. */}
-        </section>
+        {/* R135 (FE-3): the START column moved verbatim to ProductMediaSection
+            (media + badges + title + description + long-form description +
+            features checklist — same elements, classes, DOM order and the
+            category gradient/initial lookups computed inside it). */}
+        <ProductMediaSection product={product} />
 
         {/* R116-S2: END column — at lg this is the sticky buy panel
           (selector → price → usage → error → trust → FAQ → coupon → CTA —
@@ -1429,54 +889,15 @@ export default function ProductPage() {
               </div>
             )}
 
-            {/* Price + stock */}
-            {/* R117 (F-1): max-lg:mx-5 restores the 20px side gutter the
-              pre-split p-5 container gave this tinted box on mobile —
-              mx (not px) so the gutter sits OUTSIDE the rounded border. */}
-            <div className="order-6 max-lg:mx-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
-              <div className="flex-1">
-                <div className="text-3xl font-bold text-primary leading-none tabular-nums">
-                  {formatCurrency(displayPrice)}
-                </div>
-                {/* R115-I1 (A7 P2-1): the strike follows the EFFECTIVE
-                  selection exactly like the duration pills below — the
-                  SELECTED variant's base price when a variant is picked.
-                  product.price is the MIN variant price (backend
-                  contract), so the old strike showed «كان 25 د.ل → الآن
-                  80 د.ل» nonsense during flash sales on any
-                  non-cheapest option. */}
-                {(selectedVariant ? selectedVariant.sale_price : product.sale_price) != null && (
-                  <div className="text-muted-foreground text-sm line-through mt-1.5 tabular-nums">
-                    {formatCurrency(selectedVariant ? selectedVariant.price : product.price)}
-                  </div>
-                )}
-              </div>
-              <div
-                role="status"
-                aria-live="polite"
-                aria-label={
-                  product.is_available
-                    ? `المنتج متوفر، الكمية ${product.stock_count}`
-                    : "نفد المخزون"
-                }
-                className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
-                  product.is_available
-                    ? "bg-status-success/10 border-status-success/22 text-status-success"
-                    : "bg-muted/50 border-border/50 text-muted-foreground"
-                }`}
-              >
-                {product.is_available ? (
-                  <>
-                    <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر (
-                    {product.stock_count})
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-3.5 h-3.5" aria-hidden="true" /> نفد المخزون
-                  </>
-                )}
-              </div>
-            </div>
+            {/* Price + stock — R135 (FE-3): the box moved verbatim to
+                PriceStockPanel (its R117 F-1 gutter + R115-I1 strike
+                comments moved with it). displayPrice and the effective
+                selection stay owned by the page — one source. */}
+            <PriceStockPanel
+              product={product}
+              selectedVariant={selectedVariant}
+              displayPrice={displayPrice}
+            />
 
             {/* Usage terms */}
             {product.usage_terms && (
@@ -1497,56 +918,16 @@ export default function ProductPage() {
               </div>
             )}
 
-            {/* Trust signals */}
-            <div className="order-9 max-lg:px-5 grid grid-cols-3 gap-2">
-              {TRUST_SIGNALS.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex flex-col items-center gap-1 p-2.5 bg-muted/15 border border-border/35 rounded-xl text-center transition-colors hover:bg-muted/25 hover:border-border/55"
-                >
-                  <item.icon className="w-5 h-5 text-muted-foreground mb-0.5" />
-                  {/* A1-F12 (R120-B2): label text-xs (was text-2xs) — the
-                      three conversion claims read as substance, not
-                      decoration, beside the 20px icons. */}
-                  <span className="text-xs font-bold text-foreground leading-tight">
-                    {item.label}
-                  </span>
-                  <span className="text-3xs text-muted-foreground leading-tight">{item.desc}</span>
-                </div>
-              ))}
-            </div>
+            {/* Trust signals — R135 (FE-3): the static grid moved verbatim to
+                TrustSignals (the order-9 wrapper rides its root, preserving
+                the R117 F-1 gutter contract). */}
+            <TrustSignals />
 
-            {/* R117 (F-3): FAQ moved here from the START column so the
-              mobile DOM/reading/Tab order matches the visual order
-              (WCAG 1.3.2 / 2.4.3) — pre-R117 it sat in DOM right after
-              the features list while visually rendering after this trust
-              grid, so keyboard users Tabbed from features straight to a
-              visually distant block and back up. order-10 keeps it in
-              the same visual slot at <lg; at lg it now closes the buy
-              panel column under the trust grid. The section's lg:p-5 +
-              space-y-4 provide desktop spacing; max-lg:mx-5 is the
-              mobile gutter (R117 F-1 — mx, outside the bordered box). */}
-            {productFaqs && (
-              <details className="order-10 max-lg:mx-5 rounded-xl border border-border/45 bg-muted/10 overflow-hidden group">
-                <summary className="flex items-center justify-between px-4 py-3 text-sm font-bold cursor-pointer select-none hover:bg-muted/20 transition-colors">
-                  <span>الأسئلة الشائعة</span>
-                  <span className="text-xs text-muted-foreground">{productFaqs.length}</span>
-                </summary>
-                <div className="border-t border-border/30 divide-y divide-border/30">
-                  {productFaqs.map((faq, idx) => (
-                    <details key={idx} className="group/q">
-                      <summary className="flex items-start gap-2 px-4 py-3 text-sm font-bold text-foreground cursor-pointer select-none hover:bg-muted/15 transition-colors">
-                        <span className="text-muted-foreground shrink-0">س{idx + 1}.</span>
-                        <span className="flex-1">{faq.question}</span>
-                      </summary>
-                      <div className="px-4 pb-3 pt-1 text-sm text-muted-foreground leading-relaxed">
-                        {faq.answer}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </details>
-            )}
+            {/* FAQ — R135 (FE-3): the accordion moved verbatim to FaqAccordion;
+                the R117 (F-3) DOM-order comment moved with it. Rendered only
+                when the curated list is non-empty (the same page-level guard
+                gates the FAQPage JSON-LD against thin structured data). */}
+            {productFaqs && <FaqAccordion faqs={productFaqs} />}
 
             {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
             {token && (
@@ -1671,746 +1052,6 @@ export default function ProductPage() {
           onCouponClear={clearCoupon}
           compact
         />
-      </div>
-    </div>
-  );
-}
-
-interface CouponResult {
-  code: string;
-  discount_amount: number;
-  final_amount: number;
-  type: string;
-  value: number;
-  description: string | null;
-}
-
-function CouponField({
-  couponInput,
-  couponResult,
-  couponError,
-  couponValidating,
-  token,
-  onCouponChange,
-  onCouponValidate,
-  onCouponClear,
-}: {
-  couponInput: string;
-  couponResult: CouponResult | null;
-  couponError: string;
-  couponValidating: boolean;
-  token: string | null;
-  onCouponChange: (v: string) => void;
-  onCouponValidate: () => void;
-  onCouponClear: () => void;
-}) {
-  if (!token) return null;
-  return (
-    <div className="space-y-1.5">
-      {/* Input row */}
-      <div className="flex gap-1.5">
-        <div className="relative flex-1">
-          <Tag className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          <Input
-            value={couponInput}
-            onChange={(e) => {
-              onCouponChange(e.target.value.toUpperCase());
-              if (couponResult) onCouponClear();
-            }}
-            onKeyDown={(e) => {
-              // Gate on `couponValidating` too — a double-Enter during an
-              // in-flight validate used to fire a second POST.
-              if (e.key === "Enter" && !couponResult && !couponValidating) onCouponValidate();
-            }}
-            placeholder="رمز الكوبون"
-            /* 96-F4 (R96 A1 M05 / A2 P3-1): the old text-sm override beat
-               the shared Input's iOS-zoom-safe text-base → a 14px coupon
-               field on the money path zoomed the whole page on focus.
-               text-base under md restores 16px; autoComplete/enterKeyHint
-               mirror checkout's coupon field (Enter already validates). */
-            autoComplete="off"
-            enterKeyHint="send"
-            className="pr-9 h-11 text-base md:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
-            disabled={!!couponResult}
-          />
-        </div>
-        {couponResult ? (
-          <button
-            onClick={onCouponClear}
-            aria-label="إزالة الكوبون"
-            className="min-h-11 px-3 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-all press-spring"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        ) : (
-          <button
-            onClick={onCouponValidate}
-            disabled={!couponInput.trim() || couponValidating}
-            className="min-h-11 px-3 rounded-lg bg-muted/50 border border-border/60 text-xs font-bold hover:bg-muted hover:border-border transition-all press-spring disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {couponValidating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "تحقق"}
-          </button>
-        )}
-      </div>
-
-      {/* Error */}
-      {couponError && (
-        <div
-          role="alert"
-          className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2"
-        >
-          <AlertCircle className="w-3 h-3 shrink-0" />
-          {couponError}
-        </div>
-      )}
-
-      {/* Success */}
-      {couponResult && (
-        <div
-          role="status"
-          className="flex items-center justify-between gap-2 text-xs bg-status-success/8 border border-status-success/20 rounded-lg px-3 py-2"
-        >
-          <div className="flex items-center gap-1.5 text-status-success">
-            <CheckCircle className="w-3 h-3 shrink-0" />
-            <span dir="ltr" className="font-mono font-bold">
-              {couponResult.code}
-            </span>
-            <span>
-              —{" "}
-              {couponResult.type === "percentage"
-                ? `${couponResult.value}%`
-                : formatCurrency(couponResult.value)}{" "}
-              خصم
-            </span>
-          </div>
-          <span className="font-bold text-status-success">
-            −{formatCurrency(couponResult.discount_amount)}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CtaBlock({
-  token,
-  product,
-  user,
-  userLoading,
-  displayPrice,
-  canAfford,
-  shortfall,
-  isPending,
-  onBuy,
-  onAddToCart,
-  onLogin,
-  onWallet,
-  compact,
-  couponInput,
-  couponResult,
-  couponError,
-  couponValidating,
-  onCouponChange,
-  onCouponValidate,
-  onCouponClear,
-}: {
-  token: string | null;
-  product: Product;
-  user?: User;
-  /** R94-A1 #2 (P2): true while /api/auth/me is still resolving. Without
-   * it, `user === undefined` made canAfford=false and the FIRST thing a
-   * solvent buyer saw on a direct SEO landing was «تحتاج إضافة X د.ل /
-   * رصيدك الحالي 0.00 د.ل» — a false money statement during the first
-   * 200–800ms on 3G. */
-  userLoading?: boolean;
-  displayPrice: number;
-  canAfford: boolean;
-  shortfall: number;
-  isPending: boolean;
-  onBuy: () => void;
-  onAddToCart?: () => void;
-  onLogin: () => void;
-  onWallet: () => void;
-  compact?: boolean;
-  couponInput?: string;
-  couponResult?: CouponResult | null;
-  couponError?: string;
-  couponValidating?: boolean;
-  onCouponChange?: (v: string) => void;
-  onCouponValidate?: () => void;
-  onCouponClear?: () => void;
-}) {
-  // Local navigate for the out-of-stock alternates link below. The
-  // parent already passes onLogin/onWallet because both routes carry
-  // intent context (?intent=, ?return=); the alternates link is a
-  // pure browse jump with no payload, so wiring through one more
-  // callback would just be ceremony.
-  const [, navigate] = useLocation();
-
-  // A9-5 (R126-L6): availability outranks auth. The sold-out branch
-  // used to sit AFTER the !token branch, so a guest on a sold-out
-  // product saw «تسجيل الدخول للشراء» promising a purchase the page's
-  // own «نفد المخزون» chip denied — and post-login the CTA flipped to
-  // the disabled state anyway. Sold-out now shows the honest disabled
-  // state (compact: strike price + «بدائل» recovery link — a better
-  // answer for guests too) for EVERYONE; the login gate only renders
-  // for products that can actually be bought.
-  if (!product.is_available) {
-    // Recovery hint: instead of a dead-end disabled CTA, give the user
-    // a clear alternate path. On desktop the body retains a calm
-    // "check back later" line; on mobile the sticky bar swaps the
-    // disabled button for an active "browse alternatives" link
-    // routed to the same category — same intent, different stock.
-    const altHref =
-      product.category && KNOWN_CATEGORIES.has(product.category)
-        ? `/category/${product.category}`
-        : "/";
-
-    if (compact) {
-      return (
-        <div className="flex items-center gap-3">
-          <div className="flex-1 text-right">
-            <div className="font-bold text-muted-foreground text-xl tabular-nums line-through">
-              {formatCurrency(displayPrice)}
-            </div>
-            <div className="text-2xs text-muted-foreground/90 flex items-center gap-1 mt-0.5">
-              <Lock className="w-3 h-3" aria-hidden="true" /> نفد المخزون
-            </div>
-          </div>
-          <Button
-            onClick={() => navigate(altHref)}
-            variant="outline"
-            className="shrink-0 h-12 min-w-[7.5rem] px-5 press-spring"
-          >
-            بدائل
-          </Button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-2">
-        <Button
-          disabled
-          aria-label="نفد المخزون — غير متاح للشراء حالياً"
-          className="w-full h-12 text-base"
-        >
-          <Lock className="w-4 h-4 ms-2" /> نفد المخزون
-        </Button>
-        <Button
-          onClick={() => navigate(altHref)}
-          variant="outline"
-          className="w-full h-11 text-sm press-spring"
-        >
-          تصفّح بدائل في نفس الفئة
-        </Button>
-        <p className="text-center text-xs text-muted-foreground">تحقّق لاحقاً، قد يعود قريباً</p>
-      </div>
-    );
-  }
-
-  if (!token) {
-    return (
-      <div className={`${compact ? "flex items-center gap-3" : "space-y-2"}`}>
-        {compact && (
-          /* R127-B13 §7.1 (via the R128 sweep): min-w-0 + truncate on the
-             compact price stack — the price is the bar's widest
-             unbreakable token, and a flex child's automatic minimum
-             width grows the bar past the viewport at 320px once a
-             4+-digit price ships (the CTA is the shrink-0 twin). The
-             full price stays visible in the buy panel above. */
-          <div className="flex-1 min-w-0 text-right">
-            <div className="font-bold text-primary text-xl tabular-nums truncate">
-              {formatCurrency(displayPrice)}
-            </div>
-            <div className="text-xs text-muted-foreground">سجّل دخولك للشراء</div>
-          </div>
-        )}
-        <Button
-          onClick={onLogin}
-          className={`${compact ? "shrink-0 h-12 min-w-[8rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
-        >
-          {/* R115-I1 (A7 P3-12): the app-standard «سجّل دخولك» form
-              (cart.tsx:333 + login.tsx family) — the shadda-less
-              «سجل الدخول للشراء / سجل للشراء» were the only outliers. */}
-          {compact ? "سجّل دخولك للشراء" : "تسجيل الدخول للشراء"}
-        </Button>
-        {/* R124 (A1-F4) → A9-4 (R126-L6): guests get the same
-            add-to-cart affordance the grid cards give them — the cart is
-            local (ProductCard's CTA has no auth gate; addItem is a
-            localStorage write, never a server POST), and the cart page
-            already funnels guests through /login?redirect=/checkout, so
-            the label says WHEN sign-in actually happens. A9-4 closed the
-            desktop-only gap: the fix used to live exclusively in the
-            hidden sm:block block, so the <640px majority never saw it —
-            the compact sticky bar now carries the same guarded path
-            (outline icon-button beside the login CTA, same
-            `onAddToCart && product.is_available` gate as the desktop
-            twin). */}
-        {!compact && onAddToCart && product.is_available && (
-          <Button
-            onClick={onAddToCart}
-            variant="outline"
-            className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-border font-bold rounded-xl gap-2"
-          >
-            <PlusCircle className="w-4 h-4" />
-            أضف للسلة — سجّل الدخول عند إتمام الطلب
-          </Button>
-        )}
-        {compact && onAddToCart && product.is_available && (
-          <Button
-            onClick={onAddToCart}
-            variant="outline"
-            aria-label="أضف للسلة — سجّل الدخول عند إتمام الطلب"
-            className="shrink-0 h-12 w-12 border-border/60 text-muted-foreground hover:text-foreground hover:border-border press-spring"
-          >
-            <PlusCircle className="w-5 h-5" />
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  const couponField =
-    !compact && onCouponChange && onCouponValidate && onCouponClear ? (
-      <CouponField
-        token={token}
-        couponInput={couponInput ?? ""}
-        couponResult={couponResult ?? null}
-        couponError={couponError ?? ""}
-        couponValidating={couponValidating ?? false}
-        onCouponChange={onCouponChange}
-        onCouponValidate={onCouponValidate}
-        onCouponClear={onCouponClear}
-      />
-    ) : null;
-
-  // R94-A1 #2 (P2): balance still loading — show a neutral verifying
-  // state instead of flashing the «رصيد غير كافٍ» branch at a solvent
-  // user. Disabled button + spinner; lands on the real branch once /me
-  // resolves (the boot probe usually pre-seeds the cache, so this is
-  // mostly a cold-direct-landing state).
-  if (userLoading) {
-    return (
-      <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
-        {!compact && couponField}
-        {compact && (
-          <div className="flex-1 text-right">
-            <div className="font-bold text-primary text-xl tabular-nums">
-              {formatCurrency(displayPrice)}
-            </div>
-            <div className="text-xs text-muted-foreground">جارٍ التحقق من رصيدك…</div>
-          </div>
-        )}
-        <Button
-          disabled
-          aria-busy="true"
-          aria-label="جارٍ التحقق من رصيد المحفظة"
-          className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-5" : "w-full h-12 text-base"} bg-primary/70 font-bold`}
-        >
-          <Loader2 className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2 animate-spin`} />
-          {compact ? "جارٍ التحقق…" : "جارٍ التحقق من رصيدك…"}
-        </Button>
-      </div>
-    );
-  }
-
-  if (!canAfford) {
-    return (
-      <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
-        {compact ? (
-          <>
-            {/* B13 §7.1 twin: min-w-0 + truncate (see the guest branch
-                above). */}
-            <div className="flex-1 min-w-0 text-right">
-              <div className="font-bold text-primary text-xl tabular-nums truncate">
-                {formatCurrency(displayPrice)}
-              </div>
-              <div className="text-xs text-destructive/75">
-                تحتاج {formatCurrency(shortfall)} إضافية
-              </div>
-            </div>
-            <Button
-              onClick={onWallet}
-              variant="outline"
-              className="shrink-0 h-12 min-w-[7.5rem] px-5 press-spring"
-            >
-              <Wallet className="w-4 h-4 ms-1.5" /> شحن
-            </Button>
-          </>
-        ) : (
-          <>
-            {couponField}
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="flex items-center justify-between gap-2 px-4 py-3 bg-muted/25 border border-border/50 rounded-xl col-span-2">
-                <span className="text-muted-foreground">رصيدك الحالي</span>
-                <span className="font-bold tabular-nums">
-                  {formatCurrency(user?.wallet_balance ?? 0)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2 px-4 py-3 bg-primary/8 border border-primary/20 rounded-xl col-span-2">
-                <span className="text-muted-foreground">تحتاج إضافة</span>
-                <span className="font-bold text-primary-text tabular-nums">
-                  {formatCurrency(shortfall)}
-                </span>
-              </div>
-            </div>
-            <Button
-              onClick={onWallet}
-              variant="outline"
-              className="w-full h-12 text-base press-spring"
-            >
-              <Wallet className="w-5 h-5 ms-2" /> شحن المحفظة
-            </Button>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className={compact ? "flex items-center gap-3" : "space-y-3"}>
-      {!compact && couponField}
-      {compact && (
-        /* B13 §7.1 twin: min-w-0 + truncate (see the guest branch above). */
-        <div className="flex-1 min-w-0 text-right">
-          <div className="font-bold text-primary text-xl tabular-nums truncate">
-            {formatCurrency(displayPrice)}
-          </div>
-          {/* R128-A6 (P4-4): the ✓ TEXT glyph is gone — lucide Check in
-              its place (emoji/text-glyph-as-icon is off the icon
-              contract). inline-flex keeps the icon on the reading line
-              (RTL: text first, glyph to its left). */}
-          <div className="text-xs text-status-success">
-            <span className="inline-flex items-center gap-1">
-              رصيد كافٍ
-              <Check className="w-3 h-3" aria-hidden="true" />
-            </span>
-          </div>
-        </div>
-      )}
-      <Button
-        onClick={onBuy}
-        disabled={isPending}
-        className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
-      >
-        <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ms-2`} />
-        {isPending
-          ? "جارٍ المعالجة…"
-          : compact
-            ? "اشترِ"
-            : `اشترِ الآن — ${formatCurrency(displayPrice)}`}
-      </Button>
-      {/* Secondary path: multi-item funnel. A9-4 (R126-L6): the compact
-          sticky bar carries it too (outline icon-button) — it used to be
-          desktop-only, leaving the mobile majority with buy-only, no
-          way to park the selection in the cart and keep shopping. */}
-      {!compact && onAddToCart && product.is_available && (
-        <Button
-          onClick={onAddToCart}
-          variant="outline"
-          className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-border font-bold rounded-xl gap-2"
-        >
-          <PlusCircle className="w-4 h-4" />
-          أضف للسلة — أكمل الشراء مع منتجات أخرى
-        </Button>
-      )}
-      {compact && onAddToCart && product.is_available && (
-        <Button
-          onClick={onAddToCart}
-          variant="outline"
-          aria-label="أضف للسلة"
-          className="shrink-0 h-12 w-12 border-border/60 text-muted-foreground hover:text-foreground hover:border-border press-spring"
-        >
-          <PlusCircle className="w-5 h-5" />
-        </Button>
-      )}
-      {/* Reassurance: tells the user exactly what will be deducted and
-          what's left after — eliminates a hesitation moment where users
-          tap and pause to mentally calculate "wait, will I still have
-          something for next time?". Desktop-only; the mobile sticky bar
-          already shows the balance via the «رصيد كافٍ» line in compact
-          mode. */}
-      {!compact && user && (
-        <p className="text-center text-xs text-muted-foreground -mt-1">
-          سيُخصم من رصيدك ({formatCurrency(user.wallet_balance ?? 0)} متاح)
-        </p>
-      )}
-    </div>
-  );
-}
-
-function RecommendationsSection({ numericId }: { numericId: number }) {
-  const {
-    data: recommendations = [],
-    isLoading,
-    isError,
-  } = useGetProductRecommendations(numericId, {
-    query: {
-      queryKey: getGetProductRecommendationsQueryKey(numericId),
-      enabled: !!numericId,
-      staleTime: 5 * 60 * 1000,
-      // R115-I1 (A7 P3-9): one genuine retry for transient failures — a
-      // single blip used to kill the section silently on attempt #1.
-      retry: 1,
-    },
-  });
-
-  // R115-I1 (A7 P3-9): hide DELIBERATELY on a definitive failure (after
-  // the retry above) or an empty payload. The recommendations rail is
-  // decorative cross-sell — an error card inside the purchase funnel
-  // is noise, and the product itself (already on screen, with its own
-  // error/retry states) carries the page's honest surfaces. The retry
-  // is what keeps this from being a silent vanish.
-  if (isError || (!isLoading && recommendations.length === 0)) return null;
-
-  return (
-    <div className="mt-8 space-y-4">
-      {/* A4-F9 (R120-B2): h2 (was h3) — this section heading sat directly
-          under the page h1, skipping a level; the card titles below are
-          h3 (one under their own section heading). */}
-      <h2 className="text-lg font-bold pr-1">قد يعجبك أيضاً</h2>
-      <div className="grid grid-cols-2 gap-3">
-        {isLoading
-          ? Array.from({ length: 2 }).map((_, i) => (
-              <div
-                key={i}
-                // Mirrors the real card below (rounded-2xl p-3.5 + aspect-[4/3]
-                // image + two text rows) so the grid doesn't jump on load.
-                className="bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 skeleton-shimmer"
-              >
-                <div className="aspect-[4/3] rounded-xl" />
-                <div className="h-4 w-3/4 rounded-md" />
-                <div className="h-3 w-1/2 rounded-md" />
-              </div>
-            ))
-          : recommendations.map((r) => (
-              /* R115-I1 (A7 P3-9): wouter <Link> instead of a raw <a href> —
-                 the anchor did a FULL page reload (SPA state lost: cart
-                 context, auth boot, scroll restoration) while every
-                 other product surface navigates client-side.
-                 R122 (A1 P2-8): the href is now SLUG-canonical — the
-                 backend adds `slug` to the recommendations DTO in the
-                 same push, but the generated type regen may land apart
-                 from this edit, so the local widening reads it with the
-                 `slug ?? id` fallback (the exact idiom cart.tsx and
-                 ProductCard already use). Crawlers stop seeing
-                 non-canonical /product/<id> internal links and the URL
-                 bar stays clean on first paint. */
-              <Link
-                key={r.id}
-                href={`/product/${(r as ProductRecommendation & { slug?: string | null }).slug ?? r.id}`}
-                onClick={() => window.scrollTo(0, 0)}
-                className="block bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 cursor-pointer hover:border-primary/40 transition-all group"
-              >
-                <div className="aspect-[4/3] bg-muted/30 rounded-xl overflow-hidden relative">
-                  {r.image_url ? (
-                    <img
-                      src={r.image_url}
-                      alt={r.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
-                      /* R115-I1 (A7 P3-9): ProductCard-parity fallback — a
-                         dead enrichment URL swaps to the initial-letter
-                         tile instead of painting the browser's
-                         broken-image glyph inside the recommendation. */
-                      onError={(e) => {
-                        const el = e.target as HTMLImageElement;
-                        el.style.display = "none";
-                        const fallback = el.nextElementSibling as HTMLElement | null;
-                        if (fallback) fallback.style.display = "flex";
-                      }}
-                    />
-                  ) : null}
-                  {/* Always-mounted fallback tile (hidden while an image
-                      URL exists) so onError above can reveal it without
-                      a re-render — the same idiom as the hero image. */}
-                  <div
-                    style={{ display: r.image_url ? "none" : "flex" }}
-                    className="w-full h-full items-center justify-center"
-                  >
-                    <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted/50 border border-border/40">
-                      {/* R125-I7 (A7 B-6 class, computed): the first-letter
-                          fallback rode muted-foreground/55 — 2.39:1 light /
-                          3.19:1 dark on the muted/50 tile. Full
-                          --muted-foreground measures 6.20:1 / 7.54:1. */}
-                      <span className="text-xl font-bold text-muted-foreground select-none">
-                        {(r.name || "؟")[0]}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold truncate mb-1">{r.name}</h3>
-                  <div className="text-primary-text font-bold tabular-nums">
-                    {formatCurrency(r.price)}
-                  </div>
-                </div>
-              </Link>
-            ))}
-      </div>
-    </div>
-  );
-}
-
-// ── VariantSelector (catalog 2026-09-20) ────────────────────────────────────
-// Plan × Duration matrix rendered as two stacked pill rows:
-//   1. Plan row (فردي/ثنائي/عائلي…) — only when the product varies by plan.
-//   2. Duration row (شهر واحد/3 أشهر…) with the per-option price — always
-//      visible so the price comparison is inline (Libyan shoppers compare
-//      monthly-equivalent value per option, not just the total).
-//
-// Mobile-first: pills wrap, min-height 44px (thumb rule), the selected state
-// carries the accent ring + bold price, unavailable options dim out. The
-// label text uses the Arabic labels imported with the catalog.
-interface SelectableVariant {
-  id: number;
-  plan_label?: string | null;
-  duration_label?: string | null;
-  label: string;
-  price: number;
-  sale_price?: number | null;
-  discount_percent?: number | null;
-  is_available: boolean;
-}
-
-function VariantSelector({
-  variants,
-  selectedId,
-  onSelect,
-}: {
-  variants: SelectableVariant[];
-  selectedId: number | null;
-  onSelect: (variantId: number) => void;
-}) {
-  const plans = Array.from(new Set(variants.map((v) => v.plan_label ?? null)));
-  const hasPlanAxis = plans.length > 1;
-  const selected = variants.find((v) => v.id === selectedId) ?? variants[0];
-
-  // The duration row always shows the SELECTED plan's options (or all
-  // options when the product has no plan axis).
-  const visibleDurations = hasPlanAxis
-    ? variants.filter((v) => (v.plan_label ?? null) === (selected?.plan_label ?? null))
-    : variants;
-
-  return (
-    <div
-      className="rounded-xl border border-border/45 bg-muted/10 p-3.5 space-y-3"
-      /* A4-F2 (R120-B2): role="group" (was "radiogroup") — the pills are
-         real <button>s that already implement Space/Enter, but the radiogroup
-         role PROMISES arrow-key navigation (WAI-ARIA radio pattern) and
-         none was implemented, so arrow keys did nothing. aria-pressed
-         toggle buttons only promise what they deliver; the group + label
-         keeps the SR context of what the pills choose. */
-      role="group"
-      aria-label="اختر الباقة"
-    >
-      {hasPlanAxis && (
-        <div>
-          <p className="text-xs font-bold text-muted-foreground mb-2">نوع الباقة</p>
-          {/* R128-A2 (§4 polish): gap-3 — the page's own card-grid rhythm
-              (every card grid is 12px); the selector read one step
-              tighter than its page. */}
-          <div className="flex flex-wrap gap-3">
-            {plans.map((plan) => {
-              // A plan pill is enabled when ANY of its options is available;
-              // it carries no price (the duration row prices the option).
-              const planVariants = variants.filter((v) => (v.plan_label ?? null) === plan);
-              const planAvailable = planVariants.some((v) => v.is_available);
-              const isPlanSelected = (selected?.plan_label ?? null) === plan;
-              return (
-                <button
-                  key={plan ?? "default"}
-                  type="button"
-                  aria-pressed={isPlanSelected}
-                  aria-disabled={!planAvailable || undefined}
-                  disabled={!planAvailable}
-                  onClick={() => {
-                    // Switching plan selects that plan's cheapest option.
-                    const cheapest = [...planVariants]
-                      .filter((v) => v.is_available)
-                      .sort((a, b) => a.price - b.price)[0];
-                    if (cheapest) onSelect(cheapest.id);
-                  }}
-                  className={`min-h-11 px-4 rounded-xl border text-sm font-bold transition-all press-spring ${
-                    isPlanSelected
-                      ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/25"
-                      : "bg-card text-foreground/80 border-border/50 hover:border-primary/45 hover:text-primary-text"
-                  } ${!planAvailable ? "opacity-40 pointer-events-none" : ""}`}
-                >
-                  {/* R130 (A2-F3): the page's own «متوفر (N)» badge sits right
-                      above — a dead pill with no sold-out signal read as
-                      "temporarily unavailable". */}
-                  {plan}
-                  {!planAvailable && <span className="text-2xs"> — نفد</span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div>
-        <p className="text-xs font-bold text-muted-foreground mb-2">المدة</p>
-        {/* R128-A2 (§4 polish): gap-3 — same rhythm lift as the plan row
-            above (the card grids' 12px). */}
-        <div className="grid grid-cols-2 gap-3">
-          {visibleDurations.map((v) => {
-            const isSelected = v.id === selectedId;
-            const eff = v.sale_price ?? v.price;
-            return (
-              <button
-                key={v.id}
-                type="button"
-                aria-pressed={isSelected}
-                aria-label={`${v.label} — ${formatCurrency(eff)}${!v.is_available ? " — نفد" : ""}`}
-                aria-disabled={!v.is_available || undefined}
-                disabled={!v.is_available}
-                onClick={() => onSelect(v.id)}
-                className={`min-h-11 flex flex-col items-start justify-center gap-0.5 px-3 py-2 rounded-xl border text-start transition-all press-spring ${
-                  isSelected
-                    ? "bg-primary/12 border-primary text-primary shadow-md shadow-primary/15"
-                    : "bg-card border-border/50 hover:border-primary/40"
-                } ${!v.is_available ? "opacity-40 pointer-events-none" : ""}`}
-              >
-                <span className="text-sm font-bold text-foreground leading-tight">
-                  {v.duration_label ?? v.plan_label ?? v.label}
-                  {!v.is_available && <span className="text-2xs"> — نفد</span>}
-                </span>
-                {/* R123-E4b (P3-h): text-xs — the type-scale token (12px)
-                    nearest the one-off 13px; the pill's label above is
-                    text-sm so the price keeps its subordinate step.
-                    A13-F12 (R126-L6): the SELECTED pill's price rode
-                    text-primary — --primary (dark: hsl(348 80% 48%) =
-                    rgb(220,24,64)) measured 3.76:1 on the dark card at
-                    12px bold (below the 4.5:1 AA floor; 12px bold is not
-                    "large"), and 3.66:1 on the pill's own primary/12
-                    tint. --status-error is the both-theme-safe red sale
-                    ink: dark rgb(236,81,81) = 5.20:1 on the card /
-                    5.05:1 on the composited pill tint; light
-                    rgb(187,27,27) = 6.39:1 on the white card (the
-                    R116-S1 measured value for this exact token) /
-                    4.76:1 on the tint. --primary-text was rejected:
-                    identical to --primary in light mode (3.95:1 on the
-                    tint) — it fixes dark only; --destructive fails
-                    light (3.73:1 on the tint). */}
-                <span
-                  className={`text-xs font-bold tabular-nums leading-none ${
-                    isSelected ? "text-status-error" : "text-foreground/75"
-                  }`}
-                >
-                  {formatCurrency(eff)}
-                  {v.sale_price != null && (
-                    <span className="ms-1.5 text-3xs font-normal text-muted-foreground line-through">
-                      {formatCurrency(v.price)}
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
