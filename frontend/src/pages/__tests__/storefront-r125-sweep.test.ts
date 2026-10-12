@@ -28,7 +28,7 @@
  *            shells on the swept storefront files.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -50,8 +50,26 @@ const PRODUCT_COMPONENTS = readdirSync(resolve(process.cwd(), "src/components/pr
   .filter((f) => f.endsWith(".tsx"))
   .map((f) => `src/components/product/${f}`);
 
+// R136 (parent pre-patch): wallet + home decompose into
+// src/components/<page>/*.tsx this round — the R135 product-page
+// precedent. The pins below follow the markup (page ∪ extracts),
+// existsSync-guarded so the union is exactly the page until the
+// extracts land: no assertion changes strength mid-wave, and the
+// decomposing agents never need to edit this shared file.
+const pageExtracts = (page: string): string[] => {
+  const dir = resolve(process.cwd(), `src/components/${page}`);
+  return existsSync(dir)
+    ? readdirSync(dir).filter((f) => f.endsWith(".tsx")).map((f) => `src/components/${page}/${f}`)
+    : [];
+};
+/** Raw (unstripped) page ∪ extracts source — liveLines strips
+ * comments itself, so this preserves its exact semantics. */
+const pageSurface = (page: string): string =>
+  [`src/pages/${page}.tsx`, ...pageExtracts(page)].map((f) => read(f)).join("\n");
+
 const SWEPT_FILES = [
   "src/pages/home.tsx",
+  ...pageExtracts("home"),
   "src/pages/category.tsx",
   "src/pages/product.tsx",
   ...PRODUCT_COMPONENTS,
@@ -61,7 +79,8 @@ const SWEPT_FILES = [
   "src/pages/terms.tsx",
   "src/pages/status.tsx",
   "src/pages/wallet.tsx",
-] as const;
+  ...pageExtracts("wallet"),
+];
 
 /** Each offending line, for the assertion message. */
 function liveLines(src: string, pattern: RegExp): string[] {
@@ -104,7 +123,9 @@ describe("storefront R125 sweep — fallback glyphs ride --muted-foreground (A7 
 });
 
 describe("storefront R125 sweep — wallet topup legend + verbs (A7 B-7/B-9)", () => {
-  const wallet = read("src/pages/wallet.tsx");
+  // R136 (parent pre-patch): reads the wallet SURFACE (page ∪
+  // components/wallet extracts) — the pins follow the markup.
+  const wallet = pageSurface("wallet");
 
   it("StepDot exposes no `active` prop (the collapsed flat legend — no fake progress semantics)", () => {
     // The prop was deleted with its dead inactive branch; a call site
@@ -120,6 +141,17 @@ describe("storefront R125 sweep — wallet topup legend + verbs (A7 B-7/B-9)", (
 });
 
 describe("storefront R125 sweep — craft-floor REFUSE residue (A7 B-12)", () => {
+  // R136 (parent pre-patch): the home/wallet entries read their page
+  // SURFACES (page ∪ extracts) — absence pins over the union are
+  // strictly stronger, so the craft floor keeps holding wherever the
+  // markup lives after the decomposition.
+  const sourceFor = (file: string): string =>
+    file === "src/pages/home.tsx"
+      ? pageSurface("home")
+      : file === "src/pages/wallet.tsx"
+        ? pageSurface("wallet")
+        : read(file);
+
   it("no colored side stripe exceeds 1px on the swept storefront files", () => {
     const sites: Array<[file: string, pattern: RegExp, label: string]> = [
       ["src/pages/home.tsx", /w-\[2(\.\d+)?px\]/, "hero accent stripe >1px"],
@@ -130,18 +162,18 @@ describe("storefront R125 sweep — craft-floor REFUSE residue (A7 B-12)", () =>
       ["src/pages/orders.tsx", /border-r-2\b/, "2px skeleton stripe"],
     ];
     for (const [file, pattern, label] of sites) {
-      const hits = liveLines(read(file), pattern);
+      const hits = liveLines(sourceFor(file), pattern);
       expect(hits, `${file}: ${label} → ${hits.join(" | ")}`).toHaveLength(0);
     }
   });
 
   it("no rounded-3xl card shell remains on home (24px radius is over the 12–16px band)", () => {
-    const hits = liveLines(read("src/pages/home.tsx"), /rounded-3xl/);
+    const hits = liveLines(pageSurface("home"), /rounded-3xl/);
     expect(hits, hits.join(" | ")).toHaveLength(0);
   });
 
   it("the TrustCard 3-up template is gone from home (one inline strip closes the page)", () => {
-    const home = stripComments(read("src/pages/home.tsx"));
+    const home = stripComments(pageSurface("home"));
     expect(home).not.toMatch(/import \{ TrustCard \}/);
     // The inline strip carries the same three honest claims.
     expect(home).toContain("تسليم فوري بعد الدفع");

@@ -26,7 +26,7 @@
  * match — same semantics as the JSX compiler, which drops them too.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -48,6 +48,20 @@ function collectSourceTsx(dir: string): string[] {
   return out;
 }
 const sourceTsxFiles = collectSourceTsx(resolve(process.cwd(), "src"));
+
+/** R136 (parent pre-patch): the checkout spot-pin reads the checkout
+ * SURFACE (page ∪ components/checkout extracts) — the pin follows the
+ * markup (the R135 product precedent). existsSync-guarded: until the
+ * extracts land, the union is exactly the page. */
+const checkoutSurfaceSource = (): string => {
+  const dir = resolve(process.cwd(), "src/components/checkout");
+  const extracts = existsSync(dir)
+    ? readdirSync(dir).filter((f) => f.endsWith(".tsx")).map((f) => resolve(dir, f))
+    : [];
+  return [resolve(process.cwd(), "src/pages/checkout.tsx"), ...extracts]
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+};
 
 /** A <Link …> whose first element child is a <Button …> or a native
  * <button …> — the A4-F1 defect shape. The asChild composition
@@ -83,18 +97,18 @@ describe("A4-F1 completion — zero Button-inside-Link nesting app-wide (R120-B7
     // Spot-pins the exact idiom on the files the reviewer cited — if a
     // future edit reverts one to plain Link>Button, the app-wide net
     // above catches it; these pins document WHERE the idiom lives.
-    const pins: Array<[string, string]> = [
-      ["pages/checkout.tsx", "تصفح المنتجات"],
-      ["pages/orders.tsx", "تصفح الكتالوج"],
-      ["pages/order-detail.tsx", "تواصل مع الدعم"],
-      ["pages/order-detail.tsx", "تصفح المزيد"],
+    const pins: Array<["checkout" | "file", string, string]> = [
+      ["checkout", "pages/checkout.tsx ∪ extracts", "تصفح المنتجات"],
+      ["file", "pages/orders.tsx", "تصفح الكتالوج"],
+      ["file", "pages/order-detail.tsx", "تواصل مع الدعم"],
+      ["file", "pages/order-detail.tsx", "تصفح المزيد"],
       // R125-I3 (A2-9): StockoutRiskPanel's «فتح في المنتجات» CTA is
       // DELETED — it deep-linked to ?highlight={id}, a param nothing
       // consumes (ponytail: deletion wins). The pin dies with the CTA;
       // the app-wide net above still guards the whole class.
     ];
-    for (const [rel, label] of pins) {
-      const text = readFileSync(resolve(process.cwd(), "src", rel), "utf8");
+    for (const [kind, rel, label] of pins) {
+      const text = kind === "checkout" ? checkoutSurfaceSource() : readFileSync(resolve(process.cwd(), "src", rel), "utf8");
       expect(text, `${rel} — ${label}`).toMatch(/<Button[^>]*asChild[^>]*>/);
     }
   });

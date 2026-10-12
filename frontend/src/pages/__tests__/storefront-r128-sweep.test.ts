@@ -29,7 +29,7 @@
  *             tint (was a near-invisible 12%).
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -47,6 +47,18 @@ function stripComments(src: string): string {
  * src/components/product/*.tsx — those extracts ARE storefront page
  * surface (they render the money page's h1/h2/h3 today), so they join
  * the scan. Pure-extension: every pre-R135 file keeps being swept. */
+/** R136 (parent pre-patch): wallet/checkout/home extract into
+ * src/components/<page>/*.tsx this round — existsSync-guarded join,
+ * so the sweep covers the extracts from the moment they land (the
+ * R135 product-components precedent, generalized). Decomposing
+ * agents are FORBIDDEN from editing this file. */
+const pageExtracts = (page: string): string[] => {
+  const dir = resolve(process.cwd(), `src/components/${page}`);
+  return existsSync(dir)
+    ? readdirSync(dir).filter((f) => f.endsWith(".tsx")).map((f) => `src/components/${page}/${f}`)
+    : [];
+};
+
 function storefrontPages(): string[] {
   const pages = readdirSync(resolve(process.cwd(), "src/pages"))
     .filter((f) => f.endsWith(".tsx"))
@@ -54,7 +66,8 @@ function storefrontPages(): string[] {
   const productComponents = readdirSync(resolve(process.cwd(), "src/components/product"))
     .filter((f) => f.endsWith(".tsx"))
     .map((f) => `src/components/product/${f}`);
-  return [...pages, ...productComponents];
+  const r136Extracts = ["wallet", "checkout", "home"].flatMap((page) => pageExtracts(page));
+  return [...pages, ...productComponents, ...r136Extracts];
 }
 
 /** R135 (FE-3): the product page surface is now product.tsx + its
@@ -91,7 +104,11 @@ describe("storefront R128 sweep — bidi isolation on the money-path name trunca
   it('checkout\'s it.name line truncates under dir="auto" (Latin names ellipsize at their END)', () => {
     // The catalog is Latin-named; in the RTL block an unisolated
     // truncate cuts the inline-end = the Latin string's BEGINNING.
-    const src = stripComments(read("src/pages/checkout.tsx"));
+    // R136 (parent pre-patch): the pin follows the markup — reads the
+    // checkout SURFACE (page ∪ components/checkout extracts).
+    const src = ["src/pages/checkout.tsx", ...pageExtracts("checkout")]
+      .map((f) => stripComments(read(f)))
+      .join("\n");
     expect(src).toMatch(/<div[^>]*dir="auto"[^>]*>\s*\{it\.name\}/);
   });
 });
