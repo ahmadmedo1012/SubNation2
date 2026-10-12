@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { EmptyState } from "@/components/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -909,27 +910,33 @@ export default function SupportPage() {
             onRetry={fetchTickets}
           />
         ) : tickets.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/45 rounded-2xl reveal-up">
-            <div className="w-14 h-14 rounded-2xl bg-muted/40 border border-border/35 flex items-center justify-center mx-auto mb-4">
-              <Headphones className="w-6 h-6 opacity-25" />
-            </div>
-            <p className="font-bold text-sm mb-1.5">لا توجد تذاكر دعم</p>
-            {/* R123-E4b (P3-l): the empty state promised «خلال دقائق» while
-                the header above says «15 دقيقة إلى ساعة في أوقات العمل» —
-                two different ticket SLAs on one page. Both mentions now
-                carry the same claim (the topup-approval SLA in the FAQ is
-                a different, topup-specific promise and stays as-is). */}
-            <p className="text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto">
-              أنشئ تذكرة جديدة — نرد عادةً خلال 15 دقيقة إلى ساعة في أوقات العمل
-            </p>
-            <Button
-              onClick={() => setShowCreate(true)}
-              className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              تذكرة جديدة
-            </Button>
-          </div>
+          /* R123-E4b (P3-l): the empty state promised «خلال دقائق» while
+             the header above says «15 دقيقة إلى ساعة في أوقات العمل» —
+             two different ticket SLAs on one page. Both mentions now
+             carry the same claim (the topup-approval SLA in the FAQ is
+             a different, topup-specific promise and stays as-is).
+             R135 (FE-2): converged on the storefront EmptyState — the
+             hand-rolled card had drifted one step off the compact-tile
+             family (w-14 tile, w-6 icon at opacity-25, py-16); the
+             Arabic strings and the «تذكرة جديدة» CTA are untouched.
+             Adoption nets role="status" so the loading→empty swap
+             announces (R125 A6 B-8, admin parity — the block was
+             silent). */
+          <EmptyState
+            icon={Headphones}
+            title="لا توجد تذاكر دعم"
+            description="أنشئ تذكرة جديدة — نرد عادةً خلال 15 دقيقة إلى ساعة في أوقات العمل"
+            action={
+              <Button
+                onClick={() => setShowCreate(true)}
+                className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                تذكرة جديدة
+              </Button>
+            }
+            className="reveal-up"
+          />
         ) : (
           <div className="space-y-2.5">
             {tickets.map((t, i) => {

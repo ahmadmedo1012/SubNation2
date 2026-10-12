@@ -13,6 +13,15 @@ import {
   Moon,
   User,
   ShoppingCart,
+  // R135 (FE-1): the authed drawer's row icons — ShoppingBag is MobileNav's
+  // «طلباتي» tab idiom; Crown/Gift mirror /profile's quick-links table;
+  // Bell the NotificationBell trigger; MessageSquare the bell's support
+  // TYPE_CONFIG. One per-route vocabulary across every nav surface.
+  ShoppingBag,
+  Crown,
+  Gift,
+  Bell,
+  MessageSquare,
   ChevronLeft,
   ChevronDown,
 } from "lucide-react";
@@ -43,6 +52,75 @@ const DRAWER_CATEGORIES = [
   { slug: "seo-tools", label: categoryLabel("seo-tools") },
   { slug: "education", label: categoryLabel("education") },
 ] as const;
+
+// R135 (FE-1 / R124-A4 #5): the authed drawer's account rows — the escape
+// hatch an authed phone needs once the bottom nav hides (landscape
+// <480px height — MobileNav's max-height fallback) and, before this round,
+// the hamburger was guest-only, leaving «المحفظة/طلباتي/حسابي» unreachable
+// until rotation. Order is money-first (wallet → orders → cart → profile),
+// then the engagement cluster (loyalty/referrals/notifications/support).
+const AUTHED_DRAWER_LINKS = [
+  { href: "/wallet", icon: Wallet, label: "المحفظة" },
+  { href: "/orders", icon: ShoppingBag, label: "طلباتي" },
+  { href: "/cart", icon: ShoppingCart, label: "السلة" },
+  { href: "/profile", icon: User, label: "حسابي" },
+  { href: "/loyalty", icon: Crown, label: "الولاء" },
+  { href: "/referrals", icon: Gift, label: "الإحالات" },
+  { href: "/notifications", icon: Bell, label: "الإشعارات" },
+  { href: "/support", icon: MessageSquare, label: "الدعم الفني" },
+] as const;
+
+// R135 (FE-1): BOTH drawers scroll internally — the authed variant (8
+// account rows + the category grid + logout ≈ 700px of rows) outgrows a
+// landscape viewport while the body is scroll-locked (an open drawer owns
+// the whole scroll), so without an internal scroller the tail rows
+// (تسجيل الخروج) sit unreachable exactly in the stranding scenario the
+// drawer exists to fix; the guest drawer rides the same scroll-lock and
+// has the same latent geometry, so both share one cap. The portrait cap
+// mirrors the codebase's below-header offset (home.tsx
+// top-[calc(3.5rem_+_env(safe-area-inset-top))]) PLUS the MobileNav
+// clearance idiom (mobile-sticky-above-nav: --mobile-nav-h + env inset)
+// so the panel stops above the fixed bottom nav instead of running under
+// it; the ≤480px variant drops that reservation because the nav itself
+// hides there — the keyboard fallback pinned by mobile-nav-clearance.
+const DRAWER_SCROLL_CAP =
+  "max-h-[calc(100dvh_-_3.5rem_-_env(safe-area-inset-top)_-_var(--mobile-nav-h)_-_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain [@media(max-height:480px)]:max-h-[calc(100dvh_-_3.5rem_-_env(safe-area-inset-top))]";
+
+/**
+ * R135 (FE-1): the «الفئات» section BOTH drawers render — factored out of
+ * the guest drawer's inline markup (R120-B1/A3-F1) so the authed variant
+ * carries the category shortcuts + العروض from ONE source instead of a
+ * hand-copied twin (the R134-A2-F1 lesson: parallel tables drift). The
+ * output is element-for-element identical to the former inline guest JSX.
+ */
+function DrawerCategoriesSection() {
+  return (
+    <>
+      {/* R124-A3 #3: full token — the /80 alpha measured 4.14:1 in
+          light mode (sub-AA for the 11px bold label); full
+          --muted-foreground measures 6.67:1 (light) / 8.03:1 (dark). */}
+      <div className="px-4 pt-1 pb-0.5 text-3xs font-bold text-muted-foreground">الفئات</div>
+      <div className="grid grid-cols-2 gap-x-2">
+        {DRAWER_CATEGORIES.map((c) => (
+          <Link
+            key={c.slug}
+            href={`/category/${c.slug}`}
+            className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors"
+          >
+            {c.label}
+          </Link>
+        ))}
+        <Link
+          href="/flash-sales"
+          className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold text-status-warning hover:bg-status-warning/10 transition-colors"
+        >
+          العروض
+        </Link>
+      </div>
+      <div className="h-px bg-border/25 my-1" aria-hidden="true" />
+    </>
+  );
+}
 
 /**
  * R126 (A13-F2): minimal Tab-cycle focus trap for the guest drawer —
@@ -176,11 +254,16 @@ export function Navbar() {
     };
   }, [open]);
 
-  // R120-B1 (A3-F1): body scroll-lock while the guest drawer is open —
-  // the manual equivalent of the Radix scroll-lock app-dialog rides
+  // R120-B1 (A3-F1): body scroll-lock while the drawer is open — the
+  // manual equivalent of the Radix scroll-lock app-dialog rides
   // (save/restore the previous inline styles; compensate the scrollbar
   // width so the lock itself doesn't shift the sticky header). Route
   // changes close the drawer via the effect above, which also restores.
+  // R135 (FE-1): serves BOTH drawers — only one panel is ever mounted,
+  // so one lock (like the Esc/Tab/focus effects above) covers whichever
+  // is open; that is also why both panels must scroll internally
+  // (DRAWER_SCROLL_CAP) — this lock is what strands tall content
+  // otherwise.
   useEffect(() => {
     if (!open) return;
     const { overflow, paddingRight } = document.body.style;
@@ -453,28 +536,49 @@ export function Navbar() {
             </div>
           )}
 
-          {/* Mobile menu button — guests only.
-              R124-A4 #5 (documented, not fixed): authed phones in landscape
-              (<480px height) lose the bottom nav to the max-height hide and
-              have no hamburger either — «المحفظة/طلباتي/حسابي» become
-              unreachable. Clean fix = an authed drawer variant (wallet/
-              orders/loyalty/profile/support) + internal scroll (the drawer
-              is taller than a landscape viewport while body-scroll-locked);
-              tracked as follow-up — the hide itself is pinned by
-              mobile-nav-clearance.test.tsx as the keyboard fallback. */}
-          {!token && (
-            <button
-              ref={menuButtonRef}
-              className="md:hidden p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all touch-target flex items-center justify-center"
-              onClick={() => setOpen((v) => !v)}
-              aria-label="القائمة"
-              /* R120-B1 (A4-F5): disclosure state + target wiring. */
-              aria-expanded={open}
-              aria-controls="guest-menu"
-            >
-              {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-          )}
+          {/* Mobile menu button — guests always; authed wherever the row
+              can afford it. R135 (FE-1) closes R124-A4 #5: an authed phone
+              rotated to landscape (<480px height) loses the bottom nav to
+              the max-height hide (the keyboard fallback pinned by
+              mobile-nav-clearance.test.tsx — it STAYS) while the hamburger
+              was guest-only, so «المحفظة/طلباتي/حسابي» had no entry point
+              until rotation. The authed toggle therefore renders on every
+              sub-md width the row fits: sm:flex covers the 640–768px band
+              (theme+bell+toggle+chip+cart ≈ 379px ≤ 608px usable), and the
+              short-viewport variant covers <640px landscape — the exact
+              stranding condition, the complement of MobileNav's own hide
+              query (the max-width guard keeps a short DESKTOP window from
+              growing a mobile toggle at the 768px boundary). Below-sm
+              PORTRAIT stays toggle-less on purpose: R96-M01's 320px row
+              math (≈271px worst case vs 288px usable) has no 48px to spare
+              — an unconditional toggle would re-clip the cart, the
+              money-path P0 that round fixed — and MobileNav (wallet/
+              orders/cart/profile) + /profile (loyalty/referrals) + the
+              bell (notifications) already cover every authed destination
+              there. */}
+          <button
+            ref={menuButtonRef}
+            className={cn(
+              "md:hidden p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all touch-target flex items-center justify-center",
+              /* R135 (FE-1): the authed visibility overlay — tailwind-merge
+                 resolves the display conflict in `hidden`'s favor (guests
+                 keep the bare `flex` above), so the guest class list stays
+                 exactly what it was. */
+              token
+                ? "hidden sm:flex [@media(max-height:480px)_and_(max-width:767.98px)]:flex"
+                : undefined,
+            )}
+            onClick={() => setOpen((v) => !v)}
+            aria-label="القائمة"
+            /* R120-B1 (A4-F5): disclosure state + target wiring. R135
+               (FE-1): the target follows the token — guest and authed
+               drawers are distinct ids, so the control never points at a
+               dialog that isn't (or can't be) mounted. */
+            aria-expanded={open}
+            aria-controls={token ? "authed-menu" : "guest-menu"}
+          >
+            {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
 
           {/* Mobile wallet chip — logged-in, sm…md band only */}
           {token && (
@@ -559,7 +663,12 @@ export function Navbar() {
           the body scroll-locks while it's open (effect above).
           R126 (A13-F2): dialog semantics — the panel is a scroll-locked
           overlay over the page, so it declares role="dialog" aria-modal
-          "true" and receives/returns focus like the admin drawer. */}
+          "true" and receives/returns focus like the admin drawer.
+          R135 (FE-1): the panel is capped + internally scrollable now
+          (DRAWER_SCROLL_CAP) — it rides the same body scroll-lock as the
+          authed twin below and has the same latent geometry, so both
+          drawers share one cap instead of one of them silently
+          regressing on short viewports. */}
       {!token && open && (
         <div
           id="guest-menu"
@@ -568,30 +677,13 @@ export function Navbar() {
           aria-modal="true"
           aria-label="القائمة"
           tabIndex={-1}
-          className="md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in"
+          className={`md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
         >
-          {/* R124-A3 #3: full token — the /80 alpha measured 4.14:1 in
-              light mode (sub-AA for the 11px bold label); full
-              --muted-foreground measures 6.67:1 (light) / 8.03:1 (dark). */}
-          <div className="px-4 pt-1 pb-0.5 text-3xs font-bold text-muted-foreground">الفئات</div>
-          <div className="grid grid-cols-2 gap-x-2">
-            {DRAWER_CATEGORIES.map((c) => (
-              <Link
-                key={c.slug}
-                href={`/category/${c.slug}`}
-                className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors"
-              >
-                {c.label}
-              </Link>
-            ))}
-            <Link
-              href="/flash-sales"
-              className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold text-status-warning hover:bg-status-warning/10 transition-colors"
-            >
-              العروض
-            </Link>
-          </div>
-          <div className="h-px bg-border/25 my-1" aria-hidden="true" />
+          {/* R135 (FE-1): the category shortcuts + العروض + divider render
+              from the shared DrawerCategoriesSection — one source for both
+              drawers (see its note); element-for-element the former inline
+              markup, so the guest flow is unchanged. */}
+          <DrawerCategoriesSection />
           <Link
             href="/support"
             className="flex items-center px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
@@ -614,6 +706,62 @@ export function Navbar() {
                 RTL, and a glyph can bidi-reposition inside mixed runs. */}
             إنشاء حساب مجاني <ChevronLeft className="w-3 h-3 inline" />
           </Link>
+        </div>
+      )}
+
+      {/* Mobile authed menu — R135 (FE-1 / R124-A4 #5): the drawer that
+          ends the authed-landscape stranding (token complement of the
+          guest twin above). It reuses the guest drawer's ENTIRE machinery
+          — drawerRef, the R126 A13-F2 Esc/Tab-trap + move-in/focus-return
+          effects, the R120-B1 body scroll-lock, the route-change close —
+          because only one of the two panels can ever be mounted at a
+          time, one set of effects serves whichever is open. Rows: the
+          AUTHED_DRAWER_LINKS account cluster (the guest drawer's
+          min-h-[48px] primary-row idiom + the header's per-route icons),
+          the shared category section, then تسجيل الخروج — destructive red
+          on a /10 tint (the العروض warning-row idiom) because it is the
+          one irreversible action in the panel. The whole panel rides
+          DRAWER_SCROLL_CAP: at ≈700px of rows it ALWAYS outgrows a
+          landscape viewport, and the body is scroll-locked while open. */}
+      {token && open && (
+        <div
+          id="authed-menu"
+          ref={drawerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="القائمة"
+          tabIndex={-1}
+          className={`md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
+        >
+          {AUTHED_DRAWER_LINKS.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
+            >
+              <l.icon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              {l.label}
+            </Link>
+          ))}
+          <DrawerCategoriesSection />
+          {/* R135 (FE-1): close BEFORE logout — setOpen(false) and the
+              token teardown land in the same commit, so the guest drawer's
+              `!token && open` render can never flash open mid-logout, and
+              the shared close path restores body scroll + focus. logout
+              itself is the desktop user-menu flow verbatim (the useAuth
+              logout: fire-and-forget POST /api/auth/logout + local
+              identity teardown). */}
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              logout();
+            }}
+            className="flex w-full items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold text-status-error hover:bg-status-error/10 transition-colors min-h-[48px]"
+          >
+            <LogOut className="w-4 h-4" aria-hidden="true" />
+            تسجيل الخروج
+          </button>
         </div>
       )}
     </header>

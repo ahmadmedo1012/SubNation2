@@ -17,6 +17,8 @@
  *   2. Client-side rejection of an invalid amount performs no request.
  *   3. A failed /api/wallet probe renders an error state, NOT a
  *      fabricated 0.00-balance card (A10 spec (e), A4 P2 #7).
+ *   4. R135 (FE-4): both method-tab submit CTAs flip aria-busy for the
+ *      create-topup flight — screen-reader parity on the money path.
  *
  * `@workspace/api-client-react` and `@/lib/auth` are mocked at the
  * module boundary (the vitest config's documented pattern for
@@ -475,5 +477,81 @@ describe("WalletPage — unified topup submit verbs (R125-I7 / A7 B-9)", () => {
     expect(screen.getByRole("button", { name: "إرسال طلب الشحن" })).toBeInTheDocument();
     expect(screen.queryByText("تأكيد طلب الشحن")).not.toBeInTheDocument();
     expect(screen.queryByText("تأكيد الإرسال")).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// R135 (FE-4) — screen-reader parity on the money path: the topup CTAs
+// announce their async flight via aria-busy. The repo audit found
+// aria-busy on only 7 async regions app-wide; the POST /wallet/topups
+// window (spinner label + disabled CTA) was invisible to AT until the
+// outcome landed. Both method-tab CTAs ride the same predicate the
+// disabled state already uses. Outcome announcements stay where they
+// are (the role=alert error banner + TopupWaitingModal's role=status
+// region) — the tests below pin only the busy-state contract.
+// ─────────────────────────────────────────────────────────────────────
+
+describe("WalletPage — topup CTA aria-busy during the create-topup flight (R135 / FE-4)", () => {
+  /** The static useCreateTopup mock never runs real callbacks — settle
+   * `submitting` by hand via the LATEST hook config's onSettled (the
+   * 96-F6 describe's idiom). */
+  const settleLatestMutation = () => {
+    const calls = vi.mocked(useCreateTopup).mock.calls as unknown as Array<
+      [{ mutation?: { onSettled?: () => void } }?] | []
+    >;
+    act(() => {
+      calls[calls.length - 1]?.[0]?.mutation?.onSettled?.();
+    });
+  };
+
+  it("the mobile-transfer CTA flips aria-busy true while submitting, false once settled", async () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("المبلغ بالدينار الليبي"), {
+      target: { value: "50" },
+    });
+    fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
+      target: { value: "0912345678" },
+    });
+    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
+      target: { value: "TRX-135" },
+    });
+
+    const cta = screen.getByRole("button", { name: "إرسال طلب الشحن" });
+    // Idle: React stringifies the boolean (same rendering contract the
+    // aria-invalid pins above assert).
+    expect(cta).toHaveAttribute("aria-busy", "false");
+
+    fireEvent.click(cta);
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    // In flight: `submitting` is true until onSettled — busy for AT.
+    expect(cta).toHaveAttribute("aria-busy", "true");
+    expect(cta).toBeDisabled();
+
+    // The mutation settles → submitting flips back → busy clears.
+    settleLatestMutation();
+    expect(cta).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("the lypay twin CTA carries the same aria-busy contract (both method tabs, not just the default)", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByText("تحويل مصرفي"));
+    fireEvent.change(screen.getByLabelText("المبلغ بالدينار الليبي"), {
+      target: { value: "50" },
+    });
+    fireEvent.change(screen.getByLabelText("رقم حسابك (المُرسل)"), {
+      target: { value: "0028776630001" },
+    });
+
+    const cta = screen.getByRole("button", { name: "إرسال طلب الشحن" });
+    expect(cta).toHaveAttribute("aria-busy", "false");
+
+    fireEvent.click(cta);
+    await waitFor(() => expect(mutateMock).toHaveBeenCalledTimes(1));
+    expect(cta).toHaveAttribute("aria-busy", "true");
+
+    settleLatestMutation();
+    expect(cta).toHaveAttribute("aria-busy", "false");
   });
 });

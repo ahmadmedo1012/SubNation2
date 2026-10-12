@@ -55,6 +55,31 @@ function providerDisplayName(provider: string): string {
   return provider;
 }
 
+/**
+ * R135 (FE-4 / A8 §9): the row shape of GET /api/auth/providers/linked —
+ * the backend (routes/auth.ts:202-216) serializes the drizzle camelCase
+ * row verbatim (provider/providerUid/…), and this raw-fetch surface is
+ * NOT in the OpenAPI spec, so no orval interface exists for it. The
+ * generated LinkedIdentity (provider_uid/linked_at/last_seen_at — see
+ * api.schemas.ts) types /auth/me's linked_identities, a DIFFERENT wire
+ * shape for the same domain concept: aliasing this state to it would lie
+ * about the keys and break the unlink payload (id.providerUid below).
+ * The audit's own fix note — "type linkedProviders from the providers
+ * response" — lands here: the last real `any` in src (useState<any[]>)
+ * dies. Nullable columns mirror the drizzle schema; linkedAt is the JSON
+ * string res.json() leaves a Date column as.
+ */
+interface LinkedProviderRow {
+  provider: string;
+  providerUid: string;
+  firebaseUid?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+  linkedAt?: string;
+}
+
 export default function ProfilePage() {
   const { token, logout } = useAuth();
   const [, navigate] = useLocation();
@@ -65,7 +90,10 @@ export default function ProfilePage() {
   // page) instead of a bare 24px icon tap firing immediately.
   const { confirm, ConfirmDialog } = useConfirm();
 
-  const [linkedProviders, setLinkedProviders] = useState<any[]>([]);
+  // R135 (FE-4 / A8 §9): typed from the /providers/linked response (see
+  // LinkedProviderRow above) — was the repo's ONLY real `any`, able to
+  // hide a runtime shape surprise in the unlink flow's providerUid read.
+  const [linkedProviders, setLinkedProviders] = useState<LinkedProviderRow[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
   // R94-A1 #8 (P2 — the fifth error-as-empty site F-05 missed): a failed
   // linked-providers fetch (401/5xx, or a non-JSON body that makes
@@ -134,7 +162,10 @@ export default function ProfilePage() {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
-        const data = await res.json();
+        // R135 (FE-4): the boundary cast for the untyped res.json() — the
+        // response contract is LinkedProviderRow[] (see the interface
+        // docblock; the `|| []` defensive fallback stays verbatim).
+        const data = (await res.json()) as { providers?: LinkedProviderRow[] };
         if (cancelled) return;
         if (res.ok) {
           setLinkedProviders(data.providers || []);
@@ -182,7 +213,9 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ provider, provider_uid: providerUid }),
       });
-      const data = await res.json();
+      // R135 (FE-4): same boundary typing as the linked fetch — only the
+      // error envelope's sentence is read on the !ok branch.
+      const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "فشل فصل مزود المصادقة");
 
       toast({ title: "تم فصل الحساب", description: `تم فصل ${displayName} بنجاح.` });

@@ -19,13 +19,16 @@
  *      1 rejected → cart shrinks to the un-bought remainder).
  *   5. M06: the confirm CTA carries whitespace-normal/text-balance so the
  *      coupon-state label wraps at ≤390px instead of overflowing.
+ *   6. R135 (FE-4): the confirm CTA flips aria-busy for the create-order
+ *      flight — screen-reader parity on the money path (aria-busy lived
+ *      on only 7 async regions app-wide before this round).
  *
  * `@workspace/api-client-react` is mocked at the module boundary (the
  * vitest config's documented pattern for page-level component tests);
  * the cart rides the REAL CartProvider seeded via localStorage.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -383,5 +386,47 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     expect(dismiss.className).toContain("w-11");
     expect(dismiss.className).toContain("-m-2");
     expect(dismiss.className).toContain("p-2");
+  });
+
+  it("R135 (FE-4): the confirm CTA carries aria-busy while the create-order loop is in flight, and clears it on settle", async () => {
+    seedCart(1);
+    renderPage();
+
+    // Hang the unit POST on a manually-settled promise — the pending
+    // window (spinner + «جارٍ المعالجة…» label, disabled CTA) is exactly
+    // the state a screen reader previously had NO signal for.
+    let rejectOrder: (reason?: unknown) => void = () => {};
+    createOrderMock.mockImplementationOnce(
+      () =>
+        new Promise<{ order_code: string }>((_, reject) => {
+          rejectOrder = reject;
+        }),
+    );
+    const btn = await screen.findByRole("button", { name: /إتمام الطلب/ });
+    await waitFor(() => expect(btn).toBeEnabled());
+    // Idle: React stringifies the boolean — the explicit "false" is the
+    // same rendering contract the aria-invalid pins use (wallet tests).
+    expect(btn).toHaveAttribute("aria-busy", "false");
+
+    fireEvent.click(btn);
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
+    // In flight: busy for AT (the accessible name already says
+    // «جارٍ المعالجة…» — aria-busy is the state pendant).
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    expect(btn).toBeDisabled();
+
+    // Settle as a NETWORK-level failure → the outer catch shows the
+    // banner + toast, the cart deliberately stays, and the finally block
+    // flips `submitting` off — the CTA stays MOUNTED, so both busy
+    // flips are observable on the same node (a success settle would
+    // clear() the cart and unmount the CTA into «سلتك فارغة»).
+    await act(async () => {
+      rejectOrder(new TypeError("failed to fetch"));
+    });
+    await waitFor(() => expect(btn).toHaveAttribute("aria-busy", "false"));
+    expect(btn).toBeEnabled();
+    // The failure surfaced in the persistent money banner (role=alert),
+    // the outcome surface aria-busy hands the user off to.
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });

@@ -1575,6 +1575,21 @@ export default function CheckoutPage() {
                 <Button
                   onClick={handleConfirm}
                   disabled={!canSubmit}
+                  /* R135 (FE-4): aria-busy rides `submitting` — the
+                     create-order loop was invisible to screen readers
+                     until a toast fired (repo audit: aria-busy lived
+                     on only 7 async regions). The product page's
+                     balance-check CTA idiom (disabled + aria-busy on the
+                     CTA itself) copied: no aria-label override — the
+                     visible «جارٍ المعالجة… N/M» label (R115-I1) already
+                     IS the accessible name. A page-level aria-live region
+                     for the outcome is deliberately NOT added: every
+                     terminal branch below already toasts, and the sonner
+                     Toaster is itself a polite live region (section
+                     aria-live="polite", sonner 2.x) — a twin here would
+                     double-announce. aria-busy alone covers the in-flight
+                     window; React stringifies the idle false. */
+                  aria-busy={submitting}
                   /* 96-F4 (R96 A1 M06): the coupon-state label («إتمام الطلب —
                      الإجمالي بعد الكوبون (…)» ≈ 300–330px of Arabic + tabular
                      digits) overflowed the button's inner width at ≤390px because

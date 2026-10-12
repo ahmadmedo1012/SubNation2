@@ -10,6 +10,11 @@
  *   1. isError ⇒ a distinct error card with a retry button wired to the
  *      hook's refetch (outage ≠ empty — no silent identity vanish).
  *   2. The healthy path still renders the identity card (sanity).
+ *   3. R135 (FE-4): the linked-providers rows keep their camelCase wire
+ *      shape (provider/providerUid/…) — the contract LinkedProviderRow
+ *      now types; a "fix" toward the orval LinkedIdentity's snake_case
+ *      (provider_uid — the /auth/me linked_identities shape, a different
+ *      surface) would break the row render + unlink payload here.
  *
  * `@workspace/api-client-react`, `@/lib/auth` and the heavy session/auth
  * children are mocked at the module boundary; the raw
@@ -142,5 +147,54 @@ describe("ProfilePage — /auth/me failure no longer silently vanishes the ident
     expect(screen.getByText("SNXYZ99")).toBeInTheDocument();
     // The error card must not leak into the healthy render.
     expect(screen.queryByText("تعذّر تحميل بيانات حسابك")).not.toBeInTheDocument();
+  });
+
+  it("R135 (FE-4): linked provider rows render off the camelCase wire shape (typing regression for LinkedProviderRow)", async () => {
+    vi.mocked(useGetMe).mockReturnValue({
+      data: ME_FIXTURE,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as MeResult);
+
+    // The /api/auth/providers/linked response — the drizzle camelCase row
+    // the backend serializes verbatim (routes/auth.ts:202-216). The row
+    // render reads provider/providerUid/email; the unlink aria-label +
+    // payload ride the same pair.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        resLike({
+          providers: [
+            {
+              provider: "google.com",
+              providerUid: "g-uid-135",
+              firebaseUid: null,
+              email: "user@gmail.com",
+              phone: null,
+              emailVerified: true,
+              phoneVerified: false,
+              linkedAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        }),
+      ),
+    );
+
+    renderPage();
+    // Settle the mount-time probe (the R118-B2 A5 W-4 idiom above).
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The row rendered off the camelCase keys: display name, the email
+    // datum line, and the unlink control named after the provider.
+    expect(screen.getByText("Google")).toBeInTheDocument();
+    expect(screen.getByText("user@gmail.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "فصل Google" })).toBeInTheDocument();
+    // The advice card is correctly absent — one provider IS linked.
+    expect(screen.queryByText("حماية حسابك")).not.toBeInTheDocument();
   });
 });

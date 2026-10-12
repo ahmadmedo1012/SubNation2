@@ -1738,6 +1738,21 @@ export default function WalletPage() {
                   )}
                   <Button
                     type="submit"
+                    /* R135 (FE-4): aria-busy mirrors the disabled predicate
+                       (submitting || topupMutation.isPending) — the POST
+                       /wallet/topups flight was invisible to screen readers
+                       until the outcome landed (repo audit: aria-busy lived
+                       on only 7 async regions). The product page's
+                       balance-check CTA idiom (disabled + aria-busy on the
+                       CTA itself): the visible «جارٍ الإرسال…» label is
+                       already the accessible name. No page-level aria-live
+                       twin for the outcome: the #wallet-error banner below
+                       is role="alert" + aria-live="polite", and success
+                       hands off to TopupWaitingModal whose body carries
+                       its own role=status live region — adding one here
+                       would double-announce. The lypay twin CTA below
+                       rides the same predicate. */
+                    aria-busy={submitting || topupMutation.isPending}
                     /* R116-S2 CTA recipe: size=lg (h-12-class primary)
                       + w-full form layout — the drifted h-11/bg-primary/
                       shadow overrides are gone (button.tsx's lg + default
@@ -1907,6 +1922,11 @@ export default function WalletPage() {
                     )}
                     <Button
                       type="submit"
+                      /* R135 (FE-4): the lypay twin of the mobile CTA's
+                         aria-busy above — same mutation, same predicate
+                         (screen-reader parity on BOTH topup method tabs,
+                         not just the default one). */
+                      aria-busy={submitting || topupMutation.isPending}
                       /* R116-S2 CTA recipe (lypay twin of the mobile CTA).
                           R124-I1 (A3 P6): cta-glow removed with the
                           mobile CTA above (the pulsing halo is retired). */

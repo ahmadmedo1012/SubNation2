@@ -71,15 +71,17 @@ export function MobileNav() {
   // fallback for short viewports (landscape phones, keyboard-resized
   // layouts that don't fire visualViewport).
   //
-  // R124-A4 #5 (documented, not fixed — stretch item): because this hide
-  // is unconditional, an AUTHED phone rotated to landscape (<480px tall)
-  // loses the bottom nav while the hamburger (Navbar) is guest-only —
-  // «المحفظة/طلباتي/حسابي» have no entry point until rotation. A clean
-  // fix needs an authed drawer variant (wallet/orders/loyalty/profile/
-  // support) WITH internal scrolling (the drawer outgrows a landscape
-  // viewport while body-scroll-locked); the hide itself is pinned as the
-  // keyboard fallback by mobile-nav-clearance.test.tsx, so dropping it
-  // outright would trade the stranding for a permanent 60px band.
+  // R124-A4 #5 → FIXED in R135 (FE-1): the authed-landscape stranding this
+  // block documented is closed in Navbar.tsx — the hamburger now renders
+  // for authed users on every sub-md width the header row can afford
+  // (incl. the short-viewport variant that mirrors this very hide), and it
+  // opens an authed drawer variant (wallet/orders/cart/profile/loyalty/
+  // referrals/notifications/support + the category grid + logout) that
+  // scrolls internally, so «المحفظة/طلباتي/حسابي» stay reachable under
+  // this hide. The hide itself STAYS unchanged: it is the no-JS keyboard
+  // fallback pinned by mobile-nav-clearance.test.tsx, and dropping it
+  // outright would trade the stranding for a permanent 60px band riding
+  // above the virtual keyboard.
   const keyboardVisible = useKeyboardVisibility();
 
   // R120-B1 (A3-F1): hidden on the auth pages for everyone — mirrors

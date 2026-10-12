@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
+import { EmptyState } from "@/components/EmptyState";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
@@ -457,39 +458,44 @@ export default function OrdersPage() {
              an active bucket can read «لا توجد طلبات» while matching
              rows sit on unloaded pages (hasNextPage=true). The hard
              empty state was a false claim; keep the load-more visible
-             + the honest incompleteness hint instead. */
-          <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto flex items-center justify-center">
-              <Package className="w-5 h-5 opacity-35" />
-            </div>
-            <p className="font-bold text-sm text-foreground/85">
-              لا طلبات مطابقة ضمن الصفحات المحمّلة
-            </p>
-            <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
-            <div className="flex justify-center gap-2 flex-wrap pt-1">
-              <LoadMoreButton
-                /* R124-I4 (A4 F1): the fixed h-9 capped the button at
-                   36px (it even capped Button's own min-h-8) — min-h-11
-                   restores the 44px tap-target floor (twMerge drops the
-                   sm variant's min-h-8). */
-                className="min-h-11 gap-1.5"
-                busy={loadingMoreOrders}
-                disabled={isLoading}
-                onClick={() => void fetchNextPage()}
-              />
-              <button
-                onClick={() => setFilter("all")}
-                /* R122 (A1 P2-7): the text CTA was ~24px tall — min-h-11
-                   rides the 44px tap-target floor. R124-I4 (A4 F1): the
-                   load-more beside it lost its h-9 cap and rides the
-                   same floor now (the old comment claimed it already
-                   did). */
-                className="inline-flex items-center min-h-11 px-2 text-xs font-bold text-primary-text hover:underline"
-              >
-                عرض كل الطلبات
-              </button>
-            </div>
-          </div>
+             + the honest incompleteness hint instead.
+             R135 (FE-2): converged on the storefront EmptyState — this
+             block WAS the compact-tile idiom the component canonized
+             (same w-12/w-5/opacity-35 shape, identical strings/CTAs);
+             adoption nets role="status" so the loading→empty swap
+             announces (R125 A6 B-8, admin parity — the hand-rolled div
+             was silent). */
+          <EmptyState
+            icon={Package}
+            title="لا طلبات مطابقة ضمن الصفحات المحمّلة"
+            description="قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل"
+            action={
+              <div className="flex justify-center gap-2 flex-wrap pt-1">
+                <LoadMoreButton
+                  /* R124-I4 (A4 F1): the fixed h-9 capped the button at
+                     36px (it even capped Button's own min-h-8) — min-h-11
+                     restores the 44px tap-target floor (twMerge drops the
+                     sm variant's min-h-8). */
+                  className="min-h-11 gap-1.5"
+                  busy={loadingMoreOrders}
+                  disabled={isLoading}
+                  onClick={() => void fetchNextPage()}
+                />
+                <button
+                  onClick={() => setFilter("all")}
+                  /* R122 (A1 P2-7): the text CTA was ~24px tall — min-h-11
+                     rides the 44px tap-target floor. R124-I4 (A4 F1): the
+                     load-more beside it lost its h-9 cap and rides the
+                     same floor now (the old comment claimed it already
+                     did). */
+                  className="inline-flex items-center min-h-11 px-2 text-xs font-bold text-primary-text hover:underline"
+                >
+                  عرض كل الطلبات
+                </button>
+              </div>
+            }
+            className="reveal-up"
+          />
         ) : (
           // Filter is active but matched nothing (and the whole list is
           // provably loaded — a single short page). Distinct from the
@@ -497,24 +503,30 @@ export default function OrdersPage() {
           // orders, just none in the chosen bucket. Surface a quick
           // way to drop the filter without forcing them to find the
           // "all" chip again.
-          <div className="text-center py-12 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
-            <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto mb-3 flex items-center justify-center">
-              <Package className="w-5 h-5 opacity-35" />
-            </div>
-            <p className="font-bold text-sm mb-3 text-foreground/85">لا توجد طلبات في هذه الفئة</p>
-            <button
-              onClick={() => setFilter("all")}
-              /* R122 (A1 P2-7): py-1.5 was ~30px tall — min-h-11 rides the
-                 44px tap-target floor.
-                 R125-I7 (A7 B-2): the hover tint rode raw text-primary
-                 (3.76:1 on the dark card) — the text-safe token keeps
-                 the hover state AA; hover:bg-primary/8 still carries the
-                 hover feedback. */
-              className="text-xs font-bold text-primary-text hover:text-primary-text border border-primary/22 px-4 min-h-11 rounded-xl hover:bg-primary/8 transition-colors press-spring"
-            >
-              عرض كل الطلبات
-            </button>
-          </div>
+          //
+          // R135 (FE-2): converged on the storefront EmptyState (the
+          // hand-rolled twin this component canonized — identical
+          // classes, strings and CTA); role="status" is net-new (R125
+          // A6 B-8: the loading→empty swap was silent here).
+          <EmptyState
+            icon={Package}
+            title="لا توجد طلبات في هذه الفئة"
+            action={
+              <button
+                onClick={() => setFilter("all")}
+                /* R122 (A1 P2-7): py-1.5 was ~30px tall — min-h-11 rides the
+                   44px tap-target floor.
+                   R125-I7 (A7 B-2): the hover tint rode raw text-primary
+                   (3.76:1 on the dark card) — the text-safe token keeps the
+                   hover state AA; hover:bg-primary/8 still carries the
+                   hover feedback. */
+                className="text-xs font-bold text-primary-text hover:text-primary-text border border-primary/22 px-4 min-h-11 rounded-xl hover:bg-primary/8 transition-colors press-spring"
+              >
+                عرض كل الطلبات
+              </button>
+            }
+            className="reveal-up"
+          />
         )
       ) : (
         /* Orders list */
