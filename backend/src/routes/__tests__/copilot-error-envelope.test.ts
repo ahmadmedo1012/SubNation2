@@ -145,7 +145,11 @@ beforeEach(async () => {
   await resetTestDb();
   await db.execute(sql.raw("DROP TABLE IF EXISTS copilot_previews"));
   await db.execute(sql.raw(COPILOT_PREVIEWS_DDL));
-  // Phase gates: ask needs phase1, draft needs phase2 — seed both on.
+  // Phase gates: ask needs phase1, draft needs phase2, and since R134
+  // (A1-F10) the previews GET + cancel carry the phase3 gate their
+  // confirm siblings always had — seed all three on so every envelope
+  // in this suite is reachable (the suite pins envelope BYTES, not the
+  // gate; the gate itself is pinned by its own middleware suite).
   // system_settings is NOT in the harness TRUNCATE list (the pricing
   // suites rely on it being untouched), so clear the key explicitly.
   await db.delete(systemSettingsTable).where(eq(systemSettingsTable.key, "copilot.phases"));
@@ -154,7 +158,7 @@ beforeEach(async () => {
         VALUES ('copilot.phases', ${JSON.stringify({
           phase1_enabled: true,
           phase2_enabled: true,
-          phase3_enabled: false,
+          phase3_enabled: true,
           phase3_high_risk_enabled: false,
         })})`,
   );

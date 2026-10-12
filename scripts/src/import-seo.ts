@@ -2,6 +2,15 @@
  * Import SEO content (description_long + faq + seo_title +
  * meta_description) from docs/SEO_PRODUCTS.json into productsTable.
  *
+ * ⚠️ SNAPSHOT, NOT SOURCE OF TRUTH (R134 A7-F3): the live DB is the
+ * NEWER truth since the operator's R132 curation pass (4 slug re-keys;
+ * R132 L4-F1 measured 41/41 seeded rows differing). Re-export the live
+ * rows into this file before any bulk edit, or your edit will fight the
+ * DB (keep-unless-force means the DB wins by default — that is
+ * load-bearing protection, not a bug). The validation below REQUIRES
+ * every entry to be complete, which is why the file carries no banner
+ * entry: the staleness note lives here + in docs/README.md's row.
+ *
  * Safety:
  *   - Matches each entry by `slug` first (the canonical, stable identity —
  *     display names drift with marketing renames), falling back to an

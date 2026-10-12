@@ -10,17 +10,21 @@ import {
   productsTable,
   usersTable,
 } from "../../test/db";
-import { applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
+import { applyIdempotencyBodyHashStage, applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
 
 /**
  * R102: the V1-M19 generalization (nullable order_id + reference_type)
  * is part of the CURRENT shape — every stage application below runs
  * M12 + M19 together so the pins describe the live table the drizzle
  * object resolves against.
+ * R134 (A7-F4): V1-M32's body_hash joins the chain for the same reason
+ * — claimIdempotencyKey now writes the column, so the harness table
+ * must carry it or every insert selects a ghost column.
  */
 async function applyIdempotencyStages() {
   await applyIdempotencyKeysStage();
   await applyIdempotencyReferenceTypeStage();
+  await applyIdempotencyBodyHashStage();
 }
 import {
   __resetIdempotencyTableProbeForTests,
@@ -113,13 +117,23 @@ describe("V1-M12 applyIdempotencyKeysStage — catalog shape (pinned to schema T
 
     expect(await tableExists("idempotency_keys")).toBe(true);
     const cols = await columnsOf("idempotency_keys");
-    expect([...cols.keys()].sort()).toEqual(["created_at", "key", "order_id", "reference_type"]);
+    // R134 (A7-F4): body_hash (V1-M32) joins the pinned column set.
+    expect([...cols.keys()].sort()).toEqual([
+      "body_hash",
+      "created_at",
+      "key",
+      "order_id",
+      "reference_type",
+    ]);
     // Pinned types — a drift here breaks lib/idempotency.ts's queries.
     expect(cols.get("key")).toBe("text");
     expect(cols.get("order_id")).toBe("integer");
     expect(cols.get("created_at")).toBe("timestamp with time zone");
     // R102 (V1-M19): the loyalty-conversion discriminator.
     expect(cols.get("reference_type")).toBe("character varying");
+    // R134 (A7-F4): the durable reuse predicate (varchar(64), nullable
+    // — pre-R134 legacy claims carry NULL and replay as before).
+    expect(cols.get("body_hash")).toBe("character varying");
   });
 
   it("key is the PRIMARY KEY (duplicate claim = 23505 on idempotency_keys)", async () => {
@@ -233,8 +247,12 @@ describe("V1-M12 ↔ lib/idempotency.ts — the service round-trip (name parity 
     await claimIdempotencyKey(db, "u1:roundtrip-key-1", orderId);
 
     // Post-claim: a retry with the same key replays THIS order instead of
-    // re-pricing/re-charging — the whole point of F10.
-    expect(await findIdempotentOrderId("u1:roundtrip-key-1")).toBe(orderId);
+    // re-pricing/re-charging — the whole point of F10. R134 (A7-F4): the
+    // lookup returns the claim row's {orderId, bodyHash} — a claim made
+    // through the plain signature carries no hash (NULL replays as
+    // legacy; the hashed writers pass their predicate at their sites).
+    const replayed = await findIdempotentOrderId("u1:roundtrip-key-1");
+    expect(replayed).toEqual({ orderId, bodyHash: null });
     expect(await findIdempotentOrderId("u1:other-buyer-key-1")).toBeNull();
   });
 

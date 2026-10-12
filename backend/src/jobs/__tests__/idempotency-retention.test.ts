@@ -9,7 +9,7 @@ import {
   productsTable,
   usersTable,
 } from "../../test/db";
-import { applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
+import { applyIdempotencyBodyHashStage, applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
 import { pruneOldIdempotencyKeys } from "../idempotency-retention";
 
 /**
@@ -42,6 +42,9 @@ beforeEach(async () => {
   // R102 (V1-M19): keep the harness table at the CURRENT shape so the
   // drizzle object (which now selects reference_type) resolves.
   await applyIdempotencyReferenceTypeStage();
+  // R134 (A7-F4, V1-M32): same principle one stage later — the drizzle
+  // object selects body_hash now, and the seed inserts below ride it.
+  await applyIdempotencyBodyHashStage();
 });
 
 async function seedOrder(orderCode: string): Promise<number> {

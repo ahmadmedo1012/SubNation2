@@ -452,6 +452,10 @@ describe("SPA shell rewrite — dead product slugs answer 404 (A7-F7)", () => {
     expect(r.contentType).toContain("text/html");
     // No canonical: a dead URL must not claim to be anything.
     expect(canonicalOf(r.body)).toBeNull();
+    // R134 (A7-F6): the raw shell stamps noindex like the unknown-path
+    // family (the SPA's own client-side 404 stamps the same) — the
+    // raw/SPA pair no longer disagrees on the one 404 family.
+    expect(metaContent(r.body, "name", "robots")).toBe("noindex,follow");
   });
 });
 

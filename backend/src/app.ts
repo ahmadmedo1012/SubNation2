@@ -1462,7 +1462,10 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     try {
       slugOrId = decodeURIComponent(product[1] as string);
     } catch {
-      return { status: 404, canonical: null };
+      // R134 (A7-F6): the noindex stamp joins the unknown-path family —
+      // HTTP 404 already governs deindexing, but the raw/SPA pair now
+      // agrees (the SPA's client-side 404 stamps noindex,follow itself).
+      return { status: 404, canonical: null, robots: "noindex,follow" };
     }
     const numeric = /^\d+$/.test(slugOrId) ? Number.parseInt(slugOrId, 10) : null;
     // R122 (A3-P1): the cached lookup shared with the share card (see
@@ -1471,7 +1474,11 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     const lookup = await lookupProductForShareSurfaces(slugOrId, numeric);
     // A7-F7: unknown / inactive / archived product slug → real 404 (the
     // shell still ships so the SPA's not-found page renders client-side).
-    if (!lookup.found || !lookup.row.isActive) return { status: 404, canonical: null };
+    // R134 (A7-F6): + noindex,follow — family consistency with the
+    // unknown-path/unknown-category shells (harmless beyond the 404
+    // itself, but the raw/SPA pair stops disagreeing).
+    if (!lookup.found || !lookup.row.isActive)
+      return { status: 404, canonical: null, robots: "noindex,follow" };
     const row = lookup.row;
     // R122 (A7-P1-1 + A7-P2-5): prefer the operator's DB-backed SEO
     // overrides — the SAME fields the hydrated page renders
