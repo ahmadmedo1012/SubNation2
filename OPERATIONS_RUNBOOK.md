@@ -706,7 +706,7 @@ accounts can press them.
   unaffected. **Rollback = delete the file** (Traefik watches the directory
   and live-reloads).
 
-## 14. Pending operator actions (R122 status; R123/R124 additions below)
+## 14. Pending operator actions (living list — R122 base, additions through R134)
 
 - **GSC verification token** — `VITE_GSC_VERIFICATION` is still unset (the
   `Dockerfile` ARG exists at the build). Paste-and-go: operator pastes the
@@ -757,6 +757,14 @@ accounts can press them.
   3 historical Firebase-key patches are commit-scoped allowlisted in
   `.gitleaks.toml` (HEAD masked; the mechanism verified against a canary
   secret). See the A9-F1 corrected record + the CHANGELOG R130 entry.
+- **R132 — SEO snapshot drift (awareness, then a choice)**: the operator's
+  R132 curation pass re-keyed 4 product slugs directly in the live DB; the
+  JSON snapshot (`docs/SEO_PRODUCTS.json`) now differs on 41/41 seeded
+  rows (R132 L4-F1 measured; DB is the newer truth). No action is needed
+  for the site — but before any bulk SEO edit via the importer, re-export
+  the live rows into the JSON or your edits will fight the DB
+  (keep-unless-force means the DB wins by default). The importer itself
+  warns about this now (its header, R134 A7-F3).
 
 ## 15. Backups & restore drills (pointer)
 

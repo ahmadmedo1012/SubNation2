@@ -22,8 +22,8 @@
 > **www→apex permanent single-hop LIVE at the Traefik layer since R121**
 > (`www-redirect.yml` priority 1000, path+query preserved — 301 as of
 > the R124 redeploy (2026-10-09), 308 before it; the apex's own
-> http→https hop is a temporary redirect, the one remaining edge polish
-> item), **Sentry LIVE both sides since R121-B** (org `subnation`
+> http→https hop is a **permanent 301 since R130** — live-probed both
+> hosts, runbook §14 "✅ RESOLVED R130"; no edge polish item remains), **Sentry LIVE both sides since R121-B** (org `subnation`
 > EU/de, projects `javascript-react` + `subnation-backend`),
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
@@ -217,7 +217,7 @@ ledger; `docs/API.md` owns the API surface.
 
 | File | What it covers | Status |
 |---|---|---|
-| `operations/OPERATOR_ACTIONS_R118.md` | The ordered operator action list | status header refreshed R122; R123 added actions 11–12; R124 added the «تجربة» flash-sale deletion + replay-canary check (1 & 8 DONE; 2/3 unverified; 4–12 open) |
+| `operations/OPERATOR_ACTIONS_R118.md` | The ordered operator action list | status header refreshed R122; R123 added actions 11–12; R124 added the «تجربة» flash-sale deletion + replay-canary check; R134 re-stamped the open set — 1, 8 & 11 DONE · 2/3 unverified · **open: 4–7, 9–10, 12** |
 | `operations/CONTABO_COOLIFY_OPERATIONS.md` | Day-2 ops for the live Contabo host + Coolify + Traefik | §5 updated R125 (www→apex permanent single-hop — 301 since the R124 redeploy, was 308); Oracle-guide refs repointed to `docs/deprecated/` |
 | `operations/NEON_COLD_START_RUNBOOK.md` | Neon auto-suspend: symptoms, checks, when to panic, mitigation menu | §6 updated R125 (live permanent redirect; digit regen-dependent — 301 since the R124 redeploy, was 308) |
 | `operations/WWW_TO_APEX_301.md` | The canonical-host change | **EXECUTED 2026-10-07 (R121)** — live via `www-redirect.yml` (301 since the R124 redeploy 2026-10-09, 308 before it); preserved as the design + rollback record |
@@ -256,11 +256,11 @@ ledger; `docs/API.md` owns the API surface.
 | `WHATSAPP_OPERATIONS.md` | WhatsApp gateway ops | CURRENT (R117 rewrite verified) |
 | `API.md` | Rate limits + surface (operator reference) | CURRENT (R126: `?fields=list` light projection + `variant_count` documented — was missing the R124-public surface) |
 | `COMPLIANCE.md` | Data-retention/backup compliance claims | CURRENT (R118-B4a corrections) |
-| `FINAL_MONEY_INVARIANTS.md` | M1–M17 money invariants | CURRENT (R128: M1/M2/M3 re-cited at HEAD, M15–M17 folded in, suite index re-verified — R128-B4's fourth full money audit) |
+| `FINAL_MONEY_INVARIANTS.md` | M1–M17 money invariants | CURRENT (R134: cites re-derived after the A7-F4 body-hash + A8-F1 schema waves — M1/M2/M3/M4/M5/M6/M7/M16 re-anchored, suite index 43→45 with cart + variant-availability-pricing; fifth full money audit) |
 | `ONBOARDING.md` | The ordered developer path (repo map → setup → law docs → gates → round records) | CURRENT (added R126 — the missing developer journey; suite-size counts restamped R128) |
 | `PERFORMANCE.md` | The performance record — budget gates, measured numbers, round history | CURRENT (added R126; extracted from the README perf section; R127 boot row + R128-B2 Lighthouse re-measure added R128) |
 | `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
-| `SEO_PRODUCTS.json` | The 45 curated Arabic product entries (8 original + 37 added R116) | CURRENT |
+| `SEO_PRODUCTS.json` | The 45 curated Arabic product entries (8 original + 37 added R116) | STALE vs live DB (R132 L4-F1: 41/41 seeded rows differ — the live DB is the NEWER truth after the operator's R132 curation pass; the importer is keep-unless-force, so this file is a snapshot, not the source of truth — re-export before bulk edits) |
 | `loyalty/FINAL_LOYALTY_POLICY.md` · `loyalty/LOYALTY_ECONOMICS.md` | Loyalty policy + economics | CURRENT |
 | `pricing/PRICING_ECONOMICS.md` | Pricing/margin model | CURRENT |
 | `ux/FINAL_UX_SYSTEM.md` | UX/design-system policy | CURRENT (R128: 11px type floor + z-index code truth + icon-direction contract + cross-surface conventions sections added) |

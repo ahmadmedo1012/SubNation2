@@ -5,10 +5,12 @@
 > actions 1 & 8 are DONE (R121 — action 8 executed; **301 since the R124
 > redeploy 2026-10-09, 308 before it** — see
 > `docs/operations/WWW_TO_APEX_301.md`); actions 2 & 3 unverified (no
-> evidence of stock load / TOTP enrollment through R121); 4–7, 9–10 still
-> open.** **R123 (2026-10-08) adds actions 11 (http→https apex redirect is
+> evidence of stock load / TOTP enrollment through R121); open: 4–7,
+> 9–10.** **R123 (2026-10-08) adds actions 11 (http→https apex redirect is
 > a 302 — one-flag fix to 301) and 12 (copilot_actions retention policy
-> decision — currently unbounded).** Read this first.
+> decision — currently unbounded).** **R134 refresh: #11 is DONE (the
+> standalone Traefik file router answers 301 — live-verified R130;
+> runbook §14) — the open set is now 4–7, 9–10, 12.** Read this first.
 > Every item carries its evidence anchor (`docs/inspection-r118/*` — moved
 > to `docs/history/inspection-r118/` by the R122 docs reorg). Live
 > truth this list was written against (verified R118, 2026-10-06;

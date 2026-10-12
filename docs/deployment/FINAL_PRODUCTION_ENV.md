@@ -116,7 +116,7 @@ Declared as `ARG` in the Dockerfile; pass via Coolify build args (or compose
 | `VITE_APP_VERSION` | Sentry release tag override | ✖ | ✖ | SubNation build | build-time | falls to `VITE_RELEASE_SHA` | Leave unset |
 | `VITE_SENTRY_DSN` | Frontend Sentry (public by design) | ✖ | ✖ | SubNation build | build-time | unset = off | Optional |
 | `VITE_GA_TRACKING_ID` | GA4 loader | ✖ | ✖ | SubNation build | build-time | unset = loader off | Optional |
-| `VITE_GSC_VERIFICATION` | Search Console meta tag — read by `frontend/vite.config.ts` (index.html), **zero `import.meta.env` readers by design** | ✖ | ✖ | SubNation build | build-time | unset = no tag | Optional |
+| `VITE_GSC_VERIFICATION` | Search Console meta tag — read by `frontend/vite.config.ts` (index.html), **zero `import.meta.env` readers by design** | ✖ | ✖ | SubNation build | build-time | unset = the plugin still emits an EMPTY `<meta name="google-site-verification">` tag (live + `index.html:19-23` comment; harmless but nonzero — R134 A7-F10 corrected the "no tag" claim). Verification needs the real token: runbook §14 | Optional |
 | `VITE_GOOGLE_CLIENT_ID` | Google OAuth button config | ✖ | ✖ | SubNation build | build-time | unset = hidden | Optional |
 | `VITE_FIREBASE_AUTH_ENABLED` + `VITE_FIREBASE_API_KEY` / `_AUTH_DOMAIN` / `_PROJECT_ID` / `_APP_ID` / `_STORAGE_BUCKET` / `_MESSAGING_SENDER_ID` | Firebase web SDK config (public-by-design) | ✖ | ✖ | SubNation build | build-time | unset = provider hidden | Optional, as a set |
 | `VITE_OPENWA_DOCS_URL` | Admin WhatsApp page docs deep-link | ✖ | ✖ | SubNation build | build-time | unset = header link hidden | Optional (set to new gateway origin) |
