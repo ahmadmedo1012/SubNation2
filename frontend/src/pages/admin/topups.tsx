@@ -1,600 +1,62 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
-// R124-I5 (A6 F8): the shared copy affordance replaces the local
-// CopyButton re-implementation that lived in this file (idle→copied→failed
-// state machine, ~45 lines) — the shared one carries strictly better
-// hygiene (type="button" form-safety, 44px hit box, tracked reset timer,
-// aria-live label swap) and orders.tsx already rides it.
-import { CopyButton } from "@/components/CopyButton";
-import { Input } from "@/components/ui/input";
-import { EmptyState } from "@/components/admin/EmptyState";
-import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { formatCount, formatCurrency, formatDate, statusLabel } from "@/lib/utils";
-import {
-  STATUS_TONE,
-  StatusBadge,
-  UNKNOWN_STATUS_TONE,
-  type StatusBadgeVariant,
-} from "@/components/ui/status-badge";
-import { displayUserName, userFromRow } from "@/lib/admin/user-display";
+import { formatCount, formatCurrency } from "@/lib/utils";
 import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
   approveTopup,
   customFetch,
   getListAdminTopupsQueryKey,
-  type AdminTopup,
   rejectTopup,
 } from "@workspace/api-client-react";
-import {
-  AlertTriangle,
-  Building2,
-  Calendar,
-  CheckCheck,
-  CheckCircle,
-  CheckSquare,
-  Clock,
-  Hash,
-  Loader2,
-  MessageSquare,
-  RefreshCw,
-  Search,
-  Smartphone,
-  Square,
-  User,
-  UserCheck,
-  WifiOff,
-  X,
-  XCircle,
-} from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-
-type AdminTopupRow = AdminTopup & { payment_method?: string; sender_account?: string };
-
-/** R127-L1 (B1 §3.2): a 401 from the generated fetcher is the global
- * admin-session handler's business (toast + redirect fired inside
- * customFetch) — the money loops below break on it quietly. ApiError
- * is type-only from the package, so the check duck-types `status` (the
- * alerts.tsx R126-L8b idiom; replaces the raw loops' isAdminUnauthorized
- * Response check). */
-function isSessionExpiredError(err: unknown): boolean {
-  return (err as { status?: unknown } | null | undefined)?.status === 401;
-}
-
-/* R128 (A1-D2/F1): both hand-rolled pills were raw-palette twins of
- * the StatusBadge recipes (purple-400 on its tint = 2.34:1 in the light
- * admin theme — the round's AA hole). xs size = the exact
- * text-3xs/px-1.5/icon-2.5 scale these hand-rolled; dark theme is
- * visually near-identical (the tokens' dark values sit within a hair of
- * purple-400/blue-400). */
-function MethodBadge({ method }: { method: string }) {
-  if (method === "lypay")
-    return (
-      <StatusBadge variant="purple" size="xs" icon={Building2}>
-        LyPay
-      </StatusBadge>
-    );
-  return (
-    <StatusBadge variant="info" size="xs" icon={Smartphone}>
-      تحويل رصيد
-    </StatusBadge>
-  );
-}
-
-/* R128 (A1-D7/F1): the payment-network pills rode raw green/blue.
- * The endgame is a --net-libyana/--net-madar brand pair; until those
- * exist, the status tokens carry the same hue identity (libyana stays
- * green via success, madar stays blue via info) — the exact recipe the
- * storefront wallet's network chips already use for ink+border
- * (wallet.tsx: text-status-success / text-status-info). Both-theme AA
- * replaces the 1.9–2.5:1 light-theme raw pairs. */
-function NetworkBadge({ net }: { net?: string | null }) {
-  if (!net) return null;
-  const map: Record<string, { label: string; variant: StatusBadgeVariant }> = {
-    libyana: { label: "ليبيانا", variant: "success" },
-    madar: { label: "مدار", variant: "info" },
-  };
-  const d = map[net] ?? { label: net, variant: "neutral" as const };
-  return (
-    <StatusBadge variant={d.variant} size="xs">
-      {d.label}
-    </StatusBadge>
-  );
-}
-
-// R124-I5 (A6 F2): tab labels derive from statusLabel — the same map
-// that feeds the row badges (the tickets.tsx STATUS_FILTERS pattern). The
-// tabs previously hand-rolled «معلق»/«مقبول» while the badges on the very
-// same cards read «قيد الانتظار»/«موافق عليه» — one status can never show
-// two different Arabic words on one page (the status-badge invariant).
-const STATUS_FILTERS = [
-  { value: "", label: "الكل" },
-  ...(["pending", "approved", "rejected"] as const).map((s) => ({
-    value: s,
-    label: statusLabel(s),
-  })),
-];
-
-/** 94-C2 (A2 P1-1): page size for the topup queue — the backend
- *  truncates at 100 rows with NO page param (money queue), so the
- *  frontend now drives the frozen `?page=&limit=` contract itself and
- *  accumulates pages in place. 100 keeps the first payload identical
- *  to what the route already returned. */
-const TOPUPS_PAGE_SIZE = 100;
-
-/** Arabic plural forms for the queue counter (formatCount, A2 P3-4). */
-const TOPUP_COUNT_FORMS = {
-  zero: "طلبات",
-  one: "طلب",
-  two: "طلبان",
-  few: "طلبات",
-  many: "طلبًا",
-  other: "طلب",
-};
-
-function TopupCardSkeleton() {
-  return (
-    <div className="bg-card border border-border/60 rounded-2xl p-4">
-      <div className="flex items-center gap-4 mb-3">
-        <div className="h-7 bg-muted skeleton-shimmer rounded-lg w-24" />
-        <div className="h-5 bg-muted skeleton-shimmer rounded-full w-14" />
-        <div className="h-5 bg-muted skeleton-shimmer rounded-full w-16" />
-      </div>
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="h-4 bg-muted skeleton-shimmer rounded-md w-full" />
-        <div className="h-4 bg-muted skeleton-shimmer rounded-md w-4/5" />
-      </div>
-      <div className="h-9 bg-muted skeleton-shimmer rounded-xl" />
-    </div>
-  );
-}
-
-/* ── R125-I2 (A5-F2): memoized topup rows ──────────────────────────────
- * The money queue missed the R118-B2/R124-I5 memoization pass the
- * sibling big-list pages (orders/users/products/referrals) received:
- * the search box is a CONTROLLED input, and the cards were inline JSX
- * in the map closure with fresh handlers per render — every keystroke
- * (and every processingId/selectedIds flip) re-rendered ALL loaded
- * cards. The queue accumulates 100 rows/page with no cap on load-more
- * (300 cards ≈ a real active-day depth ≈ 10k+ DOM nodes reconciled per
- * keystroke).
- *
- * The row is now a module-level React.memo component (the orders.tsx
- * DesktopOrderRow/MobileOrderCard pattern): `topup` refs come from the
- * memoized allTopups → topups chain, idx/isSelected/isProcessing/
- * isRejecting are primitives, and the three handlers are
- * useCallback-stable — so a keystroke re-renders the search box and
- * NOTHING else; a selection/processing flip busts exactly ONE card.
- * Display-only: the approve/reject/bulk mutation flows are untouched
- * (same handlers, same confirm gating, same Idempotency-Key lifecycle). */
-interface TopupCardProps {
-  topup: AdminTopupRow;
-  /** Position in `topups` — drives the entrance stagger clamp. */
-  idx: number;
-  isSelected: boolean;
-  /** processingId === topup.id — disables both action buttons. */
-  isProcessing: boolean;
-  /** processingId === topup.id && rejectTarget?.id === topup.id — the
-   *  reject modal is open on this row (its confirm label wins over
-   *  the row approve «جارٍ...»). */
-  isRejecting: boolean;
-  onSelect: (id: number) => void;
-  onApprove: (id: number) => void;
-  onReject: (topup: AdminTopupRow) => void;
-}
-
-const TopupCard = React.memo(function TopupCard({
-  topup: t,
-  idx,
-  isSelected,
-  isProcessing,
-  isRejecting,
-  onSelect,
-  onApprove,
-  onReject,
-}: TopupCardProps) {
-  return (
-    <div
-      className={`float-in stagger-${Math.min(idx + 1, 8)} bg-card rounded-2xl border overflow-hidden transition-all hover:shadow-md hover:shadow-black/10 ${
-        t.status === "pending"
-          ? "border-status-warning/20 shadow-sm shadow-status-warning/4"
-          : "border-border/60"
-      }`}
-    >
-      {t.status === "pending" && (
-        <div className="h-0.5 bg-gradient-to-l from-status-warning/50 via-status-warning/25 to-transparent" />
-      )}
-
-      <div className="p-4">
-        {/* Checkbox row (pending only) */}
-        {t.status === "pending" && (
-          <div className="flex items-center mb-3">
-            <button
-              onClick={() => onSelect(t.id)}
-              className="p-1 rounded hover:bg-secondary/50 transition-colors"
-              /* A1-6 (R125): per-row naming — the generic «اختيار»/
-                 «إلغاء الاختيار» labels were indistinguishable across
-                 the queue; orders.tsx:256 names the row it selects. */
-              aria-label={`تحديد طلب الشحن ${t.id} للإجراء الجماعي`}
-              /* R124-I5 (A6 F10): the selection state feeding the
-                 bulk money actions was visual-only — aria-pressed
-                 exposes it (the orders.tsx row-selector idiom). */
-              aria-pressed={isSelected}
-            >
-              {isSelected ? (
-                <CheckSquare className="w-4 h-4 text-primary" />
-              ) : (
-                <Square className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* Top row: amount + badges + date */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <span className="font-bold text-xl tabular-nums">{formatCurrency(t.amount)}</span>
-          {/* R116: shared StatusBadge (STATUS_TONE) replaces the
-              deprecated statusColor() — 93-C7 follow-up. */}
-          <StatusBadge
-            variant={STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE}
-            size="sm"
-          >
-            {statusLabel(t.status)}
-          </StatusBadge>
-          <MethodBadge method={t.payment_method ?? "mobile_transfer"} />
-          {t.payment_method !== "lypay" && <NetworkBadge net={t.payment_network} />}
-          <span className="mr-auto text-xs text-muted-foreground tabular-nums flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {t.created_at ? formatDate(t.created_at) : ""}
-          </span>
-        </div>
-
-        {/* Details row */}
-        <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-3">
-          <div className="flex items-center gap-1.5 text-xs">
-            <User className="w-3 h-3 text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground">المستخدم:</span>
-            <span className="font-mono font-bold text-foreground">
-              {displayUserName(userFromRow(t))}
-            </span>
-            <CopyButton text={t.user_phone} />
-          </div>
-          {t.sender_phone && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <Smartphone className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">المُرسل:</span>
-              <span className="font-mono font-bold text-foreground">{t.sender_phone}</span>
-              <CopyButton text={t.sender_phone} />
-            </div>
-          )}
-          {t.payment_reference && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <Hash className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">رمز التحويل:</span>
-              <span className="font-mono text-xs text-foreground">{t.payment_reference}</span>
-              <CopyButton text={t.payment_reference} />
-            </div>
-          )}
-          {t.sender_account && (
-            <div className="flex items-center gap-1.5 text-xs">
-              <User className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">الحساب:</span>
-              <span className="font-mono font-bold text-foreground">{t.sender_account}</span>
-              <CopyButton text={t.sender_account} />
-            </div>
-          )}
-        </div>
-
-        {/* Admin note */}
-        {t.admin_note && t.status !== "pending" && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/20 border border-border/50 px-3 py-2 rounded-lg mb-3">
-            <MessageSquare className="w-3 h-3 shrink-0" />
-            {t.admin_note}
-          </div>
-        )}
-
-        {/* R116 (A4-04): reviewer attribution — who acted on this
-            topup and when (V1-M23 reviewed_by + reviewed_at). */}
-        {t.status !== "pending" && (t.reviewed_by || t.reviewed_at) && (
-          <div className="flex items-center gap-2 text-2xs text-muted-foreground mb-3">
-            <UserCheck className="w-3 h-3 shrink-0" />
-            {t.reviewed_by ? `أُقرّ بواسطة ${t.reviewed_by}` : "تمت المراجعة"}
-            {t.reviewed_at ? ` · ${formatDate(t.reviewed_at)}` : ""}
-          </div>
-        )}
-
-        {/* Actions — pending only */}
-        {t.status === "pending" && (
-          <div className="border-t border-border/40 pt-3">
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                /* R125-I2 (A6-B5): white on emerald-600 measured 3.77:1
-                 * — under the 4.5:1 floor (bold 14px is NOT large text);
-                 * the emerald-700 hand-roll was the stopgap. R128
-                 * (A1-F2): --status-success-surface (152 65% 30% dark /
-                 * 152 60% 28% light) = 5.05:1 with white in BOTH themes
-                 * — the token replaces the raw pair. hover rides the
-                 * Button family's /90 idiom. */
-                className="flex-1 h-9 bg-status-success-surface hover:bg-status-success-surface/90 text-white font-bold shadow-sm shadow-status-success-surface/20 active:scale-[0.97] transition-transform"
-                onClick={() => onApprove(t.id)}
-                disabled={isProcessing}
-              >
-                <CheckCircle className="w-3.5 h-3.5 ml-1.5" />
-                {isProcessing && !isRejecting ? "جارٍ..." : "موافقة"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 border-status-error/30 text-status-error hover:bg-status-error/10 font-bold active:scale-[0.97] transition-transform px-5"
-                onClick={() => onReject(t)}
-                disabled={isProcessing}
-              >
-                <XCircle className="w-3.5 h-3.5 ml-1.5" />
-                رفض
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-// Reject modal
-// F3-03 (R111 WCAG 4.1.2 + 2.4.3): this was a hand-rolled `fixed` div —
-// no role="dialog"/aria-modal, no focus trap (Tab walked out into the
-// page behind the money modal), no focus return, ESC handled only from
-// inside the textarea. It now rides the shared AppDialog shell (Radix):
-// focus trap + return, ESC/backdrop guarded while the reject POST is in
-// flight via `dismissable`, and a real DialogTitle names the dialog.
-// Form logic (note state, ⌘/Ctrl+Enter submit, guarded dismiss) and the
-// Arabic copy are preserved as-is.
-function RejectModal({
-  topup,
-  open,
-  onConfirm,
-  onCancel,
-  loading,
-}: {
-  topup: {
-    id: number;
-    amount: number;
-    user_phone: string;
-    user_display_name?: string | null;
-    user_email?: string | null;
-    user_auth_provider?: string | null;
-    user_has_google?: boolean;
-    user_has_telegram?: boolean;
-    user_has_firebase?: boolean;
-    user_has_whatsapp?: boolean;
-    status: string;
-    payment_network?: string;
-    created_at?: string;
-  } | null;
-  open: boolean;
-  onConfirm: (note: string) => void;
-  onCancel: () => void;
-  loading: boolean;
-}) {
-  const [note, setNote] = useState("");
-
-  // The old modal unmounted on close (fresh note each open). AppDialog
-  // stays mounted so Radix owns the close animation + focus return —
-  // so the note resets on open instead.
-  useEffect(() => {
-    if (open) setNote("");
-  }, [open]);
-
-  return (
-    <AppDialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) onCancel();
-      }}
-      title="تأكيد الرفض"
-      description={
-        topup ? (
-          <>
-            <span className="font-mono font-bold text-foreground">
-              {formatCurrency(topup.amount)}
-            </span>{" "}
-            · {displayUserName(userFromRow(topup))}
-          </>
-        ) : undefined
-      }
-      dismissable={!loading}
-      size="sm"
-      footer={
-        <>
-          <Button
-            variant="outline"
-            className="flex-1 h-9 active:scale-[0.97]"
-            onClick={onCancel}
-            disabled={loading}
-          >
-            إلغاء
-          </Button>
-          <Button
-            className="flex-1 h-9 bg-destructive hover:bg-destructive/90 text-destructive-foreground active:scale-[0.97] shadow-sm shadow-destructive/20"
-            onClick={() => onConfirm(note)}
-            disabled={loading}
-          >
-            <XCircle className="w-3.5 h-3.5 ml-1.5" />
-            {loading ? "جارٍ الرفض..." : "تأكيد الرفض"}
-          </Button>
-        </>
-      }
-    >
-      <AppDialogBody>
-        <div>
-          <label
-            htmlFor="topups-f1-28266"
-            className="text-xs font-bold text-muted-foreground block mb-1.5"
-          >
-            سبب الرفض <span className="text-muted-foreground">(اختياري)</span>
-          </label>
-          <textarea
-            id="topups-f1-28266"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="مثال: رمز التحويل غير صحيح، المبلغ غير مطابق..."
-            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-destructive resize-none"
-            dir="rtl"
-            autoFocus
-            onKeyDown={(e) => {
-              // ESC is handled by Radix (guarded by `dismissable` while
-              // the request is in flight — the 94-C2 guarded-dismiss
-              // contract). Only the submit shortcut stays field-local.
-              if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);
-            }}
-          />
-          <p className="text-3xs text-muted-foreground mt-1">
-            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded">⌘↵</kbd>{" "}
-            للتأكيد ·
-            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded mr-1">
-              Esc
-            </kbd>{" "}
-            للإلغاء
-          </p>
-        </div>
-      </AppDialogBody>
-    </AppDialog>
-  );
-}
-
-// Bulk action confirmation modal
-// F3-03 (R111 WCAG 4.1.2 + 2.4.3): same hand-rolled-overlay retirement as
-// RejectModal above — Radix focus trap/return, aria-modal, real DialogTitle,
-// and ESC/backdrop guarded while the sequential money loop runs
-// (`dismissable`). The live "جاري done/total" counter is additionally a
-// role=status region so the per-item progress reaches screen readers while
-// the loop runs (the old subtitle swap was visual-only).
-// R122 (A2-P2): the modal gains the SAME optional note field the
-// single-reject modal has — the bulk loops used to stamp every row with
-// the boilerplate «تمت الموافقة الجماعية»/«مرفوض جماعياً», weakening the
-// audit trail the note column and the ledgers carry (the mandatory-reason
-// discipline wallet edits already enforce). The note stays OPTIONAL
-// (matching RejectModal): empty → the boilerplate fallback rides the body.
-function BulkConfirmModal({
-  action,
-  count,
-  open,
-  onConfirm,
-  onCancel,
-  loading,
-  progress,
-}: {
-  action: "approve" | "reject";
-  count: number;
-  open: boolean;
-  onConfirm: (note: string) => void;
-  onCancel: () => void;
-  loading: boolean;
-  /** Live per-item progress while a long approveAll loop runs (B5-01). */
-  progress?: { done: number; total: number } | null;
-}) {
-  const [note, setNote] = useState("");
-
-  // The AppDialog shell stays mounted (Radix owns the close animation),
-  // so the note resets on open — same as RejectModal's field.
-  useEffect(() => {
-    if (open) setNote("");
-  }, [open]);
-
-  return (
-    <AppDialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) onCancel();
-      }}
-      title={action === "approve" ? "تأكيد الموافقة الجماعية" : "تأكيد الرفض الجماعي"}
-      description={`${formatCount(count, TOPUP_COUNT_FORMS)} سيتم معالجته`}
-      dismissable={!loading}
-      size="sm"
-      footer={
-        <>
-          <Button
-            variant="outline"
-            className="flex-1 h-9 active:scale-[0.97]"
-            onClick={onCancel}
-            disabled={loading}
-          >
-            إلغاء
-          </Button>
-          <Button
-            className={`flex-1 h-9 active:scale-[0.97] shadow-sm ${
-              action === "approve"
-                ? "bg-status-success-surface hover:bg-status-success-surface/90 text-white shadow-status-success-surface/20"
-                : "bg-destructive-surface hover:bg-destructive-surface/90 text-destructive-foreground shadow-destructive/20"
-            }`}
-            onClick={() => onConfirm(note)}
-            disabled={loading}
-          >
-            {loading && progress
-              ? `جاري ${progress.done}/${progress.total}...`
-              : loading
-                ? "جارٍ المعالجة..."
-                : action === "approve"
-                  ? "موافقة"
-                  : "رفض"}
-          </Button>
-        </>
-      }
-    >
-      <AppDialogBody>
-        {/* R122 (A2-P2): the optional per-action reason — mirrors
-            RejectModal's field (label, ⌘/Ctrl+Enter submit, optional). */}
-        <div>
-          <label
-            htmlFor="topups-bulk-note"
-            className="text-xs font-bold text-muted-foreground block mb-1.5"
-          >
-            سبب المعالجة الجماعية <span className="text-muted-foreground">(اختياري)</span>
-          </label>
-          <textarea
-            id="topups-bulk-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={
-              action === "approve"
-                ? "مثال: مطابقة كشوف الحسابات المسائية..."
-                : "مثال: مراجع غير صحيح، إشعارات مكررة..."
-            }
-            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-            dir="rtl"
-            disabled={loading}
-            onKeyDown={(e) => {
-              // ESC is Radix's (guarded by `dismissable` while the money
-              // loop runs); only the submit shortcut stays field-local.
-              if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);
-            }}
-          />
-        </div>
-        {/* Live progress (aria-live via role=status) — announced per item
-            while the money loop runs; hidden when idle so the static count
-            line under the title carries the summary. */}
-        <div
-          role="status"
-          aria-live="polite"
-          className="px-1 pt-2 text-xs text-muted-foreground tabular-nums min-h-[1rem]"
-        >
-          {loading && progress ? `جاري ${progress.done}/${progress.total}...` : ""}
-        </div>
-      </AppDialogBody>
-    </AppDialog>
-  );
-}
+// R137 (FE decomposition): the page's self-contained subcomponents and
+// pure helpers moved to @/components/admin/topups/* (verbatim moves —
+// the money path stays HERE: every state atom, the single approve/
+// reject mutations with their per-click Idempotency-Key, the bulk +
+// approve-all loops, and the single-approve confirm gate; the extracts
+// render the byte-identical DOM they rendered inline yesterday).
+// Import surface:
+//   • topups-queue-meta — the page's pure module (the AdminTopupRow
+//     type, the STATUS_FILTERS tab list, the frozen page size, the
+//     Arabic plural forms, and the 401 session-expiry predicate the
+//     money loops break on)
+//   • TopupCard / TopupCardSkeleton — the queue rows (MethodBadge /
+//     NetworkBadge ride along inside TopupCard)
+//   • RejectModal / BulkConfirmModal — the two money-dialog shells
+//     (their ephemeral note draft is field-local; the approve/reject
+//     POST fires only through the page-owned onConfirm handlers)
+//   • TopupsHeader — the stat strip (pending chip + honest count lines)
+//   • TopupsToolbar / StatusFilterTabs — search, the bulk action
+//     buttons, select-all, approve-all and the status tab bar
+//   • TopupsEmptyStates — the partial-window and hard empty branches
+import {
+  isSessionExpiredError,
+  STATUS_FILTERS,
+  TOPUP_COUNT_FORMS,
+  TOPUPS_PAGE_SIZE,
+  type AdminTopupRow,
+} from "@/components/admin/topups/topups-queue-meta";
+import { TopupCard } from "@/components/admin/topups/TopupCard";
+import { TopupCardSkeleton } from "@/components/admin/topups/TopupCardSkeleton";
+import { RejectModal } from "@/components/admin/topups/RejectModal";
+import { BulkConfirmModal } from "@/components/admin/topups/BulkConfirmModal";
+import { TopupsHeader } from "@/components/admin/topups/TopupsHeader";
+import { TopupsToolbar } from "@/components/admin/topups/TopupsToolbar";
+import {
+  TopupsHardEmptyState,
+  TopupsPartialEmptyState,
+} from "@/components/admin/topups/TopupsEmptyStates";
 
 export default function AdminTopupsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -1225,230 +687,35 @@ export default function AdminTopupsPage() {
       <div className="space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5 mb-0.5">
-              <h1 className="text-xl font-bold">طلبات الشحن</h1>
-              {pendingCount > 0 && (
-                /* R125-I2 (A6-B4 + A1-8): raw yellow-400 ink on the light
-                   admin theme is 1.43-1.53:1 — the --status-warning token
-                   pair is both-theme safe; and the label derives from the
-                   statusLabel vocabulary («قيد الانتظار», like the tabs
-                   below) instead of the drifted «معلق». */
-                <span className="flex items-center gap-1 bg-status-warning/15 text-status-warning border border-status-warning/25 text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
-                  <AlertTriangle className="w-3 h-3" />
-                  {pendingCount} قيد الانتظار
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {/* 94-C2 (A2 P1-1): honest count — «إجمالاً» only when a
-                  single short page proves the whole queue fits; the
-                  accumulating list labels what it actually shows. The
-                  pending chip below counts the LOADED pending rows; the
-                  sidebar badge carries the server-side truth. */}
-              <span>
-                {/* R126-L3 (A1-10): the count line names the ACTIVE tab
-                    when one is on — with the per-tab server-side fetch
-                    the numbers describe that tab's server-filtered
-                    window, and the qualifier keeps «إجمالاً» from
-                    reading as the whole queue's total. */}
-                {knownTotal
-                  ? `${formatCount(allTopups.length, TOPUP_COUNT_FORMS)} إجمالاً${statusFilter ? ` (${statusLabel(statusFilter)})` : ""}`
-                  : `عرض ${formatCount(allTopups.length, TOPUP_COUNT_FORMS)}${statusFilter ? ` (${statusLabel(statusFilter)})` : ""} (الأحدث أولاً)`}
-              </span>
-              {/* R124-I5 (A6 F14a): honest search-result count — the
-                  header keeps describing the loaded window; the filter's
-                  own result set is labeled separately (never «إجمالاً»). */}
-              {searchActive && (
-                <>
-                  <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                  <span>نتائج البحث: {formatCount(topups.length, TOPUP_COUNT_FORMS)}</span>
-                </>
-              )}
-              {pendingCount > 0 &&
-                (() => {
-                  /* R125-I2: memoized pendingTopups replaces the fresh
-                     per-render filter (A5-F2). */
-                  const pendingTotal = pendingTopups.reduce(
-                    (s: number, t) => s + (Number(t.amount) || 0),
-                    0,
-                  );
-                  return pendingTotal > 0 ? (
-                    <>
-                      <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                      {/* R125-I2 (A6-B4 + A1-8): status-warning ink (both
-                          themes) + the statusLabel vocabulary — «معلق»
-                          never matched the «قيد الانتظار» tabs. */}
-                      <span className="text-status-warning font-bold tabular-nums">
-                        {formatCurrency(pendingTotal)} إجمالي قيد الانتظار
-                      </span>
-                    </>
-                  ) : null;
-                })()}
-            </div>
-          </div>
+          <TopupsHeader
+            pendingCount={pendingCount}
+            knownTotal={knownTotal}
+            statusFilter={statusFilter}
+            searchActive={searchActive}
+            allTopups={allTopups}
+            topups={topups}
+            pendingTopups={pendingTopups}
+          />
 
           {/* flex-wrap: bulk actions + status tabs overflow the 375px
               viewport without it (select-all + approve-all + reject + 4
               status chips on one row). */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* R124-I5 (A6 F14a): the money queue's search box — the
-                orders/users/products chrome (icon-in-box + ✕ clear).
-                Filters the ACCUMULATED pages client-side; see the
-                honest-range hint below the header when pages remain. */}
-            <div className="relative order-first w-full sm:order-none sm:w-auto">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                type="search"
-                placeholder="بحث برقم التحويل أو الهاتف…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pr-9 h-9 w-full sm:w-52 text-sm"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  aria-label="مسح البحث"
-                  /* 93-C6 / F-07 (A5 S-6): the orders.tsx ✕-button hit-area
-                     fix — p-2 lifts the tappable area to ~28px. */
-                  className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-            {selectedPendingCount > 0 && (
-              <>
-                <Button
-                  size="sm"
-                  /* R125-I2 (A6-B3): variant="outline" — the missing
-                   * variant left the DEFAULT primary gradient under the
-                   * emerald label. Outline keeps the success ink on the
-                   * card surface (the reject sibling's recipe). R128
-                   * (A1-F1): the ink/border/hover triple moves to the
-                   * theme-aware --status-* tokens. */
-                  variant="outline"
-                  className="h-9 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
-                  onClick={() => setBulkAction("approve")}
-                >
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  موافقة ({selectedPendingCount})
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-9 border-status-error/30 text-status-error hover:bg-status-error/10 text-xs"
-                  onClick={() => setBulkAction("reject")}
-                >
-                  <XCircle className="w-3.5 h-3.5 ml-1.5" />
-                  رفض ({selectedPendingCount})
-                </Button>
-              </>
-            )}
-
-            {pendingTopups.length > 0 && (
-              <button
-                onClick={handleSelectAll}
-                /* R125-I2 (A6-B10 / A1-6): aria-pressed + the
-                   state-aware label — the select-all feeding the bulk
-                   money actions was visual-only AND its label never
-                   flipped (orders.tsx:1529-1536 names the state). */
-                aria-pressed={allPendingSelected}
-                aria-label={
-                  allPendingSelected
-                    ? "إلغاء تحديد كل طلبات الشحن قيد الانتظار"
-                    : "تحديد كل طلبات الشحن قيد الانتظار"
-                }
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border/60 bg-secondary/30 hover:bg-secondary/50 transition-colors text-xs"
-              >
-                {allPendingSelected ? (
-                  <CheckSquare className="w-3.5 h-3.5 text-primary" />
-                ) : (
-                  <Square className="w-3.5 h-3.5 text-muted-foreground" />
-                )}
-                <span className="text-muted-foreground">
-                  {allPendingSelected ? "إلغاء اختيار الكل" : "اختيار الكل"}
-                </span>
-              </button>
-            )}
-
-            {pendingCount > 1 && selectedPendingCount === 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
-                onClick={() => setBulkAction("approveAll")}
-                disabled={isApproveAllBusy}
-              >
-                {isApproveAllBusy && approveAllProgress ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <CheckCheck className="w-3.5 h-3.5" />
-                )}
-                {isApproveAllBusy && approveAllProgress
-                  ? `جاري ${approveAllProgress.done}/${approveAllProgress.total}...`
-                  : /* R134 (the R126-A1-11 close-out): while more pages
-                       remain unloaded, «الكل» over-promises — the loop
-                       only iterates the loaded window. The label now
-                       says what will actually run; the count shown is
-                       at least accurate for the window. */
-                    hasNextPage
-                    ? `موافقة المعروض (${pendingCount})`
-                    : `موافقة الكل (${pendingCount})`}
-              </Button>
-            )}
-
-            {/* Status filter tabs */}
-            <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1">
-              {STATUS_FILTERS.map((s) => {
-                const active = statusFilter === s.value;
-                // R126-L3 (A1-10): the per-tab server-side fetch means
-                // the loaded window only speaks for the ACTIVE tab's
-                // status — an inactive tab's count is UNKNOWN (its rows
-                // are not in this window), and rendering the accidental
-                // 0 was exactly the false-count the audit flagged. The
-                // active tab keeps its live count; the sidebar badge
-                // carries the global pending truth.
-                const count = active ? allTopups.length : null;
-                return (
-                  <button
-                    key={s.value}
-                    onClick={() => {
-                      setStatusFilter(s.value);
-                      // R123 (E3 P3a): write-back — the deep-link param
-                      // the initializer reads stays truthful after the
-                      // operator flips the tab (replaceState: flips
-                      // don't spam the history stack).
-                      const url = new URL(window.location.href);
-                      if (s.value) url.searchParams.set("status", s.value);
-                      else url.searchParams.delete("status");
-                      window.history.replaceState(null, "", url.toString());
-                    }}
-                    /* R124-I5 (A6 F10): the active chip was purely visual —
-                       a screen reader announced four identical buttons.
-                       aria-pressed exposes the toggle state (the
-                       coupons.tsx chip-bar idiom). */
-                    aria-pressed={active}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
-                      active
-                        ? "bg-card shadow-sm text-foreground font-bold"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {s.label}
-                    {count !== null && count > 0 && (
-                      <span
-                        className={`text-3xs font-bold ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
-                      >
-                        {count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <TopupsToolbar
+            search={search}
+            setSearch={setSearch}
+            selectedPendingCount={selectedPendingCount}
+            setBulkAction={setBulkAction}
+            handleSelectAll={handleSelectAll}
+            allPendingSelected={allPendingSelected}
+            pendingTopups={pendingTopups}
+            pendingCount={pendingCount}
+            isApproveAllBusy={isApproveAllBusy}
+            approveAllProgress={approveAllProgress}
+            hasNextPage={hasNextPage}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            allTopups={allTopups}
+          />
         </div>
 
         {/* R124-I5 (A6 F14a): partial-window honesty — the client-side
@@ -1500,72 +767,19 @@ export default function AdminTopupsPage() {
           />
         ) : topups.length === 0 ? (
           searchActive && hasNextPage ? (
-            /* R126-L3 (A1-10): the search still filters CLIENT-side over
-               the accumulated pages of the active tab, so a zero-match
-               search over a partial window is NOT global emptiness — the
-               orders.tsx:1471-1506 partial-empty block: honest wording +
-               load-more as the remedy + the one-tap search clear. The
-               status-tab empties no longer need this guard (the ?status=
-               fetch makes page 1 the tab's head — a tab-empty is a
-               server-verified claim now). */
-            <div className="text-center py-14 text-muted-foreground bg-card border border-border/60 rounded-2xl space-y-3">
-              <Clock className="w-10 h-10 mx-auto opacity-20" />
-              <p className="text-sm font-bold text-foreground/80">
-                لا طلبات مطابقة لـ &quot;{debouncedSearch.trim()}&quot; ضمن الصفحات المحمّلة
-              </p>
-              <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لتوسيع النطاق</p>
-              <div className="flex justify-center gap-2 flex-wrap">
-                <LoadMoreButton
-                  busy={isFetchingNextPage}
-                  disabled={isLoading}
-                  onClick={() => void fetchNextPage()}
-                />
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  className="text-xs text-primary-text hover:underline mt-1.5"
-                >
-                  مسح البحث
-                </button>
-              </div>
-            </div>
+            <TopupsPartialEmptyState
+              debouncedSearch={debouncedSearch}
+              isFetchingNextPage={isFetchingNextPage}
+              isLoading={isLoading}
+              fetchNextPage={fetchNextPage}
+              setSearch={setSearch}
+            />
           ) : (
-            /* R126-L3 (A1-10): the hard empty is now only reached over a
-               server-verified window — a status tab's page 1 was EMPTY
-               (no such rows exist at all) or the search covered a
-               complete tab window. The pending-tab wording stays the
-               statusLabel vocabulary (R125-I2 A1-8). */
-            <EmptyState
-              icon={Clock}
-              title={
-                searchActive
-                  ? `لا نتائج لـ "${debouncedSearch.trim()}"`
-                  : statusFilter === "pending"
-                    ? /* R125-I2 (A1-8): the statusLabel vocabulary — the
-                       tab above reads «قيد الانتظار»; the empty claim
-                       said «معلق» for the same status (one status, one
-                       Arabic word — the status-badge invariant). */
-                      "لا توجد طلبات قيد الانتظار"
-                    : "لا توجد طلبات في هذه الفئة"
-              }
-              description={
-                searchActive
-                  ? "جرّب رقم تحويل أو هاتفاً آخر — أو امسح البحث"
-                  : "ستظهر الطلبات هنا عند ورودها"
-              }
-              action={
-                searchActive ? (
-                  <button
-                    type="button"
-                    onClick={() => setSearch("")}
-                    /* R125-I2 (A6-B6): --primary-text — raw --primary on a
-                       dark card is 3.76:1, under the 4.5:1 text floor. */
-                    className="text-xs text-primary-text hover:underline mt-1"
-                  >
-                    مسح البحث
-                  </button>
-                ) : undefined
-              }
+            <TopupsHardEmptyState
+              searchActive={searchActive}
+              debouncedSearch={debouncedSearch}
+              statusFilter={statusFilter}
+              setSearch={setSearch}
             />
           )
         ) : (

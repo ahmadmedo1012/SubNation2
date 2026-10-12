@@ -1,19 +1,10 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
-import { Button } from "@/components/ui/button";
-import { FetchErrorCard } from "@/components/ui/fetch-error-card";
-import { EmptyState } from "@/components/admin/EmptyState";
 import { StockoutRiskPanel } from "@/components/admin/forecast/StockoutRiskPanel";
 import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
 // catalog-recon (2026-09-20): per-product variant manager dialog (plan /
 // duration / cost rows + engine pricing preview).
 import { ProductVariantsDialog } from "@/components/admin/ProductVariantsDialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-// 93-C7 / C-UX2 (A12 B9): product inactive/out-of-stock pills migrate
-// from a square rounded/raw-orange tuple to the canonical StatusBadge
-// (neutral / low-stock tones on the --status-* tokens).
-import { StatusBadge } from "@/components/ui/status-badge";
 // 93-C7 / C-UX3 (A12 §1.3 + §11.2): the bulk-archive window.confirm is
 // replaced by the shared styled confirm.
 import { useConfirm } from "@/hooks/use-confirm";
@@ -23,10 +14,9 @@ import { useToast } from "@/hooks/use-toast";
 // instead of a per-row failure toast); the two bulk loops keep their
 // mid-loop isAdminUnauthorized shape but now break + try/finally (P3h)
 // so the bulk-processing flag always resets.
-import { AdminSessionExpiredError, adminFetchJson, isAdminUnauthorized } from "@/lib/admin-session";
+import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAdminProductsQueryKey,
@@ -36,470 +26,39 @@ import {
   useListAdminProducts,
   useUpdateProduct,
 } from "@workspace/api-client-react";
-import {
-  AlertTriangle,
-  Archive,
-  CheckCircle,
-  CheckSquare,
-  Edit2,
-  Eye,
-  EyeOff,
-  Layers,
-  Package,
-  Plus,
-  RefreshCw,
-  Search,
-  Square,
-  Trash2,
-  Upload,
-  WifiOff,
-  X,
-  Zap,
-} from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-
-const EMPTY_FORM = {
-  name: "",
-  description: "",
-  image_url: "",
-  price: "",
-  cost_price: "",
-  category: "",
-  usage_terms: "",
-  // R123 (E3 item 2): the operator SEO overrides (backend columns
-  // seo_title ≤200 / seo_description ≤320). Empty-by-default for the
-  // CREATE path; startEdit seeds the row's LIVE values (R125-I3 — the
-  // list payload now carries them). The submit path still omits
-  // UNTOUCHED fields (see handleSubmit) as belt-and-suspenders against
-  // accidental clears.
-  seo_title: "",
-  seo_description: "",
-  is_active: true,
-};
-
-/* R128 (A1-D4/F1): the admin fallback tile rode raw palette hues that
- * DIVERGE from the storefront's --cat-* tokens for the same category
- * (software: sky vs the token's 217° blue; vpn: cyan vs 199°) — the
- * one true semantic split between the two surfaces. Migrated to the
- * canonical 9-hue family (the storefront chip recipe — a cat hue at
- * 10% surface + the full cat hue ink — AA-tuned in both themes by the
- * R124 sweep). NOTE: keep any literal class mention out of this
- * comment — a `bg-cat-STAR-SLASH-10` string would close this block
- * comment early. */
-const CATEGORY_INITIAL_COLOR: Record<string, string> = {
-  streaming: "bg-cat-streaming/10 text-cat-streaming",
-  music: "bg-cat-music/10 text-cat-music",
-  software: "bg-cat-software/10 text-cat-software",
-  vpn: "bg-cat-vpn/10 text-cat-vpn",
-  "ai-tools": "bg-cat-ai-tools/10 text-cat-ai-tools",
-  "seo-tools": "bg-cat-seo-tools/10 text-cat-seo-tools",
-  education: "bg-cat-education/10 text-cat-education",
-  gaming: "bg-cat-gaming/10 text-cat-gaming",
-  productivity: "bg-cat-productivity/10 text-cat-productivity",
-};
-
-// Seven live categories first (mirror products.category in production);
-// gaming/productivity kept at the end so the operator can still manage
-// their archived products (PS Plus, Xbox, Canva, MS 365 …) and re-list
-// them the moment stock returns.
-const CATEGORY_OPTIONS = [
-  { value: "", label: "اختر الفئة" },
-  { value: "streaming", label: "بث مباشر" },
-  { value: "music", label: "موسيقى" },
-  { value: "software", label: "برامج وتراخيص" },
-  { value: "vpn", label: "شبكات VPN" },
-  { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },
-  { value: "seo-tools", label: "أدوات SEO" },
-  { value: "education", label: "تعليم ومكتبات" },
-  { value: "gaming", label: "ألعاب (مؤرشفة)" },
-  { value: "productivity", label: "إنتاجية (مؤرشفة)" },
-];
-
-const CATEGORY_FILTERS = [
-  { value: "", label: "الكل" },
-  { value: "streaming", label: "بث مباشر" },
-  { value: "music", label: "موسيقى" },
-  { value: "software", label: "برامج وتراخيص" },
-  { value: "vpn", label: "شبكات VPN" },
-  { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },
-  { value: "seo-tools", label: "أدوات SEO" },
-  { value: "education", label: "تعليم ومكتبات" },
-  { value: "gaming", label: "ألعاب" },
-  { value: "productivity", label: "إنتاجية" },
-];
-
-/** R120-B4 (A2-F2): the backend list (routes/admin/products.ts) clamps
- *  at 200 newest rows with NO page param — the client-side search used
- *  to run only over that window while the header presented its length
- *  as «N منتج في الكتالوج» (a false total: older products beyond the
- *  cap were invisible to both the search and the counter). The search
- *  now rides the server-side ?search= (ILIKE + trigram, covers the
- *  WHOLE catalog); a full 200-row page means the total is NOT known
- *  and the header switches to the honest «عرض N (الأحدث أولاً)».
- *  Accumulating load-more is impossible against this frozen contract
- *  (no `page` param server-side) — the cap hint + search is the honest
- *  surface instead. */
-const PRODUCTS_SERVER_CAP = 200;
-
-/** Arabic plural forms for the catalog counter (formatCount). */
-const PRODUCT_COUNT_FORMS = {
-  zero: "منتجات",
-  one: "منتج",
-  two: "منتجان",
-  few: "منتجات",
-  many: "منتجًا",
-  other: "منتج",
-};
-
-function InlineStockEdit({
-  productId,
-  current,
-  onDone,
-}: {
-  productId: number;
-  current: number;
-  onDone: () => void;
-}) {
-  const jsonHeaders = useAdminHeaders({ json: true });
-  const { toast } = useToast();
-  const [val, setVal] = useState(String(current));
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    const n = parseInt(val);
-    if (isNaN(n) || n === current) {
-      onDone();
-      return;
-    }
-    setSaving(true);
-    try {
-      // Stock edits are money-adjacent: a silent catch() here meant a
-      // failed save looked identical to a successful one.
-      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse.
-      await adminFetchJson(`/api/admin/products/${productId}/inventory/set-count`, {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify({ count: n }),
-      });
-      toast({ title: "تم تحديث المخزون", variant: "success" });
-    } catch (e) {
-      // Session expiry already toasted + redirected globally — the
-      // finally still closes the inline editor; every other failure
-      // keeps its per-row destructive toast.
-      if (!(e instanceof AdminSessionExpiredError)) {
-        toast({
-          title: "تعذّر تحديث المخزون",
-          description: e instanceof Error ? e.message : "خطأ غير معروف",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setSaving(false);
-      onDone();
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-      <input
-        type="number"
-        min="0"
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") save();
-          if (e.key === "Escape") onDone();
-        }}
-        autoFocus
-        /* R115 (A9 P3-7): the edit is an ABSOLUTE SET (POST set-count),
-           not a +N increment — a "+5" mental model silently replaces
-           the whole count. The title/aria-label carry the semantics
-           (the value is prefilled with the current total, so a
-           placeholder would never render). */
-        title="العدد الكلي للوحدات — تعيين مطلق وليس إضافة (أدخل الرقم النهائي)"
-        aria-label="العدد الكلي للوحدات (تعيين مطلق)"
-        placeholder="الكل"
-        /* 96-F7 (R96 M8): h-9 input (was w-16 h-6 — a 24px touch target
-           for a money-adjacent field). */
-        className="w-20 h-9 bg-secondary border border-primary/40 rounded px-1.5 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-primary"
-      />
-      {/* 96-F7 (R96 M8): the save/cancel controls are now ≥36px tall
-         with Arabic TEXT labels («حفظ»/«إلغاء») + gap-2 — the old p-0.5
-         icon-only pair (~18px, gap-1) was unmissable under a thumb, and
-         Enter/Esc shortcuts don't exist on touch keyboards. Enter/Escape
-         still work (the input's onKeyDown above is untouched). */}
-      <button
-        onClick={save}
-        disabled={saving}
-        aria-label="حفظ المخزون"
-        className="h-9 min-w-9 px-2.5 rounded-lg text-xs font-bold text-status-success hover:bg-status-success/10 transition-colors active:scale-95 disabled:opacity-50"
-      >
-        حفظ
-      </button>
-      <button
-        onClick={onDone}
-        aria-label="إلغاء تعديل المخزون"
-        className="h-9 min-w-9 px-2.5 rounded-lg text-xs font-bold text-muted-foreground hover:bg-secondary transition-colors active:scale-95"
-      >
-        إلغاء
-      </button>
-    </div>
-  );
-}
-
-/* ── R124-I5 (A6 F4 — the R118-B2 orders.tsx pattern) ──────────────────
- * The search box is a CONTROLLED input — every keystroke re-rendered the
- * whole page and (with the 200-card grid inlined in the map closure) all
- * card subtrees with fresh inline handlers, TWICE a minute more via the
- * 60s refetchInterval. The card is now a module-level React.memo
- * component whose props are stable across a keystroke (product refs come
- * from the query data array; isSelected/isEditingStock are primitives;
- * the seven callbacks are useCallback-stable), so typing re-renders the
- * search box and nothing else, and the poll only busts cards whose rows
- * actually changed identity. */
-interface ProductCardProps {
-  product: AdminProduct;
-  isSelected: boolean;
-  /** Whether THIS card's inline stock editor is open. */
-  isEditingStock: boolean;
-  onToggleSelect: (id: number) => void;
-  onEdit: (product: AdminProduct) => void;
-  onEditStock: (id: number) => void;
-  onStockEditDone: () => void;
-  onUploadInventory: (product: AdminProduct) => void;
-  onManageVariants: (product: AdminProduct) => void;
-  onArchive: (product: AdminProduct) => void;
-}
-
-const ProductCard = React.memo(function ProductCard({
-  product,
-  isSelected,
-  isEditingStock,
-  onToggleSelect,
-  onEdit,
-  onEditStock,
-  onStockEditDone,
-  onUploadInventory,
-  onManageVariants,
-  onArchive,
-}: ProductCardProps) {
-  return (
-    <div
-      className={`bg-card border rounded-2xl overflow-hidden transition-all hover:shadow-lg hover:shadow-black/10 ${
-        isSelected
-          ? "border-primary/40 ring-1 ring-primary/20 shadow-md shadow-primary/5"
-          : !product.is_active
-            ? "opacity-55 border-border/60"
-            : product.stock_count === 0
-              ? "border-status-low-stock/25"
-              : "border-border/60 hover:border-border"
-      }`}
-    >
-      <div className="p-4">
-        {/* Product info */}
-        <div className="flex items-start gap-3 mb-3">
-          {/* Checkbox — 94-C2: aria-label so the icon-only
-              toggle is announced (and reachable by tests). */}
-          <button
-            onClick={() => onToggleSelect(product.id)}
-            aria-label={`تحديد ${product.name}`}
-            /* R124-I5 (A6 F10): the bulk-archive selection state feeding
-               the destructive action was visual-only — aria-pressed
-               exposes it (the orders.tsx row-selector idiom). */
-            aria-pressed={isSelected}
-            className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
-          >
-            {isSelected ? (
-              <CheckSquare className="w-4 h-4 text-primary" />
-            ) : (
-              <Square className="w-4 h-4" />
-            )}
-          </button>
-          <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/50 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "bg-muted") : "bg-muted"}`}
-          >
-            {product.image_url ? (
-              <img
-                src={product.image_url}
-                alt={product.name}
-                loading="lazy"
-                decoding="async"
-                className="w-full h-full object-contain p-1.5"
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                  e.currentTarget.parentElement!.classList.add(
-                    CATEGORY_INITIAL_COLOR[product.category ?? ""]?.split(" ")[0] ?? "bg-muted",
-                  );
-                }}
-              />
-            ) : (
-              <span className="text-base font-bold">{product.name.charAt(0).toUpperCase()}</span>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-bold text-sm truncate">{product.name}</div>
-            <div className="text-xs text-muted-foreground">{categoryLabel(product.category)}</div>
-          </div>
-          <div className="flex flex-col gap-1 items-end shrink-0">
-            {/* 93-C7 / C-UX2 (A12 B9): canonical pills (were a
-                square rounded + raw orange tuple). */}
-            {!product.is_active && (
-              <StatusBadge variant="neutral" size="xs">
-                غير نشط
-              </StatusBadge>
-            )}
-            {product.stock_count === 0 && product.is_active && (
-              <StatusBadge variant="low-stock" size="xs">
-                نفد المخزون
-              </StatusBadge>
-            )}
-          </div>
-        </div>
-
-        {/* Stats bar — inline stock edit */}
-        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
-          <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <span className="font-bold text-primary tabular-nums">
-              {formatCurrency(product.price)}
-            </span>
-            {/* catalog-recon: variant-count badge — the display
-                price is MIN(active variants); zero variants =
-                unbuyable product (actionable catalog signal). */}
-            {(() => {
-              const count = product.variants?.length ?? 0;
-              if (count === 0)
-                return (
-                  <span
-                    title="لا باقات — اضغط «الباقات» لإضافة باقة"
-                    className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-status-warning/15 text-status-warning border-status-warning/30"
-                  >
-                    بلا باقات
-                  </span>
-                );
-              return (
-                <span
-                  title="عدد باقات المنتج — اضغط «الباقات» للإدارة"
-                  className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/25"
-                >
-                  {formatCount(count, {
-                    one: "باقة",
-                    two: "باقتان",
-                    few: "باقات",
-                    many: "باقة",
-                    other: "باقة",
-                  })}
-                </span>
-              );
-            })()}
-            {(() => {
-              // R125-I3 (A2-20): the generated AdminProduct already
-              // declares cost_price — the pre-codegen-era cast is gone.
-              const cp = product.cost_price;
-              if (cp == null) return null;
-              const margin = product.price - cp;
-              const pct = product.price > 0 ? (margin / product.price) * 100 : 0;
-              const tone =
-                margin < 0
-                  ? "bg-destructive/15 text-destructive border-destructive/30"
-                  : pct < 10
-                    ? "bg-status-warning/15 text-status-warning border-status-warning/30"
-                    : "bg-status-success/15 text-status-success border-status-success/30";
-              return (
-                <span
-                  /* 96-F7 (R96 A6 #11): 9px → 10px — a
-                      functional money hint (margin %), not
-                      decoration. */
-                  className={`text-3xs font-bold tabular-nums px-1.5 py-0.5 rounded border ${tone}`}
-                  title={`تكلفة: ${formatCurrency(cp)} / هامش: ${formatCurrency(margin)}`}
-                >
-                  {margin >= 0 ? "+" : ""}
-                  {pct.toFixed(0)}%
-                </span>
-              );
-            })()}
-          </div>
-          <div className="flex items-center gap-3 text-xs">
-            {isEditingStock ? (
-              <InlineStockEdit
-                productId={product.id}
-                current={product.stock_count}
-                onDone={onStockEditDone}
-              />
-            ) : (
-              <button
-                onClick={() => onEditStock(product.id)}
-                className={`font-bold tabular-nums hover:underline decoration-dashed underline-offset-2 transition-colors ${
-                  product.stock_count === 0 ? "text-status-low-stock" : "text-status-success"
-                }`}
-                /* R115 (A9 P3-7): the inline edit is an absolute
-                   SET, not +N — say so on the trigger too. */
-                title="انقر لتعديل المخزون — تعيين العدد الكلي (وليس إضافة)"
-              >
-                {product.stock_count} وحدة
-              </button>
-            )}
-            <span className="text-muted-foreground">·</span>
-            <span className="text-muted-foreground">{product.order_count} طلب</span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        {/* 96-F7 (R96 M9): destructive archive stays visually
-            separated (gap-2 + min-w-9) from the adjacent
-            «رفع مخزون» button, and now opens the shared
-            confirm dialog instead of swapping into the inline
-            Archive/X icon pair. */}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="flex-1 min-w-[88px] h-8 text-xs active:scale-[0.97] transition-transform"
-            onClick={() => onEdit(product)}
-          >
-            <Edit2 className="w-3 h-3 ml-1" /> تعديل
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="flex-1 min-w-[88px] h-8 text-xs text-muted-foreground active:scale-[0.97] transition-transform"
-            onClick={() => onUploadInventory(product)}
-          >
-            <Upload className="w-3 h-3 ml-1" /> رفع مخزون
-          </Button>
-          {/* catalog-recon: variant manager entry (plan/duration/
-              cost + engine pricing). */}
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label={`إدارة باقات ${product.name}`}
-            className="flex-1 min-w-[88px] h-8 text-xs text-primary active:scale-[0.97] transition-transform"
-            onClick={() => onManageVariants(product)}
-          >
-            <Layers className="w-3 h-3 ml-1" /> الباقات
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label={`أرشفة ${product.name}`}
-            className="h-8 min-w-9 px-2 border-destructive/15 text-destructive/50 hover:border-destructive/35 hover:text-destructive hover:bg-destructive/8 active:scale-90"
-            onClick={() => onArchive(product)}
-          >
-            <Trash2 className="w-3 h-3" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Inventory upload now happens in a full-screen
-          dialog (see InventoryUploadDialog). The 'رفع مخزون'
-          button above opens it; it gives the operator a
-          preview table, drag-drop file support, and dedup
-          detection before the POST fires. */}
-    </div>
-  );
-});
+// R137 (FE decomposition): the page's self-contained subcomponents and
+// pure helpers moved to @/components/admin/products/* (verbatim moves —
+// every state atom, every mutation handler (create/update/archive, the
+// two bulk loops, the visibility toggles), the summarizeBulk accounting,
+// the SEO-touched submit contract and the dialogs' wiring stay HERE; the
+// extracts render the byte-identical DOM they rendered inline yesterday).
+// Import surface:
+//   • products-meta — the pure vocabulary (EMPTY_FORM + the SEO caps
+//     contract, the category maps/option lists, the 200-row server cap,
+//     the Arabic plural forms)
+//   • ProductsHeader — the honest catalog counter + the «منتج جديد» CTA
+//     (openCreate stays here, pristine-baseline reset included)
+//   • BulkActionBar — the selection bar; bulkToggleActive / bulkDelete
+//     (confirm dialogs + mid-loop 401 guards) stay here
+//   • ProductEditorCard — the nine-field create/edit shell; form,
+//     formBaseline, seoTouched, handleSubmit, cancelForm, the ⌘S/Escape
+//     wiring and both mutations stay here (onFormChange/onSeoTouchedChange
+//     are this page's setters passed down)
+//   • ProductsToolbar — select-all + the server-side search box + the
+//     category chips (the debounce + URL sync stay here)
+//   • ProductsGrid — the stale-error banner / skeleton / error-card /
+//     empty / grid tree; ProductCard + InlineStockEdit ride along inside
+//     it (the R124-I5 memoized card + the row-local stock editor)
+import { EMPTY_FORM, PRODUCTS_SERVER_CAP } from "@/components/admin/products/products-meta";
+import { BulkActionBar } from "@/components/admin/products/BulkActionBar";
+import { ProductEditorCard } from "@/components/admin/products/ProductEditorCard";
+import { ProductsGrid } from "@/components/admin/products/ProductsGrid";
+import { ProductsHeader } from "@/components/admin/products/ProductsHeader";
+import { ProductsToolbar } from "@/components/admin/products/ProductsToolbar";
 
 export default function AdminProductsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -874,6 +433,18 @@ export default function AdminProductsPage() {
     setSeoTouched({ title: false, description: false });
   };
 
+  // The header's «منتج جديد» CTA (page-owned: the pristine-baseline
+  // reset is the 98-F7 create-session contract — the ProductsHeader
+  // extract takes a bare onCreate callback).
+  const openCreate = () => {
+    setShowForm(true);
+    setEditingId(null);
+    setForm({ ...EMPTY_FORM });
+    // 98-F7 (R98-05): fresh create session starts pristine.
+    setFormBaseline({ ...EMPTY_FORM });
+    setSeoTouched({ title: false, description: false });
+  };
+
   // R127-B2 (§A — the R126-L9 future-lane note): select-all membership
   // honesty, the same class the orders.tsx select-all had (R126-L3
   // A1-5). The toggle used to branch on a SIZE test
@@ -895,6 +466,14 @@ export default function AdminProductsPage() {
   const toggleSelectAll = () => {
     if (allFilteredSelected) setSelectedIds(new Set());
     else setSelectedIds(new Set(filtered.map((p) => p.id)));
+  };
+
+  // The toolbar's «مسح» clear (page-owned: both filter atoms reset in
+  // one place — the ProductsToolbar extract takes a bare onClearFilters
+  // callback).
+  const clearFilters = () => {
+    setSearch("");
+    setCategoryFilter("");
   };
 
   // 94-C2 (A2 P2-8): the bulk loops now count REAL outcomes (per-item
@@ -1051,51 +630,13 @@ export default function AdminProductsPage() {
     <AdminLayout onRefresh={() => refetch()}>
       <div className="space-y-5">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold mb-0.5">المنتجات</h1>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {/* R120-B4 (A2-F2): honest count (the orders idiom). The old
-                  «{products.length} منتج في الكتالوج» presented the capped
-                  200-row window as the whole catalog. A full cap page →
-                  «عرض N (الأحدث أولاً)»; a search → «نتائج البحث: N» (the
-                  result set IS complete when shorter than the cap);
-                  otherwise the catalog genuinely fits and the total is
-                  true. */}
-              <span>
-                {catalogCapped
-                  ? `عرض ${formatCount(products.length, PRODUCT_COUNT_FORMS)} (الأحدث أولاً)`
-                  : debouncedSearch.trim()
-                    ? `نتائج البحث: ${formatCount(products.length, PRODUCT_COUNT_FORMS)}`
-                    : `${formatCount(products.length, PRODUCT_COUNT_FORMS)} في الكتالوج`}
-              </span>
-              {lowStockCount > 0 && (
-                <>
-                  <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                  {/* 93-C7 / C-UX5 (A11 §1 «{n} نفد مخزونه»): the count
-                      before the verb broke the Arabic construction. */}
-                  <span className="flex items-center gap-1 text-status-low-stock font-bold">
-                    <AlertTriangle className="w-3 h-3" />
-                    نفد مخزون {lowStockCount} منتج
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-          <Button
-            onClick={() => {
-              setShowForm(true);
-              setEditingId(null);
-              setForm({ ...EMPTY_FORM });
-              // 98-F7 (R98-05): fresh create session starts pristine.
-              setFormBaseline({ ...EMPTY_FORM });
-              setSeoTouched({ title: false, description: false });
-            }}
-            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 h-9 active:scale-[0.97] transition-transform"
-          >
-            <Plus className="w-4 h-4 ml-1.5" /> منتج جديد
-          </Button>
-        </div>
+        <ProductsHeader
+          catalogCapped={catalogCapped}
+          productsCount={products.length}
+          searchTerm={debouncedSearch}
+          lowStockCount={lowStockCount}
+          onCreate={openCreate}
+        />
 
         {/* Stockout-risk forecast panel (011-inventory-demand-forecast).
             Self-hides when the cron has never run, when no products are
@@ -1104,442 +645,42 @@ export default function AdminProductsPage() {
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-150">
-            <Zap className="w-4 h-4 text-primary shrink-0" />
-            <span className="text-sm font-bold text-primary">{selectedIds.size} منتج محدد</span>
-            <div className="flex gap-2 mr-auto flex-wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10"
-                onClick={() => bulkToggleActive(true)}
-                disabled={bulkProcessing}
-              >
-                <Eye className="w-3 h-3" /> تفعيل
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5 text-muted-foreground border-border hover:bg-secondary"
-                onClick={() => bulkToggleActive(false)}
-                disabled={bulkProcessing}
-              >
-                <EyeOff className="w-3 h-3" /> إخفاء
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5 text-destructive border-destructive/20 hover:bg-destructive/10"
-                onClick={bulkDelete}
-                disabled={bulkProcessing}
-              >
-                <Archive className="w-3 h-3" /> {bulkProcessing ? "جارٍ…" : "أرشفة"}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-xs text-muted-foreground"
-                onClick={() => setSelectedIds(new Set())}
-              >
-                <X className="w-3 h-3 ml-1" /> إلغاء
-              </Button>
-            </div>
-          </div>
+          <BulkActionBar
+            selectedCount={selectedIds.size}
+            processing={bulkProcessing}
+            onActivate={() => bulkToggleActive(true)}
+            onDeactivate={() => bulkToggleActive(false)}
+            onArchive={bulkDelete}
+            onClear={() => setSelectedIds(new Set())}
+          />
         )}
 
         {/* Create / Edit form */}
         {showForm && (
-          <div className="bg-card border border-primary/20 rounded-2xl overflow-hidden shadow-lg shadow-primary/5">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/15">
-              <div>
-                <h2 className="font-bold text-sm">
-                  {editingId ? "تعديل المنتج" : "إضافة منتج جديد"}
-                </h2>
-                <p className="text-3xs text-muted-foreground mt-0.5">
-                  <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded">
-                    ⌘S
-                  </kbd>{" "}
-                  للحفظ ·
-                  <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded mr-1">
-                    Esc
-                  </kbd>{" "}
-                  للإغلاق
-                </p>
-              </div>
-              <button
-                onClick={cancelForm}
-                aria-label="إغلاق النموذج"
-                className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form
-              id="product-form"
-              onSubmit={handleSubmit}
-              className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4"
-            >
-              {/* R124-I5 (A6 F3 — AUD103-6-F2 completion): every editor
-                field carries a real htmlFor↔id pair. The r103 label pass
-                covered coupons/users/topups/admins/settings/security but
-                missed this — the biggest admin form (9 fields) had
-                programmatically-unassociated labels. */}
-              <div>
-                <Label
-                  htmlFor="product-editor-name"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  اسم المنتج *
-                </Label>
-                <Input
-                  id="product-editor-name"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  required
-                  placeholder="مثال: Netflix Premium"
-                />
-              </div>
-              <div>
-                <Label
-                  htmlFor="product-editor-price"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  السعر (د.ل) *
-                </Label>
-                <Input
-                  id="product-editor-price"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={form.price}
-                  onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                  required
-                  dir="ltr"
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <Label
-                  htmlFor="product-editor-cost"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block flex items-center gap-2"
-                >
-                  سعر التكلفة (د.ل)
-                  {/* 96-F7 (R96 A6 #11): 9px → 10px — functional hint
-                      text, not decoration. R128 (A4-F2): /70 → /85 —
-                      11px muted ink needs the AA-safe alpha pair. */}
-                  <span className="text-3xs font-normal text-muted-foreground/85">
-                    اختياري — للإدارة فقط، لا يظهر للمستخدم
-                  </span>
-                </Label>
-                <Input
-                  id="product-editor-cost"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.cost_price}
-                  onChange={(e) => setForm((f) => ({ ...f, cost_price: e.target.value }))}
-                  dir="ltr"
-                  placeholder="0.00"
-                />
-                {form.price && form.cost_price && (
-                  <p className="text-3xs mt-1 text-muted-foreground">
-                    {(() => {
-                      const p = parseFloat(form.price);
-                      const c = parseFloat(form.cost_price);
-                      if (!Number.isFinite(p) || !Number.isFinite(c) || p <= 0) return null;
-                      const margin = p - c;
-                      const pct = (margin / p) * 100;
-                      const tone =
-                        margin < 0
-                          ? "text-destructive"
-                          : pct < 10
-                            ? "text-status-warning"
-                            : "text-status-success";
-                      return (
-                        <span className={tone}>
-                          {/* 96-F7 (R96 A6 #18): formatCurrency — the
-                              manual toFixed(2) skipped thousands grouping
-                              (the established money convention, see
-                              utils.ts). */}
-                          هامش الربح: {formatCurrency(margin)} ({pct.toFixed(1)}%)
-                        </span>
-                      );
-                    })()}
-                  </p>
-                )}
-              </div>
-              <div className="md:col-span-2">
-                <Label
-                  htmlFor="product-editor-description"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  الوصف
-                </Label>
-                <Input
-                  id="product-editor-description"
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="وصف مختصر للمنتج…"
-                />
-              </div>
-              <div>
-                <Label
-                  htmlFor="product-editor-image"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  رابط الصورة
-                </Label>
-                <Input
-                  id="product-editor-image"
-                  value={form.image_url}
-                  onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-                  dir="ltr"
-                  placeholder="https://..."
-                />
-                {form.image_url.trim() && (
-                  <div className="mt-2 flex items-center gap-2.5">
-                    <div className="relative w-16 h-16 shrink-0 rounded-xl border border-border/50 bg-card overflow-hidden">
-                      <img
-                        src={form.image_url.trim()}
-                        alt="معاينة"
-                        className="absolute inset-0 m-auto max-w-[74%] max-h-[74%] w-auto h-auto object-contain"
-                        onLoad={(e) => {
-                          (
-                            e.currentTarget.nextElementSibling as HTMLElement | null
-                          )?.style.setProperty("display", "none");
-                          e.currentTarget.style.display = "block";
-                        }}
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                          (
-                            e.currentTarget.nextElementSibling as HTMLElement | null
-                          )?.style.setProperty("display", "flex");
-                        }}
-                      />
-                      <div
-                        style={{ display: "none" }}
-                        className="absolute inset-0 items-center justify-center text-3xs font-bold text-destructive text-center px-1"
-                      >
-                        رابط غير صالح
-                      </div>
-                    </div>
-                    <p className="text-2xs text-muted-foreground leading-relaxed">
-                      معاينة كما ستظهر في البطاقة. استخدم صورة شفافة (PNG/SVG) عالية الدقة لأفضل
-                      نتيجة.
-                    </p>
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label
-                  htmlFor="product-editor-category"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  الفئة
-                </Label>
-                <select
-                  id="product-editor-category"
-                  value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                  className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                >
-                  {CATEGORY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <Label
-                  htmlFor="product-editor-usage"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  شروط الاستخدام
-                </Label>
-                <Input
-                  id="product-editor-usage"
-                  value={form.usage_terms}
-                  onChange={(e) => setForm((f) => ({ ...f, usage_terms: e.target.value }))}
-                  placeholder="ملاحظات مهمة تظهر بعد الشراء…"
-                />
-              </div>
-              {/* R123 (E3 item 2): the SEO override fields the CHANGELOG
-                  claimed existed — they feed the product page's meta tags
-                  (seo-builders consume the overrides; empty falls back to
-                  name/description). Column-aligned caps: 200/320. */}
-              <div className="md:col-span-2">
-                <Label
-                  htmlFor="product-editor-seo-title"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  عنوان SEO (اختياري)
-                </Label>
-                <Input
-                  id="product-editor-seo-title"
-                  value={form.seo_title}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, seo_title: e.target.value }));
-                    setSeoTouched((t) => (t.title ? t : { ...t, title: true }));
-                  }}
-                  maxLength={200}
-                  placeholder="عنوان مخصص لنتائج البحث — يُترك فارغاً لاستخدام اسم المنتج"
-                />
-                <p className="text-3xs mt-1 text-muted-foreground">
-                  يظهر كعنوان صفحة المنتج في محركات البحث ومشاركات الروابط — فارغ يعني العنوان
-                  الافتراضي ({200 - form.seo_title.length} حرف متبقٍ).
-                  {/* R134 (A7-F7): the DB column accepts 200 but every
-                      DISPLAY surface clamps at 60 chars (MetaTags.clamp —
-                      the raw shell, og:title and the share card share the
-                      budget); an operator title past 60 truncates
-                      mid-brand on ALL surfaces with no cue at write
-                      time. The warn surfaces exactly at the budget. */}
-                  {form.seo_title.length > 60 && (
-                    <span className="text-status-warning font-bold">
-                      {" "}
-                      تنبيه: تجاوزت حد العرض (60 حرفاً من أصل{" "}
-                      {form.seo_title.length}) — كل الأسطح تقتطع العنوان عند حدود الكلمة
-                      بما فيها ذيل العلامة «| SubNation»؛ قصِّر العنوان لضمان ظهوره كاملاً.
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="md:col-span-2">
-                <Label
-                  htmlFor="product-editor-seo-description"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  وصف SEO (اختياري)
-                </Label>
-                <textarea
-                  id="product-editor-seo-description"
-                  value={form.seo_description}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, seo_description: e.target.value }));
-                    setSeoTouched((t) => (t.description ? t : { ...t, description: true }));
-                  }}
-                  maxLength={320}
-                  rows={3}
-                  dir="rtl"
-                  placeholder="وصف مخصص يظهر تحت عنوان الصفحة في نتائج البحث…"
-                  className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-y"
-                />
-                <p className="text-3xs mt-1 text-muted-foreground">
-                  يظهر كوصف صفحة المنتج في محركات البحث — فارغ يعني الوصف الافتراضي ({" "}
-                  {form.seo_description.length}/320).
-                </p>
-              </div>
-              <div className="md:col-span-2 flex items-center gap-3 py-1">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={form.is_active}
-                  onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
-                  className="w-4 h-4 accent-primary"
-                />
-                <Label htmlFor="is_active" className="cursor-pointer text-sm">
-                  منتج نشط (ظاهر للمستخدمين)
-                </Label>
-              </div>
-              <div className="md:col-span-2 flex gap-3 justify-end pt-1 border-t border-border">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={cancelForm}
-                  className="h-9 active:scale-[0.97] transition-transform"
-                >
-                  إلغاء
-                </Button>
-                <Button
-                  type="submit"
-                  className="h-9 bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  <CheckCircle className="w-4 h-4 ml-1.5" />
-                  {editingId ? "حفظ التعديلات" : "إضافة المنتج"}
-                </Button>
-              </div>
-            </form>
-          </div>
+          <ProductEditorCard
+            editingId={editingId}
+            form={form}
+            onFormChange={setForm}
+            onSeoTouchedChange={setSeoTouched}
+            onSubmit={handleSubmit}
+            onCancel={cancelForm}
+            createPending={createMutation.isPending}
+            updatePending={updateMutation.isPending}
+          />
         )}
 
         {/* Filters: search + category */}
-        <div className="flex flex-wrap gap-3 items-center">
-          {/* Select all toggle */}
-          {!isLoading && filtered.length > 0 && (
-            <button
-              onClick={toggleSelectAll}
-              /* R127-B2 (§A.1 rider): aria-pressed mirrors orders.tsx:1560 —
-                 the visible text swap already announces the state; this
-                 exposes it to AT + makes test assertions uniform. */
-              aria-pressed={allFilteredSelected}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-lg hover:bg-secondary"
-              title={allFilteredSelected ? "إلغاء تحديد الكل" : "تحديد الكل"}
-            >
-              {allFilteredSelected ? (
-                <CheckSquare className="w-3.5 h-3.5 text-primary" />
-              ) : (
-                <Square className="w-3.5 h-3.5" />
-              )}
-              <span className="hidden sm:inline">
-                {allFilteredSelected ? "إلغاء الكل" : "تحديد الكل"}
-              </span>
-            </button>
-          )}
-
-          <div className="relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="بحث في المنتجات…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pr-9 h-9 w-52 text-sm"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                aria-label="مسح البحث"
-                /* R120-B4 (A2-F12): the orders.tsx fixed version — bare
-                   w-3 icon ≈ 12px target; p-2 lifts the tappable area to
-                   ~28px. */
-                className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-          <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1 overflow-x-auto scrollbar-none">
-            {CATEGORY_FILTERS.map((c) => (
-              <button
-                key={c.value}
-                onClick={() => setCategoryFilter(c.value)}
-                /* R124-C2 (A6 F10): the active chip was purely visual —
-                   aria-pressed exposes the toggle state (the
-                   orders.tsx/topups.tsx chip-bar idiom). */
-                aria-pressed={categoryFilter === c.value}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                  categoryFilter === c.value
-                    ? "bg-card shadow-sm text-foreground font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-          {(search || categoryFilter) && (
-            <button
-              onClick={() => {
-                setSearch("");
-                setCategoryFilter("");
-              }}
-              className="text-xs text-muted-foreground hover:text-primary transition-colors"
-            >
-              مسح
-            </button>
-          )}
-          <span className="text-xs text-muted-foreground mr-auto">{filtered.length} منتج</span>
-        </div>
+        <ProductsToolbar
+          isLoading={isLoading}
+          filteredCount={filtered.length}
+          allFilteredSelected={allFilteredSelected}
+          onToggleSelectAll={toggleSelectAll}
+          search={search}
+          onSearchChange={setSearch}
+          categoryFilter={categoryFilter}
+          onCategoryChange={setCategoryFilter}
+          onClearFilters={clearFilters}
+        />
 
         {/* R120-B4 (A2-F2): partial-data hint — over a capped window the
             category tabs (and their counts) only see the newest
@@ -1553,69 +694,26 @@ export default function AdminProductsPage() {
         )}
 
         {/* Grid */}
-        {/* 94-C2 (A2 P1-2): refresh of an already-rendered catalog
-            failed — keep the stale cards, surface the failure inline
-            (referrals.tsx banner idiom). */}
-        {isError && products.length > 0 && (
-          <div
-            role="alert"
-            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
-          >
-            <WifiOff className="w-4 h-4 shrink-0" />
-            <span className="min-w-0">{loadErrorMessage ?? "تعذّر تحديث قائمة المنتجات"}</span>
-            <button
-              type="button"
-              onClick={() => refetch()}
-              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
-        )}
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="bg-card border border-border/60 rounded-2xl h-40 skeleton-shimmer"
-              />
-            ))}
-          </div>
-        ) : isError && products.length === 0 ? (
-          /* 94-C2 (A2 P1-2): a failed load is NOT an empty catalog — the
-             referrals.tsx error-card idiom (an outage/expired session
-             previously masqueraded as "لا توجد منتجات"). */
-          <FetchErrorCard
-            size="page"
-            retryIcon={RefreshCw}
-            title="تعذّر تحميل المنتجات"
-            description={loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
-            onRetry={() => refetch()}
-          />
-        ) : filtered.length === 0 ? (
-          <EmptyState icon={Package} title="لا توجد منتجات" />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                isSelected={selectedIds.has(product.id)}
-                isEditingStock={editingStockId === product.id}
-                onToggleSelect={toggleSelect}
-                onEdit={startEdit}
-                /* setState dispatchers + the useCallbacks above are all
-                   referentially stable — no inline arrows here, or every
-                   keystroke would bust all 200 memoized cards. */
-                onEditStock={setEditingStockId}
-                onStockEditDone={stockEditDone}
-                onUploadInventory={openInventory}
-                onManageVariants={openVariants}
-                onArchive={archiveProduct}
-              />
-            ))}
-          </div>
-        )}
+        <ProductsGrid
+          isLoading={isLoading}
+          isError={isError}
+          loadedCount={products.length}
+          loadErrorMessage={loadErrorMessage}
+          onRetry={() => refetch()}
+          filtered={filtered}
+          selectedIds={selectedIds}
+          editingStockId={editingStockId}
+          onToggleSelect={toggleSelect}
+          onEdit={startEdit}
+          /* setState dispatchers + the useCallbacks above are all
+             referentially stable — no inline arrows here, or every
+             keystroke would bust all 200 memoized cards. */
+          onEditStock={setEditingStockId}
+          onStockEditDone={stockEditDone}
+          onUploadInventory={openInventory}
+          onManageVariants={openVariants}
+          onArchive={archiveProduct}
+        />
       </div>
 
       {/* Inventory upload dialog (shared mount, opened per-product) */}

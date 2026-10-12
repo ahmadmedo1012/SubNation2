@@ -1,23 +1,40 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { EmptyState } from "@/components/admin/EmptyState";
-import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
-// 94-C2 (A2 P2-5): the wallet-edit shell migrates from the hand-rolled
-// fixed overlay to the shared AppDialog — focus trap, ESC handling,
-// role="dialog"/aria-modal and a guarded dismiss while the money PATCH
-// is in flight (the old backdrop closed mid-save and stranded the
-// request with no visible surface).
-import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-// R125-I4 (A6 B-4): the desktop tier pill rides the canonical
-// StatusBadge on the --status-* tokens — tiers are domain levels, so
-// the tone map stays LOCAL (the status-badge.tsx:75-78 rule, the
-// risk.tsx LEVEL_META idiom) instead of raw cyan/yellow/slate hues
-// that collapse to 1.43–2.86:1 on the shipped light theme.
-import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
+// R137 (FE) decomposition: the page's presentational sections and pure
+// helpers moved to @/components/admin/users/* (verbatim moves — the
+// money path, the 99-M3 save-intent Idempotency-Key machinery, every
+// state atom and every handler stay HERE; the extracts render the
+// byte-identical DOM they rendered inline yesterday). Import surface:
+//   • user-directory-meta — the page's pure module (the EditUserForm
+//     contract, the tier/sort option lists, the tier→badge tone map,
+//     the load-more page size, the Arabic count forms and
+//     describeSaveError)
+//   • UsersToolbar / UsersFilterPanel / UsersStatsStrip — the header
+//     (search box + filter toggle + CSV export), the ?filters= panel
+//     and the loaded-sample summary cards (every control calls a
+//     page-owned handler)
+//   • UserEditDialog — the wallet/points money-edit shell (the form
+//     atoms, handleSave and the 99-M3 intent key stay here; every
+//     input calls a page-owned handler)
+//   • UsersTableSkeleton / UsersDesktopTable / MobileUserCard — the
+//     directory table (the memo rows + the provider pill row ride
+//     along inside their consumers)
+import {
+  type EditUserForm,
+  SORT_OPTIONS,
+  TIER_FILTERS,
+  USERS_PAGE_SIZE,
+  describeSaveError,
+} from "@/components/admin/users/user-directory-meta";
+import { UsersTableSkeleton } from "@/components/admin/users/UsersTableSkeleton";
+import { UsersToolbar } from "@/components/admin/users/UsersToolbar";
+import { UsersFilterPanel } from "@/components/admin/users/UsersFilterPanel";
+import { UsersStatsStrip } from "@/components/admin/users/UsersStatsStrip";
+import { UserEditDialog } from "@/components/admin/users/UserEditDialog";
+import { UsersDesktopTable } from "@/components/admin/users/UsersDesktopTable";
+import { MobileUserCard } from "@/components/admin/users/MobileUserCard";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { isAdminUnauthorized } from "@/lib/admin-session";
@@ -26,33 +43,14 @@ import { useAuth } from "@/lib/auth";
 import { csvCell } from "@/lib/csv";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import {
-  PROVIDER_TONE_CLASS,
-  displayUserName,
-  userProviderBadges,
-  type AdminUserShape,
-} from "@/lib/admin/user-display";
-import { formatCount, formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
+import { formatCurrency, formatDate, tierLabel } from "@/lib/utils";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   customFetch,
   getListAdminUsersQueryKey,
   type AdminUser,
 } from "@workspace/api-client-react";
-import {
-  CheckCircle,
-  Download,
-  Edit2,
-  Filter,
-  Minus,
-  Plus,
-  RefreshCw,
-  Search,
-  Star,
-  Users,
-  Wallet,
-  WifiOff,
-} from "lucide-react";
+import { RefreshCw, Users, WifiOff } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // R123 (E3 P3a): two-way URL filter sync follows the settings.tsx ?tab=
 // idiom — useSearch re-renders on ?tier=/?sort=/?filters= changes.
@@ -61,258 +59,6 @@ import { useLocation, useSearch } from "wouter";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-
-interface EditUserForm {
-  wallet_mode: "set" | "add" | "subtract";
-  wallet_value: string;
-  loyalty_points: string;
-  // (r110) Backend contract (round-94 39a84be): PATCH
-  // /api/admin/users/:id requires `note` (≥3 trimmed chars)
-  // whenever a wallet field (wallet_adjustment / wallet_balance)
-  // rides the body — the operator justification recorded on the
-  // wallet_ledger row.
-  // R115 (A1/A5 + backend 6caa63b): the note is now ALSO required
-  // whenever loyalty_points rides the body (points are LYD-convertible
-  // money — 100:1 — and the admin_set points_ledger row persists the
-  // reason); loyalty_tier is GONE from the form entirely (tiers derive
-  // strictly from net qualifying spend, Part 11 — the backend rejects
-  // any loyalty_tier with a 400).
-  note: string;
-}
-
-const TIER_FILTERS = [
-  { value: "", label: "الكل" },
-  { value: "bronze", label: "برونزي" },
-  { value: "silver", label: "فضي" },
-  { value: "gold", label: "ذهبي" },
-  { value: "platinum", label: "بلاتيني" },
-];
-
-const WALLET_MODES = [
-  { value: "add", label: "إضافة", icon: Plus },
-  { value: "subtract", label: "خصم", icon: Minus },
-  { value: "set", label: "تحديد", icon: null },
-];
-
-const SORT_OPTIONS = [
-  { value: "wallet_desc", label: "الرصيد ↓" },
-  { value: "spend_desc", label: "الإنفاق ↓" },
-  { value: "orders_desc", label: "الطلبات ↓" },
-  { value: "points_desc", label: "النقاط ↓" },
-  { value: "created_asc", label: "الأقدم" },
-];
-
-/** R125-I4 (A6 B-4): tier → StatusBadge tone (theme-aware by
- * construction — the raw cyan-400/yellow-400/slate-300/amber-600 pill
- * failed 1.4.3 AA on the light theme). bronze→low-stock (orange),
- * gold→warning, platinum→info, silver→neutral. */
-const TIER_TONE: Record<string, StatusBadgeVariant> = {
-  bronze: "low-stock",
-  silver: "neutral",
-  gold: "warning",
-  platinum: "info",
-};
-
-/** 94-C2 (A2 P1-1): the backend supports `page`/`limit` (clamped
- *  1..200, default 100) but the UI never sent either — the directory
- *  silently capped at the newest 100 users while the summary cards
- *  presented the slice as «إجمالي المستخدمين / الأرصدة / الإنفاق».
- *  The frozen `?page=&limit=` contract now accumulates in place. */
-const USERS_PAGE_SIZE = 100;
-
-/** Arabic plural forms for the directory counter (formatCount, A2 P3-4). */
-const USER_COUNT_FORMS = {
-  zero: "مستخدمين",
-  one: "مستخدم",
-  two: "مستخدمان",
-  few: "مستخدمين",
-  many: "مستخدمًا",
-  other: "مستخدم",
-};
-
-// R115: prefer the backend's OWN Arabic wording on save failures — the
-// users PATCH route answers with specific, actionable messages (the
-// loyalty note/scope guardrails, the derived-tier 400, points bounds,
-// the CONCURRENT points race…). getErrorMessage()'s code map collapses
-// them all into generic per-code Arabic; the raw message is the honest
-// text when it carries Arabic script (same describeError pattern as the
-// pricing page).
-const ARABIC_SCRIPT_RE = /[\u0600-\u06FF]/;
-
-function describeSaveError(err: unknown): string {
-  const data = (err as { data?: { error?: string; message?: string } | null })?.data;
-  const raw = data?.error ?? data?.message;
-  if (typeof raw === "string" && raw.trim() && ARABIC_SCRIPT_RE.test(raw)) return raw;
-  const direct =
-    (err as { error?: string; message?: string } | null)?.error ??
-    (err as { message?: string } | null)?.message;
-  if (typeof direct === "string" && direct.trim() && ARABIC_SCRIPT_RE.test(direct)) return direct;
-  return "";
-}
-
-/**
- * R126-L3 (A2-3): RFC-4180 CSV cell quoting for the users export.
- *
- * The export embeds grouped currency strings (formatCurrency →
- * `"1,234.50 د.ل"`) whose embedded ASCII comma used to ride a bare
- * `r.join(",")` — any wallet balance / lifetime spend ≥ 1,000 LYD
- * split its cell in two and shifted every field after it for that
- * row.
- *
- * R128 (B3-F2): the escaper moved to lib/csv.ts as the ONE shared
- * `csvCell` (security.tsx's audit/auth exports carried a quote-only
- * twin) and gained the formula-injection guard — a leading
- * =/+/-/@/tab/CR gets the OWASP apostrophe prefix. Pinned by
- * users-csv-export.test.tsx + lib/__tests__/csv.test.ts.
- */
-
-/**
- * Compact pill row showing which auth providers are linked to a given
- * user. Backed by the boolean flags surfaced in /api/admin/users
- * (has_google / has_telegram / has_firebase).
- *
- * If multiple are linked, all show — admins can quickly see merged
- * accounts.
- *
- * Uses the relaxed `Record<string, unknown>` pattern because the
- * generated AdminUser type doesn't yet include the new fields. We
- * read them via bracket access + `Boolean(…)` so a missing field is
- * silently treated as absent rather than throwing a TS error.
- */
-function ProviderBadges({ user }: { user: Record<string, unknown> }) {
-  const badges = userProviderBadges(user as AdminUserShape);
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {badges.map((b) => (
-        <span
-          key={b.label}
-          className={`text-3xs font-bold px-1.5 py-0.5 rounded-md border ${PROVIDER_TONE_CLASS[b.tone]}`}
-        >
-          {b.label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function TableSkeleton() {
-  return (
-    <SharedTableSkeleton
-      rows={6}
-      cells={[
-        "w-28 shrink-0",
-        "w-16 shrink-0",
-        "rounded-full w-14 shrink-0",
-        "w-12 shrink-0",
-        "flex-1 w-16",
-        "w-8 shrink-0",
-        "w-20 shrink-0",
-        "w-7 shrink-0",
-      ]}
-    />
-  );
-}
-
-/* ── R124-I5 (A6 F4 — the R118-B2 orders.tsx pattern) ──────────────────
- * The search box is a CONTROLLED input — every keystroke re-rendered the
- * whole page and recomputed the directory sort inline (100+ rows) plus
- * every row subtree with fresh inline closures (the network debounces at
- * 300ms; the RENDER path did not). The rows are now module-level
- * React.memo components whose props are stable across a keystroke (user
- * refs come from the memoized `users` array; onEdit is useCallback-
- * stable), so typing re-renders the search box and nothing else. */
-interface UserRowProps {
-  user: AdminUser;
-  onEdit: (user: AdminUser) => void;
-}
-
-/** Desktop table row. */
-const DesktopUserRow = React.memo(function DesktopUserRow({
-  user,
-  idx,
-  onEdit,
-}: UserRowProps & { idx: number }) {
-  return (
-    <tr
-      className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
-    >
-      <td className="px-4 py-2.5 font-mono font-bold text-sm">
-        {displayUserName(user as unknown as AdminUserShape)}
-      </td>
-      <td className="px-4 py-2.5">
-        <ProviderBadges user={user as unknown as Record<string, unknown>} />
-      </td>
-      <td className="px-4 py-2.5 font-bold text-primary-text tabular-nums">
-        {formatCurrency(user.wallet_balance)}
-      </td>
-      <td className="px-4 py-2.5">
-        {/* R125-I4 (A6 B-4 + B-6): StatusBadge on the status tokens
-            (light-theme AA) + text-primary-text on the money cell
-            (5.75:1 dark vs raw text-primary's 3.76:1). */}
-        <StatusBadge variant={TIER_TONE[user.loyalty_tier] ?? "neutral"} size="sm">
-          {tierLabel(user.loyalty_tier)}
-        </StatusBadge>
-      </td>
-      <td className="px-4 py-2.5 tabular-nums text-sm">{user.loyalty_points}</td>
-      <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
-        {formatCurrency(user.lifetime_spend)}
-      </td>
-      <td className="px-4 py-2.5 tabular-nums font-semibold">{user.order_count}</td>
-      <td className="px-4 py-2.5 text-muted-foreground text-xs tabular-nums">
-        {user.created_at ? formatDate(user.created_at) : "—"}
-      </td>
-      <td className="px-4 py-2.5">
-        <button
-          onClick={() => onEdit(user)}
-          aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
-          /* 93-C6 / F-07 (A5 S-6): p-1.5 ≈ 28px target —
-             p-2 + min sizes lift the tappable area for
-             the 375px admin layout. */
-          className="p-2 min-w-9 min-h-9 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90"
-        >
-          <Edit2 className="w-3.5 h-3.5" />
-        </button>
-      </td>
-    </tr>
-  );
-});
-
-/** Mobile card. */
-const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit }: UserRowProps) {
-  return (
-    <div className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border hover:shadow-md hover:shadow-black/10 transition-all">
-      <div className="flex-1 min-w-0">
-        <div className="font-mono font-bold text-sm truncate">
-          {displayUserName(user as unknown as AdminUserShape)}
-        </div>
-        <div className="mt-1">
-          <ProviderBadges user={user as unknown as Record<string, unknown>} />
-        </div>
-        <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-          <span className={tierColor(user.loyalty_tier)}>{tierLabel(user.loyalty_tier)}</span>
-          <span>·</span>
-          <span>{user.order_count} طلب</span>
-        </div>
-      </div>
-      <div className="text-right shrink-0">
-        <div className="font-bold text-primary-text tabular-nums text-sm">
-          {formatCurrency(user.wallet_balance)}
-        </div>
-        <div className="text-xs text-muted-foreground mt-0.5">{user.loyalty_points} نقطة</div>
-      </div>
-      <button
-        onClick={() => onEdit(user)}
-        /* R123 (E3 P3b): the mobile twin of the desktop edit
-           button — same accessible name so screen readers
-           announce the same action in both layouts. */
-        aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
-        className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
-      >
-        <Edit2 className="w-4 h-4" />
-      </button>
-    </div>
-  );
-});
 
 export default function AdminUsersPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -749,6 +495,33 @@ export default function AdminUsersPage() {
 
   const hasFilters = tierFilter !== "" || sortBy !== "wallet_desc";
 
+  // R137 (FE) decomposition: the extracted toolbar / filter panel call
+  // these page-owned handlers — the ?filters=/?tier=/?sort= URL sync
+  // (syncFilterParams) rides every flip exactly as it did inline.
+  // R123 (E3 P3a): the panel toggle is URL-synced (?filters=).
+  const toggleFilters = () => {
+    setShowFilters((v) => {
+      syncFilterParams(tierFilter, sortBy, !v);
+      return !v;
+    });
+  };
+  // R123 (E3 P3a): tier flips write ?tier= back.
+  const selectTierFilter = (value: string) => {
+    setTierFilter(value);
+    syncFilterParams(value, sortBy, showFilters);
+  };
+  // R123 (E3 P3a): sort flips write ?sort= back.
+  const selectSortBy = (value: string) => {
+    setSortBy(value);
+    syncFilterParams(tierFilter, value, showFilters);
+  };
+  const resetPanelFilters = () => {
+    setTierFilter("");
+    setSortBy("wallet_desc");
+    // R123 (E3 P3a): the reset clears the URL params too.
+    syncFilterParams("", "wallet_desc", showFilters);
+  };
+
   // R125-I4 (A1-1): the ONE «مسح الفلاتر» handler — clears the state
   // AND the URL. The old empty-state CTA called setSearch/setTierFilter
   // without syncFilterParams, so ?tier= (and ?sort=) survived in the
@@ -777,6 +550,17 @@ export default function AdminUsersPage() {
   // fields are now disabled with the honest reason up front.
   const canEditMoney = hasAdminPermission("finance");
 
+  // R137 (FE) decomposition: the extracted money-edit dialog's input
+  // handlers — every extract input calls one of these page-owned
+  // wrappers around the form atom (the atom, the 99-M3 intent key and
+  // handleSave stay here).
+  const setWalletMode = (mode: EditUserForm["wallet_mode"]) =>
+    setForm((f) => ({ ...f, wallet_mode: mode }));
+  const setWalletValue = (value: string) => setForm((f) => ({ ...f, wallet_value: value }));
+  const setEditNote = (value: string) => setForm((f) => ({ ...f, note: value }));
+  const setEditPoints = (value: string) => setForm((f) => ({ ...f, loyalty_points: value }));
+  const closeEditDialog = () => setEditingUser(null);
+
   // (r110 + R115) Money-edit note gate: the backend 400s any wallet OR
   // points mutation whose note is <3 trimmed chars. "Money field
   // present" mirrors handleSave's parse — a wallet amount in the input
@@ -796,6 +580,21 @@ export default function AdminUsersPage() {
   const noteRequired = walletFieldPresent || pointsChangedNow;
   const noteValid = form.note.trim().length >= 3;
 
+  /**
+   * R126-L3 (A2-3): RFC-4180 CSV cell quoting for the users export.
+   *
+   * The export embeds grouped currency strings (formatCurrency →
+   * `"1,234.50 د.ل"`) whose embedded ASCII comma used to ride a bare
+   * `r.join(",")` — any wallet balance / lifetime spend ≥ 1,000 LYD
+   * split its cell in two and shifted every field after it for that
+   * row.
+   *
+   * R128 (B3-F2): the escaper moved to lib/csv.ts as the ONE shared
+   * `csvCell` (security.tsx's audit/auth exports carried a quote-only
+   * twin) and gained the formula-injection guard — a leading
+   * =/+/-/@/tab/CR gets the OWASP apostrophe prefix. Pinned by
+   * users-csv-export.test.tsx + lib/__tests__/csv.test.ts.
+   */
   const exportUsersCSV = () => {
     const csvHeaders = [
       "رقم الهاتف",
@@ -845,155 +644,30 @@ export default function AdminUsersPage() {
     <AdminLayout onRefresh={() => refetch()}>
       <div className="space-y-5">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold mb-0.5">المستخدمون</h1>
-            {/* 94-C2 (A2 P1-1): honest count — the directory no longer
-                claims a grand total it can't know once pages are capped. */}
-            <p className="text-xs text-muted-foreground">
-              {users.length > 0
-                ? `${knownTotal ? "" : "عرض "}${formatCount(users.length, USER_COUNT_FORMS)}${knownTotal ? "" : " (الأحدث أولاً)"}`
-                : "إدارة حسابات المستخدمين"}
-              {tierFilter && ` · فلتر: ${tierLabel(tierFilter)}`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-            <div className="relative flex-1 sm:flex-none">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                type="search"
-                placeholder="بحث برقم الهاتف..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pr-9 h-9 w-full sm:w-56 text-sm"
-                dir="ltr"
-              />
-            </div>
-            <button
-              onClick={() => {
-                // R123 (E3 P3a): the panel toggle is URL-synced (?filters=).
-                setShowFilters((v) => {
-                  syncFilterParams(tierFilter, sortBy, !v);
-                  return !v;
-                });
-              }}
-              aria-expanded={showFilters}
-              className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-semibold transition-all ${
-                hasFilters || showFilters
-                  ? "bg-primary/10 border-primary/30 text-primary-text"
-                  : "bg-secondary/40 border-border text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5" />
-              فلترة
-              {hasFilters && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
-            </button>
-            {!isLoading && sorted.length > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
-                onClick={exportUsersCSV}
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">تصدير CSV</span>
-              </Button>
-            )}
-          </div>
-        </div>
+        <UsersToolbar
+          usersCount={users.length}
+          knownTotal={knownTotal}
+          tierFilter={tierFilter}
+          search={search}
+          showFilters={showFilters}
+          hasFilters={hasFilters}
+          showExport={!isLoading && sorted.length > 0}
+          onSearchChange={setSearch}
+          onToggleFilters={toggleFilters}
+          onExport={exportUsersCSV}
+        />
 
         {/* Filter panel */}
         {showFilters && (
-          <div className="bg-card border border-border/60 rounded-2xl p-4 animate-in fade-in slide-in-from-top-1 duration-150">
-            <div className="flex flex-wrap gap-6">
-              <div>
-                <div className="text-3xs font-bold text-muted-foreground mb-2">مستوى الولاء</div>
-                {/* R128 (A3-F1): the tier chips converge on the
-                    segmented-raised idiom (orders/topups/tickets/products
-                    chip bars) — the bordered primary-tint was the 4th
-                    filter-chip shape in the console. The value-neutral
-                    active state is the raised card chip, not a tint. */}
-                <div className="flex gap-1 flex-wrap bg-secondary/40 border border-border/60 rounded-2xl p-1">
-                  {TIER_FILTERS.map((t) => (
-                    <button
-                      key={t.value}
-                      onClick={() => {
-                        // R123 (E3 P3a): tier flips write ?tier= back.
-                        setTierFilter(t.value);
-                        syncFilterParams(t.value, sortBy, showFilters);
-                      }}
-                      /* R124-C2 (A6 F10): the active chip was purely
-                         visual — aria-pressed exposes the toggle state
-                         (the orders.tsx/topups.tsx chip-bar idiom). */
-                      aria-pressed={tierFilter === t.value}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        tierFilter === t.value
-                          ? "bg-card shadow-sm text-foreground font-bold"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-3xs font-bold text-muted-foreground mb-2">
-                  {/* R120-B4 (A2-F8): the sort is CLIENT-side over the
-                      loaded pages — the label no longer presents it as a
-                      global ranking (the hint below fires on partial
-                      data). Server-side sort is a documented follow-up. */}
-                  الترتيب (ضمن المعروض)
-                </div>
-                <div className="flex gap-1 flex-wrap bg-secondary/40 border border-border/60 rounded-2xl p-1">
-                  {SORT_OPTIONS.map((s) => (
-                    <button
-                      key={s.value}
-                      onClick={() => {
-                        // R123 (E3 P3a): sort flips write ?sort= back.
-                        setSortBy(s.value);
-                        syncFilterParams(tierFilter, s.value, showFilters);
-                      }}
-                      /* R124-C2 (A6 F10): same toggle-state exposure as
-                         the tier chips (single-select radio behavior). */
-                      aria-pressed={sortBy === s.value}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        sortBy === s.value
-                          ? "bg-card shadow-sm text-foreground font-bold"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {hasFilters && (
-                <div className="flex items-end">
-                  <button
-                    onClick={() => {
-                      setTierFilter("");
-                      setSortBy("wallet_desc");
-                      // R123 (E3 P3a): the reset clears the URL params too.
-                      syncFilterParams("", "wallet_desc", showFilters);
-                    }}
-                    className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    إعادة ضبط
-                  </button>
-                </div>
-              )}
-            </div>
-            {/* R120-B4 (A2-F8): partial-data honesty — the sort ranks
-                only the loaded pages while the directory keeps its
-                «عرض N (الأحدث أولاً)» count; the one-line hint mirrors
-                the orders honest-count discipline. */}
-            {!knownTotal && (
-              <p className="text-3xs text-muted-foreground mt-3">
-                الترتيب يعمل على المستخدمين المعروضين فقط — حمّل المزيد لتوسيع النطاق
-              </p>
-            )}
-          </div>
+          <UsersFilterPanel
+            tierFilter={tierFilter}
+            sortBy={sortBy}
+            hasFilters={hasFilters}
+            knownTotal={knownTotal}
+            onTierChange={selectTierFilter}
+            onSortChange={selectSortBy}
+            onReset={resetPanelFilters}
+          />
         )}
 
         {/* Summary stats strip — 94-C2 (A2 P1-1): the labels describe
@@ -1001,59 +675,11 @@ export default function AdminUsersPage() {
             المستخدمين/الأرصدة/الإنفاق» cards presented the first page
             as the whole directory). */}
         {!isLoading && users.length > 0 && !search && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              {
-                label: "المستخدمون المعروضون",
-                value: formatCount(users.length, USER_COUNT_FORMS),
-                icon: Users,
-                color: "text-status-info",
-                bg: "bg-status-info/10",
-                border: "border-status-info/15",
-              },
-              {
-                label: "أرصدة المعروضين",
-                value: formatCurrency(totalWallet),
-                icon: Wallet,
-                color: "text-status-info",
-                bg: "bg-status-info/10",
-                border: "border-status-info/15",
-              },
-              {
-                label: "إنفاق المعروضين",
-                value: formatCurrency(totalSpend),
-                icon: Star,
-                color: "text-status-success",
-                bg: "bg-status-success/10",
-                border: "border-status-success/15",
-              },
-              {
-                label: "متوسط الإنفاق",
-                value: formatCurrency(users.length > 0 ? totalSpend / users.length : 0),
-                icon: Star,
-                color: "text-status-purple",
-                bg: "bg-status-purple/10",
-                border: "border-status-purple/15",
-              },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className={`float-in bg-card border ${stat.border} rounded-2xl px-4 py-3 flex items-center gap-3`}
-              >
-                <div
-                  className={`w-8 h-8 ${stat.bg} rounded-lg flex items-center justify-center shrink-0`}
-                >
-                  <stat.icon className={`w-4 h-4 ${stat.color}`} />
-                </div>
-                <div>
-                  <div className={`font-bold text-sm tabular-nums ${stat.color}`}>{stat.value}</div>
-                  <div className="text-3xs text-muted-foreground leading-tight mt-0.5">
-                    {stat.label}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <UsersStatsStrip
+            usersCount={users.length}
+            totalWallet={totalWallet}
+            totalSpend={totalSpend}
+          />
         )}
 
         {/* Edit dialog — 94-C2 (A2 P2-5): the money-action shell is
@@ -1061,266 +687,21 @@ export default function AdminUsersPage() {
             dismissable={!saving} so a stray tap mid-PATCH can't destroy
             the form; the submit button lives in the dialog footer and
             associates with the form via form="user-edit-form". */}
-        <AppDialog
-          open={!!editingUser}
-          onOpenChange={(o) => {
-            if (!o) setEditingUser(null);
-          }}
-          title="تعديل المستخدم"
-          description={editingUser?.phone}
-          dismissable={!saving}
-          footer={
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setEditingUser(null)}
-                disabled={saving}
-                className="flex-1 h-10 active:scale-[0.97] sm:flex-none"
-              >
-                إلغاء
-              </Button>
-              <Button
-                type="submit"
-                form="user-edit-form"
-                className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97]"
-                // (r110 + R115) Contract gate: a wallet OR points edit is
-                // submittable only with a valid (≥3 trimmed chars) note —
-                // the backend 400s otherwise (round-94 wallet contract,
-                // R115 points contract). A nothing-changed form stays
-                // enabled and is answered honestly at the save path.
-                // R120-B4 (A2-F4): a non-finance operator has nothing
-                // editable in this dialog (wallet/points are finance-
-                // gated, tier is derived) — the submit stays disabled
-                // instead of 403ing after the confirm.
-                disabled={saving || !canEditMoney || (noteRequired && !noteValid)}
-              >
-                <CheckCircle className="w-4 h-4 ml-1.5" />
-                {saving ? "جارٍ الحفظ..." : "حفظ"}
-              </Button>
-            </>
-          }
-        >
-          <AppDialogBody className="space-y-4">
-            {editingUser && (
-              <>
-                {/* Current snapshot */}
-                <div className="grid grid-cols-3 gap-2 p-3.5 bg-muted/25 border border-border/50 rounded-2xl">
-                  {[
-                    {
-                      label: "الرصيد",
-                      value: formatCurrency(editingUser.wallet_balance),
-                      // R125-I4 (A6 B-6): text-primary-text — a money
-                      // value, not a surface (5.75:1 dark vs 3.76:1).
-                      cls: "text-primary-text",
-                    },
-                    { label: "النقاط", value: editingUser.loyalty_points, cls: "text-foreground" },
-                    {
-                      label: "المستوى",
-                      value: tierLabel(editingUser.loyalty_tier),
-                      cls: tierColor(editingUser.loyalty_tier),
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="text-center">
-                      <div className="text-3xs text-muted-foreground mb-0.5">{item.label}</div>
-                      <div className={`font-bold text-sm tabular-nums ${item.cls}`}>
-                        {item.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Extra quick info */}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground border border-border/30 rounded-lg px-3 py-2 bg-muted/10">
-                  <span>
-                    الطلبات: <strong className="text-foreground">{editingUser.order_count}</strong>
-                  </span>
-                  <span>
-                    الإنفاق:{" "}
-                    <strong className="text-status-success">
-                      {formatCurrency(editingUser.lifetime_spend)}
-                    </strong>
-                  </span>
-                  {editingUser.created_at && (
-                    <span>
-                      التسجيل:{" "}
-                      <strong className="text-foreground">
-                        {formatDate(editingUser.created_at)}
-                      </strong>
-                    </span>
-                  )}
-                </div>
-
-                <form id="user-edit-form" onSubmit={handleSave} className="space-y-4">
-                  {/* R120-B4 (A2-F4): the honest gate — shown instead of
-                      letting a users-only operator fill the form and hit
-                      the finance 403 at save time. */}
-                  {!canEditMoney && (
-                    <p className="text-xs text-status-warning bg-status-warning/10 border border-status-warning/25 rounded-xl px-3 py-2">
-                      تعديل المحفظة والنقاط يتطلب صلاحية المالية — الحقول للعرض فقط
-                    </p>
-                  )}
-                  <div>
-                    {/* R125-I4 (A1-2 / A6 B-12): the money field itself —
-                        htmlFor↔id pair (the r103 label idiom the note
-                        + points fields already rode) + an
-                        aria-describedby hint that states the MODE
-                        (the placeholder alone is not a persistent
-                        label; screen readers announced only the
-                        mode-dependent placeholder before). */}
-                    <Label htmlFor="user-edit-wallet" className="mb-2 block text-sm font-semibold">
-                      تعديل المحفظة (د.ل)
-                    </Label>
-                    <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
-                      {WALLET_MODES.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          disabled={!canEditMoney}
-                          title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
-                          /* R125-I4 (A6 B-10/A1-6): a money-mode
-                             control — the selected mode was purely
-                             visual. aria-pressed exposes it (the
-                             wallet-mode segmented control A10 §C-17
-                             pin). */
-                          aria-pressed={form.wallet_mode === opt.value}
-                          onClick={() =>
-                            setForm((f) => ({
-                              ...f,
-                              wallet_mode: opt.value as EditUserForm["wallet_mode"],
-                            }))
-                          }
-                          className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                        >
-                          {opt.icon && <opt.icon className="w-3 h-3" />}
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                    <Input
-                      id="user-edit-wallet"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      disabled={!canEditMoney}
-                      title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
-                      aria-describedby="user-edit-wallet-hint"
-                      placeholder={
-                        form.wallet_mode === "set"
-                          ? "الرصيد الجديد"
-                          : form.wallet_mode === "add"
-                            ? "المبلغ للإضافة"
-                            : "المبلغ للخصم"
-                      }
-                      value={form.wallet_value}
-                      onChange={(e) => setForm((f) => ({ ...f, wallet_value: e.target.value }))}
-                      dir="ltr"
-                      className="h-10"
-                    />
-                    <p
-                      id="user-edit-wallet-hint"
-                      className="text-3xs text-muted-foreground mt-1 leading-relaxed"
-                    >
-                      {form.wallet_mode === "set"
-                        ? "سيحل الرصيد المُدخل محل الرصيد الحالي"
-                        : form.wallet_mode === "add"
-                          ? "سيُضاف المبلغ إلى الرصيد الحالي"
-                          : "سيُخصم المبلغ من الرصيد الحالي"}
-                    </p>
-                    {/* (r110 + R115) The money-edit note: mandatory
-                        whenever a wallet field OR a points change will
-                        ride the PATCH (both are LYD money — the wallet
-                        balance 1:1, points at 100:1 via
-                        /loyalty/convert-points); the backend rejects a
-                        missing note with a 400 and the value persists on
-                        the wallet_ledger / points_ledger rows. */}
-                    <div className="mt-3">
-                      <Label
-                        htmlFor="user-edit-note"
-                        className="mb-1.5 block text-sm font-semibold"
-                      >
-                        سبب تعديل المحفظة / النقاط
-                      </Label>
-                      <Input
-                        id="user-edit-note"
-                        type="text"
-                        disabled={!canEditMoney}
-                        title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
-                        value={form.note}
-                        onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-                        placeholder="سبب التعديل (3 أحرف على الأقل)"
-                        // (r110 + R115) mirror the backend contract:
-                        // required + ≥3 chars when a money field will
-                        // ride the PATCH; 500 max (both ledger services
-                        // slice).
-                        required={noteRequired}
-                        minLength={noteRequired ? 3 : undefined}
-                        maxLength={500}
-                        className="h-10"
-                      />
-                      <p className="text-3xs text-muted-foreground mt-1 leading-relaxed">
-                        إلزامي عند تعديل المحفظة أو النقاط (3 أحرف على الأقل) ويُسجَّل في سجل
-                        الحركات
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label
-                        htmlFor="user-edit-points"
-                        className="mb-1.5 block text-sm font-semibold"
-                      >
-                        نقاط الولاء
-                      </Label>
-                      <Input
-                        id="user-edit-points"
-                        type="number"
-                        min="0"
-                        step="1"
-                        disabled={!canEditMoney}
-                        title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
-                        value={form.loyalty_points}
-                        onChange={(e) => setForm((f) => ({ ...f, loyalty_points: e.target.value }))}
-                        dir="ltr"
-                        className="h-10"
-                      />
-                      {/* R115 (A1/A5): points are LYD-convertible money
-                          (100:1) — the hint states the dinar value of
-                          the number in the box + the note/scope contract
-                          so the operator knows the rules BEFORE the
-                          400/403 ever fires. */}
-                      <p className="text-3xs text-muted-foreground mt-1 leading-relaxed">
-                        القيمة بالدينار: {formatCurrency((editingPointsNow ?? 0) / 100)} (كل 100
-                        نقطة = 1 د.ل عند التحويل)
-                        <br />
-                        التعديل يتطلب سببًا وصلاحية «المعاملات المالية»
-                      </p>
-                    </div>
-                    {/* R115 (Part 11): the tier is DERIVED from net
-                        qualifying spend (computeTier on every
-                        purchase/refund) — the manual override select is
-                        GONE (the backend 400s any loyalty_tier); the
-                        current tier shows read-only with the derivation
-                        hint. */}
-                    <div>
-                      <Label className="mb-1.5 block text-sm font-semibold">المستوى</Label>
-                      <div className="h-10 px-3 flex items-center bg-muted/30 border border-border/60 rounded-lg">
-                        <span
-                          className={`font-bold text-sm ${tierColor(editingUser.loyalty_tier)}`}
-                        >
-                          {tierLabel(editingUser.loyalty_tier)}
-                        </span>
-                      </div>
-                      <p className="text-3xs text-muted-foreground mt-1 leading-relaxed">
-                        مستوى مشتق من الإنفاق الصافي — لا يُعدّل يدويًا
-                      </p>
-                    </div>
-                  </div>
-                </form>
-              </>
-            )}
-          </AppDialogBody>
-        </AppDialog>
+        <UserEditDialog
+          editingUser={editingUser}
+          form={form}
+          saving={saving}
+          canEditMoney={canEditMoney}
+          noteRequired={noteRequired}
+          noteValid={noteValid}
+          editingPointsNow={editingPointsNow}
+          onWalletModeChange={setWalletMode}
+          onWalletValueChange={setWalletValue}
+          onNoteChange={setEditNote}
+          onPointsChange={setEditPoints}
+          onClose={closeEditDialog}
+          onSubmit={handleSave}
+        />
 
         {/* 93-C6 / F-07 (A5 S-2): refresh of an already-rendered list
             failed — keep the stale rows, surface the failure inline. */}
@@ -1343,7 +724,7 @@ export default function AdminUsersPage() {
 
         {/* Table */}
         {isLoading ? (
-          <TableSkeleton />
+          <UsersTableSkeleton />
         ) : isError && users.length === 0 ? (
           /* 93-C6 / F-07 (A5 S-2): a failed load is NOT "no users" — the
              referrals.tsx error-card idiom (an outage/expired session
@@ -1412,77 +793,7 @@ export default function AdminUsersPage() {
         ) : (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="sticky top-0 z-10 border-b border-border bg-card/85 supports-[backdrop-filter]:bg-card/65 backdrop-blur-md">
-                      {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
-                          announce the header↔cell relation on vertical
-                          sweeps instead of a bare "خلية". */}
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        المستخدم
-                      </th>
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        المصدر
-                      </th>
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        الرصيد
-                      </th>
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        المستوى
-                      </th>
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        النقاط
-                      </th>
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        الإجمالي المنفق
-                      </th>
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        الطلبات
-                      </th>
-                      <th
-                        scope="col"
-                        className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
-                      >
-                        التسجيل
-                      </th>
-                      <th scope="col" className="px-4 py-3 w-10" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((user, idx: number) => (
-                      <DesktopUserRow key={user.id} user={user} idx={idx} onEdit={openEdit} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-2.5 border-t border-border bg-muted/10 text-xs text-muted-foreground flex items-center justify-between">
-                <span>{formatCount(sorted.length, USER_COUNT_FORMS)}</span>
-                <span className="text-muted-foreground">انقر على قلم التحرير للتعديل</span>
-              </div>
-            </div>
+            <UsersDesktopTable rows={sorted} onEdit={openEdit} />
 
             {/* Mobile card list */}
             <div className="md:hidden space-y-2">

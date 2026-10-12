@@ -1,0 +1,87 @@
+import { statusLabel } from "@/lib/utils";
+
+// R137 (FE): extracted verbatim from pages/admin/orders.tsx — the page's
+// pure module constants (the r136 checkout idiom: filter-option lists,
+// label maps and date comparators are React-free so any lane can import
+// them). The BULK_STATUSES / STATUS_FILTERS derivations from statusLabel
+// are byte-identical; only the `export` keyword was added.
+
+// R124-I5 (A6 F2): bulk-action + filter-tab labels derive from
+// statusLabel — the same map that feeds the row badges (the tickets.tsx
+// pattern). The tabs previously hand-rolled a THIRD vocabulary mix
+// («معلق»/«فاشل»/«مسترجع» tabs vs «قيد الانتظار»/«فشل»/«مُسترد» badges
+// vs «مسترجع» bulk entries) — one status can never show two different
+// Arabic words on one page (the status-badge invariant).
+export const BULK_STATUSES = (["completed", "pending", "failed", "refunded"] as const).map((s) => ({
+  value: s,
+  label: statusLabel(s),
+  /* R125-I2 (A6-B4): the raw -400 label hues collapse to 1.53-2.77:1
+   * on the shipped light admin theme — the --status-* token family
+   * (the StatusBadge ink) is contrast-safe in BOTH themes. Icons/dots
+   * keep their raw hues elsewhere; these are TEXT labels. */
+  color:
+    s === "completed"
+      ? "text-status-success"
+      : s === "pending"
+        ? "text-status-warning"
+        : s === "failed"
+          ? "text-status-error"
+          : "text-status-info",
+}));
+
+export const STATUS_FILTERS = [
+  { value: "", label: "الكل" },
+  ...(["completed", "pending", "failed", "refunded"] as const).map((s) => ({
+    value: s,
+    label: statusLabel(s),
+  })),
+];
+
+export const DATE_RANGES = [
+  { label: "الكل", days: 0 },
+  { label: "اليوم", days: 1 },
+  { label: "7 أيام", days: 7 },
+  { label: "30 يوم", days: 30 },
+];
+
+/** 94-C2 (A2 P1-1 + P2-2): server-side page size for the orders
+ *  list. The backend (routes/admin/orders.ts) clamps limit to
+ *  [1, 200] (default 100) and supports `page` + `search`. Round-93
+ *  made history reachable with page-swapping التالي/السابق controls;
+ *  round-94 replaces them with the accumulating "load more" pattern
+ *  (frozen contract: 1-based `page` + `limit`, response body stays a
+ *  plain array) so fetched rows — and the operator's row selections —
+ *  survive, while the server-side `?search=` (LIKE across order code /
+ *  phone / email / name / product) reaches orders BEYOND the loaded
+ *  window: the old client-side filter searched only what was already
+ *  on screen, so an older order was "غير موجود" until you paged to it. */
+export const ORDERS_PAGE_SIZE = 100;
+
+/** Arabic plural forms for the orders counter (formatCount — the
+ *  shared Arabic-plural helper had zero admin usage, A2 P3-4). */
+export const ORDER_COUNT_FORMS = {
+  zero: "طلبات",
+  one: "طلب",
+  two: "طلبان",
+  few: "طلبات",
+  many: "طلبًا",
+  other: "طلب",
+};
+
+// Arabic labels for the RefundService failure codes the 207 partial
+// body carries (backend/src/services/refund.service.ts RefundErrorCode).
+export const REFUND_FAILURE_LABELS: Record<string, string> = {
+  ORDER_NOT_FOUND: "الطلب غير موجود",
+  NOT_REFUNDABLE: "الطلب غير قابل للاسترداد",
+  ALREADY_REFUNDED: "مُسترد مسبقاً",
+  USER_NOT_FOUND: "المستخدم غير موجود",
+  CONCURRENCY_ERROR: "تعارض تزامني",
+};
+
+export function isWithinDays(dateStr: string, days: number) {
+  if (!days) return true;
+  const d = new Date(dateStr);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  return d >= cutoff;
+}

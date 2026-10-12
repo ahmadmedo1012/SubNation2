@@ -1,437 +1,67 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { FetchErrorCard } from "@/components/ui/fetch-error-card";
-import { Skeleton, SkeletonText } from "@/components/ui/Skeleton";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { useChartColors } from "@/lib/chart-theme";
-import { formatRelativeTime } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import {
-  Activity,
-  AlertCircle,
-  AlertTriangle,
-  Box,
-  CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  Clock,
-  Cpu,
-  Database,
-  ExternalLink,
-  Flag,
-  HeartPulse,
-  Inbox,
-  Layers,
-  MemoryStick,
-  Radio,
-  RefreshCw,
-  Server,
-  ShieldCheck,
-  TimerReset,
-  Wifi,
-  XCircle,
-  Zap,
-} from "lucide-react";
-import { type ReactElement, type ReactNode, Suspense, useEffect, useRef } from "react";
-import { lazyWithRetry } from "@/lib/lazy-with-retry";
-import { Link, useLocation } from "wouter";
+import { Activity, Cpu } from "lucide-react";
+import { type ReactElement, Suspense, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
-
-/* ── R125-I2 (A5-F3): the recharts lazy boundary (the dashboard.tsx
- * bridge, duplicated in-file — this round's file ownership is the four
- * admin pages, so the shared components/admin/charts.tsx wrapper A5
- * sketched stays a follow-up). system.tsx statically imported recharts
- * for two below-the-fold surfaces (the diagnostics MetricCard
- * sparklines + the SECTION-2 rps trend chart); its route chunk paid the
- * full 109.48 KB gz vendor-charts download + parse before ANY panel
- * painted. The only runtime reference to "recharts" is now the dynamic
- * import() below — vendor-charts streams in on demand while the health
- * overview renders on the system chunk alone. The type-only alias
- * erases at compile time. */
-type RechartsNS = typeof import("recharts");
-
-const ChartsLoader = lazyWithRetry(() =>
-  import("recharts").then((rc) => ({
-    default: function RechartsBridge({ children }: { children: (rc: RechartsNS) => ReactNode }) {
-      return children(rc);
-    },
-  })),
-);
-
-// ── Backend response shapes (mirror what the deployed API returns) ─────────
-//
-// 94-C2 (A2 P2-10): every «uppercase tracking-widest» on the Arabic
-// metric/health labels below was removed (7 spots) — letter-spacing
-// severs Arabic letter connections and uppercase is a no-op on Arabic
-// anyway (rule A11 §8, documented in layout.tsx). Values keep their
-// tabular-nums treatment; Latin/mono chips are untouched.
-
+// R137 (FE decomposition): the page's self-contained subcomponents and
+// pure helpers moved to @/components/admin/system/* (verbatim moves —
+// the six observability queries, the guarded fetchers, the rolling
+// metrics buffer, handleRefresh, the settings-scope gate and the rps
+// trend chart (the rolling buffer's own surface) stay HERE; the
+// extracts render the byte-identical DOM they rendered inline
+// yesterday). Import surface:
+//   • system-types / system-samples / system-scheduler / system-meta —
+//     the page's pure modules (backend response shapes, the rolling-
+//     buffer math + MAX_SAMPLES, the scheduler-banner tone/title
+//     derivation, the STATUS_META tone map)
+//   • system-charts — the lazy recharts bridge (Panel 8 below rides it
+//     inline; the diagnostics MetricCard sparklines import their own)
+//   • DetailsSection — the native-<details> collapsible (Panel 8 rides
+//     it inline; the extracted panels import their own)
+//   • HealthOverviewSection / SchedulerDetailsSection /
+//     RuntimeDiagnosticsSection / HttpAnalyticsSection /
+//     AuthSecuritySection / RedisPerformanceSection / SocketJobsSection /
+//     CoreWebVitalsSection / RecentAlertsSection /
+//     ExternalDashboardsSection — the page's ten panels (values +
+//     retry callbacks flow down; MetricCard / HealthTile ride inside
+//     their consumers)
+import { ChartsLoader } from "@/components/admin/system/system-charts";
+import { STATUS_META } from "@/components/admin/system/system-meta";
+import { deriveSchedulerBanner } from "@/components/admin/system/system-scheduler";
+import {
+  MAX_SAMPLES,
+  deriveDelta,
+  type MetricsSample,
+} from "@/components/admin/system/system-samples";
+import type {
+  DiagnosticsResponse,
+  MetricsSnapshot,
+  ObservabilitySummary,
+  RecentAlert,
+  SchedulerResponse,
+} from "@/components/admin/system/system-types";
+import { DetailsSection } from "@/components/admin/system/DetailsSection";
+import { HealthOverviewSection } from "@/components/admin/system/HealthOverviewSection";
+import { SchedulerDetailsSection } from "@/components/admin/system/SchedulerDetailsSection";
+import { RuntimeDiagnosticsSection } from "@/components/admin/system/RuntimeDiagnosticsSection";
+import { HttpAnalyticsSection } from "@/components/admin/system/HttpAnalyticsSection";
+import { AuthSecuritySection } from "@/components/admin/system/AuthSecuritySection";
+import { RedisPerformanceSection } from "@/components/admin/system/RedisPerformanceSection";
+import { SocketJobsSection } from "@/components/admin/system/SocketJobsSection";
+import { CoreWebVitalsSection } from "@/components/admin/system/CoreWebVitalsSection";
+import { RecentAlertsSection } from "@/components/admin/system/RecentAlertsSection";
+import { ExternalDashboardsSection } from "@/components/admin/system/ExternalDashboardsSection";
 import { type CheckStatus, type HealthCheck, type HealthzReadyResponse } from "@/lib/healthz";
 
 // Re-export the shared types under their existing local names so the rest
 // of this large file's prop signatures remain unchanged.
 export type { CheckStatus, HealthCheck, HealthzReadyResponse };
-
-interface DiagnosticsResponse {
-  node: { version: string; platform: string; arch: string; pid: number };
-  runtime: { uptimeSec: number; version: string; env: string; service: string };
-  memory: { rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number };
-  cpu: { userMs: number; systemMs: number };
-  eventLoop: {
-    meanMs: number;
-    p50Ms: number;
-    p95Ms: number;
-    p99Ms: number;
-    maxMs: number;
-  } | null;
-  deps: { redis: { connected: boolean }; socket: { initialized: boolean } };
-  flags: Record<string, string>;
-}
-
-interface ObservabilitySummary {
-  server: { version: string; uptimeSec: number; nodeVersion: string };
-  redis: { available: boolean };
-  worker: { heartbeat: { ageSec: number | null; ts: string | null } | null };
-  alerts: { lastKnownGoodAt: string | null; stale: boolean; recentCount: number };
-  dashboards: { render: string | null; sentry: string | null; neon: string | null };
-}
-
-interface RecentAlert {
-  id: number;
-  type: string;
-  title: string;
-  message: string | null;
-  createdAt: string;
-}
-
-type SchedulerMode = "embedded" | "dedicated" | "single" | "disabled";
-
-interface SchedulerResponse {
-  mode: SchedulerMode;
-  active: boolean;
-  isLeader: boolean;
-  instanceId: string | null;
-  reason: string;
-  startedAt: string | null;
-  heartbeat: {
-    ageSec: number | null;
-    ts: string | null;
-    healthy: boolean;
-    expected: boolean;
-  };
-  description: string;
-}
-
-interface MetricsSnapshot {
-  timestamp: string;
-  uptimeSec: number;
-  http: {
-    totalRequests: number;
-    requestsByStatusClass: Record<string, number>;
-    errorRate: number;
-    latency: {
-      p50Ms: number | null;
-      p95Ms: number | null;
-      p99Ms: number | null;
-      meanMs: number | null;
-    };
-    topRoutes: Array<{
-      route: string;
-      method: string;
-      count: number;
-      errorCount: number;
-      p95Ms: number | null;
-    }>;
-  };
-  auth: {
-    outcomes: Record<string, number>;
-    totalAttempts: number;
-    failureRate: number;
-  };
-  redis: {
-    available: boolean;
-    opsTotal: Record<string, number>;
-    errorsTotal: Record<string, number>;
-    pingLatencyMs: { p50: number | null; p95: number | null; p99: number | null };
-    degradedEvents: number;
-  };
-  socket: {
-    connectedClients: number;
-    eventsTotal: Record<string, number>;
-  };
-  worker: {
-    jobsTotal: Record<string, number>;
-  };
-  cwv: { samples: Record<string, number>; p75: Record<string, number | null> };
-  alerts: { dispatchedTotal: Record<string, number> };
-  monitoringErrors: number;
-}
-
-// ── Visual helpers (reuse existing design tokens) ──────────────────────────
-// R128 (A1-D1/F1): this page carried the admin console's largest raw-palette
-// map set (81 lines) — every -400 ink on its /10 tint measured 1.47-2.51:1
-// in the LIGHT admin theme. All hue classes now ride the theme-aware
-// --status-* tokens (emerald→success, red→error, blue/cyan→info,
-// orange→low-stock, yellow/amber→warning, violet/purple→status-purple);
-// alphas were preserved byte-for-byte, so the DEFAULT dark theme is visually
-// near-identical (the tokens' dark values sit within a hair of the raw -400s).
-
-const STATUS_META: Record<
-  CheckStatus,
-  { color: string; bg: string; border: string; label: string; icon: typeof CheckCircle2 }
-> = {
-  ok: {
-    color: "text-status-success",
-    bg: "bg-status-success/10",
-    border: "border-status-success/20",
-    label: "متاح",
-    icon: CheckCircle2,
-  },
-  degraded: {
-    // R126-L5 (A3 item-10): the degraded cluster rides the
-    // --status-warning ink+tint pair — yellow-400 fails the light theme
-    // (1.43-1.53:1, A3's figures); the token is AA both themes (6.04:1
-    // on white / 5.09:1 on the /12 tint light, index.css F3-06). This
-    // cluster feeds the page's core degraded-health value + the two
-    // scheduler banners — the operator's most important warning state.
-    color: "text-status-warning",
-    bg: "bg-status-warning/10",
-    border: "border-status-warning/20",
-    label: "متدنٍ",
-    icon: AlertTriangle,
-  },
-  failing: {
-    color: "text-status-error",
-    bg: "bg-status-error/10",
-    border: "border-status-error/20",
-    label: "خلل",
-    icon: XCircle,
-  },
-};
-
-function formatUptime(seconds: number): string {
-  const d = Math.floor(seconds / 86_400);
-  const h = Math.floor((seconds % 86_400) / 3_600);
-  const m = Math.floor((seconds % 3_600) / 60);
-  const s = seconds % 60;
-  // 94-C2 (A2 P3-20): thin spaces between the digit and the Arabic
-  // unit letter — «3ي 5س» read as a squashed token; «3 ي 5 س» scans.
-  // U+2009 keeps the compact KPI style without a full space's width.
-  if (d > 0) return `${d}\u2009ي ${h}\u2009س`;
-  if (h > 0) return `${h}\u2009س ${m}\u2009د`;
-  if (m > 0) return `${m}\u2009د ${s}\u2009ث`;
-  return `${s}\u2009ث`;
-}
-
-// R120-B5 (A5-F13): the hand-rolled K/M compaction (`(n/1e6).toFixed(1)`)
-// is now Intl's compact notation — the engine-generated version of the
-// same output ("1.2K" / "3.4M", locale separators included), matching the
-// shared-formatter convention the rest of the admin rides (utils.ts
-// Intl.NumberFormatters). Tile UX is unchanged: counts stay compact.
-const METRIC_COUNT_FORMATTER = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-function formatNumber(n: number): string {
-  return METRIC_COUNT_FORMATTER.format(n);
-}
-
-function formatMs(v: number | null | undefined): string {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
-  if (v < 1) return "<1ms";
-  if (v < 1000) return `${Math.round(v)}ms`;
-  return `${(v / 1000).toFixed(2)}s`;
-}
-
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-// HealthPill (legacy compact-list pill for service health) was removed
-// in the System Status cleanup pass — the new HealthTile component in
-// the Overview section replaced it.
-
-function MetricCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  color = "text-foreground",
-  bg = "bg-muted/30",
-  border = "border-border/60",
-  spark,
-  sparkColor,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  icon: typeof Server;
-  color?: string;
-  bg?: string;
-  border?: string;
-  spark?: number[];
-  sparkColor?: string;
-}): ReactElement {
-  return (
-    <div className={`bg-card border ${border} rounded-2xl p-4 flex flex-col`}>
-      <div className="flex items-center gap-2 mb-2.5">
-        <div
-          className={`w-8 h-8 ${bg} border ${border} rounded-xl flex items-center justify-center shrink-0`}
-        >
-          <Icon className={`w-4 h-4 ${color}`} />
-        </div>
-        <span className="text-3xs text-muted-foreground font-bold">{label}</span>
-      </div>
-      <div className="font-bold text-lg leading-none tabular-nums">{value}</div>
-      {sub && <div className="text-3xs text-muted-foreground mt-1">{sub}</div>}
-      {spark && spark.length >= 2 && (
-        /* R125-I2 (A5-F3): the sparkline rides the lazy recharts bridge —
-           a height-reserved shimmer keeps the card's 28px slot so the
-           vendor-charts fetch causes zero layout shift. */
-        <div className="mt-2 -mx-1 opacity-70">
-          <Suspense
-            fallback={<div className="h-7 skeleton-shimmer rounded-lg" aria-hidden="true" />}
-          >
-            <ChartsLoader>
-              {(rc) => (
-                <rc.ResponsiveContainer width="100%" height={28}>
-                  <rc.LineChart
-                    data={spark.map((v, i) => ({ i, v }))}
-                    margin={{ top: 1, right: 1, left: 1, bottom: 1 }}
-                  >
-                    <rc.Line
-                      type="monotone"
-                      dataKey="v"
-                      stroke={sparkColor ?? "currentColor"}
-                      strokeWidth={1.5}
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  </rc.LineChart>
-                </rc.ResponsiveContainer>
-              )}
-            </ChartsLoader>
-          </Suspense>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Client-side rolling buffer ─────────────────────────────────────────────
-//
-// Keep the last 30 minutes of poll snapshots in memory so we can render
-// sparklines + trend deltas without standing up a TSDB. 15 s polling × 120
-// samples = 30 min window. Browsers' V8 holds this cheaply (~12 KB).
-
-interface MetricsSample {
-  ts: number;
-  totalRequests: number;
-  errors5xx: number;
-  p95Ms: number | null;
-  authFailures: number;
-  redisOps: number;
-  redisErrors: number;
-  socketClients: number;
-  eventLoopP99Ms: number | null;
-  memoryRssMb: number | null;
-}
-
-const MAX_SAMPLES = 120; // 30 min @ 15 s polling
-
-function deriveDelta(samples: MetricsSample[], pick: (s: MetricsSample) => number): number[] {
-  if (samples.length < 2) return [];
-  const out: number[] = [];
-  for (let i = 1; i < samples.length; i++) {
-    const dt = (samples[i].ts - samples[i - 1].ts) / 1000;
-    if (dt <= 0) {
-      out.push(0);
-      continue;
-    }
-    const dv = pick(samples[i]) - pick(samples[i - 1]);
-    out.push(Math.max(0, dv / dt)); // counters never decrease in normal flow
-  }
-  return out;
-}
-
-// ── Overview & disclosure helpers (UI-only, no logic) ─────────────────────
-
-/**
- * Compact KPI tile used in the "Health Overview" strip at the top of the
- * page. Designed to be scannable in <5s and stack cleanly on mobile.
- *
- * `status` controls the color tone; pass "neutral" for tiles that are
- * informational rather than health-bearing (e.g. uptime).
- */
-function HealthTile({
-  label,
-  value,
-  status,
-  icon: Icon,
-  hint,
-}: {
-  label: string;
-  value: string;
-  status: CheckStatus | "neutral";
-  icon: typeof CheckCircle2;
-  hint?: string;
-}): ReactElement {
-  const meta =
-    status === "neutral"
-      ? {
-          color: "text-foreground",
-          bg: "bg-muted/15",
-          border: "border-border/50",
-        }
-      : STATUS_META[status];
-  return (
-    <div
-      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${meta.bg} ${meta.border} min-w-0`}
-      title={hint}
-    >
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${meta.bg}`}>
-        <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-3xs text-muted-foreground font-bold leading-none mb-1 truncate">
-          {label}
-        </div>
-        <div className={`text-sm font-bold tabular-nums leading-none ${meta.color}`}>{value}</div>
-        {hint && <div className="text-3xs text-muted-foreground mt-1 truncate">{hint}</div>}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Collapsible section using the native HTML <details> element.
- * - Zero new libraries. No JS state needed; the browser owns open/closed.
- * - Accessible by default (proper aria semantics, keyboard support).
- * - RTL-safe: chevron rotates the same way regardless of writing direction.
- * - Persists expand state inside the React tree across re-renders.
- */
-function DetailsSection({
-  title,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}): ReactElement {
-  return (
-    <details
-      open={defaultOpen}
-      className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none"
-    >
-      <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
-        <span className="text-sm font-bold flex-1 truncate">{title}</span>
-        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-open:rotate-180 shrink-0" />
-      </summary>
-      <div className="px-4 pt-1 pb-4 border-t border-border/40">{children}</div>
-    </details>
-  );
-}
 
 // ── Main page ──────────────────────────────────────────────────────────────
 
@@ -662,6 +292,7 @@ export default function AdminSystemPage(): ReactElement | null {
   const recentAlerts = recentAlertsQ.data?.alerts ?? [];
   const metrics = metricsQ.data;
   const scheduler = schedulerQ.data;
+  const alertsStale = recentAlertsQ.data?.stale === true;
 
   const aggregate = health?.status ?? "degraded";
   const aggregateMeta = STATUS_META[aggregate];
@@ -692,64 +323,7 @@ export default function AdminSystemPage(): ReactElement | null {
 
   // ── Scheduler banner state ───────────────────────────────────────────────
 
-  let schedTone: CheckStatus = "ok";
-  let schedTitle = "حالة الجدولة";
-  let schedMessage = "";
-
-  if (!scheduler) {
-    schedTone = "degraded";
-    schedTitle = "حالة الجدولة";
-    schedMessage = "جارٍ التحميل...";
-  } else if (scheduler.mode === "embedded" && scheduler.active) {
-    if (scheduler.heartbeat.expected && !scheduler.heartbeat.healthy) {
-      schedTone = "degraded";
-      schedTitle = "الجدولة المضمّنة تعمل لكن النبضة متأخرة";
-      schedMessage =
-        scheduler.heartbeat.ageSec === null
-          ? "النبضة لم تُسجَّل بعد منذ الإقلاع — قد تستغرق ~30ث."
-          : `آخر نبضة قبل ${scheduler.heartbeat.ageSec}ث (المتوقع <60ث).`;
-    } else {
-      schedTone = "ok";
-      schedTitle = "الجدولة المضمّنة نشطة";
-      schedMessage = scheduler.description;
-    }
-  } else if (scheduler.mode === "single" && scheduler.active) {
-    // R108 SINGLE_INSTANCE_MODE (Oracle/Coolify target shape): schedulers
-    // run ungated in this process — healthy by definition. Heartbeat is
-    // only expected when Redis exists (backend sets expected=false + a
-    // note when REDIS_URL is unset — the no-Redis production shape), so no
-    // stale-heartbeat degradation here.
-    if (scheduler.heartbeat.expected && !scheduler.heartbeat.healthy) {
-      schedTone = "degraded";
-      schedTitle = "الجدولة أحادية الخادم تعمل لكن النبضة متأخرة";
-      schedMessage = `آخر نبضة قبل ${scheduler.heartbeat.ageSec ?? "—"}ث (المتوقع <60ث).`;
-    } else {
-      schedTone = "ok";
-      schedTitle = "الجدولة أحادية الخادم نشطة";
-      schedMessage = scheduler.description;
-    }
-  } else if (scheduler.mode === "embedded" && !scheduler.active) {
-    schedTone = "degraded";
-    schedTitle = "الجدولة المضمّنة في وضع الانتظار";
-    schedMessage = scheduler.description;
-  } else if (scheduler.mode === "dedicated") {
-    if (scheduler.heartbeat.healthy) {
-      schedTone = "ok";
-      schedTitle = "خدمة worker مستقلة نشطة";
-      schedMessage = `آخر نبضة قبل ${scheduler.heartbeat.ageSec}ث.`;
-    } else {
-      schedTone = "failing";
-      schedTitle = "خدمة worker المستقلة لا تستجيب";
-      schedMessage =
-        scheduler.heartbeat.ageSec === null
-          ? "لا توجد نبضة من خدمة worker — تحقق من تشغيلها."
-          : `آخر نبضة قبل ${scheduler.heartbeat.ageSec}ث (المتوقع <60ث).`;
-    }
-  } else {
-    schedTone = "degraded";
-    schedTitle = "الجدولة معطّلة";
-    schedMessage = scheduler.description;
-  }
+  const { schedTone, schedTitle, schedMessage } = deriveSchedulerBanner(scheduler);
   const schedMeta = STATUS_META[schedTone];
 
   return (
@@ -795,204 +369,21 @@ export default function AdminSystemPage(): ReactElement | null {
             Seven critical KPIs the operator should be able to read in <5s.
             All other detail moves below into Advanced Diagnostics.
         ═══════════════════════════════════════════════════════════════ */}
-        <section className="space-y-2.5 float-in stagger-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-bold flex items-center gap-2">
-              <HeartPulse className="w-3.5 h-3.5 text-primary" />
-              نظرة سريعة على الصحة
-            </h2>
-            <span className="text-3xs text-muted-foreground">تحديث تلقائي</span>
-          </div>
-
-          {healthQ.isError ? (
-            // R133 (A3-F4): an unreachable /healthz/ready is an ERROR —
-            // the old silent "degraded" fallback fabricated an
-            // infrastructure verdict out of an authorization outcome or
-            // an outage (the amber pill + amber tiles looked like real
-            // readings). The FetchErrorCard is the family's honest
-            // shape; the 60 s poll keeps retrying behind it.
-            <FetchErrorCard
-              size="section"
-              retryIcon={RefreshCw}
-              title="تعذّر جلب حالة الصحة"
-              description="تعذّر الوصول إلى فحوص الجهوزية — تحقّق من الاتصال بالخادم ثم أعد المحاولة"
-              onRetry={() => void healthQ.refetch()}
-            />
-          ) : healthQ.isLoading || !health ? (
-            /* R136 (UX-1): SkeletonText — the 7-tile health grid becomes
-               one announcing wrapper (role=status + sr-only, net-new)
-               with the grid classes + tile geometry verbatim. */
-            <SkeletonText
-              count={7}
-              wrapperClassName="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2"
-              className="h-[56px] rounded-xl"
-              lastShorter={false}
-            />
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
-              {/* DB / Neon */}
-              {(() => {
-                const c = filteredChecks.neon;
-                return (
-                  <HealthTile
-                    label="قاعدة البيانات"
-                    value={c ? STATUS_META[c.status].label : "—"}
-                    status={c?.status ?? "degraded"}
-                    icon={Database}
-                    hint={c?.latencyMs != null ? `${c.latencyMs}ms` : (c?.error ?? undefined)}
-                  />
-                );
-              })()}
-
-              {/* Redis */}
-              {(() => {
-                const c = filteredChecks.redis;
-                return (
-                  <HealthTile
-                    label="Redis"
-                    value={c ? STATUS_META[c.status].label : "—"}
-                    status={c?.status ?? "degraded"}
-                    icon={Database}
-                    hint={c?.latencyMs != null ? `${c.latencyMs}ms` : (c?.error ?? undefined)}
-                  />
-                );
-              })()}
-
-              {/* Socket.IO */}
-              {(() => {
-                const c = filteredChecks.socket;
-                const clients = metrics?.socket.connectedClients;
-                return (
-                  <HealthTile
-                    label="Socket.IO"
-                    value={
-                      clients != null
-                        ? `${formatNumber(clients)} اتصال`
-                        : c
-                          ? STATUS_META[c.status].label
-                          : "—"
-                    }
-                    status={c?.status ?? "degraded"}
-                    icon={Wifi}
-                    hint={c?.latencyMs != null ? `${c.latencyMs}ms` : undefined}
-                  />
-                );
-              })()}
-
-              {/* API latency (p95) */}
-              {(() => {
-                const p95 = metrics?.http.latency.p95Ms ?? null;
-                const tone: CheckStatus | "neutral" =
-                  p95 == null ? "neutral" : p95 > 1000 ? "failing" : p95 > 500 ? "degraded" : "ok";
-                return (
-                  <HealthTile
-                    label="زمن الاستجابة p95"
-                    value={formatMs(p95)}
-                    status={tone}
-                    icon={Clock}
-                    hint={
-                      metrics?.http.latency.p99Ms != null
-                        ? `p99 ${formatMs(metrics.http.latency.p99Ms)}`
-                        : undefined
-                    }
-                  />
-                );
-              })()}
-
-              {/* Error rate (5xx) */}
-              {(() => {
-                const er = metrics?.http.errorRate ?? null;
-                const tone: CheckStatus | "neutral" =
-                  er == null ? "neutral" : er > 0.05 ? "failing" : er > 0.01 ? "degraded" : "ok";
-                const errCount = metrics?.http.requestsByStatusClass["5xx"] ?? 0;
-                return (
-                  <HealthTile
-                    label="معدل الأخطاء"
-                    value={er == null ? "—" : `${(er * 100).toFixed(2)}%`}
-                    status={tone}
-                    icon={AlertCircle}
-                    hint={errCount > 0 ? `${formatNumber(errCount)} خطأ 5xx` : "بدون أخطاء"}
-                  />
-                );
-              })()}
-
-              {/* Background jobs / scheduler */}
-              <HealthTile
-                label="المهام الخلفية"
-                value={
-                  scheduler == null
-                    ? "—"
-                    : scheduler.mode === "disabled"
-                      ? "معطّلة"
-                      : scheduler.heartbeat.healthy
-                        ? "نشطة"
-                        : scheduler.heartbeat.expected
-                          ? "نبضة متأخرة"
-                          : "قيد البدء"
-                }
-                status={schedTone}
-                icon={TimerReset}
-                hint={
-                  scheduler?.heartbeat.ageSec != null
-                    ? `نبضة قبل ${scheduler.heartbeat.ageSec}ث`
-                    : scheduler?.mode
-                      ? `mode: ${scheduler.mode}`
-                      : undefined
-                }
-              />
-
-              {/* Sentry / monitoring */}
-              {(() => {
-                const sentryUrl = summary?.dashboards.sentry;
-                const alertsStale = recentAlertsQ.data?.stale === true;
-                const tone: CheckStatus | "neutral" = !summary
-                  ? "neutral"
-                  : sentryUrl && !alertsStale
-                    ? "ok"
-                    : "degraded";
-                const value = !summary
-                  ? "—"
-                  : sentryUrl
-                    ? alertsStale
-                      ? "تنبيهات قديمة"
-                      : "متصل"
-                    : "غير مهيأ";
-                return (
-                  <HealthTile
-                    label="المراقبة"
-                    value={value}
-                    status={tone}
-                    icon={ShieldCheck}
-                    hint={
-                      summary?.alerts.lastKnownGoodAt
-                        ? `آخر إشارة: ${formatRelativeTime(summary.alerts.lastKnownGoodAt)}`
-                        : undefined
-                    }
-                  />
-                );
-              })()}
-            </div>
-          )}
-
-          {/* Critical scheduler banner — only when NOT healthy.
-              When healthy the tile above already conveys it; we suppress
-              the banner to keep the overview calm. */}
-          {scheduler && schedTone !== "ok" && (
-            <div
-              className={`flex items-center gap-3 p-3 rounded-2xl border ${schedMeta.bg} ${schedMeta.border}`}
-            >
-              <div
-                className={`w-8 h-8 rounded-xl ${schedMeta.bg} flex items-center justify-center shrink-0`}
-              >
-                <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className={`font-bold text-xs ${schedMeta.color} truncate`}>{schedTitle}</p>
-                <p className="text-2xs text-muted-foreground truncate">{schedMessage}</p>
-              </div>
-            </div>
-          )}
-        </section>
+        <HealthOverviewSection
+          health={health}
+          healthLoading={healthQ.isLoading}
+          healthError={healthQ.isError}
+          onRetryHealth={() => void healthQ.refetch()}
+          filteredChecks={filteredChecks}
+          metrics={metrics}
+          scheduler={scheduler}
+          schedTone={schedTone}
+          schedMeta={schedMeta}
+          schedTitle={schedTitle}
+          schedMessage={schedMessage}
+          summary={summary}
+          alertsStale={alertsStale}
+        />
 
         {/* ═══════════════════════════════════════════════════════════════
             SECTION 2 — ADVANCED DIAGNOSTICS
@@ -1010,594 +401,54 @@ export default function AdminSystemPage(): ReactElement | null {
 
           <div className="space-y-2">
             {/* ── Scheduler details (was Panel 2) ── */}
-            <DetailsSection title="تفاصيل الجدولة">
-              <div
-                className={`flex items-center justify-between gap-4 p-3 rounded-xl border ${schedMeta.bg} ${schedMeta.border}`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-9 h-9 rounded-xl ${schedMeta.bg} flex items-center justify-center shrink-0`}
-                  >
-                    <TimerReset className={`w-4 h-4 ${schedMeta.color}`} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className={`font-bold text-sm ${schedMeta.color}`}>{schedTitle}</p>
-                    <p className="text-xs text-muted-foreground">{schedMessage}</p>
-                    {scheduler && (
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground">
-                          mode: {scheduler.mode}
-                        </span>
-                        {scheduler.isLeader && (
-                          /* R125-I2 (A6-B6): --primary-text — raw --primary
-                           * on its own /10 tint is 3.56:1 on dark (text
-                           * floor 4.5:1); the mono `leader` value is
-                           * TEXT. */
-                          <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary-text">
-                            leader
-                          </span>
-                        )}
-                        {scheduler.startedAt && (
-                          <span
-                            className="text-3xs text-muted-foreground"
-                            title={scheduler.startedAt}
-                          >
-                            {/* 93-C6 / F-06: the formatter now emits its
-                                own «قبل …» wording — a hand-written
-                                «منذ» prefix would double up. */}
-                            {formatRelativeTime(scheduler.startedAt)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </DetailsSection>
+            <SchedulerDetailsSection
+              scheduler={scheduler}
+              schedMeta={schedMeta}
+              schedTitle={schedTitle}
+              schedMessage={schedMessage}
+            />
 
             {/* ── Panel 3: Runtime diagnostics grid ── */}
-            <DetailsSection title="وقت التشغيل والذاكرة (RSS · event-loop · إصدار · أعلام)">
-              {diagQ.isLoading ? (
-                /* R136 (UX-1): SkeletonText — the 8-tile diagnostics
-                   grid, same one-wrapper treatment as the health grid. */
-                <SkeletonText
-                  count={8}
-                  wrapperClassName="grid grid-cols-2 lg:grid-cols-4 gap-3"
-                  className="h-[88px] rounded-2xl"
-                  lastShorter={false}
-                />
-              ) : diagQ.isError || !diag ? (
-                <div className="bg-card border border-status-warning/20 rounded-2xl p-4 flex items-center gap-3">
-                  <AlertCircle className="w-4 h-4 text-status-warning shrink-0" />
-                  <span className="text-xs text-muted-foreground">
-                    تعذّر جلب تشخيص وقت التشغيل (يتطلب صلاحيات إدارية).
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <MetricCard
-                      label="مدة التشغيل"
-                      value={formatUptime(diag.runtime.uptimeSec)}
-                      sub={`بيئة: ${diag.runtime.env}`}
-                      icon={Clock}
-                      color="text-status-success"
-                      bg="bg-status-success/10"
-                      border="border-status-success/20"
-                    />
-                    <MetricCard
-                      label="الذاكرة (RSS)"
-                      value={`${diag.memory.rssMb}MB`}
-                      sub={`heap: ${diag.memory.heapUsedMb}/${diag.memory.heapTotalMb}MB`}
-                      icon={MemoryStick}
-                      color="text-status-info"
-                      bg="bg-status-info/10"
-                      border="border-status-info/20"
-                      spark={memorySeries}
-                      sparkColor={chart.info}
-                    />
-                    <MetricCard
-                      label="event-loop p99"
-                      value={diag.eventLoop ? `${diag.eventLoop.p99Ms.toFixed(1)}ms` : "—"}
-                      sub={
-                        diag.eventLoop
-                          ? `p50: ${diag.eventLoop.p50Ms.toFixed(1)}ms · p95: ${diag.eventLoop.p95Ms.toFixed(1)}ms`
-                          : "غير متاح"
-                      }
-                      icon={Cpu}
-                      color={
-                        diag.eventLoop && diag.eventLoop.p99Ms > 100
-                          ? "text-status-error"
-                          : "text-status-info"
-                      }
-                      bg={
-                        diag.eventLoop && diag.eventLoop.p99Ms > 100
-                          ? "bg-status-error/10"
-                          : "bg-status-info/10"
-                      }
-                      border={
-                        diag.eventLoop && diag.eventLoop.p99Ms > 100
-                          ? "border-status-error/20"
-                          : "border-status-info/20"
-                      }
-                      spark={eventLoopSeries}
-                      sparkColor={chart.info}
-                    />
-                    <MetricCard
-                      label="الإصدار"
-                      value={diag.runtime.version}
-                      sub={`Node ${diag.node.version} · ${diag.runtime.service}`}
-                      icon={Layers}
-                      color="text-status-low-stock"
-                      bg="bg-status-low-stock/10"
-                      border="border-status-low-stock/20"
-                    />
-                  </div>
-
-                  <div className="bg-card border border-border/60 rounded-2xl p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Flag className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-3xs text-muted-foreground font-bold">
-                        الأعلام التشغيلية
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {Object.entries(diag.flags).map(([key, val]) => {
-                        const enabled = val === "true";
-                        return (
-                          <span
-                            key={key}
-                            className={`text-3xs px-2 py-1 rounded-lg border font-mono ${
-                              enabled
-                                ? "bg-status-success/8 border-status-success/20 text-status-success"
-                                : "bg-muted/30 border-border/50 text-muted-foreground"
-                            }`}
-                          >
-                            {key}: {val}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
-            </DetailsSection>
+            <RuntimeDiagnosticsSection
+              diag={diag}
+              diagLoading={diagQ.isLoading}
+              diagError={diagQ.isError}
+              memorySeries={memorySeries}
+              eventLoopSeries={eventLoopSeries}
+              chart={chart}
+            />
 
             {/* ── Panel 4: HTTP Request Analytics ── */}
-            {/* 93-C6 / SY-1: the metrics queryFn used to swallow !ok
-                bodies as data; on failure the section simply vanished.
-                Now the failure is explicit (with a retry) instead of
-                silently missing panels or fake zeros. */}
-            {!metrics && metricsQ.isError && (
-              <div
-                role="alert"
-                className="bg-card border border-status-warning/20 rounded-2xl p-4 flex items-center gap-3 flex-wrap"
-              >
-                <AlertCircle className="w-4 h-4 text-status-warning shrink-0" />
-                <span className="text-xs text-muted-foreground flex-1 min-w-40">
-                  تعذّر جلب مقاييس المراقبة — قد تكون الجلسة منتهية أو الخدمة غير متاحة.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => metricsQ.refetch()}
-                  /* R125-I2 (A6-B6): --primary-text (raw --primary is
-                     3.76:1 on dark — under the 4.5:1 text floor). */
-                  className="text-xs font-bold text-primary-text underline underline-offset-2 hover:opacity-80"
-                >
-                  إعادة المحاولة
-                </button>
-              </div>
-            )}
-            {metrics && (
-              <DetailsSection title="تحليلات الطلبات HTTP (المسارات · حالات الاستجابة · زمن p50/p99)">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <MetricCard
-                    label="إجمالي الطلبات"
-                    value={formatNumber(metrics.http.totalRequests)}
-                    sub={`منذ آخر إقلاع · ${metrics.http.topRoutes.length} مسار نشط`}
-                    icon={Radio}
-                    color="text-primary"
-                    bg="bg-primary/10"
-                    border="border-primary/20"
-                    spark={reqRate}
-                    sparkColor={chart.primary}
-                  />
-                  <MetricCard
-                    label="معدل الأخطاء (5xx)"
-                    value={`${(metrics.http.errorRate * 100).toFixed(2)}%`}
-                    sub={`${formatNumber(metrics.http.requestsByStatusClass["5xx"] ?? 0)} خطأ`}
-                    icon={AlertCircle}
-                    color={
-                      metrics.http.errorRate > 0.01 ? "text-status-error" : "text-status-success"
-                    }
-                    bg={
-                      metrics.http.errorRate > 0.01 ? "bg-status-error/10" : "bg-status-success/10"
-                    }
-                    border={
-                      metrics.http.errorRate > 0.01
-                        ? "border-status-error/20"
-                        : "border-status-success/20"
-                    }
-                    spark={errRate}
-                    sparkColor={chart.error}
-                  />
-                  <MetricCard
-                    label="زمن الاستجابة p95"
-                    value={formatMs(metrics.http.latency.p95Ms)}
-                    sub={`p50: ${formatMs(metrics.http.latency.p50Ms)} · p99: ${formatMs(metrics.http.latency.p99Ms)}`}
-                    icon={Clock}
-                    color={
-                      (metrics.http.latency.p95Ms ?? 0) > 1000
-                        ? "text-status-error"
-                        : "text-status-info"
-                    }
-                    bg={
-                      (metrics.http.latency.p95Ms ?? 0) > 1000
-                        ? "bg-status-error/10"
-                        : "bg-status-info/10"
-                    }
-                    border={
-                      (metrics.http.latency.p95Ms ?? 0) > 1000
-                        ? "border-status-error/20"
-                        : "border-status-info/20"
-                    }
-                    spark={p95Series}
-                    sparkColor={chart.info}
-                  />
-                  <MetricCard
-                    label="حالات الاستجابة"
-                    value={`${formatNumber(metrics.http.requestsByStatusClass["2xx"] ?? 0)} / ${formatNumber(metrics.http.requestsByStatusClass["4xx"] ?? 0)}`}
-                    sub={`2xx ناجح · 4xx خطأ من العميل`}
-                    icon={ShieldCheck}
-                    color="text-status-success"
-                    bg="bg-status-success/10"
-                    border="border-status-success/20"
-                  />
-                </div>
-
-                {/* Top routes table */}
-                {metrics.http.topRoutes.length > 0 && (
-                  <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-                    <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-                      <Box className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-3xs text-muted-foreground font-bold">
-                        أكثر المسارات نشاطاً
-                      </span>
-                    </div>
-                    <div className="divide-y divide-border/40">
-                      {metrics.http.topRoutes.slice(0, 6).map((r) => {
-                        const errPct = r.count === 0 ? 0 : (r.errorCount / r.count) * 100;
-                        return (
-                          <div
-                            key={`${r.method}-${r.route}`}
-                            className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
-                          >
-                            <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border/40 text-muted-foreground shrink-0">
-                              {r.method}
-                            </span>
-                            <span className="font-mono text-xs flex-1 min-w-0 truncate" dir="ltr">
-                              {r.route}
-                            </span>
-                            <span className="text-xs font-bold tabular-nums shrink-0">
-                              {formatNumber(r.count)}
-                            </span>
-                            {errPct > 0 && (
-                              /* R126-L5 (A3 item-10): the sub-1% error
-                                 text joins the warning sweep
-                                 (yellow-400 fails the light theme at
-                                 ~1.5:1). */
-                              <span
-                                className={`text-3xs font-bold tabular-nums shrink-0 ${errPct > 1 ? "text-status-error" : "text-status-warning"}`}
-                              >
-                                {errPct.toFixed(1)}% أخطاء
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </DetailsSection>
-            )}
+            <HttpAnalyticsSection
+              metrics={metrics}
+              metricsError={metricsQ.isError}
+              onRetryMetrics={() => void metricsQ.refetch()}
+              reqRate={reqRate}
+              errRate={errRate}
+              p95Series={p95Series}
+              chart={chart}
+            />
 
             {/* ── Panel 5: Auth & Security ── */}
             {metrics && (
-              <DetailsSection title="المصادقة والأمان (المحاولات · معدل الفشل · حالات القفل)">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <MetricCard
-                    label="إجمالي المحاولات"
-                    value={formatNumber(metrics.auth.totalAttempts)}
-                    sub={`${formatNumber(
-                      Object.entries(metrics.auth.outcomes)
-                        .filter(([k]) => k.endsWith(":success"))
-                        .reduce((a, [, v]) => a + v, 0),
-                    )} نجاح`}
-                    icon={ShieldCheck}
-                    color="text-status-success"
-                    bg="bg-status-success/10"
-                    border="border-status-success/20"
-                  />
-                  <MetricCard
-                    label="معدل الفشل"
-                    value={`${(metrics.auth.failureRate * 100).toFixed(1)}%`}
-                    sub="فشل + قفل / إجمالي"
-                    icon={AlertTriangle}
-                    /* R126-L5 (A3 item-10): the failure-rate MetricCard's
-                       healthy branch joins the warning sweep (yellow-400
-                       fails the light theme at ~1.5:1). */
-                    color={
-                      metrics.auth.failureRate > 0.1 ? "text-status-error" : "text-status-warning"
-                    }
-                    bg={
-                      metrics.auth.failureRate > 0.1 ? "bg-status-error/10" : "bg-status-warning/10"
-                    }
-                    border={
-                      metrics.auth.failureRate > 0.1
-                        ? "border-status-error/20"
-                        : "border-status-warning/20"
-                    }
-                    spark={authFailRate}
-                    sparkColor={chart.warning}
-                  />
-                  <MetricCard
-                    label="فشل Firebase"
-                    value={formatNumber(metrics.auth.outcomes["firebase:failure"] ?? 0)}
-                    sub="جلسة Firebase / OTP"
-                    icon={Zap}
-                    color="text-status-low-stock"
-                    bg="bg-status-low-stock/10"
-                    border="border-status-low-stock/20"
-                  />
-                  <MetricCard
-                    label="حالات قفل الحساب"
-                    value={formatNumber(
-                      Object.entries(metrics.auth.outcomes)
-                        .filter(([k]) => k.endsWith(":lockout"))
-                        .reduce((a, [, v]) => a + v, 0),
-                    )}
-                    sub="بسبب محاولات متكررة"
-                    icon={ShieldCheck}
-                    color="text-status-error"
-                    bg="bg-status-error/10"
-                    border="border-status-error/20"
-                  />
-                </div>
-              </DetailsSection>
+              <AuthSecuritySection metrics={metrics} authFailRate={authFailRate} chart={chart} />
             )}
 
             {/* ── Panel 6: Redis Performance ── */}
             {metrics && (
-              <DetailsSection title="أداء Redis (الاتصال · العمليات · ping latency · الأخطاء)">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <MetricCard
-                    label="حالة الاتصال"
-                    value={metrics.redis.available ? "متصل" : "غير متصل"}
-                    sub={
-                      metrics.redis.degradedEvents > 0
-                        ? `${metrics.redis.degradedEvents} تخفيض`
-                        : "بدون تخفيضات"
-                    }
-                    icon={Wifi}
-                    color={metrics.redis.available ? "text-status-success" : "text-status-error"}
-                    bg={metrics.redis.available ? "bg-status-success/10" : "bg-status-error/10"}
-                    border={
-                      metrics.redis.available
-                        ? "border-status-success/20"
-                        : "border-status-error/20"
-                    }
-                  />
-                  <MetricCard
-                    label="إجمالي العمليات"
-                    value={formatNumber(
-                      Object.values(metrics.redis.opsTotal).reduce((a, b) => a + b, 0),
-                    )}
-                    sub="get/set/ping/etc"
-                    icon={Zap}
-                    color="text-primary"
-                    bg="bg-primary/10"
-                    border="border-primary/20"
-                    spark={redisOpsRate}
-                    sparkColor={chart.primary}
-                  />
-                  <MetricCard
-                    label="ping latency p95"
-                    value={formatMs(metrics.redis.pingLatencyMs.p95)}
-                    sub={`p50: ${formatMs(metrics.redis.pingLatencyMs.p50)} · p99: ${formatMs(metrics.redis.pingLatencyMs.p99)}`}
-                    icon={Clock}
-                    color={
-                      (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                        ? "text-status-error"
-                        : "text-status-info"
-                    }
-                    bg={
-                      (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                        ? "bg-status-error/10"
-                        : "bg-status-info/10"
-                    }
-                    border={
-                      (metrics.redis.pingLatencyMs.p95 ?? 0) > 100
-                        ? "border-status-error/20"
-                        : "border-status-info/20"
-                    }
-                  />
-                  <MetricCard
-                    label="إجمالي الأخطاء"
-                    value={formatNumber(
-                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0),
-                    )}
-                    sub={
-                      Object.entries(metrics.redis.errorsTotal)
-                        .sort(([, a], [, b]) => b - a)
-                        .slice(0, 1)
-                        .map(([k]) => k)[0] ?? "بدون"
-                    }
-                    icon={AlertCircle}
-                    color={
-                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                        ? "text-status-error"
-                        : "text-status-success"
-                    }
-                    bg={
-                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                        ? "bg-status-error/10"
-                        : "bg-status-success/10"
-                    }
-                    border={
-                      Object.values(metrics.redis.errorsTotal).reduce((a, b) => a + b, 0) > 0
-                        ? "border-status-error/20"
-                        : "border-status-success/20"
-                    }
-                  />
-                </div>
-              </DetailsSection>
+              <RedisPerformanceSection
+                metrics={metrics}
+                redisOpsRate={redisOpsRate}
+                chart={chart}
+              />
             )}
 
             {/* ── Panel 7: Socket.IO + Job Activity ── */}
-            {metrics && (
-              <DetailsSection title="Socket.IO والمهام الخلفية (cron · watchers · heartbeat)">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {/* Socket.IO */}
-                  <div className="bg-card border border-border/60 rounded-2xl p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Wifi className="w-4 h-4 text-status-info" />
-                      <h3 className="text-sm font-bold">Socket.IO</h3>
-                      <span className="text-3xs text-muted-foreground mr-auto">واجهات لحظية</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-3xs text-muted-foreground font-bold mb-1">
-                          عملاء متّصلون
-                        </div>
-                        <div className="font-bold text-2xl text-status-info tabular-nums">
-                          {metrics.socket.connectedClients}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-3xs text-muted-foreground font-bold mb-1">
-                          إجمالي الأحداث
-                        </div>
-                        <div className="font-bold text-2xl tabular-nums">
-                          {formatNumber(
-                            Object.values(metrics.socket.eventsTotal).reduce((a, b) => a + b, 0),
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Background jobs */}
-                  <div className="bg-card border border-border/60 rounded-2xl p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <TimerReset className="w-4 h-4 text-status-success" />
-                      <h3 className="text-sm font-bold">المهام الخلفية</h3>
-                      <span className="text-3xs text-muted-foreground mr-auto">
-                        cron · watchers · heartbeat
-                      </span>
-                    </div>
-                    {Object.keys(metrics.worker.jobsTotal).length === 0 ? (
-                      <div className="text-xs text-muted-foreground py-3 text-center">
-                        لم تُسجَّل أي مهمة بعد
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                        {Object.entries(metrics.worker.jobsTotal)
-                          .sort(([, a], [, b]) => b - a)
-                          .slice(0, 8)
-                          .map(([key, count]) => {
-                            const [job, status] = key.split(":");
-                            const isFailed = status === "failed";
-                            return (
-                              <div
-                                key={key}
-                                className="flex items-center gap-2 text-xs py-1 border-b border-border/30 last:border-0"
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                    isFailed ? "bg-status-error" : "bg-status-success"
-                                  }`}
-                                />
-                                <span
-                                  className="font-mono text-muted-foreground truncate"
-                                  dir="ltr"
-                                >
-                                  {job}
-                                </span>
-                                <span className="text-3xs text-muted-foreground shrink-0">
-                                  {status}
-                                </span>
-                                <span className="font-bold tabular-nums shrink-0 mr-auto">
-                                  {count}
-                                </span>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </DetailsSection>
-            )}
+            {metrics && <SocketJobsSection metrics={metrics} />}
 
             {/* ── Panel 7.5: Core Web Vitals p75 ── */}
             {metrics && Object.keys(metrics.cwv.p75).length > 0 && (
-              <DetailsSection title="Core Web Vitals (LCP · FCP · INP · CLS · TTFB — p75)">
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  {(
-                    [
-                      { key: "lcp", label: "LCP", good: 2500, poor: 4000, unit: "ms" as const },
-                      { key: "fcp", label: "FCP", good: 1800, poor: 3000, unit: "ms" as const },
-                      { key: "inp", label: "INP", good: 200, poor: 500, unit: "ms" as const },
-                      { key: "cls", label: "CLS", good: 0.1, poor: 0.25, unit: "" as const },
-                      { key: "ttfb", label: "TTFB", good: 800, poor: 1800, unit: "ms" as const },
-                    ] as const
-                  ).map(({ key, label, good, poor, unit }) => {
-                    const p75 = metrics.cwv.p75[key];
-                    const samples = metrics.cwv.samples[key] ?? 0;
-                    let tone: "ok" | "degraded" | "failing" = "ok";
-                    let display = "—";
-                    if (p75 !== null && p75 !== undefined) {
-                      if (p75 > poor) tone = "failing";
-                      else if (p75 > good) tone = "degraded";
-                      display =
-                        unit === "ms"
-                          ? p75 < 1000
-                            ? `${Math.round(p75)}ms`
-                            : `${(p75 / 1000).toFixed(2)}s`
-                          : p75.toFixed(3);
-                    } else if (samples === 0) {
-                      display = "بدون عيّنات";
-                    }
-                    const meta = STATUS_META[tone];
-                    return (
-                      <div
-                        key={key}
-                        className={`bg-card border ${meta.border} rounded-2xl p-4`}
-                        title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="text-3xs text-muted-foreground font-bold">{label}</span>
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              tone === "ok"
-                                ? "bg-status-success"
-                                : tone === "degraded"
-                                  ? "bg-status-warning"
-                                  : "bg-status-error"
-                            }`}
-                          />
-                        </div>
-                        <div
-                          className={`font-bold text-base leading-none tabular-nums ${meta.color}`}
-                        >
-                          {display}
-                        </div>
-                        <div className="text-3xs text-muted-foreground mt-1">{samples} عيّنة</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </DetailsSection>
+              <CoreWebVitalsSection metrics={metrics} />
             )}
 
             {/* ── Panel 8: Request rate trend chart (visual centerpiece) ── */}
@@ -1613,13 +464,13 @@ export default function AdminSystemPage(): ReactElement | null {
                     </span>
                   </div>
                   {/* R125-I2 (A5-F3): the rps trend rides the lazy
-                      recharts bridge (see the ChartsLoader comment at the
-                      top of the file) with a height-reserved fallback.
-                      R136 (UX-1): the fallback is a Skeleton block now —
-                      geometry verbatim, the pair net-new. (The sparkline
-                      slot's fallback above stays a bare aria-hidden div:
-                      a decorative slot inside an already-live card must
-                      not become its own live region.) */}
+                      recharts bridge (see the ChartsLoader module) with a
+                      height-reserved fallback. R136 (UX-1): the fallback
+                      is a Skeleton block now — geometry verbatim, the pair
+                      net-new. (The sparkline slot's fallback above stays
+                      a bare aria-hidden div: a decorative slot inside an
+                      already-live card must not become its own live
+                      region.) */}
                   <Suspense fallback={<Skeleton className="h-[120px] rounded-lg" />}>
                     <ChartsLoader>
                       {(rc) => (
@@ -1671,113 +522,12 @@ export default function AdminSystemPage(): ReactElement | null {
         {/* End of SECTION 2 — ADVANCED DIAGNOSTICS */}
 
         {/* ── Panel 9: Recent observability alerts ── */}
-        <section className="space-y-3 float-in stagger-9">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold">آخر التنبيهات</h2>
-            <Link href="/admin/alerts">
-              <span className="text-xs text-muted-foreground hover:text-primary-text transition-colors cursor-pointer">
-                {/* RTL: forward link arrow points left (unified icon-direction decision) */}
-                عرض الكل <ChevronLeft className="w-3 h-3 inline" />
-              </span>
-            </Link>
-          </div>
-          {recentAlertsQ.isLoading ? (
-            /* R136 (UX-1): SkeletonText — the 3-row alerts stack,
-               geometry verbatim; the pair is net-new. */
-            <SkeletonText
-              count={3}
-              wrapperClassName="space-y-2"
-              className="h-[56px] rounded-xl"
-              lastShorter={false}
-            />
-          ) : recentAlerts.length === 0 ? (
-            <div className="bg-card border border-border/60 rounded-2xl p-6 flex flex-col items-center gap-2 text-muted-foreground">
-              <Inbox className="w-6 h-6 opacity-30" />
-              <span className="text-xs">لا توجد تنبيهات حديثة</span>
-            </div>
-          ) : (
-            <div className="bg-card border border-border/60 rounded-2xl divide-y divide-border/40 overflow-hidden">
-              {recentAlerts.slice(0, 5).map((alert) => (
-                <Link key={alert.id} href="/admin/alerts">
-                  <div className="flex items-start gap-3 px-4 py-3 hover:bg-muted/20 transition-colors cursor-pointer">
-                    <AlertTriangle className="w-3.5 h-3.5 text-status-warning shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold truncate">{alert.title}</div>
-                      {alert.message && (
-                        <div className="text-2xs text-muted-foreground truncate">
-                          {alert.message}
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-3xs text-muted-foreground shrink-0">
-                      {formatRelativeTime(alert.createdAt)}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
+        <RecentAlertsSection alertsLoading={recentAlertsQ.isLoading} recentAlerts={recentAlerts} />
 
         {/* ── Panel 10: External dashboards ── */}
         {summary &&
           (summary.dashboards.render || summary.dashboards.sentry || summary.dashboards.neon) && (
-            <section className="space-y-3 float-in stagger-10">
-              <h2 className="text-sm font-bold">لوحات خارجية</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {summary.dashboards.render && (
-                  <a
-                    href={summary.dashboards.render}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-card border border-border/60 hover:border-border rounded-2xl p-4 flex items-center gap-3 transition-all card-spring"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-status-purple/10 border border-status-purple/20 flex items-center justify-center">
-                      <Server className="w-4 h-4 text-status-purple" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-bold">Render</div>
-                      <div className="text-3xs text-muted-foreground">النشرات والسجلات</div>
-                    </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                  </a>
-                )}
-                {summary.dashboards.sentry && (
-                  <a
-                    href={summary.dashboards.sentry}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-card border border-border/60 hover:border-border rounded-2xl p-4 flex items-center gap-3 transition-all card-spring"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-status-purple/10 border border-status-purple/20 flex items-center justify-center">
-                      <AlertCircle className="w-4 h-4 text-status-purple" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-bold">Sentry</div>
-                      <div className="text-3xs text-muted-foreground">الأخطاء والتتبع</div>
-                    </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                  </a>
-                )}
-                {summary.dashboards.neon && (
-                  <a
-                    href={summary.dashboards.neon}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-card border border-border/60 hover:border-border rounded-2xl p-4 flex items-center gap-3 transition-all card-spring"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-status-success/10 border border-status-success/20 flex items-center justify-center">
-                      <Database className="w-4 h-4 text-status-success" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-bold">Neon</div>
-                      <div className="text-3xs text-muted-foreground">قاعدة البيانات</div>
-                    </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                  </a>
-                )}
-              </div>
-            </section>
+            <ExternalDashboardsSection summary={summary} />
           )}
       </div>
     </AdminLayout>

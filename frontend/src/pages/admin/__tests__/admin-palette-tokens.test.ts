@@ -101,22 +101,44 @@ describe("admin palette discipline — flagship migration pins (R128 A1-F1)", ()
   const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 
   it("topups approve buttons ride --status-success-surface (A1-F2, retired emerald-700)", () => {
-    const topups = read("src/pages/admin/topups.tsx");
-    expect(topups).toContain("bg-status-success-surface hover:bg-status-success-surface/90");
+    // R137 (FE decomposition): the row/card approve markup moved to the
+    // components/admin/topups/* extracts — the pin follows the surface
+    // and reads the page ∪ extracts union (the r136 checkout-surface
+    // idiom in a4-f1-nesting-sweep).
+    const topupsSurface = [
+      read("src/pages/admin/topups.tsx"),
+      ...readdirSync(resolve(process.cwd(), "src/components/admin/topups")).map((f) =>
+        read(`src/components/admin/topups/${f}`),
+      ),
+    ].join("\n");
+    expect(topupsSurface).toContain("bg-status-success-surface hover:bg-status-success-surface/90");
     // Class-shaped ban (the historical comment may name the retired
     // hand-roll; the CLASS must be gone — the negative guard above
     // already bans every bg-emerald-* shape).
-    expect(topups).not.toContain("bg-emerald");
+    expect(topupsSurface).not.toContain("bg-emerald");
   });
 
   it("topups badges are StatusBadge variants (A1-D2)", () => {
-    expect(read("src/pages/admin/topups.tsx")).toContain('<StatusBadge variant="purple" size="xs"');
+    // R137: the purple method pill moved with the row card into
+    // MethodBadge.tsx (verbatim) — the pin follows it there.
+    expect(read("src/components/admin/topups/MethodBadge.tsx")).toContain(
+      '<StatusBadge variant="purple" size="xs"',
+    );
   });
 
   it("products CATEGORY_INITIAL_COLOR rides the canonical --cat-* family (A1-D4)", () => {
-    const products = read("src/pages/admin/products.tsx");
-    expect(products).toContain('"bg-cat-streaming/10 text-cat-streaming"');
-    expect(products).toContain('"bg-cat-gaming/10 text-cat-gaming"');
+    // R137 (FE decomposition): CATEGORY_INITIAL_COLOR moved verbatim to
+    // components/admin/products/products-meta.ts — the pin follows the
+    // surface and reads the page ∪ extracts union (the r136
+    // checkout-surface idiom, same as the topups A1-F2 pin above).
+    const productsSurface = [
+      read("src/pages/admin/products.tsx"),
+      ...readdirSync(resolve(process.cwd(), "src/components/admin/products")).map((f) =>
+        read(`src/components/admin/products/${f}`),
+      ),
+    ].join("\n");
+    expect(productsSurface).toContain('"bg-cat-streaming/10 text-cat-streaming"');
+    expect(productsSurface).toContain('"bg-cat-gaming/10 text-cat-gaming"');
   });
 
   it("referrals medals ride the NEW --tier-* family (A1-D10/F3)", () => {
