@@ -1,8 +1,9 @@
 import express from "express";
 import cookieParser from "cookie-parser";
-import { describe, expect, it, beforeAll, beforeEach } from "vitest";
+import { describe, expect, it, beforeAll, beforeEach, afterEach } from "vitest";
 import {
   db,
+  flashSalesTable,
   initTestDb,
   resetTestDb,
   cartItemsTable,
@@ -12,7 +13,7 @@ import {
 } from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { eq } from "drizzle-orm";
-import { cartRouter } from "../cart";
+import { cartRouter, __resetFlashSaleCacheForTests } from "../cart";
 
 /**
  * Integration tests for the cart API. The cart router is mounted at
@@ -456,6 +457,56 @@ describe("PATCH /api/cart/items/:id", () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_DATA");
+  });
+});
+
+describe("cart flash-sale display pricing — the half-cent class (R134 A4-F2)", () => {
+  // Hermetic both ways: this describe resets the 30 s stage cache BEFORE
+  // seeding its sale (earlier no-sale tests warmed it) and AGAIN after
+  // each test (later describes must not inherit the sale stage).
+  afterEach(() => {
+    __resetFlashSaleCacheForTests();
+  });
+
+  // 89.99 × 50% = 44.995 — the exact half-cent class lib/money documents:
+  // the stored double is 44.994999…, so the old raw toFixed(2) read
+  // 44.99 here while the catalog (products.ts), checkout and the PDP
+  // all quoted computeFlashSalePrice's roundLyd answer 45.00. Display-
+  // only (checkout re-quotes server-side) but an authenticated public
+  // contract: the cart line must agree with every other surface.
+  it("a 89.99 product under a 50% sale prices 45.00 — not the toFixed 44.99", async () => {
+    // Earlier no-sale tests warmed the 30 s stage cache; the reset lets
+    // this test's freshly seeded sale through (the module's own test
+    // export, the __setMigrationsFingerprintForTests idiom).
+    __resetFlashSaleCacheForTests();
+    await db.insert(flashSalesTable).values({
+      title: "Half-cent Fixture Sale",
+      discountPercent: "50.00",
+      endsAt: new Date(Date.now() + 60 * 60 * 1000),
+      isActive: true,
+    });
+    const [halfCentProduct] = await db
+      .insert(productsTable)
+      .values({ name: "Half-cent Fixture", price: "89.99", isActive: true })
+      .returning();
+    const token = signUserToken({ userId: userA.id });
+
+    const created = await call<{ id: number }>(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: halfCentProduct.id, quantity: 1 },
+    });
+    expect(created.status).toBe(201);
+
+    const res = await call<{
+      items: { sale_price: number; subtotal: number }[];
+      total: number;
+    }>(app, "GET", "/api/cart", { token });
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    // roundLyd half-UP on the intended decimal 44.995 → 45.00 everywhere.
+    expect(res.body.items[0]!.sale_price).toBe(45);
+    expect(res.body.items[0]!.subtotal).toBe(45);
+    expect(res.body.total).toBe(45);
   });
 });
 

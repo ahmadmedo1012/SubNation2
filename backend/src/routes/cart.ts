@@ -5,6 +5,7 @@ import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUs
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { intParam } from "../lib/http";
 import { applyFlashSale, computeFlashSalePrice, type FlashSaleStage } from "../lib/pricing";
+import { roundLyd } from "../lib/money";
 
 const router = Router();
 
@@ -38,6 +39,14 @@ async function getFlashSaleStageCached(): Promise<FlashSaleStage> {
   const stage = await applyFlashSale(0);
   flashSaleCache = { stage, at: Date.now() };
   return stage;
+}
+
+/** Test-only (the __setMigrationsFingerprintForTests idiom): the 30 s
+ *  stage cache otherwise hides a flash sale seeded later in the same
+ *  test process from every cart response — the half-cent pin seeds its
+ *  sale AFTER earlier no-sale tests have warmed the cache. */
+export function __resetFlashSaleCacheForTests(): void {
+  flashSaleCache = null;
 }
 
 interface CartItemResponse {
@@ -100,7 +109,7 @@ async function buildCartItemResponse(
     sale_price: salePrice,
     discount_percent: discountPercent > 0 ? discountPercent : null,
     quantity: row.quantity,
-    subtotal: +(effectivePrice * row.quantity).toFixed(2),
+    subtotal: roundLyd(effectivePrice * row.quantity),
     created_at: row.createdAt.toISOString(),
   };
 }
@@ -157,7 +166,11 @@ router.get("/", requireUser, async (req, res) => {
 
   return res.json({
     items: itemsWithDetails,
-    total: +itemsWithDetails.reduce((sum, i) => sum + i.subtotal, 0).toFixed(2),
+    // R134 (A4-F2, fold parity): roundLyd spelling on the folds too —
+    // a roundLyd'd unit price × integer quantity is decimal-exact, so
+    // this is a no-op today; it keeps every money boundary in this
+    // file on the canonical helper.
+    total: roundLyd(itemsWithDetails.reduce((sum, i) => sum + i.subtotal, 0)),
   });
 });
 
