@@ -351,6 +351,19 @@ jobs:
         # diagnostics surface) and documented routes must stay implemented.
         run: pnpm --filter @workspace/scripts exec tsx ../scripts/check-openapi-routes.ts
 
+      - name: ErrorCode YAML ↔ const sync gate
+        # R135 (SH-1): the ErrorCode enum lives in TWO places — the
+        # round-3 single source of truth shared/error-codes/src/index.ts
+        # and the ErrorCode schema enum in openapi.yaml — and drifted
+        # THREE times before this gate (round-3's backend/frontend split,
+        # round-92 B3/F-05's copilot family, round-93/94's
+        # COPILOT_RATE_LIMITED/CSRF_CONFIG/PHASE_DISABLED/SECRET_LEAK
+        # stragglers), each found by hand. This step diffs both
+        # directions so a code added to one side without the other fails
+        # CI loudly instead of lying to generated clients (and surfacing
+        # raw English in Arabic toasts) until someone notices.
+        run: pnpm --filter @workspace/scripts exec tsx ../scripts/check-error-code-sync.ts
+
       - name: Migration drift check
         # Regenerates Drizzle migrations from the schema, then verifies the
         # working tree is unchanged. If a dev edited the schema without

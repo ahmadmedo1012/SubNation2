@@ -11,6 +11,7 @@
     "backup": "tsx ./src/backup-db.ts",
     "validate": "tsx ../scripts/validate.ts",
     "check:openapi": "tsx ../scripts/check-openapi-routes.ts",
+    "check:error-codes": "tsx ../scripts/check-error-code-sync.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate:env": "tsx ./src/validate-production-env.ts"
   },
