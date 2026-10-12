@@ -1,12 +1,4 @@
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
-import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
-import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-// 93-C7 / C-UX2 (A12 §11.1): status pills ride the canonical
-// StatusBadge + --status-* tokens instead of raw emerald/yellow hues.
-import { StatusBadge } from "@/components/ui/status-badge";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
@@ -21,87 +13,37 @@ import { useToast } from "@/hooks/use-toast";
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatDate, formatCurrency, localDateTimeToUtcIso } from "@/lib/utils";
-import {
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Hash,
-  Infinity as InfinityIcon,
-  Percent,
-  Plus,
-  RefreshCw,
-  Tag,
-  ToggleLeft,
-  ToggleRight,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { formatCurrency, localDateTimeToUtcIso } from "@/lib/utils";
+import { AlertCircle, Tag } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-
-interface Coupon {
-  id: number;
-  code: string;
-  type: "percentage" | "fixed";
-  value: number;
-  min_order_amount: number;
-  max_uses: number | null;
-  used_count: number;
-  expires_at: string | null;
-  is_active: boolean;
-  description: string | null;
-  created_at: string;
-}
-
-function TableSkeleton() {
-  return (
-    <SharedTableSkeleton
-      rows={5}
-      cells={[
-        "w-24",
-        "rounded-full w-16 shrink-0",
-        "w-16 shrink-0",
-        "flex-1 w-20",
-        "w-14 shrink-0",
-        "w-16 shrink-0",
-      ]}
-      zebra={false}
-    />
-  );
-}
-
-interface CreateForm {
-  code: string;
-  type: "percentage" | "fixed";
-  value: string;
-  min_order_amount: string;
-  max_uses: string;
-  expires_at: string;
-  description: string;
-}
-
-const EMPTY_FORM: CreateForm = {
-  code: "",
-  type: "percentage",
-  value: "",
-  min_order_amount: "",
-  max_uses: "",
-  expires_at: "",
-  description: "",
-};
-
-// 110-M (109-m P3): client-side parity with the backend create route
-// (backend/src/routes/coupons.ts) — percentage coupons are rejected at
-// value >= 100 (r4 red-team F-3: a 100% coupon zeroes finalPrice and the
-// checkout INVALID_PRICE gate fail-closes on every purchase), and ALL
-// values are capped at 10,000 LYD (MAX_FIXED_COUPON_VALUE — a direct
-// wallet-debit magnitude at checkout). Mirrored here so the form blocks
-// submit with an inline Arabic error instead of surfacing the server's
-// 400 after a round-trip.
-const MAX_FIXED_COUPON_VALUE = 10_000; // LYD — mirror of the backend bound
+// R137 (FE decomposition): the money-discount page's presentational
+// sections and pure metadata moved to @/components/admin/coupons/*
+// (verbatim moves — the money path stays HERE: the coupons list fetch,
+// handleCreate (the create POST with the 110-M parity guards + the
+// localDateTimeToUtcIso TZ conversion), handleToggle (the activate/
+// deactivate PATCH) and handleDelete (the confirm-gated soft-archive
+// DELETE), plus every form/busy atom; the extracts render the
+// byte-identical DOM they rendered inline yesterday). Import surface:
+//   • coupons-meta — the pure module (the Coupon/CreateForm contracts,
+//     the EMPTY_FORM seed, the 10,000 LYD MAX_FIXED_COUPON_VALUE bound)
+//   • CouponsHeader — h1 + «كوبون جديد» CTA + the three-stat strip
+//   • CreateCouponDialog — the create shell (page-owned form/valueError
+//     atoms ride down; submit fires through the page's handleCreate)
+//   • CouponsTable — the responsive rows + toggle/archive actions
+//   • CouponsTableSkeleton — the page-shaped loading skeleton
+import {
+  EMPTY_FORM,
+  MAX_FIXED_COUPON_VALUE,
+  type Coupon,
+  type CreateForm,
+} from "@/components/admin/coupons/coupons-meta";
+import { CouponsHeader } from "@/components/admin/coupons/CouponsHeader";
+import { CreateCouponDialog } from "@/components/admin/coupons/CreateCouponDialog";
+import { CouponsTable } from "@/components/admin/coupons/CouponsTable";
+import { CouponsTableSkeleton } from "@/components/admin/coupons/CouponsTableSkeleton";
 
 export default function AdminCouponsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -340,242 +282,30 @@ export default function AdminCouponsPage() {
   return (
     <AdminLayout onRefresh={() => fetchCoupons()}>
       <div className="space-y-5">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <Tag className="w-4 h-4 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold">الكوبونات والخصومات</h1>
-              <p className="text-xs text-muted-foreground">إنشاء وإدارة أكواد الخصم</p>
-            </div>
-          </div>
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="gap-1.5 text-sm bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 press-spring"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            كوبون جديد
-          </Button>
-        </div>
+        <CouponsHeader
+          couponsCount={coupons.length}
+          activeCount={activeCount}
+          totalUsed={totalUsed}
+          onCreate={() => setShowCreate(true)}
+        />
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-1">
-            <div className="text-2xl font-bold text-foreground tabular-nums">{coupons.length}</div>
-            {/* R120-B4 (A2-F22): honest wording. The list endpoint
-                (routes/coupons.ts AUD103-4-F9) caps at 200 newest rows
-                with NO page param — «إجمالي الكوبونات» claimed a total
-                the payload cannot know once the cap is hit. A short list
-                IS the whole set (the total is then true); a full 200-row
-                page switches to «عرض N (الأحدث أولاً)». Load-more is not
-                trivial against the hand-rolled fetch here (no page
-                contract server-side) — wording honesty this round. */}
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {coupons.length >= 200 ? `عرض ${coupons.length} (الأحدث أولاً)` : "إجمالي الكوبونات"}
-            </div>
-          </div>
-          <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-2">
-            <div className="text-2xl font-bold text-status-success tabular-nums">{activeCount}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">نشطة</div>
-          </div>
-          <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-3">
-            <div className="text-2xl font-bold text-primary tabular-nums">{totalUsed}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">مرات الاستخدام</div>
-          </div>
-        </div>
-
-        {/* Create modal — 93-C7 / C-UX3 (A12 §11.2, H5): migrated from
-            the hand-rolled fixed overlay to the shared AppDialog. Gained:
-            focus trap + ESC + scroll-lock + role="dialog" + mobile
-            bottom-sheet + the Radix animation family; ESC/backdrop/close
-            are loading-guarded while `creating`, and dismissing NO
-            LONGER resets the form (draft survives reopening). */}
-        <AppDialog
+        {/* Create modal — the shell renders the shared AppDialog (93-C7
+            / C-UX3 A12 §11.2, H5); the form atom, the valueError guard
+            and the money-discount POST stay page-owned above. */}
+        <CreateCouponDialog
           open={showCreate}
           onOpenChange={setShowCreate}
-          title="إنشاء كوبون جديد"
-          dismissable={!creating}
-          size="md"
-          footer={
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setShowCreate(false)}
-                disabled={creating}
-                className="flex-1 sm:flex-none"
-              >
-                إلغاء
-              </Button>
-              <Button
-                onClick={handleCreate}
-                disabled={creating}
-                className="flex-1 bg-primary hover:bg-primary/90 press-spring gap-1.5 sm:flex-none"
-              >
-                {creating ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Plus className="w-3.5 h-3.5" />
-                )}
-                {creating ? "جارٍ الإنشاء…" : "إنشاء الكوبون"}
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-4">
-            {/* Code */}
-            <div className="space-y-1.5">
-              <Label htmlFor="coupons-f1-15956" className="text-xs font-bold">
-                رمز الكوبون
-              </Label>
-              <Input
-                id="coupons-f1-15956"
-                value={form.code}
-                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
-                placeholder="SUMMER20"
-                className="font-mono uppercase"
-              />
-            </div>
-
-            {/* Type + Value */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold">نوع الخصم</Label>
-                <div className="flex gap-1.5">
-                  {(["percentage", "fixed"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => {
-                        // 110-M (109-m P3): a type switch re-scales the
-                        // value field — drop any stale guard error.
-                        setValueError(null);
-                        setForm((f) => ({ ...f, type: t }));
-                      }}
-                      /* R126-L3 (A4 quick-win): the active chip was purely
-                         visual (bg-primary) — a screen reader announced
-                         «نسبة / مبلغ» as two identical buttons with no
-                         state. aria-pressed exposes the toggle (the
-                         topups/orders status-tab chip idiom those pages'
-                         comments already cite as "the coupons.tsx chip-bar
-                         idiom" — the citation finally points at a real
-                         implementation). */
-                      aria-pressed={form.type === t}
-                      className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold border transition-all press-spring ${
-                        form.type === t
-                          ? "bg-primary text-white border-primary"
-                          : "bg-card border-border text-muted-foreground hover:border-border/80"
-                      }`}
-                    >
-                      {t === "percentage" ? (
-                        <>
-                          <Percent className="w-3 h-3 inline ml-1" />
-                          نسبة
-                        </>
-                      ) : (
-                        <>
-                          <Hash className="w-3 h-3 inline ml-1" />
-                          مبلغ
-                        </>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="coupons-f3-25257" className="text-xs font-bold">
-                  {form.type === "percentage" ? "النسبة (%)" : "المبلغ (د.ل)"}
-                </Label>
-                <Input
-                  id="coupons-f3-25257"
-                  type="number"
-                  value={form.value}
-                  onChange={(e) => {
-                    // 110-M (109-m P3): any edit clears the stale guard
-                    // error (re-validated on the next submit).
-                    setValueError(null);
-                    setForm((f) => ({ ...f, value: e.target.value }));
-                  }}
-                  placeholder={form.type === "percentage" ? "20" : "5.00"}
-                  min="0.01"
-                  max={form.type === "percentage" ? "100" : undefined}
-                />
-                {/* 110-M (109-m P3): inline parity-guard error — the same
-                    text-xs/text-destructive field-error idiom as
-                    settings.tsx / wallet.tsx. */}
-                {valueError && (
-                  <p className="text-xs text-destructive" role="alert">
-                    {valueError}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Min order + max uses */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="coupons-f4-28708" className="text-xs font-bold">
-                  حد أدنى للطلب (اختياري)
-                </Label>
-                <Input
-                  id="coupons-f4-28708"
-                  type="number"
-                  value={form.min_order_amount}
-                  onChange={(e) => setForm((f) => ({ ...f, min_order_amount: e.target.value }))}
-                  placeholder="0.00"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="coupons-f5-30186" className="text-xs font-bold">
-                  الحد الأقصى للاستخدام
-                </Label>
-                <Input
-                  id="coupons-f5-30186"
-                  type="number"
-                  value={form.max_uses}
-                  onChange={(e) => setForm((f) => ({ ...f, max_uses: e.target.value }))}
-                  placeholder="بلا حد"
-                />
-              </div>
-            </div>
-
-            {/* Expires at + description */}
-            <div className="space-y-1.5">
-              <Label htmlFor="coupons-f6-31815" className="text-xs font-bold">
-                تاريخ الانتهاء (اختياري)
-              </Label>
-              <Input
-                id="coupons-f6-31815"
-                type="datetime-local"
-                value={form.expires_at}
-                onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}
-              />
-              {/* 93-C7 / C-UX4: honest hint — the naive local value is
-                  converted to UTC on save; without it operators assumed
-                  the server shared their wall-clock. */}
-              <p className="text-2xs text-muted-foreground">
-                يُحوَّل تلقائياً إلى التوقيت العالمي (UTC) عند الحفظ — ينتهي في نفس اللحظة التي
-                تحددها هنا.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="coupons-f7-15994" className="text-xs font-bold">
-                وصف (اختياري)
-              </Label>
-              <Input
-                id="coupons-f7-15994"
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="مثال: خصم الصيف على الاشتراكات"
-              />
-            </div>
-          </div>
-        </AppDialog>
+          form={form}
+          setForm={setForm}
+          creating={creating}
+          valueError={valueError}
+          setValueError={setValueError}
+          onSubmit={handleCreate}
+        />
 
         {/* Table */}
         {loading ? (
-          <TableSkeleton />
+          <CouponsTableSkeleton />
         ) : (
           <>
             {/* Failure banner: shown ABOVE whatever data we already have —
@@ -611,190 +341,14 @@ export default function AdminCouponsPage() {
                 }
               />
             ) : coupons.length > 0 ? (
-              <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-                {/* Header */}
-                <div className="hidden md:grid grid-cols-[1fr_90px_80px_70px_110px_80px_90px] gap-4 px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-bold text-muted-foreground">
-                  <span>الكوبون</span>
-                  <span>الخصم</span>
-                  <span>الحد الأدنى</span>
-                  <span>الاستخدام</span>
-                  <span>الانتهاء</span>
-                  <span>الحالة</span>
-                  <span>إجراءات</span>
-                </div>
-
-                <div className="divide-y divide-border/30">
-                  {coupons.map((coupon, i) => {
-                    const isExpired = coupon.expires_at && new Date(coupon.expires_at) < new Date();
-                    const isMaxed =
-                      coupon.max_uses !== null && coupon.used_count >= coupon.max_uses;
-                    const effectivelyActive = coupon.is_active && !isExpired && !isMaxed;
-                    return (
-                      <div
-                        key={coupon.id}
-                        className={`flex flex-col md:grid md:grid-cols-[1fr_90px_80px_70px_110px_80px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/20 transition-colors ${i % 2 !== 0 ? "bg-muted/5" : ""}`}
-                      >
-                        {/* Code + description */}
-                        <div>
-                          <div className="font-mono font-bold text-sm tracking-wider text-foreground">
-                            {coupon.code}
-                          </div>
-                          {coupon.description && (
-                            <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">
-                              {coupon.description}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Value */}
-                        <div>
-                          {/* R125-I3 (A2-17): the header row is hidden below
-                              md — a bare stacked "5.00 د.ل" cell was
-                              indistinguishable from الحد الأدنى. Each cell
-                              gains a text-3xs field label visible ONLY on
-                              the mobile flex-col layout. */}
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
-                            الخصم
-                          </span>
-                          <div className="flex items-center gap-1 font-bold text-primary text-sm">
-                            {coupon.type === "percentage" ? (
-                              <>
-                                <Percent className="w-3 h-3" />
-                                {coupon.value}%
-                              </>
-                            ) : (
-                              <>
-                                {/* 93-C7 / C-UX5 (A5 C-3): formatCurrency instead
-                               of the raw `{value} د.ل` — fixed-value coupons
-                               now read "5.00 د.ل" like every other money
-                               surface in the app. */}
-                                <>{formatCurrency(coupon.value)}</>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Min order */}
-                        <div className="text-xs text-muted-foreground tabular-nums">
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
-                            الحد الأدنى
-                          </span>
-                          {coupon.min_order_amount > 0
-                            ? formatCurrency(coupon.min_order_amount)
-                            : "—"}
-                        </div>
-
-                        {/* Usage */}
-                        <div className="text-xs tabular-nums font-bold">
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
-                            الاستخدام
-                          </span>
-                          <span className="text-foreground">{coupon.used_count}</span>
-                          {coupon.max_uses !== null && (
-                            <span className="text-muted-foreground">/{coupon.max_uses}</span>
-                          )}
-                          {coupon.max_uses === null && (
-                            <InfinityIcon className="w-3 h-3 text-muted-foreground inline mr-1" />
-                          )}
-                        </div>
-
-                        {/* Expiry */}
-                        <div className="text-xs text-muted-foreground">
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
-                            الانتهاء
-                          </span>
-                          {coupon.expires_at ? (
-                            <span className={isExpired ? "text-destructive" : ""}>
-                              {formatDate(coupon.expires_at)}
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1">
-                              <InfinityIcon className="w-3 h-3" /> بلا حد
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Status — 93-C7 / C-UX2 (A12 B8): canonical
-                            StatusBadge (success/warning/neutral tones on
-                            the --status-* tokens) replaces the four
-                            raw-hue pills. */}
-                        <div>
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
-                            الحالة
-                          </span>
-                          {effectivelyActive ? (
-                            <StatusBadge variant="success" icon={CheckCircle}>
-                              نشط
-                            </StatusBadge>
-                          ) : isExpired ? (
-                            <StatusBadge variant="warning" icon={Clock}>
-                              منتهي
-                            </StatusBadge>
-                          ) : isMaxed ? (
-                            <StatusBadge variant="warning" icon={AlertCircle}>
-                              استُنفد
-                            </StatusBadge>
-                          ) : (
-                            <StatusBadge variant="neutral" icon={XCircle}>
-                              معطل
-                            </StatusBadge>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div>
-                          <span className="md:hidden text-3xs font-bold text-muted-foreground/85 block mb-0.5">
-                            إجراءات
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => handleToggle(coupon)}
-                              disabled={toggling === coupon.id}
-                              title={coupon.is_active ? "تعطيل" : "تفعيل"}
-                              aria-label={
-                                coupon.is_active
-                                  ? `تعطيل الكوبون ${coupon.code}`
-                                  : `تفعيل الكوبون ${coupon.code}`
-                              }
-                              aria-pressed={coupon.is_active}
-                              className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                            >
-                              {toggling === coupon.id ? (
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              ) : coupon.is_active ? (
-                                <ToggleRight className="w-4 h-4 text-status-success" />
-                              ) : (
-                                <ToggleLeft className="w-4 h-4" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleDelete(coupon)}
-                              /* R125-I3 (A2-16): «أرشفة» — the DELETE is a
-                                 soft archive (isActive:false), not a hard
-                                 delete; the old «حذف» label over-promised
-                                 destruction the API never performs. */
-                              disabled={archiving === coupon.id}
-                              title="أرشفة"
-                              aria-label={`أرشفة الكوبون ${coupon.code}`}
-                              className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                            >
-                              {archiving === coupon.id ? (
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="px-4 py-2 border-t border-border/40 bg-muted/10 text-xs text-muted-foreground">
-                  {coupons.length} كوبون · {activeCount} نشط
-                </div>
-              </div>
+              <CouponsTable
+                coupons={coupons}
+                activeCount={activeCount}
+                toggling={toggling}
+                archiving={archiving}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
+              />
             ) : null}
           </>
         )}

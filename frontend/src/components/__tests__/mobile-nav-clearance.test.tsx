@@ -45,7 +45,13 @@ vi.mock("@/lib/cart", () => ({
 // file: scheme — resolve from the runner cwd (always the frontend/
 // package dir, both for `npx vitest run` and `pnpm --filter … test:run`).
 const cssText = readFileSync(resolve(process.cwd(), "src/index.css"), "utf8");
-const appText = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+// R137 (2-b — pins follow the surface): App.tsx was decomposed into
+// src/app/* modules; AppRoutes (the mobile-nav-safe-pad host) moved to
+// app/routes.tsx. The pin reads App.tsx ∪ app/routes.tsx — the
+// assertion is unchanged.
+const appText = ["src/App.tsx", "src/app/routes.tsx"]
+  .map((f) => readFileSync(resolve(process.cwd(), f), "utf8"))
+  .join("\n");
 // R120-B7: the guest product-page buy bar is asserted read-only (the
 // App.tsx pattern above) — its pin must ride the shared above-nav
 // clearance now that the guest nav renders on /product/*.

@@ -1,0 +1,126 @@
+/**
+ * R137 (2-b — the App.tsx route-registry decomposition): the deferred
+ * app chrome — the lazy FlashSaleBanner/Footer/MobileNav/Toaster/
+ * SocketInitializer chunks and their mount components
+ * (DeferredSocketInitializer, IdleToaster), extracted VERBATIM from
+ * App.tsx (only `export` keywords added on the three layout chunks:
+ * app/routes.tsx consumes them; Toaster + SocketInitializer stay
+ * module-private to this file). Each mount component is a
+ * self-contained deferral wrapper (its own local mount atom + timer
+ * effect — the R104/R116 contracts); App.tsx re-exports both names for
+ * the gating regression suites.
+ */
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useAuth } from "@/lib/auth";
+import { Suspense, useEffect, useState } from "react";
+
+// Non-critical layout deferred
+export const FlashSaleBanner = lazyWithRetry(() =>
+  import("@/components/layout/FlashSaleBanner").then((m) => ({ default: m.FlashSaleBanner })),
+);
+export const Footer = lazyWithRetry(() =>
+  import("@/components/layout/Footer").then((m) => ({ default: m.Footer })),
+);
+export const MobileNav = lazyWithRetry(() =>
+  import("@/components/layout/MobileNav").then((m) => ({ default: m.MobileNav })),
+);
+
+// A5-5 (R116 — lazy Toaster): sonner + the wrapper's five lucide icons
+// used to ride the ENTRY graph for every visitor, yet toasts are an
+// error/feedback surface, never first-paint content. The Toaster now
+// mounts on idle via the same dynamic-import pattern main.tsx uses
+// for use-toast (see IdleToaster below); ui/sonner.tsx carries a
+// replay bridge that flushes toasts fired before the chunk mounted.
+const Toaster = lazyWithRetry(() =>
+  import("@/components/ui/sonner").then((m) => ({ default: m.Toaster })),
+);
+
+const SocketInitializer = lazyWithRetry(() =>
+  import("@/components/SocketInitializer").then((m) => ({ default: m.SocketInitializer })),
+);
+
+/**
+ * R104 (free-tier sleep economics): the deferral mount is now
+ * ADMIN-ONLY. Anonymous visitors AND regular authenticated users
+ * never download the socket.io stack (~16 KB gzip + engine.io
+ * parse/TBT) — storefront realtime is page-scoped (order-detail) and
+ * every other surface already runs on polls/resync that cannot defeat
+ * Render's 15-minute idle sleep. Operators on /admin need the admin
+ * room for live approvals, so an admin sentinel keeps the 3.5 s
+ * deferral timer (first paint stays uncontended).
+ *
+ * SessionActivityManager (visibility/idle socket parking + money-data
+ * resync) is mounted separately for every session — see App().
+ *
+ * Exported for the gating regression test (same pattern as
+ * shapeForRoute above).
+ */
+export function DeferredSocketInitializer() {
+  const { adminToken } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // R104: users and guests never warm the socket chunk. An admin
+    // login mid-session re-arms the timer (adminToken flips truthy →
+    // effect re-runs).
+    if (!adminToken) return;
+
+    // Wait for initial hydration and paint to settle
+    const timeout = setTimeout(() => setMounted(true), 3500);
+    return () => clearTimeout(timeout);
+  }, [adminToken]);
+
+  if (!mounted) return null;
+
+  return (
+    <Suspense fallback={null}>
+      <SocketInitializer />
+    </Suspense>
+  );
+}
+
+/**
+ * A5-5 (R116): mounts the lazy Toaster once the main thread goes idle.
+ * requestIdleCallback keeps the sonner chunk fetch + render off the
+ * first-paint critical path; the 2 s timeout guarantee bounds the
+ * window in which toasts queue in the sonner store instead of
+ * rendering (the replay bridge in ui/sonner flushes them on mount,
+ * so nothing is lost).
+ *
+ * Exported for the gating regression test (same pattern as
+ * DeferredSocketInitializer above).
+ */
+export function IdleToaster() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    type IdleWindow = Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const w = window as IdleWindow;
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(() => setMounted(true), { timeout: 2_000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const timer = setTimeout(() => setMounted(true), 2_000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!mounted) return null;
+
+  return (
+    /* R130 (A5-F5): the Toaster was the one defer-mounted chrome block
+       with no boundary — a sonner render throw became an uncaught ROOT
+       error and React 19 unmounted the whole tree. Every other chrome
+       block got its fallback={null} boundary in R118-B2; the toaster
+       follows the same convention (toasts are ephemeral — losing one
+       render must never cost the app). */
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <Toaster />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}

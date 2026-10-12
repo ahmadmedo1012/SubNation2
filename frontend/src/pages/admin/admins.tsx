@@ -8,11 +8,6 @@ import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // list page left with a bare text line (visual weight drifted from
 // every other console list: no icon tile, no card, no border).
 import { EmptyState } from "@/components/admin/EmptyState";
-// 94-C2 (A2 P2-6): the create/edit admin shells migrate from the
-// hand-rolled overlay (unguarded backdrop, no ESC/aria/focus-trap) to
-// the shared AppDialog — dismissable while busy is false keeps the
-// form alive while the POST/PATCH runs.
-import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 // R123 (E3 item 1): the four raw fetches ride the session-aware
@@ -26,36 +21,30 @@ import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admi
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import {
-  AlertTriangle,
-  CheckCircle,
-  Loader2,
-  Lock,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  XCircle,
-} from "lucide-react";
+import { RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-
-interface AdminAccount {
-  id: number;
-  username: string;
-  display_name: string;
-  role: string;
-  permissions: string[];
-  is_active: boolean;
-  totp_enabled: boolean;
-  created_at?: string;
-}
-
-interface ScopeOption {
-  id: string;
-  label: string;
-}
+// R137 (FE decomposition): the RBAC page's presentational sections moved
+// to @/components/admin/admins/* (verbatim moves — the mutation path
+// stays HERE: the accounts/scopes/session triple fetch, loadScopes, the
+// confirm-gated enable/disable POST, and BOTH dialog submit flows now
+// that their form atoms are hoisted into the page; the extracts render
+// the byte-identical DOM they rendered inline yesterday). Import surface:
+//   • admins-meta — the pure module (the AdminAccount/ScopeOption
+//     contracts the page + every extract speak)
+//   • AdminsHeader — h1 + «إضافة مسؤول» (opens openCreate below)
+//   • AdminAccountCard — one account card (toggle/edit callbacks down)
+//   • CreateAdminDialog / EditAdminDialog — the two form shells (the
+//     page's create*/edit* atoms + setters flow down; the invite POST
+//     and the permission-save PATCH fire through page-owned handlers)
+//   • AdminDialogShell + ScopeCheckboxGrid ride inside the dialogs
+import { type AdminAccount, type ScopeOption } from "@/components/admin/admins/admins-meta";
+import { AdminsHeader } from "@/components/admin/admins/AdminsHeader";
+import { AdminAccountCard } from "@/components/admin/admins/AdminAccountCard";
+import { CreateAdminDialog } from "@/components/admin/admins/CreateAdminDialog";
+import { EditAdminDialog } from "@/components/admin/admins/EditAdminDialog";
 
 export default function AdminAdminsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -76,6 +65,22 @@ export default function AdminAdminsPage() {
   const [creating, setCreating] = useState(false);
   const [currentAdminId, setCurrentAdminId] = useState<number | null>(null);
 
+  // R137 (FE decomposition): the create/edit dialog form atoms hoisted
+  // from the dialog components (the users.tsx UserEditDialog idiom) —
+  // the dialogs were mount-scoped (fresh useState per open), so
+  // openCreate/openEdit below re-seed exactly those initializers and
+  // the extracts take values + setters down. The invite POST and the
+  // permission-save PATCH fire only through the page-owned
+  // handleCreateSubmit/handleEditSubmit below.
+  const [createUsername, setCreateUsername] = useState("");
+  const [createDisplayName, setCreateDisplayName] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createSelectedScopes, setCreateSelectedScopes] = useState<string[]>([]);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editSelectedScopes, setEditSelectedScopes] = useState<string[]>([]);
+  const [editSaving, setEditSaving] = useState(false);
+
   // 93-C6 / F-07 (A5 A-3 drift): the hand-built
   // `{ "Content-Type", Authorization: Bearer-or-empty }` map is the
   // exact anti-pattern useAdminHeaders was created to remove (empty
@@ -83,6 +88,33 @@ export default function AdminAdminsPage() {
   // inconsistent). The shared hook also mirrors the session state for
   // the global 401 handler — this page's raw fetches need that.
   const headers = useAdminHeaders({ json: true });
+
+  // R123 (E3 P3c): a half-filled admin-creation form (password + scopes)
+  // is un-submitted work — the same beforeunload guard the other long
+  // admin forms ride. (The guard was mount-scoped inside the dialog
+  // component; the `creating` gate reproduces that exactly — live only
+  // while the dialog is open.)
+  useDirtyGuard(
+    creating &&
+      (createUsername.trim() !== "" ||
+        createDisplayName.trim() !== "" ||
+        createPassword !== "" ||
+        createSelectedScopes.length > 0),
+  );
+
+  // R123 (E3 P3c): the edit dialog's dirty guard — compares against the
+  // admin's CURRENT persisted values (super-admins have no editable
+  // scope set, so display-name is their only dirty axis). (Same
+  // mount-scope gating via `editing`.)
+  const editingIsSuper = (editing?.permissions ?? []).includes("all");
+  const editingInitialScopes = editingIsSuper ? [] : (editing?.permissions ?? []);
+  useDirtyGuard(
+    editing !== null &&
+      (editDisplayName.trim() !== (editing?.display_name ?? "").trim() ||
+        (!editingIsSuper &&
+          (editSelectedScopes.length !== editingInitialScopes.length ||
+            editSelectedScopes.some((s) => !editingInitialScopes.includes(s))))),
+  );
 
   const reload = async () => {
     // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
@@ -154,6 +186,41 @@ export default function AdminAdminsPage() {
 
   if (!adminToken) return null;
 
+  // R137 (FE decomposition): the dialog openers re-seed the hoisted form
+  // atoms — exactly the mount-scoped useState initializers the dialog
+  // components had (fresh draft on every open).
+  const openCreate = () => {
+    setCreateUsername("");
+    setCreateDisplayName("");
+    setCreatePassword("");
+    setCreateSelectedScopes([]);
+    setCreateSaving(false);
+    setCreating(true);
+  };
+
+  const openEdit = (admin: AdminAccount) => {
+    setEditing(admin);
+    // Only operate on the granular scope set when the admin doesn't have
+    // the wildcard "all" — preserve the super-admin invariant.
+    setEditDisplayName(admin.display_name);
+    setEditSelectedScopes(
+      (admin.permissions ?? []).includes("all") ? [] : (admin.permissions ?? []),
+    );
+    setEditSaving(false);
+  };
+
+  const toggleCreateScope = (id: string) => {
+    setCreateSelectedScopes((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
+  };
+
+  const toggleEditScope = (id: string) => {
+    setEditSelectedScopes((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
+  };
+
   const handleToggleActive = async (admin: AdminAccount) => {
     const action = admin.is_active ? "disable" : "enable";
     const verb = admin.is_active ? "تعطيل" : "تفعيل";
@@ -185,6 +252,87 @@ export default function AdminAdminsPage() {
     }
   };
 
+  // ── Create dialog submit (hoisted verbatim from the dialog component —
+  // the invite flow's POST stays page-owned) ──────────────────────────
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (createSelectedScopes.length === 0) {
+      toast({ title: "اختر صلاحية واحدة على الأقل", variant: "destructive" });
+      return;
+    }
+    setCreateSaving(true);
+    try {
+      await adminFetchJson(
+        "/api/admin/admins",
+        {
+          method: "POST",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({
+            username: createUsername.trim(),
+            password: createPassword,
+            display_name: createDisplayName.trim() || createUsername.trim(),
+            permissions: createSelectedScopes,
+          }),
+        },
+        { fallbackError: "فشل الإنشاء" },
+      );
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم إنشاء حساب المسؤول", variant: "success" });
+      // onCreated: close + reload (the page's own wiring).
+      setCreating(false);
+      void reload();
+    } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
+      toast({
+        title: err instanceof Error ? err.message : "فشل الإنشاء",
+        variant: "destructive",
+      });
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
+  // ── Edit dialog submit (hoisted verbatim — the permission-save PATCH
+  // stays page-owned) ─────────────────────────────────────────────────
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editing) return;
+    if (!editingIsSuper && editSelectedScopes.length === 0) {
+      toast({ title: "اختر صلاحية واحدة على الأقل", variant: "destructive" });
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await adminFetchJson(
+        `/api/admin/admins/${editing.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers,
+          body: JSON.stringify({
+            display_name: editDisplayName.trim(),
+            permissions: editingIsSuper ? ["all"] : editSelectedScopes,
+          }),
+        },
+        { fallbackError: "فشل التحديث" },
+      );
+      // R124-I5 (A6 F1): success variant.
+      toast({ title: "تم تحديث الحساب", variant: "success" });
+      // onSaved: close + reload (the page's own wiring).
+      setEditing(null);
+      void reload();
+    } catch (err) {
+      if (err instanceof AdminSessionExpiredError) return;
+      toast({
+        title: err instanceof Error ? err.message : "فشل التحديث",
+        variant: "destructive",
+      });
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
   // idiom, now shared) — the nav hides this page from scope-less admins;
   // a deep link used to fire every query into a synchronized 403 burst.
@@ -196,21 +344,7 @@ export default function AdminAdminsPage() {
   return (
     <AdminLayout onRefresh={reload}>
       <div className="space-y-5 max-w-5xl">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold mb-0.5">إدارة المسؤولين</h1>
-            <p className="text-muted-foreground text-sm">
-              إنشاء وإدارة حسابات المسؤولين وصلاحياتهم
-            </p>
-          </div>
-          <button
-            onClick={() => setCreating(true)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold shadow-sm hover:bg-primary/90"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            إضافة مسؤول
-          </button>
-        </div>
+        <AdminsHeader onAdd={openCreate} />
 
         {loading ? (
           // R125-I5 (A3-4b): shared table skeleton — the bare spinner row
@@ -239,97 +373,14 @@ export default function AdminAdminsPage() {
             {admins.map((admin) => {
               const isMe = admin.id === currentAdminId;
               return (
-                <div
+                <AdminAccountCard
                   key={admin.id}
-                  className={`bg-card border rounded-2xl p-4 ${
-                    admin.is_active ? "border-border/60" : "border-status-low-stock/35 opacity-75"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          admin.is_active ? "bg-primary/10" : "bg-muted"
-                        }`}
-                      >
-                        <ShieldCheck
-                          className={`w-5 h-5 ${admin.is_active ? "text-primary" : "text-muted-foreground"}`}
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-bold text-base flex items-center gap-2 flex-wrap">
-                          {admin.display_name}
-                          {isMe && (
-                            /* 94-C2 (A2 P2-10): uppercase dropped on the
-                                Arabic badges (A11 §8). */
-                            /* R126-L5 (A3-4): the «أنت» chip joins the
-                                totp/معطّل badge family on text-safe
-                                tokens — raw text-primary on the /10
-                                tint is 3.56:1 dark (A6-B6). */
-                            <span className="text-3xs font-bold bg-primary/10 text-primary-text px-1.5 py-0.5 rounded">
-                              أنت
-                            </span>
-                          )}
-                          {!admin.is_active && (
-                            <span className="text-3xs font-bold bg-status-warning/12 text-status-warning border border-status-warning/30 px-1.5 py-0.5 rounded">
-                              معطّل
-                            </span>
-                          )}
-                          {admin.totp_enabled && (
-                            <span className="text-3xs font-bold uppercase bg-status-success/10 text-status-success border border-status-success/25 px-1.5 py-0.5 rounded">
-                              2FA
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground">@{admin.username}</div>
-                      </div>
-                    </div>
-                    {!isMe && (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => setEditing(admin)}
-                          className="px-2.5 py-1 text-xs font-bold border border-border/60 rounded-lg hover:bg-muted/50"
-                        >
-                          تعديل
-                        </button>
-                        <button
-                          onClick={() => handleToggleActive(admin)}
-                          className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${
-                            admin.is_active
-                              ? "border-status-low-stock/40 text-status-low-stock hover:bg-status-low-stock/10"
-                              : "border-status-success/40 text-status-success hover:bg-status-success/10"
-                          }`}
-                        >
-                          {admin.is_active ? "تعطيل" : "تفعيل"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-border/40 flex flex-wrap gap-1.5">
-                    {(admin.permissions ?? []).length === 0 ? (
-                      <span className="text-xs text-muted-foreground">لا توجد صلاحيات ممنوحة</span>
-                    ) : (admin.permissions ?? []).includes("all") ? (
-                      /* R126-L5 (A3-4): same token swap as the «أنت» chip
-                          above (raw text-primary on the /10 tint is
-                          3.56:1 dark — A6-B6's figure). */
-                      <span className="text-3xs font-bold bg-primary/10 text-primary-text border border-primary/20 px-1.5 py-0.5 rounded">
-                        جميع الصلاحيات (مسؤول رئيسي)
-                      </span>
-                    ) : (
-                      admin.permissions.map((scope) => {
-                        const label = scopes.find((s) => s.id === scope)?.label ?? scope;
-                        return (
-                          <span
-                            key={scope}
-                            className="text-3xs font-bold bg-muted/40 text-foreground/75 border border-border/50 px-1.5 py-0.5 rounded"
-                          >
-                            {label}
-                          </span>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
+                  admin={admin}
+                  isMe={isMe}
+                  scopes={scopes}
+                  onEdit={openEdit}
+                  onToggleActive={handleToggleActive}
+                />
               );
             })}
           </div>
@@ -339,13 +390,18 @@ export default function AdminAdminsPage() {
       {creating && (
         <CreateAdminDialog
           scopes={scopes}
+          username={createUsername}
+          setUsername={setCreateUsername}
+          displayName={createDisplayName}
+          setDisplayName={setCreateDisplayName}
+          password={createPassword}
+          setPassword={setCreatePassword}
+          selectedScopes={createSelectedScopes}
+          toggleScope={toggleCreateScope}
+          saving={createSaving}
           onRetryScopes={() => void loadScopes()}
           onClose={() => setCreating(false)}
-          onCreated={() => {
-            setCreating(false);
-            void reload();
-          }}
-          headers={headers}
+          onSubmit={handleCreateSubmit}
         />
       )}
 
@@ -353,424 +409,19 @@ export default function AdminAdminsPage() {
         <EditAdminDialog
           admin={editing}
           scopes={scopes}
+          isSuper={editingIsSuper}
+          displayName={editDisplayName}
+          setDisplayName={setEditDisplayName}
+          selectedScopes={editSelectedScopes}
+          toggleScope={toggleEditScope}
+          saving={editSaving}
           onRetryScopes={() => void loadScopes()}
           onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            void reload();
-          }}
-          headers={headers}
+          onSubmit={handleEditSubmit}
         />
       )}
       <ConfirmDialog />
     </AdminLayout>
-  );
-}
-
-// ── Create dialog ─────────────────────────────────────────────────────────────
-
-function CreateAdminDialog({
-  scopes,
-  onRetryScopes,
-  onClose,
-  onCreated,
-  headers,
-}: {
-  scopes: ScopeOption[];
-  /** R125-I5 (A3-9): re-fire the scopes fetch from inside the dialog —
-   * a failed catalog load used to be a dead end for granting any
-   * scope (the page-level error card renders OUTSIDE the dialog). */
-  onRetryScopes: () => void;
-  onClose: () => void;
-  onCreated: () => void;
-  headers: Record<string, string>;
-}) {
-  const { toast } = useToast();
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  // R123 (E3 P3c): a half-filled admin-creation form (password + scopes)
-  // is un-submitted work — the same beforeunload guard the other long
-  // admin forms ride.
-  useDirtyGuard(
-    username.trim() !== "" ||
-      displayName.trim() !== "" ||
-      password !== "" ||
-      selectedScopes.length > 0,
-  );
-
-  const toggleScope = (id: string) => {
-    setSelectedScopes((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedScopes.length === 0) {
-      toast({ title: "اختر صلاحية واحدة على الأقل", variant: "destructive" });
-      return;
-    }
-    setSaving(true);
-    try {
-      await adminFetchJson(
-        "/api/admin/admins",
-        {
-          method: "POST",
-          credentials: "include",
-          headers,
-          body: JSON.stringify({
-            username: username.trim(),
-            password,
-            display_name: displayName.trim() || username.trim(),
-            permissions: selectedScopes,
-          }),
-        },
-        { fallbackError: "فشل الإنشاء" },
-      );
-      // R124-I5 (A6 F1): success variant.
-      toast({ title: "تم إنشاء حساب المسؤول", variant: "success" });
-      onCreated();
-    } catch (err) {
-      if (err instanceof AdminSessionExpiredError) return;
-      toast({
-        title: err instanceof Error ? err.message : "فشل الإنشاء",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <DialogShell title="إضافة مسؤول جديد" onClose={onClose} busy={saving}>
-      <form onSubmit={submit} className="space-y-3">
-        <div>
-          <label htmlFor="admins-f1-17486" className="text-xs font-bold mb-1 block">
-            اسم المستخدم
-          </label>
-          <input
-            id="admins-f1-17486"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
-            minLength={3}
-            maxLength={100}
-            required
-          />
-        </div>
-        <div>
-          <label htmlFor="admins-f2-17484" className="text-xs font-bold mb-1 block">
-            الاسم الظاهر
-          </label>
-          <input
-            id="admins-f2-17484"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
-            placeholder="افتراضياً: نفس اسم المستخدم"
-          />
-        </div>
-        <div>
-          <label htmlFor="admins-f3-15951" className="text-xs font-bold mb-1 block">
-            كلمة المرور
-          </label>
-          <input
-            id="admins-f3-15951"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
-            minLength={8}
-            required
-            autoComplete="new-password"
-          />
-          <p className="text-3xs text-muted-foreground mt-1">
-            8 أحرف على الأقل. سيتمكن المسؤول من تغييرها لاحقاً وتفعيل المصادقة الثنائية.
-          </p>
-        </div>
-        <div>
-          <label className="text-xs font-bold mb-1 block">الصلاحيات</label>
-          <ScopeCheckboxGrid
-            scopes={scopes}
-            selected={selectedScopes}
-            onToggle={toggleScope}
-            onRetry={onRetryScopes}
-          />
-        </div>
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-          >
-            إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-bold disabled:opacity-50 flex items-center gap-1.5"
-          >
-            {saving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Plus className="w-3.5 h-3.5" />
-            )}
-            إنشاء
-          </button>
-        </div>
-      </form>
-    </DialogShell>
-  );
-}
-
-// ── Edit dialog ───────────────────────────────────────────────────────────────
-
-function EditAdminDialog({
-  admin,
-  scopes,
-  onRetryScopes,
-  onClose,
-  onSaved,
-  headers,
-}: {
-  admin: AdminAccount;
-  scopes: ScopeOption[];
-  /** R125-I5 (A3-9): same retry affordance as the create dialog. */
-  onRetryScopes: () => void;
-  onClose: () => void;
-  onSaved: () => void;
-  headers: Record<string, string>;
-}) {
-  const { toast } = useToast();
-  const [displayName, setDisplayName] = useState(admin.display_name);
-  // Only operate on the granular scope set when the admin doesn't have
-  // the wildcard "all" — preserve the super-admin invariant.
-  const isSuper = (admin.permissions ?? []).includes("all");
-  const [selectedScopes, setSelectedScopes] = useState<string[]>(
-    isSuper ? [] : (admin.permissions ?? []),
-  );
-  const [saving, setSaving] = useState(false);
-
-  // R123 (E3 P3c): the edit dialog's dirty guard — compares against the
-  // admin's CURRENT persisted values (super-admins have no editable
-  // scope set, so display-name is their only dirty axis).
-  const initialScopes = isSuper ? [] : (admin.permissions ?? []);
-  useDirtyGuard(
-    displayName.trim() !== admin.display_name.trim() ||
-      (!isSuper &&
-        (selectedScopes.length !== initialScopes.length ||
-          selectedScopes.some((s) => !initialScopes.includes(s)))),
-  );
-
-  const toggleScope = (id: string) => {
-    setSelectedScopes((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isSuper && selectedScopes.length === 0) {
-      toast({ title: "اختر صلاحية واحدة على الأقل", variant: "destructive" });
-      return;
-    }
-    setSaving(true);
-    try {
-      await adminFetchJson(
-        `/api/admin/admins/${admin.id}`,
-        {
-          method: "PATCH",
-          credentials: "include",
-          headers,
-          body: JSON.stringify({
-            display_name: displayName.trim(),
-            permissions: isSuper ? ["all"] : selectedScopes,
-          }),
-        },
-        { fallbackError: "فشل التحديث" },
-      );
-      // R124-I5 (A6 F1): success variant.
-      toast({ title: "تم تحديث الحساب", variant: "success" });
-      onSaved();
-    } catch (err) {
-      if (err instanceof AdminSessionExpiredError) return;
-      toast({
-        title: err instanceof Error ? err.message : "فشل التحديث",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <DialogShell title={`تعديل: @${admin.username}`} onClose={onClose} busy={saving}>
-      <form onSubmit={submit} className="space-y-3">
-        <div>
-          <label htmlFor="admins-f5-17484" className="text-xs font-bold mb-1 block">
-            الاسم الظاهر
-          </label>
-          <input
-            id="admins-f5-17484"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
-            required
-          />
-        </div>
-        <div>
-          <label className="text-xs font-bold mb-1 block">الصلاحيات</label>
-          {isSuper ? (
-            <div className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg text-xs">
-              <Lock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-              <div>
-                هذا الحساب يملك جميع الصلاحيات (مسؤول رئيسي). لتعديلها، أزل صلاحية{" "}
-                <code className="font-mono">all</code> أولاً عبر قاعدة البيانات.
-              </div>
-            </div>
-          ) : (
-            <ScopeCheckboxGrid
-              scopes={scopes}
-              selected={selectedScopes}
-              onToggle={toggleScope}
-              onRetry={onRetryScopes}
-            />
-          )}
-        </div>
-        <div className="flex items-start gap-2 p-2.5 bg-muted/20 border border-border/50 rounded-lg text-2xs text-muted-foreground">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          لتغيير اسم المستخدم أو كلمة المرور لهذا الحساب، يجب أن يقوم المسؤول نفسه بذلك من صفحة
-          "حسابي".
-        </div>
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-          >
-            إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-bold disabled:opacity-50 flex items-center gap-1.5"
-          >
-            {saving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <CheckCircle className="w-3.5 h-3.5" />
-            )}
-            حفظ
-          </button>
-        </div>
-      </form>
-    </DialogShell>
-  );
-}
-
-// ── Shared dialog shell + scope grid ──────────────────────────────────────────
-
-function DialogShell({
-  title,
-  onClose,
-  busy = false,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  /** 94-C2 (A2 P2-6): while a save is in flight the dialog is NOT
-   * dismissable (ESC / backdrop / close button all guarded) — the old
-   * shell's backdrop closed mid-POST and stranded the request with no
-   * visible surface for its result. */
-  busy?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <AppDialog
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      title={title}
-      dismissable={!busy}
-    >
-      <AppDialogBody>{children}</AppDialogBody>
-    </AppDialog>
-  );
-}
-
-function ScopeCheckboxGrid({
-  scopes,
-  selected,
-  onToggle,
-  onRetry,
-}: {
-  scopes: ScopeOption[];
-  selected: string[];
-  onToggle: (id: string) => void;
-  /** R125-I5 (A3-9): retry affordance for a failed catalog load — the
-   * bare error line had no way forward, so
-   * granting any scope dead-ended inside the dialog. */
-  onRetry?: () => void;
-}) {
-  if (scopes.length === 0) {
-    return (
-      <div
-        role="alert"
-        className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground p-3 bg-muted/20 rounded-lg border border-border/50"
-      >
-        <XCircle className="w-3.5 h-3.5 shrink-0" />
-        {/* R125-I5 (A3-9): تعذّر (with shadda) — the A2-F21 standard the
-            rest of the console copy uses. */}
-        <span>تعذّر تحميل قائمة الصلاحيات.</span>
-        {onRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="text-xs font-bold text-primary-text underline underline-offset-2 hover:opacity-80"
-          >
-            إعادة المحاولة
-          </button>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-      {scopes.map((scope) => {
-        const checked = selected.includes(scope.id);
-        return (
-          <button
-            type="button"
-            key={scope.id}
-            onClick={() => onToggle(scope.id)}
-            // R123 (E3 P3b): the visual checkbox is a real button —
-            // role/aria-checked expose the checked state to screen
-            // readers (the checkbox role's Space activation rides the
-            // button's native keyboard handling).
-            role="checkbox"
-            aria-checked={checked}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-right text-sm border transition-colors ${
-              checked
-                ? "bg-primary/10 border-primary/40 text-foreground"
-                : "bg-background border-border/60 text-muted-foreground hover:border-border"
-            }`}
-          >
-            <div
-              className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                checked ? "bg-primary border-primary" : "border-border"
-              }`}
-            >
-              {checked && <CheckCircle className="w-3 h-3 text-primary-foreground" />}
-            </div>
-            <span className="font-bold">{scope.label}</span>
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

@@ -26,140 +26,50 @@ import {
   useListAdminAuthActivity,
   useListAdminAuditLogs,
 } from "@workspace/api-client-react";
-import {
-  Activity,
-  CheckCircle,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  RefreshCw,
-  ScrollText,
-  Shield,
-  WifiOff,
-  XCircle,
-} from "lucide-react";
+import { Activity, Download, ScrollText, Shield, WifiOff } from "lucide-react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-import { formatCount, formatDate } from "@/lib/utils";
-
-// R126-L8b: customFetch rejects 401s with its ApiError — type-only from
-// the package, so the quiet-catch duck-types the `status` field (the
-// App.tsx isRetryableQueryError idiom).
-function isSessionExpiredError(err: unknown): boolean {
-  return (err as { status?: unknown } | null | undefined)?.status === 401;
-}
-
-/** 94-C2 (A2 P3-18): the timeline used to render the raw backend
- *  `action` enum in English ("login") while the filter select next to
- *  it showed the same value in Arabic — one shared map keeps the two
- *  in lockstep. */
-const ACTION_LABELS: Record<string, string> = {
-  login: "تسجيل دخول",
-  register: "تسجيل",
-  logout: "تسجيل خروج",
-  change_password: "تغيير كلمة المرور",
-  unlink_provider: "فصل مزود",
-};
-
-const actionLabel = (a: string) => ACTION_LABELS[a] ?? a;
-
-/**
- * R127-L5 (B15-1): the audit-trail tab's Arabic action map — the
- * actionLabel idiom applied to the `<resource>.<verb>` audit action
- * strings (the writer inventory across admin/topups, users, orders,
- * coupons, products, pricing, flash-sales, tickets, risk, admins,
- * alerts, whatsapp, settings + the B11-F1 telegram webhook rows).
- * Unknown actions fall back to the raw stable string (honest, and a
- * new writer can't break the tab).
- */
-const AUDIT_ACTION_LABELS: Record<string, string> = {
-  "topup.approve": "اعتماد شحن رصيد",
-  "topup.reject": "رفض شحن رصيد",
-  "user.update": "تحديث مستخدم",
-  "order.credentials_view": "عرض بيانات طلب",
-  "order.bulk_refund": "استرداد جماعي للطلبات",
-  "order.bulk_status_update": "تحديث حالة الطلبات جماعياً",
-  "referral.credit": "قيد نقاط إحالة",
-  "coupon.create": "إنشاء كوبون",
-  "coupon.update": "تحديث كوبون",
-  "coupon.archive": "أرشفة كوبون",
-  "product.create": "إنشاء منتج",
-  "product.update": "تحديث منتج",
-  "product.archive": "أرشفة منتج",
-  "product.inventory.set-count": "تعيين مخزون منتج",
-  "product.inventory.upload": "رفع مخزون منتج",
-  "product.variant.create": "إنشاء خيار منتج",
-  "product.variant.update": "تحديث خيار منتج",
-  "product.variant.delete": "حذف خيار منتج",
-  "pricing.config.update": "تحديث إعدادات التسعير",
-  "pricing.recompute": "إعادة احتساب الأسعار",
-  "flash_sale.create": "إنشاء عرض فلاش",
-  "flash_sale.update": "تحديث عرض فلاش",
-  "flash_sale.deactivate": "إيقاف عرض فلاش",
-  "ticket.reply": "رد على تذكرة",
-  "ticket.status_update": "تحديث حالة تذكرة",
-  "risk.label": "وسم حدث مخاطر",
-  "risk.rule_update": "تحديث قاعدة مخاطر",
-  "risk.config_update": "تحديث إعدادات المخاطر",
-  "risk.synth": "إنشاء حدث مخاطر تجريبي",
-  "risk.soft_block_applied": "حظر مؤقت لمستخدم",
-  "risk.hard_block_applied": "حظر دائم لمستخدم",
-  "admin.created": "إنشاء مسؤول",
-  "admin.updated": "تحديث مسؤول",
-  "admin.disabled": "تعطيل مسؤول",
-  "admin.enabled": "تفعيل مسؤول",
-  "admin.logout": "تسجيل خروج مسؤول",
-  "admin.password_changed": "تغيير كلمة مرور المسؤول",
-  "admin.totp_enabled": "تفعيل المصادقة الثنائية",
-  "admin.totp_disabled": "تعطيل المصادقة الثنائية",
-  "alert.test_dispatch": "إرسال تنبيه تجريبي",
-  "whatsapp.session_create": "إنشاء جلسة واتساب",
-  "whatsapp.session_start": "تشغيل جلسة واتساب",
-  "whatsapp.session_pair_code": "ربط جلسة واتساب",
-  "whatsapp.session_delete": "حذف جلسة واتساب",
-  "settings.auth_provider.update": "تحديث مزود مصادقة",
-};
-
-const auditActionLabel = (a: string) => AUDIT_ACTION_LABELS[a] ?? a;
-
-const AUDIT_ACTOR_TYPE_LABELS: Record<string, string> = {
-  admin: "مسؤول",
-  user: "مستخدم",
-  system: "النظام",
-};
-
-/** R125-I5 (A3-5): the backend hard-caps auth-activity at .limit(100)
- *  (admin/security.ts) with no page param and no total — the window the
- *  UI receives is always "the newest 100 at most". Surfaced honestly
- *  instead of presenting a truncated audit log as complete. */
-const ACTIVITY_WINDOW_CAP = 100;
-
-/** Arabic plural forms for the timeline counter (formatCount, A2 P3-4). */
-const ACTIVITY_COUNT_FORMS = {
-  zero: "أحداث",
-  one: "حدث",
-  two: "حدثان",
-  few: "أحداث",
-  many: "حدثاً",
-  other: "حدث",
-};
-
-/** R127-L5: the audit tab's page size — matches the endpoint's default
- * (backend clamps to [1, 200]; the UI pins it so the «عرض N من إجمالاً
- * M» counter and the pager stay in lockstep). */
-const AUDIT_PAGE_SIZE = 50;
-
-/** Arabic plural forms for the audit-trail counter (formatCount). */
-const AUDIT_COUNT_FORMS = {
-  zero: "إجراءات",
-  one: "إجراء",
-  two: "إجراءان",
-  few: "إجراءات",
-  many: "إجراءًا",
-  other: "إجراء",
-};
+import { formatCount } from "@/lib/utils";
+// R137 (FE decomposition): the page's presentational panes and pure
+// label maps moved to @/components/admin/security/* (verbatim moves —
+// the data path stays HERE: every state atom, all three queries with
+// their keepPreviousData / last-request-wins keys, the refresh + CSV
+// export actions, the audit pager atom and the tab coordination; the
+// extracts render the byte-identical DOM they rendered inline
+// yesterday). Import surface:
+//   • security-meta — the page's pure module (the Arabic action/actor
+//     label maps, the window/page-size constants, the plural forms,
+//     the audit metadata formatter, the 401 session-expiry predicate
+//     the quiet-catches duck-type; re-exports the generated row types
+//     the extracts type their props with — type-only, no runtime api
+//     surface)
+//   • AuthPaneSkeleton — the auth pane's page-shaped first-load skeleton
+//   • AuthStatsGrid — the four KPI cards (loaded tiles only)
+//   • AuthFiltersCard — the auth timeline's action/success selects
+//   • ActivityTimelineCard — the honest-count timeline + its error card
+//   • AuditFiltersCard — the audit tab's action/actor/date-range inputs
+//   • AuditTrailErrorCard / AuditTrailTable — the audit tab's failure
+//     card and the loaded table + finite pager. The audit pane's
+//     first-load SkeletonText branch stays HERE (the R136 UX-1 adoption
+//     floor pins this page importing @/components/ui/Skeleton — the
+//     1-a system.tsx precedent).
+import {
+  AUDIT_ACTOR_TYPE_LABELS,
+  AUDIT_COUNT_FORMS,
+  AUDIT_PAGE_SIZE,
+  auditActionLabel,
+  actionLabel,
+  isSessionExpiredError,
+} from "@/components/admin/security/security-meta";
+import { AuthPaneSkeleton } from "@/components/admin/security/AuthPaneSkeleton";
+import { AuthStatsGrid } from "@/components/admin/security/AuthStatsGrid";
+import { AuthFiltersCard } from "@/components/admin/security/AuthFiltersCard";
+import { ActivityTimelineCard } from "@/components/admin/security/ActivityTimelineCard";
+import { AuditFiltersCard } from "@/components/admin/security/AuditFiltersCard";
+import { AuditTrailErrorCard } from "@/components/admin/security/AuditTrailErrorCard";
+import { AuditTrailTable } from "@/components/admin/security/AuditTrailTable";
 
 /** R127-L5 (B15-1): the security page's two panes — the existing auth
  *  timeline and the new audit-trail tab. Settings.tsx's real-tab
@@ -171,24 +81,6 @@ const SECURITY_TABS = [
 ] as const;
 
 type SecurityTabId = (typeof SECURITY_TABS)[number]["id"];
-
-/** B11-F1 rows identify the actor in metadata (actorId is null for the
- * telegram webhook path) — a compact `key=value` join of the parsed
- * payload, LTR + truncated, so the tab names WHO without dumping the
- * raw JSON blob. */
-function auditMetadataLine(metadata: string | null): string | null {
-  if (!metadata) return null;
-  try {
-    const parsed: unknown = JSON.parse(metadata);
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const entries = Object.entries(parsed as Record<string, unknown>)
-      .filter(([, v]) => v !== null && v !== undefined && v !== "")
-      .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
-    return entries.length > 0 ? entries.slice(0, 6).join(" · ") : null;
-  } catch {
-    return null;
-  }
-}
 
 export function AdminSecurityDashboard() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -493,61 +385,7 @@ export function AdminSecurityDashboard() {
         {activeTab === "audit" ? (
           <div role="tabpanel" aria-labelledby="security-tab-audit" className="space-y-6">
             {/* ── Audit filters (B15-1: action / actor / date range) ── */}
-            <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label htmlFor="audit-action-filter" className="text-sm font-semibold">
-                  الإجراء:
-                </label>
-                <input
-                  id="audit-action-filter"
-                  type="text"
-                  value={auditFilters.action}
-                  onChange={(e) => setAuditFilter({ action: e.target.value })}
-                  placeholder="topup.approve"
-                  dir="ltr"
-                  className="px-3 py-1.5 border rounded text-sm w-48"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor="audit-actor-filter" className="text-sm font-semibold">
-                  معرّف المسؤول:
-                </label>
-                <input
-                  id="audit-actor-filter"
-                  type="number"
-                  min={1}
-                  value={auditFilters.actor}
-                  onChange={(e) => setAuditFilter({ actor: e.target.value })}
-                  placeholder="مثال: 1"
-                  dir="ltr"
-                  className="px-3 py-1.5 border rounded text-sm w-28"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor="audit-start-date" className="text-sm font-semibold">
-                  من تاريخ:
-                </label>
-                <input
-                  id="audit-start-date"
-                  type="date"
-                  value={auditFilters.startDate}
-                  onChange={(e) => setAuditFilter({ startDate: e.target.value })}
-                  className="px-3 py-1.5 border rounded text-sm"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor="audit-end-date" className="text-sm font-semibold">
-                  إلى تاريخ:
-                </label>
-                <input
-                  id="audit-end-date"
-                  type="date"
-                  value={auditFilters.endDate}
-                  onChange={(e) => setAuditFilter({ endDate: e.target.value })}
-                  className="px-3 py-1.5 border rounded text-sm"
-                />
-              </div>
-            </div>
+            <AuditFiltersCard auditFilters={auditFilters} onFilterChange={setAuditFilter} />
 
             {/* ── Audit trail table ───────────────────────────────── */}
             <div className="bg-card border border-border/55 rounded-xl p-4">
@@ -584,24 +422,10 @@ export function AdminSecurityDashboard() {
               ) : auditError ? (
                 /* 94-C2 (A2 P2-1) idiom: a failed load is an error card
                    with retry — NOT a false «لا توجد إجراءات» empty. */
-                <div className="text-center py-10 text-muted-foreground">
-                  <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                    <WifiOff className="w-7 h-7 text-status-error" />
-                  </div>
-                  <p className="font-bold text-base mb-1.5 text-foreground/80">
-                    تعذّر تحميل سجل الإجراءات
-                  </p>
-                  <p className="text-sm mb-5 max-w-xs mx-auto leading-relaxed">{auditError}</p>
-                  <Button
-                    onClick={() => void auditQuery.refetch()}
-                    className="gap-2 font-bold"
-                    variant="outline"
-                    size="sm"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    إعادة المحاولة
-                  </Button>
-                </div>
+                <AuditTrailErrorCard
+                  auditError={auditError}
+                  onRetry={() => void auditQuery.refetch()}
+                />
               ) : auditLogs.length === 0 ? (
                 <EmptyState
                   icon={ScrollText}
@@ -609,117 +433,13 @@ export function AdminSecurityDashboard() {
                   description="تظهر الإجراءات هنا كلما نفّذ المسؤولون عمليات مؤثرة (اعتماد الأرصدة، الاسترداد، تعديل المستخدمين وغيرها)"
                 />
               ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-right text-xs text-muted-foreground border-b border-border/55">
-                          <th scope="col" className="py-2 px-3 font-semibold">
-                            المسؤول
-                          </th>
-                          <th scope="col" className="py-2 px-3 font-semibold">
-                            الإجراء
-                          </th>
-                          <th scope="col" className="py-2 px-3 font-semibold">
-                            الهدف
-                          </th>
-                          <th scope="col" className="py-2 px-3 font-semibold">
-                            IP
-                          </th>
-                          <th scope="col" className="py-2 px-3 font-semibold">
-                            الوقت
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {auditLogs.map((log) => (
-                          <tr key={log.id} className="border-b border-border/30 align-top">
-                            <td className="py-2.5 px-3">
-                              {/* R128 (B3-F4): the @username attribution is
-                                  admin/webhook-controlled text that
-                                  rendered with inherited RTL direction —
-                                  a username carrying RLO/LRO bidi
-                                  controls visually reorders WHO approved
-                                  WHAT in the accountability artifact this
-                                  tab exists for. dir="ltr" implies
-                                  unicode-bidi: isolate (mirrors the
-                                  metadata/action/target/ip cells around
-                                  it); applied to the username branch only
-                                  — the fallback branches render local
-                                  Arabic labels. truncate + the metadata
-                                  line's max-w keep a long username from
-                                  blowing the column. */}
-                              <div
-                                dir={log.actorUsername ? "ltr" : undefined}
-                                className="font-semibold max-w-[240px] truncate"
-                              >
-                                {log.actorUsername
-                                  ? `@${log.actorUsername}`
-                                  : log.actorId !== null
-                                    ? `${AUDIT_ACTOR_TYPE_LABELS[log.actorType] ?? log.actorType} #${log.actorId}`
-                                    : (AUDIT_ACTOR_TYPE_LABELS[log.actorType] ?? log.actorType)}
-                              </div>
-                              {/* B11-F1 attribution: the metadata line
-                                  names the telegram actor / source the
-                                  actorId column can't. */}
-                              {auditMetadataLine(log.metadata) && (
-                                <div
-                                  dir="ltr"
-                                  className="text-3xs text-muted-foreground mt-0.5 max-w-[240px] truncate"
-                                >
-                                  {auditMetadataLine(log.metadata)}
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 font-semibold">
-                              {auditActionLabel(log.action)}
-                              <div dir="ltr" className="text-3xs text-muted-foreground mt-0.5">
-                                {log.action}
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-muted-foreground" dir="ltr">
-                              {log.targetType
-                                ? `${log.targetType}${log.targetId !== null ? ` #${log.targetId}` : ""}`
-                                : "—"}
-                            </td>
-                            <td className="py-2.5 px-3 text-muted-foreground" dir="ltr">
-                              {log.ip ?? "—"}
-                            </td>
-                            <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
-                              {formatDate(log.createdAt)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Finite pager over the frozen page/limit contract
-                      (hasMore is the server's honest flag). */}
-                  <div className="flex items-center justify-between mt-4">
-                    <span className="text-xs text-muted-foreground">الصفحة {auditPage}</span>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={auditPage <= 1 || auditQuery.isFetching}
-                        onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
-                      >
-                        <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                        السابقة
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!auditHasMore || auditQuery.isFetching}
-                        onClick={() => setAuditPage((p) => p + 1)}
-                      >
-                        التالية
-                        <ChevronLeft className="w-3.5 h-3.5 mr-1" />
-                      </Button>
-                    </div>
-                  </div>
-                </>
+                <AuditTrailTable
+                  auditLogs={auditLogs}
+                  auditPage={auditPage}
+                  setAuditPage={setAuditPage}
+                  auditHasMore={auditHasMore}
+                  isFetching={auditQuery.isFetching}
+                />
               )}
             </div>
           </div>
@@ -728,24 +448,7 @@ export function AdminSecurityDashboard() {
           // recipe) — stats grid + filter bar + timeline rows keep
           // their shape while the first load is in flight. Carries the
           // A6-B8 role="status" + sr-only label pair.
-          <div className="space-y-6" role="status" aria-busy="true">
-            <span className="sr-only">جارٍ التحميل…</span>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-[76px] rounded-xl skeleton-shimmer border border-border/55"
-                />
-              ))}
-            </div>
-            <div className="h-[76px] rounded-xl skeleton-shimmer border border-border/55" />
-            <div className="bg-card border border-border/55 rounded-xl p-4 space-y-3">
-              <div className="h-5 w-24 skeleton-shimmer rounded" />
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-[76px] rounded-lg skeleton-shimmer" />
-              ))}
-            </div>
-          </div>
+          <AuthPaneSkeleton />
         ) : (
           <>
             {/* Stats Cards */}
@@ -767,172 +470,17 @@ export function AdminSecurityDashboard() {
                 </button>
               </div>
             )}
-            {stats && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-card border border-border/55 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <Activity className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">إجمالي الأنشطة</p>
-                      <p className="text-2xl font-bold">{stats.total}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-card border border-border/55 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="w-5 h-5 text-status-success" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">ناجحة</p>
-                      <p className="text-2xl font-bold text-status-success">{stats.success}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-card border border-border/55 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <XCircle className="w-5 h-5 text-destructive" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">فاشلة</p>
-                      <p className="text-2xl font-bold text-destructive">{stats.failure}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-card border border-border/55 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <Shield className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">آخر 24 ساعة</p>
-                      <p className="text-2xl font-bold">{stats.last24h}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            {stats && <AuthStatsGrid stats={stats} />}
 
             {/* Filters */}
-            <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label htmlFor="security-f1-11119" className="text-sm font-semibold">
-                  الإجراء:
-                </label>
-                <select
-                  id="security-f1-11119"
-                  value={filters.action}
-                  onChange={(e) => setFilters({ ...filters, action: e.target.value })}
-                  className="px-3 py-1.5 border rounded text-sm"
-                >
-                  <option value="all">الكل</option>
-                  <option value="login">تسجيل دخول</option>
-                  <option value="register">تسجيل</option>
-                  <option value="logout">تسجيل خروج</option>
-                  <option value="change_password">تغيير كلمة المرور</option>
-                  <option value="unlink_provider">فصل مزود</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label htmlFor="security-f2-9574" className="text-sm font-semibold">
-                  الحالة:
-                </label>
-                <select
-                  id="security-f2-9574"
-                  value={filters.success}
-                  onChange={(e) => setFilters({ ...filters, success: e.target.value })}
-                  className="px-3 py-1.5 border rounded text-sm"
-                >
-                  <option value="all">الكل</option>
-                  <option value="true">ناجح</option>
-                  <option value="false">فاشل</option>
-                </select>
-              </div>
-            </div>
+            <AuthFiltersCard filters={filters} onFiltersChange={setFilters} />
 
             {/* Activity Timeline */}
-            <div className="bg-card border border-border/55 rounded-xl p-4">
-              {/* R125-I5 (A3-5): honest count — the timeline used to render
-                whatever arrived under a bare «سجل النشاط» heading, an
-                audit log presented as complete. The header now names the
-                window («عرض N (الأحدث أولاً)», the users/topups count
-                idiom) and, when the backend's 100-row cap is hit,
-                discloses that older events exist but are not loaded
-                (backend pagination stays as-is — frontend honesty
-                only). */}
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                <h2 className="text-lg font-bold">سجل النشاط</h2>
-                {activities.length > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    <span>
-                      عرض {formatCount(activities.length, ACTIVITY_COUNT_FORMS)} (الأحدث أولاً)
-                    </span>
-                    {activities.length >= ACTIVITY_WINDOW_CAP && (
-                      <span className="block mt-0.5 text-status-warning">
-                        يعرض أحدث {formatCount(ACTIVITY_WINDOW_CAP, ACTIVITY_COUNT_FORMS)} فقط — قد
-                        تكون هناك أحداث أقدم
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              {/* 94-C2 (A2 P2-1): a failed activity load is an error card
-              with retry — NOT the "لا توجد أنشطة" false-empty state an
-              expired session used to render. */}
-              {activitiesError ? (
-                <div className="text-center py-10 text-muted-foreground">
-                  <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                    <WifiOff className="w-7 h-7 text-status-error" />
-                  </div>
-                  <p className="font-bold text-base mb-1.5 text-foreground/80">
-                    تعذّر تحميل سجل النشاط
-                  </p>
-                  <p className="text-sm mb-5 max-w-xs mx-auto leading-relaxed">{activitiesError}</p>
-                  <Button
-                    onClick={() => void activitiesQuery.refetch()}
-                    className="gap-2 font-bold"
-                    variant="outline"
-                    size="sm"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    إعادة المحاولة
-                  </Button>
-                </div>
-              ) : activities.length === 0 ? (
-                <EmptyState icon={Activity} title="لا توجد أنشطة" />
-              ) : (
-                <div className="space-y-3">
-                  {activities.map((activity) => (
-                    <div
-                      key={activity.id}
-                      className="flex items-start gap-4 p-4 border border-border/40 rounded-lg bg-muted/20"
-                    >
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
-                        {activity.success ? (
-                          <CheckCircle className="w-4 h-4 text-status-success" />
-                        ) : (
-                          <XCircle className="w-4 h-4 text-destructive" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold">{actionLabel(activity.action)}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
-                            engines without ar-LY data fall back to the
-                            "ar" root and emit Arabic-Indic numerals. */}
-                            {formatDate(activity.createdAt)}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">{activity.identifier}</p>
-                        {activity.failureReason && (
-                          <p className="text-xs text-destructive mt-1">{activity.failureReason}</p>
-                        )}
-                        <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
-                          {activity.provider && <span>المزود: {activity.provider}</span>}
-                          {activity.ipAddress && <span>IP: {activity.ipAddress}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ActivityTimelineCard
+              activities={activities}
+              activitiesError={activitiesError}
+              onRetry={() => void activitiesQuery.refetch()}
+            />
           </>
         )}
       </div>

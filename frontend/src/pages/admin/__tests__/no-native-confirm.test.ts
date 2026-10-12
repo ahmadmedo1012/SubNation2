@@ -13,7 +13,7 @@
  * scanned — their status is documented in the worklog follow-ups.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -35,12 +35,31 @@ const C7_OWNED_FILES = [
   "pages/admin/pricing.tsx",
   "pages/admin/layout.tsx",
   "components/admin/InventoryUploadDialog.tsx",
-  "components/admin/copilot/CopilotPanel.tsx",
-  "components/admin/copilot/CopilotHistoryView.tsx",
   "components/admin/forecast/StockoutRiskPanel.tsx",
   "components/ui/app-dialog.tsx",
   "components/ui/status-badge.tsx",
 ];
+
+// R137 (decomposition wave): the monolith pages split into verbatim
+// extracts under components/admin/<domain>/ — the guard's coverage
+// follows the code (the settings/* precedent + the copilot list this
+// file carried mid-wave), auto-expanding every extract folder so a
+// future extract can't silently dodge the scan.
+const EXTRACT_DIRS = [
+  "components/admin/copilot",
+  "components/admin/coupons",
+  "components/admin/products",
+  "components/admin/security",
+  "components/admin/tickets",
+  "components/admin/pricing",
+  "components/admin/layout",
+];
+
+for (const dir of EXTRACT_DIRS) {
+  for (const f of readdirSync(resolve(process.cwd(), "src", dir))) {
+    if (/\.tsx?$/.test(f)) C7_OWNED_FILES.push(`${dir}/${f}`);
+  }
+}
 
 const NATIVE_DIALOG = /\bwindow\s*\.\s*(confirm|prompt|alert)\s*\(/;
 

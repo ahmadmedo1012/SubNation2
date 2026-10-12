@@ -94,7 +94,13 @@ afterEach(() => {
 });
 
 describe("App.tsx skip link — admin is no longer excluded (R125 A6 B-7)", () => {
-  const appText = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+  // R137 (2-b — pins follow the surface): App.tsx was decomposed into
+  // src/app/* modules; AppRoutes (the skip-link host) moved to
+  // app/routes.tsx. The pin reads App.tsx ∪ app/routes.tsx — the
+  // assertions are unchanged.
+  const appText = ["src/App.tsx", "src/app/routes.tsx"]
+    .map((f) => readFileSync(resolve(process.cwd(), f), "utf8"))
+    .join("\n");
 
   it("targets #main-content and renders for admin too (condition no longer guards on !isAdmin)", () => {
     // Static contract on the source (pwa-offline-shell /

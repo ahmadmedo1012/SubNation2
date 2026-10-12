@@ -1,7 +1,9 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
+// R136 (UX-1): the page-shaped loading skeleton stays inline — the
+// skeleton-primitives adoption floor pins THIS file as a SkeletonText
+// importer (components/__tests__/skeleton-primitives.test.tsx SWEPT_FILES).
 import { SkeletonText } from "@/components/ui/Skeleton";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
@@ -25,157 +27,52 @@ import {
   listAdminAlerts,
   markAdminAlertRead,
   markAllAdminAlertsRead,
-  type AdminAlert,
-  type AdminAlertsPage,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatCount, formatDate, formatRelativeTime } from "@/lib/utils";
+import { formatCount } from "@/lib/utils";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  Bell,
-  BellOff,
-  Check,
-  CheckCheck,
-  Inbox,
-  Info,
-  Package,
-  RefreshCw,
-  Tag,
-  Trash2,
-  WifiOff,
-} from "lucide-react";
+import { Inbox, RefreshCw, WifiOff } from "lucide-react";
 import { useState } from "react";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-
-type AlertType =
-  "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system" | "forecast_stockout";
-
-/** R126-L8b: rows come from the generated client now — AdminAlert.type
- * is an open string (the spec deliberately keeps it non-enum so a new
- * alert producer can't break the contract); the known-type map stays
- * keyed by the AlertType union and the two row-type lookups below cast
- * through it with the same fallbacks as before. */
-type AdminAlertItem = AdminAlert;
-
-type AlertsPageData = AdminAlertsPage;
-
-const TYPE_META: Record<
-  AlertType,
-  { icon: React.ElementType; color: string; bg: string; border: string; label: string }
-> = {
-  coupon_maxed: {
-    icon: Tag,
-    color: "text-status-warning",
-    bg: "bg-status-warning/10",
-    border: "border-status-warning/20",
-    label: "كوبون استُنفد",
-  },
-  coupon_expiring: {
-    icon: Tag,
-    color: "text-status-low-stock",
-    bg: "bg-status-low-stock/10",
-    border: "border-status-low-stock/20",
-    label: "كوبون منتهٍ",
-  },
-  low_stock: {
-    icon: Package,
-    // R126-L5 (A3 item-10 / mandate 7): the low_stock cluster rides the
-    // --status-warning ink+tint pair — yellow-400 passes the dark theme
-    // (8.79:1 on the /10 tint) but fails the shipped light theme at
-    // 1.43:1 (A3's measured figures); --status-warning is AA both themes
-    // (6.04:1 on white / 5.09:1 on the /12 tint light, index.css F3-06).
-    color: "text-status-warning",
-    bg: "bg-status-warning/10",
-    border: "border-status-warning/20",
-    label: "مخزون منخفض",
-  },
-  no_stock: {
-    icon: AlertTriangle,
-    color: "text-status-error",
-    bg: "bg-status-error/10",
-    border: "border-status-error/20",
-    label: "نفاد المخزون",
-  },
-  system: {
-    icon: Info,
-    color: "text-status-info",
-    bg: "bg-status-info/10",
-    border: "border-status-info/20",
-    label: "نظام",
-  },
-  forecast_stockout: {
-    icon: AlertTriangle,
-    color: "text-status-low-stock",
-    bg: "bg-status-low-stock/10",
-    border: "border-status-low-stock/20",
-    label: "نفاد متوقع",
-  },
-};
-
-type FilterType = "all" | "unread" | AlertType;
-
-/** R125 (A3 #6): the filter tabs now cover EVERY type TYPE_META renders
- * (system + forecast_stockout rows were rendered but unfilterable —
- * the filter runs client-side over the loaded window, so both entries
- * are a pure UI completion; the backend list endpoint has no type
- * param to consult). */
-const FILTERS: { value: FilterType; label: string }[] = [
-  { value: "all", label: "الكل" },
-  { value: "unread", label: "غير مقروء" },
-  { value: "no_stock", label: "نفاد مخزون" },
-  { value: "low_stock", label: "مخزون منخفض" },
-  { value: "forecast_stockout", label: "نفاد متوقع" },
-  { value: "coupon_maxed", label: "كوبون استُنفد" },
-  { value: "coupon_expiring", label: "كوبون منتهٍ" },
-  { value: "system", label: "نظام" },
-];
-
-/** 94-C2 (A2 P1-1): page size for the alerts inbox — the backend's
- *  DEFAULT_LIMIT is 50 with `page`/`limit` (and total/hasMore) already
- *  supported; the UI previously loaded one silent 50-row window while
- *  the footer claimed «N تنبيه إجمالاً». The frozen `?page=&limit=`
- *  contract now accumulates in place. */
-const ALERTS_PAGE_SIZE = 50;
-
-/** Query key — keeps the "admin-alerts" prefix so the existing
- *  invalidations (`["admin-alerts"]`) refresh the accumulated pages. */
-const ALERTS_LIST_KEY = ["admin-alerts", "inbox"] as const;
-
-/** Arabic plural forms for تنبيه (formatCount) — shared by the footer's
- *  «عرض N» counter and the R123 deleteRead confirm's count copy. */
-const ALERT_COUNT_FORMS = {
-  zero: "تنبيهات",
-  one: "تنبيه",
-  two: "تنبيهان",
-  few: "تنبيهات",
-  many: "تنبيهًا",
-  other: "تنبيه",
-};
-
-/** 94-C2 (A2 P2-10) → R126-L8b: a 401 from the generated fetcher is the
- * global admin-session handler's business (toast + redirect fired inside
- * customFetch) — the mutations below stay quiet on it. ApiError is
- * type-only from the package, so the check duck-types `status`. */
-function isSessionExpiredError(err: unknown): boolean {
-  return (err as { status?: unknown } | null | undefined)?.status === 401;
-}
-
-/** 94-C2 (A2 P2-11): the inbox mutations get the same error surface as
- *  every other admin action (r.ok + parsed envelope + onError toast) —
- *  a failed delete/read used to invalidate the cache and silently
- *  resurrect the rows. */
-function alertActionToast(title: string, description: string) {
-  return { title, description, variant: "destructive" as const };
-}
-
-// (R126-L8b) AlertsPageData is the generated AdminAlertsPage envelope —
-// every field the handler emits (alerts, unreadCount, total, page,
-// limit, hasMore) is required in the contract now.
-
-type AlertsInfiniteData = { pages: AlertsPageData[]; pageParams: number[] };
+// R137 (FE decomposition): the inbox's presentational sections and pure
+// helpers moved to @/components/admin/alerts/* (verbatim moves — the
+// mutation path stays HERE: the accumulating infinite query, all five
+// mutations with their optimistic cache patches + 401 quiet-catches, and
+// the three confirm-gated destructive flows; the extracts render the
+// byte-identical DOM they rendered inline yesterday). Import surface:
+//   • alerts-inbox-meta — the pure module (the row/page/filter types,
+//     the FILTERS tab list, the frozen page size, the list key, the
+//     Arabic plural forms, the 401 predicate + failure-toast factory the
+//     mutations ride, and the date grouping)
+//   • alerts-meta — the TYPE_META icon/tone/label map (page: the
+//     delete-confirm's type label; extracts: chips + rows)
+//   • AlertsHeader — h1 + refresh + قراءة الكل / حذف المقروءة / حذف الكل
+//   • AlertsTypeChips / AlertsFilterTabs — the two filter bars (one
+//     page-owned filter atom behind both)
+//   • AlertsEmptyState — the loaded-but-empty branch
+//   • AlertsGroupedList — the date-grouped rows (mark-read on row tap;
+//     delete confirm-gated in the page's confirmDeleteAlert)
+import {
+  ALERT_COUNT_FORMS,
+  ALERTS_LIST_KEY,
+  ALERTS_PAGE_SIZE,
+  alertActionToast,
+  groupByDate,
+  isSessionExpiredError,
+  type AdminAlertItem,
+  type AlertType,
+  type AlertsInfiniteData,
+  type AlertsPageData,
+  type FilterType,
+} from "@/components/admin/alerts/alerts-inbox-meta";
+import { TYPE_META } from "@/components/admin/alerts/alerts-meta";
+import { AlertsHeader } from "@/components/admin/alerts/AlertsHeader";
+import { AlertsTypeChips } from "@/components/admin/alerts/AlertsTypeChips";
+import { AlertsFilterTabs } from "@/components/admin/alerts/AlertsFilterTabs";
+import { AlertsEmptyState } from "@/components/admin/alerts/AlertsEmptyState";
+import { AlertsGroupedList } from "@/components/admin/alerts/AlertsGroupedList";
 
 /** Maps the cached infinite shape with one shared helper so the three
  *  optimistic mutations below stay in lockstep. */
@@ -186,30 +83,6 @@ function patchCachedAlerts(
   qc.setQueryData<AlertsInfiniteData>(ALERTS_LIST_KEY, (old) =>
     old ? { ...old, pages: old.pages.map(fn) } : old,
   );
-}
-
-function groupByDate(alerts: AdminAlertItem[]): { label: string; items: AdminAlertItem[] }[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const yesterday = today - 86_400_000;
-  const weekAgo = today - 7 * 86_400_000;
-
-  const groups: { label: string; items: AdminAlertItem[] }[] = [
-    { label: "اليوم", items: [] },
-    { label: "أمس", items: [] },
-    { label: "هذا الأسبوع", items: [] },
-    { label: "أقدم", items: [] },
-  ];
-
-  for (const a of alerts) {
-    const t = new Date(a.createdAt).getTime();
-    if (t >= today) groups[0].items.push(a);
-    else if (t >= yesterday) groups[1].items.push(a);
-    else if (t >= weekAgo) groups[2].items.push(a);
-    else groups[3].items.push(a);
-  }
-
-  return groups.filter((g) => g.items.length > 0);
 }
 
 export default function AdminAlertsPage() {
@@ -444,63 +317,18 @@ export default function AdminAlertsPage() {
     <AdminLayout badges={{ unreadAlerts: unreadCount }}>
       <div className="space-y-5 page-in">
         {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold">صندوق التنبيهات</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              سجل تنبيهات النظام — المخزون، الكوبونات، والأحداث المهمة
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
-            <button
-              onClick={() => refetch()}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-              title="تحديث"
-              aria-label="تحديث التنبيهات"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-
-            {unreadCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => markAllRead.mutate()}
-                disabled={markAllRead.isPending}
-                className="gap-1.5 text-xs h-8"
-              >
-                <CheckCheck className="w-3.5 h-3.5" />
-                قراءة الكل
-              </Button>
-            )}
-
-            {readCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void confirmDeleteRead()}
-                disabled={deleteRead.isPending}
-                className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive hover:border-destructive/30"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                حذف المقروءة ({readCount})
-              </Button>
-            )}
-
-            {alerts.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void confirmDeleteAll()}
-                disabled={deleteAll.isPending}
-                className="gap-1.5 text-xs h-8 text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                حذف الكل
-              </Button>
-            )}
-          </div>
-        </div>
+        <AlertsHeader
+          unreadCount={unreadCount}
+          readCount={readCount}
+          alertsCount={alerts.length}
+          markAllPending={markAllRead.isPending}
+          deleteReadPending={deleteRead.isPending}
+          deleteAllPending={deleteAll.isPending}
+          onRefresh={() => refetch()}
+          onMarkAllRead={() => markAllRead.mutate()}
+          onDeleteRead={() => void confirmDeleteRead()}
+          onDeleteAll={() => void confirmDeleteAll()}
+        />
 
         {/* Stats row — R125 (A3 #6): all six TYPE_META types are now
             quick-filter chips (system + forecast_stockout rows were
@@ -508,89 +336,18 @@ export default function AdminAlertsPage() {
             carries aria-pressed (A3 #6 / A6 B-10 — the R124-C2 chip-bar
             idiom, applied to the last two bars that lacked it). */}
         {!isLoading && alerts.length > 0 && (
-          <div className="flex items-center gap-3 flex-wrap">
-            {[
-              { key: "no_stock", count: alerts.filter((a) => a.type === "no_stock").length },
-              { key: "low_stock", count: alerts.filter((a) => a.type === "low_stock").length },
-              {
-                key: "forecast_stockout",
-                count: alerts.filter((a) => a.type === "forecast_stockout").length,
-              },
-              {
-                key: "coupon_maxed",
-                count: alerts.filter((a) => a.type === "coupon_maxed").length,
-              },
-              {
-                key: "coupon_expiring",
-                count: alerts.filter((a) => a.type === "coupon_expiring").length,
-              },
-              { key: "system", count: alerts.filter((a) => a.type === "system").length },
-            ]
-              .filter((s) => s.count > 0)
-              .map((s) => {
-                const m = TYPE_META[s.key as AlertType];
-                return (
-                  <button
-                    key={s.key}
-                    onClick={() => setFilter(filter === s.key ? "all" : (s.key as FilterType))}
-                    aria-pressed={filter === s.key}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150 ${
-                      filter === s.key
-                        ? `font-bold ${m.bg} ${m.border} ${m.color}`
-                        : "bg-muted/20 border-border/40 text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <m.icon className="w-3 h-3" />
-                    {m.label}
-                    <span
-                      className={`text-3xs px-1 rounded-full font-bold ${filter === s.key ? "bg-white/10" : "bg-muted/60"}`}
-                    >
-                      {s.count}
-                    </span>
-                  </button>
-                );
-              })}
-          </div>
+          <AlertsTypeChips alerts={alerts} filter={filter} onSetFilter={setFilter} />
         )}
 
         {/* Filter tabs — R125 (A3 #6 / A6 B-10): aria-pressed exposes
             the active tab (the in-repo chip-bar idiom; the active state
             was visual-only on the last two chip bars in the console). */}
-        <div className="flex items-center gap-1 bg-muted/30 border border-border/40 p-1 rounded-2xl overflow-x-auto scrollbar-none w-fit max-w-full">
-          {FILTERS.map((tab) => {
-            const cnt =
-              tab.value === "all"
-                ? alerts.length
-                : tab.value === "unread"
-                  ? unreadCount
-                  : alerts.filter((a) => a.type === tab.value).length;
-            return (
-              <button
-                key={tab.value}
-                onClick={() => setFilter(tab.value)}
-                aria-pressed={filter === tab.value}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap shrink-0 ${
-                  filter === tab.value
-                    ? "bg-card text-foreground shadow-sm font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {tab.label}
-                {cnt > 0 && (
-                  <span
-                    className={`text-3xs font-bold px-1.5 py-px rounded-full ${
-                      filter === tab.value
-                        ? "bg-primary/15 text-primary-text"
-                        : "bg-muted/60 text-muted-foreground"
-                    }`}
-                  >
-                    {cnt}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <AlertsFilterTabs
+          alerts={alerts}
+          unreadCount={unreadCount}
+          filter={filter}
+          onSetFilter={setFilter}
+        />
 
         {/* Alert list */}
         {/* 93-C6 / F-07 (A5 AL-1): a failed poll is NOT "no alerts" —
@@ -634,158 +391,14 @@ export default function AdminAlertsPage() {
             onRetry={() => refetch()}
           />
         ) : displayed.length === 0 ? (
-          // R125 (A6 B-8): role="status" — the loaded→empty transition
-          // now announces (the shared EmptyState got the same role).
-          <div
-            role="status"
-            className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center">
-              {filter === "unread" ? (
-                <Bell className="w-7 h-7 text-muted-foreground" />
-              ) : (
-                <BellOff className="w-7 h-7 text-muted-foreground" />
-              )}
-            </div>
-            <div className="text-center">
-              <div className="font-semibold text-foreground/60">
-                {filter === "unread" ? "لا توجد تنبيهات غير مقروءة" : "لا توجد تنبيهات"}
-              </div>
-              <div className="text-xs mt-1 text-muted-foreground">
-                {/* R128-A6 (P4-4): ✓ text glyph → lucide Check (the
-                    product.tsx:1959 pattern) — icon on the reading line,
-                    aria-hidden, AT reads the Arabic only. */}
-                {filter === "unread" ? (
-                  <span className="inline-flex items-center gap-1 justify-center">
-                    أنت على اطلاع كامل بكل شيء
-                    <Check className="w-3 h-3 text-status-success" aria-hidden />
-                  </span>
-                ) : (
-                  "ستظهر هنا تنبيهات المخزون والكوبونات تلقائياً"
-                )}
-              </div>
-            </div>
-          </div>
+          <AlertsEmptyState filter={filter} />
         ) : (
           <div className="space-y-6">
-            {groups.map((group) => (
-              <div key={group.label}>
-                {/* Date group header */}
-                <div className="flex items-center gap-3 mb-3">
-                  {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
-                      letter-spacing severs Arabic letter connections
-                      (A11 §8, rule documented in layout.tsx). */}
-                  <span className="text-2xs font-bold text-muted-foreground">{group.label}</span>
-                  <div className="flex-1 h-px bg-border/40" />
-                  <span className="text-3xs text-muted-foreground">{group.items.length}</span>
-                </div>
-
-                <div className="space-y-1.5">
-                  {group.items.map((alert) => {
-                    const meta = TYPE_META[alert.type as AlertType] ?? TYPE_META.system;
-                    const Icon = meta.icon;
-                    return (
-                      <div
-                        key={alert.id}
-                        onClick={() => !alert.isRead && markRead.mutate(alert.id)}
-                        /* R125 (A6 B-15): opacity-60 dimmed the read rows'
-                           muted message text to ≈3.6:1 dark / 2.7:1 light
-                           (1.4.3). No single opacity value passes BOTH
-                           themes, so the read-state distinction now rides
-                           the row surface alone (bg-card/40 + border/40,
-                           no shadow, no hover) — text stays at its
-                           token contrast. */
-                        className={`group flex items-start gap-3 px-4 py-3 rounded-2xl border transition-all duration-150 ${
-                          alert.isRead
-                            ? "bg-card/40 border-border/40 cursor-default"
-                            : "bg-card border-border/60 shadow-sm cursor-pointer hover:border-border hover:shadow-md hover:shadow-black/10"
-                        }`}
-                      >
-                        {/* Unread dot */}
-                        <div className="relative shrink-0 mt-0.5">
-                          <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center ${meta.bg}`}
-                          >
-                            <Icon className={`w-4 h-4 ${meta.color}`} />
-                          </div>
-                          {!alert.isRead && (
-                            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-primary border-2 border-background badge-pulse" />
-                          )}
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`text-sm leading-snug ${alert.isRead ? "font-semibold text-foreground/70" : "font-bold"}`}
-                            >
-                              {alert.title}
-                              {/* R125 (A6 B-15): the unread state was
-                                  color-only (pulse dot + tint) — an
-                                  sr-only word makes it explicit. */}
-                              {!alert.isRead && <span className="sr-only"> — غير مقروء</span>}
-                            </span>
-                            <span
-                              className={`text-3xs px-1.5 py-px rounded-full border shrink-0 ${meta.bg} ${meta.color} ${meta.border}`}
-                            >
-                              {meta.label}
-                            </span>
-                          </div>
-                          {alert.message && (
-                            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                              {alert.message}
-                            </p>
-                          )}
-                          <div className="mt-1">
-                            <span
-                              className="text-2xs text-muted-foreground"
-                              title={formatDate(alert.createdAt)}
-                            >
-                              {formatRelativeTime(alert.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Actions — visible on hover (desktop) / always
-                            visible on touch: opacity-0 makes them unreachable
-                            on phones where there is no hover.
-                            R125 (A6 B-2): sm:group-focus-within reveals
-                            the cluster when keyboard focus reaches the
-                            buttons — they were focusable but invisible
-                            through opacity-0 (2.4.7); the hover aesthetic
-                            is unchanged. */}
-                        <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
-                          {!alert.isRead && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                markRead.mutate(alert.id);
-                              }}
-                              className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
-                              title="تعيين كمقروء"
-                              aria-label={`تعيين تنبيه «${alert.title}» كمقروء`}
-                            >
-                              <CheckCheck className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void confirmDeleteAlert(alert);
-                            }}
-                            className="p-1.5 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors"
-                            title="حذف"
-                            aria-label={`حذف تنبيه «${alert.title}»`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+            <AlertsGroupedList
+              groups={groups}
+              onMarkRead={(id) => markRead.mutate(id)}
+              onDelete={(alert) => void confirmDeleteAlert(alert)}
+            />
 
             {/* Footer summary — 94-C2 (A2 P1-1): «عرض N» (+ the
                 server-side `total` when the response carries it);

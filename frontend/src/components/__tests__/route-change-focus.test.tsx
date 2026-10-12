@@ -186,7 +186,13 @@ describe("RouteAnnouncer — sr-only title announcement (F3-07)", () => {
 });
 
 describe("App.tsx main-content source contract (F3-07)", () => {
-  const appText = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+  // R137 (2-b — pins follow the surface): App.tsx was decomposed into
+  // src/app/* modules; AppRoutes (the <main> host) moved to
+  // app/routes.tsx. The pin reads App.tsx ∪ app/routes.tsx — the
+  // assertion is unchanged.
+  const appText = ["src/App.tsx", "src/app/routes.tsx"]
+    .map((f) => readFileSync(resolve(process.cwd(), f), "utf8"))
+    .join("\n");
 
   it("the real <main> carries id=main-content AND tabIndex={-1}", () => {
     // Static contract on the source (pwa-offline-shell test pattern):

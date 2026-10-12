@@ -153,7 +153,13 @@ describe("ErrorBoundary — slim chrome fallback (R118-B2 / A2 F-5)", () => {
   it("App.tsx wraps every storefront chrome block in a slim boundary (source contract)", () => {
     // AppRoutes is not exported; the mobile-nav-clearance precedent —
     // asserting on App.tsx's source text — pins the wiring instead.
-    const appText = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+    // R137 (2-b — pins follow the surface): App.tsx was decomposed into
+    // src/app/* modules; AppRoutes (the chrome-boundary host) moved to
+    // app/routes.tsx. The pin reads App.tsx ∪ app/routes.tsx — the
+    // assertions are unchanged.
+    const appText = ["src/App.tsx", "src/app/routes.tsx"]
+      .map((f) => readFileSync(resolve(process.cwd(), f), "utf8"))
+      .join("\n");
     const chromeBoundary = /<ErrorBoundary resetKey=\{location\} fallback=\{null\}>/g;
     const count = appText.match(chromeBoundary)?.length ?? 0;
     // Navbar + FlashSaleBanner + Footer + MobileNav = 4 slim boundaries.
@@ -161,6 +167,8 @@ describe("ErrorBoundary — slim chrome fallback (R118-B2 / A2 F-5)", () => {
     // The full-screen route boundary keeps its resetKey-only shape.
     expect(appText).toContain("<ErrorBoundary resetKey={location}>");
     // And the chrome still renders only on non-admin, non-chromeless routes.
-    expect(appText).toContain("{!isAdmin && !isChromeless && (\n        <ErrorBoundary resetKey={location} fallback={null}>\n          <Navbar />");
+    expect(appText).toContain(
+      "{!isAdmin && !isChromeless && (\n        <ErrorBoundary resetKey={location} fallback={null}>\n          <Navbar />",
+    );
   });
 });

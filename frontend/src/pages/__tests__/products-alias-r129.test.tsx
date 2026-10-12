@@ -17,7 +17,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { ProductsAliasRedirect } from "../../App";
 
-const appSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../App.tsx"), "utf8");
+// R137 (2-b — pins follow the surface): App.tsx was decomposed into
+// src/app/* modules; the route registrations moved to app/routes.tsx.
+// The pin reads App.tsx ∪ app/routes.tsx — the assertions are unchanged.
+const appSource = ["../../App.tsx", "../../app/routes.tsx"]
+  .map((rel) => fs.readFileSync(path.resolve(import.meta.dirname, rel), "utf8"))
+  .join("\n");
 
 describe("R129-B1: /products alias (A2-F3) — registration + replace-navigation", () => {
   beforeEach(() => {
