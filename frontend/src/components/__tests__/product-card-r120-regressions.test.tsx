@@ -176,21 +176,36 @@ describe("ProductCard — storefront badge copy (R123-E4b P3-a)", () => {
     expect(screen.queryByText("شائع")).not.toBeInTheDocument();
   });
 
-  it("low stock reads the full phrase «متبقٍ N», matching its own aria-label", () => {
+  it("low stock reads the full phrase «متبقٍ N فقط», matching its own aria-label", () => {
     renderCard({ ...AVAILABLE_PRODUCT, stock_count: 2 } as typeof AVAILABLE_PRODUCT);
-    const badge = screen.getByText("متبقٍ 2", { exact: false });
+    // R134 (A2-F5): the badge joins its family («متبقٍ N فقط» — its own
+    // aria-label, the quick-add ceiling toast, the cart's lineStockNotice).
+    const badge = screen.getByText("متبقٍ 2 فقط");
     expect(badge.closest("[aria-label]")).toHaveAttribute("aria-label", "مخزون منخفض، متبقٍ 2 فقط");
     // The old noun-less fragment «آخر 2» is gone.
     expect(screen.queryByText(/^آخر 2$/)).not.toBeInTheDocument();
   });
 
-  it("stock caps at «99+» — the RTL-safe source order (digits, then plus)", () => {
+  it("the mid-range stock pill is self-describing «كمية N» and spoken in the card name (R134 A2-F4)", () => {
+    // AVAILABLE_PRODUCT carries stock_count: 9 — the 4–99 single-variant
+    // branch that used to render a bare numeral beside the price.
+    renderCard(AVAILABLE_PRODUCT as typeof AVAILABLE_PRODUCT);
+    expect(screen.getByText("كمية 9")).toBeInTheDocument();
+    // The card's composed aria-label now speaks the count too (it was
+    // silent on the mid-range branch — stock only entered the name on
+    // the نفد/low-stock branches).
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("aria-label", expect.stringContaining("الكمية 9"));
+  });
+
+  it("stock caps at «كمية 99+» — the RTL-safe source order (digits, then plus)", () => {
     renderCard({ ...AVAILABLE_PRODUCT, stock_count: 250 } as typeof AVAILABLE_PRODUCT);
     // In the RTL base direction a logical "99+" renders with the plus on
     // the LEFT of the digits (digits first in Arabic reading order) —
     // the Navbar/MobileNav/NotificationBell badge convention. The old
     // source "+99" rendered plus-on-the-right (English visual order).
-    expect(screen.getByText("99+")).toBeInTheDocument();
+    // R134 (A2-F4): the pill carries the «كمية» noun now.
+    expect(screen.getByText("كمية 99+")).toBeInTheDocument();
     expect(screen.queryByText("+99")).not.toBeInTheDocument();
   });
 });

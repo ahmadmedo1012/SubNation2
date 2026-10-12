@@ -109,8 +109,8 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
 
     // The search box is pre-filled with the committed query.
     expect(screen.getByLabelText("البحث في المنتجات")).toHaveValue("نتفلكس");
-    // The category chip is pressed.
-    expect(screen.getByRole("button", { name: "برامج" })).toHaveAttribute("aria-pressed", "true");
+    // The category chip is pressed (R134 A2-F1: canonical label).
+    expect(screen.getByRole("button", { name: "برامج وتراخيص" })).toHaveAttribute("aria-pressed", "true");
     // The availability chip is pressed.
     expect(screen.getByRole("button", { name: "متوفر فقط" })).toHaveAttribute(
       "aria-pressed",
@@ -165,7 +165,7 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     const replaceSpy = vi.spyOn(window.history, "replaceState");
     renderPage();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "برامج" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "برامج وتراخيص" })).toHaveAttribute("aria-pressed", "true");
     });
 
     // مسح (1) — the clear-all affordance in the result header (the empty
@@ -184,16 +184,17 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     renderPage();
 
     expect(screen.getByLabelText("ترتيب المنتجات")).toHaveValue("");
-    // No category chip is armed.
+    // No category chip is armed (R134 A2-F1: canonical labels —
+    // home.tsx derives from categoryLabel()).
     for (const label of [
       "الكل",
       "بث مباشر",
       "موسيقى",
-      "برامج",
-      "VPN وشبكات",
+      "برامج وتراخيص",
+      "شبكات VPN",
       "أدوات ذكاء اصطناعي",
       "أدوات SEO",
-      "تعليم",
+      "تعليم ومكتبات",
     ]) {
       expect(screen.getByRole("button", { name: label })).toHaveAttribute(
         "aria-pressed",

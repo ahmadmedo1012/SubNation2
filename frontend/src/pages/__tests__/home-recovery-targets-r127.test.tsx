@@ -162,7 +162,8 @@ describe("home — A9-m2: the search-results heading carries dir=auto", () => {
     setUrl("/");
     renderPage();
 
-    const heading = screen.getByRole("heading", { name: "الاشتراكات المتاحة" });
+    // R134 (A2-F6): the default heading no longer claims availability.
+    const heading = screen.getByRole("heading", { name: "كل الاشتراكات" });
     expect(heading).toHaveAttribute("dir", "auto");
   });
 });

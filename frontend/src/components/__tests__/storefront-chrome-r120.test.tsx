@@ -232,7 +232,7 @@ describe("no <a><button> interactive nesting in the storefront shell (R120-B1 / 
       "href",
       "/register",
     );
-    expect(screen.getByRole("link", { name: /لدي حساب — تسجيل الدخول/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /لدي حساب — سجّل دخولك/ })).toHaveAttribute(
       "href",
       "/login",
     );

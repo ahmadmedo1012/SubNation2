@@ -52,15 +52,22 @@ import { Link } from "wouter";
 // verified against production — see lib/categories.ts). Retired chips
 // (gaming/productivity) were removed once their products were archived:
 // a chip that filters to an empty grid misleads shoppers.
+// R134 (A2-F1): the labels DERIVE from categoryLabel() (lib/utils — the
+// canonical chip-brevity map that already feeds the results h2 below,
+// ProductCard badges, Product-LD and breadcrumbs). The previous
+// hand-rolled table was a third parallel source: «برامج»/«VPN
+// وشبكات»/«تعليم» chips sat a viewport away from the «برامج وتراخيص»/
+// «شبكات VPN»/«تعليم ومكتبات» their own filter results rendered —
+// one source, three consumers, zero drift (Navbar derives too).
 const CATEGORIES = [
   { value: "", label: "الكل", Icon: LayoutGrid },
-  { value: "streaming", label: "بث مباشر", Icon: Tv2 },
-  { value: "music", label: "موسيقى", Icon: Music2 },
-  { value: "software", label: "برامج", Icon: AppWindow },
-  { value: "vpn", label: "VPN وشبكات", Icon: ShieldCheck },
-  { value: "ai-tools", label: "أدوات ذكاء اصطناعي", Icon: Sparkles },
-  { value: "seo-tools", label: "أدوات SEO", Icon: TrendingUp },
-  { value: "education", label: "تعليم", Icon: GraduationCap },
+  { value: "streaming", label: categoryLabel("streaming"), Icon: Tv2 },
+  { value: "music", label: categoryLabel("music"), Icon: Music2 },
+  { value: "software", label: categoryLabel("software"), Icon: AppWindow },
+  { value: "vpn", label: categoryLabel("vpn"), Icon: ShieldCheck },
+  { value: "ai-tools", label: categoryLabel("ai-tools"), Icon: Sparkles },
+  { value: "seo-tools", label: categoryLabel("seo-tools"), Icon: TrendingUp },
+  { value: "education", label: categoryLabel("education"), Icon: GraduationCap },
 ];
 
 const SORTS = [
@@ -851,7 +858,7 @@ export default function HomePage() {
                         "w-full sm:w-auto gap-1.5 text-muted-foreground [&_svg]:size-3.5",
                       )}
                     >
-                      لدي حساب — تسجيل الدخول
+                      لدي حساب — سجّل دخولك
                       <ArrowLeft className="opacity-40" aria-hidden="true" />
                     </Link>
                   </div>
@@ -1007,6 +1014,15 @@ export default function HomePage() {
                 onFocus={() =>
                   setShowSearchHistory(searchInput.length === 0 && searchHistory.length > 0)
                 }
+                /* R134 (A2-F3): the history popup now announces itself —
+                   aria-expanded/aria-controls follow the support.tsx
+                   disclosure idiom, aria-autocomplete="list" tells SRs
+                   the field drives a suggestion list (the keyboard
+                   behavior was already correct — focus guard + min-h-11
+                   rows; only the announcement was missing). */
+                aria-expanded={showSearchHistory && searchHistory.length > 0}
+                aria-controls="home-search-history"
+                aria-autocomplete="list"
                 onBlur={(e) => {
                   // R94-A1 #16 (P3): keyboard focus moving INTO the history
                   // list must not close it — only a blur that lands outside
@@ -1040,16 +1056,26 @@ export default function HomePage() {
                         مسح
                       </button>
                     </div>
-                    {searchHistory.map((query) => (
-                      <button
-                        key={query}
-                        onClick={() => handleSearchHistoryClick(query)}
-                        className="min-h-11 w-full flex items-center gap-2 px-2 text-sm text-muted-foreground hover:bg-secondary/40 rounded-lg transition-colors text-right"
-                      >
-                        <Clock className="w-3 h-3 text-muted-foreground" />
-                        {query}
-                      </button>
-                    ))}
+                    {/* R134 (A2-F3): ONLY the rows live in the listbox —
+                        the header + مسح stay siblings so the role's
+                        option children are exactly the suggestions. */}
+                    <div id="home-search-history" role="listbox" aria-label="عمليات البحث السابقة">
+                      {searchHistory.map((query) => (
+                        <button
+                          key={query}
+                          onClick={() => handleSearchHistoryClick(query)}
+                          /* R134 (A2-F3): option semantics for the history
+                             rows — the listbox wrapper carries the popup's
+                             id + label so aria-controls resolves. */
+                          role="option"
+                          aria-selected={false}
+                          className="min-h-11 w-full flex items-center gap-2 px-2 text-sm text-muted-foreground hover:bg-secondary/40 rounded-lg transition-colors text-right"
+                        >
+                          <Clock className="w-3 h-3 text-muted-foreground" />
+                          {query}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1153,14 +1179,19 @@ export default function HomePage() {
             - search active → "نتائج البحث"
             - category selected → category Arabic label
             - sort changed → sort label
-            - default → "الاشتراكات المتاحة"
+            - default → "كل الاشتراكات"
           When idle (no filter active) the heading is sr-only to
           preserve the current visual; with a filter, it becomes
           visible as a small section title.
+          R134 (A2-F6): the default no longer claims availability —
+          the default grid lists ALL products (the R120-B1 re-order
+          fronts the available ones but still renders the نفد cards
+          below), so «الاشتراكات المتاحة» was a promise the grid
+          doesn't keep for SR users and crawlers reading the h2.
         */}
         {(() => {
           const hasFilter = !!(searchInput || category || sort || availableOnly);
-          let label = "الاشتراكات المتاحة";
+          let label = "كل الاشتراكات";
           if (searchInput) label = `نتائج البحث: ${searchInput}`;
           else if (category) label = categoryLabel(category);
           else if (sort) label = SORTS.find((s) => s.value === sort)?.label ?? label;

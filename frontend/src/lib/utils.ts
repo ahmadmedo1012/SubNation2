@@ -47,15 +47,24 @@ export type ArabicPluralForms = {
 };
 
 export function formatCount(count: number, forms: ArabicPluralForms): string {
+  return `${COUNT_FORMATTER.format(count)} ${arabicCountWord(count, forms)}`;
+}
+
+// R134 (A2-F2): the word-only half of formatCount, for the two-tone count
+// sites (bold number + muted noun in separate spans, the wallet points
+// cluster and the loyalty ledger deltas) where the combined string would
+// flatten the styling or cannot carry the dir="ltr" +/- sign run. Same
+// plural engine, same fallbacks — one agreement rule, two render shapes.
+export function arabicCountWord(count: number, forms: ArabicPluralForms): string {
   const category = AR_PLURAL_RULES ? AR_PLURAL_RULES.select(count) : count === 1 ? "one" : "other";
   // "one" (and any category without a provided form) falls back to
   // `other`; "zero" is a real Arabic plural category (CLDR) and is
   // honored when the caller provides it.
-  const label =
-    category === "other"
-      ? forms.other
-      : ((forms[category as keyof ArabicPluralForms] as string | undefined) ?? forms.other);
-  return `${COUNT_FORMATTER.format(count)} ${label}`;
+  return (
+    (category === "other"
+      ? undefined
+      : (forms[category as keyof ArabicPluralForms] as string | undefined)) ?? forms.other
+  );
 }
 
 // 96-F7 (R96 A6 #6): every ar-LY DATE call below pins -u-nu-latn.

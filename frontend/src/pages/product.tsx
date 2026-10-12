@@ -530,9 +530,36 @@ export default function ProductPage() {
           });
           return;
         }
-      } catch {
+      } catch (err) {
         // Fail-open (98-F2 contract): the displayed price stands; the
         // server re-prices the order on its side regardless.
+        // R134 (A2-F8): a 404 is NOT a transient fetch failure — it is
+        // definitive (R110-F: deactivated/archived products 404 on both
+        // detail routes). Fail-opening on it let createOrder run into a
+        // guaranteed 400/404 banner; the page already owns the honest
+        // state for this verdict — a refetch flips it into the real
+        // «المنتج غير موجود» branch (the cart path's twin of dropping
+        // 404/410-archived lines with a notice). Network/5xx failures
+        // keep the fail-open contract above.
+        if (
+          err instanceof Error &&
+          err.name === "ApiError" &&
+          (err as { status?: number }).status === 404
+        ) {
+          try {
+            void refetchProduct();
+          } catch {
+            // best-effort UI refresh — the toast still explains the abort
+          }
+          couponGenerationRef.current += 1;
+          setCouponResult(null);
+          setCouponError("");
+          toast({
+            title: "المنتج لم يعد متوفراً",
+            description: "هذا المنتج لم يعد متوفراً — يتم تحديث الصفحة لتصفّح البدائل.",
+          });
+          return;
+        }
       }
       const body: CreateOrderBody = { product_id: product.id };
       if (selectedVariant) body.variant_id = selectedVariant.id;

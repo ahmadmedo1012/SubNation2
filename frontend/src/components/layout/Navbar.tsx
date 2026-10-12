@@ -3,7 +3,7 @@ import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
-import { cn, formatCount, formatCurrency } from "@/lib/utils";
+import { categoryLabel, cn, formatCount, formatCurrency } from "@/lib/utils";
 import {
   Wallet,
   LogOut,
@@ -27,18 +27,21 @@ const NotificationBell = lazyWithRetry(() =>
 );
 
 // R120-B1 (A3-F1): the guest drawer's category shortcuts. Mirrors the
-// live slugs in lib/categories.ts (verified against the catalog) with
-// home.tsx's short chip labels — kept local (not imported from
-// lib/categories.ts) because CATEGORY_META carries ~9KB of landing-page
-// prose/FAQs and Navbar is in the EAGER bundle.
+// live slugs in lib/categories.ts (verified against the catalog).
+// R134 (A2-F1): labels DERIVE from categoryLabel() (lib/utils — the
+// canonical chip-brevity map; home.tsx's chips derive from it too) —
+// the hand-rolled table was the drifting fourth source («ذكاء اصطناعي»
+// vs the canonical «أدوات ذكاء اصطناعي», «VPN وشبكات» vs «شبكات
+// VPN», …). No bundle cost: Navbar already imports lib/utils (cn/
+// formatCount), and CATEGORY_META itself stays out of the eager chunk.
 const DRAWER_CATEGORIES = [
-  { slug: "streaming", label: "بث مباشر" },
-  { slug: "music", label: "موسيقى" },
-  { slug: "software", label: "برامج" },
-  { slug: "vpn", label: "VPN وشبكات" },
-  { slug: "ai-tools", label: "ذكاء اصطناعي" },
-  { slug: "seo-tools", label: "أدوات SEO" },
-  { slug: "education", label: "تعليم" },
+  { slug: "streaming", label: categoryLabel("streaming") },
+  { slug: "music", label: categoryLabel("music") },
+  { slug: "software", label: categoryLabel("software") },
+  { slug: "vpn", label: categoryLabel("vpn") },
+  { slug: "ai-tools", label: categoryLabel("ai-tools") },
+  { slug: "seo-tools", label: categoryLabel("seo-tools") },
+  { slug: "education", label: categoryLabel("education") },
 ] as const;
 
 /**

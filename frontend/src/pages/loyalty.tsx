@@ -6,7 +6,14 @@ import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { generateIdempotencyKey } from "@/lib/idempotency";
-import { formatCount, formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
+import {
+  arabicCountWord,
+  formatCount,
+  formatCurrency,
+  formatDate,
+  tierColor,
+  tierLabel,
+} from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey, getGetWalletQueryKey } from "@workspace/api-client-react";
 import {
@@ -907,7 +914,20 @@ export default function LoyaltyPage() {
                           {gain ? "+" : "-"}
                           {Math.abs(delta)}
                         </span>
-                        <span className="text-3xs text-muted-foreground">نقطة</span>
+                        {/* R134 (A2-F2): the delta noun agrees with its
+                            magnitude (±2 → نقطتان، ±3–10 → نقاط، ±11+ →
+                            نقطة) — the frozen «نقطة» was the twin of the
+                            wallet card's straggler. Word-only form so the
+                            dir="ltr" signed number span keeps its shape. */}
+                        <span className="text-3xs text-muted-foreground">
+                          {arabicCountWord(Math.abs(delta), {
+                            one: "نقطة",
+                            two: "نقطتان",
+                            few: "نقاط",
+                            many: "نقطة",
+                            other: "نقطة",
+                          })}
+                        </span>
                       </span>
                     </div>
                   );

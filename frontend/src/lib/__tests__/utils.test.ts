@@ -30,6 +30,7 @@ import {
   statusLabel,
   tierColor,
   tierLabel,
+  arabicCountWord,
   formatCount,
 } from "../utils";
 
@@ -197,6 +198,19 @@ describe("formatCount (Arabic pluralization, round-3)", () => {
 
   it("groups large counts like money values do", () => {
     expect(formatCount(1234567, { other: "طلب" })).toBe("1,234,567 طلب");
+  });
+
+  it("arabicCountWord returns the WORD only, same category selection (R134 A2-F2)", () => {
+    // The word-only half for two-tone count sites (wallet points cluster,
+    // loyalty ledger deltas) — formatCount delegates to it.
+    const forms = { one: "نقطة", two: "نقطتان", few: "نقاط", many: "نقطة", other: "نقطة" };
+    expect(arabicCountWord(1, forms)).toBe("نقطة");
+    expect(arabicCountWord(2, forms)).toBe("نقطتان");
+    expect(arabicCountWord(7, forms)).toBe("نقاط");
+    expect(arabicCountWord(11, forms)).toBe("نقطة");
+    // Fallback: a category with no provided form falls back to `other`.
+    expect(arabicCountWord(3, { other: "عنصر" })).toBe("عنصر");
+    expect(arabicCountWord(0, { other: "عنصر" })).toBe("عنصر");
   });
 });
 

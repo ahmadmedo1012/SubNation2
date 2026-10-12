@@ -1217,7 +1217,11 @@ export default function CheckoutPage() {
                   <CheckCircle2 className="w-4 h-4 text-primary" />
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  رصيدك:{" "}
+                  {/* R134 (A2-F9): colon dropped — the cart's twin chip
+                      (cart.tsx) renders «رصيدك {amount}»; the checkout
+                      summary rows avoid colons, and this datum chip
+                      followed neither rule exactly. */}
+                  رصيدك{" "}
                   <span className="font-bold text-foreground tabular-nums">
                     {/* 93-C5 / F-15 (A4 #8): a failed probe used to render a
                         fabricated "0.00 د.ل" here (formatBalance(null) →

@@ -26,9 +26,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WalletPage from "@/pages/wallet";
-import { useGetWalletLedger } from "@workspace/api-client-react";
+import { useGetWallet, useGetWalletLedger } from "@workspace/api-client-react";
 import { formatDate } from "@/lib/utils";
 
 const mutateMock = vi.fn();
@@ -289,5 +289,54 @@ describe("WalletPage — the wallet STATEMENT (R115, A8 P2)", () => {
 
     expect(screen.getByText("2 حركتان")).toBeInTheDocument();
     expect(screen.queryByText("عرض آخر 100 حركة")).not.toBeInTheDocument();
+  });
+
+  // R134 (A2-F2): the balance-card points noun agrees with the count —
+  // the 1-point-per-LYD earn rate makes 2–10 balances common, and the
+  // frozen «نقطة» read «7 نقطة» (wrong). The noun now rides the same
+  // plural engine as formatCount, word-only so the two-tone cluster
+  // (bold number, muted noun) survives. One state per test — render()
+  // appends, so a single it() stacking renders would cross-assert.
+  // mockImplementation (NOT Once): the page's subtree calls useGetWallet
+  // more than once per render (the shared chrome's wallet chip mounts
+  // first), so a single queued value lands on the wrong call and the
+  // card reads the base fixture — the restore keeps the file's other
+  // tests on the base data.
+  const pointsCard = (points: number) => ({
+    data: { balance: 150, loyalty_points: points, loyalty_tier: "bronze" },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  });
+  const walletMock = vi.mocked(useGetWallet);
+  const baseWalletImpl = walletMock.getMockImplementation();
+
+  afterEach(() => {
+    walletMock.mockImplementation(baseWalletImpl!);
+  });
+
+  it("a 7-point balance reads «7 نقاط» (R134 A2-F2 — the few branch)", () => {
+    walletMock.mockImplementation(() => pointsCard(7) as never);
+    renderPage();
+    expect(screen.getByText("7")).toBeInTheDocument();
+    expect(screen.getByText("نقاط")).toBeInTheDocument();
+    expect(screen.queryByText("نقطة")).not.toBeInTheDocument();
+    expect(screen.queryByText("نقطتان")).not.toBeInTheDocument();
+  });
+
+  it("a 2-point balance reads «2 نقطتان» (R134 A2-F2 — the two branch)", () => {
+    walletMock.mockImplementation(() => pointsCard(2) as never);
+    renderPage();
+    expect(screen.getByText("نقطتان")).toBeInTheDocument();
+    expect(screen.queryByText("نقطة")).not.toBeInTheDocument();
+    expect(screen.queryByText("نقاط")).not.toBeInTheDocument();
+  });
+
+  it("an 11-point balance reads «11 نقطة» (R134 A2-F2 — the singular branch)", () => {
+    walletMock.mockImplementation(() => pointsCard(11) as never);
+    renderPage();
+    expect(screen.getByText("نقطة")).toBeInTheDocument();
+    expect(screen.queryByText("نقاط")).not.toBeInTheDocument();
+    expect(screen.queryByText("نقطتان")).not.toBeInTheDocument();
   });
 });

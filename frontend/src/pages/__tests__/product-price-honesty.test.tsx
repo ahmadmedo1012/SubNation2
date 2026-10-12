@@ -323,6 +323,34 @@ describe("ProductPage — pre-buy live re-quote (R115-I1 / A7 P2-2)", () => {
     expect(screen.getByText("49.00 د.ل")).toBeInTheDocument();
   });
 
+  it("a DEFINITIVE 404 re-quote aborts (not fail-open): refetch + honest toast, no order (R134 A2-F8)", async () => {
+    renderPage();
+
+    // The shopper holds an open PDP while the operator delists the
+    // product — the re-quote 404 is definitive (R110-F), unlike the
+    // network failure above: fail-opening on it ran createOrder into
+    // a guaranteed 400/404 banner. The abort mirrors the price-change
+    // branch (refetch + toast; the page's 404 state then takes over).
+    const api404 = Object.assign(new Error("HTTP 404"), { name: "ApiError", status: 404 });
+    getProductMock.mockRejectedValueOnce(api404);
+    createOrderMock.mockResolvedValueOnce({
+      order_code: "SNDBUY040",
+      amount: 49,
+      delivered_email: null,
+      delivered_password: null,
+    });
+
+    await clickBuy();
+
+    expect(createOrderMock).not.toHaveBeenCalled();
+    expect(refetchMock).toHaveBeenCalled();
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "المنتج لم يعد متوفراً" }),
+    );
+    // No success receipt — the buy never ran.
+    expect(screen.queryByText("تم الشراء بنجاح!")).not.toBeInTheDocument();
+  });
+
   it("an unchanged live price does not disturb the buy (happy path unbroken)", async () => {
     renderPage();
 

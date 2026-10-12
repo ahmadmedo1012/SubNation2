@@ -56,7 +56,7 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { formatCount, sanitizeInternalPath } from "@/lib/utils";
+import { arabicCountWord, formatCount, sanitizeInternalPath } from "@/lib/utils";
 
 const MAX_PENDING = 3;
 
@@ -1260,7 +1260,22 @@ export default function WalletPage() {
                       <span className="font-bold tabular-nums text-status-warning">
                         {wallet.loyalty_points ?? 0}
                       </span>
-                      <span className="text-muted-foreground">نقطة</span>
+                      {/* R134 (A2-F2): the noun AGREES with the count now —
+                          a frozen «نقطة» read «7 نقطة» for the 2–10
+                          balances the 1-point-per-LYD earn rate makes
+                          common (2 → نقطتان، 3–10 → نقاط، 11+ → نقطة).
+                          Same plural engine as formatCount, word-only so
+                          the two-tone styling (bold number, muted noun)
+                          survives. */}
+                      <span className="text-muted-foreground">
+                        {arabicCountWord(wallet.loyalty_points ?? 0, {
+                          one: "نقطة",
+                          two: "نقطتان",
+                          few: "نقاط",
+                          many: "نقطة",
+                          other: "نقطة",
+                        })}
+                      </span>
                     </div>
                   </div>
                 </div>

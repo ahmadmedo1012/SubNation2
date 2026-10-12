@@ -45,15 +45,17 @@ vi.mock("@/components/layout/NotificationBell", () => ({
   NotificationBell: () => null,
 }));
 
-/** The 7 live category slugs (lib/categories.ts) the panel must carry. */
+/** The 7 live category slugs (lib/categories.ts) the panel must carry.
+ *  R134 (A2-F1): canonical labels — Navbar now derives from
+ *  categoryLabel() (lib/utils), same as home's chips. */
 const EXPECTED = [
   ["بث مباشر", "/category/streaming"],
   ["موسيقى", "/category/music"],
-  ["برامج", "/category/software"],
-  ["VPN وشبكات", "/category/vpn"],
-  ["ذكاء اصطناعي", "/category/ai-tools"],
+  ["برامج وتراخيص", "/category/software"],
+  ["شبكات VPN", "/category/vpn"],
+  ["أدوات ذكاء اصطناعي", "/category/ai-tools"],
   ["أدوات SEO", "/category/seo-tools"],
-  ["تعليم", "/category/education"],
+  ["تعليم ومكتبات", "/category/education"],
 ] as const;
 
 function renderNavbar() {
@@ -112,7 +114,7 @@ describe("Navbar desktop categories disclosure (R132 L2-F4)", () => {
 
     const trigger = screen.getByRole("button", { name: /الأقسام/ });
     fireEvent.click(trigger);
-    expect(screen.getByRole("link", { name: /برامج/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /برامج وتراخيص/ })).toBeInTheDocument();
 
     fireEvent.pointerDown(document.body);
 
@@ -140,6 +142,6 @@ describe("Navbar desktop categories disclosure (R132 L2-F4)", () => {
     const musicLink = screen.getByRole("link", { name: /موسيقى/ });
     expect(musicLink).toHaveAttribute("aria-current", "page");
     // …and a sibling is not.
-    expect(screen.getByRole("link", { name: /برامج/ })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: /برامج وتراخيص/ })).not.toHaveAttribute("aria-current");
   });
 });

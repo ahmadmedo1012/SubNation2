@@ -95,7 +95,7 @@ function renderPage() {
 
 // The desktop stats chip labels (count-aware via formatCount) — used in
 // absence assertions. Kept explicit so the catalog section's sr-only
-// «الاشتراكات المتاحة» heading never matches by accident.
+// «كل الاشتراكات» heading never matches by accident.
 const STATS_LABELS =
   /منتج متاح|منتجان متاحان|منتجات متاحة|منتجاً متاحاً|وحدات بالمخزون|وحدة بالمخزون/;
 

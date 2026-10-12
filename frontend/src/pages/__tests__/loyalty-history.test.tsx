@@ -180,6 +180,11 @@ describe("LoyaltyPage — the POINTS HISTORY (R115, A8 P2)", () => {
     expect(screen.getByText("-100")).toBeInTheDocument();
     expect(screen.getByText("-30")).toBeInTheDocument();
 
+    // R134 (A2-F2): the delta noun agrees with its magnitude — all four
+    // rows are 11+ (→ «نقطة»); the few/two branches get their own test
+    // below.
+    expect(screen.getAllByText("نقطة").length).toBe(4);
+
     // The running balance per row.
     expect(screen.getByText("الرصيد: 130")).toBeInTheDocument();
     expect(screen.getByText("الرصيد: 30")).toBeInTheDocument();
@@ -193,6 +198,20 @@ describe("LoyaltyPage — the POINTS HISTORY (R115, A8 P2)", () => {
     ).toBe(4);
 
     expect(screen.queryByText("لا توجد حركات نقاط بعد")).not.toBeInTheDocument();
+  });
+
+  it("the delta noun agrees with its magnitude (R134 A2-F2: 2 → نقطتان, 7 → نقاط)", async () => {
+    state.ledger = [
+      ledgerRow({ id: 2, points_delta: 7, points_after: 7 }),
+      ledgerRow({ id: 1, points_delta: 2, points_after: 9 }),
+    ];
+    renderPage();
+
+    // The word-only plural branch of formatCount — the ledger keeps the
+    // dir="ltr" signed number run + muted noun as separate spans.
+    expect(await screen.findByText("نقاط")).toBeInTheDocument();
+    expect(screen.getByText("نقطتان")).toBeInTheDocument();
+    expect(screen.queryByText("نقطة")).not.toBeInTheDocument();
   });
 
   it("an empty ledger renders the empty state, not an error", async () => {

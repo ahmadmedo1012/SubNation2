@@ -344,6 +344,14 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
     // 93-C8 (A11 §1): «آخر 2 متوفرة» is a broken dual; «متبقٍ N
     // فقط» is agreement-safe for every count 1..3.
     isLowStock ? `متبقٍ ${product.stock_count} فقط` : null,
+    /* R134 (A2-F4): the mid-range pill (4–99, single-variant) is a
+       bare numeral beside the price — sighted users see an unlabeled
+       count while the SR name was silent on it (the label only spoke
+       stock on the نفد/low-stock branches). «الكمية N» gives the
+       visible pill its accessible meaning. */
+    !unavailable && !isLowStock && variantCount <= 1 && product.stock_count != null
+      ? `الكمية ${product.stock_count}`
+      : null,
   ].filter(Boolean);
   const ariaLabel = ariaLabelParts.join("، ");
 
@@ -613,8 +621,12 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 >
                   {/* R123-E4b (P3-a): «متبقٍ {n}» — matches this badge's own
                       aria-label; the old «آخر {n}» was a noun-less fragment
-                      ("last 2") that read as a truncated sentence. */}
-                  متبقٍ {product.stock_count}
+                      ("last 2") that read as a truncated sentence.
+                      R134 (A2-F5): «فقط» appended — this badge was the lone
+                      shortened member of the «متبقٍ N فقط» family (its own
+                      aria-label, the quick-add ceiling toast, and the
+                      cart's lineStockNotice all carry it). */}
+                  متبقٍ {product.stock_count} فقط
                 </StatusBadge>
               ) : (
                 <div
@@ -628,8 +640,12 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                       "or more" qualifier. The old source "+99" rendered
                       with the plus on the RIGHT — the English visual order
                       (verified by char-position measurement in Chromium,
-                      dir=rtl). */}
-                  {product.stock_count > 99 ? "99+" : product.stock_count}
+                      dir=rtl).
+                      R134 (A2-F4): «كمية» prefix — the bare numeral sat
+                      beside the price where it could be mistaken for
+                      quantifying it; every sibling pill is self-describing
+                      («N باقات», «متبقٍ N فقط»). */}
+                  كمية {product.stock_count > 99 ? "99+" : product.stock_count}
                 </div>
               )
             ) : (
