@@ -21,7 +21,7 @@
 > TOTP implemented but **not enrolled**) · sellable stock = **R118-era
 > figures: 3 placeholder units (rows 79/80/81) + 42 zero-stock actives —
 > superseded by freshest live observations (R122: 44/45 sold out; R124:
-> 45 products / 1 sellable — `docs/inspection-r124/A1:144`)** ·
+> 45 products / 1 sellable — `docs/history/inspection-r124/A1:144`)** ·
 > ~~**`main` is now ahead
 > again**~~ (DONE — the R118 chain + the waves merge (966d70f) + the R120/R121
 > chains all deployed via the push-to-deploy webhook since 2026-10-06) ·

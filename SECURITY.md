@@ -50,4 +50,5 @@ before public disclosure.
   dependency tree changes and on a weekly schedule
   (`.github/workflows/ci.yml`).
 - Security-focused audit rounds with published reports under
-  `docs/inspection-r###/`.
+  `docs/inspection-r###/` (executed rounds' reports archived under
+  `docs/history/inspection-r###/`).

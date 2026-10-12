@@ -270,9 +270,10 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   truth), **R127** (17-agent fleet: boot performance, sockets,
   supply-chain, audit-trail UI) and **R126** (13 agents incl. Arabic
   quality + live a11y); reports in
-  [`docs/inspection-r128/`](./docs/inspection-r128/),
-  [`docs/inspection-r127/`](./docs/inspection-r127/) and
-  [`docs/inspection-r126/`](./docs/inspection-r126/).
+  [`docs/history/inspection-r128/`](./docs/history/inspection-r128/),
+  [`docs/history/inspection-r127/`](./docs/history/inspection-r127/) and
+  [`docs/history/inspection-r126/`](./docs/history/inspection-r126/)
+  (archived R135 — the executed rounds are HISTORY).
 - **Nightly backups are automated** (`scripts/backup-cron.sh`) — see
   [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md).
 
@@ -377,5 +378,7 @@ and kept drift-free by CI.
   **not** required to build, run, or deploy SubNation. The tracked root-level
   AI-tooling artifacts are intentional and self-describing — `.hermes.md`
   (the agent contract: source-of-truth hierarchy + non-negotiables), `.kiro/`
-  (dated spec/inspection artifacts), `.specify/feature.json` (a path pointer)
-  — none of them affect the build.
+  (dated spec/inspection artifacts) — none of them affect the build. (The
+  `.specify/feature.json` path pointer was deleted R135 — 2026-10-12: it
+  pointed at the executed `specs/012-arabic-catalog-enrichment` and nothing
+  in the tree read it.)

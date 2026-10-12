@@ -732,14 +732,14 @@ accounts can press them.
   risk-retention job (R123-E5) deliberately does NOT touch these tables
   until the policy is chosen.
 - **R124 — delete the live «تجربة» test flash sale** (admin → promotions;
-  `docs/inspection-r124/A1` §ops — the site-wide banner renders the
+  `docs/history/inspection-r124/A1` §ops — the site-wide banner renders the
   literal word «تجربة» + «خصم 20%» on every storefront page; delete or
   rename the promotion row, no code change).
 - **R124 — post-deploy replay canary check**: `window.__sentryTest('replay-canary')`
   in a production tab → confirm the event arrives in Sentry (org
   `subnation`, project `javascript-react` — §11) with a replay or a
   10%-roll session recorded (`frontend/src/instrument.ts:264-271`;
-  `docs/inspection-r124/R1` #8).
+  `docs/history/inspection-r124/R1` #8).
 - **R130 — GitHub push/CI auth: ✅ RESOLVED 2026-10-10** (was "dead on every
   machine"): the operator supplied fresh credentials; they live in the
   local git credential store (`~/.git-credentials`, 0600) with the

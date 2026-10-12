@@ -75,7 +75,7 @@ pnpm run build        # prints "[bundle-budget] eager path (...): N bytes (gzip)
 ```
 
 Live-side (production): Chrome DevTools / Lighthouse against
-<https://subnation.ly>, or the R128-B2 report in `docs/inspection-r128/`
+<https://subnation.ly>, or the R128-B2 report in `docs/history/inspection-r128/`
 for the latest full pass (5 routes × 3 Lighthouse runs + the boot
-waterfall); R126-A5 (`docs/inspection-r126/`) holds the dist-audited
+waterfall); R126-A5 (`docs/history/inspection-r126/`) holds the dist-audited
 chunk map.

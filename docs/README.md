@@ -13,7 +13,8 @@
 > `git mv`; every moved file carries a one-line banner with its old path;
 > `docs/history/README.md` is the move map. Dated ledger entries that cite
 > pre-move paths (CHANGELOG rounds, the progress log) are intentionally
-> not retro-edited.
+> not retro-edited (R122 posture — the R135 sweep noted below repointed
+> the live surfaces instead; archived files keep their dated citations).
 >
 > Index rewritten **R122 (2026-10-07)** on top of the R118/R119 passes.
 > Live baseline for every "current state" claim: `https://subnation.ly`
@@ -27,6 +28,23 @@
 > EU/de, projects `javascript-react` + `subnation-backend`),
 > **Telegram ops channel LIVE since R121** — verified R122-D1 against the
 > progress log R121 entries + live probes.
+>
+> **R135 (2026-10-12) — docs 4-bucket sweep (the repo's own hygiene items
+> #2/#4/#7):** the executed post-R122 inspection rounds left the CURRENT
+> bucket — `inspection-r124/ r125/ r126/ r127/ r128/ r129/ r130/ r134/`
+> (129 files: 90 reports + 39 banked JPEGs) moved to
+> `docs/history/inspection-*/` with ARCHIVED banners (`git mv`, move map in
+> `docs/history/README.md`); the round ledger split — the CHANGELOG
+> R116–R126 entries (plus the mission-waves/merge records of that span)
+> cut verbatim to `docs/history/CHANGELOG-rounds-r116-r126.md`, the front
+> door keeping R127+ and the pre-R116 compact summary; every live-surface
+> citation repointed at the new homes (CHANGELOG R127+, the progress log,
+> the runbook, the READMEs, PERFORMANCE, OPERATOR_ACTIONS — this index
+> included; archived files keep their dated in-report citations as
+> records, `docs/project-state/` deliberately untouched). Truth fixes:
+> the R134 "push blocked" note below re-stamped resolved (live wins),
+> and the stale `.specify/feature.json` pointer (nothing in the tree
+> read it) deleted — the README Notes section updated with it.
 >
 > **R134 (2026-10-12) — round record:** the fleet-audit fix wave — seven
 > read-only auditors (A1–A8) swept the whole tree at `5d5227c` and the
@@ -45,8 +63,11 @@
 > (A7-F9), the shell 404 noindex parity (A7-F6), and the A7 docs truth
 > batch. Gates: backend 2,396/2,396 · frontend 1,279/1,279 · lint 0
 > errors · typecheck green · build green · drift gates CLEAN ·
-> impeccable exit 0. **Push blocked:** the PAT was dead at push time
-> (401 git-receive) — the nine R134 commits sit local, ready.
+> impeccable exit 0. Push: the PAT was dead at push time (401
+> git-receive) and the round first recorded the nine R134 commits as
+> sitting local — **push CONFIRMED (re-stamped R135, 2026-10-12, live
+> wins): `origin/main` = local `main` = `dff50ad`** — the R134 wave
+> landed on GitHub; the "blocked" note that stood here was stale.
 >
 > **R133 (2026-10-12) — round record:** the R132 delivery executed (live
 > PAT from the operator; `56b8bf9..6a77590` pushed, CI run #468 green,
@@ -94,7 +115,7 @@
 > skipped gate re-run LOCALLY at that SHA (typecheck, lint, both suites,
 > builds, budget, `pnpm audit --prod` = 0 critical, and the 40-test
 > guest e2e suite against LIVE production 40/40). 9 specialist audit
-> lanes + 4 parent lanes (`docs/inspection-r130/`): 0 P0/P1 — the one
+> lanes + 4 parent lanes (`docs/history/inspection-r130/`): 0 P0/P1 — the one
 > real defect family (variant-AVAILABILITY pricing: display min, grid
 > quick-add, and the B-11 product-level snapshot were all
 > availability-blind; the feared mischarge structurally impossible per
@@ -114,7 +135,7 @@
 > commits · WCAG 2.2 AA contrast census of the palette migration ·
 > design-token integrity incl. a 65-entry DESIGN.md hex audit · security
 > delta over the 9 new surfaces · test-truth with 12/12 physical
-> mutation checks), reports in `docs/inspection-r129/`. Findings: 2 P1s
+> mutation checks), reports in `docs/history/inspection-r129/`. Findings: 2 P1s
 > (the B-11 stock-honest-cart lib was unwired dead code — corroborated
 > by two lanes independently; the CI impeccable gate had exited 2 on
 > both post-R128 pushes) + 1 P2 + ~10 P3 + ~15 P4 — all P1/P2 and the
@@ -132,7 +153,7 @@
 > Arabic typography · motion · icons/imagery · appearance tooling) + 8
 > B-lanes (R127 residuals · perf/PWA · security red-team · money paths
 > — the fourth full audit · test quality · Arabic SEO · docs/repo ·
-> cross-surface), reports in `docs/inspection-r128/` (file:line-evidenced;
+> cross-surface), reports in `docs/history/inspection-r128/` (file:line-evidenced;
 > the A2 storefront pass banked 35 verified live screenshots in
 > `screenshots-a2/`). Findings 0 P0 · 0 P1. **9 implementation lanes +
 > parent closes**: admin palette unification (227 raw-hue hits → 0, new
@@ -156,7 +177,7 @@
 > full-journey) + 12 implementation lanes. Findings 0 P0 · 0 P1 · ~12 P2 ·
 > ~40 P3, all closed; adversarial reviewer R127-R1: **SHIP — 0
 > P0/P1/P2**. Documented in `CHANGELOG.md` §Round R127 +
-> `docs/inspection-r127/` (15 auditor reports + the R1 review — the
+> `docs/history/inspection-r127/` (15 auditor reports + the R1 review — the
 > round's headline: boot perf, `statement_timeout` made real, sockets
 > scope-leak + resync, the audit-trail UI, OpenAPI batch-2, supply-chain
 > hardening).
@@ -166,7 +187,7 @@
 > real-browser a11y vs live production; the live CSP P1 hotfix, stats RBAC
 > scope, OpenAPI batch-1 ×17, test-inclusion widening T1-T3, settings +
 > auth-settings splits, adversarial review SHIP 0 P0/P1/P2) is documented in
-> `CHANGELOG.md` §Round R126 + `docs/inspection-r126/` (13 auditor reports +
+> `CHANGELOG.md` §Round R126 + `docs/history/inspection-r126/` (13 auditor reports +
 > the independent review). Docs-presentation lanes: this index gained the
 > developer onboarding layer (`docs/ONBOARDING.md`), the performance record
 > (`docs/PERFORMANCE.md`), and a `specs/` visibility row; `project-graph/` 00
@@ -180,12 +201,12 @@
 > **R125 (2026-10-09) — round record:** the 12-audit + 8-lane + adversarial-review
 > round (3 P1 + ~30 P2 + ~85 P3; admin console focus, strictFunctionTypes
 > enabled, live guest-e2e executed) is documented in
-> `docs/inspection-r125/` (A1–A12 audit reports + the R1 adversarial review)
+> `docs/history/inspection-r125/` (A1–A12 audit reports + the R1 adversarial review)
 > with the round entry at the top of `CHANGELOG.md`.
 
 > **R124 (2026-10-09) — round record:** the 10-audit + 7-lane +
 > independent-review round (93 findings, 0 P0) is documented in
-> `docs/inspection-r124/` (A1–A10 audit reports + the R1 adversarial review)
+> `docs/history/inspection-r124/` (A1–A10 audit reports + the R1 adversarial review)
 > with the round entry at the top of `CHANGELOG.md`.
 >
 > Repo-root companions (not under `docs/`): `README.md` (intro + deployment
@@ -193,7 +214,8 @@
 > latest-rounds restamped R128), `OPERATIONS_RUNBOOK.md`
 > (on-call playbook — §11 Sentry, §12 Telegram ops, §13 edge
 > canonicalization, §14 pending actions, §15 backups added R122),
-> `CHANGELOG.md` (round ledger; newest entry at top), `LICENSE` (MIT) ·
+> `CHANGELOG.md` (round ledger; newest entry at top; R116–R126 split to
+> `docs/history/CHANGELOG-rounds-r116-r126.md` — R135), `LICENSE` (MIT) ·
 > `CONTRIBUTING.md` · `SECURITY.md` (added R126),
 > `.github/ISSUE_TEMPLATE/` + `PULL_REQUEST_TEMPLATE.md` (added R126),
 > `docs/assets/screenshots/` (live storefront JPEGs for the README — desktop
@@ -304,7 +326,7 @@ ledger; `docs/API.md` owns the API surface.
 | Bucket | Files | Location |
 |---|---|---|
 | **CURRENT** | 50 (36 md incl. this index + 13 mmd + 1 json) | in place (this index's tables above) |
-| **HISTORY** | 74 (incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r118, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit` |
+| **HISTORY** | 204 files — 165 md + 39 jpg (74 md from R122 + the R135 wave: 90 md / 39 jpg of inspection evidence r124–r130 + r134 + the ledger split; incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r130 + r134, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit`, `CHANGELOG-rounds-r116-r126.md` |
 | **DEPRECATED** | 16 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set |
 | **PENDING** | 1 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design; `FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands) |
 
@@ -314,7 +336,8 @@ Move map for dated ledger entries: `docs/history/README.md`.
 
 1. `FINAL_*` is the only naming pattern for CURRENT operator docs.
 2. Dated files get an `ARCHIVED (date)` first line instead of deletion —
-   now enforced by the R122 banners on every moved file.
+   now enforced by the R122 banners on every moved file (and the R135
+   banners on the eight post-R122 inspection rounds).
 3. Every "for current state see X" pointer lands on **this index**.
 4. New docs carry `Status: CURRENT @ <date>` and the change that
    invalidates them must touch that line.

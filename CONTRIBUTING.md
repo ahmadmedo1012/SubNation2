@@ -63,8 +63,10 @@ Contract rules the gates enforce:
   `Status: CURRENT @ <date>`.
 - **Round reports**: rounds are recorded in `CHANGELOG.md` (one entry per
   round, newest first) with audit/inspection reports under
-  `docs/inspection-r###/`. Don't edit past entries — corrections land as
-  bracketed notes in the current round.
+  `docs/inspection-r###/` while the round runs — archived to
+  `docs/history/inspection-r###/` once executed (R122/R135 policy). Don't
+  edit past entries — corrections land as bracketed notes in the current
+  round.
 
 ## Reporting issues
 

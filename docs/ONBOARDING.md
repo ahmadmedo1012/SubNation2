@@ -102,7 +102,9 @@ evidence trail:
 - [`CHANGELOG.md`](../CHANGELOG.md) — one entry per round, newest first:
   changes + measured evidence + gates run on the merged tree.
 - `docs/inspection-r###/` — the round's audit reports (A1–A12 style), one
-  file per auditor.
+  file per auditor; once the round is executed the whole directory is
+  archived under `docs/history/inspection-r###/` (R122/R135 policy — the
+  r94–r130 + r134 evidence lives there).
 - `docs/project-plan/10-progress-log.md` — the append-only progress ledger.
 - `docs/README.md` — round records + the pointer hierarchy of record:
   this index → `docs/project-state/source-of-truth.md` (current live
