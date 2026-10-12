@@ -210,7 +210,47 @@ export const ListPublicAuthProvidersResponse = zod.object({
  * Body carries the Telegram widget fields (id, first_name, auth_date, hash, …). The hash is verified against the bot token (HMAC) with auth_date freshness + a replay claim. 409 when the Telegram identity is already linked to a different account.
  * @summary Verify Telegram Login Widget data — mints the session cookie
  */
-export const AuthTelegramWidgetBody = zod.object({}).passthrough();
+export const AuthTelegramWidgetBody = zod
+  .object({
+    id: zod
+      .union([
+        zod
+          .string()
+          .describe(
+            "Telegram user id — the widget posts it numeric; the backend String()-coerces before the users lookup.",
+          ),
+        zod
+          .number()
+          .describe(
+            "Telegram user id — the widget posts it numeric; the backend String()-coerces before the users lookup.",
+          ),
+      ])
+      .describe(
+        "Telegram user id — the widget posts it numeric; the backend String()-coerces before the users lookup.",
+      ),
+    first_name: zod.string().optional(),
+    last_name: zod.string().optional(),
+    username: zod.string().optional(),
+    photo_url: zod.string().optional(),
+    auth_date: zod
+      .union([
+        zod
+          .string()
+          .describe("Unix-epoch seconds of the sign-in (the server enforces a freshness window)."),
+        zod
+          .number()
+          .describe("Unix-epoch seconds of the sign-in (the server enforces a freshness window)."),
+      ])
+      .describe("Unix-epoch seconds of the sign-in (the server enforces a freshness window)."),
+    hash: zod
+      .string()
+      .describe(
+        "Telegram HMAC-SHA256 over the data-check string — verified timing-safe against the bot token.",
+      ),
+  })
+  .describe(
+    "R136 (SEC-1): was a bare `type: object` — the generated contract validated nothing. The required set mirrors verifyTelegramAuth's gates (missing hash / missing id / unparseable auth_date all fail before signature work).",
+  );
 
 export const AuthTelegramWidgetResponse = zod.object({
   token: zod.string().describe('The "__cookie_session__" sentinel.'),

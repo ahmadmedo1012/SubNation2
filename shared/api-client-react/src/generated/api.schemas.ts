@@ -3050,7 +3050,22 @@ export type ListPublicAuthProviders200 = {
   whatsapp_status: ListPublicAuthProviders200WhatsappStatus;
 };
 
-export type AuthTelegramWidgetBody = { [key: string]: unknown };
+/**
+ * R136 (SEC-1): was a bare `type: object` — the generated contract validated nothing. The required set mirrors verifyTelegramAuth's gates (missing hash / missing id / unparseable auth_date all fail before signature work).
+ */
+export type AuthTelegramWidgetBody = {
+  /** Telegram user id — the widget posts it numeric; the backend String()-coerces before the users lookup. */
+  id: string | number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+  /** Unix-epoch seconds of the sign-in (the server enforces a freshness window). */
+  auth_date: string | number;
+  /** Telegram HMAC-SHA256 over the data-check string — verified timing-safe against the bot token. */
+  hash: string;
+  [key: string]: unknown;
+};
 
 export type AuthTelegramWidget200 = {
   /** The "__cookie_session__" sentinel. */

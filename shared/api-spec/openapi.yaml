@@ -358,6 +358,31 @@ paths:
           application/json:
             schema:
               type: object
+              required: [id, auth_date, hash]
+              description: >-
+                R136 (SEC-1): was a bare `type: object` — the generated
+                contract validated nothing. The required set mirrors
+                verifyTelegramAuth's gates (missing hash / missing id /
+                unparseable auth_date all fail before signature work).
+              properties:
+                id:
+                  type: ["string", "number"]
+                  description: Telegram user id — the widget posts it numeric; the backend String()-coerces before the users lookup.
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                username:
+                  type: string
+                photo_url:
+                  type: string
+                auth_date:
+                  type: ["string", "number"]
+                  description: Unix-epoch seconds of the sign-in (the server enforces a freshness window).
+                hash:
+                  type: string
+                  description: Telegram HMAC-SHA256 over the data-check string — verified timing-safe against the bot token.
+              additionalProperties: true
       responses:
         "200":
           description: "Session minted — returns token sentinel + is_new_user"
