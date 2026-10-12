@@ -1,8 +1,31 @@
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 // R111-F1 G1: the checkout-shaped skeleton shell (same max-w-5xl +
 // grid geometry as this page) for the cart-hydration guard below.
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
+// R136 (FE-2 decomposition): the page's pure money-path modules and
+// presentational extracts moved to @/components/checkout/* (verbatim
+// moves — handleConfirm, every state atom, every effect and every
+// handler stay HERE; the extracts render the byte-identical DOM they
+// rendered inline yesterday). Import surface:
+//   • checkout-errors / checkout-unit-key / coupon-quote / live-requote —
+//     the page's pure modules
+//   • PaymentMethodCard / CouponCard — the left-column cards
+//   • CartSummaryAside (composing OrderErrorBanner + CheckoutCta) —
+//     the summary aside
+import { apiErrorData, isCouponFailureMessage, isHttpApiError } from "@/components/checkout/checkout-errors";
+import {
+  checkoutUnitFingerprint,
+  clearCheckoutUnitKey,
+  loadCheckoutUnitKey,
+  persistCheckoutUnitKey,
+  purgeLegacyCheckoutUnitKeys,
+} from "@/components/checkout/checkout-unit-key";
+import { couponQuoteLines, validateCouponForLines } from "@/components/checkout/coupon-quote";
+import { quoteLineFromProduct } from "@/components/checkout/live-requote";
+import { CouponCard, type AppliedCoupon } from "@/components/checkout/CouponCard";
+import { CartSummaryAside } from "@/components/checkout/CartSummaryAside";
+import { CheckoutCta } from "@/components/checkout/CheckoutCta";
+import { OrderErrorBanner } from "@/components/checkout/OrderErrorBanner";
+import { PaymentMethodCard } from "@/components/checkout/PaymentMethodCard";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
@@ -16,18 +39,7 @@ import {
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { ErrorCode } from "@workspace/error-codes";
-import { formatCurrency } from "@/lib/utils";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
-  Lock,
-  ShieldCheck,
-  ShoppingBag,
-  Tag,
-  Wallet,
-  X,
-} from "lucide-react";
+import { ShieldCheck, ShoppingBag } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -40,436 +52,9 @@ import {
   useGetMe,
   type CreateOrderBody,
   type Order,
-  type Product,
 } from "@workspace/api-client-react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { formatCount } from "@/lib/utils";
-
-// `/api/auth/me` returns the user FLAT ({...formatUser(user), linked_identities})
-// — there is no `user` wrapper. The old `data?.user?.wallet_balance` read
-// always evaluated to undefined -> balance 0 -> the confirm button was
-// permanently disabled for every authed visitor (P0-1, live-confirmed).
-// 98-F9: the local MeResponse interface is gone — the balance field is
-// typed straight off the generated User contract.
-
-function formatBalance(value: number | null | undefined): string {
-  return formatCurrency(value ?? 0);
-}
-
-/**
- * customFetch throws `ApiError` (an Error subclass with `name: "ApiError"`)
- * for EVERY non-2xx HTTP response, and a browser `TypeError` for network-level
- * failures (DNS/offline/request never delivered). The distinction matters for
- * the partial-failure bookkeeping below: an HTTP failure means the server
- * DEFINITIVELY rejected this unit (safe to shrink the cart to the remainder),
- * while a network failure means the server state is UNKNOWN (the request may
- * have landed and charged the wallet) — the cart must be left untouched.
- */
-function isHttpApiError(error: unknown): boolean {
-  return error instanceof Error && error.name === "ApiError";
-}
-
-/**
- * The backend error envelope ({error, code}) carried by an ApiError.
- * 93-C5 / F-15 (A4 #9): the orders route maps several coupon failures to
- * the generic INVALID_DATA code, which getErrorMessage() flattens to
- * "بيانات غير صالحة" — a confusing money-looking error. Prefer the
- * backend's specific Arabic sentence on this path.
- */
-function apiErrorData(error: unknown): { error?: string; code?: string } | null {
-  if (!isHttpApiError(error)) return null;
-  const data = (error as { data?: unknown }).data;
-  if (!data || typeof data !== "object") return null;
-  return data as { error?: string; code?: string };
-}
-
-/**
- * Coupon-family failures (invalid / inactive / expired / maxed / exhausted)
- * — every one of the backend's coupon messages carries the word "كوبون".
- * 93-C5 / F-15 (A4 #9): used to special-case the recovery guidance.
- */
-function isCouponFailureMessage(message: string | undefined): boolean {
-  return typeof message === "string" && message.includes("كوبون");
-}
-
-/**
- * 96-F4 (R96 A4 §2.2 — money P1): stable per-unit Idempotency-Key storage.
- *
- * The unit loop below used to call generateIdempotencyKey() inline on every
- * confirm click, so a manual retry after a NETWORK-level failure (the outer
- * catch deliberately keeps the cart — server state unknown) minted NEW keys
- * for units whose request may already have committed → double charge on
- * flaky mobile links. The backend guard (Redis replay + durable in-tx check,
- * routes/orders.ts) can only dedupe when it sees the SAME key twice — so the
- * key must survive the retry attempt.
- *
- * Lifecycle (lazy — a key is minted only when its unit is first attempted):
- *   • read:   reuse a stored key when one exists → a retry of an unresolved
- *             unit replays the server's cached response instead of charging
- *             again (this is the double-charge fix).
- *   • write:  at generation time, under
- *             subnation_checkout_key:{productId}:{unitIndex}
- *   • delete: ONLY at a definitive resolution —
- *       - a per-unit HTTP rejection (ApiError): cleared in the catch below so
- *         a retry of that unit isn't answered forever by the cached error;
- *       - accounted 2xx successes: cleared in the cart-sync step, NOT at the
- *         per-unit 2xx. The network-failure path intentionally skips the
- *         cart-sync, so the cart still contains the already-charged units on
- *         retry — deleting their keys there would re-charge them under fresh
- *         keys. The sync step (which runs on every definitive flow outcome:
- *         partial HTTP failure AND full success) is the safe deletion point.
- *
- * localStorage (durable) rather than sessionStorage (per-tab) — R102
- * (R102-A1 F1 / P1): the cart itself lives in localStorage and survives
- * tab death, but the retry tokens used to die with the tab. Scenario the
- * sessionStorage choice opened: server commits the purchase → response
- * lost (network) → user closes the tab → cart still holds the charged
- * unit → re-confirm mints a FRESH key → the durable server layer sees a
- * new key → a full second purchase and a second debit.
- *
- * AUD103-2-F7 (r103) — scope honesty: the durability is BOUNDED by the
- * 98-F2 TTL below (10 minutes). A user returning MORE than 10 minutes
- * after a lost response still mints a fresh key (the stored one is
- * treated as a stale intent); that residual window is the documented
- * 98-F2 trade-off — a longer TTL would let ancient keys swallow
- * genuinely new purchases via the 24 h server replay window. Every
- * access is try/catch-guarded: a private-mode / quota failure just
- * degrades to the old unstable-key behavior, it never blocks the money
- * path.
- *
- * 98-F2 (r97 F-07, deferred queue): the raw key gained the 97-F5 buy-key's
- * TWO staleness guards, which the checkout keys never had — a stored key
- * lived until its terminal resolution, so a key minted hours/days earlier
- * in a long-lived tab could swallow a genuinely NEW purchase via the
- * server's 24 h replay window:
- *   • TTL: a key older than 10 minutes no longer represents the user's
- *     live intent and is ignored (minted fresh instead);
- *   • fingerprint: the line's product / variant / coupon / unit price —
- *     the exact body fields the backend's same-key-different-body 409
- *     branch compares, plus the price context (a post-reconcile price
- *     change is a NEW intent, never a replay of the old charge).
- */
-const CHECKOUT_KEY_PREFIX = "subnation_checkout_key:";
-/** 98-F2 (r97 F-07): retry-token TTL — mirrors the 97-F5 buy-key guidance. */
-const CHECKOUT_KEY_TTL_MS = 10 * 60 * 1000;
-
-interface StoredCheckoutUnitKey {
-  /** The Idempotency-Key header value. */
-  k: string;
-  /** Date.now() at mint time — the TTL stamp. */
-  t: number;
-  /** Intent fingerprint — productId | variantId | coupon | unit price. */
-  f: string;
-}
-
-function checkoutUnitKeyId(productId: number, variantId: number | null, unitIndex: number): string {
-  // AUD103-2-F1 (r103): the slot is LINE-scoped (productId + variantId).
-  // The pre-fix `${productId}:${unitIndex}` slot collided across two cart
-  // lines of the same product with different variants — the sibling
-  // line's persist OVERWROTE an unresolved unit's durable key, so a retry
-  // after a network failure minted a fresh key and DOUBLE-CHARGED that
-  // unit (the 98-F2 fingerprint prevented wrong-variant replay but could
-  // not prevent overwrite). Matches the cart lineKey convention
-  // (lib/cart.tsx: `${productId}:${variantId ?? 0}`).
-  return `${CHECKOUT_KEY_PREFIX}${productId}:${variantId ?? 0}:${unitIndex}`;
-}
-
-/** AUD103-2-F1 (r103): one-time sweep of pre-r103 slots (the un-scoped
- * `${productId}:${unitIndex}` shape — 2 numeric segments). They are inert
- * under the line-scoped reads; removing them keeps storage clean. Runs
- * lazily at the start of a confirm, never inside the money path. */
-function purgeLegacyCheckoutUnitKeys(): void {
-  try {
-    const stale: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(CHECKOUT_KEY_PREFIX)) {
-        const tail = k.slice(CHECKOUT_KEY_PREFIX.length);
-        // New shape: "<pid>:<variant>:<unit>" (3 segments); legacy: 2.
-        if (tail.split(":").length === 2) stale.push(k);
-      }
-    }
-    for (const k of stale) localStorage.removeItem(k);
-  } catch {
-    // ignore — hygiene only
-  }
-}
-
-/** 98-F2 (r97 F-07): binds a stored unit key to WHAT that unit order buys
- * — mirrors product.tsx's buyIntentFingerprint (97-F5). */
-function checkoutUnitFingerprint(
-  line: Pick<LocalCartItem, "productId" | "variantId" | "priceLYD" | "salePriceLYD">,
-  couponCode: string,
-): string {
-  const unitPrice = line.salePriceLYD ?? line.priceLYD;
-  return `${line.productId}|${line.variantId ?? ""}|${couponCode.trim().toUpperCase()}|${unitPrice}`;
-}
-
-function loadCheckoutUnitKey(
-  productId: number,
-  variantId: number | null,
-  unitIndex: number,
-  fingerprint: string,
-): string | null {
-  try {
-    const raw = localStorage.getItem(checkoutUnitKeyId(productId, variantId, unitIndex));
-    if (!raw) return null;
-    // Pre-98-F2 entries were raw uuid strings — JSON.parse throws → the
-    // entry is treated as absent and a fresh key is minted (the old
-    // un-stamped keys carry no TTL/fingerprint contract to honor).
-    const parsed = JSON.parse(raw) as Partial<StoredCheckoutUnitKey>;
-    if (typeof parsed.k !== "string" || !parsed.k) return null;
-    // TTL — a key minted >10 min ago is a stale intent, not this retry.
-    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
-    if (Date.now() - parsed.t > CHECKOUT_KEY_TTL_MS) return null;
-    // Intent binding — the unit body (product/variant/coupon) or the
-    // line's effective price changed since the key was minted: replaying
-    // it onto the new data would either swallow a genuinely new purchase
-    // or trip the backend's same-key-different-body 409.
-    if (parsed.f !== fingerprint) return null;
-    return parsed.k;
-  } catch {
-    return null;
-  }
-}
-
-function persistCheckoutUnitKey(
-  productId: number,
-  variantId: number | null,
-  unitIndex: number,
-  fingerprint: string,
-  key: string,
-): void {
-  try {
-    const entry: StoredCheckoutUnitKey = { k: key, t: Date.now(), f: fingerprint };
-    localStorage.setItem(checkoutUnitKeyId(productId, variantId, unitIndex), JSON.stringify(entry));
-  } catch {
-    // degraded: unstable keys (pre-fix behavior) — never throw on money path
-  }
-}
-
-function clearCheckoutUnitKey(
-  productId: number,
-  variantId: number | null,
-  unitIndex: number,
-): void {
-  try {
-    localStorage.removeItem(checkoutUnitKeyId(productId, variantId, unitIndex));
-  } catch {
-    // ignore
-  }
-}
-
-// ── 98-F2 (R98-A3 F1 / P1): per-line coupon validation ──────────────────────
-//
-// The pre-flight used to validate the coupon ONCE against the BASKET
-// total while the backend applies it PER UNIT against each unit's
-// basePrice (pricing.ts resolveCoupon + checkout.service computePricing
-// per unit order; the unit loop below sends coupon_code on every unit):
-//
-//   • Scenario A — coupon min_order_amount between a line's unit price
-//     and the basket total (e.g. min 30, unit 25, qty 3 → basket 75):
-//     the basket-level pre-flight PASSED, then EVERY unit order failed
-//     400 below_min_order — a guaranteed full failure after the UI had
-//     just green-lit the checkout.
-//   • Scenario B — fixed coupon with qty>1 (fixed 10, unit 25, qty 3):
-//     the label showed discount 10 / total 65 while the server charged
-//     3 × (25 − 10) = 45 (and consumed 3 redemption slots); the balance
-//     gate compared the wrong number too.
-//
-// The pre-flight now validates per DISTINCT cart line, each with that
-// line's UNIT price — the exact input the backend's per-unit pricing
-// runs against — and the label/gate are computed from the per-unit
-// finals exactly as the server charges them. The per-unit order POST
-// loop semantics are untouched (the server stays authoritative and
-// re-validates on every unit regardless).
-
-interface CouponQuoteLine {
-  /** Cart line key (`productId:variantId`) — mirrors lib/cart's lineKey. */
-  lineKey: string;
-  name: string;
-  quantity: number;
-  /** Effective unit price (sale ?? list) — the exact basePrice the
-   * backend's per-unit coupon resolution runs against. */
-  unitPrice: number;
-}
-
-/** 98-F2: the cart lines as coupon-validation inputs. */
-function couponQuoteLines(items: LocalCartItem[]): CouponQuoteLine[] {
-  return items.map((it) => ({
-    lineKey: `${it.productId}:${it.variantId ?? 0}`,
-    name: it.name,
-    quantity: it.quantity,
-    unitPrice: it.salePriceLYD ?? it.priceLYD,
-  }));
-}
-
-type CouponQuoteResult =
-  | {
-      status: "valid";
-      /** Per-unit post-coupon final, keyed by cart line key. */
-      lineUnitFinals: Record<string, number>;
-      /** Σ unitFinal × qty — exactly what the per-unit loop will charge. */
-      finalAmount: number;
-      /** basketBase − finalAmount, rounded so «المجموع الفرعي − خصم =
-       * الإجمالي» stays arithmetically consistent on the label. */
-      discountAmount: number;
-    }
-  | { status: "invalid"; message: string; lineName: string }
-  | { status: "network" };
-
-/**
- * 98-F2 (R98-A3 F1 / P1): validate a coupon against every DISTINCT cart
- * line's UNIT price and compute the per-unit-honest basket math.
- *
- * Deduplication: ONE request per DISTINCT unit price — the endpoint's
- * result is a pure function of (code, order_amount), so identical prices
- * share the answer. /api/coupons/validate is rate-limited 10/min/user
- * (the enumeration guard in app.ts); carts are small and same-price
- * lines never multiply the budget.
- *
- * Outcome contract:
- *   • "invalid" — at least one line fails (e.g. below_min_order): the
- *     coupon is invalid FOR THE BASKET and the precise Arabic reason for
- *     the first failing line (basket order) is returned. The confirm
- *     pre-flight aborts BEFORE any charge.
- *   • "network" — at least one request was network-level inconclusive:
- *     applyCoupon surfaces a retryable notice; the confirm pre-flight
- *     fails OPEN (the server re-validates the coupon on every unit
- *     order anyway — see the pre-flight block in handleConfirm).
- *   • "valid" — every line validated; per-unit finals are the same
- *     expression the backend charges per unit (validate's
- *     +(order_amount − discount).toFixed(2) === pricing.ts's
- *     +(basePrice − discount).toFixed(2)).
- */
-async function validateCouponForLines(
-  code: string,
-  lines: CouponQuoteLine[],
-  token: string | null,
-): Promise<CouponQuoteResult> {
-  const distinctPrices: number[] = [];
-  for (const line of lines) {
-    if (!distinctPrices.some((p) => p === line.unitPrice)) distinctPrices.push(line.unitPrice);
-  }
-  const responses = await Promise.all(
-    distinctPrices.map(async (price) => {
-      try {
-        const res = await fetch("/api/coupons/validate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          credentials: "include",
-          body: JSON.stringify({ code, order_amount: price }),
-        });
-        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-        return { price, res, body };
-      } catch {
-        return { price, res: null, body: null };
-      }
-    }),
-  );
-  // ANY network-level failure leaves the coupon's applicability to the
-  // basket UNKNOWN — inconclusive for the whole pre-flight.
-  if (responses.some((r) => r.res === null)) return { status: "network" };
-  // HTTP-level lookup per distinct price (res non-null after the guard;
-  // the redundant check below keeps the narrowed type without an `as`).
-  const byPrice = new Map<number, { res: Response; body: Record<string, unknown> | null }>();
-  for (const r of responses) {
-    if (!r.res) continue;
-    byPrice.set(r.price, { res: r.res, body: r.body });
-  }
-  // First INVALID line in BASKET order — the error names the first line
-  // the shopper sees, carrying the backend's precise Arabic reason.
-  for (const line of lines) {
-    const r = byPrice.get(line.unitPrice)!;
-    if (!(r.res.ok && r.body && r.body.valid === true)) {
-      const message =
-        (r.body && typeof r.body.error === "string" && r.body.error) || "الكوبون غير صالح";
-      return { status: "invalid", message, lineName: line.name };
-    }
-  }
-  // Valid on every line — compute the per-unit honest math.
-  const lineUnitFinals: Record<string, number> = {};
-  let finalAmount = 0;
-  let baseAmount = 0;
-  for (const line of lines) {
-    const r = byPrice.get(line.unitPrice)!;
-    const unitFinal = Number(r.body?.final_amount);
-    if (!Number.isFinite(unitFinal)) {
-      return {
-        status: "invalid",
-        message: "استجابة تحقق غير صالحة — أعد المحاولة",
-        lineName: line.name,
-      };
-    }
-    const roundedUnitFinal = roundToCents(unitFinal);
-    lineUnitFinals[line.lineKey] = roundedUnitFinal;
-    finalAmount += roundedUnitFinal * line.quantity;
-    baseAmount += line.unitPrice * line.quantity;
-  }
-  const total = roundToCents(finalAmount);
-  const discount = roundToCents(roundToCents(baseAmount) - total);
-  return { status: "valid", lineUnitFinals, finalAmount: total, discountAmount: discount };
-}
-
-// ── 98-F2 (R98-A3 F5 / P2): live re-quote of ONE cart line ───────────────────
-//
-// Cart price snapshots are taken at add-to-cart time (lib/cart.tsx);
-// between add and confirm a flash sale can end (or start, or an operator
-// reprices). The re-quote maps a cart line onto the /api/products/:id
-// payload's LIVE pricing for the line's selected variant (or the
-// product-level display price for variant-less lines — the server
-// charges legacy variant-less orders the CHEAPEST active variant, which
-// is exactly what the payload's product-level price carries).
-
-type LiveLineResult =
-  | {
-      status: "priced";
-      priceLYD: number;
-      salePriceLYD: number | null;
-      discountPercent: number | null;
-      effectiveUnitPrice: number;
-      /** R129-A1 (F1 wiring — B-11): the live row's stock rides the quote
-       * so the re-quote refreshes the line's snapshot alongside price. */
-      stockCount: number;
-    }
-  | { status: "unavailable" };
-
-function quoteLineFromProduct(live: Product, line: LocalCartItem): LiveLineResult {
-  // The line's selected option must still exist as an ACTIVE variant —
-  // a foreign/inactive/deleted variant id fails CLOSED server-side
-  // (checkout.service VARIANT_NOT_FOUND: "never silently ignored: the
-  // client would be charged a price it never displayed").
-  const variant =
-    line.variantId != null ? (live.variants ?? []).find((v) => v.id === line.variantId) : undefined;
-  if (line.variantId != null && !variant) return { status: "unavailable" };
-  // R130 (A1-F1): a DRAINED variant is the same dead end one level down.
-  // The snapshot below is the product-wide total — other variants holding
-  // stock made the line read "in stock" while the buyer's own variant had
-  // a provably empty claim pool (scoped 0 + no generic units), so the
-  // charge could only 409. A drained variant quotes with stock 0: the
-  // existing B-11 machinery flags «نفد المخزون» and blocks the CTA —
-  // the verdict the feature promised, now variant-honest. The price legs
-  // still quote from the variant (an honest label for a blocked line).
-  const priceLYD = variant ? variant.price : live.price;
-  const salePriceLYD = variant ? (variant.sale_price ?? null) : (live.sale_price ?? null);
-  const discountPercent = variant
-    ? (variant.discount_percent ?? null)
-    : (live.discount_percent ?? null);
-  return {
-    status: "priced",
-    priceLYD,
-    salePriceLYD,
-    discountPercent,
-    effectiveUnitPrice: salePriceLYD ?? priceLYD,
-    // B-11 wiring: the live catalog row's stock — the same signal the
-    // PDP renders (variants carry no stock of their own). A drained
-    // variant overrides it with 0 (see above).
-    stockCount: variant && variant.is_available === false ? 0 : live.stock_count,
-  };
-}
 
 /**
  * Checkout — the money path.
@@ -509,13 +94,9 @@ export default function CheckoutPage() {
   // lines (fixed 10 off 25 ×3 charged 45, labeled 65). final_amount /
   // discount_amount are the Σ of the per-line math (see
   // validateCouponForLines) — the same numbers the unit loop charges.
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string;
-    /** Per-unit post-coupon final, keyed by lineKey (productId:variantId). */
-    lineUnitFinals: Record<string, number>;
-    final_amount: number;
-    discount_amount: number;
-  } | null>(null);
+  // R136 (FE-2): the inline shape moved to CouponCard's exported
+  // AppliedCoupon — one source for the page state + the summary/CTA props.
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponNotice, setCouponNotice] = useState<string | null>(null);
   // 98-F2 (R98-A3 F5 / P2): mount-time live-price reconciliation state —
@@ -1202,176 +783,34 @@ export default function CheckoutPage() {
         {/* Payment details (left on desktop) */}
         <div className="space-y-4">
           {/* Payment method — wallet only (see component docblock) */}
-          <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
-            <div className="flex items-center gap-2 mb-4">
-              <Lock className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-bold text-base">طريقة الدفع</h2>
-            </div>
-            <div className="flex items-start gap-3 p-4 rounded-xl border border-primary/50 bg-primary/8 shadow-sm">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-primary/15 text-primary">
-                <Wallet className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-sm flex items-center gap-2">
-                  خصم من المحفظة
-                  <CheckCircle2 className="w-4 h-4 text-primary" />
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {/* R134 (A2-F9): colon dropped — the cart's twin chip
-                      (cart.tsx) renders «رصيدك {amount}»; the checkout
-                      summary rows avoid colons, and this datum chip
-                      followed neither rule exactly. */}
-                  رصيدك{" "}
-                  <span className="font-bold text-foreground tabular-nums">
-                    {/* 93-C5 / F-15 (A4 #8): a failed probe used to render a
-                        fabricated "0.00 د.ل" here (formatBalance(null) →
-                        formatCurrency(0)) while the banner below honestly
-                        said "تعذّر التحقق من رصيدك" — contradictory money
-                        UI. Render an explicit unknown marker instead. */}
-                    {balanceLoading ? "…" : balance === null ? "—" : formatBalance(balance)}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
-              سيُخصم ثمن طلباتك من رصيد المحفظة فوراً، وتُسلَّم بيانات الحسابات مباشرة بعد الدفع.
-            </p>
-
-            {balanceError && (
-              <div
-                role="alert"
-                className="mt-3 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-                <span>
-                  تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند إتمام الطلب.
-                </span>
-              </div>
-            )}
-
-            {insufficient && (
-              <div
-                role="alert"
-                className="mt-3 p-3 rounded-xl bg-status-error/10 border border-status-error/22 text-status-error text-xs font-bold flex items-start gap-2"
-              >
-                <X className="w-4 h-4 shrink-0 mt-px" />
-                <div className="flex-1">
-                  <p>
-                    رصيد المحفظة غير كافٍ (الناقص {formatCurrency(comparisonTotal - (balance ?? 0))}
-                    ).
-                  </p>
-                  <Link
-                    href="/wallet?return=/checkout"
-                    /* R124-I4 (A4 F1): the ONLY path from a failed
-                       checkout to the topup flow measured ~20px tall.
-                       44px floor via the FlashSaleBanner negative-margin
-                       idiom (min-h-11 -my-2 py-2) — the hit area clears
-                       the floor while the alert box barely grows. */
-                    className="inline-flex items-center gap-1 min-h-11 -my-2 py-2 text-status-error underline underline-offset-2 hover:opacity-80"
-                  >
-                    اشحن المحفظة ثم عُد لإتمام الطلب
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
+          <PaymentMethodCard
+            balanceLoading={balanceLoading}
+            balance={balance}
+            balanceError={balanceError}
+            insufficient={insufficient}
+            comparisonTotal={comparisonTotal}
+          />
 
           {/* Coupon */}
-          <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
-            <div className="flex items-center gap-2 mb-3">
-              <Tag className="w-4 h-4 text-muted-foreground" />
-              <h2 className="font-bold text-base">كوبون خصم</h2>
-              <span className="text-3xs text-muted-foreground font-bold">(اختياري)</span>
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={coupon}
-                onChange={(e) => {
-                  setCoupon(e.target.value.toUpperCase());
-                  // Any edit voids the stored pre-check result — the label
-                  // must never show a total validated for a different code
-                  // (the generation bump also kills an in-flight validate
-                  // for the OLD code — R98-01's async hole).
-                  couponGenerationRef.current += 1;
-                  setAppliedCoupon(null);
-                  setCouponNotice(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !appliedCoupon) {
-                    e.preventDefault();
-                    void applyCoupon();
-                  }
-                }}
-                placeholder="أدخل رمز الكوبون"
-                aria-label="رمز الكوبون"
-                /* R124-I4 (A5 #9): the coupon error is a role=alert block
-                   but was never tied to the field — mirror the wallet
-                   sender-phone pattern (wallet.tsx aria-invalid +
-                   aria-describedby → the id'd error <p> below). */
-                aria-invalid={!!couponNotice && !appliedCoupon}
-                aria-describedby={
-                  couponNotice && !appliedCoupon ? "checkout-coupon-error" : undefined
-                }
-                /* 96-F4 (R96 A2 P3-1 / A1 M05): Safari/iOS happily autofills
-                   coupon inputs from saved emails, and the shared Input's
-                   text-base (16px < md) already prevents the iOS focus-zoom —
-                   keep the default size, just opt out of autofill and label
-                   the mobile Enter key with its real action (apply). */
-                autoComplete="off"
-                enterKeyHint="send"
-                className="flex-1 font-mono uppercase"
-                dir="ltr"
-              />
-              {appliedCoupon ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={clearAppliedCoupon}
-                  aria-label="إزالة الكوبون"
-                  /* R116-S2 (P2/P3): 44px touch floor on the coupon
-                     apply/clear pair — the money path's most-tapped
-                     secondary controls (was min-h-9). */
-                  className="h-11 shrink-0 font-bold"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void applyCoupon()}
-                  disabled={!coupon.trim() || couponChecking || isEmpty}
-                  className="h-11 shrink-0 font-bold"
-                >
-                  {couponChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : "تحقق"}
-                </Button>
-              )}
-            </div>
-            {couponNotice && !appliedCoupon && (
-              <p
-                id="checkout-coupon-error"
-                role="alert"
-                className="text-xs font-bold text-status-error mt-2 leading-relaxed"
-              >
-                {couponNotice}
-              </p>
-            )}
-            {appliedCoupon && (
-              <p
-                role="status"
-                className="text-xs font-bold text-status-success mt-2 flex items-center gap-1.5"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span dir="ltr" className="font-mono">
-                  {appliedCoupon.code}
-                </span>
-                — خصم {formatCurrency(appliedCoupon.discount_amount)}
-              </p>
-            )}
-            <p className="text-2xs text-muted-foreground mt-2 leading-relaxed">
-              يُتحقَّق من الكوبون ويُطبَّق على المنتجات المؤهلة عند إتمام الطلب.
-            </p>
-          </div>
+          <CouponCard
+            coupon={coupon}
+            appliedCoupon={appliedCoupon}
+            couponChecking={couponChecking}
+            couponNotice={couponNotice}
+            isEmpty={isEmpty}
+            onCouponChange={(value) => {
+              // Any edit voids the stored pre-check result — the label
+              // must never show a total validated for a different code
+              // (the generation bump also kills an in-flight validate
+              // for the OLD code — R98-01's async hole).
+              setCoupon(value);
+              couponGenerationRef.current += 1;
+              setAppliedCoupon(null);
+              setCouponNotice(null);
+            }}
+            onApplyCoupon={() => void applyCoupon()}
+            onClearCoupon={clearAppliedCoupon}
+          />
 
           {/* Trust */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground font-bold px-1">
@@ -1381,284 +820,34 @@ export default function CheckoutPage() {
         </div>
 
         {/* Cart summary (right on desktop) */}
-        <aside className="md:sticky md:top-20 md:self-start">
-          <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
-            <h2 className="font-bold text-base mb-4">ملخص الطلب</h2>
-
-            {/* 98-F2 (R98-A3 F5 / P2): live-price reconciliation
-                notices — shown ONCE after the mount re-quote. Dropped
-                lines (product/variant no longer sellable) are a
-                warning-level alert; a price update is a subtle status
-                line (the totals right below already carry the new
-                numbers, so this explains WHY they moved).
-                Hoisted ABOVE the isEmpty branch on purpose: a drop that
-                empties the WHOLE cart (the single-line case) must still
-                explain why — inside the old non-empty-only branch the
-                notice unmounted the moment the last line left, and the
-                shopper just watched their cart silently vanish. */}
-            {droppedLineNotices.length > 0 && (
-              <div
-                role="alert"
-                className="mb-4 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-                <div className="flex-1 leading-relaxed space-y-1">
-                  {droppedLineNotices.map((notice) => (
-                    <p key={notice}>{notice}</p>
-                  ))}
-                </div>
-              </div>
-            )}
-            {pricesUpdatedNotice && (
-              <div
-                role="status"
-                className="mb-4 p-3 rounded-xl bg-status-info/10 border border-status-info/22 text-status-info text-xs font-bold flex items-start gap-2"
-              >
-                <Tag className="w-4 h-4 shrink-0 mt-px" />
-                <span>{pricesUpdatedNotice}</span>
-              </div>
-            )}
-
-            {isEmpty ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <ShoppingBag className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-bold mb-3">سلتك فارغة</p>
-                {/* R120-B7 (reviewer finding — A4-F1 sweep completion):
-                    asChild composition (cart.tsx ghost-CTA idiom) instead
-                    of Link>Button nesting — one anchor, one tab stop, no
-                    invalid interactive-in-interactive button. */}
-                <Button asChild variant="outline" size="sm" className="font-bold">
-                  <Link href="/">تصفح المنتجات</Link>
-                </Button>
-              </div>
-            ) : (
-              <>
-                <ul className="space-y-2 mb-4 max-h-72 overflow-y-auto">
-                  {items.map((it) => {
-                    const price = it.salePriceLYD ?? it.priceLYD;
-                    // 98-F2 (F1): with a coupon applied the backend charges
-                    // each unit its POST-coupon final — show that number per
-                    // line, not the pre-coupon price (the Σ row below then
-                    // reads as the sum of exactly these lines).
-                    const lineKey = `${it.productId}:${it.variantId ?? 0}`;
-                    const unitFinal = appliedCoupon
-                      ? appliedCoupon.lineUnitFinals[lineKey]
-                      : undefined;
-                    const displayUnit = unitFinal ?? price;
-                    const displayTotal =
-                      unitFinal != null ? unitFinal * it.quantity : price * it.quantity;
-                    return (
-                      <li
-                        key={`${it.productId}:${it.variantId ?? 0}`}
-                        className="flex items-center gap-2.5 text-sm"
-                      >
-                        <div className="w-9 h-9 rounded-lg bg-muted/60 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
-                          {it.imageUrl ? (
-                            <img
-                              src={it.imageUrl}
-                              alt={it.name}
-                              loading="lazy"
-                              className="w-full h-full object-contain p-1"
-                            />
-                          ) : (
-                            /* R126-L5 (A13, R125-A7 B-6 twin): the
-                               first-letter fallback rode text-primary/50
-                               — 1.65:1 dark / 2.35:1 light on the
-                               bg-muted/60 tile (the measured figures from
-                               the cart/orders twins R125-I7 fixed). Full
-                               --muted-foreground: 7.44:1 dark / 6.09:1
-                               light — the same both-theme-safe ink. */
-                            <span className="text-xs font-bold text-muted-foreground select-none">
-                              {(it.name ?? "?")[0]}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          {/* R128-A4 (F-1): dir="auto" — Latin item names
-                              truncate from the wrong end in an RTL block
-                              (the ellipsis eats the name's beginning).
-                              Same isolation idiom as cart.tsx's it.name
-                              twin + ProductCard's h3. */}
-                          <div dir="auto" className="font-bold truncate">
-                            {it.name}
-                          </div>
-                          {it.variantLabel && (
-                            <div className="text-3xs font-semibold text-muted-foreground/85 truncate">
-                              {it.variantLabel}
-                            </div>
-                          )}
-                          <div className="text-2xs text-muted-foreground">
-                            {it.quantity} × {formatCurrency(displayUnit)}
-                          </div>
-                        </div>
-                        <div className="font-bold tabular-nums text-sm shrink-0">
-                          {formatCurrency(displayTotal)}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="border-t border-border/50 pt-3 space-y-1.5 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">المجموع الفرعي</span>
-                    <span className="font-bold tabular-nums">{formatCurrency(totalLYD)}</span>
-                  </div>
-                  {appliedCoupon && (
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">خصم الكوبون</span>
-                      <span className="font-bold tabular-nums text-status-success">
-                        −{formatCurrency(appliedCoupon.discount_amount)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between text-base font-bold pt-1">
-                    <span>{appliedCoupon ? "الإجمالي بعد الكوبون" : "الإجمالي"}</span>
-                    <span className="tabular-nums text-primary-text">
-                      {formatCurrency(comparisonTotal)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Persistent money-failure banner: an error here must be
-                    actionable, not a 4-second toast. */}
-                {orderError && (
-                  <div
-                    role="alert"
-                    className="mb-4 p-3.5 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-xs font-bold flex items-start gap-2"
-                  >
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-                    <div className="flex-1 leading-relaxed">
-                      {partialCount > 0 ? (
-                        <>
-                          <p>
-                            تم إنشاء{" "}
-                            {formatCount(partialCount, {
-                              one: "طلب",
-                              two: "طلبين",
-                              few: "طلبات",
-                              many: "طلباً",
-                              other: "طلب",
-                            })}{" "}
-                            بنجاح قبل توقف العملية.
-                          </p>
-                          <p className="mt-1 font-normal">{orderError}</p>
-                          <Link
-                            href="/orders"
-                            className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"
-                          >
-                            راجع طلباتك المنشأة
-                          </Link>
-                        </>
-                      ) : (
-                        <>
-                          <p>تعذّر إتمام الطلب: {orderError}</p>
-                          <p className="mt-1 font-normal text-muted-foreground">
-                            لم يتم خصم أي مبلغ. راجع الرصيد والمخزون ثم أعد المحاولة.
-                          </p>
-                        </>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setOrderError(null)}
-                      aria-label="إغلاق رسالة الخطأ"
-                      /* 96-F4 (R96 A2 P2-12): 44×44 touch target with the
-                         negative-margin trick preserved (the banner keeps its
-                         tight padding while the hit area grows to the floor). */
-                      className="shrink-0 h-11 w-11 -m-2 p-2 rounded-md hover:bg-status-error/10"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-
-                <Button
-                  onClick={handleConfirm}
-                  disabled={!canSubmit}
-                  /* R135 (FE-4): aria-busy rides `submitting` — the
-                     create-order loop was invisible to screen readers
-                     until a toast fired (repo audit: aria-busy lived
-                     on only 7 async regions). The product page's
-                     balance-check CTA idiom (disabled + aria-busy on the
-                     CTA itself) copied: no aria-label override — the
-                     visible «جارٍ المعالجة… N/M» label (R115-I1) already
-                     IS the accessible name. A page-level aria-live region
-                     for the outcome is deliberately NOT added: every
-                     terminal branch below already toasts, and the sonner
-                     Toaster is itself a polite live region (section
-                     aria-live="polite", sonner 2.x) — a twin here would
-                     double-announce. aria-busy alone covers the in-flight
-                     window; React stringifies the idle false. */
-                  aria-busy={submitting}
-                  /* 96-F4 (R96 A1 M06): the coupon-state label («إتمام الطلب —
-                     الإجمالي بعد الكوبون (…)» ≈ 300–330px of Arabic + tabular
-                     digits) overflowed the button's inner width at ≤390px because
-                     buttonVariants' base ships whitespace-nowrap — the label bled
-                     symmetrically outside the rounded CTA on the money screen.
-                     whitespace-normal + text-balance override the base (twMerge)
-                     so the honest full label wraps gracefully instead, and
-                     min-h-12 (was fixed h-12) lets the button grow for 2 lines.
-                     R116-S2 CTA recipe: size=lg owns the height/text/weight
-                     base; the remaining overrides are the functional wrap
-                     guards above + the w-full summary-card layout. */
-                  size="lg"
-                  className="w-full min-h-12 whitespace-normal text-balance leading-snug"
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      {/* R115-I1 (A7 P3-5): unit progress «جارٍ المعالجة…
-                          2/3» for multi-unit baskets (single-unit baskets
-                          keep the plain label — 1/1 is noise). */}
-                      {submitProgress && submitProgress.total > 1
-                        ? `جارٍ المعالجة… ${submitProgress.current}/${submitProgress.total} (${formatCurrency(comparisonTotal)})`
-                        : `جارٍ المعالجة… (${formatCurrency(comparisonTotal)})`}
-                    </>
-                  ) : pricingRecheckInFlight ? (
-                    /* 98-F2 (R98-A3 F5): the CTA is disabled while the live
-                       re-quote runs — say WHY instead of a dead button. */
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      جارٍ تحديث الأسعار…
-                    </>
-                  ) : stockBlocked ? (
-                    // R129-A1 (F1 wiring — B-11): the honest disabled
-                    // state — the label says WHY, matching the cart
-                    // page's per-line verdicts («نفد المخزون» /
-                    // «متبقٍ N فقط — عدّل الكمية»).
-                    <>بعض العناصر نفد مخزونها — راجع السلة</>
-                  ) : appliedCoupon ? (
-                    // R111-F2 N1: unified CTA verb — the page title, the
-                    // error banner and this button all say «إتمام الطلب»
-                    // now (was «تأكيد الطلب», a second verb family on the
-                    // money screen).
-                    <>إتمام الطلب — الإجمالي بعد الكوبون ({formatCurrency(comparisonTotal)})</>
-                  ) : (
-                    <>إتمام الطلب ({formatCurrency(totalLYD)})</>
-                  )}
-                </Button>
-                <p className="text-2xs text-muted-foreground text-center mt-3">
-                  {/* R123-E4a (P3-e): the legal surface + nav call it
-                      «الشروط والأحكام» — this consent line said «شروط
-                      الاستخدام» (a different term for the same document)
-                      and wasn't linked. Hyperlinked to /terms so the
-                      buyer can read what they're agreeing to. */}
-                  بالنقر على «إتمام الطلب» فإنك توافق على{" "}
-                  <Link
-                    href="/terms"
-                    /* R124-I4 (A5 #1/#10): consent link rode the raw
-                       surface token at 11px (3.93:1 dark — AA fail at
-                       this size). text-primary-text + the resting
-                       underline idiom (color-alone is not enough). */
-                    className="text-primary-text font-bold underline underline-offset-2 hover:opacity-80 transition-opacity"
-                  >
-                    الشروط والأحكام
-                  </Link>
-                </p>
-              </>
-            )}
-          </div>
-        </aside>
+        <CartSummaryAside
+          droppedLineNotices={droppedLineNotices}
+          pricesUpdatedNotice={pricesUpdatedNotice}
+          isEmpty={isEmpty}
+          items={items}
+          totalLYD={totalLYD}
+          appliedCoupon={appliedCoupon}
+          comparisonTotal={comparisonTotal}
+        >
+          {/* Persistent money-failure banner: an error here must be
+              actionable, not a 4-second toast. */}
+          <OrderErrorBanner
+            orderError={orderError}
+            partialCount={partialCount}
+            onDismiss={() => setOrderError(null)}
+          />
+          <CheckoutCta
+            canSubmit={canSubmit}
+            submitting={submitting}
+            submitProgress={submitProgress}
+            pricingRecheckInFlight={pricingRecheckInFlight}
+            stockBlocked={stockBlocked}
+            appliedCoupon={appliedCoupon}
+            totalLYD={totalLYD}
+            comparisonTotal={comparisonTotal}
+            onConfirm={handleConfirm}
+          />
+        </CartSummaryAside>
       </div>
     </div>
   );

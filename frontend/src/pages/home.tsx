@@ -1,15 +1,31 @@
-import { ProductCard } from "@/components/ProductCard";
-import { buttonVariants } from "@/components/ui/button";
-import { FetchErrorCard } from "@/components/ui/fetch-error-card";
-import { Input } from "@/components/ui/input";
-import { ProductCardShell } from "@/components/ui/route-skeleton";
-import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
+// R136 (FE-3 decomposition): the storefront home page's self-contained
+// subcomponents and pure tables moved to @/components/home/* (verbatim
+// moves — every query, the filter quartet state + setters, the search
+// commit/debounce lifecycle, every memo (displayProducts/
+// categoryHasStock/heroBrands), the URL-mirror effect, useSeo and
+// clearFilters stay HERE; the extracts render the byte-identical DOM
+// they rendered inline yesterday and take values + callbacks as
+// props). Import surface:
+//   • catalog-filters / search-history — the page's pure modules
+//   • primitives — the skeleton/status-icon leaf (consumed by the
+//     ProductsGrid + RecentOrdersStrip extracts)
+//   • AuthedHero/RecentOrdersStrip/GuestHero/StatsWidgets — the hero
+//     trio's branch markup + the secondary stats widgets
+//   • CatalogFiltersBar/ProductsGrid/TrustFooter — this round's
+//     section extractions
+import { AuthedHero } from "@/components/home/AuthedHero";
+import { BRANDS, readInitialFiltersFromUrl } from "@/components/home/catalog-filters";
+import { CatalogFiltersBar } from "@/components/home/CatalogFiltersBar";
+import { GuestHero } from "@/components/home/GuestHero";
+import { ProductsGrid } from "@/components/home/ProductsGrid";
+import { RecentOrdersStrip } from "@/components/home/RecentOrdersStrip";
+import { MobileStatsStrip } from "@/components/home/StatsWidgets";
+import { TrustFooter } from "@/components/home/TrustFooter";
+import { clearSearchHistory, getSearchHistory, saveSearchHistory } from "@/components/home/search-history";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { keepPreviousData } from "@tanstack/react-query";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
-import { categoryLabel, cn, formatCount, formatCurrency, statusLabel } from "@/lib/utils";
-import type { CategoryMeta } from "@/lib/categories";
 import {
   getGetCatalogStatsQueryKey,
   getGetMeQueryKey,
@@ -20,175 +36,14 @@ import {
   useListOrders,
   useListProducts,
 } from "@workspace/api-client-react";
-import {
-  AppWindow,
-  ArrowLeft,
-  CheckCircle,
-  ChevronDown,
-  ChevronLeft,
-  Clock,
-  GraduationCap,
-  Headphones,
-  LayoutGrid,
-  Music2,
-  Package,
-  PackageSearch,
-  Search,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  Star,
-  TrendingUp,
-  Truck,
-  Tv2,
-  WifiOff,
-  Wallet,
-  XCircle,
-} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "wouter";
-
-// The seven live catalog categories (mirrors products.category values
-// verified against production — see lib/categories.ts). Retired chips
-// (gaming/productivity) were removed once their products were archived:
-// a chip that filters to an empty grid misleads shoppers.
-// R134 (A2-F1): the labels DERIVE from categoryLabel() (lib/utils — the
-// canonical chip-brevity map that already feeds the results h2 below,
-// ProductCard badges, Product-LD and breadcrumbs). The previous
-// hand-rolled table was a third parallel source: «برامج»/«VPN
-// وشبكات»/«تعليم» chips sat a viewport away from the «برامج وتراخيص»/
-// «شبكات VPN»/«تعليم ومكتبات» their own filter results rendered —
-// one source, three consumers, zero drift (Navbar derives too).
-const CATEGORIES = [
-  { value: "", label: "الكل", Icon: LayoutGrid },
-  { value: "streaming", label: categoryLabel("streaming"), Icon: Tv2 },
-  { value: "music", label: categoryLabel("music"), Icon: Music2 },
-  { value: "software", label: categoryLabel("software"), Icon: AppWindow },
-  { value: "vpn", label: categoryLabel("vpn"), Icon: ShieldCheck },
-  { value: "ai-tools", label: categoryLabel("ai-tools"), Icon: Sparkles },
-  { value: "seo-tools", label: categoryLabel("seo-tools"), Icon: TrendingUp },
-  { value: "education", label: categoryLabel("education"), Icon: GraduationCap },
-];
-
-const SORTS = [
-  { value: "", label: "الأحدث" },
-  { value: "popular", label: "الأكثر مبيعاً" },
-  { value: "price_asc", label: "السعر: الأقل" },
-  { value: "price_desc", label: "السعر: الأعلى" },
-];
-
-// ── R98-04 (A5 §2): catalog filters ↔ querystring ────────────────────────
-//
-// The four catalog filters (search/category/sort/availableOnly) lived in
-// local state only — refresh, back-navigation from a product page, or a
-// shared link all landed on a zeroed catalog (admin pages got ?search=
-// syncing in 94-C2; the storefront never did). The filters now seed from
-// the URL on mount and mirror back via history.replaceState on every
-// change (replaceState, not pushState: filtering is the same logical
-// page — the Back button must leave the page, not replay every filter
-// click — and it is invisible to wouter, so no route re-resolution).
-const SORT_VALUES = new Set(SORTS.map((s) => s.value));
-const CATEGORY_VALUES = new Set(CATEGORIES.map((c) => c.value));
-
-function readInitialFiltersFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  // Whitelist category/sort values — a hand-typed ?sort=bogus must not
-  // blank the <select> (an unknown value renders no <option> selected)
-  // or arm a phantom filter chip.
-  const rawCategory = params.get("category") ?? "";
-  const rawSort = params.get("sort") ?? "";
-  const search = params.get("search") ?? "";
-  return {
-    search,
-    searchInput: search,
-    category: CATEGORY_VALUES.has(rawCategory) ? rawCategory : "",
-    sort: SORT_VALUES.has(rawSort) ? rawSort : "",
-    availableOnly: params.get("available_only") === "true",
-  };
-}
-
-/**
- * Featured brand chips on the editorial hero.
- *
- * Each entry has both the canonical Latin name (visible label —
- * preserves brand recognition for users) and the Arabic
- * transliteration (the form Arabic users actually type into Google:
- * "نتفلكس", "ديزني+", etc). The Arabic form is exposed to
- * crawlers via `aria-label` + a visually-hidden `.sr-only` span so
- * the chip carries Arabic-keyword weight without changing the visual.
- *
- * R120-B1 (A7-F5): every chip now references a brand the LIVE catalog
- * sells (verified against the active products + lib/categories.ts).
- * PlayStation Plus / Canva / Adobe / Microsoft 365 were removed —
- * their categories were archived 2026-09-19 and the catalog returns
- * 0 results for all four (a chip that filters to nothing misleads
- * shoppers and dilutes the page's topic vector).
- *
- * R122 (A11-F1): each chip now carries `cat` — the live category its
- * brand sells under — so the chip is a real navigation affordance to
- * that category's landing page (they were sr-only spans: advertised
- * brands shoppers could not tap). R122 (A11 P0-adjacent): the same
- * mapping powers the client-side in-stock surfacing below (chips whose
- * category currently has stock lead the row + carry a success dot);
- * while the live catalog runs this thin (44/45 sold out at audit
- * time), the hero must not funnel guests into a wall of نفد cards.
- */
-const BRANDS: Array<{ latin: string; ar: string; cat: CategoryMeta["slug"] }> = [
-  { latin: "Netflix", ar: "نتفلكس", cat: "streaming" },
-  { latin: "Spotify", ar: "سبوتيفاي", cat: "music" },
-  { latin: "Disney+", ar: "ديزني+", cat: "streaming" },
-  { latin: "YouTube", ar: "يوتيوب", cat: "streaming" },
-  { latin: "Shahid VIP", ar: "شاهد", cat: "streaming" },
-  { latin: "ExpressVPN", ar: "إكسبرس في بي إن", cat: "vpn" },
-  { latin: "ChatGPT Plus", ar: "شات جي بي تي", cat: "ai-tools" },
-  { latin: "Windows 10", ar: "ويندوز 10", cat: "software" },
-];
-
-// Search history localStorage helpers
-const SEARCH_HISTORY_KEY = "subnation_search_history";
-const MAX_SEARCH_HISTORY = 8;
-
-function getSearchHistory(): string[] {
-  try {
-    const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSearchHistory(query: string) {
-  if (!query.trim()) return;
-  const history = getSearchHistory();
-  const filtered = history.filter((h) => h !== query);
-  filtered.unshift(query);
-  if (filtered.length > MAX_SEARCH_HISTORY) filtered.pop();
-  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(filtered));
-}
-
-function clearSearchHistory() {
-  localStorage.removeItem(SEARCH_HISTORY_KEY);
-}
-
-function ProductSkeleton() {
-  return <ProductCardShell />;
-}
-
-function OrderStatusIcon({ status }: { status: string }) {
-  // R94-A1 #5 (P2, WCAG AA): raw -400 shades measured 1.53–2.54:1 on
-  // white cards in the light theme — the shared --status-* tokens are
-  // theme-aware and tonally correct on card surfaces.
-  if (status === "completed") return <CheckCircle className="w-3 h-3 text-status-success" />;
-  if (status === "failed" || status === "refunded")
-    return <XCircle className="w-3 h-3 text-status-error" />;
-  return <Clock className="w-3 h-3 text-status-warning" />;
-}
 
 export default function HomePage() {
   const { token } = useAuth();
   // R98-04: initial values seed from the querystring (see
-  // readInitialFiltersFromUrl above) — mount-time only; every later
-  // change is user-driven and mirrors back via the effect below.
+  // readInitialFiltersFromUrl in components/home/catalog-filters.ts) —
+  // mount-time only; every later change is user-driven and mirrors
+  // back via the effect below.
   const [initialFilters] = useState(readInitialFiltersFromUrl);
   const [searchInput, setSearchInput] = useState(initialFilters.searchInput);
   const [search, setSearch] = useState(initialFilters.search);
@@ -201,21 +56,9 @@ export default function HomePage() {
   // R94-A1 #16 (P3): the history dropdown wrapper — blur closes the list
   // ONLY when focus actually leaves the whole search control. The old
   // unconditional 200ms timeout unmounted the list while keyboard users
-  // were still tabbing INTO it, dropping focus to <body>.
+  // were still tabbing INTO it, dropping focus to <body>. The ref is
+  // handed to CatalogFiltersBar, which owns the control's markup.
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
-
-  // 96-F5 (R96 F-4b): pause the guest hero's animated blur-3xl blobs when
-  // the hero scrolls off-screen — two 9s/13s infinite animations with
-  // will-change:transform kept rasterizing big blurred layers on the
-  // most-visited page long after anyone could see them. IntersectionObserver
-  // toggles animation-play-state via inline style (className/JS-level only;
-  // the keyframes live in index.css which is owned by another agent).
-  const guestHeroRef = useRef<HTMLDivElement | null>(null);
-  const [heroOnScreen, setHeroOnScreen] = useState(true);
-  // R120-B1 (A1-F3/A3-F2): mobile fold — the guest hero's 460-char SEO
-  // paragraph collapses to 2 lines below sm with this expand toggle
-  // (the FULL text stays in the DOM for crawlers; ≥sm is untouched).
-  const [heroProseOpen, setHeroProseOpen] = useState(false);
 
   // Load search history on mount
   useEffect(() => {
@@ -331,22 +174,6 @@ export default function HomePage() {
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
-
-  // 96-F5 (R96 F-4b), continued: the guest hero renders for !token OR a
-  // failed /me probe (see the three-branch conditional below) — keying the
-  // blob-pause observer on the same flag re-arms it if auth state flips.
-  const showGuestHero = !token || !!userError;
-  useEffect(() => {
-    if (!showGuestHero) return;
-    const el = guestHeroRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(
-      (entries) => setHeroOnScreen(entries[0]?.isIntersecting ?? true),
-      { rootMargin: "64px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [showGuestHero]);
 
   // Round-3 (8-c §2.4): fetched up to 200 orders (each row with a
   // safeDecrypt'd credential payload server-side) just to render 4 rows.
@@ -478,457 +305,21 @@ export default function HomePage() {
           </div>
         ) : token && user ? (
           <div className="mb-5 page-in">
-            {/* Hero banner card */}
-            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg">
-              {/* Background gradient layers */}
-              <div className="absolute inset-0 bg-gradient-to-l from-primary/12 via-transparent to-transparent pointer-events-none" />
-              {/* R125-I7 (A7 B-12 / R124-A3 #12): the hero accent stripe
-                  was w-[2px] — the craft-floor cap for colored side
-                  stripes is 1px. */}
-              <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-primary/60 via-primary/20 to-transparent" />
-              <div className="absolute top-[-30px] right-[10%] w-48 h-48 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="relative px-4 py-4 sm:px-6 sm:py-5 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  {/* R125-I7 (A7 B-12 / R124-A3 #13): the «مرحباً بك
-                      مجدداً» eyebrow above the h2 is deleted — the
-                      craft-floor bans kickers/eyebrows over headings
-                      ("let the h1 speak"); the greeting carried no
-                      information the h2 doesn't. */}
-                  {/* R124 (A5-F8 + A3-F7): h1 → h2 — a greeting is a
-                      section heading, not the page's topic (the guest
-                      SEO hero below owns the page's h1 identity; these
-                      branches are mutually exclusive, but the greeting
-                      must not outrank the catalog's h2s when it renders).
-                      The gradient text is gone (craft-floor ban on
-                      gradient type) — solid --primary-text (4.82:1 on the
-                      light card / 6.05:1 dark) + weight carry the
-                      emphasis. */}
-                  <h2 className="text-fluid-2xl font-bold text-primary-text">
-                    اشترِ اشتراكك المفضل اليوم
-                  </h2>
-                </div>
-                <div className="flex gap-2">
-                  <Link href="/wallet">
-                    <div className="bg-background/50 border border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer min-w-[122px]">
-                      <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                        <Wallet className="w-3.5 h-3.5 text-primary-text" />
-                      </div>
-                      <div>
-                        <div className="text-3xs text-muted-foreground leading-none mb-0.5 font-semibold">
-                          المحفظة
-                        </div>
-                        <div className="font-bold text-sm tabular-nums text-foreground">
-                          {formatCurrency(user.wallet_balance ?? 0)}
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                  <Link href="/loyalty">
-                    <div className="bg-background/50 border border-border/50 hover:border-status-warning/40 hover:shadow-lg hover:shadow-status-warning/12 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer">
-                      <div className="w-8 h-8 rounded-xl bg-status-warning/10 border border-status-warning/20 flex items-center justify-center shrink-0">
-                        <Star className="w-3.5 h-3.5 text-status-warning" />
-                      </div>
-                      <div>
-                        <div className="text-3xs text-muted-foreground leading-none mb-0.5 font-semibold">
-                          النقاط
-                        </div>
-                        <div className="font-bold text-sm tabular-nums">
-                          {user.loyalty_points ?? 0}
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent orders strip — R111-F1 G3 (P3): a 4-row
-                mini-skeleton while pending (the strip used to pop in
-                below the hero with zero loading state — CLS) and an
-                honest compact error row with retry on failure (an
-                outage no longer reads as "no orders"). */}
-            {ordersPending ? (
-              <div
-                aria-hidden="true"
-                className="bg-card border border-border/45 rounded-2xl overflow-hidden shadow-sm"
-              >
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/25">
-                  <div className="w-3.5 h-3.5 rounded-full skeleton-shimmer" />
-                  <div className="h-3 w-20 skeleton-shimmer rounded" />
-                </div>
-                <div className="divide-y divide-border/15">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3 px-4 py-3 min-h-[52px]">
-                      <div className="w-8 h-8 rounded-xl bg-muted/50 skeleton-shimmer shrink-0" />
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-3 skeleton-shimmer rounded w-1/3" />
-                        <div className="h-2.5 skeleton-shimmer rounded w-1/4" />
-                      </div>
-                      <div className="h-3 w-12 skeleton-shimmer rounded" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : ordersError ? (
-              <div className="bg-card border border-status-error/18 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 float-in">
-                <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                  <WifiOff className="w-4 h-4 text-status-error/60 shrink-0" />
-                  تعذّر تحميل آخر الطلبات
-                </div>
-                {/* B13 F-2 (R127): the strip's retry measured ~34px
-                    (text-xs + py-1.5 + border) — the last inline recovery
-                    control under the 44px floor its page-level siblings
-                    got in the R124/R125 sweeps. min-h-11 + -my-2 (the
-                    recent-searches «مسح» idiom, :1037) reaches the floor;
-                    the −16px of margins keep the row's footprint at 28px
-                    (vs the old 34px), so the 44px box bleeds into the
-                    strip's py-3 padding instead of growing the strip. */}
-                <button
-                  onClick={() => refetchOrders()}
-                  className="text-xs font-bold text-primary-text border border-primary/25 px-3.5 min-h-11 -my-2 rounded-lg hover:bg-primary/8 transition-colors press-spring shrink-0"
-                >
-                  إعادة المحاولة
-                </button>
-              </div>
-            ) : (
-              latestOrders.length > 0 && (
-                <div className="bg-card border border-border/45 rounded-2xl overflow-hidden float-in stagger-1 shadow-sm">
-                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/25">
-                    <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
-                      <Clock className="w-3.5 h-3.5" />
-                      آخر الطلبات
-                    </div>
-                    <Link
-                      href="/orders"
-                      className="flex items-center gap-0.5 text-xs text-primary-text hover:text-primary-text/75 font-bold transition-colors press-spring"
-                    >
-                      {/* R120-B1 (A4-F1): Link wears the button classes
-                          directly — was a Button nested inside a Link
-                          (nested interactive elements, doubled tab stop).
-                          R122 (A1-P1): comment reworded — the nesting
-                          sweep's regex now matches lowercase button markup
-                          too, and the old literal quoted the defect shape. */}
-                      عرض الكل
-                      <ChevronLeft className="w-3 h-3" aria-hidden="true" />
-                    </Link>
-                  </div>
-                  <div className="divide-y divide-border/15">
-                    {latestOrders.map((order) => (
-                      <Link key={order.id} href={`/orders/${order.order_code}`}>
-                        <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/15 active:bg-muted/25 transition-colors cursor-pointer group min-h-[52px]">
-                          <div className="w-8 h-8 rounded-xl bg-muted/50 flex items-center justify-center shrink-0 overflow-hidden border border-border/25">
-                            {order.product_image_url ? (
-                              <img
-                                src={order.product_image_url}
-                                alt={order.product_name}
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full h-full object-contain p-1"
-                              />
-                            ) : (
-                              <Package className="w-3.5 h-3.5 text-muted-foreground" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold truncate group-hover:text-primary-text transition-colors duration-150">
-                              {order.product_name}
-                            </div>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <OrderStatusIcon status={order.status} />
-                              {/* R116-S1: shared StatusBadge (STATUS_TONE)
-                                  replaces the deprecated statusColor()
-                                  string-slicing — same tokens, same pill
-                                  shape as the rest of the app. */}
-                              <StatusBadge
-                                variant={
-                                  STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
-                                  UNKNOWN_STATUS_TONE
-                                }
-                                size="xs"
-                              >
-                                {statusLabel(order.status)}
-                              </StatusBadge>
-                            </div>
-                          </div>
-                          <div className="text-xs font-bold tabular-nums shrink-0">
-                            {formatCurrency(order.amount)}
-                          </div>
-                          <ChevronLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary-text transition-colors shrink-0" />
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )
-            )}
+            <AuthedHero user={user} />
+            <RecentOrdersStrip
+              pending={ordersPending}
+              error={ordersError}
+              orders={latestOrders}
+              refetch={refetchOrders}
+            />
           </div>
         ) : (
-          /* Guest: editorial hero — R120-B1 (A1-F3/A3-F2): the <sm fold
-             budget was ~915px at 390px (first card fully below fold);
-             the mobile-only tightening below (padding, 2-line prose,
-             compact stats strip, tighter section gaps) buys back
-             ~230px. ≥sm (and the desktop hero) are untouched. */
-          <div
-            ref={guestHeroRef}
-            /* R125-I7 (A7 B-12 / R124-A3 #11): rounded-3xl (24px) is over
-               the craft-floor's 12–16px card-radius band — the guest hero
-               now matches the authed hero + every catalog card (16px). */
-            className="relative overflow-hidden rounded-2xl border border-border/40 mb-4 sm:mb-6 bg-card page-in shadow-xl"
-          >
-            {/* Background layers */}
-            <div className="absolute inset-0 dot-grid pointer-events-none opacity-60" />
-            <div className="absolute inset-0 bg-gradient-to-l from-primary/10 via-transparent to-transparent pointer-events-none" />
-            {/* R125-I7 (A7 B-12 / R124-A3 #12): w-[2.5px] → 1px (same
-                craft-floor stripe cap as the authed hero above). */}
-            <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-primary/80 via-primary/30 to-transparent" />
-
-            {/* Ambient glow blobs — 96-F5 (R96 F-4b): animation-play-state
-                flips to paused when the hero leaves the viewport (IO above);
-                prefers-reduced-motion keeps winning via the global kill-switch. */}
-            <div
-              className="absolute top-[-50px] right-[8%] w-72 h-72 bg-primary/8 rounded-full blur-3xl pointer-events-none blob-drift"
-              style={{ animationPlayState: heroOnScreen ? "running" : "paused" }}
-            />
-            <div
-              className="absolute bottom-[-40px] left-[15%] w-56 h-56 bg-primary/5 rounded-full blur-3xl pointer-events-none blob-drift-slow"
-              style={{ animationPlayState: heroOnScreen ? "running" : "paused" }}
-            />
-
-            <div className="relative px-4 py-5 sm:px-9 sm:py-10">
-              <div className="flex flex-wrap items-start justify-between gap-5">
-                <div className="flex-1 min-w-0">
-                  {/* R125-I7 (A7 B-12 / R124-A3 #13): the eyebrow row above
-                      the h1 — the «ليبيا #1» pill + a tagline that
-                      duplicated the h1's first line word-for-word — is
-                      deleted (the craft-floor ban on kickers/eyebrows
-                      over headings: "let the h1 speak"). The h1 and the
-                      SEO prose below carry the same claims honestly. */}
-                  <h1 className="text-fluid-3xl font-bold mb-2.5 sm:mb-3">
-                    {/*
-                      Single contiguous phrase for Google's NLU. Visual
-                      two-line split is achieved with `block` + a styled
-                      span — NOT a literal <br>, which used to fragment
-                      the heading text node and weaken keyword strength.
-                      The locale word "في ليبيا" stays attached to the
-                      keyword phrase and shifts to its own line on
-                      narrow viewports.
-                      R120-B1 (A7-F12): a real {" "} text node sits
-                      between the two block spans — two adjacent block
-                      spans fused textContent into «الرقميةفي ليبيا» —
-                      the whitespace node is not rendered between block
-                      boxes but IS in the DOM text, so crawlers and SRs
-                      read the phrase with its space. */}
-                    <span className="block">سوق الاشتراكات الرقمية</span>{" "}
-                    {/* R124 (A3-F7): the accent line rode the banned
-                        gradient-type utility — solid --primary-text
-                        (weight/size already carry the hierarchy) keeps
-                        the two-line brand rhythm AA-safe in both themes. */}
-                    <span className="block text-primary-text">في ليبيا</span>
-                  </h1>
-                  <p
-                    className={`text-muted-foreground text-sm leading-relaxed max-w-md mb-1.5 sm:mb-4 ${
-                      heroProseOpen ? "" : "line-clamp-2"
-                    } sm:line-clamp-none`}
-                  >
-                    {/*
-                      Editorial intro — the only on-page Arabic prose
-                      that gives Google a topic-vector beyond the title.
-                      Every target keyword appears EXACTLY ONCE: سوق،
-                      اشتراكات، البث المباشر، نتفلكس، ديزني+، شاهد،
-                      سبوتيفاي، ويندوز، VPN، الذكاء الاصطناعي،
-                      شات جي بي تي، الدينار الليبي، تسليم فوري.
-                      R120-B1 (A7-F5): the examples now mirror the LIVE
-                      catalog only (PlayStation Plus / Adobe / Microsoft
-                      365 categories were archived 2026-09-19 — Windows,
-                      VPNs and AI tools are what actually sells). The
-                      paragraph visually collapses to 2 lines below sm
-                      (R120-B1 / A1-F3) but the FULL text stays in the
-                      DOM — the toggle below re-reveals it.
-                    */}
-                    <strong lang="en" className="font-bold text-foreground">
-                      SubNation
-                    </strong>{" "}
-                    سوق إلكتروني متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة
-                    اشتراكات البثّ المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي،
-                    ومفاتيح البرامج مثل ويندوز، وشبكات VPN مثل إكسبريس، وأدوات الذكاء الاصطناعي مثل
-                    شات جي بي تي — كلّها بالدينار الليبي مع تسليم فوري بعد الدفع.
-                  </p>
-                  {/* R120-B1 (A1-F3): expand toggle for the collapsed prose
-                      (mobile only — ≥sm shows the full paragraph).
-                      R123-E4b (P3, live-measured 77×19): the text-2xs
-                      inline toggle was the site's only sub-24px button —
-                      full-width + the min-h-11 floor now. */}
-                  <button
-                    type="button"
-                    onClick={() => setHeroProseOpen((v) => !v)}
-                    aria-expanded={heroProseOpen}
-                    className="sm:hidden w-full min-h-11 inline-flex items-center justify-center gap-1 text-2xs font-bold text-primary-text hover:text-primary-text/80 transition-colors press-spring mb-3 sm:mb-0"
-                  >
-                    {heroProseOpen ? "عرض أقل" : "عرض المزيد"}
-                    <ChevronDown
-                      className={`w-3 h-3 transition-transform duration-200 ${
-                        heroProseOpen ? "rotate-180" : ""
-                      }`}
-                      aria-hidden="true"
-                    />
-                  </button>
-
-                  {/* Brand chips — already a single scrollable row
-                      (overflow-x-auto + scrollbar-none); mb-4 below sm
-                      (R120-B1 / A1-F3 fold budget).
-                      R122 (A11-F1): each chip is now a Link to its
-                      category's landing page (category.tsx sibling-chip
-                      idiom) — they were sr-only spans, so the hero
-                      advertised brands shoppers could not tap. The chips
-                      ride the app's min-h-11 tap-target floor now that
-                      they are interactive, and in-stock categories lead
-                      the row with a success dot (A11 P0-adjacent: with
-                      the live catalog 98% sold out, the hero must
-                      surface what is actually buyable — the data is the
-                      already-loaded products array, presentation only). */}
-                  <div className="relative overflow-hidden mb-4 sm:mb-5">
-                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl-start">
-                      {heroBrands.map((brand, i) => {
-                        const inStock = categoryHasStock?.has(brand.cat) ?? false;
-                        return (
-                          <Link
-                            key={brand.latin}
-                            href={`/category/${brand.cat}`}
-                            aria-label={inStock ? `${brand.ar} — متوفر الآن` : brand.ar}
-                            className={`shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 text-2xs font-bold rounded-full whitespace-nowrap transition-all duration-150 press-spring float-in stagger-${Math.min(i + 1, 8)} ${
-                              inStock
-                                ? "bg-status-success/8 border border-status-success/30 text-foreground hover:border-status-success/55"
-                                : "bg-muted/40 border border-border/40 text-muted-foreground hover:border-border/70 hover:text-foreground"
-                            }`}
-                          >
-                            {/* 96-F5 (R96 A6 #16): lang="en" on the Latin label
-                                so screen readers stop spelling brand names with
-                                Arabic phonemes («نِتفليكس»); the Arabic sr-only
-                                transliteration below already carries the SEO
-                                weight. */}
-                            <span aria-hidden="true" lang="en">
-                              {brand.latin}
-                            </span>
-                            {/* Visually hidden Arabic transliteration so the
-                                crawler indexes "نتفلكس", "ويندوز 10", etc.
-                                alongside the Latin form. .sr-only is the
-                                standard a11y utility. */}
-                            <span className="sr-only">{brand.ar}</span>
-                            {inStock && (
-                              /* Decorative availability dot — the chip's
-                                 accessible name (aria-label above) carries
-                                 the «متوفر الآن» signal for ATs. */
-                              <span
-                                aria-hidden="true"
-                                className="w-1.5 h-1.5 rounded-full bg-status-success shrink-0"
-                              />
-                            )}
-                          </Link>
-                        );
-                      })}
-                      <span className="shrink-0 text-2xs text-muted-foreground px-1 whitespace-nowrap">
-                        وأكثر…
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* CTAs — mobile: stacked with primary dominant; desktop: inline.
-                      R116-S1 CTA recipe: size="lg" + w-full sm:w-auto — the
-                      per-page bg/shadow/height/press overrides and the pulsing
-                      cta-glow halo are gone; the gradient variant + global
-                      press-spring carry the affordance.
-                      R120-B1 (A4-F1): the Links wear buttonVariants directly
-                      (cn-merged so arbitrary overrides win) instead of nesting
-                      a <Button> inside a <Link> — invalid interactive nesting
-                      + a doubled tab stop per CTA. One CTA = one tab stop;
-                      identical visuals (the svg size pin keeps the arrow at
-                      14px like the old w-3.5 h-3.5). */}
-                  <div className="flex flex-col sm:flex-row gap-2.5 sm:flex-wrap">
-                    <Link
-                      href="/register"
-                      className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto")}
-                    >
-                      إنشاء حساب مجاني
-                    </Link>
-                    <Link
-                      href="/login"
-                      className={cn(
-                        buttonVariants({ variant: "ghost", size: "lg" }),
-                        "w-full sm:w-auto gap-1.5 text-muted-foreground [&_svg]:size-3.5",
-                      )}
-                    >
-                      لدي حساب — سجّل دخولك
-                      <ArrowLeft className="opacity-40" aria-hidden="true" />
-                    </Link>
-                  </div>
-                </div>
-
-                {/* Stats column — desktop only — R111-F1 G2 (P3):
-                    chip-shaped skeletons while the first fetch is pending
-                    (no pop-in CLS); an error hides the column (decorative
-                    data — documented deliberate degrade, see the query). */}
-                {stats ? (
-                  /* R125-I7 (A7 B-12 / R124-A3 #14): the side column was
-                     three big-number/small-label accent CHIPS (the
-                     craft-floor REFUSE "hero-metric template") — the
-                     same figures now render as plain inline figure rows
-                     (value + count-aware label, no chip chrome), the
-                     inline form the mobile strip below already had. */
-                  <div className="hidden sm:flex flex-col gap-2.5 shrink-0">
-                    {[
-                      {
-                        // R94-A1 #11 (P3): count-aware Arabic labels
-                        // («منتجان متاحان / منتجات متاحة / منتجاً متاحاً»)
-                        // instead of a frozen singular after every count.
-                        label: formatCount(stats.available_products, {
-                          one: "منتج متاح",
-                          two: "منتجان متاحان",
-                          few: "منتجات متاحة",
-                          many: "منتجاً متاحاً",
-                          other: "منتج متاح",
-                        }),
-                        value: stats.available_products,
-                        color: "text-status-success",
-                      },
-                      {
-                        label: "أقل سعر",
-                        value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
-                        color: "text-primary-text",
-                      },
-                      {
-                        label: formatCount(stats.total_units, {
-                          one: "وحدة بالمخزون",
-                          two: "وحدتان بالمخزون",
-                          few: "وحدات بالمخزون",
-                          many: "وحدة بالمخزون",
-                          other: "وحدة بالمخزون",
-                        }),
-                        value: stats.total_units,
-                        color: "text-status-info",
-                      },
-                    ].map((s) => (
-                      <div key={s.label} className="flex items-baseline justify-end gap-1.5">
-                        <span className={`font-bold text-xl leading-none tabular-nums ${s.color}`}>
-                          {s.value}
-                        </span>
-                        <span className="text-2xs text-muted-foreground">{s.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : statsPending ? (
-                  <div className="hidden sm:flex flex-col gap-2.5 shrink-0" aria-hidden="true">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="flex items-center justify-end gap-1.5">
-                        <div className="h-6 w-14 skeleton-shimmer rounded" />
-                        <div className="h-3 w-24 skeleton-shimmer rounded" />
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          <GuestHero
+            heroBrands={heroBrands}
+            categoryHasStock={categoryHasStock}
+            stats={stats}
+            statsPending={statsPending}
+          />
         )}
 
         {/* Mobile stats strip (guest) — R111-F1 G2: the same
@@ -936,427 +327,48 @@ export default function HomePage() {
             desktop column above (identical geometry, no CLS).
             R120-B1 (A1-F3/A3-F2): compacted below sm (p-2, tighter gap,
             mb-3) — the strip is secondary data and was spending ~84px
-            of the fold budget before the first card. */}
-        {!token &&
-          (stats ? (
-            <div className="sm:hidden grid grid-cols-3 gap-1.5 mb-3 sm:mb-5">
-              {[
-                {
-                  label: formatCount(stats.available_products, {
-                    one: "منتج",
-                    two: "منتجان",
-                    few: "منتجات",
-                    many: "منتجاً",
-                    other: "منتج",
-                  }),
-                  value: stats.available_products,
-                  color: "text-status-success",
-                },
-                {
-                  label: "أقل سعر",
-                  value: stats.lowest_price ? formatCurrency(stats.lowest_price) : "—",
-                  color: "text-primary-text",
-                },
-                { label: "بالمخزون", value: stats.total_units, color: "text-status-info" },
-              ].map((s) => (
-                <div
-                  key={s.label}
-                  className="bg-card border border-border/45 rounded-2xl p-2 sm:p-3 text-center"
-                >
-                  <div
-                    className={`font-bold text-sm sm:text-base leading-none mb-0.5 tabular-nums ${s.color}`}
-                  >
-                    {s.value}
-                  </div>
-                  <div className="text-3xs text-muted-foreground">{s.label}</div>
-                </div>
-              ))}
-            </div>
-          ) : statsPending ? (
-            <div className="sm:hidden grid grid-cols-3 gap-1.5 mb-3 sm:mb-5" aria-hidden="true">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-card border border-border/45 rounded-2xl p-2 sm:p-3 text-center"
-                >
-                  <div className="h-5 w-10 mx-auto skeleton-shimmer rounded mb-1" />
-                  <div className="h-2.5 w-14 mx-auto skeleton-shimmer rounded" />
-                </div>
-              ))}
-            </div>
-          ) : null)}
+            of the fold budget before the first card. The !token gate
+            stays here: pure guests see the strip, while a failed /me
+            probe (token set, userError) renders the guest hero WITHOUT
+            it — the same three-branch contract the hero trio above
+            encodes. */}
+        {!token && <MobileStatsStrip stats={stats} statsPending={statsPending} />}
 
-        {/* ── Filters ──────────────────────────────────────── */}
-        {/* 96-F5 (R96-M08): the sticky offset tracks the Navbar's real
-            chrome height — 3.5rem (h-14) + the top safe-area inset the
-            header now grows by in installed-PWA mode, so the bar tucks
-            UNDER the taller header instead of sliding beneath it. */}
-        <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-2 bg-background/96 border-b border-border/15 mb-4 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0 sm:mb-6">
-          {/* Search + Sort */}
-          <div className="flex gap-2 mb-2.5">
-            <div className="relative flex-1" ref={searchWrapRef}>
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="search"
-                placeholder="ابحث عن اشتراك…"
-                aria-label="البحث في المنتجات"
-                value={searchInput}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onKeyDown={(e) => {
-                  // R94-A1 #16 (P3): Enter commits the search — the one
-                  // moment the query is unambiguously final, and the only
-                  // place the history is written from typing.
-                  if (e.key === "Enter") {
-                    if (debounceRef.current) clearTimeout(debounceRef.current);
-                    commitSearch(searchInput);
-                  }
-                }}
-                onFocus={() =>
-                  setShowSearchHistory(searchInput.length === 0 && searchHistory.length > 0)
-                }
-                /* R134 (A2-F3): the history popup now announces itself —
-                   aria-expanded/aria-controls follow the support.tsx
-                   disclosure idiom, aria-autocomplete="list" tells SRs
-                   the field drives a suggestion list (the keyboard
-                   behavior was already correct — focus guard + min-h-11
-                   rows; only the announcement was missing). */
-                aria-expanded={showSearchHistory && searchHistory.length > 0}
-                aria-controls="home-search-history"
-                aria-autocomplete="list"
-                onBlur={(e) => {
-                  // R94-A1 #16 (P3): keyboard focus moving INTO the history
-                  // list must not close it — only a blur that lands outside
-                  // the search control dismisses the dropdown (the list
-                  // buttons then close it via their click handlers).
-                  const next = e.relatedTarget as Node | null;
-                  if (searchWrapRef.current && next && searchWrapRef.current.contains(next)) {
-                    return;
-                  }
-                  setTimeout(() => setShowSearchHistory(false), 200);
-                }}
-                className="pr-9 h-10 bg-card border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
-                /* 96-F5 (R96-M03): the `text-sm` override is GONE — twMerge
-                    let it beat the shared Input's iOS-zoom-safe
-                    text-base/md:text-sm baseline, so focusing the catalog
-                    search zoomed iOS Safari ~1.14× and never zoomed back.
-                    Mobile is 16px again; ≥md keeps the compact 14px look. */
-              />
-              {/* Search history dropdown */}
-              {showSearchHistory && searchHistory.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border/50 rounded-xl shadow-lg z-50 overflow-hidden">
-                  <div className="p-2">
-                    <div className="flex items-center justify-between px-2 py-1.5 mb-1">
-                      <span className="text-xs font-bold text-muted-foreground">
-                        عمليات البحث السابقة
-                      </span>
-                      <button
-                        onClick={handleClearHistory}
-                        className="min-h-11 px-2 -my-2 text-xs text-muted-foreground hover:text-destructive transition-colors"
-                      >
-                        مسح
-                      </button>
-                    </div>
-                    {/* R134 (A2-F3): ONLY the rows live in the listbox —
-                        the header + مسح stay siblings so the role's
-                        option children are exactly the suggestions. */}
-                    <div id="home-search-history" role="listbox" aria-label="عمليات البحث السابقة">
-                      {searchHistory.map((query) => (
-                        <button
-                          key={query}
-                          onClick={() => handleSearchHistoryClick(query)}
-                          /* R134 (A2-F3): option semantics for the history
-                             rows — the listbox wrapper carries the popup's
-                             id + label so aria-controls resolves. */
-                          role="option"
-                          aria-selected={false}
-                          className="min-h-11 w-full flex items-center gap-2 px-2 text-sm text-muted-foreground hover:bg-secondary/40 rounded-lg transition-colors text-right"
-                        >
-                          <Clock className="w-3 h-3 text-muted-foreground" />
-                          {query}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="relative shrink-0">
-              <SlidersHorizontal className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value)}
-                aria-label="ترتيب المنتجات"
-                title="ترتيب المنتجات"
-                className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-base md:text-sm font-semibold focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
-                /* 96-F5 (R96-M03): same iOS focus-zoom fix as the search
-                    field — raw select rode text-sm at every breakpoint. */
-              >
-                {SORTS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            </div>
-          </div>
+        <CatalogFiltersBar
+          searchInput={searchInput}
+          category={category}
+          sort={sort}
+          availableOnly={availableOnly}
+          setCategory={setCategory}
+          setSort={setSort}
+          setAvailableOnly={setAvailableOnly}
+          searchHistory={searchHistory}
+          showSearchHistory={showSearchHistory}
+          setShowSearchHistory={setShowSearchHistory}
+          handleSearchChange={handleSearchChange}
+          commitSearch={commitSearch}
+          handleSearchHistoryClick={handleSearchHistoryClick}
+          handleClearHistory={handleClearHistory}
+          searchWrapRef={searchWrapRef}
+          debounceRef={debounceRef}
+        />
 
-          {/* Category chips — scrollable with fade edges */}
-          <div className="relative overflow-hidden">
-            {/* sr-only heading for crawlers — the chips themselves are
-                a11y-meaningful tabs, but Google's outline algorithm
-                wants a heading to bracket the section. Visually
-                redundant with the chip labels, so kept screen-reader
-                only to avoid changing the design. */}
-            <h2 className="sr-only">تصفّح حسب الفئة</h2>
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl">
-              {CATEGORIES.map((c) => {
-                const active = category === c.value;
-                return (
-                  <button
-                    key={c.value}
-                    onClick={() => setCategory(c.value)}
-                    aria-pressed={active}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 shrink-0 ${
-                      active
-                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/30 font-bold"
-                        : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
-                    }`}
-                  >
-                    <c.Icon className="w-3.5 h-3.5" />
-                    {c.label}
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => setAvailableOnly((v) => !v)}
-                aria-pressed={availableOnly}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-11 shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring ${
-                  availableOnly
-                    ? "bg-status-success/15 text-status-success border border-status-success/30 font-bold"
-                    : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
-                }`}
-              >
-                <Package className="w-3.5 h-3.5" />
-                متوفر فقط
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Result header */}
-        {!isLoading && (products.length > 0 || activeFilterCount > 0) && (
-          <div className="flex items-center justify-between mb-2.5 sm:mb-3.5">
-            <p className="text-sm text-muted-foreground">
-              {/* 93-C8 (A11 §3): formatCount carries the Arabic plural
-                  paradigm — «منتجان / منتجات / منتجاً» — instead of a
-                  bare singular after any count. */}
-              <span className="font-bold text-foreground">
-                {formatCount(products.length, {
-                  two: "منتجان",
-                  few: "منتجات",
-                  many: "منتجاً",
-                  other: "منتج",
-                })}
-              </span>
-              {category && <span className="text-muted-foreground"> في هذه الفئة</span>}
-            </p>
-            {activeFilterCount > 0 && (
-              <button
-                onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-3 py-2.5 min-h-11 rounded-lg hover:bg-primary/8 press-spring font-semibold"
-              >
-                مسح ({activeFilterCount})
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* ── Products Grid ─────────────────────────────────── */}
-        {/*
-          h2 above the product grid. Text reflects the active filter
-          so the heading is informative rather than decorative:
-            - search active → "نتائج البحث"
-            - category selected → category Arabic label
-            - sort changed → sort label
-            - default → "كل الاشتراكات"
-          When idle (no filter active) the heading is sr-only to
-          preserve the current visual; with a filter, it becomes
-          visible as a small section title.
-          R134 (A2-F6): the default no longer claims availability —
-          the default grid lists ALL products (the R120-B1 re-order
-          fronts the available ones but still renders the نفد cards
-          below), so «الاشتراكات المتاحة» was a promise the grid
-          doesn't keep for SR users and crawlers reading the h2.
-        */}
-        {(() => {
-          const hasFilter = !!(searchInput || category || sort || availableOnly);
-          let label = "كل الاشتراكات";
-          if (searchInput) label = `نتائج البحث: ${searchInput}`;
-          else if (category) label = categoryLabel(category);
-          else if (sort) label = SORTS.find((s) => s.value === sort)?.label ?? label;
-          else if (availableOnly) label = "المنتجات المتوفّرة فقط";
-          // A9-m2 (R127-B13): dir="auto" on both variants — the label
-          // interpolates the raw searchInput, and a Latin-digit or
-          // bidi-confusable query garbled the heading's direction.
-          return hasFilter ? (
-            <h2
-              dir="auto"
-              className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2"
-            >
-              <span className="w-1 h-4 bg-primary rounded-full" />
-              {label}
-            </h2>
-          ) : (
-            <h2 dir="auto" className="sr-only">
-              {label}
-            </h2>
-          );
-        })()}
-        {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <ProductSkeleton key={i} />
-            ))}
-          </div>
-        ) : productsError ? (
-          /* Distinct from "no results": a failed products API previously
-             rendered the empty-search state — an outage read as "no products
-             match your search", which is actively misleading.
-             R125-I7 (A7 B-4): converged on the shared FetchErrorCard (the
-             orders/flash-sales page-family idiom) — deletes the hand-rolled
-             card and lifts its ~37px native retry onto the 44px floor. */
-          <FetchErrorCard
-            size="page"
-            className="py-16 float-in"
-            title="تعذّر تحميل المنتجات"
-            description="حدث خطأ في الاتصال بالخدمة — تحقّق من شبكتك ثم أعد المحاولة"
-            retryClassName="min-h-11 gap-2"
-            onRetry={() => refetchProducts()}
-          />
-        ) : products.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground bg-card border border-border/40 rounded-2xl float-in shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-muted/60 mx-auto mb-4 flex items-center justify-center">
-              <PackageSearch className="w-6 h-6 opacity-35" />
-            </div>
-            {/* R123-E4b (P3-b): the empty grid used to assume a
-                filter/search was active («تطابق بحثك» + «غيّر الفلتر»)
-                even when activeFilterCount === 0 — i.e. when the CATALOG
-                itself is momentarily empty (a sold-out catalog is a
-                business state; the empty state must describe it honestly
-                instead of telling the shopper to fix a search they never
-                made). Also «جرّب» with shadda. */}
-            {activeFilterCount > 0 ? (
-              <>
-                <p className="font-bold text-base mb-1.5">لا توجد منتجات تطابق بحثك</p>
-                <p className="text-sm text-muted-foreground mb-5">
-                  جرّب تغيير الفلتر أو كلمة البحث
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-bold text-base mb-1.5">لا توجد منتجات معروضة حالياً</p>
-                <p className="text-sm text-muted-foreground mb-5">
-                  يُحدَّث الكتالوج باستمرار — تفضّل بزيارتنا لاحقاً
-                </p>
-              </>
-            )}
-            {activeFilterCount > 0 && (
-              /* B13 F-2 (R127): the filtered-empty recovery CTA measured
-                 ~38px (text-sm + py-2 + border) — same 44px-floor lift as
-                 its FetchErrorCard sibling (:1187 min-h-11); standalone
-                 CTA inside the py-16 empty state, so no negative-margin
-                 compensation is needed. */
-              <button
-                onClick={clearFilters}
-                className="text-sm font-bold text-primary-text border border-primary/25 px-5 min-h-11 rounded-xl hover:bg-primary/8 transition-colors press-spring"
-              >
-                مسح جميع الفلاتر
-              </button>
-            )}
-            {/* R132 (meaningful zero-results): a search dead-end now
-                offers the real catalog's category landing pages as
-                escape routes — the customer typed something we don't
-                carry; the honest recovery is showing what we DO carry
-                (the same 7 live categories the chips filter by, here as
-                Links to their landing pages — the category.tsx idiom). */}
-            {searchInput.trim() && (
-              <div className="mt-6">
-                <p className="text-xs text-muted-foreground mb-2.5">أو تصفّح الأقسام:</p>
-                <div className="flex flex-wrap items-center justify-center gap-1.5">
-                  {CATEGORIES.filter((c) => c.value).map((c) => (
-                    <Link
-                      key={c.value}
-                      href={`/category/${c.value}`}
-                      className="inline-flex items-center gap-1 px-3 min-h-11 text-xs font-bold rounded-full bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:border-border/70 transition-colors press-spring"
-                    >
-                      <c.Icon className="w-3 h-3" aria-hidden="true" />
-                      {c.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-            {displayProducts.map((product, i) => (
-              <div key={product.id} className={i >= 4 ? "cv-card" : undefined}>
-                <ProductCard
-                  product={
-                    product as {
-                      id: number;
-                      slug?: string | null;
-                      name: string;
-                      description?: string | null;
-                      image_url?: string | null;
-                      price: number;
-                      category?: string | null;
-                      is_available: boolean;
-                      stock_count: number;
-                      sale_price?: number | null;
-                    }
-                  }
-                  index={i}
-                />
-              </div>
-            ))}
-          </div>
-        )}
+        <ProductsGrid
+          isLoading={isLoading}
+          productsError={productsError}
+          products={products}
+          displayProducts={displayProducts}
+          activeFilterCount={activeFilterCount}
+          searchInput={searchInput}
+          category={category}
+          sort={sort}
+          availableOnly={availableOnly}
+          clearFilters={clearFilters}
+          refetchProducts={refetchProducts}
+        />
 
         {/* ── Trust footer ── */}
-        {!isLoading && products.length > 0 && (
-          /* R120-B1 (A3-F12): tighter post-grid spacing below sm — the
-             ~405px of dead space between the last card and the footer
-             was mostly this block's mt-10/pt-8 + the stacked trust
-             cards' own padding. ≥sm keeps the original rhythm.
-             R125-I7 (A7 B-12 / R124-A3 #14): the closing 3-up grid of
-             icon+title+description tiles was the craft-floor REFUSE
-             template ("same-size cards of icon plus heading plus text")
-             — now one inline strip (icon + short claim per item), same
-             three promises, same status tones, zero card chrome. The
-             TrustCard component is left with zero consumers — deleting
-             it is a follow-up outside this page's file list. */
-          <div className="mt-6 pt-5 sm:mt-10 sm:pt-8 border-t border-border/25">
-            <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              <li className="inline-flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5 text-status-warning shrink-0" aria-hidden="true" />
-                تسليم فوري بعد الدفع — وبحد أقصى 24 ساعة
-              </li>
-              <li className="inline-flex items-center gap-1.5">
-                <ShieldCheck
-                  className="w-3.5 h-3.5 text-status-success shrink-0"
-                  aria-hidden="true"
-                />
-                دفع آمن — محفظتك محمية وعملياتك موثّقة
-              </li>
-              <li className="inline-flex items-center gap-1.5">
-                <Headphones className="w-3.5 h-3.5 text-status-info shrink-0" aria-hidden="true" />
-                دعم محلي — يرد عادةً خلال 15 دقيقة إلى ساعة
-              </li>
-            </ul>
-          </div>
-        )}
+        {!isLoading && products.length > 0 && <TrustFooter />}
 
         {/* Bottom breathing room for guests. Authed users are covered by
             main's mobile-nav-safe-pad (which reserves the MobileNav
