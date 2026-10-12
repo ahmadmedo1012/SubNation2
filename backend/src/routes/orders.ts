@@ -19,7 +19,7 @@ import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUs
 import { riskHardBlockMiddleware } from "../middlewares/risk-hard-block";
 import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 import { notifyNewOrder } from "../telegram";
-import { CheckoutService } from "../services/checkout.service";
+import { CheckoutService, type CheckoutFailureReason } from "../services/checkout.service";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { runStockSweep } from "../jobs/stockWatcher";
 import { toNumber } from "../lib/numeric";
@@ -142,6 +142,103 @@ router.get("/", requireUser, async (req, res) => {
   return res.json(orders.map((r) => formatOrder(r.order, r.productName ?? "", r.productImageUrl)));
 });
 
+// R135 (BE-1): compile-time-exhaustive checkout-failure mapping table.
+//
+// The POST / handler below used to translate CheckoutFailureReason →
+// HTTP through a hand-written switch — exhaustive only BY CONVENTION: a
+// NEW union member added to the service compiled cleanly, matched no
+// case, and fell out of the handler with no response sent (the money
+// endpoint hangs). checkout.service.ts's F4 comment (lines 90-97,
+// "the route's reason switch is exhaustive") documents this exact
+// contract; this table ENFORCES it at compile time instead of merely
+// documenting it: `satisfies Record<CheckoutFailureReason, …>` makes
+// tsc fail the moment the union grows a member this route has no row
+// for, so the mapping can never silently drift from the service's
+// failure set.
+//
+// Every (status, message, code) triple is the old switch verbatim —
+// responses stay byte-identical (pinned by orders-idempotency-route,
+// orders-create-body-tightening, and the openapi-response-contracts
+// suite). Two rows are deliberately DYNAMIC and stay special-cased in
+// the handler: INVALID_COUPON prefers the service's own message (the
+// row is the fallback), and CONCURRENCY_ERROR sub-classifies on the
+// stable `code` riding the failure envelope (PRODUCT_STALE and
+// IDEMPOTENCY_KEY_REUSE keep their own responses; the row is the
+// generic default).
+const CHECKOUT_FAILURE_HTTP = {
+  PRODUCT_NOT_FOUND: { status: 404, message: "المنتج غير موجود", code: ErrorCode.NOT_FOUND },
+  INVALID_COUPON: { status: 400, message: "كوبون غير صالح", code: ErrorCode.INVALID_DATA },
+  USER_NOT_FOUND: {
+    status: 401,
+    message: "المستخدم غير موجود",
+    code: ErrorCode.ACCOUNT_NOT_FOUND,
+  },
+  INSUFFICIENT_BALANCE: {
+    status: 400,
+    message: "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً.",
+    code: ErrorCode.INSUFFICIENT_BALANCE,
+  },
+  OUT_OF_STOCK: {
+    status: 404,
+    message: "المنتج غير متوفر حالياً. حاول لاحقاً.",
+    code: ErrorCode.OUT_OF_STOCK,
+  },
+  INVENTORY_CLAIMED: {
+    status: 409,
+    message: "المنتج تم حجزه بواسطة مستخدم آخر. حاول مجدداً.",
+    code: ErrorCode.OUT_OF_STOCK,
+  },
+  COUPON_EXHAUSTED: {
+    // F-006 (security audit 004) — atomic-with-check coupon increment
+    // lost the race; another concurrent purchase already consumed the
+    // last redemption slot.
+    status: 409,
+    message: "تم استخدام الكوبون من قبل مستخدم آخر في نفس الوقت. حاول بدون الكوبون أو استخدم كوبوناً آخر.",
+    code: ErrorCode.INVALID_DATA,
+  },
+  CONCURRENCY_ERROR: {
+    // H5 generic wallet-race default; the handler's PRODUCT_STALE and
+    // IDEMPOTENCY_KEY_REUSE sub-branches (result.code) answer first —
+    // see the table doc above.
+    status: 409,
+    message: "تعارض أثناء تنفيذ العملية. حاول مجدداً بعد لحظات.",
+    code: ErrorCode.CONFLICT,
+  },
+  INVALID_PRICE: {
+    // M1 defense-in-depth gate — non-finite/non-positive final price.
+    // The client can't fix this; it's a data-integrity signal.
+    status: 500,
+    message: "تعذّر إتمام الشراء بسبب خطأ في بيانات السعر. تواصل مع الدعم.",
+    code: ErrorCode.INTERNAL_ERROR,
+  },
+  STALE_FLASH_SALE: {
+    // B2-06 (round-92 audit) — the flash sale that priced this purchase
+    // ended (or changed) between pricing and the transaction. Retryable:
+    // the client re-prices at the current price.
+    status: 409,
+    message: "انتهى عرض التخفيض أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي.",
+    code: ErrorCode.CONFLICT,
+  },
+  INVENTORY_CORRUPT: {
+    // R93-DATA (round-93) — the claimed unit's credentials are
+    // undecryptable with the current key (or empty). Nothing was
+    // charged: the transaction failed closed BEFORE any mutation. The
+    // buyer is pointed to support; the operator already received a
+    // deduped inventory_corrupt alert with the product + unit id.
+    status: 503,
+    message: "بيانات هذا المنتج تحتاج صيانة من الإدارة حالياً — لم يُخصم أي مبلغ من محفظتك. جرّب لاحقاً أو تواصل مع الدعم.",
+    code: ErrorCode.SERVICE_UNAVAILABLE,
+  },
+  VARIANT_NOT_FOUND: {
+    // Catalog-2026-09-20: the named variant is missing/inactive or
+    // belongs to another product — the client re-reads the variant
+    // list and retries with a valid option.
+    status: 400,
+    message: "الباقة المختارة غير متاحة حالياً. اختر باقة أخرى.",
+    code: ErrorCode.INVALID_DATA,
+  },
+} satisfies Record<CheckoutFailureReason, { status: number; message: string; code: ErrorCode }>;
+
 // V4-P0 (contract audit 2026-09-06): the customer money path now mounts
 // the idempotency middleware (subject = userId). A network-level retry
 // or double-click of the same unit-order (the checkout loop sends N of
@@ -203,144 +300,55 @@ router.post(
     });
 
     if (!result.ok) {
-      // Map service reasons → the exact HTTP status + message the inline
-      // handler returned before, so responses stay byte-identical.
-      switch (result.reason) {
-        case "PRODUCT_NOT_FOUND":
-          return res.status(404).json(createErrorResponse("المنتج غير موجود", ErrorCode.NOT_FOUND));
-        case "VARIANT_NOT_FOUND":
-          // Catalog-2026-09-20: the named variant is missing/inactive or
-          // belongs to another product — the client re-reads the variant
-          // list and retries with a valid option.
-          return res
-            .status(400)
-            .json(
-              createErrorResponse(
-                "الباقة المختارة غير متاحة حالياً. اختر باقة أخرى.",
-                ErrorCode.INVALID_DATA,
-              ),
-            );
-        case "INVALID_COUPON":
-          return res
-            .status(400)
-            .json(createErrorResponse(result.message ?? "كوبون غير صالح", ErrorCode.INVALID_DATA));
-        case "USER_NOT_FOUND":
-          return res
-            .status(401)
-            .json(createErrorResponse("المستخدم غير موجود", ErrorCode.ACCOUNT_NOT_FOUND));
-        case "INSUFFICIENT_BALANCE":
-          return res
-            .status(400)
-            .json(
-              createErrorResponse(
-                "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً.",
-                ErrorCode.INSUFFICIENT_BALANCE,
-              ),
-            );
-        case "OUT_OF_STOCK":
-          return res
-            .status(404)
-            .json(
-              createErrorResponse("المنتج غير متوفر حالياً. حاول لاحقاً.", ErrorCode.OUT_OF_STOCK),
-            );
-        case "INVALID_PRICE":
-          // M1 defense-in-depth gate — non-finite/non-positive final price.
-          // The client can't fix this; it's a data-integrity signal.
-          return res
-            .status(500)
-            .json(
-              createErrorResponse(
-                "تعذّر إتمام الشراء بسبب خطأ في بيانات السعر. تواصل مع الدعم.",
-                ErrorCode.INTERNAL_ERROR,
-              ),
-            );
-        case "INVENTORY_CLAIMED":
-          return res
-            .status(409)
-            .json(
-              createErrorResponse(
-                "المنتج تم حجزه بواسطة مستخدم آخر. حاول مجدداً.",
-                ErrorCode.OUT_OF_STOCK,
-              ),
-            );
-        case "CONCURRENCY_ERROR":
-          // F4 (round-94 C4): the product's price/active/archive changed
-          // between pricing and the purchase tx — nothing was mutated.
-          // Distinguished from the generic wallet race by the stable
-          // code riding the failure envelope so the client can re-price
-          // and retry with the CURRENT price.
-          if (result.code === "PRODUCT_STALE") {
-            return res
-              .status(409)
-              .json(
-                createErrorResponse(
-                  "تغيّرت بيانات المنتج أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي",
-                  ErrorCode.CONFLICT,
-                ),
-              );
-          }
-          // R134 (A7-F4): durable same-key-DIFFERENT-body — the Redis
-          // layer's 409 envelope verbatim, so clients see ONE shape
-          // whether the fast layer or the durable layer classified it
-          // (production runs without Redis; this is the branch that
-          // fires there).
-          if (result.code === IDEMPOTENCY_KEY_REUSE_CODE) {
-            return res.status(409).json({
-              success: false,
-              error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-              message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-              code: IDEMPOTENCY_KEY_REUSE_CODE,
-            });
-          }
-          // H5 — optimistic wallet deduction lost a race with a concurrent
-          // balance mutation. Retryable by design (re-reads the balance).
-          return res
-            .status(409)
-            .json(
-              createErrorResponse(
-                "تعارض أثناء تنفيذ العملية. حاول مجدداً بعد لحظات.",
-                ErrorCode.CONFLICT,
-              ),
-            );
-        case "COUPON_EXHAUSTED":
-          // F-006 (security audit 004) — atomic-with-check coupon
-          // increment lost the race; another concurrent purchase already
-          // consumed the last redemption slot.
-          return res
-            .status(409)
-            .json(
-              createErrorResponse(
-                "تم استخدام الكوبون من قبل مستخدم آخر في نفس الوقت. حاول بدون الكوبون أو استخدم كوبوناً آخر.",
-                ErrorCode.INVALID_DATA,
-              ),
-            );
-        case "STALE_FLASH_SALE":
-          // B2-06 (round-92 audit) — the flash sale that priced this purchase
-          // ended (or changed) between pricing and the transaction. Retryable:
-          // the client re-prices at the current price.
-          return res
-            .status(409)
-            .json(
-              createErrorResponse(
-                "انتهى عرض التخفيض أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي.",
-                ErrorCode.CONFLICT,
-              ),
-            );
-        case "INVENTORY_CORRUPT":
-          // R93-DATA (round-93) — the claimed unit's credentials are
-          // undecryptable with the current key (or empty). Nothing was
-          // charged: the transaction failed closed BEFORE any mutation. The
-          // buyer is pointed to support; the operator already received a
-          // deduped inventory_corrupt alert with the product + unit id.
-          return res
-            .status(503)
-            .json(
-              createErrorResponse(
-                "بيانات هذا المنتج تحتاج صيانة من الإدارة حالياً — لم يُخصم أي مبلغ من محفظتك. جرّب لاحقاً أو تواصل مع الدعم.",
-                ErrorCode.SERVICE_UNAVAILABLE,
-              ),
-            );
+      // R135 (BE-1): the table lookup replaces the hand-written switch —
+      // compile-time-exhaustive over CheckoutFailureReason (see
+      // CHECKOUT_FAILURE_HTTP above); every triple is the old switch
+      // verbatim so responses stay byte-identical.
+      const mapped = CHECKOUT_FAILURE_HTTP[result.reason];
+      // INVALID_COUPON is the one dynamic message: the pricing pass says
+      // WHY the coupon failed (كوبون غير موجود / منتهي / الحد الأدنى غير
+      // مستوفى) and the table row is the fallback when the service sent
+      // no message.
+      if (result.reason === "INVALID_COUPON") {
+        return res
+          .status(mapped.status)
+          .json(createErrorResponse(result.message ?? mapped.message, mapped.code));
       }
+      // F4 (round-94 C4) / R134 (A7-F4): CONCURRENCY_ERROR sub-classifies
+      // on the stable `code` riding the failure envelope — the generic
+      // table row only answers when no sub-code matched.
+      if (result.reason === "CONCURRENCY_ERROR") {
+        // F4 (round-94 C4): the product's price/active/archive changed
+        // between pricing and the purchase tx — nothing was mutated.
+        // Distinguished from the generic wallet race by the stable
+        // code riding the failure envelope so the client can re-price
+        // and retry with the CURRENT price.
+        if (result.code === "PRODUCT_STALE") {
+          return res.status(409).json(
+            createErrorResponse(
+              "تغيّرت بيانات المنتج أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي",
+              ErrorCode.CONFLICT,
+            ),
+          );
+        }
+        // R134 (A7-F4): durable same-key-DIFFERENT-body — the Redis
+        // layer's 409 envelope verbatim, so clients see ONE shape
+        // whether the fast layer or the durable layer classified it
+        // (production runs without Redis; this is the branch that
+        // fires there).
+        if (result.code === IDEMPOTENCY_KEY_REUSE_CODE) {
+          return res.status(409).json({
+            success: false,
+            error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+            message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+            code: IDEMPOTENCY_KEY_REUSE_CODE,
+          });
+        }
+        // H5 — optimistic wallet deduction lost a race with a concurrent
+        // balance mutation. Retryable by design (re-reads the balance).
+        return res.status(mapped.status).json(createErrorResponse(mapped.message, mapped.code));
+      }
+      return res.status(mapped.status).json(createErrorResponse(mapped.message, mapped.code));
     }
 
     const { order, product, user, finalPrice, idempotentReplay } = result;

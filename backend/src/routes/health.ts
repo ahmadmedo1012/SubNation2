@@ -2,6 +2,14 @@ import { HealthCheckResponse } from "@workspace/api-zod";
 import { db as neonDb } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
+// R135 (BE-1): the seven `redis: any` params below are now the node-redis
+// client type the lib/redis-client singleton actually hands out
+// (getRedisClient(): RedisClientType | null). checkRiskPipeline keeps the
+// | null half of that union — computeReadyState passes the UN-narrowed
+// client there — while the other six call sites all run behind an explicit
+// null-guard, so plain RedisClientType is the honest contract. Type-level
+// change only, zero behavior change (the repo's #1 hygiene item).
+import type { RedisClientType } from "redis";
 import { getFirebaseAdminApp, getFirebaseAdminAuth } from "../lib/firebase-admin";
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { getSchedulerState, type SchedulerStateSnapshot } from "../lib/scheduler-state";
@@ -115,7 +123,7 @@ const FAILURE_COUNTER_PREFIX = "health:fail:";
 const FAILURE_WINDOW_MS = 30_000; // 30 seconds
 const FAILURE_COUNTER_TIMEOUT_MS = 250;
 
-async function getFailureCount(redis: any, checkName: string): Promise<number> {
+async function getFailureCount(redis: RedisClientType, checkName: string): Promise<number> {
   try {
     const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
     const value = await withRedisCommandTimeout<string | null>(
@@ -130,7 +138,7 @@ async function getFailureCount(redis: any, checkName: string): Promise<number> {
   }
 }
 
-function incrementFailureCounter(redis: any, checkName: string): void {
+function incrementFailureCounter(redis: RedisClientType, checkName: string): void {
   const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
   void withRedisCommandTimeout(
     `health_fail_incr_${checkName}`,
@@ -148,7 +156,7 @@ function incrementFailureCounter(redis: any, checkName: string): void {
   });
 }
 
-function clearFailureCounter(redis: any, checkName: string): void {
+function clearFailureCounter(redis: RedisClientType, checkName: string): void {
   const key = `${FAILURE_COUNTER_PREFIX}${checkName}`;
   void withRedisCommandTimeout(
     `health_fail_clear_${checkName}`,
@@ -177,7 +185,7 @@ export function resetReadyStateForTests(): void {
   neonConsecutiveFailures = 0;
 }
 
-async function checkRedis(redis: any): Promise<CheckResult> {
+async function checkRedis(redis: RedisClientType): Promise<CheckResult> {
   const start = Date.now();
   try {
     const result = await Promise.race([
@@ -325,7 +333,7 @@ async function checkNeon(): Promise<CheckResult> {
   return checkNeonWith(() => neonDb.execute(sql`SELECT 1`));
 }
 
-async function checkWorker(redis: any): Promise<CheckResult> {
+async function checkWorker(redis: RedisClientType): Promise<CheckResult> {
   const start = Date.now();
   const now = Date.now();
   // Worker is OPTIONAL — single-tier deployments don't run a separate
@@ -391,7 +399,7 @@ async function checkWorker(redis: any): Promise<CheckResult> {
   }
 }
 
-async function checkSocket(io: any, redis: any): Promise<CheckResult> {
+async function checkSocket(io: any, redis: RedisClientType): Promise<CheckResult> {
   const start = Date.now();
   // Socket.IO is OPTIONAL — its absence degrades realtime UX (live order
   // / topup notifications) but every critical request path (HTTP API,
@@ -446,7 +454,7 @@ async function checkSocket(io: any, redis: any): Promise<CheckResult> {
   }
 }
 
-async function checkRiskPipeline(redis: any): Promise<CheckResult> {
+async function checkRiskPipeline(redis: RedisClientType | null): Promise<CheckResult> {
   const start = Date.now();
   // Risk pipeline is OPTIONAL — the rest of the platform works
   // even if scoring is disabled or degraded (per spec §1 Edge

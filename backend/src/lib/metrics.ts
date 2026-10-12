@@ -243,6 +243,28 @@ export const neonPoolErrorsTotal = new Counter({
 });
 
 // ============================================================================
+// Durable Idempotency Metrics
+// ============================================================================
+
+/**
+ * R135 (BE-1, repo audit #9): durable idempotency guard degradation state.
+ *
+ * 1 while lib/idempotency.ts's SQLSTATE 42P01 latch is set (the
+ * idempotency_keys backing table is missing — the durable purchase-dedup
+ * backstop is a no-op until the table returns or the process restarts),
+ * 0 when the guard is armed. Before this gauge a table dropped
+ * mid-process silently disabled the money-path dedup with no observable
+ * signal; /api/metrics + the admin observability surfaces now carry it,
+ * and the hourly re-probe in idempotency.ts flips it back to 0 the
+ * moment the table answers again.
+ */
+export const idempotencyDegraded = new Gauge({
+  name: "idempotency_degraded",
+  help: "1 when the durable idempotency guard is degraded (idempotency_keys table missing), 0 when armed",
+  registers: [getRegistry()],
+});
+
+// ============================================================================
 // Core Web Vitals Metrics
 // ============================================================================
 
@@ -392,6 +414,31 @@ export function safeGaugeDec<T extends string>(
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
     console.error("Gauge decrement failed:", err);
+  }
+}
+
+/**
+ * Safely set a gauge to an absolute value, catching any errors.
+ *
+ * R135 (BE-1): the gauge.set() counterpart of safeGaugeInc/safeGaugeDec —
+ * the 0/1 state gauges (idempotency_degraded) are written from the
+ * money path's error handling, where an instrumentation failure must
+ * never mask the original error.
+ */
+export function safeGaugeSet<T extends string>(
+  gauge: Gauge<T>,
+  value: number,
+  labels?: Record<T, string | number>,
+): void {
+  try {
+    if (labels) {
+      gauge.set(labels as Record<T, string | number>, value);
+    } else {
+      gauge.set(value);
+    }
+  } catch (err) {
+    monitoringErrorsTotal.inc({ component: "metrics" });
+    console.error("Gauge set failed:", err);
   }
 }
 
