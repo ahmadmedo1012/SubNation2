@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:ui": "vitest --ui"
   },
@@ -31,6 +32,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "@vitest/coverage-v8": "^4.1.6",
     "@playwright/test": "^1.56.1",
     "@vitest/ui": "^4.1.6",
     "@workspace/api-client-react": "workspace:*",

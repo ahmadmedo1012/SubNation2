@@ -145,3 +145,8 @@ frontend/.mimosa/
 # (R125-R1) Playwright's post-run state dir — `frontend/test-results/`
 # appeared untracked after the live guest-suite run; ignore the class.
 frontend/test-results/
+
+# (R136, TST-2) vitest v8 coverage output — the CI artifacts carry the
+# reports; the working-tree copies are local measurement runs.
+backend/coverage/
+frontend/coverage/

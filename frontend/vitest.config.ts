@@ -55,11 +55,17 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
+      // R136 (TST-2): mirror of the backend scope — src code files only.
+      // `include` is what makes vitest 4 report files no test imports (at
+      // 0%), so the report measures the whole src surface; .d.ts carries
+      // no runtime code and stays out alongside tests/configs/entries.
+      include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "node_modules/",
         "dist/",
         "**/*.{test,spec}.{ts,tsx}",
         "**/*.config.ts",
+        "**/*.d.ts",
         "src/test/**",
         "src/main.tsx",
         "src/instrument.ts",

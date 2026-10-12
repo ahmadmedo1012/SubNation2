@@ -440,11 +440,28 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run the ${{ matrix.suite }} suite
+      - name: Run the ${{ matrix.suite }} suite (coverage)
         # Branch 007 heritage: both suites run the same vitest binary so CI
         # failures look identical regardless of which workspace introduced
-        # the regression.
-        run: pnpm --filter ${{ matrix.suite == 'backend' && '@workspace/api-server' || '@workspace/subnation' }} exec vitest run
+        # the regression. R136 (TST-2): the suites now run the
+        # test:coverage scripts — same binary, same failure shape, plus
+        # the v8 report the artifact step below uploads. REPORT-ONLY this
+        # round: thresholds land in R137 calibrated against the first CI
+        # runs' artifact numbers (gating on never-measured numbers is a
+        # flaky gate waiting to happen; the artifacts ARE the baseline).
+        run: pnpm --filter ${{ matrix.suite == 'backend' && '@workspace/api-server' || '@workspace/subnation' }} run test:coverage
+
+      - name: Upload the ${{ matrix.suite }} coverage report
+        # R136 (TST-2): the v8 json-summary/html report as a workflow
+        # artifact — per-suite retention is 7 days (debugging aid, not a
+        # compliance record). SHA-pinned like every other action here.
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-${{ matrix.suite }}
+          path: ${{ matrix.suite == 'backend' && 'backend/coverage' || 'frontend/coverage' }}
+          retention-days: 7
+          if-no-files-found: warn
 
   # Production build — its own leg of the R127-L4 split (independent of
   # the suites; the api-server build script chains the Vite SPA build).

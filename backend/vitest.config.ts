@@ -23,6 +23,13 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
+      // R136 (TST-2): scope the report to the source tree. In vitest 4 a
+      // file that no test ever imports only enters the report when an
+      // explicit `include` exists — with it, the report (and any
+      // thresholds below) measures the whole src surface, not just the
+      // subset the suite happens to load. Code files only: the tree is
+      // pure .ts.
+      include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "node_modules/",
         "dist/",
