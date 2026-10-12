@@ -15,26 +15,7 @@ import { SkeletonText } from "@/components/ui/Skeleton";
 import { AdminSessionExpiredError, adminFetchJson, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-// B14-5 (R127-L11): the auth-summary banner joins the repo's formatCount
-// plural-router idiom (wallet.tsx / topups.tsx TOPUP_COUNT_FORMS).
-import { formatCount } from "@/lib/utils";
-// 93-C7 / C-UX2 (A12 B17): configured/secret/telegram pills migrate
-// from raw emerald/yellow hues (+ a square `rounded` on the secret
-// chip) to the canonical StatusBadge on the --status-* tokens.
-import { StatusBadge } from "@/components/ui/status-badge";
-import {
-  Bell,
-  Bot,
-  CheckCircle,
-  Hash,
-  Info,
-  Key,
-  KeyRound,
-  Loader2,
-  Shield,
-  UserCog,
-  XCircle,
-} from "lucide-react";
+import { Bell, Bot, Info, KeyRound, Shield, UserCog } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
@@ -43,15 +24,44 @@ import { AdminLayout } from "./layout";
 // stays the route entry (App.tsx lazy-imports it) and owns the tab
 // shell, the ?tab= URL contract, and the scope gate.
 import { AccountTab } from "./settings/account-tab";
-import { ProviderCard, type AuthProvider } from "./settings/provider-card";
+import { type AuthProvider } from "./settings/provider-card";
 import { TwoFactorSetup } from "./settings/two-factor-setup";
-
-interface TelegramSettings {
-  telegram_chat_set: boolean;
-  /** Present when API exposes aggregate Telegram readiness */
-  telegram_configured?: boolean;
-  telegram_bot_set?: boolean;
-}
+// R137 (FE decomposition): the page's remaining presentational
+// sections + the shell's pure metadata moved to
+// @/components/admin/settings-page/* (verbatim moves — the mutation
+// path stays HERE: the settings/providers fetch pair
+// (loadSettingsAndProviders + fetchJsonOrNull with the R120-B4
+// 401-sentinel), runTelegramTest (the diagnostic POST with its
+// session-expiry quiet-catch), selectTab + the ?tab= URL contract and
+// every settings/providers atom; the extracts render the byte-identical
+// DOM they rendered inline yesterday). Import surface:
+//   • settings-page-meta — the pure module (tabAllowed scope gate,
+//     TelegramSettings/TelegramTestResult contracts)
+//   • SettingsTabBar — the R124-I5 real-tab tablist (the pre-filtered
+//     tab list + activeTab + selectTab ride down)
+//   • AuthProvidersSummary / AuthProvidersList / AuthHowItWorksInfo —
+//     the «المصادقة» tab's banner, provider stack and info box
+//   • TelegramCardHeader / TelegramStatusRows / TelegramDiagnosticPing /
+//     TelegramSetupGuide — the «التكاملات» tab's telegram card
+//   • NotificationsTabPanel — the static «الإشعارات» pane
+// The SkeletonText loading branches + the two retry error cards stay
+// inline (the skeleton-primitives adoption-floor pin reads this file's
+// import), and so does the whole «الأمان» pane (the TwoFactorSetup
+// mount + the settings-security-facts-copy source pin).
+import {
+  tabAllowed,
+  type TelegramSettings,
+  type TelegramTestResult,
+} from "@/components/admin/settings-page/settings-page-meta";
+import { SettingsTabBar } from "@/components/admin/settings-page/SettingsTabBar";
+import { AuthProvidersSummary } from "@/components/admin/settings-page/AuthProvidersSummary";
+import { AuthProvidersList } from "@/components/admin/settings-page/AuthProvidersList";
+import { AuthHowItWorksInfo } from "@/components/admin/settings-page/AuthHowItWorksInfo";
+import { TelegramCardHeader } from "@/components/admin/settings-page/TelegramCardHeader";
+import { TelegramStatusRows } from "@/components/admin/settings-page/TelegramStatusRows";
+import { TelegramDiagnosticPing } from "@/components/admin/settings-page/TelegramDiagnosticPing";
+import { TelegramSetupGuide } from "@/components/admin/settings-page/TelegramSetupGuide";
+import { NotificationsTabPanel } from "@/components/admin/settings-page/NotificationsTabPanel";
 
 const TABS = [
   { id: "account", label: "حسابي", icon: UserCog },
@@ -60,15 +70,6 @@ const TABS = [
   { id: "notifications", label: "الإشعارات", icon: Bell },
   { id: "security", label: "الأمان", icon: Shield },
 ];
-
-/** R123 (E3 P3f): المصادقة + التكاملات manage settings-scoped backend
- *  surfaces — this pure module-level gate (the tab bar filter, the ?tab=
- *  sync and the deep-link initializer all share it) keeps its only
- *  per-session input a parameter, so the URL→tab effect below can list
- *  that input in its deps instead of a per-render closure. */
-function tabAllowed(id: string, canManageSettings: boolean): boolean {
-  return id === "auth" || id === "integrations" ? canManageSettings : true;
-}
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
@@ -108,13 +109,7 @@ export default function AdminSettingsPage() {
   // structured result inline so the operator sees end-to-end whether
   // the bot is actually reachable from this server.
   const [tgTesting, setTgTesting] = useState(false);
-  const [tgTestResult, setTgTestResult] = useState<{
-    configured: boolean;
-    delivered: boolean;
-    attempts: number;
-    errorMessage: string | null;
-    hint: string | null;
-  } | null>(null);
+  const [tgTestResult, setTgTestResult] = useState<TelegramTestResult | null>(null);
 
   async function runTelegramTest(): Promise<void> {
     if (!adminToken) return;
@@ -238,27 +233,13 @@ export default function AdminSettingsPage() {
             made the active tab purely visual for assistive tech. The bar
             is a tablist; each button is a tab with aria-selected; each
             pane below carries role="tabpanel" + aria-labelledby. */}
-        <div
-          role="tablist"
-          aria-label="أقسام الإعدادات"
-          className="flex flex-wrap gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1 w-fit"
-        >
-          {/* R123 (E3 P3f): auth + integrations render only for
-              settings-scoped admins (the tabAllowed gate above). */}
-          {TABS.filter((tab) => tabAllowed(tab.id, canManageSettings)).map((tab) => (
-            <button
-              key={tab.id}
-              role="tab"
-              id={`settings-tab-${tab.id}`}
-              aria-selected={activeTab === tab.id}
-              onClick={() => selectTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all duration-150 ${activeTab === tab.id ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <tab.icon className="w-3.5 h-3.5" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* R123 (E3 P3f): auth + integrations render only for
+            settings-scoped admins (the tabAllowed gate). */}
+        <SettingsTabBar
+          tabs={TABS.filter((tab) => tabAllowed(tab.id, canManageSettings))}
+          activeTab={activeTab}
+          onSelect={selectTab}
+        />
 
         {/* R123 (E3 P3f): the scope-honest fallback (canEditMoney idiom)
             — only reachable via a stale local activeTab, never via the
@@ -285,41 +266,7 @@ export default function AdminSettingsPage() {
         {activeTab === "auth" && canManageSettings && (
           <div role="tabpanel" aria-labelledby="settings-tab-auth" className="space-y-5">
             {/* Summary banner */}
-            <div className="flex items-center gap-3 px-5 py-3.5 bg-card border border-border/60 rounded-2xl float-in">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <KeyRound className="w-4 h-4 text-primary" />
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-sm">طرق تسجيل الدخول</div>
-                <div className="text-xs text-muted-foreground">
-                  {/* 93-C7 / C-UX5 (A11 top-20 #6): the platform is
-                      passwordless for USERS (phone OTP + OAuth) — the old
-                      copy promised users a password login that does not
-                      exist; the admin's OWN password (AccountTab) is
-                      untouched. */}
-                  {/* B14-5 (R127-L11): formatCount plural routing — the
-                      frozen singular rendered «2 طريقة مفعّلة»/
-                      «3 طريقة مفعّلة» for n=2/n=3. */}
-                  {enabledCount === 0
-                    ? "لا توجد طرق مفعّلة — سيظهر للمستخدمين الدخول برقم الهاتف (رمز تحقق) فقط"
-                    : `${formatCount(enabledCount, {
-                        one: "طريقة مفعّلة",
-                        two: "طريقتان مفعّلتان",
-                        few: "طرق مفعّلة",
-                        many: "طريقة مفعّلة",
-                        other: "طريقة مفعّلة",
-                      })} إضافةً إلى الدخول برقم الهاتف (رمز تحقق)`}
-                </div>
-              </div>
-              {/* R126-L5 (A3-4): the auth-summary pill joins the :889
-                  role-badge idiom on text-primary-text (raw text-primary
-                  on the /10 tint is 3.56:1 dark). */}
-              <span
-                className={`text-xs font-bold px-2.5 py-1 rounded-full border ${enabledCount > 0 ? "bg-primary/10 text-primary-text border-primary/20" : "bg-muted text-muted-foreground border-border"}`}
-              >
-                {enabledCount}/{providers.length}
-              </span>
-            </div>
+            <AuthProvidersSummary enabledCount={enabledCount} providersCount={providers.length} />
 
             {loading ? (
               /* R136 (UX-1): SkeletonText — the 3-row provider stack,
@@ -346,38 +293,17 @@ export default function AdminSettingsPage() {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-3">
-                {providers.map((provider) => (
-                  <ProviderCard
-                    key={provider.id}
-                    provider={provider}
-                    adminToken={adminToken}
-                    onUpdate={(updated) =>
-                      setProviders((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-                    }
-                  />
-                ))}
-              </div>
+              <AuthProvidersList
+                providers={providers}
+                adminToken={adminToken}
+                onUpdateProvider={(updated) =>
+                  setProviders((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+                }
+              />
             )}
 
             {/* Info box */}
-            <div className="flex items-start gap-3 p-4 bg-muted/30 border border-border/50 rounded-2xl">
-              <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
-              <div className="text-xs text-muted-foreground leading-relaxed space-y-1">
-                <p className="font-bold text-foreground/80">كيف يعمل النظام؟</p>
-                <p>
-                  عند تفعيل مزود وإدخال بيانات الاعتماد، يظهر زر تسجيل الدخول به تلقائياً في صفحات
-                  الدخول والتسجيل.
-                </p>
-                <p>
-                  قيم{" "}
-                  <span className="font-mono bg-background/80 px-1 rounded border border-border/60">
-                    [SET]
-                  </span>{" "}
-                  تعني أن القيمة مُعيَّنة مسبقاً — أترك الحقل فارغاً لعدم تغييرها.
-                </p>
-              </div>
-            </div>
+            <AuthHowItWorksInfo />
           </div>
         )}
 
@@ -385,25 +311,7 @@ export default function AdminSettingsPage() {
         {activeTab === "integrations" && canManageSettings && (
           <div role="tabpanel" aria-labelledby="settings-tab-integrations" className="space-y-5">
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in">
-              <div className="flex items-center gap-2.5 mb-5">
-                <div className="w-9 h-9 rounded-xl bg-status-info/10 border border-status-info/20 flex items-center justify-center">
-                  <Bot className="w-4.5 h-4.5 text-status-info" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-sm">تيليجرام</h2>
-                  <p className="text-xs text-muted-foreground">إشعارات فورية للمشرفين</p>
-                </div>
-                <div className="mr-auto">
-                  {settings && (
-                    <StatusBadge
-                      variant={settings.telegram_configured ? "success" : "neutral"}
-                      size="xs"
-                    >
-                      {settings.telegram_configured ? "مفعّل" : "غير مفعّل"}
-                    </StatusBadge>
-                  )}
-                </div>
-              </div>
+              <TelegramCardHeader settings={settings} />
 
               {loading ? (
                 /* R136 (UX-1): SkeletonText — the 3-row settings stack
@@ -437,203 +345,22 @@ export default function AdminSettingsPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {[
-                    {
-                      icon: Bot,
-                      label: "الحالة العامة",
-                      ok: settings?.telegram_configured,
-                      okText: "مفعّل ويعمل",
-                      failText: "غير مفعّل",
-                    },
-                    {
-                      icon: Key,
-                      label: "TELEGRAM_BOT_TOKEN",
-                      ok: settings?.telegram_bot_set,
-                      okText: "تم الضبط",
-                      failText: "غير موجود",
-                    },
-                    {
-                      icon: Hash,
-                      label: "TELEGRAM_CHAT_ID",
-                      ok: settings?.telegram_chat_set,
-                      okText: "تم الضبط",
-                      failText: "غير موجود",
-                    },
-                  ].map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex items-center justify-between px-4 py-3 bg-muted/25 border border-border/60 rounded-2xl"
-                    >
-                      <div className="flex items-center gap-2.5 text-sm">
-                        <row.icon className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-mono text-xs">{row.label}</span>
-                      </div>
-                      {/* R126-L5 (A3-4): integrations status text on the
-                          --status-success / --status-error ink+tint pair —
-                          raw emerald-400 / red-400 measured 1.92 / 2.77:1
-                          on the light theme (R125-A3 #8's figures). */}
-                      <div
-                        className={`flex items-center gap-1.5 text-xs font-bold ${row.ok ? "text-status-success" : "text-status-error"}`}
-                      >
-                        {row.ok ? (
-                          <CheckCircle className="w-3.5 h-3.5" />
-                        ) : (
-                          <XCircle className="w-3.5 h-3.5" />
-                        )}
-                        {row.ok ? row.okText : row.failText}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <TelegramStatusRows settings={settings} />
               )}
 
-              {/* ── Diagnostic ping ──────────────────────────────────
-                  Sends a real test message via the same dispatch path
-                  used by production notifications, so the operator
-                  gets end-to-end proof of delivery (or a clear error
-                  with a hint when something is wrong). */}
-              <div className="mt-5 p-4 bg-card border border-border/60 rounded-2xl">
-                <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-                  <div>
-                    <div className="text-sm font-bold">اختبار التسليم</div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      يُرسل رسالة فعلية للمحادثة المُعدّة للتحقق من قابلية وصول البوت.
-                    </p>
-                  </div>
-                  <button
-                    onClick={runTelegramTest}
-                    disabled={tgTesting}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold text-xs transition-all press-spring"
-                  >
-                    {tgTesting ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Bot className="w-3.5 h-3.5" />
-                    )}
-                    {tgTesting ? "جارٍ الإرسال…" : "اختبار اتصال البوت"}
-                  </button>
-                </div>
+              <TelegramDiagnosticPing
+                tgTesting={tgTesting}
+                tgTestResult={tgTestResult}
+                onRunTest={runTelegramTest}
+              />
 
-                {tgTestResult && (
-                  <div
-                    className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs ${
-                      tgTestResult.delivered
-                        ? "bg-status-success/10 border-status-success/25 text-status-success"
-                        : "bg-status-error/10 border-status-error/25 text-status-error"
-                    }`}
-                  >
-                    {tgTestResult.delivered ? (
-                      <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    )}
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="font-bold">
-                        {tgTestResult.delivered
-                          ? "تم التسليم بنجاح"
-                          : tgTestResult.configured
-                            ? "فشل التسليم"
-                            : "النظام غير مُعدّ"}
-                      </div>
-                      {tgTestResult.errorMessage && (
-                        <div className="font-mono text-3xs opacity-90 break-all">
-                          {tgTestResult.errorMessage}
-                        </div>
-                      )}
-                      {tgTestResult.hint && (
-                        <div className="text-2xs opacity-90 leading-relaxed">
-                          {tgTestResult.hint}
-                        </div>
-                      )}
-                      {tgTestResult.attempts > 0 && (
-                        <div className="text-3xs opacity-75">
-                          عدد المحاولات: {tgTestResult.attempts}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-5 p-4 bg-muted/30 border border-border/50 rounded-2xl">
-                <div className="flex items-center gap-2 mb-3">
-                  <Info className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-bold">كيفية الإعداد</span>
-                </div>
-                <ol className="space-y-2 text-xs text-muted-foreground leading-relaxed list-none">
-                  {[
-                    <>
-                      أنشئ بوت تيليجرام عبر{" "}
-                      {/* R126-L5 (A3-4): inline code tokens on
-                          text-primary-text — raw text-primary is 3.76:1
-                          on the dark card (A6-B6). */}
-                      <span className="font-mono text-primary-text">@BotFather</span> واحصل على
-                      التوكن
-                    </>,
-                    <>
-                      أرسل رسالة للبوت ثم افتح{" "}
-                      <span className="font-mono text-3xs text-primary-text">
-                        api.telegram.org/bot&#123;TOKEN&#125;/getUpdates
-                      </span>{" "}
-                      للحصول على Chat ID
-                    </>,
-                    <>
-                      أضف <span className="font-mono text-primary-text">TELEGRAM_BOT_TOKEN</span> و{" "}
-                      <span className="font-mono text-primary-text">TELEGRAM_CHAT_ID</span> في
-                      متغيرات البيئة (Secrets)
-                    </>,
-                    <>أعد تشغيل الخادم</>,
-                  ].map((step, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="w-4 h-4 rounded-full bg-muted-foreground/20 text-muted-foreground flex items-center justify-center text-3xs font-bold shrink-0 mt-0.5">
-                        {i + 1}
-                      </span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
+              <TelegramSetupGuide />
             </div>
           </div>
         )}
 
         {/* ── Notifications Tab ─────────────────────────────────────────── */}
-        {activeTab === "notifications" && (
-          <div
-            role="tabpanel"
-            aria-labelledby="settings-tab-notifications"
-            className="bg-card border border-border/60 rounded-2xl p-6 float-in"
-          >
-            <h2 className="font-bold mb-1 text-sm">الأحداث التي يتم إشعارك بها</h2>
-            {/* R120-B4 (A2-F5): descriptive info panel — the old rows
-                rendered a green CheckCircle per event, which read as a
-                CONFIGURABLE per-event switch that never was (the
-                notification set is fixed server-side). No check icons,
-                no per-row status semantics. */}
-            <p className="text-xs text-muted-foreground mb-4">
-              قائمة إعلامية ثابتة — تُرسل إشعارات تيليجرام للمشرفين عند كل حدث مما يلي
-            </p>
-            <div className="space-y-2">
-              {[
-                "تسجيل مستخدم جديد",
-                "طلب شحن محفظة جديد",
-                "موافقة على طلب شحن",
-                "رفض طلب شحن",
-                "إتمام طلب شراء جديد",
-              ].map((event) => (
-                <div
-                  key={event}
-                  className="flex items-center gap-3 px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl"
-                >
-                  <Bell className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="text-sm">{event}</span>
-                  <span className="mr-auto text-xs text-muted-foreground">عبر تيليجرام</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {activeTab === "notifications" && <NotificationsTabPanel />}
 
         {/* ── Security Tab ──────────────────────────────────────────────── */}
         {activeTab === "security" && (

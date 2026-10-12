@@ -11,12 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 // and nothing here auto-triggers session operations.
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { copyToClipboard } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-// 93-C7 / C-UX2 (A12 B6): session-status pills migrate from raw
-// emerald/amber/blue/red hues to the canonical StatusBadge on the
-// --status-* tokens.
-import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد جلسات بعد"
 // empty state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
@@ -29,70 +23,38 @@ import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 import { useAuth } from "../../lib/auth";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Wifi, XCircle } from "lucide-react";
+// R137 (FE decomposition): the whatsapp console's presentational
+// sections + pure metadata moved to @/components/admin/whatsapp/*
+// (verbatim moves — the mutation path stays HERE: loadSessions (the
+// session-aware list GET + the hasLoadedRef first-load/refresh split),
+// createSession, startSession, requestPairCode, loadQr, deleteSession
+// (the confirm-gated DELETE) and copyPairCode, plus every session/
+// pair/QR atom and the pair-code staleness timer; the extracts render
+// the byte-identical DOM they rendered inline yesterday). Import
+// surface:
+//   • whatsapp-meta — the pure module (the session/response contracts,
+//     OPENWA_DOCS_URL, STATUS_META/statusMeta, PAIR_CODE_STALE_AFTER_MS)
+//   • WhatsappHeader — the page intro (header + docs deep-link +
+//     the pair-code warning banner)
+//   • CreateSessionForm — the «إضافة جلسة» form (name draft + the
+//     page's setter ride down; submit fires through createSession)
+//   • SessionsSectionHeader — the section title row + refresh button
+//   • WhatsappSessionsList — the rows (start/QR/delete/pair/copy fire
+//     through the page-owned callbacks above)
+// The SkeletonText loading branch + the FetchErrorCard first-load
+// error + the EmptyState empty branch stay inline (the
+// skeleton-primitives adoption-floor pin reads this file's import).
 import {
-  AlertTriangle,
-  Check,
-  Copy,
-  ExternalLink,
-  KeyRound,
-  Loader2,
-  Play,
-  Plus,
-  QrCode,
-  RefreshCw,
-  Trash2,
-  Wifi,
-  XCircle,
-} from "lucide-react";
-
-interface WhatsAppSession {
-  id: string;
-  name: string;
-  status: string;
-}
-
-interface SessionsResponse {
-  sessions: WhatsAppSession[];
-}
-
-interface PairCodeResponse {
-  session: WhatsAppSession;
-  code: string;
-}
-
-// R107 (migration): gateway docs link is env-driven — the ONLY place a
-// gateway URL ever lived in executable frontend code. R110 (109-b): the
-// baked onrender.com default is GONE — it dies with the Render
-// decommission, so an unset VITE_OPENWA_DOCS_URL degrades the header
-// deep-link to a plain hint instead of pointing at a doomed domain. A
-// single-origin Coolify deployment sets
-// VITE_OPENWA_DOCS_URL=<gateway-origin>/api/docs at build time (Dockerfile
-// ARG). Backend gateway traffic itself was always env-driven
-// (WHATSAPP_OTP_BASE_URL) — this is the admin deep-link only, not a secret.
-const OPENWA_DOCS_URL: string =
-  (import.meta.env.VITE_OPENWA_DOCS_URL as string | undefined)?.trim() || "";
-
-const STATUS_META: Record<string, { label: string; tone: StatusBadgeVariant }> = {
-  ready: { label: "جاهزة", tone: "success" },
-  qr_ready: { label: "تنتظر QR", tone: "warning" },
-  authenticating: { label: "جارٍ التحقق", tone: "info" },
-  initializing: { label: "جارٍ التشغيل", tone: "info" },
-  connecting: { label: "جارٍ الاتصال", tone: "warning" },
-  disconnected: { label: "منقطعة", tone: "error" },
-  failed: { label: "فشلت", tone: "error" },
-};
-
-function statusMeta(status: string) {
-  return STATUS_META[status] ?? { label: status, tone: "neutral" as const };
-}
-
-/** R125-I5 (A3-12, display-only): WhatsApp pair codes live roughly two
- * minutes. The backend's pair-code response carries NO expiry field
- * (openwa.service.ts requestWhatsAppPairCode → { session, code } only),
- * so the display layer marks the block stale after this TTL instead of
- * promising a countdown it can't honor. Purely visual: never blocks the
- * copy button, never touches pairing/session logic. */
-const PAIR_CODE_STALE_AFTER_MS = 120_000;
+  PAIR_CODE_STALE_AFTER_MS,
+  type PairCodeResponse,
+  type SessionsResponse,
+  type WhatsAppSession,
+} from "@/components/admin/whatsapp/whatsapp-meta";
+import { WhatsappHeader } from "@/components/admin/whatsapp/WhatsappHeader";
+import { CreateSessionForm } from "@/components/admin/whatsapp/CreateSessionForm";
+import { SessionsSectionHeader } from "@/components/admin/whatsapp/SessionsSectionHeader";
+import { WhatsappSessionsList } from "@/components/admin/whatsapp/WhatsappSessionsList";
 
 export default function AdminWhatsAppPage() {
   const headers = useAdminHeaders();
@@ -359,6 +321,16 @@ export default function AdminWhatsAppPage() {
     setTimeout(() => setPairCopied(false), 1800);
   };
 
+  // R137 (FE decomposition): the pair-form opener — the exact body the
+  // «ربط برمز الهاتف» button's inline onClick had (setPairTarget +
+  // clearPairCode + setQrImage), hoisted verbatim so the sessions-list
+  // extract can fire it as one callback; zero behavior change.
+  const openPairForm = (sessionId: string) => {
+    setPairTarget(sessionId);
+    clearPairCode();
+    setQrImage(null);
+  };
+
   // R134 (A3-F1): the deep-link honest-reason gate — sits AFTER every
   // hook (loadSessions' own guard keeps a scope-less mount fetch-free).
   if (!canView) {
@@ -368,47 +340,7 @@ export default function AdminWhatsAppPage() {
   return (
     <AdminLayout onRefresh={() => void loadSessions()}>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-primary mb-1">
-              <Wifi className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-widest">WhatsApp OTP</span>
-            </div>
-            {/* R134 (A3-F5e): h1 joins the nav's exact label («جلسة
-                واتساب» — every sibling page keeps h1 === nav: المنتجات/
-                الطلبات/…); the «إدارة…» form was the lone split. */}
-            <h1 className="text-xl font-bold">جلسة واتساب</h1>
-            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-              أنشئ جلسة الإرسال، شغّلها، ثم اربط رقم واتساب الخاص بالخدمة. لا تضع مفتاح API في
-              المتصفح؛ الواجهة تمرّر الطلبات عبر الخادم بشكل محمي.
-            </p>
-          </div>
-          {OPENWA_DOCS_URL ? (
-            <a
-              href={OPENWA_DOCS_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors"
-            >
-              وثائق البوابة
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          ) : (
-            // 110-M (109-b): no build-time docs URL — a muted plain-text
-            // hint keeps the header layout; never link a dead domain.
-            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-              وثائق البوابة
-            </span>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-status-warning/20 bg-status-warning/5 p-4 flex gap-3 text-sm">
-          <AlertTriangle className="w-5 h-5 text-status-warning shrink-0" />
-          <p className="text-muted-foreground leading-6">
-            رمز الاقتران يربط رقم واتساب الذي سيرسل أكواد الدخول. بعد الربط انتظر حتى تصبح الحالة
-            «جاهزة». حذف الجلسة يمسح اعتمادها ويحتاج اقتراناً جديداً.
-          </p>
-        </div>
+        <WhatsappHeader />
 
         {/* R126-L3 (A2-2): the list-load banner now follows the
             orders/tickets stale-keep precedence — it renders ONLY when
@@ -435,50 +367,19 @@ export default function AdminWhatsAppPage() {
           </div>
         )}
 
-        <form
+        <CreateSessionForm
+          name={name}
+          onNameChange={setName}
+          busy={busy}
           onSubmit={createSession}
-          className="rounded-2xl border border-border bg-card p-4 space-y-3"
-        >
-          <div className="flex items-center gap-2 font-bold">
-            <Plus className="w-4 h-4 text-primary" />
-            إضافة جلسة
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="subnation-otp"
-              /* R125-I5 (A6-B13): placeholder-only inputs get
-                  programmatic names. */
-              aria-label="اسم الجلسة"
-              pattern="[A-Za-z0-9-]{3,50}"
-              title="من 3 إلى 50 حرفاً إنجليزياً أو رقماً أو شرطة"
-              required
-              dir="ltr"
-            />
-            <Button type="submit" disabled={busy !== null} className="sm:min-w-32">
-              {busy === "create" ? <Loader2 className="animate-spin" /> : <Plus />}
-              إنشاء
-            </Button>
-          </div>
-        </form>
+        />
 
         <section className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2 font-bold">
-              <KeyRound className="w-4 h-4 text-primary" />
-              الجلسات الحالية
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => void loadSessions()}
-              disabled={loading || refreshing}
-              aria-label="تحديث"
-            >
-              <RefreshCw className={loading || refreshing ? "animate-spin" : ""} />
-            </Button>
-          </div>
+          <SessionsSectionHeader
+            loading={loading}
+            refreshing={refreshing}
+            onRefresh={() => void loadSessions()}
+          />
 
           {loading ? (
             /* R136 (UX-1): SkeletonText — R125-I5's page-shaped skeleton
@@ -511,166 +412,23 @@ export default function AdminWhatsAppPage() {
           ) : sessions.length === 0 ? (
             <EmptyState icon={Wifi} title="لا توجد جلسات بعد" description="أنشئ جلسة أولى للبدء." />
           ) : (
-            <div className="divide-y divide-border">
-              {sessions.map((session) => {
-                const meta = statusMeta(session.status);
-                const sessionBusy = busy?.startsWith(`${session.id}:`);
-                return (
-                  <div key={session.id} className="p-4 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold truncate" dir="ltr">
-                            {session.name}
-                          </span>
-                          <StatusBadge variant={meta.tone} size="sm">
-                            {meta.label}
-                          </StatusBadge>
-                        </div>
-                        <div
-                          className="text-2xs text-muted-foreground font-mono mt-1 truncate"
-                          dir="ltr"
-                        >
-                          {session.id}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void startSession(session)}
-                          disabled={sessionBusy}
-                        >
-                          {busy === `${session.id}:start` ? (
-                            <Loader2 className="animate-spin" />
-                          ) : (
-                            <Play />
-                          )}
-                          تشغيل
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void loadQr(session)}
-                          disabled={sessionBusy}
-                        >
-                          {busy === `${session.id}:qr` ? (
-                            <Loader2 className="animate-spin" />
-                          ) : (
-                            <QrCode />
-                          )}
-                          QR
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => void deleteSession(session)}
-                          disabled={sessionBusy}
-                        >
-                          {busy === `${session.id}:delete` ? (
-                            <Loader2 className="animate-spin" />
-                          ) : (
-                            <Trash2 />
-                          )}
-                          حذف
-                        </Button>
-                      </div>
-                    </div>
-
-                    {pairTarget === session.id ? (
-                      <form
-                        onSubmit={requestPairCode}
-                        className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2"
-                      >
-                        <div className="text-xs text-muted-foreground">
-                          اكتب رقم واتساب بصيغة دولية، مثال: <span dir="ltr">21891XXXXXXX</span>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <Input
-                            value={phone}
-                            onChange={(event) => setPhone(event.target.value)}
-                            placeholder="21891XXXXXXX"
-                            /* R125-I5 (A6-B13): name + tel autocomplete —
-                                the field had inputMode="tel" but neither. */
-                            aria-label="رقم واتساب بصيغة دولية"
-                            autoComplete="tel"
-                            inputMode="tel"
-                            dir="ltr"
-                            required
-                          />
-                          <Button type="submit" disabled={busy !== null}>
-                            {busy === `${session.id}:pair` ? (
-                              <Loader2 className="animate-spin" />
-                            ) : (
-                              <KeyRound />
-                            )}
-                            إصدار رمز الاقتران
-                          </Button>
-                        </div>
-                        {pairCode && (
-                          <div className="flex flex-wrap items-center gap-2 pt-2">
-                            {/* R125-I5 (A3-12): staleness cue — the code dims
-                                + a reissue hint appears after the TTL. The
-                                copy button stays usable ("على الأرجح" — the
-                                display can't know the true expiry; the
-                                backend sends none). */}
-                            <code
-                              className={`text-xl font-bold tracking-[0.25em] bg-background border border-border rounded-lg px-3 py-2 transition-opacity ${
-                                pairCodeStale ? "opacity-50" : ""
-                              }`}
-                              dir="ltr"
-                            >
-                              {pairCode}
-                            </code>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => void copyPairCode(pairCode)}
-                            >
-                              {pairCopied ? <Check /> : <Copy />}
-                              {pairCopied ? "تم النسخ" : "نسخ"}
-                            </Button>
-                            {pairCodeStale && (
-                              <span role="status" className="text-xs font-bold text-status-warning">
-                                انتهت صلاحية الرمز على الأرجح — أعد إصدار رمز جديد
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </form>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setPairTarget(session.id);
-                          clearPairCode();
-                          setQrImage(null);
-                        }}
-                      >
-                        <KeyRound />
-                        ربط برمز الهاتف
-                      </Button>
-                    )}
-
-                    {qrImage && pairTarget === session.id && (
-                      <div className="rounded-xl border border-border bg-background p-4 flex flex-col items-center gap-2">
-                        <img
-                          src={qrImage}
-                          alt={`رمز QR لجلسة ${session.name}`}
-                          className="w-64 h-64"
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          من واتساب: الأجهزة المرتبطة ← ربط جهاز
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <WhatsappSessionsList
+              sessions={sessions}
+              busy={busy}
+              pairTarget={pairTarget}
+              pairCode={pairCode}
+              pairCodeStale={pairCodeStale}
+              pairCopied={pairCopied}
+              qrImage={qrImage}
+              phone={phone}
+              onPhoneChange={setPhone}
+              onStartSession={startSession}
+              onLoadQr={loadQr}
+              onDeleteSession={deleteSession}
+              onRequestPairCode={requestPairCode}
+              onCopyPairCode={copyPairCode}
+              onOpenPairForm={openPairForm}
+            />
           )}
         </section>
       </div>

@@ -7,16 +7,10 @@
  */
 
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { TableSkeleton } from "@/components/admin/TableSkeleton";
-// 93-C7 / C-UX2 (A12 B3): risk-level pills migrate from raw
-// emerald/yellow/orange/red hues to the canonical StatusBadge on the
-// --status-* tokens (low→success, medium→warning, high→low-stock —
-// the orange token, critical→error).
-import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 // R123 (E3 item 1 + P3g): the three raw fetches ride the session-aware
 // adminFetchJson wrapper (ok-guard + safe error-body parse + the global
 // 401 toast/redirect on expiry), and all three queries gain
@@ -27,71 +21,34 @@ import { adminFetchJson } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
+import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
 import { AdminLayout } from "./layout";
-import { formatDate } from "@/lib/utils";
-
-type RiskLevel = "low" | "medium" | "high" | "critical";
-
-interface RiskEventRow {
-  id: number;
-  user_id: number | null;
-  user_phone: string | null;
-  user_email: string | null;
-  event_type: string;
-  score: number;
-  level: RiskLevel;
-  confidence: number;
-  rule_fired: string[];
-  action_taken: string;
-  ip_address: string | null;
-  created_at: string;
-  shown_at: string | null;
-}
-
-interface ListResponse {
-  events: RiskEventRow[];
-  next_cursor: string | null;
-}
-
-interface DashboardResponse {
-  window_hours: number;
-  total: number;
-  by_level: Record<RiskLevel, number>;
-  unresolved: number;
-  top_rules: Array<{ rule: string; count: number }>;
-  pipeline: { enabled: boolean };
-}
-
-const LEVEL_META: Record<RiskLevel, { label: string; tone: StatusBadgeVariant }> = {
-  low: { label: "منخفض", tone: "success" },
-  medium: { label: "متوسط", tone: "warning" },
-  high: { label: "عالي", tone: "low-stock" },
-  critical: { label: "حرج", tone: "error" },
-};
-
-const FILTERS: { value: "all" | RiskLevel; label: string }[] = [
-  { value: "all", label: "الكل" },
-  { value: "critical", label: "حرج" },
-  { value: "high", label: "عالي" },
-  { value: "medium", label: "متوسط" },
-  { value: "low", label: "منخفض" },
-];
-
-// Active filter-chip styling derived from the same status tokens as the
-// row pills (93-C7 / C-UX2) — chip + badge can no longer disagree.
-const TONE_CHIP: Record<StatusBadgeVariant, string> = {
-  success: "bg-status-success/15 text-status-success border-status-success/40",
-  warning: "bg-status-warning/15 text-status-warning border-status-warning/40",
-  error: "bg-status-error/15 text-status-error border-status-error/40",
-  "low-stock": "bg-status-low-stock/15 text-status-low-stock border-status-low-stock/40",
-  info: "bg-status-info/15 text-status-info border-status-info/40",
-  purple: "bg-status-purple/15 text-status-purple border-status-purple/40",
-  primary: "bg-primary/15 text-primary border-primary/40",
-  neutral: "bg-muted/45 text-muted-foreground border-border/50",
-};
+// R137 (FE decomposition): the risk queue's presentational sections and
+// pure metadata moved to @/components/admin/risk/* (verbatim moves — the
+// query layer stays HERE: the 30s dashboard poller, the accumulating
+// events infinite query (the next_cursor has-more envelope + the
+// load-more queue action), the background unfiltered counter query, the
+// filter atom and the level-agnostic counts memo; the extracts render
+// the byte-identical DOM they rendered inline yesterday). Import surface:
+//   • risk-meta — the pure module (the RiskLevel/row/response contracts,
+//     LEVEL_META, FILTERS, TONE_CHIP)
+//   • RiskHeader — h1 + the both-queries «تحديث» refresh CTA
+//   • RiskDashboardPanel — the R133 triad + the four tiles + top-rules
+//     (DashCard is its nested consumer)
+//   • RiskFilterChips — the aria-pressed level chip bar with counts
+//   • RiskEventsTable — the desktop sticky-glass fraud table
+//   • RiskEventsMobileList — the mobile drill-in card list
+import {
+  type DashboardResponse,
+  type ListResponse,
+  type RiskLevel,
+} from "@/components/admin/risk/risk-meta";
+import { RiskHeader } from "@/components/admin/risk/RiskHeader";
+import { RiskDashboardPanel } from "@/components/admin/risk/RiskDashboardPanel";
+import { RiskFilterChips } from "@/components/admin/risk/RiskFilterChips";
+import { RiskEventsTable } from "@/components/admin/risk/RiskEventsTable";
+import { RiskEventsMobileList } from "@/components/admin/risk/RiskEventsMobileList";
 
 export default function AdminRiskPage() {
   const headers = useAdminHeaders();
@@ -211,153 +168,23 @@ export default function AdminRiskPage() {
   return (
     <AdminLayout>
       <div className="space-y-4">
-        <header className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-primary" />
-              مراقبة المخاطر
-            </h1>
-            <p className="text-xs text-muted-foreground mt-1">
-              أحداث الأمان والاحتيال المرصودة من خط أنابيب التسجيل (003-anomaly-detection)
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              refetch();
-              dashboard.refetch();
-            }}
-            disabled={isFetching || dashboard.isFetching}
-            className="gap-2"
-          >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${isFetching || dashboard.isFetching ? "animate-spin" : ""}`}
-            />
-            تحديث
-          </Button>
-        </header>
+        <RiskHeader
+          onRefresh={() => {
+            refetch();
+            dashboard.refetch();
+          }}
+          refreshing={isFetching || dashboard.isFetching}
+        />
 
-        {/* Dashboard stats — R133 (A3-F2): the tiles had no loading/error/
-            stale branch. A first-load failure dropped the whole panel
-            (including the RISK_PIPELINE_ENABLED verdict tile) while the
-            events list 100px below shipped the full triad, and a refresh
-            failure kept stale critical/high counts with no cue. Mirrors
-            the events triad below: skeleton → error card → stale banner. */}
-        {dashboard.isPending && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" aria-hidden="true">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="border border-border/40 rounded-xl p-3 bg-card/60">
-                <div className="h-3 w-20 rounded-md skeleton-shimmer" />
-                <div className="h-6 w-12 rounded-md skeleton-shimmer mt-1.5" />
-              </div>
-            ))}
-          </div>
-        )}
-        {dashboard.isError && !dashboard.data && (
-          <FetchErrorCard
-            size="page"
-            retryIcon={RefreshCw}
-            title="تعذّر تحميل لوحة المؤشرات"
-            description={`${getErrorMessage(dashboard.error)} — تحقّق من شبكتك ثم أعد المحاولة`}
-            onRetry={() => void dashboard.refetch()}
-          />
-        )}
-        {/* A refresh of already-rendered tiles failed — keep the stale
-            numbers, surface the failure inline (the events stale-banner
-            idiom; warning ink because "stale" is a caution, not an error). */}
-        {dashboard.isError && dashboard.data && (
-          <div
-            role="alert"
-            className="p-3 rounded-xl bg-status-warning/10 border border-status-warning/30 text-status-warning text-xs font-bold flex items-center gap-2"
-          >
-            <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span className="min-w-0">تعذّر تحديث المؤشرات — الأرقام المعروضة قديمة</span>
-            <button
-              type="button"
-              onClick={() => void dashboard.refetch()}
-              className="ms-auto underline underline-offset-2 hover:opacity-80"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
-        )}
-        {dashboard.data && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <DashCard
-              label={`إجمالي ${dashboard.data.window_hours} ساعة`}
-              value={String(dashboard.data.total)}
-              hint={
-                dashboard.data.pipeline.enabled
-                  ? "خط الأنابيب مفعَّل"
-                  : "خط الأنابيب معطَّل (RISK_PIPELINE_ENABLED=false)"
-              }
-              tone={dashboard.data.pipeline.enabled ? "ok" : "warn"}
-            />
-            <DashCard
-              label="حرج"
-              value={String(dashboard.data.by_level.critical ?? 0)}
-              tone={(dashboard.data.by_level.critical ?? 0) > 0 ? "danger" : "ok"}
-            />
-            <DashCard
-              label="عالي"
-              value={String(dashboard.data.by_level.high ?? 0)}
-              tone={(dashboard.data.by_level.high ?? 0) > 0 ? "warn" : "ok"}
-            />
-            <DashCard
-              label="بدون تصنيف"
-              value={String(dashboard.data.unresolved)}
-              hint="لم تُصنَّف بعد"
-              tone={dashboard.data.unresolved > 0 ? "warn" : "ok"}
-            />
-          </div>
-        )}
-        {dashboard.data && dashboard.data.top_rules.length > 0 && (
-          <div className="border border-border/40 rounded-2xl bg-card/60 p-3">
-            <div className="text-xs text-muted-foreground mb-2 font-bold">
-              أكثر القواعد إطلاقاً (24 ساعة)
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {dashboard.data.top_rules.map((r) => (
-                <span
-                  key={r.rule}
-                  className="text-2xs font-mono bg-muted/40 border border-border/40 rounded-lg px-2 py-1"
-                >
-                  {r.rule}
-                  <span className="opacity-60 mr-1.5">×{r.count}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        <RiskDashboardPanel
+          isPending={dashboard.isPending}
+          isError={dashboard.isError}
+          data={dashboard.data}
+          error={dashboard.error}
+          onRetry={() => void dashboard.refetch()}
+        />
 
-        {/* Filter chips */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {FILTERS.map((f) => {
-            const active = f.value === filter;
-            const tone = f.value === "all" ? null : LEVEL_META[f.value as RiskLevel];
-            return (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                /* R125-I4 (A6 B-10): the active chip was purely visual —
-                   aria-pressed exposes the toggle state (the
-                   orders/users/tickets chip-bar idiom). */
-                aria-pressed={active}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  active
-                    ? tone
-                      ? `font-bold ${TONE_CHIP[tone.tone]}`
-                      : "bg-primary/15 text-primary-text border-primary/40 font-bold"
-                    : "bg-muted/30 border-border/30 hover:bg-muted/60"
-                }`}
-              >
-                {f.label}
-                <span className="mr-1.5">({counts[f.value]})</span>
-              </button>
-            );
-          })}
-        </div>
+        <RiskFilterChips filter={filter} counts={counts} onFilterChange={setFilter} />
 
         {/* Empty / loading / error / list — R125-I4 (A3-2): an error
             is an error and ONLY an error. The old layout rendered the
@@ -408,127 +235,8 @@ export default function AdminRiskPage() {
         )}
         {events.length > 0 && (
           <>
-            {/* Canonical admin table chrome + horizontal scroll on mobile —
-                previously a bespoke border-border/40 bg-card/60 card with
-                no overflow handling (7 columns crushed at 375px). */}
-            <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[720px]">
-                  <thead
-                    /* R128 (A3-F2): the fraud queue is the longest-scanned
-                       table without the sticky-glass header — adopt the
-                       orders/users money-directory recipe (sticky glass
-                       thead, semibold th, border-b rows, one zebra value). */
-                    className="sticky top-0 z-10 text-xs text-muted-foreground bg-card/85 backdrop-blur-md border-b border-border"
-                  >
-                    <tr>
-                      {/* 96-F7 (R96 A6 #15 + #6): scope="col" for screen
-                          readers; dates pinned to -u-nu-latn so engines
-                          without ar-LY data never emit Arabic-Indic
-                          numerals. */}
-                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
-                        المستوى
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
-                        النوع
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
-                        المستخدم
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
-                        القاعدة
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
-                        النقاط
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
-                        الإجراء
-                      </th>
-                      <th scope="col" className="px-4 py-2.5 text-right font-semibold">
-                        الوقت
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {events.map((e, i) => {
-                      const tone = LEVEL_META[e.level];
-                      const userLabel =
-                        e.user_phone ?? e.user_email ?? (e.user_id ? `#${e.user_id}` : "—");
-                      return (
-                        <tr
-                          key={e.id}
-                          className={`relative border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer ${
-                            i % 2 !== 0 ? "bg-muted/[0.035]" : ""
-                          }`}
-                        >
-                          <td className="px-4 py-2.5">
-                            <StatusBadge variant={tone.tone} size="xs">
-                              {tone.label}
-                            </StatusBadge>
-                          </td>
-                          <td className="px-4 py-2.5 font-mono text-xs">{e.event_type}</td>
-                          <td className="px-4 py-2.5 text-xs">{userLabel}</td>
-                          <td className="px-4 py-2.5 text-2xs text-muted-foreground">
-                            {e.rule_fired.slice(0, 2).join(", ") || "—"}
-                            {e.rule_fired.length > 2 && ` +${e.rule_fired.length - 2}`}
-                          </td>
-                          <td className="px-4 py-2.5 font-mono text-xs">{e.score}</td>
-                          <td className="px-4 py-2.5 text-2xs text-muted-foreground">
-                            {e.action_taken}
-                          </td>
-                          <td className="px-4 py-2.5 text-2xs text-muted-foreground whitespace-nowrap">
-                            {/* R125-I4 (A3-10): the whole row navigates —
-                                the date cell's anchor stretches over the
-                                row (after:inset-0 against the relative
-                                tr), so the drill-in target is the entire
-                                row, not a small date link in the last
-                                column. Real anchor semantics + keyboard
-                                access stay (single tab stop per row, the
-                                docblock's "click a row" is finally true
-                                on desktop). */}
-                            <Link
-                              href={`/admin/risk/events/${e.id}`}
-                              aria-label={`فتح تحقيق الحدث رقم ${e.id}`}
-                              className="text-primary-text hover:underline after:absolute after:inset-0 after:content-['']"
-                            >
-                              {formatDate(e.created_at)}
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            {/* Mobile card list (parity with orders/users pattern) */}
-            <div className="md:hidden space-y-2.5">
-              {events.map((e) => {
-                const tone = LEVEL_META[e.level];
-                const userLabel =
-                  e.user_phone ?? e.user_email ?? (e.user_id ? `#${e.user_id}` : "—");
-                return (
-                  <Link key={e.id} href={`/admin/risk/events/${e.id}`}>
-                    <div className="bg-card border border-border/60 rounded-2xl p-4 hover:border-primary/30 transition-colors">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <StatusBadge variant={tone.tone} size="xs">
-                          {tone.label}
-                        </StatusBadge>
-                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                          {e.score} نقطة
-                        </span>
-                      </div>
-                      <div className="font-mono text-xs font-bold mb-1">{e.event_type}</div>
-                      <div className="text-xs text-muted-foreground mb-2">{userLabel}</div>
-                      <div className="flex items-center justify-between text-2xs text-muted-foreground border-t border-border/30 pt-2">
-                        <span>{e.action_taken}</span>
-                        <span>{formatDate(e.created_at)}</span>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
+            <RiskEventsTable events={events} />
+            <RiskEventsMobileList events={events} />
 
             {/* R125-I4 (A4-B-6): the has-more envelope drives a real
                 append-in-place «تحميل المزيد» (the orders/users/tickets
@@ -548,35 +256,5 @@ export default function AdminRiskPage() {
         )}
       </div>
     </AdminLayout>
-  );
-}
-
-function DashCard({
-  label,
-  value,
-  hint,
-  tone = "ok",
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  tone?: "ok" | "warn" | "danger";
-}) {
-  const tones = {
-    ok: "border-border/40 bg-card/60",
-    warn: "border-status-warning/30 bg-status-warning/5",
-    danger: "border-status-error/30 bg-status-error/5",
-  };
-  const valueColor = {
-    ok: "",
-    warn: "text-status-warning",
-    danger: "text-status-error",
-  };
-  return (
-    <div className={`border rounded-xl p-3 ${tones[tone]}`}>
-      <div className="text-3xs text-muted-foreground">{label}</div>
-      <div className={`text-xl font-bold mt-0.5 ${valueColor[tone]}`}>{value}</div>
-      {hint && <div className="text-3xs text-muted-foreground mt-1">{hint}</div>}
-    </div>
   );
 }

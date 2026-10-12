@@ -142,10 +142,19 @@ describe("admin palette discipline — flagship migration pins (R128 A1-F1)", ()
   });
 
   it("referrals medals ride the NEW --tier-* family (A1-D10/F3)", () => {
-    const referrals = read("src/pages/admin/referrals.tsx");
-    expect(referrals).toContain("text-tier-silver");
-    expect(referrals).toContain("text-tier-bronze");
-    expect(referrals).toContain("text-tier-gold");
+    // R137 (FE decomposition): MEDAL_COLORS moved verbatim to
+    // components/admin/referrals/referrals-meta.ts — the pin follows the
+    // surface and reads the page ∪ extracts union (the r136
+    // checkout-surface idiom, same as the topups A1-F2 pin above).
+    const referralsSurface = [
+      read("src/pages/admin/referrals.tsx"),
+      ...readdirSync(resolve(process.cwd(), "src/components/admin/referrals")).map((f) =>
+        read(`src/components/admin/referrals/${f}`),
+      ),
+    ].join("\n");
+    expect(referralsSurface).toContain("text-tier-silver");
+    expect(referralsSurface).toContain("text-tier-bronze");
+    expect(referralsSurface).toContain("text-tier-gold");
   });
 
   it("the layout alert dots ride the AA warning ink-pair, not solid yellow (A1-D3)", () => {

@@ -30,9 +30,18 @@ const pageFiles = readdirSync(dir).filter(
 describe("admin page h1s — one size family (R128 A3 §1)", () => {
   it("every page h1 renders at text-xl font-bold (the 11-page dominant size)", () => {
     expect(pageFiles.length).toBeGreaterThan(15); // the scan sees the tree
+    // R137 (decomposition): the page headers moved verbatim to
+    // components/admin/<domain>/*Header.tsx extracts — the sweep follows
+    // the surface and scans the admin extract tree too (the palette
+    // guard's collectSource precedent), so a fourth size can't creep in
+    // via a future extract either.
+    const extractFiles = readdirSync(resolve(process.cwd(), "src/components/admin"), {
+      recursive: true,
+    }).filter((f) => String(f).endsWith(".tsx"));
     const offenders: string[] = [];
-    for (const f of pageFiles) {
-      const text = readFileSync(resolve(dir, f), "utf8");
+    for (const f of [...pageFiles, ...extractFiles.map(String)]) {
+      const base = pageFiles.includes(f) ? dir : resolve(process.cwd(), "src/components/admin");
+      const text = readFileSync(resolve(base, f), "utf8");
       for (const m of text.matchAll(/<h1([^>]*)>/g)) {
         const attrs = m[1]!;
         if (!attrs.includes('className="')) continue; // multi-line h1 — checked below
@@ -45,7 +54,17 @@ describe("admin page h1s — one size family (R128 A3 §1)", () => {
   });
 
   it("whatsapp carries a real h1 (the A3-F6 hierarchy inversion stays fixed)", () => {
-    const text = readFileSync(resolve(dir, "whatsapp.tsx"), "utf8");
+    // R137 (decomposition): the header (h1 included) moved verbatim to
+    // components/admin/whatsapp/WhatsappHeader.tsx — the pin follows the
+    // surface and reads the page ∪ extracts union (the r136
+    // checkout-surface idiom).
+    const extractDir = resolve(process.cwd(), "src/components/admin/whatsapp");
+    const text = [
+      readFileSync(resolve(dir, "whatsapp.tsx"), "utf8"),
+      ...readdirSync(extractDir)
+        .filter((f) => f.endsWith(".tsx") || f.endsWith(".ts"))
+        .map((f) => readFileSync(resolve(extractDir, f), "utf8")),
+    ].join("\n");
     // R134 (A3-F5e): the label joins the nav's exact wording — h1 === nav
     // on every admin sibling page.
     expect(text).toMatch(/<h1[^>]*text-xl font-bold[^>]*>جلسة واتساب<\/h1>/);

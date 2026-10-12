@@ -94,6 +94,7 @@ export function ChartPickers({
           onClick={onExport}
           className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
           title="تصدير بيانات المخطط CSV"
+          aria-label="تصدير بيانات المخطط CSV"
         >
           <Download className="w-3.5 h-3.5" />
         </button>

@@ -41,6 +41,7 @@ export function NewUsersChart({
             onClick={onExportUsers}
             className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-muted-foreground"
             title="تصدير CSV"
+            aria-label="تصدير CSV"
           >
             <Download className="w-3 h-3" />
           </button>

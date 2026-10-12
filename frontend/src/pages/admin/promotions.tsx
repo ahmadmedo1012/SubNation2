@@ -1,9 +1,6 @@
 import { useConfirm } from "@/hooks/use-confirm";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 // R123 (E3 item 1): load/create/delete ride the session-aware wrappers
 // (a 401 mid-work gets the global «انتهت الجلسة» toast + redirect);
@@ -16,25 +13,36 @@ import {
 } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatCurrency, formatRelativeTime } from "@/lib/utils";
-import {
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Loader2,
-  Pause,
-  Play,
-  Plus,
-  RefreshCw,
-  Sparkles,
-  Trash2,
-  WifiOff,
-  Zap,
-} from "lucide-react";
+import { formatRelativeTime } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
+// R137 (FE decomposition): the flash-sale page's presentational sections
+// and pure metadata moved to @/components/admin/promotions/* (verbatim
+// moves — the money path stays HERE: the sales list fetch, handleCreate
+// (the create POST with the 0–95% + 5-minute + 30-day guards), toggleActive
+// (the money-gated activate confirm + the activate/deactivate PATCH) and
+// handleDelete (the confirm-gated permanent DELETE), plus every
+// form/busy atom; the extracts render the byte-identical DOM they
+// rendered inline yesterday). Import surface:
+//   • promotions-meta — the pure module (the FlashSale/PromotionForm
+//     contracts, the EMPTY_FORM seed the dirty guard identity-compares,
+//     the 30-day MAX_DURATION_MS backend-bound mirror)
+//   • PromotionsHeader — the h1 + «إنشاء عرض» CTA + the one-active-sale
+//     warning banner
+//   • CreatePromotionForm — the create shell (the page-owned form atom
+//     rides down; submit/cancel fire through page-owned callbacks)
+//   • PromotionsList — the «السجل» section: skeleton / error card /
+//     empty state / the sale rows with their activate/stop/delete actions
+import {
+  EMPTY_FORM,
+  MAX_DURATION_MS,
+  type FlashSale,
+} from "@/components/admin/promotions/promotions-meta";
+import { PromotionsHeader } from "@/components/admin/promotions/PromotionsHeader";
+import { CreatePromotionForm } from "@/components/admin/promotions/CreatePromotionForm";
+import { PromotionsList } from "@/components/admin/promotions/PromotionsList";
 
 /**
  * Admin Promotions / Flash Sales
@@ -48,37 +56,6 @@ import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
  * validation) so the catalog cannot enter a "free goods" state when
  * a fixed-amount coupon stacks on top.
  */
-
-interface FlashSale {
-  id: number;
-  title: string;
-  discount_percent: number;
-  ends_at: string;
-  is_active: boolean;
-  is_currently_active: boolean;
-  created_at: string;
-}
-
-const EMPTY_FORM = {
-  // R125-I3 (A2-21): the default title is ARABIC — the old English
-  // "Flash Sale" default surfaced to customers on the storefront
-  // (flash-sales.tsx renders activeSale.title as the page headline).
-  title: "عرض سريع",
-  discount_percent: "20",
-  // Default to 24h from now (ISO local-style for the datetime-local input).
-  ends_at: (() => {
-    const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    // datetime-local expects YYYY-MM-DDTHH:MM (no Z).
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  })(),
-};
-
-// R125-I3 (A2-21): client-side parity with the backend's create bound
-// (routes/admin/flash-sales.ts MAX_DURATION_MS) — the hint already
-// promised «أقل من 30 يوماً» but only the 5-minute floor was validated,
-// so a 60-day sale rode a full round-trip to the server's 400.
-const MAX_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export default function AdminPromotionsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -315,303 +292,37 @@ export default function AdminPromotionsPage() {
   return (
     <AdminLayout onRefresh={load}>
       <div className="max-w-4xl mx-auto space-y-5">
-        {/* Page-section header */}
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="font-bold text-xl">العروض السريعة</h1>
-              <p className="text-xs text-muted-foreground">
-                عرض واحد نشط في كل وقت — يطبَّق على المتجر بأكمله
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={() => setShowForm((v) => !v)}
-            disabled={hasActive && !showForm}
-            className="gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            {showForm ? "إغلاق النموذج" : "إنشاء عرض"}
-          </Button>
-        </div>
+        <PromotionsHeader
+          showForm={showForm}
+          hasActive={hasActive}
+          onToggleForm={() => setShowForm((v) => !v)}
+        />
 
-        {hasActive && !showForm && (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl border border-status-warning/30 bg-status-warning/10 text-status-warning text-xs">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>
-              يوجد عرض نشط حالياً. أوقف العرض الحالي قبل إنشاء عرض جديد — يُسمح بعرض واحد فقط في كل
-              وقت.
-            </span>
-          </div>
-        )}
-
-        {/* Create form */}
+        {/* Create form — the shell renders the inputs verbatim; the form
+            atom, the submitting flag and the flash-sale POST stay
+            page-owned above. */}
         {showForm && (
-          <form
+          <CreatePromotionForm
+            form={form}
+            setForm={setForm}
+            submitting={submitting}
             onSubmit={handleCreate}
-            className="bg-card border border-border/55 rounded-2xl p-5 space-y-4"
-          >
-            <h2 className="font-bold text-sm flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" /> إنشاء عرض جديد
-            </h2>
-
-            {/* R124-I5 (A6 F3 — AUD103-6-F2 completion): real
-                htmlFor↔id pairs on the three create-form fields (the
-                r103 label pass missed this page). */}
-            <div>
-              <Label
-                htmlFor="promotion-form-title"
-                className="text-xs font-bold text-muted-foreground mb-1.5 block"
-              >
-                عنوان العرض
-              </Label>
-              <Input
-                id="promotion-form-title"
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="عرض رمضان، تخفيضات الصيف…"
-                maxLength={255}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label
-                  htmlFor="promotion-form-discount"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  نسبة الخصم (%)
-                </Label>
-                <Input
-                  id="promotion-form-discount"
-                  type="number"
-                  min="1"
-                  max="95"
-                  step="1"
-                  value={form.discount_percent}
-                  onChange={(e) => setForm((f) => ({ ...f, discount_percent: e.target.value }))}
-                  required
-                  dir="ltr"
-                />
-                <p className="text-3xs text-muted-foreground mt-1">
-                  الحد الأقصى 95% — يحمي من بيع المنتج مجاناً عند تجمّع الكوبونات.
-                </p>
-              </div>
-              <div>
-                <Label
-                  htmlFor="promotion-form-ends-at"
-                  className="text-xs font-bold text-muted-foreground mb-1.5 block"
-                >
-                  ينتهي في
-                </Label>
-                <Input
-                  id="promotion-form-ends-at"
-                  type="datetime-local"
-                  value={form.ends_at}
-                  onChange={(e) => setForm((f) => ({ ...f, ends_at: e.target.value }))}
-                  required
-                  dir="ltr"
-                />
-                <p className="text-3xs text-muted-foreground mt-1">
-                  يجب أن يكون بعد 5 دقائق من الآن على الأقل، وأقل من 30 يوماً.
-                </p>
-              </div>
-            </div>
-
-            {/* Live preview */}
-            {(() => {
-              const d = parseFloat(form.discount_percent);
-              if (!Number.isFinite(d) || d <= 0) return null;
-              return (
-                <div className="p-3 rounded-xl border border-primary/25 bg-primary/8">
-                  {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
-                      letter-spacing severs Arabic letter connections
-                      (A11 §8, rule documented in layout.tsx). */}
-                  <div className="text-3xs text-muted-foreground font-bold mb-1">معاينة سريعة</div>
-                  <div className="text-xs text-foreground/90 leading-relaxed">
-                    منتج بسعر <span className="font-mono font-bold">10.00 د.ل</span> سيُعرض بـ{" "}
-                    <span className="font-mono font-bold text-primary">
-                      {/* 96-F7 (R96 A6 #18): formatCurrency — the manual
-                          toFixed(2) skipped the two-decimal + grouping
-                          money convention (see utils.ts). */}
-                      {formatCurrency(10 * (1 - d / 100))}
-                    </span>{" "}
-                    (وفر {d}%).
-                    {d >= 30 && (
-                      <span className="flex items-center gap-1 mt-1 text-status-warning">
-                        {/* R125-I3 (A2-10c): the ⚠ text glyph is gone —
-                            lucide icon, the R124 emoji convention. */}
-                        <AlertTriangle className="w-3 h-3 shrink-0" />
-                        خصم كبير — راجع الهامش في حاسبة الأسعار قبل التفعيل.
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setShowForm(false);
-                  setForm(EMPTY_FORM);
-                }}
-              >
-                إلغاء
-              </Button>
-              <Button type="submit" disabled={submitting} className="gap-2">
-                {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                {submitting ? "جارٍ الإنشاء…" : "إنشاء وتفعيل"}
-              </Button>
-            </div>
-          </form>
+            onCancel={() => {
+              setShowForm(false);
+              setForm(EMPTY_FORM);
+            }}
+          />
         )}
 
         {/* List */}
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-bold">السجل</h2>
-            <span className="text-3xs text-muted-foreground">
-              {sales.length} {sales.length === 1 ? "عرض" : "عروض"}
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-20 rounded-2xl skeleton-shimmer" />
-              ))}
-            </div>
-          ) : loadError && sales.length === 0 ? (
-            /* 94-C2 (A2 P2-9): a failed load is an error card with
-               retry — NOT the "no promotions yet" empty state. */
-            <div className="bg-card border border-status-error/22 rounded-2xl p-8 text-center">
-              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
-                <WifiOff className="w-7 h-7 text-status-error" />
-              </div>
-              <p className="font-bold text-sm mb-1.5 text-foreground/80">تعذّر تحميل العروض</p>
-              <p className="text-xs text-muted-foreground mb-5 max-w-xs mx-auto leading-relaxed">
-                {loadError}
-              </p>
-              <Button
-                onClick={() => void load()}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 font-bold"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                حاول مجدداً
-              </Button>
-            </div>
-          ) : sales.length === 0 ? (
-            <div className="bg-card border border-border/55 rounded-2xl p-8 text-center">
-              <Zap className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm font-bold mb-1">لا توجد عروض بعد</p>
-              <p className="text-xs text-muted-foreground">
-                اضغط "إنشاء عرض" لإطلاق أول حملة تخفيضات.
-              </p>
-            </div>
-          ) : (
-            sales.map((s) => {
-              const endsAt = new Date(s.ends_at);
-              const expired = endsAt.getTime() < Date.now();
-              return (
-                <div
-                  key={s.id}
-                  className={`bg-card border rounded-2xl p-4 ${
-                    s.is_currently_active
-                      ? "border-status-success/30 ring-1 ring-status-success/15"
-                      : "border-border/55"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-sm truncate">{s.title}</h3>
-                        {s.is_currently_active && (
-                          <span className="text-3xs font-bold bg-status-success/15 text-status-success border border-status-success/25 px-1.5 py-0.5 rounded-full flex items-center gap-1">
-                            <CheckCircle className="w-2.5 h-2.5" /> نشط
-                          </span>
-                        )}
-                        {expired && s.is_active && (
-                          <span className="text-3xs font-bold bg-status-warning/15 text-status-warning border border-status-warning/25 px-1.5 py-0.5 rounded-full">
-                            منتهٍ — في انتظار التنظيف التلقائي
-                          </span>
-                        )}
-                        {!s.is_active && (
-                          <span className="text-3xs font-bold bg-muted/40 text-muted-foreground border border-border px-1.5 py-0.5 rounded-full">
-                            متوقف
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                        <span className="font-mono font-bold text-primary">
-                          {s.discount_percent}% خصم
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {/* 93-C6 / F-06 (PR-1): formatRelativeTime now
-                              carries its own direction wording —
-                              «ينتهي خلال ساعتين» for a live sale,
-                              «انتهى قبل 5 دقائق» for a finished one.
-                              The old hand-prefixed `قبل ${…}` produced
-                              «ينتهي الآن» for every ACTIVE sale (future
-                              dates hit the now-branch) and the
-                              ungrammatical «قبل منذ …» for past ones. */}
-                          {expired
-                            ? `انتهى ${formatRelativeTime(s.ends_at)}`
-                            : `ينتهي ${formatRelativeTime(s.ends_at)}`}
-                        </span>
-                        <span className="text-3xs opacity-60">#{s.id}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {s.is_active ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleActive(s, false)}
-                          className="gap-1.5"
-                        >
-                          <Pause className="w-3.5 h-3.5" /> إيقاف
-                        </Button>
-                      ) : (
-                        !expired && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleActive(s, true)}
-                            className="gap-1.5"
-                          >
-                            <Play className="w-3.5 h-3.5" /> تفعيل
-                          </Button>
-                        )
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(s)}
-                        /* R125-I3 (A2-6): the row action names the DESTRUCTIVE
-                           verb — it sat beside a reversible «إيقاف» button
-                           while being labeled the same. */
-                        aria-label={`حذف العرض «${s.title}» نهائياً`}
-                        title="حذف نهائي"
-                        className="gap-1.5 text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+        <PromotionsList
+          sales={sales}
+          loading={loading}
+          loadError={loadError}
+          onRetry={load}
+          onToggleActive={toggleActive}
+          onDelete={handleDelete}
+        />
 
         <p className="text-3xs text-muted-foreground text-center pt-2">
           تطبَّق الخصومات تلقائياً على جميع المنتجات في المتجر. تنتهي العروض تلقائياً بعد وقت

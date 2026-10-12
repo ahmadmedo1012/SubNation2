@@ -53,6 +53,11 @@ const EXTRACT_DIRS = [
   "components/admin/tickets",
   "components/admin/pricing",
   "components/admin/layout",
+  "components/admin/settings-page",
+  "components/admin/whatsapp",
+  "components/admin/promotions",
+  "components/admin/referrals",
+  "components/admin/risk",
 ];
 
 for (const dir of EXTRACT_DIRS) {

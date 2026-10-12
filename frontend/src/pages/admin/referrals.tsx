@@ -1,15 +1,12 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyState } from "@/components/admin/EmptyState";
-import { TableSkeleton as SharedTableSkeleton } from "@/components/admin/TableSkeleton";
-import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { formatCurrency, formatRelativeTime } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 // R127-L1 (B1 §3.3): the list + credit ride the generated client from
 // the batch-1 spec exposure — useListAdminReferrals (params in the
 // queryKey) + creditReferral. The R98-02 seq/abort state machine and
@@ -23,210 +20,43 @@ import {
   creditReferral,
   getListAdminReferralsQueryKey,
   useListAdminReferrals,
-  type AdminReferralEventRow,
   type ListAdminReferralsStatus,
 } from "@workspace/api-client-react";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Gift,
-  Phone,
-  RefreshCw,
-  Search,
-  Star,
-  Trophy,
-  Users,
-  Zap,
-} from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, Gift, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
-
-// R127-L1: the hand-rolled row interface is the generated
-// AdminReferralEventRow (field-identical — the batch-1 contract row
-// pins the shape); aliased so the render code keeps its local name.
-// (The old ReferralData/TopReferrer interfaces had no remaining
-// references once the list rode useListAdminReferrals — deleted.)
-type ReferralRow = AdminReferralEventRow;
-
-/** R127-L1 (B1 §3.3): a 401 from the generated fetcher is the global
- * admin-session handler's business (toast + redirect fired inside
- * customFetch) — the error card + the credit catch below stay quiet on
- * it. ApiError is type-only from the package, so the check duck-types
- * `status` (the alerts.tsx R126-L8b idiom). */
-function isSessionExpiredError(err: unknown): boolean {
-  return (err as { status?: unknown } | null | undefined)?.status === 401;
-}
-
-const STATUS_FILTERS = [
-  { value: "", label: "الكل" },
-  { value: "credited", label: "ناجحة" },
-  { value: "pending", label: "معلقة" },
-];
-
-const MEDAL_COLORS = [
-  // R128 (A1-D10/F3): the medal trio rides the NEW theme-aware --tier-*
-  // inks. Gold was already the --status-warning pair (R126-L5 —
-  // yellow-400 text failed the light theme 1.43:1); silver (slate-400)
-  // and bronze (amber-600) measured 2.56:1 / 3.19:1 in light — the
-  // tier tokens are AA in both themes by construction (tier-gold =
-  // var(--status-warning), so gold is visually unchanged).
-  "text-tier-gold bg-tier-gold/10 border-tier-gold/20",
-  "text-tier-silver bg-tier-silver/10 border-tier-silver/20",
-  "text-tier-bronze bg-tier-bronze/10 border-tier-bronze/20",
-];
-
-/** R125-I3 (A2-5): the backend list route hardcodes LIMIT 200 with NO
- *  page param (routes/admin/referrals.ts) — the same frozen-cap contract
- *  as products/coupons. Mirror of the backend bound for the honest-cap
- *  footer wording (a backend change to that LIMIT is a contract change
- *  that must update this mirror — the products/coupons convention). */
-const REFERRALS_SERVER_CAP = 200;
-
-function TableSkeleton() {
-  return (
-    <SharedTableSkeleton
-      rows={6}
-      cells={["w-28", "w-28", "rounded-full w-14", "flex-1 w-24", "w-16"]}
-    />
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  bg,
-}: {
-  label: string;
-  value: string | number;
-  icon: React.ElementType;
-  color: string;
-  bg: string;
-}) {
-  return (
-    <div className="bg-card border border-border/60 rounded-2xl p-4">
-      <div className={`w-8 h-8 rounded-xl border flex items-center justify-center mb-3 ${bg}`}>
-        <Icon className={`w-4 h-4 ${color}`} />
-      </div>
-      <div className={`text-2xl font-bold tabular-nums mb-0.5 ${color}`}>{value}</div>
-      <div className="text-xs text-muted-foreground font-semibold">{label}</div>
-    </div>
-  );
-}
-
-/* ── R124-I5 (A6 F4 — the R118-B2 orders.tsx pattern) ──────────────────
- * The search box is a CONTROLLED input — every keystroke re-rendered
- * the full referral list with fresh inline closures (the debounced
- * network refetch is separate). The row is now a module-level
- * React.memo component whose props are stable across a keystroke (row
- * refs come from `data`; onCredit is useCallback-stable; the busy/
- * scope flags are primitives), so typing re-renders the search box and
- * nothing else. */
-interface ReferralRowItemProps {
-  row: ReferralRow;
-  /** Zebra striping (i % 2). */
-  idx: number;
-  /** Whether THIS row's credit POST is in flight. */
-  crediting: boolean;
-  /** R122 (A2-P1): finance scope for the credit action. */
-  canCredit: boolean;
-  onCredit: (row: ReferralRow) => void;
-}
-
-const ReferralRowItem = React.memo(function ReferralRowItem({
-  row,
-  idx,
-  crediting,
-  canCredit,
-  onCredit,
-}: ReferralRowItemProps) {
-  const credited = row.status === "credited";
-  return (
-    <div
-      className={`flex flex-col md:grid md:grid-cols-[1fr_1fr_100px_130px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/15 transition-colors ${idx % 2 !== 0 ? "bg-muted/5" : ""}`}
-    >
-      {/* Referrer */}
-      <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-lg bg-status-info/10 border border-status-info/15 flex items-center justify-center shrink-0">
-          <Phone className="w-2.5 h-2.5 text-status-info" />
-        </div>
-        <span className="font-mono text-sm font-bold truncate">{row.referrer_phone}</span>
-      </div>
-
-      {/* Referee */}
-      <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-lg bg-muted/50 border border-border/40 flex items-center justify-center shrink-0">
-          <Users className="w-2.5 h-2.5 text-muted-foreground" />
-        </div>
-        <span className="font-mono text-sm text-muted-foreground truncate">
-          {row.referee_phone}
-        </span>
-      </div>
-
-      {/* Status */}
-      <div>
-        {credited ? (
-          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-status-success/10 text-status-success border border-status-success/20">
-            <CheckCircle className="w-2.5 h-2.5" /> ناجحة
-          </span>
-        ) : (
-          /* R126-L5 (A3 item-10): the pending pill rides the
-             --status-warning ink+tint pair (yellow-400 fails the light
-             theme at 1.43-1.53:1 — A3's measured figures). */
-          <span className="inline-flex items-center gap-1 text-3xs font-bold px-2 py-1 rounded-full bg-status-warning/10 text-status-warning border border-status-warning/20">
-            <Clock className="w-2.5 h-2.5" /> معلقة
-          </span>
-        )}
-      </div>
-
-      {/* Date */}
-      <div className="text-xs text-muted-foreground">
-        <div>{formatRelativeTime(row.created_at)}</div>
-        {credited && row.credited_at && (
-          <div className="text-status-success/70 text-3xs mt-0.5">
-            قُيِّد: {formatRelativeTime(row.credited_at)}
-          </div>
-        )}
-      </div>
-
-      {/* Action */}
-      <div>
-        {credited ? (
-          /* R126-L5 (A3 item-10): pending-count text joins the warning
-             sweep (yellow-400 fails the light theme at ~1.5:1). */
-          <div className="flex items-center gap-1 text-xs text-status-warning font-bold">
-            <Star className="w-3 h-3" />+{row.points_earned}
-          </div>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onCredit(row)}
-            // R122 (A2-P1): finance scope required — see
-            // canCredit (users.tsx canEditMoney idiom).
-            disabled={crediting || !canCredit}
-            title={canCredit ? undefined : "يتطلب صلاحية المالية"}
-            className="h-7 px-2.5 text-xs gap-1 border-primary/25 text-primary hover:bg-primary/8 hover:border-primary/40"
-          >
-            {crediting ? (
-              <RefreshCw className="w-3 h-3 animate-spin" />
-            ) : (
-              <>
-                <Zap className="w-3 h-3" />
-                منح نقاط
-              </>
-            )}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-});
+// R137 (FE decomposition): the referral page's presentational sections
+// and pure metadata moved to @/components/admin/referrals/* (verbatim
+// moves — the money path stays HERE: the params-in-queryKey list query
+// with its 300ms debounce race guard, and handleCredit (the
+// confirm-gated, idempotency-keyed points-mint POST + the base-key
+// invalidation), plus every search/filter/busy atom; the extracts render
+// the byte-identical DOM they rendered inline yesterday). Import surface:
+//   • referrals-meta — the pure module (the ReferralRow alias + the
+//     re-exported generated stats/top-referrer contracts, the 401
+//     predicate, STATUS_FILTERS, the --tier-* medal trio, the 200-row
+//     server-cap mirror)
+//   • ReferralsHeader — h1 + the «تحديث» refetch CTA
+//   • ReferralsStats — the four-stat strip (hidden until first load)
+//   • TopReferrersList — the medal leaderboard
+//   • ReferralsFilters — the search box + the status chip bar (the
+//     page-owned search/statusFilter atoms ride down)
+//   • ReferralsTable — the md header + the memoized rows + the honest
+//     server-cap footer (ReferralRowItem is its nested consumer)
+//   • ReferralsTableSkeleton — the page-shaped loading skeleton
+import {
+  type ReferralRow,
+  isSessionExpiredError,
+} from "@/components/admin/referrals/referrals-meta";
+import { ReferralsHeader } from "@/components/admin/referrals/ReferralsHeader";
+import { ReferralsStats } from "@/components/admin/referrals/ReferralsStats";
+import { TopReferrersList } from "@/components/admin/referrals/TopReferrersList";
+import { ReferralsFilters } from "@/components/admin/referrals/ReferralsFilters";
+import { ReferralsTable } from "@/components/admin/referrals/ReferralsTable";
+import { ReferralsTableSkeleton } from "@/components/admin/referrals/ReferralsTableSkeleton";
 
 export default function AdminReferralsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
@@ -381,131 +211,22 @@ export default function AdminReferralsPage() {
   return (
     <AdminLayout onRefresh={() => void listQuery.refetch()}>
       <div className="space-y-5">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center float-in">
-              <Gift className="w-4.5 h-4.5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold">برنامج الإحالة</h1>
-              <p className="text-xs text-muted-foreground">إدارة ومتابعة إحالات المستخدمين</p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void listQuery.refetch()}
-            className="gap-1.5 text-xs"
-          >
-            <RefreshCw className="w-3 h-3" />
-            تحديث
-          </Button>
-        </div>
+        <ReferralsHeader onRefresh={() => void listQuery.refetch()} />
 
         {/* Stats — hidden until the first successful load: a failed
             fetch must not render "—" cards that read as zero data
             (B5-03). */}
-        {data && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard
-              label="إجمالي الإحالات"
-              value={stats?.total ?? "—"}
-              icon={Users}
-              color="text-status-info"
-              bg="bg-status-info/10 border-status-info/15"
-            />
-            <StatCard
-              label="ناجحة (مكتسبة)"
-              value={stats?.credited ?? "—"}
-              icon={CheckCircle}
-              color="text-status-success"
-              bg="bg-status-success/10 border-status-success/15"
-            />
-            <StatCard
-              label="قيد الانتظار"
-              value={stats?.pending ?? "—"}
-              icon={Clock}
-              /* R126-L5 (A3 item-10): the pending StatCard joins the
-                 warning sweep (yellow-400 fails the light theme). */
-              color="text-status-warning"
-              bg="bg-status-warning/10 border-status-warning/15"
-            />
-            <StatCard
-              label="نقاط ممنوحة إجمالاً"
-              value={stats?.total_points ?? "—"}
-              icon={Star}
-              color="text-primary"
-              bg="bg-primary/10 border-primary/15"
-            />
-          </div>
-        )}
+        {data && <ReferralsStats stats={stats} />}
 
         {/* Top Referrers Leaderboard */}
-        {topReferrers.length > 0 && (
-          <div className="bg-card border border-border/60 rounded-2xl p-4 float-in stagger-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Trophy className="w-3.5 h-3.5 text-tier-gold" />
-              <h2 className="font-bold text-sm">أكثر المستخدمين إحالةً</h2>
-            </div>
-            <div className="space-y-2">
-              {topReferrers.map((r, i) => (
-                <div
-                  key={r.id}
-                  className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/20 hover:bg-muted/35 transition-colors"
-                >
-                  <div
-                    className={`w-6 h-6 rounded-full border flex items-center justify-center text-2xs font-bold shrink-0 ${MEDAL_COLORS[i] ?? "text-muted-foreground bg-muted/40 border-border/40"}`}
-                  >
-                    {i + 1}
-                  </div>
-                  <span className="font-mono text-sm font-bold flex-1 truncate">{r.phone}</span>
-                  <div className="flex items-center gap-3 text-xs shrink-0">
-                    <span className="text-status-success font-bold">{r.credited_count} ناجحة</span>
-                    <span className="text-muted-foreground">{r.total_count} إجمالي</span>
-                    {/* R125-I3 (A2-7): the derived «{credited_count * 50}
-                        نقطة» column is GONE — it hardcoded the
-                        POINTS_PER_REFERRAL money constant (the backend
-                        derives it from lib/loyalty-policy, which the
-                        frontend cannot import). The rows below already
-                        show each referral's points from the API
-                        (points_earned), and the stat cards show the
-                        server-computed total_points — a policy change
-                        can no longer make this column lie. */}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {topReferrers.length > 0 && <TopReferrersList topReferrers={topReferrers} />}
 
-        {/* Filters + search */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="بحث برقم المُحيل أو المُحال..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pr-9 h-9 text-sm"
-            />
-          </div>
-          <div className="flex gap-1.5">
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setStatusFilter(f.value)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all press-spring ${
-                  statusFilter === f.value
-                    ? "bg-primary text-white shadow-sm shadow-primary/25"
-                    : "bg-card border border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ReferralsFilters
+          search={search}
+          onSearchChange={setSearch}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+        />
 
         {/* Refresh of an already-rendered list failed — keep the stale
             rows visible below, surface the failure inline (coupons.tsx
@@ -529,7 +250,7 @@ export default function AdminReferralsPage() {
 
         {/* Table */}
         {loading ? (
-          <TableSkeleton />
+          <ReferralsTableSkeleton />
         ) : loadError && !data ? (
           /* Distinct from "no data": an outage/expired session previously
              masqueraded as the empty state below (B5-03). Same error-card
@@ -548,51 +269,12 @@ export default function AdminReferralsPage() {
             description={search ? `لا نتائج لـ "${search}"` : "لم يتم تسجيل إحالات بعد"}
           />
         ) : (
-          <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-            {/* Table header */}
-            <div className="hidden md:grid grid-cols-[1fr_1fr_100px_130px_90px] gap-4 px-4 py-2.5 border-b border-border bg-muted/30 text-xs font-bold text-muted-foreground">
-              <span>المُحيل</span>
-              <span>المُحال</span>
-              <span>الحالة</span>
-              <span>التاريخ</span>
-              <span>إجراء</span>
-            </div>
-
-            <div className="divide-y divide-border/30">
-              {/* R124-I5 (A6 F4 — R118-B2): the memoized row component —
-                  props are stable across keystrokes so only the search
-                  box re-renders while typing. */}
-              {list.map((row, i) => (
-                <ReferralRowItem
-                  key={row.id}
-                  row={row}
-                  idx={i}
-                  crediting={crediting === row.id}
-                  canCredit={canCredit}
-                  onCredit={handleCredit}
-                />
-              ))}
-            </div>
-
-            {/* Footer count — R125-I3 (A2-5): the backend list is
-                server-capped at LIMIT 200 (routes/admin/referrals.ts)
-                with no page param, while the stat cards count the FULL
-                table — a 200-row window used to render as a bare
-                «200 إحالة» next to «إجمالي الإحالات: 340», contradicting
-                itself. The products/coupons honest-cap convention: a
-                full cap page reads «عرض N (الأحدث أولاً)». */}
-            <div className="px-4 py-2.5 border-t border-border/40 bg-muted/10 flex items-center justify-between text-xs text-muted-foreground">
-              <span>
-                {list.length >= REFERRALS_SERVER_CAP
-                  ? `عرض ${list.length} (الأحدث أولاً)`
-                  : `${list.length} إحالة`}
-              </span>
-              <span className="flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                الإحالات المعلقة بانتظار أول شحن من المُحال
-              </span>
-            </div>
-          </div>
+          <ReferralsTable
+            list={list}
+            crediting={crediting}
+            canCredit={canCredit}
+            onCredit={handleCredit}
+          />
         )}
       </div>
       {/* 93-C6 / F-07: the credit confirmation dialog mount. */}

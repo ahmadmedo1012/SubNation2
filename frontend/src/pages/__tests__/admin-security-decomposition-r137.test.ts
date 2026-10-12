@@ -236,8 +236,12 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
     expect(meta).toContain("?.status === 401;");
     // The generated row types ride as TYPE-ONLY re-exports — erased at
     // runtime, so the module stays pure no matter who imports it.
-    expect(meta).toContain(
-      'export type { AdminAuthActivity, AdminAuditLog, AdminAuthStatsSummary } from "@workspace/api-client-react";',
+    // (Whitespace-flattened + trailing-comma tolerant: the repo's
+    // prettier wraps the specifier list across lines and adds the
+    // trailing comma — the pin guards the re-export, not the wrapping.)
+    const metaFlat = meta.replace(/\s+/g, " ");
+    expect(metaFlat).toMatch(
+      /export type \{ AdminAuthActivity, AdminAuditLog, AdminAuthStatsSummary,? \} from "@workspace\/api-client-react";/,
     );
     expect(meta).not.toMatch(/customFetch[<(]|useQuery[<(]|\.refetch\(|await /);
   });
