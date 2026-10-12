@@ -114,7 +114,7 @@ describe("R122 (A5-P1) — POST /api/admin/admins: grants are subset-bounded", (
     try {
       const res = await jsonFetch(url, "/api/admin/admins", "POST", creator.token, {
         username: "ops2",
-        password: "longenough1",
+        password: "longenough123",
         permissions: [...FULL_UNION],
       });
       expect(res.status).toBe(403);
@@ -133,7 +133,7 @@ describe("R122 (A5-P1) — POST /api/admin/admins: grants are subset-bounded", (
     try {
       const res = await jsonFetch(url, "/api/admin/admins", "POST", creator.token, {
         username: "ops_orders",
-        password: "longenough1",
+        password: "longenough123",
         permissions: ["orders", "finance"],
       });
       expect(res.status).toBe(403);
@@ -150,7 +150,7 @@ describe("R122 (A5-P1) — POST /api/admin/admins: grants are subset-bounded", (
     try {
       const res = await jsonFetch(url, "/api/admin/admins", "POST", creator.token, {
         username: "super_puppet",
-        password: "longenough1",
+        password: "longenough123",
         permissions: ["all"],
       });
       expect(res.status).toBe(403);
@@ -167,7 +167,7 @@ describe("R122 (A5-P1) — POST /api/admin/admins: grants are subset-bounded", (
     try {
       const res = await jsonFetch(url, "/api/admin/admins", "POST", creator.token, {
         username: "ops_orders_only",
-        password: "longenough1",
+        password: "longenough123",
         permissions: ["orders"],
       });
       expect(res.status).toBe(201);
@@ -188,7 +188,7 @@ describe("R122 (A5-P1) — POST /api/admin/admins: grants are subset-bounded", (
     try {
       const union = await jsonFetch(url, "/api/admin/admins", "POST", creator.token, {
         username: "ops_union",
-        password: "longenough1",
+        password: "longenough123",
         permissions: [...FULL_UNION],
       });
       expect(union.status).toBe(201);
@@ -196,7 +196,7 @@ describe("R122 (A5-P1) — POST /api/admin/admins: grants are subset-bounded", (
 
       const all = await jsonFetch(url, "/api/admin/admins", "POST", creator.token, {
         username: "ops_super",
-        password: "longenough1",
+        password: "longenough123",
         permissions: ["all"],
       });
       expect(all.status).toBe(201);

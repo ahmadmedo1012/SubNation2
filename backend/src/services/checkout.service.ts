@@ -235,17 +235,70 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     }
   }
 
-  const [product] = await db
-    .select()
-    .from(productsTable)
-    .where(
-      and(
-        eq(productsTable.id, productId),
-        eq(productsTable.isActive, true),
-        eq(productsTable.isArchived, false),
-      ),
-    )
-    .limit(1);
+  // ── PERF #2 (R136): pre-transaction read fan-out ───────────────────────
+  // The pre-tx chain used to run these reads SERIALLY — product row →
+  // variant rows → (pricing) → user row — one ~100 ms app→Neon round trip
+  // each, on the hottest money path in the app. `product`,
+  // `productVariants` and `user` are keyed independently (productId /
+  // productId / userId) with no data dependency between them, so they
+  // now share ONE Promise.all wave — the same fold idiom as
+  // routes/products.ts R118-A6 ("3 sequential DB stages → 1") and
+  // routes/wallet.ts:78 / routes/auth.ts:368.
+  //
+  // The F10 idempotency probe above deliberately stays FIRST and ALONE:
+  // its early returns (the classified IDEMPOTENCY_KEY_REUSE 409, the
+  // replay envelope) short-circuit EVERY read below — folding it into
+  // this wave would fire dead product/variant/user queries on every
+  // replay for zero benefit.
+  //
+  // Precedence invariant (CRITICAL): the failure-reason CHECKS below
+  // keep their exact original order — PRODUCT_NOT_FOUND →
+  // VARIANT_NOT_FOUND → INVALID_COUPON → INVALID_PRICE → USER_NOT_FOUND
+  // → INSUFFICIENT_BALANCE → OUT_OF_STOCK. Only the READ SHAPE changed:
+  // a read resolving EARLIER cannot change which reason a request gets,
+  // because the reasons are decided by the check sequence, which is
+  // byte-identical to the pre-fold code (user is now read concurrently
+  // with product/variants but still checked after the INVALID_PRICE
+  // gate; the inventory probe is read concurrently with computePricing
+  // but still checked last).
+  //
+  // Not hoisted into this wave: computePricing's flash-sale SELECT — it
+  // lives INSIDE lib/pricing.ts (excluded from this wave's file
+  // ownership), and calling getActiveFlashSale() here only to discard
+  // the result would ADD a query; the singleton sale row is only
+  // reachable through computePricing, which runs in the second wave
+  // below once the resolved variant has fixed its listPrice input. The
+  // wallet CAS predicate in the tx (r4 money-integrity M3) still
+  // re-asserts the captured balance/points/lifetimeSpend — the slightly
+  // wider read-to-UPDATE window resolves as the designed retryable
+  // CONCURRENCY_ERROR, never a wrong charge. The in-tx freshness
+  // re-checks (F4 product/variant, B2-06 flash sale, B2-05 coupon) are
+  // untouched — only pre-check ordering changed.
+  const [[product], productVariants, [user]] = await Promise.all([
+    db
+      .select()
+      .from(productsTable)
+      .where(
+        and(
+          eq(productsTable.id, productId),
+          eq(productsTable.isActive, true),
+          eq(productsTable.isArchived, false),
+        ),
+      )
+      .limit(1),
+    db
+      .select()
+      .from(productVariantsTable)
+      .where(
+        and(
+          eq(productVariantsTable.productId, productId),
+          eq(productVariantsTable.isActive, true),
+        ),
+      )
+      .orderBy(productVariantsTable.priceLyd)
+      .limit(500),
+    db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1),
+  ]);
   if (!product) return { ok: false, reason: "PRODUCT_NOT_FOUND" };
 
   // ── Variant resolution (catalog 2026-09-20) ─────────────────────────────
@@ -257,14 +310,6 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   // a variant is resolved (the import maintains products.price =
   // MIN(variants.price_lyd) as a display denormalization only).
   let variant: typeof productVariantsTable.$inferSelect | null = null;
-  const productVariants = await db
-    .select()
-    .from(productVariantsTable)
-    .where(
-      and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.isActive, true)),
-    )
-    .orderBy(productVariantsTable.priceLyd)
-    .limit(500);
   if (input.variantId != null) {
     // EXPLICIT selection: must resolve to THIS product's active variant —
     // a foreign, inactive, or deleted id fails closed (never silently
@@ -291,11 +336,39 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     ? [variant.planLabel?.trim(), variant.durationLabel?.trim()].filter(Boolean).join(" — ") || null
     : null;
 
+  // Cheap lock-free OUT_OF_STOCK fast-fail — the authoritative,
+  // race-free selection happens INSIDE the transaction with
+  // FOR UPDATE SKIP LOCKED (H4). Variant-scoped units are preferred;
+  // legacy product-level units (variant_id IS NULL) fulfill any variant.
+  const inventoryScope = variant
+    ? and(
+        eq(inventoryTable.productId, productId),
+        eq(inventoryTable.isSold, false),
+        or(eq(inventoryTable.variantId, variant.id), isNull(inventoryTable.variantId)),
+      )
+    : and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false));
+
+  // ── PERF #2 (R136), wave 2: the variant-DEPENDENT reads fan out ────────
+  // Both remaining pre-tx reads key off the RESOLVED variant and cannot
+  // join wave 1, but they do not depend on each OTHER: computePricing
+  // (flash-sale + coupon SELECTs inside lib/pricing.ts, priced off the
+  // variant's priceLyd) and the inventory fast-fail probe (scoped to the
+  // variant's claim pool) run concurrently in one Promise.all — the
+  // routes/auth.ts:368 /me fold idiom. 6-8 serial round trips → 2 waves.
+  // The checks below still fire in the original precedence order.
+  const [pricing, [inventoryFastCheck]] = await Promise.all([
+    computePricing({
+      listPrice: variant ? toNumber(variant.priceLyd) : toNumber(product.price),
+      couponCode,
+    }),
+    db
+      .select({ id: inventoryTable.id })
+      .from(inventoryTable)
+      .where(inventoryScope)
+      .limit(1),
+  ]);
+
   // ── Discount stack (flash sale → coupon → final) — single source: lib/pricing.ts
-  const pricing = await computePricing({
-    listPrice: variant ? toNumber(variant.priceLyd) : toNumber(product.price),
-    couponCode,
-  });
   if (pricing.coupon && isInvalidCoupon(pricing.coupon)) {
     return { ok: false, reason: "INVALID_COUPON", message: pricing.coupon.reasonAr };
   }
@@ -322,28 +395,17 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
     return { ok: false, reason: "INVALID_PRICE" };
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  // ── PERF #2 (R136): the checks keep their EXACT original precedence —
+  // only the reads above moved (user read now rides wave 1, the inventory
+  // probe rides wave 2). A read resolving earlier cannot change which
+  // reason fires: the sequence below is byte-identical to the pre-fold
+  // check order (USER_NOT_FOUND → INSUFFICIENT_BALANCE → OUT_OF_STOCK,
+  // after the INVALID_COUPON / INVALID_PRICE gates above).
   if (!user) return { ok: false, reason: "USER_NOT_FOUND" };
 
   const currentBalance = toNumber(user.walletBalance);
   if (currentBalance < finalPrice) return { ok: false, reason: "INSUFFICIENT_BALANCE" };
 
-  // Cheap lock-free OUT_OF_STOCK fast-fail — the authoritative,
-  // race-free selection happens INSIDE the transaction with
-  // FOR UPDATE SKIP LOCKED (H4). Variant-scoped units are preferred;
-  // legacy product-level units (variant_id IS NULL) fulfill any variant.
-  const inventoryScope = variant
-    ? and(
-        eq(inventoryTable.productId, productId),
-        eq(inventoryTable.isSold, false),
-        or(eq(inventoryTable.variantId, variant.id), isNull(inventoryTable.variantId)),
-      )
-    : and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false));
-  const [inventoryFastCheck] = await db
-    .select({ id: inventoryTable.id })
-    .from(inventoryTable)
-    .where(inventoryScope)
-    .limit(1);
   if (!inventoryFastCheck) return { ok: false, reason: "OUT_OF_STOCK" };
 
   // ── Atomic transaction: inventory claim + balance deduction + coupon + order ──

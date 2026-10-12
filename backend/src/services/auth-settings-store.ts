@@ -54,7 +54,10 @@ function settingRows(result: unknown): Array<{ key: string; value: string }> {
   return rows;
 }
 
-export async function getSetting(key: string): Promise<Record<string, any>> {
+export async function getSetting(key: string): Promise<Record<string, unknown>> {
+  // R136 (SEC-1): typed — was `Record<string, any>` (the R135 sweep's
+  // tail). The store serves parsed JSON blobs; consumers narrow per
+  // field (typeof guards), which unknown enforces honestly.
   const result = await db.execute(
     sql`SELECT value FROM system_settings WHERE key = ${key} LIMIT 1`,
   );
@@ -82,11 +85,11 @@ export async function getSetting(key: string): Promise<Record<string, any>> {
  * consumers use index access with a `?? {}` default, which preserves the
  * exact miss semantics `Map.get()` gave them.
  */
-export async function getAllAuthSettings(): Promise<Record<string, Record<string, any>>> {
+export async function getAllAuthSettings(): Promise<Record<string, Record<string, unknown>>> {
   const result = await db.execute(
     sql`SELECT key, value FROM system_settings WHERE key LIKE 'auth.%'`,
   );
-  const settings: Record<string, Record<string, any>> = {};
+  const settings: Record<string, Record<string, unknown>> = {};
   for (const row of settingRows(result)) {
     try {
       settings[row.key] = JSON.parse(String(row.value ?? "{}"));
@@ -97,7 +100,7 @@ export async function getAllAuthSettings(): Promise<Record<string, Record<string
   return settings;
 }
 
-export async function upsertSetting(key: string, value: Record<string, any>) {
+export async function upsertSetting(key: string, value: Record<string, unknown>) {
   const json = JSON.stringify(value);
   await db.execute(sql`
     INSERT INTO system_settings (key, value, updated_at)
@@ -114,11 +117,16 @@ function maskSecret(v: string | undefined): string {
 
 export function buildMaskedConfig(
   meta: ProviderMeta,
-  config: Record<string, any>,
+  config: Record<string, unknown>,
 ): Record<string, string> {
   const masked: Record<string, string> = {};
   for (const field of meta.fields) {
-    masked[field.key] = field.isSecret ? maskSecret(config[field.key]) : (config[field.key] ?? "");
+    // R136 (SEC-1): typed — was `any` (the R135 sweep's tail). Provider
+    // config fields are strings by contract; non-strings mask to ""
+    // exactly like the old `?? ""` fallback did for nullish values.
+    const raw = config[field.key];
+    const value = typeof raw === "string" ? raw : "";
+    masked[field.key] = field.isSecret ? maskSecret(value || undefined) : value;
   }
   return masked;
 }

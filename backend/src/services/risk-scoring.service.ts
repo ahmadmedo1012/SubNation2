@@ -60,7 +60,10 @@ export interface ScoringResult {
   degraded: boolean;
 }
 
-export function isPipelineEnabled(): boolean {
+// R136 (SEC-1): un-exported — the only consumer is this module's own
+// persistence gate below (the R136 dead-export audit); the export let
+// un-tested reachability masquerade as a public surface.
+function isPipelineEnabled(): boolean {
   return process.env.RISK_PIPELINE_ENABLED === "true";
 }
 

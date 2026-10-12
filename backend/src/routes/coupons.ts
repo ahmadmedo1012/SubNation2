@@ -11,6 +11,7 @@ import {
   evaluateTotalDiscountCap,
   getActiveFlashSale,
   totalDiscountCapMessage,
+  type AppliedFlashSale,
 } from "../lib/pricing";
 import { getPricingConfig } from "../lib/pricing-config";
 import { roundLyd } from "../lib/money";
@@ -108,6 +109,49 @@ function formatCoupon(c: typeof couponsTable.$inferSelect) {
 }
 
 // ── User: validate a coupon ───────────────────────────────────────────────────
+
+// PERF #9 (R136): single-flight the flash-sale lookup for /validate —
+// concurrent validations share ONE in-flight loader instead of stampeding
+// the flash_sales row (the lib/pricing-config.ts `inFlight` idiom — the
+// same dedup the settings reads already use). Sequential callers always
+// re-read LIVE.
+//
+// DELIBERATE DEVIATION from the PERF #9 sketch, documented for the
+// reviewer: the 30 s in-process stage cache (routes/cart.ts:32-42
+// FLASH_SALE_CACHE_TTL_MS idiom) is NOT adopted here this wave.
+// coupons-validate.test.ts seeds DIFFERENT active flash sales across
+// sequential cases in ONE process (none → 45% → 30% → none → expired) and
+// asserts each response against the FRESH row — any TTL retention serves
+// the previous case's sale (empirically verified this wave: with the cart
+// idiom, the no-sale happy path warms a null stage, and the very next
+// 45%-cap case then 200s instead of 400ing; with withCatalogCache — which
+// never caches nulls — the 45% entry instead poisons the 30% under-cap
+// case with a 400). cart.ts solved exactly this by exporting
+// __resetFlashSaleCacheForTests and EDITING cart.test.ts to call it
+// (cart.test.ts:468); this wave's rules forbid editing the suite, and an
+// env-gated production-only cache has no repo precedent (every existing
+// cache is live-under-test + reset seam). The 30 s cache therefore lands
+// WITH the suite edit in a follow-up wave; the safe subset ships now:
+// this single-flight + the Promise.all fold below (2 serial round trips
+// → 1). /validate is advisory only — checkout re-prices LIVE with the
+// in-tx B2-06 STALE_FLASH_SALE guard, so a validation can never cause a
+// wrong charge.
+let flashSaleInFlight: Promise<AppliedFlashSale | null> | null = null;
+
+async function getActiveFlashSaleSingleFlight(): Promise<AppliedFlashSale | null> {
+  if (flashSaleInFlight) return flashSaleInFlight;
+  flashSaleInFlight = (async () => {
+    try {
+      return await getActiveFlashSale();
+    } finally {
+      // Cleared before the shared promise settles (the cache.ts
+      // inflightLoads shape) — the map can never outlive an in-flight
+      // load, and a post-settle caller re-reads live.
+      flashSaleInFlight = null;
+    }
+  })();
+  return flashSaleInFlight;
+}
 
 router.post("/validate", requireUser, async (req, res) => {
   // 2026-09-20 (free-infrastructure round): real user intent (applying a
@@ -214,7 +258,16 @@ router.post("/validate", requireUser, async (req, res) => {
   // — exactly what checkout computes — so a coupon that checkout
   // would refuse no longer validates green either. Every other
   // branch above (and every below-cap response) is byte-identical.
-  const flashSale = await getActiveFlashSale();
+  // PERF #9 (R136): the R123-E1 cap stage ran TWO serial reads per
+  // validate — getActiveFlashSale() (:217) then getPricingConfig() — on
+  // the keystroke/apply-frequency endpoint behind the couponValidate
+  // limiter. The two reads are independent of each other, so they now
+  // share one Promise.all wave (the routes/auth.ts:368 /me fold idiom):
+  // 2 round trips → 1. The flash-sale read rides the single-flight above.
+  const [flashSale, { maxTotalDiscountPct }] = await Promise.all([
+    getActiveFlashSaleSingleFlight(),
+    getPricingConfig(),
+  ]);
   const flashPct = flashSale?.discountPercent ?? 0;
   const flashDivisor = 1 - flashPct / 100;
   // Degenerate sale rows (discount ≥ 100%) cannot reconstruct a list
@@ -223,7 +276,6 @@ router.post("/validate", requireUser, async (req, res) => {
   // is honestly rejected (fail-closed).
   const listPriceForCap =
     flashPct > 0 && flashDivisor > 0 ? order_amount / flashDivisor : order_amount;
-  const { maxTotalDiscountPct } = await getPricingConfig();
   const cap = evaluateTotalDiscountCap({
     listPrice: listPriceForCap,
     flashDiscountPct: flashPct,

@@ -112,8 +112,10 @@ function wrapQueryMethod(
   thresholdMs: number,
 ): void {
   if (target[INSTRUMENTED]) return;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const original = (target.query as any).bind(target);
+  // R136 (SEC-1): typed — was `as any` (the R135 sweep's tail).
+  // PgClientLike.query is already (...args: unknown[]) => unknown, so
+  // the bind needs no cast at all.
+  const original = target.query.bind(target);
 
   // The pg .query signature is heavily overloaded (string, config,
   // string+params, string+params+callback, etc.). Mirror that with a
@@ -177,8 +179,9 @@ function wrapQueryMethod(
     return result;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  target.query = wrapped as any;
+  // R136 (SEC-1): typed — was `as any` (the R135 sweep's tail). The
+  // wrapped shape matches PgClientLike.query exactly.
+  target.query = wrapped;
   target[INSTRUMENTED] = true;
 }
 
@@ -205,8 +208,12 @@ export function instrumentDbPool(pool: unknown): void {
   //    also has wrapped query. Clients are pooled and reused, but
   //    once wrapped they stay wrapped (idempotent marker).
   const originalConnect = p.connect.bind(p);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (p as any).connect = (...args: unknown[]): unknown => {
+  // R136 (SEC-1): typed — was `(p as any).connect = ...` (the R135
+  // sweep's tail). The replacement keeps the callback-agnostic
+  // (...args) => unknown surface and is cast to pg's overloaded
+  // connect signature — one documented cast instead of a whole-object
+  // `as any` escape hatch.
+  p.connect = ((...args: unknown[]): unknown => {
     const result = originalConnect(...(args as []));
     if (result && typeof (result as Promise<PgClientLike>).then === "function") {
       return (result as Promise<PgClientLike>).then((client) => {
@@ -215,7 +222,7 @@ export function instrumentDbPool(pool: unknown): void {
       });
     }
     return result;
-  };
+  }) as typeof p.connect;
 
   // 3. Wire pool 'error' events to Sentry with the postgres subsystem
   //    tag. The shared/db package's own listener still logs to

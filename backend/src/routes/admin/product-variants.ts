@@ -27,6 +27,19 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 const router = Router();
 
+/**
+ * F8 (R136 security scan): duration_days and sort_order are int4 columns
+ * (`product_variants.duration_days` / `sort_order`) — the handlers below
+ * accepted any number ≥ 0 (Math.round, no ceiling), so a value above
+ * 2,147,483,647 overflowed the column and surfaced as 22001 → 500 on a
+ * money-adjacent admin surface. The ceilings below mirror the
+ * money-field bounds discipline already on this route (cost 0.01–100,000
+ * / price 0.01–1,000,000): far above any real catalog intent (a 274-year
+ * plan or a 10,000-deep sort lane is junk input, not a variant).
+ */
+const DURATION_DAYS_MAX = 100_000;
+const SORT_ORDER_MAX = 10_000;
+
 // AUD103-4-F13 (r103): no-store parity with the 98-F3 pattern —
 // this surface carries variant rows (pricing, SKUs); an intermediary must never
 // serve it from cache.
@@ -151,6 +164,30 @@ router.post("/products/:id/variants", async (req, res) => {
     return res
       .status(400)
       .json(createErrorResponse("يجب تحديد اسم الباقة أو المدة على الأقل", ErrorCode.INVALID_DATA));
+
+  // F8 (R136): int4 ceilings — see DURATION_DAYS_MAX / SORT_ORDER_MAX above.
+  // Only the overflow is refused; the existing ≥ 0 coercion semantics for
+  // lower junk (null / default) are untouched.
+  if (typeof body.duration_days === "number" && body.duration_days > DURATION_DAYS_MAX) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "مدة الصلاحية غير صالحة (0 - 100,000 يوم)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
+  if (typeof body.sort_order === "number" && body.sort_order > SORT_ORDER_MAX) {
+    return res
+      .status(400)
+      .json(
+        createErrorResponse(
+          "ترتيب العرض غير صالح (0 - 10,000)",
+          ErrorCode.INVALID_DATA,
+        ),
+      );
+  }
 
   // The pricing engine is the single source of truth: price always derives
   // from cost via the current rule unless an explicit override is provided
@@ -306,6 +343,17 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
   }
 
   if (body.duration_days !== undefined) {
+    // F8 (R136): int4 ceiling — see DURATION_DAYS_MAX above.
+    if (typeof body.duration_days === "number" && body.duration_days > DURATION_DAYS_MAX) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "مدة الصلاحية غير صالحة (0 - 100,000 يوم)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
     updates.durationDays =
       typeof body.duration_days === "number" && body.duration_days >= 0
         ? Math.round(body.duration_days)
@@ -315,6 +363,18 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
     updates.sku = body.sku.trim() ? body.sku.trim().slice(0, 160) : null;
   }
   if (typeof body.sort_order === "number" && body.sort_order >= 0) {
+    // F8 (R136): int4 ceiling — see SORT_ORDER_MAX above. Checked before
+    // the Math.round so a 10,000.9 does not round under the radar.
+    if (body.sort_order > SORT_ORDER_MAX) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "ترتيب العرض غير صالح (0 - 10,000)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
     updates.sortOrder = Math.round(body.sort_order);
   }
   if (typeof body.is_active === "boolean") {

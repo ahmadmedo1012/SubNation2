@@ -599,13 +599,16 @@ router.post("/change-password", requireAdmin, async (req, res) => {
       .status(400)
       .json(createErrorResponse("كلمة المرور الحالية والجديدة مطلوبتان", ErrorCode.INVALID_DATA));
   }
-  if (new_password.length < 8) {
+  // R136 (SEC-1, F6): floor 8 → 12 + a 128 ceiling — mirrors POST
+  // /api/admin/admins' create policy so both admin password entry
+  // points share one bound.
+  if (new_password.length < 12 || new_password.length > 128) {
     // Round-3 envelope drift fix: 400 without `code`.
     return res
       .status(400)
       .json(
         createErrorResponse(
-          "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل",
+          "كلمة المرور الجديدة يجب أن تكون من 12 إلى 128 حرفاً",
           ErrorCode.INVALID_PASSWORD_LENGTH,
         ),
       );

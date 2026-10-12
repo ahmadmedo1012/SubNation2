@@ -162,25 +162,55 @@ router.post("/pricing/recompute", async (req, res) => {
     before: number;
     after: number;
   }> = [];
-  // R125-I6 (A8 B-3): the per-variant UPDATE loop + the products.price
-  // refresh now ride ONE db.transaction. Previously a mid-loop failure
-  // (connection drop, constraint) left k of N variants at the NEW prices
-  // while the rest stayed old — the storefront serves MIN(active variant
-  // price) from that mixed set until a retry self-healed via the drift
-  // filter (shopper-visible intermediate state). Per-row logic is
-  // byte-preserved inside the tx; the sequential round-trip shape is
-  // deliberately kept (a set-based VALUES rewrite is a separate change).
-  // The audit row + bumpCatalogCache stay POST-commit — neither may land
-  // (or advertise a fresh generation) for a rolled-back recompute.
+  // R125-I6 (A8 B-3): the variant rewrite + the products.price refresh ride
+  // ONE db.transaction. Previously a mid-loop failure (connection drop,
+  // constraint) left k of N variants at the NEW prices while the rest
+  // stayed old — the storefront serves MIN(active variant price) from that
+  // mixed set until a retry self-healed via the drift filter
+  // (shopper-visible intermediate state). Per-row outcomes are preserved
+  // (same rows written, same RETURNING-driven counts).
+  //
+  // PERF #1 (R136): the per-variant sequential UPDATE loop is now a
+  // set-based VALUES rewrite. The R125 comment here used to say "the
+  // sequential round-trip shape is deliberately kept (a set-based VALUES
+  // rewrite is a separate change)" — this IS that separate change: one
+  // confirmed tap rewrites 263 prices = 263 sequential round trips
+  // holding row locks + one of 8 pool clients; the same tap is now ONE
+  // UPDATE ... FROM (VALUES ...) per ≤500-row chunk (probe-verified on
+  // pglite: the per-row BEFORE UPDATE triggers still fire inside the
+  // single statement, so the R125-I6 atomicity pins hold — a mid-chunk
+  // row failure aborts the whole statement and the tx rolls back every
+  // chunk before it). The audit row + bumpCatalogCache stay POST-commit —
+  // neither may land (or advertise a fresh generation) for a rolled-back
+  // recompute.
+  const PRICE_REWRITE_CHUNK = 500;
   const productsUpdatedCount = await db.transaction(async (tx) => {
+    const updatedIdSet = new Set<number>();
+    for (let offset = 0; offset < changes.length; offset += PRICE_REWRITE_CHUNK) {
+      const chunk = changes.slice(offset, offset + PRICE_REWRITE_CHUNK);
+      const valuesList = sql.join(
+        chunk.map((c) => sql`(${c.id}::int, ${String(c.computed)}::numeric)`),
+        sql`, `,
+      );
+      const result = await tx.execute(sql`
+        UPDATE product_variants AS v
+        SET price_lyd = s.p
+        FROM (VALUES ${valuesList}) AS s(id, p)
+        WHERE v.id = s.id
+        RETURNING v.id
+      `);
+      const rows =
+        (result as unknown as { rows?: Array<{ id: number }> }).rows ??
+        (result as unknown as Array<{ id: number }>) ??
+        [];
+      for (const row of rows) updatedIdSet.add(Number(row.id));
+    }
+    // Rows-affected honesty, identical to the old per-row RETURNING loop:
+    // count (and audit) only the rows the statement actually touched, and
+    // keep the audit's before/after trail in the drift-scan order.
+    variantsUpdated = updatedIdSet.size;
     for (const c of changes) {
-      const [updated] = await tx
-        .update(productVariantsTable)
-        .set({ priceLyd: String(c.computed) })
-        .where(eq(productVariantsTable.id, c.id))
-        .returning({ id: productVariantsTable.id });
-      if (updated) {
-        variantsUpdated += 1;
+      if (updatedIdSet.has(c.id)) {
         appliedChanges.push({ variant_id: c.id, before: c.current, after: c.computed });
       }
     }

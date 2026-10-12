@@ -105,15 +105,19 @@ router.get("/", async (_req, res) => {
  * sets up 2FA themselves on first login.
  */
 router.post("/", async (req, res) => {
-  const { username, password, display_name, permissions, role } = (req.body ?? {}) as {
-    username?: string;
-    password?: string;
-    display_name?: string;
-    permissions?: unknown;
-    role?: string;
-  };
+  // R136 (SEC-1, F6): the compile-time-only `as` cast is gone — the
+  // body is read as unknown and narrowed per field (the B2-F3 column-
+  // bound discipline), and the password floor rises 8 → 12 with a 128
+  // ceiling (argon2id + TOTP + lockouts carry the real defense; the
+  // floor is the cheap outer net).
+  const body: Record<string, unknown> = req.body ?? {};
+  const username = typeof body.username === "string" ? body.username : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  const display_name = typeof body.display_name === "string" ? body.display_name : undefined;
+  const permissions = body.permissions;
+  const role = typeof body.role === "string" ? body.role : undefined;
 
-  if (!username || typeof username !== "string" || username.trim().length < 3) {
+  if (username.trim().length < 3) {
     return res
       .status(400)
       .json(
@@ -130,11 +134,11 @@ router.post("/", async (req, res) => {
         createErrorResponse("اسم المستخدم طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
       );
   }
-  if (!password || typeof password !== "string" || password.length < 8) {
+  if (password.length < 12 || password.length > 128) {
     return res
       .status(400)
       .json(
-        createErrorResponse("كلمة المرور يجب أن تكون 8 أحرف على الأقل", ErrorCode.INVALID_DATA),
+        createErrorResponse("كلمة المرور يجب أن تكون من 12 إلى 128 حرفاً", ErrorCode.INVALID_DATA),
       );
   }
   const cleanPerms = sanitizePermissions(permissions);

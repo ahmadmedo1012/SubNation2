@@ -466,6 +466,45 @@ router.post(
         sql`select pg_advisory_xact_lock(hashtextextended(${"topup:" + userId}, 0))`,
       );
 
+      // ── PERF #12 (R136): three serial in-tx SELECTs → one guard statement ──
+      // The advisory-lock transaction used to run the B4-R1 duplicate
+      // probe → pendingCount → rejectedCount as THREE sequential round
+      // trips while holding the per-user pg_advisory_xact_lock. They now
+      // collapse into ONE statement: the two counts share a single
+      // wallet_topups scan via count(*) FILTER arms (the admin/stats.ts
+      // idiom), and the duplicate-receipt probe rides the same statement
+      // as a scalar subquery (an EXISTS alone would lose the existing
+      // row's id, which the 409 body surfaces as existing_topup_id).
+      // Guard semantics identical — the checks below keep their exact
+      // order (duplicate 409 BEFORE the pending-cap 429 BEFORE the
+      // auto-reject heuristic), and folding into one statement makes the
+      // three guards read ONE snapshot instead of three consecutive
+      // per-statement snapshots (the advisory lock already serializes
+      // same-user submissions, so no observable difference).
+      // Round trips inside the lock: 3 → 1.
+      const [guards] = await tx
+        .select({
+          pendingCount:
+            sql<number>`count(*) filter (where ${walletTopupsTable.status} = 'pending')`.mapWith(
+              Number,
+            ),
+          rejectedCount:
+            sql<number>`count(*) filter (where ${walletTopupsTable.status} = 'rejected')`.mapWith(
+              Number,
+            ),
+          duplicateId:
+            paymentReference !== null
+              ? sql<
+                  number | null
+                >`(select id from ${walletTopupsTable} where ${walletTopupsTable.userId} = ${userId} and ${walletTopupsTable.paymentReference} = ${paymentReference} and ${walletTopupsTable.amount} = ${roundLydString(amount)} and ${walletTopupsTable.status} = 'pending' limit 1)`
+              : // No reference (lypay optional-ref class) → the B4-R1 probe
+                // never ran pre-fold; a SQL null literal keeps the guard
+                // inert without a subquery.
+                sql<number | null>`null`,
+        })
+        .from(walletTopupsTable)
+        .where(eq(walletTopupsTable.userId, userId));
+
       // B4-R1: creation-time duplicate-receipt guard. With the reference
       // now mandatory, the remaining duplicate shape is the SAME receipt
       // resubmitted under a DIFFERENT idempotency key (or no key at all —
@@ -478,44 +517,20 @@ router.post(
       // false-positive on a bank that reuses receipt strings. Runs inside
       // the per-user advisory lock, so a double-submit race cannot slip
       // two rows past this check.
-      if (paymentReference !== null) {
-        const dup = await tx
-          .select({ id: walletTopupsTable.id })
-          .from(walletTopupsTable)
-          .where(
-            and(
-              eq(walletTopupsTable.userId, userId),
-              eq(walletTopupsTable.paymentReference, paymentReference),
-              eq(walletTopupsTable.amount, roundLydString(amount)),
-              eq(walletTopupsTable.status, "pending"),
-            ),
-          )
-          .limit(1);
-        if (dup.length > 0) {
-          return { kind: "duplicate" as const, existingId: dup[0].id };
-        }
+      if (guards.duplicateId != null) {
+        return { kind: "duplicate" as const, existingId: guards.duplicateId };
       }
 
-      const [{ pendingCount }] = await tx
-        .select({ pendingCount: count() })
-        .from(walletTopupsTable)
-        .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "pending")));
-
-      if (Number(pendingCount) >= MAX_PENDING) {
-        return { kind: "limited" as const, pendingCount: Number(pendingCount) };
+      if (guards.pendingCount >= MAX_PENDING) {
+        return { kind: "limited" as const, pendingCount: guards.pendingCount };
       }
-
-      const [{ rejectedCount }] = await tx
-        .select({ rejectedCount: count() })
-        .from(walletTopupsTable)
-        .where(and(eq(walletTopupsTable.userId, userId), eq(walletTopupsTable.status, "rejected")));
 
       // (Typed to the topup_status enum — replaces the legacy `as any`.)
       let initialStatus: "pending" | "rejected" = "pending";
       let initialAdminNote: string | null = null;
 
       // Recharge Verification Heuristic: Auto-reject serial abusers
-      if (Number(rejectedCount) >= 3) {
+      if (guards.rejectedCount >= 3) {
         initialStatus = "rejected";
         initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
       }

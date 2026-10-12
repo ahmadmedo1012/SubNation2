@@ -1,6 +1,6 @@
 import { db, flashSalesTable } from "@workspace/db";
 import { and, eq, lt } from "drizzle-orm";
-import { logAdminAlert } from "./alertLogger";
+import { logAdminAlertBatch } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 
@@ -47,23 +47,27 @@ export async function deactivateExpiredFlashSales(): Promise<void> {
       .set({ isActive: false })
       .where(and(eq(flashSalesTable.isActive, true), lt(flashSalesTable.endsAt, now)));
 
-    for (const row of expired) {
-      await logAdminAlert(
-        "flash_sale_expired",
-        `انتهت تخفيضات: ${row.title}`,
-        `تم إنهاء التخفيضات تلقائياً بعد انتهاء وقتها (${row.endsAt.toISOString()}).`,
-        // F5 (round-94 A6): the only logAdminAlert call without a dedupe
-        // key — two concurrently-running instances (blue-green window,
-        // unguarded leadership) read the same expired rows before either
-        // UPDATE lands → duplicate alerts that resolveAlertsByDedupeKey
-        // can never collapse afterwards. 7-day window: an expired sale
-        // can never expire again, so one alert per sale is the truth.
-        {
+    // PERF #5 (R136): the per-sale logAdminAlert loop (advisory-lock tx
+    // each: lock + SELECT + INSERT = 3 RTTs) is now ONE batched call —
+    // same rows, same keys, same outcomes.
+    //
+    // F5 (round-94 A6): every entry carries a dedupe key — two
+    // concurrently-running instances (blue-green window, unguarded
+    // leadership) read the same expired rows before either UPDATE lands
+    // → duplicate alerts that resolveAlertsByDedupeKey can never
+    // collapse afterwards. 7-day window: an expired sale can never
+    // expire again, so one alert per sale is the truth.
+    await logAdminAlertBatch(
+      expired.map((row) => ({
+        type: "flash_sale_expired" as const,
+        title: `انتهت تخفيضات: ${row.title}`,
+        message: `تم إنهاء التخفيضات تلقائياً بعد انتهاء وقتها (${row.endsAt.toISOString()}).`,
+        opts: {
           dedupeKey: `flash_sale_expired:${row.id}`,
           dedupeWindowMs: 7 * 24 * 60 * 60 * 1000,
         },
-      );
-    }
+      })),
+    );
 
     logger.info(
       { deactivated: expired.length, ids: expired.map((r) => r.id) },

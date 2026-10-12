@@ -1,7 +1,7 @@
 import { db, inventoryTable, productsTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { notifyLowStock } from "../telegram";
-import { logAdminAlert } from "./alertLogger";
+import { logAdminAlert, logAdminAlertBatch } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 
@@ -47,53 +47,73 @@ async function checkLowStock(): Promise<void> {
       .groupBy(inventoryTable.productId);
     const stockMap = new Map(stockRows.map((r) => [r.productId, Number(r.count)]));
 
+    // PERF #5 (R136): classify first, then ONE batched alert write for the
+    // whole sweep. The loop used to `await logAdminAlert(...)` per product —
+    // each call an advisory-lock transaction (lock + SELECT + INSERT = 3
+    // RTTs), so a 300-product sweep paid ~900 sequential round trips
+    // against the far DB. Same rows, same dedupe keys/outcomes, same
+    // notify gating — see logAdminAlertBatch for the semantics contract.
+    const zeroStock: Array<{ productId: number; name: string }> = [];
+    const lowStock: Array<{ productId: number; name: string; stock: number }> = [];
     for (const product of products) {
       const stock = stockMap.get(product.id) ?? 0;
 
       if (stock === 0 && !alertedZero.has(product.id)) {
+        zeroStock.push({ productId: product.id, name: product.name });
+      } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alertedLow.has(product.id)) {
+        lowStock.push({ productId: product.id, name: product.name, stock });
+      } else if (stock > LOW_STOCK_THRESHOLD) {
+        // Stock recovered — clear alerts so future drops trigger again
+        alertedLow.delete(product.id);
+        alertedZero.delete(product.id);
+      }
+    }
+
+    if (zeroStock.length > 0 || lowStock.length > 0) {
+      const outcomes = await logAdminAlertBatch([
+        ...zeroStock.map((p) => ({
+          type: "no_stock" as const,
+          title: `نفاد المخزون: ${p.name}`,
+          message: `المخزون وصل إلى صفر وحدات`,
+          // Round-5: dedupeKey survives process restarts — the in-memory
+          // Set below resets on every Render cold start, which is what
+          // flooded the admin drawer with 244 duplicate no_stock alerts.
+          opts: { dedupeKey: `stock:zero:${p.productId}` },
+        })),
+        ...lowStock.map((p) => ({
+          type: "low_stock" as const,
+          title: `مخزون منخفض: ${p.name}`,
+          message: `تبقّى ${p.stock} وحدة فقط`,
+          opts: { dedupeKey: `stock:low:${p.productId}` },
+        })),
+      ]);
+
+      zeroStock.forEach((p, i) => {
         // A6-P2-1 (round-93): log FIRST, notify SECOND. notifyLowStock
         // used to fire before the dedupe check, so every cold start
         // re-pinged the operator's phone for each permanently-out-of-
         // stock product even while the drawer insert was correctly
         // suppressed (~6 Telegram messages per deploy). All notification
         // channels now gate on the dedupe outcome.
-        // Round-5: dedupeKey survives process restarts — the in-memory
-        // Set below resets on every Render cold start, which is what
-        // flooded the admin drawer with 244 duplicate no_stock alerts.
-        const outcome = await logAdminAlert(
-          "no_stock",
-          `نفاد المخزون: ${product.name}`,
-          `المخزون وصل إلى صفر وحدات`,
-          { dedupeKey: `stock:zero:${product.id}` },
-        );
-        if (!outcome.suppressed) {
-          notifyLowStock({ productName: product.name, stockCount: 0, productId: product.id });
+        if (!outcomes[i].suppressed) {
+          notifyLowStock({ productName: p.name, stockCount: 0, productId: p.productId });
         }
-        alertedZero.add(product.id);
-        alertedLow.delete(product.id);
-        logger.info({ productId: product.id, productName: product.name }, "Zero stock alert sent");
-      } else if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alertedLow.has(product.id)) {
+        alertedZero.add(p.productId);
+        alertedLow.delete(p.productId);
+        logger.info({ productId: p.productId, productName: p.name }, "Zero stock alert sent");
+      });
+      lowStock.forEach((p, i) => {
         // A6-P2-1 (round-93): same notify-gating as the zero-stock branch.
-        const outcome = await logAdminAlert(
-          "low_stock",
-          `مخزون منخفض: ${product.name}`,
-          `تبقّى ${stock} وحدة فقط`,
-          { dedupeKey: `stock:low:${product.id}` },
-        );
-        if (!outcome.suppressed) {
-          notifyLowStock({ productName: product.name, stockCount: stock, productId: product.id });
+        if (!outcomes[zeroStock.length + i].suppressed) {
+          notifyLowStock({ productName: p.name, stockCount: p.stock, productId: p.productId });
         }
-        alertedLow.add(product.id);
-        alertedZero.delete(product.id);
+        alertedLow.add(p.productId);
+        alertedZero.delete(p.productId);
         logger.info(
-          { productId: product.id, productName: product.name, stock },
+          { productId: p.productId, productName: p.name, stock: p.stock },
           "Low stock alert sent",
         );
-      } else if (stock > LOW_STOCK_THRESHOLD) {
-        // Stock recovered — clear alerts so future drops trigger again
-        alertedLow.delete(product.id);
-        alertedZero.delete(product.id);
-      }
+      });
     }
   } catch (err) {
     logger.error({ err }, "Stock watcher error");

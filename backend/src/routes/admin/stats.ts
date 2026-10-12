@@ -231,7 +231,10 @@ async function computeChartData(days: number) {
   ]);
 
   // `r.day` is already a Tripoli calendar date — use it verbatim as key.
-  const orderMap = new Map<string, any>();
+  // R136 (SEC-1): typed — was `Map<string, any>` (the R135 sweep's
+  // tail); db.execute rows are Record<string, unknown> and the
+  // consumer narrows per field below.
+  const orderMap = new Map<string, Record<string, unknown>>();
   for (const r of orderRows.rows ?? orderRows) {
     orderMap.set(String(r.day).slice(0, 10), r);
   }

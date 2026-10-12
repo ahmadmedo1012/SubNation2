@@ -78,9 +78,12 @@ router.get("/referrals", requireAdmin, async (req, res) => {
       FROM referral_events
     `),
   ]);
-  const rows = rowsFromResult<any>(rowsRaw);
-  const topReferrers = rowsFromResult<any>(topReferrersRaw);
-  const [statsRow = {}] = rowsFromResult<any>(statsRaw);
+  // R136 (SEC-1): typed — was `rowsFromResult<any>` ×3 (the R135
+  // sweep's tail). db.execute yields Record<string, unknown> rows; the
+  // consumers narrow per field exactly as before.
+  const rows = rowsFromResult<Record<string, unknown>>(rowsRaw);
+  const topReferrers = rowsFromResult<Record<string, unknown>>(topReferrersRaw);
+  const [statsRow = {}] = rowsFromResult<Record<string, unknown>>(statsRaw);
 
   const searchStr = search.toLowerCase();
   let list = rows.map((r) => ({

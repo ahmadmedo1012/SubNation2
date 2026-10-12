@@ -6,7 +6,7 @@ import {
   productVariantsTable,
   productsTable,
 } from "@workspace/db";
-import { and, count, desc, eq, inArray, asc, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, asc, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
@@ -345,7 +345,12 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
     return res.status(400).json(createErrorResponse(fieldError, ErrorCode.INVALID_DATA));
   }
 
-  const updateData: Record<string, any> = {};
+  // R136 (PF-2): typed update payload — was `Record<string, any>`, which
+  // silently accepted typos and non-column values all the way to the
+  // drizzle .set() boundary. Partial<typeof productsTable.$inferInsert>
+  // keeps every legal field (incl. the explicit-null SEO/cost clears)
+  // while making an unknown key a compile error.
+  const updateData: Partial<typeof productsTable.$inferInsert> = {};
   if (data.name != null) updateData.name = data.name;
   if (data.description != null) updateData.description = data.description;
   if (data.image_url != null) updateData.imageUrl = data.image_url;
@@ -810,22 +815,84 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
     // the SAME email twice for the same product. Keys mirror the parser
     // ('c:<email>' for credentials, 'k:<code>' for code-only).
     //
-    // F7: extraDetails rows are encrypted at rest now — key existing rows
-    // by their DECRYPTED value (safeDecrypt passes legacy plaintext
-    // through) so the comparison stays apples-to-apples with the incoming
-    // plaintext.
-    const existing = await tx
-      .select({
-        accountEmail: inventoryTable.accountEmail,
-        extraDetails: inventoryTable.extraDetails,
-      })
-      .from(inventoryTable)
-      .where(eq(inventoryTable.productId, productId));
+    // PERF #3 (R136): the probe no longer SELECTs EVERY inventory row of
+    // the product (no LIMIT — the exact shape the sibling GET route
+    // capped at 200 rows in R122 because it 500'd at catalog scale) and
+    // no longer runs one AES-GCM decrypt per extraDetails-bearing row.
+    // Instead:
+    //   (a) emails — ONE `lower(account_email) IN (...)` probe scoped to
+    //       this product over the ≤500 DISTINCT submitted emails (chunked
+    //       if a future route ever lifts the 500 cap), matching the old
+    //       case-insensitive `c:<lower(email)>` keys exactly. The
+    //       exact-duplicate guarantee for emails is byte-identical to the
+    //       old whole-table scan: a submitted email is a dupe iff an
+    //       existing row of this product carries the same lowercased
+    //       email — the probe returns precisely those rows.
+    //   (b) code-only rows — the F7 suite (inventory-encryption.test.ts
+    //       "server-side dedup still catches a re-uploaded code") pins the
+    //       decrypt-keyed `k:<code>` dedup, so it stays — but as a bounded
+    //       probe: ONLY the product's code-shaped rows
+    //       (account_email IS NULL/'' AND extra_details IS NOT NULL — the
+    //       exact rows whose keys the old scan could ever produce, since
+    //       a row WITH an email never contributed a `k:` key), and only
+    //       when the submission itself carries code-only entries. The
+    //       old shape also decrypted every credential row's recovery
+    //       notes just to throw the result away (the `else if` could
+    //       never fire for those rows) — that waste is gone outright.
+    //
+    // The advisory lock + single tx + batch INSERT below are unchanged
+    // (AUD103-4-F1): the probe rewrite only changes HOW the existing-key
+    // set is materialized, not which keys it contains.
     const existingKeys = new Set<string>();
-    for (const r of existing) {
-      if (r.accountEmail) existingKeys.add(`c:${r.accountEmail.toLowerCase()}`);
-      else if (r.extraDetails)
-        existingKeys.add(`k:${(safeDecrypt(r.extraDetails) ?? "").toLowerCase()}`);
+
+    // (a) email probe — case-insensitive parity with the old `c:` keys.
+    const submittedEmails = [
+      ...new Set(
+        items.flatMap((item) => (item.accountEmail ? [item.accountEmail.toLowerCase()] : [])),
+      ),
+    ];
+    const EMAIL_PROBE_CHUNK = 500;
+    for (let offset = 0; offset < submittedEmails.length; offset += EMAIL_PROBE_CHUNK) {
+      const emailChunk = submittedEmails.slice(offset, offset + EMAIL_PROBE_CHUNK);
+      const emailRows = await tx
+        .select({ accountEmail: inventoryTable.accountEmail })
+        .from(inventoryTable)
+        .where(
+          and(
+            eq(inventoryTable.productId, productId),
+            inArray(sql`lower(${inventoryTable.accountEmail})`, emailChunk),
+          ),
+        );
+      for (const r of emailRows) {
+        if (r.accountEmail) existingKeys.add(`c:${r.accountEmail.toLowerCase()}`);
+      }
+    }
+
+    // (b) bounded code probe — submission-gated, code-shaped rows only.
+    // F7: extraDetails rows are encrypted at rest — key existing rows by
+    // their DECRYPTED value (safeDecrypt passes legacy plaintext through)
+    // so the comparison stays apples-to-apples with the incoming
+    // plaintext. Null/undecryptable rows can never collide with a real
+    // submitted key (`k:<code>` is always non-empty), so they are skipped
+    // instead of minting phantom empty keys.
+    const hasCodeOnlyItems = items.some((item) => !item.accountEmail && item.plainExtra);
+    if (hasCodeOnlyItems) {
+      const codeRows = await tx
+        .select({ extraDetails: inventoryTable.extraDetails })
+        .from(inventoryTable)
+        .where(
+          and(
+            eq(inventoryTable.productId, productId),
+            // `!r.accountEmail` parity: NULL or empty-string emails are
+            // the rows the old scan fed into the `k:` branch.
+            or(isNull(inventoryTable.accountEmail), eq(inventoryTable.accountEmail, "")),
+            isNotNull(inventoryTable.extraDetails),
+          ),
+        );
+      for (const r of codeRows) {
+        const code = safeDecrypt(r.extraDetails);
+        if (code) existingKeys.add(`k:${code.toLowerCase()}`);
+      }
     }
 
     const seenInBatch = new Set<string>();

@@ -34,6 +34,10 @@ import { idempotency } from "../idempotency";
  *      on the sentinel SET NX — exactly one proceeds to the handler, the
  *      loser is answered with the same 409 IDEMPOTENCY_IN_FLIGHT as the
  *      GET path (previously the SET NX result was ignored and BOTH ran).
+ * 11. F5 (R136): an Idempotency-Key longer than 128 chars → 400
+ *      INVALID_DATA with zero Redis writes (the header value becomes
+ *      the Redis cache key — the cap bounds key memory); exactly 128
+ *      dedups normally.
  *
  * The Redis singleton is mocked with the capture client below; the raced
  * wrapper is a passthrough (its timeout behavior is pinned in
@@ -344,6 +348,78 @@ describe("idempotency middleware — pass-through branches (availability over st
       // Availability over strict guarantees — both ran live; the durable
       // in-tx idempotency_keys claim is the backstop on this path.
       expect(handler).toHaveBeenCalledTimes(2);
+    } finally {
+      close();
+    }
+  });
+});
+
+// R136 (SEC-1, F5): the raw header value becomes part of the Redis cache
+// key — the middleware only floored at 8 chars, so Node's ~16 KB header
+// ceiling let multi-KB keys straight into Redis key memory (24 h TTL ×
+// every distinct junk key). The cap refuses > 128 chars with 400
+// INVALID_DATA (same family as wallet.ts's paymentReference bound).
+describe("idempotency middleware — F5 (R136): Idempotency-Key length cap", () => {
+  it("an Idempotency-Key longer than 128 chars → 400 INVALID_DATA, handler NEVER runs, Redis NEVER touched", async () => {
+    const double = installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const res = await post(url, { amount: 50 }, { "Idempotency-Key": "k".repeat(129) });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      // The refusal is a client bug surfaced — not a dedup decision, so
+      // the key is never claimed and the money mutation never runs.
+      expect(handler).not.toHaveBeenCalled();
+      expect(getRedisClientMock).not.toHaveBeenCalled();
+      expect(double.setCalls).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("a multi-KB key (the Node ~16KB header abuse shape) → same 400, no Redis write", async () => {
+    const double = installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const res = await post(url, { amount: 50 }, { "Idempotency-Key": "x".repeat(4_096) });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      expect(handler).not.toHaveBeenCalled();
+      expect(double.setCalls).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("exactly 128 chars is the accepted boundary — normal dedup, full key embedded in the cache key", async () => {
+    const double = installTtlRedis();
+    const handler = vi.fn((_req, res) => {
+      res.status(201).json({ ok: true });
+    });
+    const { url, close } = await listen(buildApp(handler));
+    try {
+      const key = "b".repeat(128);
+      const res = await post(url, { amount: 50 }, { "Idempotency-Key": key });
+      expect(res.status).toBe(201);
+      await settle();
+
+      // The boundary key deduped normally: sentinel + cached response.
+      const cacheKey = cacheKeyFor(key);
+      expect(double.setCalls.map((c) => c.key)).toEqual([cacheKey, cacheKey]);
+      expect(double.setCalls[1]?.ex).toBe(24 * 60 * 60);
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // And the retry REPLAYS (the cap did not poison the claim).
+      const replay = await post(url, { amount: 50 }, { "Idempotency-Key": key });
+      expect(replay.status).toBe(201);
+      expect(replay.headers.get("Idempotent-Replayed")).toBe("true");
+      expect(handler).toHaveBeenCalledTimes(1);
     } finally {
       close();
     }

@@ -60,10 +60,27 @@ import { logger } from "../lib/logger";
 // Redis and durable layers. The middleware re-imports them; the direct
 // idempotency.test.ts suite stays green (import-parity is pinned there).
 import { canonicalBodyHash, IDEMPOTENCY_KEY_REUSE_MESSAGE } from "../lib/idempotency-body-hash";
+// R136 (SEC-1, F5): the length-cap rejection answers with the repo's
+// standard INVALID_DATA envelope (createErrorResponse), mirroring the
+// paymentReference 100-char handler bound in routes/wallet.ts.
+import { ErrorCode, createErrorResponse } from "../lib/errors";
 
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60; // 24h
 const IN_FLIGHT_TTL_SECONDS = 60; // short — covers retry-during-execution
 const IN_FLIGHT_SENTINEL = "__in_flight__";
+
+/**
+ * F5 (R136 security scan): the raw header becomes part of the Redis
+ * cache key (buildCacheKey below) — the old validation only enforced
+ * an 8-char floor, so Node's ~16 KB header cap let multi-KB
+ * Idempotency-Keys flow straight into Redis key memory (24 h TTL ×
+ * every distinct junk key = unbounded bloat on a free-tier budget).
+ * 128 chars sits far above every legitimate client key shape (uuid /
+ * fingerprint hex / url-safe token) while keeping the key + envelope
+ * well under the 16 KB header ceiling — the same column-aligned-bound
+ * family as wallet.ts's paymentReference 100-char cap.
+ */
+const IDEMPOTENCY_KEY_MAX_LENGTH = 128;
 
 interface CachedResponse {
   hash: string;
@@ -202,6 +219,35 @@ export function idempotency(opts: IdempotencyOptions) {
         "mutation arrived without Idempotency-Key — pass-through; tighten in follow-up",
       );
       next();
+      return;
+    }
+
+    // F5 (R136 security scan): an over-long key is a CLIENT BUG, not a
+    // missing-header transition case — refuse it with 400 BEFORE the
+    // key ever reaches Redis (see IDEMPOTENCY_KEY_MAX_LENGTH above).
+    // Deliberately AFTER the subject guard: a subject-less mount is a
+    // programming error that passes through anyway; this branch only
+    // judges actual key material. The handler below never runs and the
+    // key is never claimed, so a corrected retry with a sane key works.
+    if (userKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+      logger.warn(
+        {
+          route: routeKey,
+          path: req.path,
+          subjectKind,
+          subjectId,
+          keyLength: userKey.length,
+        },
+        "Idempotency-Key exceeds 128 chars — refusing (Redis key-bloat guard, F5)",
+      );
+      res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "معرف العملية طويل جداً (الحد الأقصى 128 حرفاً)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
       return;
     }
 

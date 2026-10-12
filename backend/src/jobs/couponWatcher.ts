@@ -1,7 +1,7 @@
 import { db, couponsTable } from "@workspace/db";
 import { eq, and, isNotNull, gt, lte, lt } from "drizzle-orm";
 import { notifyCouponExpiringSoon } from "../telegram";
-import { logAdminAlert } from "./alertLogger";
+import { logAdminAlertBatch } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
 
@@ -56,18 +56,21 @@ export async function checkExpiringCoupons(): Promise<void> {
       )
       .returning({ id: couponsTable.id, code: couponsTable.code });
 
-    for (const coupon of expired) {
-      // One alert per disabled coupon — dedupeKey guards the
-      // double-scheduler window where two passes could select the same
-      // row before either UPDATE lands.
-      await logAdminAlert(
-        "coupon_expired",
-        `انتهى كوبون وأُوقف تلقائياً: ${coupon.code}`,
-        "تجاوز الكوبون وقت انتهائه فأُوقف تلقائياً — لن يقبل استخدامات جديدة.",
-        { dedupeKey: `coupon:expired:${coupon.id}` },
-      );
-    }
+    // PERF #5 (R136): the per-coupon logAdminAlert loop (advisory-lock tx
+    // each: lock + SELECT + INSERT = 3 RTTs) is now ONE batched call for
+    // every disabled coupon — same rows, same dedupe keys, same outcomes
+    // (the dedupeKey still guards the double-scheduler window where two
+    // passes could select the same row before either UPDATE lands).
     if (expired.length > 0) {
+      await logAdminAlertBatch(
+        expired.map((coupon) => ({
+          type: "coupon_expired" as const,
+          title: `انتهى كوبون وأُوقف تلقائياً: ${coupon.code}`,
+          message:
+            "تجاوز الكوبون وقت انتهائه فأُوقف تلقائياً — لن يقبل استخدامات جديدة.",
+          opts: { dedupeKey: `coupon:expired:${coupon.id}` },
+        })),
+      );
       logger.info(
         { category: "coupons", disabled: expired.length, codes: expired.map((c) => c.code) },
         "couponWatcher: auto-disabled expired coupon(s)",
@@ -86,6 +89,14 @@ export async function checkExpiringCoupons(): Promise<void> {
         ),
       );
 
+    const expiringEntries: Array<{
+      couponId: number;
+      code: string;
+      title: string;
+      message: string;
+      expiresAt: Date;
+      hoursLeft: number;
+    }> = [];
     for (const coupon of expiringSoon) {
       if (alertedExpiring.has(coupon.id)) continue;
       const expiresAt = coupon.expiresAt!;
@@ -102,17 +113,36 @@ export async function checkExpiringCoupons(): Promise<void> {
       // now gates on the dedupe outcome, so a restart inside the window
       // no longer re-pings the operator's phone while the drawer insert
       // is correctly suppressed.
-      const outcome = await logAdminAlert(
-        "coupon_expiring",
-        `كوبون يوشك على الانتهاء: ${coupon.code}`,
-        `ينتهي خلال ${hrs} ساعة — في ${expStr}`,
-        { dedupeKey: `coupon:expiring:${coupon.id}` },
+      expiringEntries.push({
+        couponId: coupon.id,
+        code: coupon.code,
+        title: `كوبون يوشك على الانتهاء: ${coupon.code}`,
+        message: `ينتهي خلال ${hrs} ساعة — في ${expStr}`,
+        expiresAt,
+        hoursLeft,
+      });
+    }
+
+    if (expiringEntries.length > 0) {
+      // PERF #5 (R136): ONE batched drawer write (dedupe SELECT +
+      // multi-row INSERT) for every expiring coupon instead of the
+      // per-coupon advisory-lock transactions — same keys, same
+      // outcomes, same notify gating.
+      const outcomes = await logAdminAlertBatch(
+        expiringEntries.map((e) => ({
+          type: "coupon_expiring" as const,
+          title: e.title,
+          message: e.message,
+          opts: { dedupeKey: `coupon:expiring:${e.couponId}` },
+        })),
       );
-      if (!outcome.suppressed) {
-        notifyCouponExpiringSoon(coupon.code, expiresAt, hoursLeft);
-      }
-      alertedExpiring.add(coupon.id);
-      logger.info({ couponCode: coupon.code, hoursLeft }, "Coupon expiry alert sent");
+      expiringEntries.forEach((e, i) => {
+        if (!outcomes[i].suppressed) {
+          notifyCouponExpiringSoon(e.code, e.expiresAt, e.hoursLeft);
+        }
+        alertedExpiring.add(e.couponId);
+        logger.info({ couponCode: e.code, hoursLeft: e.hoursLeft }, "Coupon expiry alert sent");
+      });
     }
 
     // Clean up IDs of coupons that have already expired (no need to track them)

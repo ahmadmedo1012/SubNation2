@@ -49,7 +49,36 @@ void 0;
 router.get("/", requireUser, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  // PERF #7 (R136): the user read and the referral aggregate were two
+  // SERIAL round trips; both are keyed on userId with no dependency
+  // between them, so they now share one Promise.all wave (the
+  // routes/wallet.ts:78 / routes/auth.ts:368 fold idiom). B6-03 (R116)
+  // hygiene, routes/wallet.ts:124-131 precedent: the user read projects
+  // ONLY the columns the response renders — a bare select() pulled every
+  // users column over the wire for nothing. The 401 check keeps its
+  // position (the counts were merely computed concurrently, discarded on
+  // the missing-user path — the response is byte-identical).
+  const [[user], [referralCounts]] = await Promise.all([
+    db
+      .select({
+        loyaltyPoints: usersTable.loyaltyPoints,
+        loyaltyTier: usersTable.loyaltyTier,
+        lifetimeSpend: usersTable.lifetimeSpend,
+        referralCode: usersTable.referralCode,
+        referredBy: usersTable.referredBy,
+      })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        credited: sql<number>`(count(*) filter (where ${referralEventsTable.status} = 'credited'))::int`,
+        pending: sql<number>`(count(*) filter (where ${referralEventsTable.status} = 'pending'))::int`,
+      })
+      .from(referralEventsTable)
+      .where(eq(referralEventsTable.referrerId, userId)),
+  ]);
   if (!user)
     // AUD103-4-F2 (r103): one failure class, one shape — 401
     // ACCOUNT_NOT_FOUND like /api/auth/me and /api/wallet (was 404
@@ -63,14 +92,6 @@ router.get("/", requireUser, async (req, res) => {
   // referrals_pending were clamped to the newest 200 rows. One exact
   // aggregate (COUNT + FILTER per status) replaces the capped row fetch;
   // the numbers are now true for any history size.
-  const [referralCounts] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      credited: sql<number>`(count(*) filter (where ${referralEventsTable.status} = 'credited'))::int`,
-      pending: sql<number>`(count(*) filter (where ${referralEventsTable.status} = 'pending'))::int`,
-    })
-    .from(referralEventsTable)
-    .where(eq(referralEventsTable.referrerId, userId));
   const referralsTotal = referralCounts?.total ?? 0;
   const creditedCount = referralCounts?.credited ?? 0;
   const pendingCount = referralCounts?.pending ?? 0;

@@ -15,7 +15,11 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
  *   - sync throws are reported and swallowed;
  *   - async rejections are reported (once) and resolve to undefined.
  */
-export function isolate<T extends (...args: any[]) => any>(component: string, fn: T): T {
+// R136 (SEC-1): typed — was `(...args: any[]) => any` (the R135 sweep's
+// tail). `never[]` params keep the constraint matching EVERY function
+// shape (never is assignable to everything, so a (a: number)=>number
+// still satisfies it) while `unknown` output drops the any-escape.
+export function isolate<T extends (...args: never[]) => unknown>(component: string, fn: T): T {
   const report = (err: unknown): void => {
     monitoringErrorsTotal.inc({ component });
     logger.error({ err, component, category: "monitoring" }, "Instrumentation error");

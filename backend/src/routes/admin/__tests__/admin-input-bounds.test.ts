@@ -184,7 +184,7 @@ describe("B2-F3 — POST /api/admin/admins username bound (varchar 100)", () => 
       const token = await seedAdminToken();
       const res = await jsonFetch(url, "/api/admin/admins", "POST", token, {
         username: "u".repeat(101),
-        password: "longenough1",
+        password: "longenough123",
         permissions: ["orders"],
       });
       expect(res.status).toBe(400);
@@ -203,7 +203,7 @@ describe("B2-F3 — POST /api/admin/admins username bound (varchar 100)", () => 
       const token = await seedAdminToken();
       const res = await jsonFetch(url, "/api/admin/admins", "POST", token, {
         username: "v".repeat(100),
-        password: "longenough1",
+        password: "longenough123",
         permissions: ["orders"],
       });
       expect(res.status).toBe(201);

@@ -217,20 +217,26 @@ export class TopupService {
    * nullable so legacy + automated-gateway approvals stay valid.
    */
   static async approve(topupId: number, adminNote: string | null, reviewedBy?: string | null) {
-    const [topup] = await db
-      .select()
+    // PERF #12 bonus (R136): topup → user were two SERIAL pre-tx reads (the
+    // user read is keyed on topup.userId — a DATA dependency, so
+    // parallelizing is impossible); one LEFT JOIN folds them into a single
+    // round trip. The user row is re-read FRESH inside the tx anyway (see
+    // the r4 M3 optimistic-lock comment at the freshUser read below — the
+    // outer row only feeds the post-tx user.phone notification and the
+    // belt-and-suspenders `if (user)` guards), so the join changes nothing
+    // observable: same 404, same 400 status gate, same null tolerance
+    // (ON DELETE RESTRICT means a live topup always has its user row).
+    const [row] = await db
+      .select({ topup: walletTopupsTable, user: usersTable })
       .from(walletTopupsTable)
+      .leftJoin(usersTable, eq(usersTable.id, walletTopupsTable.userId))
       .where(eq(walletTopupsTable.id, topupId))
       .limit(1);
 
-    if (!topup) throw new ServiceError(404, "طلب الشحن غير موجود");
+    if (!row) throw new ServiceError(404, "طلب الشحن غير موجود");
+    const topup = row.topup;
+    const user = row.user;
     if (topup.status !== "pending") throw new ServiceError(400, "الطلب تمت معالجته مسبقاً");
-
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, topup.userId))
-      .limit(1);
 
     // The same bank-transfer reference can back multiple pending topups (a
     // user resubmits the same receipt; MAX_PENDING=3 permits it), and two

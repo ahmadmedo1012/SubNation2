@@ -204,6 +204,215 @@ export async function logAdminAlert(
   }
 }
 
+// ── PERF #5 (R136): batched sweep twin of logAdminAlert ─────────────────────
+//
+// The cron watchers (stockWatcher / couponWatcher / flashSaleWatcher) used
+// to call logAdminAlert once PER product/coupon/sale inside their sweep
+// loops — each call an advisory-lock transaction (lock + SELECT + INSERT
+// = 3 RTTs), so a 300-product stock sweep paid ~900 sequential round
+// trips against the far DB. logAdminAlertBatch collapses a whole sweep to
+// TWO statements: ONE dedupe SELECT over every keyed entry, then ONE
+// multi-row INSERT for the unsuppressed remainder.
+//
+// No advisory lock here, deliberately (verified tolerable by the R136
+// PERF #5 exploration): the single form's pg_advisory_xact_lock (99-R3)
+// serializes two CONCURRENT same-key writers — the documented dual-leader
+// drain window. The batched callers are the scheduler sweeps, which run
+// under the leader lease (one leader at a time) with the watchers'
+// in-memory Sets as a second intra-process guard, so that race is already
+// narrowed to a leader-handover instant; its worst case is one duplicate
+// drawer row that resolveAlertsByDedupeKey / consolidateStockAlertSpam can
+// collapse afterwards (the drawer is a state surface, not an append-only
+// ledger). Dropping the per-alert lock+tx overhead is worth that trade —
+// the single-alert form keeps the strict serialization for every other
+// caller.
+//
+// Semantics are the sequential form's, exactly:
+//   - per-entry dedupe windows are honored (mixed windows in one batch
+//     work: the SELECT uses the EARLIEST cutoff — the longest window, a
+//     superset — and each entry re-checks its OWN cutoff in JS);
+//   - a duplicate dedupe key WITHIN one batch behaves like N sequential
+//     calls: the first entry claims the insert, later same-key entries
+//     are suppressed pointing at that row's id;
+//   - keyless entries always insert (the one-off contract);
+//   - same AdminAlertOutcome per entry (indexed, order-preserving) so
+//     callers keep gating Telegram side channels on `suppressed`;
+//   - same socket fan-out per inserted row (one dynamic import, N emits).
+export interface AdminAlertBatchEntry {
+  type: AlertType;
+  title: string;
+  message: string;
+  opts?: AlertDedupeOpts;
+}
+
+const DEFAULT_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export async function logAdminAlertBatch(
+  entries: readonly AdminAlertBatchEntry[],
+): Promise<AdminAlertOutcome[]> {
+  if (entries.length === 0) return [];
+  // Fail-closed placeholder (side channels gate on `suppressed`): every
+  // index is overwritten by the verdict loops below or by the catch path.
+  const outcomes: AdminAlertOutcome[] = Array.from({ length: entries.length }, () => ({
+    suppressed: true,
+    id: null,
+  }));
+  try {
+    const now = Date.now();
+
+    // Keyed entries: first appearance per key owns the insert.
+    const firstIndexByKey = new Map<string, number>();
+    const keyedKeys: string[] = [];
+    const keylessIndices: number[] = [];
+    for (let i = 0; i < entries.length; i++) {
+      const key = entries[i].opts?.dedupeKey;
+      if (key) {
+        if (!firstIndexByKey.has(key)) {
+          firstIndexByKey.set(key, i);
+          keyedKeys.push(key);
+        }
+      } else {
+        keylessIndices.push(i);
+      }
+    }
+
+    // ONE dedupe SELECT — earliest (longest-window) cutoff, then each
+    // entry re-checks its own cutoff against the fetched rows, which is
+    // exactly what N per-entry SELECTs would have returned.
+    const rowsByKey = new Map<string, Array<{ id: number; createdAt: Date }>>();
+    if (keyedKeys.length > 0) {
+      let earliestCutoffMs = Number.POSITIVE_INFINITY;
+      for (const key of keyedKeys) {
+        const opts = entries[firstIndexByKey.get(key)!].opts;
+        const cutoffMs = now - (opts?.dedupeWindowMs ?? DEFAULT_DEDUPE_WINDOW_MS);
+        if (cutoffMs < earliestCutoffMs) earliestCutoffMs = cutoffMs;
+      }
+      const priorRows = await db
+        .select({
+          dedupeKey: adminAlertsTable.dedupeKey,
+          id: adminAlertsTable.id,
+          createdAt: adminAlertsTable.createdAt,
+        })
+        .from(adminAlertsTable)
+        .where(
+          and(
+            inArray(adminAlertsTable.dedupeKey, keyedKeys),
+            gt(adminAlertsTable.createdAt, new Date(earliestCutoffMs)),
+          ),
+        );
+      for (const row of priorRows) {
+        if (row.dedupeKey === null) continue; // inArray guarantees non-null; belt+braces
+        const list = rowsByKey.get(row.dedupeKey);
+        if (list) list.push({ id: row.id, createdAt: row.createdAt });
+        else rowsByKey.set(row.dedupeKey, [{ id: row.id, createdAt: row.createdAt }]);
+      }
+    }
+
+    // Per-entry verdicts in submission order.
+    const insertIndices: number[] = [...keylessIndices];
+    const claimedByKey = new Map<string, number>(); // dedupeKey → entry index claiming the insert
+    const suppressedByClaim = new Map<number, number>(); // entry index → claiming entry index
+    for (let i = 0; i < entries.length; i++) {
+      const key = entries[i].opts?.dedupeKey;
+      if (!key) continue; // keyless: already on the insert list
+      const cutoff = new Date(now - (entries[i].opts?.dedupeWindowMs ?? DEFAULT_DEDUPE_WINDOW_MS));
+      const prior = rowsByKey.get(key);
+      if (prior) {
+        // Newest in-window row wins the reported id (the single form's
+        // `.limit(1)` pick is unordered; newest is the deterministic pick).
+        let newest: { id: number; createdAt: Date } | null = null;
+        for (const r of prior) {
+          if (r.createdAt > cutoff && (!newest || r.createdAt > newest.createdAt)) newest = r;
+        }
+        if (newest) {
+          outcomes[i] = { suppressed: true, id: newest.id };
+          continue;
+        }
+      }
+      const claimer = claimedByKey.get(key);
+      if (claimer !== undefined) {
+        // Intra-batch duplicate: the claimer's row is being inserted NOW,
+        // which is inside every positive window — same as N sequential
+        // calls. Its id is patched onto this outcome after the INSERT.
+        suppressedByClaim.set(i, claimer);
+        continue;
+      }
+      claimedByKey.set(key, i);
+      insertIndices.push(i);
+    }
+
+    if (insertIndices.length > 0) {
+      // ONE multi-row INSERT for every fresh entry.
+      const inserted = await db
+        .insert(adminAlertsTable)
+        .values(
+          insertIndices.map((i) => ({
+            type: entries[i].type,
+            title: entries[i].title,
+            message: entries[i].message,
+            dedupeKey: entries[i].opts?.dedupeKey ?? null,
+          })),
+        )
+        .returning({ id: adminAlertsTable.id });
+      insertIndices.forEach((entryIndex, k) => {
+        outcomes[entryIndex] = { suppressed: false, id: inserted[k]?.id ?? null };
+      });
+      for (const [entryIndex, claimerIndex] of suppressedByClaim) {
+        outcomes[entryIndex] = { suppressed: true, id: outcomes[claimerIndex]?.id ?? null };
+      }
+
+      if (suppressedByClaim.size > 0 || keyedKeys.length > 0) {
+        const suppressedCount = outcomes.filter((o) => o.suppressed).length;
+        logger.debug(
+          { category: "alerts.dedupe", suppressed: suppressedCount, inserted: insertIndices.length },
+          "logAdminAlertBatch: batch deduped",
+        );
+      }
+
+      // Round-4 (perf P1-5) parity: fan each INSERTED alert out to the
+      // scope-gated admin room the moment it lands — one dynamic import,
+      // one emit per row, same "admin-alert-new" payload shape as the
+      // single form (AUD103-3-F2).
+      import("../lib/socket")
+        .then(({ emitToAdminAlerts }) => {
+          for (let k = 0; k < insertIndices.length; k++) {
+            const entry = entries[insertIndices[k]];
+            emitToAdminAlerts("admin-alert-new", {
+              id: inserted[k]?.id ?? null,
+              type: entry.type,
+              title: entry.title,
+              message: entry.message,
+            });
+          }
+        })
+        .catch((err) =>
+          logger.warn(
+            { err, count: insertIndices.length },
+            "logAdminAlertBatch: socket emit failed (non-fatal)",
+          ),
+        );
+    }
+
+    return outcomes;
+  } catch (err) {
+    logger.error({ err, count: entries.length }, "Failed to log admin alert batch");
+    // F9 (round-94 A6) parity with the single form: a DB failure must not
+    // become a phone-spam channel — the side-channel green light repeats
+    // at most once per window per identity while the inserts keep
+    // retrying every sweep.
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const throttleIdentity = entry.opts?.dedupeKey ?? `${entry.type}:${entry.title}`;
+      if (!shouldNotifyOnDbFailure(throttleIdentity)) {
+        outcomes[i] = { suppressed: true, id: null };
+      } else {
+        outcomes[i] = { suppressed: false, id: null };
+      }
+    }
+    return outcomes;
+  }
+}
+
 export async function getAdminAlerts(limit = 100, offset = 0) {
   return db
     .select()

@@ -14,7 +14,6 @@ import { RefundError, RefundService } from "../../services/refund.service";
 import { fireThrottledMaintenance } from "../../lib/opportunistic";
 import { runStockSweep } from "../../jobs/stockWatcher";
 import { logAdminAlert } from "../../jobs/alertLogger";
-import { createNotification } from "../../notify";
 import { captureSubsystemException } from "../../lib/sentry";
 
 const router = Router();
@@ -91,32 +90,15 @@ const ORDER_STATUS_NOTIFICATION_LABELS: Record<OrderStatus, string> = {
 };
 
 /**
- * A9-1 (R116): durable notification for an admin-driven status change.
- * The socket `order-updated` emit is transient — an offline buyer never
- * sees it — while the notifications row surfaces in NotificationBell on
- * the next visit. createNotification is non-fatal by contract (warn +
- * carry on), so this can never block the status change itself.
- */
-function notifyOrderStatusChanged(userId: number, orderCode: string, status: OrderStatus) {
-  return createNotification(
-    userId,
-    "order",
-    `طلبك ${orderCode} ${ORDER_STATUS_NOTIFICATION_LABELS[status]}`,
-    undefined,
-    // Storefront order detail route (App.tsx): /orders/:orderCode.
-    `/orders/${orderCode}`,
-  );
-}
-
-/**
- * F-9 (R118-A6): batched twin of notifyOrderStatusChanged for the BULK
- * status path — ONE multi-row INSERT into notifications instead of N
- * sequential single-row INSERTs. The old per-order `await` loop made an
- * N-order batch (≤200 by the B2-F4 clamp) pay N ~100 ms round trips —
- * a 200-order flip was ≈ 20 s of pure insert latency against the far
- * DB. createNotification stays the single-row path (it is notify.ts's
- * public surface — owned by another agent this round — and cannot take
- * a values[] batch without widening that surface).
+ * F-9 (R118-A6): batched buyer notification for the bulk status paths —
+ * ONE multi-row INSERT into notifications instead of N sequential
+ * single-row INSERTs. The old per-order `await` loop made an N-order
+ * batch (≤200 by the B2-F4 clamp) pay N ~100 ms round trips — a 200-order
+ * flip was ≈ 20 s of pure insert latency against the far DB. The
+ * single-row twin (notifyOrderStatusChanged → createNotification) was
+ * removed in R136 (PERF #4) when its last caller — the refund loop —
+ * joined this helper; createNotification remains notify.ts's single-row
+ * public surface for every non-bulk caller.
  *
  * Contract parity with createNotification, per buyer:
  *   - same row shape (type "order", Arabic title via the shared status
@@ -126,10 +108,10 @@ function notifyOrderStatusChanged(userId: number, orderCode: string, status: Ord
  *   - same post-insert "notification-new" socket emit (fire-and-
  *     forget, carrying the inserted row id).
  *
- * Accepted delta (deliberate): one failed batch insert now skips ALL N
- * notification rows instead of just one — a notifications-table
- * failure is a global outage either way, and the status change +
- * socket emits still go through.
+ * Accepted delta (deliberate, documented in R118-A6): one failed batch
+ * insert now skips ALL N notification rows instead of just one — a
+ * notifications-table failure is a global outage either way, and the
+ * status change + socket emits still go through.
  */
 async function notifyOrderStatusChangedBatch(
   orders: Array<{ userId: number; orderCode: string }>,
@@ -522,6 +504,17 @@ router.patch(
       const codeById = new Map(codeRows.map((r) => [r.id, r.orderCode]));
       const successes: number[] = [];
       const failures: Array<{ orderId: number; code: string; message: string }> = [];
+      // PERF #4 (R136): the refund loop used to `await
+      // notifyOrderStatusChanged(...)` (single-row notifications INSERT)
+      // per refunded order — up to BULK_STATUS_MAX_IDS=200 sequential
+      // round trips per batch. The A9-1 (R116) durable rows now ride ONE
+      // notifyOrderStatusChangedBatch call after the loop (the exact
+      // shape the non-refund branch has used since F-9/R118-A6): collect
+      // {userId, orderCode} from the refund successes, insert once.
+      // createNotification was non-fatal by contract, so moving the call
+      // out of the per-order try changes nothing about refund error
+      // handling — a notification failure still cannot fail the refund.
+      const refundNotifications: Array<{ userId: number; orderCode: string }> = [];
       for (const orderId of numIds) {
         try {
           const result = await RefundService.refundOrder(orderId, {
@@ -530,11 +523,10 @@ router.patch(
           });
           successes.push(result.orderId);
           // A9-1 (R116): durable notification — the socket emit is
-          // transient, the notifications row survives to the next visit
-          // (createNotification is non-fatal by contract).
+          // transient, the notifications row survives to the next visit.
           const refundCode = codeById.get(result.orderId);
           if (refundCode) {
-            await notifyOrderStatusChanged(result.userId, refundCode, status);
+            refundNotifications.push({ userId: result.userId, orderCode: refundCode });
           }
           // Per-refund socket notification — same shape the legacy path used.
           import("../../lib/socket")
@@ -562,6 +554,12 @@ router.patch(
           }
         }
       }
+
+      // PERF #4 (R136): ONE multi-row INSERT for every refunded buyer's
+      // durable notification (mirrors the non-refund branch's call at the
+      // bottom of this handler). Same rows, same titles/links, one round
+      // trip instead of ≤200.
+      await notifyOrderStatusChangedBatch(refundNotifications, status);
 
       import("../../lib/socket")
         .then(({ emitToAdmins }) => {

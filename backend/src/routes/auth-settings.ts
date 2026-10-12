@@ -604,7 +604,7 @@ authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
   const key = `auth.${meta.id}`;
   const existing = await getSetting(key);
 
-  const updated: Record<string, any> = { ...existing };
+  const updated: Record<string, unknown> = { ...existing };
   if (typeof enabled === "boolean") updated.enabled = enabled;
 
   const changedFields: string[] = [];
