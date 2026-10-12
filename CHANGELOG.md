@@ -10,6 +10,93 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R137 — the total-surface decomposition: 22 monoliths split across three parallel agent waves, the route registry extracted, the a11y labeling guard — 2026-10-13
+
+The operator ordered «وادخل في الجولة التالية ويجب ان تكون اعمق واشمل واضخم»
+— the next round must be deeper, broader, and the biggest yet. R136
+decomposed the big-three storefront pages; R137 finished the job across
+the ENTIRE tree. **Starting truth**: `origin/main` = `580fa62` (R136
+head, all gates green there — re-verified: typecheck, lint, the full FE
+suite 199 files/1,420 tests, production build). Three agent waves ran
+(8 + 5 + 3 full-stack agents, orchestrated centrally; each wave
+typecheck+suite verified before its commit):
+
+### Wave 1 — the admin-console eight (commit `eb49963`)
+- **system 1,785 → 535** (19 extracts: the nine section panels +
+  system-types/format/samples/scheduler pure modules), **orders 1,698 →
+  741** (15 extracts: DesktopOrderRow/MobileOrderCard/OrdersTable +
+  orders-meta/csv/types pure modules — `applyBulkRefund`'s per-click
+  Idempotency-Key + the B6-03 decrypt cache stay in-page), **products
+  1,649 → 747** (8 extracts), **topups 1,609 → 823** (11 extracts —
+  F-008 key threading page-owned), **users 1,515 → 826** (10 extracts —
+  the 99-M3 save-intent key lifecycle page-owned), **layout 1,485 →
+  658** (7 extracts; public API pinned: `AdminLayout` + `NAV_SECTIONS`
+  re-export), **pricing 1,438 → 523** (9 extracts — the R125-I3 seq
+  race guard + both destructive handlers in-page), **dashboard 1,365 →
+  503** (17 extracts: the four chart panels + chart-data/csv/errors
+  pure modules + the lazy recharts bridge).
+
+### Wave 2 — the route registry + seven more (commit `a7fba31`)
+- **`App.tsx` 1,221 → 204** — the root became a composition core over
+  the NEW `src/app/` package: `route-shapes.ts` (ROUTE_SHAPES +
+  `shapeForRoute`, React-free), `page-registry.ts` (41 lazy chunks),
+  `routes.tsx` (the wouter tree + AdminProtectedRoutes +
+  RouteSuspenseFallback), `app-shell.tsx`, `query-client.ts`,
+  `boot-head-start.ts`, `route-chunk-warmup.ts`. The `shapeForRoute`
+  export rides a re-export — every importer untouched.
+- **CopilotPanel 1,794 → 786** (17 extracts: the SSE loop, all 8 state
+  atoms, approve/double-confirm/cancelPreview/retry and the 15 s expiry
+  sweep stay in the panel; MarkdownLite/ProgressTraceLine/ChangeDiff
+  presentational), **security 945 → 493**, **tickets 847 → 524**,
+  **alerts 824 → 437**, **coupons 807 → 361**, **admins 777 → 428**,
+  **support 1,052 → 532** (the 25 s poll + document.hidden gate +
+  R94-A1 double-submit guards page-owned), **loyalty 945 → 376** (the
+  convert intent-key threading + both shared-cache key tuples
+  page-owned — the referrals/loyalty cross-page cache contract).
+
+### Wave 3 — the sweep completes + the a11y layer (commit `74cb324`)
+- **settings 711 → 438** (10 extracts under `components/admin/
+  settings-page/` — no collision with the R126 settings/* tab split),
+  **whatsapp 680 → 438**, **promotions 624 → 335**, **referrals 602 →
+  284** (the debounce/params-in-key race guard page-owned), **risk 582
+  → 260**.
+- **`r137-extracts-a11y-guard.test.ts`** — the icon-only-button
+  labeling guard over all 17 extract dirs (170 files scanned, 146
+  button spans, 23 icon-only buttons: 21 already labeled from earlier
+  rounds, 2 fixed — the dashboard CSV exports — 2 documented-ambiguous
+  skips; inventory floors ≥150 files / ≥23 buttons so the pass can't go
+  vacuous; 12 spot-pins).
+
+### The round's ledger
+- **22 monoliths split: 25,855 → 11,252 orchestration lines (−56%)**,
+  202 new extract/module files, 15 new decomposition contract suites +
+  the a11y guard + the strengthened sweeps (23 new test files).
+- **Every decomposition rides the R136 idiom**: verbatim extracts
+  (byte-identical JSX modulo prop re-binds), page-owned money paths +
+  coordinating atoms, React-free `.ts` helpers, a source-scan contract
+  per page (size ceiling, deletion guards, ownership pins, purity
+  pins).
+- **Pins follow the surface** (the r136 pre-patch precedent, applied
+  post-hoc where mid-wave moves outran a pinned reader): the
+  storefront/legacy sweeps read page ∪ extracts unions; the palette
+  A1-D4 products pin and the whatsapp h1 pin went union;
+  `no-native-confirm`'s EXTRACT_DIRS now auto-expands 12 extract
+  folders; the h1-unification sweep covers `pages/admin/** ∪
+  components/admin/**` recursive.
+- **Two honest-to-verify false alarms**: the 3-c scanner's
+  `w-in(18rem,85vw)]` "malformed Tailwind class" — byte-level `od`
+  inspection proved the file reads `w-[min(18rem,85vw)]`; the rg
+  display artifact ate the `[m`. And the security-meta pin break was
+  prettier's trailing-comma wrapping at the lint-staged commit, not a
+  code change — the pin is now wrapping-tolerant.
+- **Gates**: typecheck green (workspace-wide), FE suite 214 files /
+  **1,653 tests green** (was 199/1,420 at `580fa62` — +233 assertions),
+  lint 0 errors (warnings 52 → 48, the decompositions retired four),
+  production build + PWA + bundle budgets green. Backend untouched by
+  construction (zero backend/shared files in the diff — CI runs the
+  2,305-test BE suite on push).
+
+
 ## Round R136 — the depth wave: the big-three page decompositions, the app.ts/socket/openwa splits, the money-path read fan-out, the per-intent limiters, the skeleton primitives, CI coverage — 2026-10-13
 
 The operator ordered «ادخل المرحلة التالية الأعمق والأشمل والأكثر دقة
