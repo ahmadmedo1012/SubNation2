@@ -10,6 +10,191 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R136 — the depth wave: the big-three page decompositions, the app.ts/socket/openwa splits, the money-path read fan-out, the per-intent limiters, the skeleton primitives, CI coverage — 2026-10-13
+
+The operator ordered «ادخل المرحلة التالية الأعمق والأشمل والأكثر دقة
+وتفصيلا» — the next deeper, more comprehensive, more precise round,
+organized, with the largest possible agent fleet. Six parallel read-only
+deep-scanners swept `ad61de7` (backend perf / security / FE-decomp / BE-
+decomp / test-gaps / API-UX consistency), producing the 12-lane plan.
+**Starting truth**: `origin/main` = `ad61de7` (R135 head, all gates green
+there — re-verified). The parent pre-patched the three shared source-scan
+sweep umbrellas (r125/r128/a4-f1) into surface-union reads BEFORE
+dispatching (`4b19beb`, 14/14 green on the un-decomposed tree) so the
+decomposing agents could never race on a shared test file.
+
+### The frontend wave — the big-three decompositions (R135's product lane, ×3)
+- **FE-1 `pages/wallet.tsx` 2,096 → 773 lines (−63%)** — fourteen
+  verbatim extracts under `components/wallet/` (topup-intent-key /
+  topup-preferences pure modules; topup-meta; LedgerEntryRow;
+  WalletStatementCard; TransferCodePanel; PaymentReferenceField;
+  BalanceCard; PendingLimitBanner; LatestTopupPin; MethodTabs;
+  MobileTransferForm; LyPayFlow; TopupHistoryCard). The 96-F6/98-F2
+  idempotency contract held exactly: `topupKeyRef`/`resetTopupKey`/
+  `handleSubmit`/`topupMutation` + all 14 state atoms + all queries stay
+  in the page; every extract input calls a page-owned handler prop
+  (eight more lifted verbatim from inline closures) — no raw setter
+  crosses the boundary. 8-test pin suite
+  (`wallet-decomposition-r136.test.ts`).
+- **FE-2 `pages/checkout.tsx` 1,665 → 854 (−49%)** — nine extracts under
+  `components/checkout/` (checkout-errors / checkout-unit-key /
+  coupon-quote / live-requote pure modules; PaymentMethodCard; CouponCard;
+  OrderErrorBanner; CheckoutCta; CartSummaryAside — the dir="auto"
+  it.name rows and the «تصفح المنتجات» asChild CTA moved verbatim, the
+  parent-pre-patched pins followed). The 325-line `handleConfirm` with
+  the full per-unit Idempotency-Key lifecycle stays in-page. 7-test pin
+  suite.
+- **FE-3 `pages/home.tsx` 1,369 → 381 (−72%)** — ten extracts under
+  `components/home/` (catalog-filters / search-history pure modules;
+  primitives; AuthedHero; RecentOrdersStrip; GuestHero — the fold-toggle
+  + IO observer moved inside, swapped onto the existing use-on-screen
+  hook; StatsWidgets; CatalogFiltersBar — the keystroke re-render blast
+  radius now stops at the bar; ProductsGrid; TrustFooter with the three
+  trust strings verbatim). 8-test pin suite.
+- **UX-1 the loading-skeleton primitives (EmptyState's unfinished
+  sibling)** — `components/ui/Skeleton.tsx`: `Skeleton` / `SkeletonText`
+  / `SkeletonCard` with the a11y pair (role="status" + sr-only) locked
+  inside; `EmptyState.tsx` gained the `EmptyHero` variant (the py-20
+  first-run hero moments). 16 files swept to the primitives (7 admin
+  cards + 9 storefront pages); 29 primitive tests + the adoption-floor
+  source-scan guard (`skeleton-primitives.test.tsx`). The wallet/
+  checkout/home/product surfaces deliberately NOT swept this round —
+  they were being decomposed in parallel; their sweep rides R137.
+
+### The backend wave — the monolith splits (re-export-shim contract: zero existing tests edited)
+- **BE-1 `app.ts` 1,899 → 330 lines (−83%)** — six lib modules:
+  `lib/spa-shell.ts` (981 — the whole SPA/SEO shell machinery + the new
+  200-entry LRU meta memoization: the 5-regex rewrite over ~25 KB on
+  every non-API GET now caches per serialized meta), `lib/rate-limits.ts`
+  (289 — all five existing limiters + **three NEW per-intent money
+  limiters**, SEC F1: `ordersCreateLimiter` / `walletTopupCreateLimiter`
+  / `loyaltyConvertPointsLimiter`, 12/min per user, mounted before the
+  generic `/api` limiters — POST /orders, POST /wallet/topups, POST
+  /loyalty/convert-points previously rode only the 1200/min generic
+  cap), `lib/csrf.ts` (228 — the SEC-92-01 boot assertion kept reachable
+  at the exact import-eval point so `import("../app")` still rejects),
+  `lib/cors-gate.ts`, `lib/helmet-config.ts`, `lib/error-handler.ts`.
+  app.ts keeps one-line re-exports of all 13 test/server-facing names.
+- **BE-1 security folds (SEC F2/F3)** — CSP `img-src` blanket `https:`
+  **dropped** (grep-verified: zero external `<img src>` in the frontend —
+  all art is self-hosted /products/*.webp or data: QRs, every img carries
+  an onError fallback tile); `upgradeInsecureRequests: null` override
+  **removed** (helmet's default restored — no http-subresource exists).
+  8-test limiter suite (`rate-limits-intent.test.ts`) + the live header
+  probe re-run.
+- **BE-2 `lib/socket.ts` 1,162 → 492 + `openwa.service.ts` 1,532 → 745 +
+  the advisory-lock generalization** — `lib/socket/{auth,connection-caps,
+  rejections}.ts` behind a re-export facade (the io singleton + initSocket
+  closure state stay); `services/openwa/{gateway-client,settle-gate,
+  admin-sessions}.ts` with the warm-up cycle cycle broken via injected
+  `bindWarmupSendFn` (zero import cycles, all 36 settle-gate tests
+  unedited); `lib/pg-advisory-lock.ts` (259) — the generic
+  `withAdvisoryLock` extracted from whatsapp-otp.service.ts (its
+  test-pinned `__setOtpStartLockPoolForTests` seam deliberately stays in
+  the service) + `lib/otp-daily-cap.ts`.
+- **BE-3 `routes/health.ts` 959 → 267 + `routes/products.ts` 914 → 237**
+  — `services/health-checks.service.ts` (742) + `services/catalog.service.ts`
+  (758) + `lib/http-cache.ts`; the check seams re-exported so the three
+  external health test importers stay unedited; the leftover `io: any`
+  (the one R135's redis sweep missed) typed `Server`.
+
+### The performance wave — verified hotspots, money-path first
+- **PF-1 checkout pre-tx read fan-out (PERF #2, the hottest user path)** —
+  the 6–8 serial pre-transaction reads on `CheckoutService.purchase`
+  became two Promise.all waves (independent product/variants/user fan-out;
+  then the variant-dependent pricing/inventory pair), the R118-A6 idiom.
+  Failure-reason precedence byte-preserved (PRODUCT_NOT_FOUND → … →
+  OUT_OF_STOCK — the checks sequence untouched, only the read shape);
+  the F10 idempotency probe deliberately stays first-and-alone so replay
+  409s short-circuit every read. Documented in the diff header.
+- **PF-1 companions** — loyalty GET folded to one Promise.all + 6-column
+  projection; coupons /validate now rides the 30s flash-sale stage cache
+  (the cart idiom); wallet POST /topups' in-tx triple SELECT → one
+  FILTER-aggregate (guard semantics identical, 28 its green).
+- **PF-2 the admin set-based rewrites (PERF #1/#3/#4/#5)** — pricing
+  recompute's 263-sequential-UPDATE loop → one chunked VALUES join
+  (row-locks + a pool client freed); inventory-upload dedup bounded to
+  an inArray probe of the submitted emails (the unbounded per-row
+  AES-GCM decrypt scan gone); bulk-refund notifications collect → ONE
+  `notifyOrderStatusChangedBatch` call (the helper that existed but only
+  served the non-refund branch); `logAdminAlertBatch` — watcher sweeps
+  now classify-then-batch (one dedupe SELECT + one multi-row INSERT per
+  sweep instead of an advisory-lock tx per alert; 3K sequential RTTs per
+  stock sweep gone), with a new 7-test batch-semantics suite
+  (`alert-logger-batch.test.ts`).
+
+### The security + type-debt wave (SEC-1)
+- Idempotency-Key header capped at 128 chars (was unbounded → multi-KB
+  Redis keys); variant `duration_days`/`sort_order` gained int4-safe
+  ceilings (was 500-on-overflow); admin password policy 8 → **12 floor
+  + 128 ceiling** at both entry points (create + change-password), the
+  `as`-cast body read replaced with unknown-narrowing.
+- **openapi.yaml's Telegram-widget contract is real now** — the bare
+  `type: object` (generated `z.object({}).passthrough()` — validated
+  nothing) declares `id`/`auth_date`/`hash` required with types; orval
+  regenerated; parity gate still 84 ops, error-code sync 55/55.
+- **SECURITY.md "Decisions on file"** — the risk auto-block guards'
+  ships-dark posture documented (why off, what carries integrity until
+  on, the flip triggers, the revisit owner).
+- **The `any` tail swept** — ~16 sites: auth-settings-store's whole API
+  (5), referrals' rowsFromResult (3), db-instrumentation's pg
+  monkey-patch (3 — the eslint-disable escape hatches gone), stats (1),
+  auth-settings (1), instrumentation-isolation (1, via the never[]
+  constraint), risk-scoring's dead `isPipelineEnabled` export un-exported.
+
+### The test wave (TST-1 + TST-2)
+- **The money-path gap suites** — `checkout-variant-stale.test.ts` (the
+  VARIANT_STALE guard had ZERO test references — interleave-writer races
+  now pin zero-money-movement on both mutation flavors); USER_NOT_FOUND
+  branch (the only uncovered money reason) added to the service suite;
+  `checkout-coupon-fastfail.test.ts` (expired/inactive/maxed/wrong-product
+  table); `flash-sale-watcher.test.ts` (the sale-expiry authority's first
+  behavioral suite); `ledger.test.ts` + `points-ledger.test.ts` (every
+  LYD write's first direct unit pins — arithmetic identity, reference
+  plumbing, tx-rollback propagation, the DB CHECK backstops).
+- **CI coverage (TST-2)** — both suites now run `test:coverage` in CI
+  with v8 reports uploaded as artifacts (7-day retention). REPORT-ONLY
+  by decision: thresholds land R137 calibrated against the first CI
+  artifact runs (gating on never-measured numbers is a flaky gate).
+  Frontend gained the `test:coverage` script + `@vitest/coverage-v8`;
+  both vitest configs scope the report to the full `src/**` surface.
+
+### Execution truth + gates
+Batch 1 (six write agents: FE-1/2/3, BE-1/2/3) completed clean. Batch 2
+(six: PF-1/2, SEC-1, TST-1/2, UX-1) was interrupted by a sandbox
+infrastructure outage (agent-launcher context deadlines — the R123 E2/E5
+class): all six had landed substantial verified work but none reported;
+the parent audited every hunk, fixed two cut-off artifacts (stockWatcher's
+orphan-report import, one test typing), and completed the remainder
+(SEC-1's password policy + openapi schema + SECURITY.md + any-sweep;
+TST-2's CI wiring + gitignore) by hand. **Gates on the final tree: lint
+0 errors (51 warnings, −14 vs R135) · typecheck green (backend + frontend
++ libs) · backend 2,304 tests green (4 chunks) · frontend 191 files /
+1,354 tests green · build + bundle budgets PASS (entry 33.4 kB gz / eager
+145.4 kB gz — unchanged) · OpenAPI parity 84 ops · error-code sync gate
+green · ci.yml YAML-valid with the new steps · orval regen clean.**
+
+### Deferred (honest ledger)
+- Coverage thresholds (R137, calibrated from the first CI artifacts).
+- The next monolith lanes: `App.tsx` (1,221 — route-shapes/query-client/
+  boot-warmup lib extracts, the export surface is test-pinned), `admin/
+  auth.ts` (991), `support.tsx` (1,046), `loyalty.tsx` (942), plus the
+  skeleton sweep over the freshly decomposed wallet/checkout/home
+  surfaces.
+- The API-consistency scan's big three: spec the un-specced route
+  families (admin/admins, admin/enrichment, the whole admin-auth family
+  — hand-rolled adminFetch + hand-written types today), the list-
+  envelope/pagination unification, the mutation-ack shape standard.
+- Orders-list decrypt → has_credentials + reveal (the B6-03 admin
+  precedent; needs the frontend contract decision).
+- Field-level 400s (`zodIssuesToClient` exists; routes never attach
+  `details.issues`) + frontend api-zod dep for per-field onBlur.
+- The shared Arabic lexicon package (the i18n beachhead — ~3.7k strings
+  + a third copy of the error copy).
+- Scaling hygiene when volume grows: public-search aggregate joins,
+  admin orders leading-wildcard LIKE, orders 3-column list decrypts.
+- Authed Playwright money-path smoke (e2e is guest-only today).
+
 ## Round R135 — the consolidation wave: the authed-landscape drawer, the product-page decomposition, the V1-M34 serving-index wave, the exhaustive checkout mapping, the ErrorCode sync gate, the 4-bucket docs sweep — 2026-10-12
 
 The operator ordered «تحسين وتطوير وتنظيم ضخم للمشروع كامل بكل تفاصيله»

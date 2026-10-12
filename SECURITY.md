@@ -52,3 +52,28 @@ before public disclosure.
 - Security-focused audit rounds with published reports under
   `docs/inspection-r###/` (executed rounds' reports archived under
   `docs/history/inspection-r###/`).
+
+## Decisions on file
+
+### Risk pipeline (auto-block guards) — ships dark, by decision (R136 review)
+
+`middlewares/risk-hard-block.ts` / `risk-soft-block.ts` never engage in
+production: the guards short-circuit unless `RISK_PIPELINE_ENABLED=true`,
+and even then require the model + `autoBlockEnabled` config flags
+(triple gate). This is deliberate, not an oversight:
+
+- **Why off:** the store is single-instance on modest infrastructure, and
+  the availability-over-strictness posture (documented across the
+  session-liveness, OTP, and idempotency layers) extends here — a false
+  positive hard-block on a money route costs more than the current fraud
+  volume justifies.
+- **Integrity is not waiting on it:** checkout/topups already carry
+  idempotency keys, `MAX_PENDING` caps, `FOR UPDATE SKIP LOCKED` claims,
+  and the risk *events* still persist (rules-only) whenever the flag is
+  on; R136 additionally added per-intent money limiters
+  (`lib/rate-limits.ts`) that bound scripted churn independently.
+- **Flip triggers:** sustained chargeback/fraud signals, multi-account
+  abuse patterns in `risk_events`, or a traffic-scale jump — at that point
+  set `RISK_PIPELINE_ENABLED=true`, verify the evaluator against live
+  metrics, and re-review the block thresholds.
+- **Revisit:** next scheduled security round.
