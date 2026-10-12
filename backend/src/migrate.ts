@@ -174,6 +174,22 @@ function extractCount(result: unknown): number {
 }
 
 /**
+ * R135 (DB-1 — the R122-deferred cast debt, scoped to migrate.ts): the
+ * typed twin of extractRows. The last ~6 `as any` casts on db.execute()
+ * results each re-encoded the SAME dual-driver defense —
+ * `result.rows?.[0] ?? result[0]` serves node-postgres (QueryResult.rows)
+ * AND a bare-array driver shape (the pglite test harness) — but threw away
+ * the row type to do it. This wrapper keeps the exact unwrapping
+ * semantics (delegates to extractRows verbatim: .rows array → rows, bare
+ * array → itself, anything else → []) while returning the rows AS the
+ * caller's declared row shape. Zero behavior change by construction;
+ * every adoption site below swaps only the cast, never the access path.
+ */
+function rowsFromResult<T = Record<string, unknown>>(result: unknown): T[] {
+  return extractRows(result) as T[];
+}
+
+/**
  * Ensure the pg_trgm extension exists WITHOUT issuing DDL when it already
  * does (B7-P0-1, round-92 audit).
  *
@@ -2332,6 +2348,103 @@ export async function applyWalletLedgerTypeIndexDropStage(
   }
 }
 
+// ── V1-M34 (R135, DB-1): the R135 serving-index wave ────────────────────────
+//
+// Three read-path index gaps, one additive + two same-name shape swaps:
+//
+//   (a)  idx_coupons_expires_at  — PARTIAL on expires_at IS NOT NULL. The
+//        couponWatcher sweep (jobs/couponWatcher.ts checkExpiringCoupons)
+//        runs BOTH arms unindexed: the auto-disable UPDATE filters
+//        is_active AND expires_at IS NOT NULL AND expires_at < now(), the
+//        24h-warning SELECT the same IS NOT NULL arm with
+//        expires_at BETWEEN now() AND now()+24h. Every sweep was a seq
+//        scan over the whole coupons table — cheap at ~10² rows, but the
+//        sweep is OPPORTUNISTIC (fires on the checkout apply-coupon
+//        moment + the admin coupons list), so the scan rode the exact
+//        money moments that matter. The partial predicate caps the
+//        per-INSERT write cost the same way idx_admin_sessions_revoked_at
+//        (V1-M31) does: coupons with no expiry (the majority) never touch
+//        the index. Additive — the V1-M31 unconditional
+//        CREATE INDEX IF NOT EXISTS form (fresh installs AND steady state
+//        covered by one guarded statement; zero DDL once present).
+//
+//   (b)  idx_wallet_ledger_user_created swapped same-name
+//        (user_id, created_at) → (user_id, created_at DESC, id DESC) —
+//        the FULL keyset-serving shape for the wallet statement's
+//        ORDER BY created_at DESC, id DESC (routes/wallet.ts:207 — the
+//        id tiebreaker is what makes same-second ledger rows paginate
+//        deterministically). The risk_events precedent
+//        (idx_risk_events_created_id_desc, round-4 block below) is the
+//        house shape for exactly this ORDER BY family. The old
+//        (user_id, created_at) twin served the filter + a residual
+//        top-N sort on every statement page.
+//
+//   (c)  idx_orders_user_created — same swap for the user orders list
+//        (routes/orders.ts:138, WHERE user_id ORDER BY created_at DESC):
+//        the (created_at DESC, id DESC) tail keeps the index keyset-ready
+//        the day that list adopts cursor pagination (the risk_events
+//        migration path), and drops the residual sort today.
+//
+// Shape discipline: the two swaps are the V1-M24 same-name idiom —
+// catalog probe of the live indexdef, DROP+CREATE only when the
+// genuinely legacy (user_id, created_at) shape is present, zero DDL on
+// every steady-state boot (a naive unconditional DROP+CREATE would
+// rebuild both indexes on EVERY cold start — the exact regression class
+// the V1-M24 test pins). The base round-4 block above creates the NEW
+// shapes directly, so fresh installs never see the legacy twin. NOT
+// CONCURRENTLY (the V1-M31 decision class: sub-millisecond builds at
+// current rowcounts; revisit at ~10⁵ rows).
+//
+// Drizzle mirror: shared/db/src/schema/{coupons,wallet_ledger,orders}.ts
+// declarations (raw sql`col DESC` expression columns per the R134-A8-F1
+// convention — plain DESC, NOT .desc()'s DESC NULLS LAST) + chain 0023.
+export async function applyR135IndexWaveStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  // (a) Additive twin (V1-M31 form) — one guarded statement covers both
+  // the fresh install and the steady state. One statement per execute:
+  // pglite's extended-protocol parser rejects multi-statement batches
+  // (42601), and stage tests run against the pglite harness.
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_coupons_expires_at
+      ON coupons (expires_at) WHERE expires_at IS NOT NULL;
+  `);
+
+  // (b) + (c) Same-name swaps (V1-M24 form): probe the live indexdef;
+  // only a genuinely legacy (user_id, created_at) shape pays the
+  // DROP+CREATE. The probe marker "(user_id, created_at)" — with the
+  // closing paren — cannot match the new shape's
+  // "(user_id, created_at DESC, id DESC)" rendering, and an absent
+  // index (fresh install: the base block already created the new shape)
+  // probes as "" → no DDL.
+  const swaps: Array<{ name: string; table: string }> = [
+    { name: "idx_wallet_ledger_user_created", table: "wallet_ledger" },
+    { name: "idx_orders_user_created", table: "orders" },
+  ];
+  for (const { name, table } of swaps) {
+    const idxRows = extractRows(
+      await execute(sql`
+        SELECT indexdef AS indexdef FROM pg_indexes
+        WHERE schemaname = current_schema()
+          AND tablename = ${table}
+          AND indexname = ${name}
+      `),
+    );
+    const indexdef = String(idxRows[0]?.["indexdef"] ?? "");
+    if (indexdef.includes("(user_id, created_at)")) {
+      await execute(sql.raw(`DROP INDEX IF EXISTS ${name}`));
+      await execute(
+        sql.raw(`CREATE INDEX IF NOT EXISTS ${name} ON ${table} (user_id, created_at DESC, id DESC)`),
+      );
+      logger.info(
+        { category: "storage", index: name, table },
+        "V1-M34: swapped to (user_id, created_at DESC, id DESC), the keyset tail (R135)",
+      );
+    }
+  }
+  logger.info({ category: "storage" }, "V1-M34: R135 serving-index wave (idempotent)");
+}
+
 export async function runMigrations() {
   try {
     // r110 (109-e P2-1): per-run skip state — transient retries in
@@ -3103,8 +3216,10 @@ export async function runMigrations() {
       SELECT 1 FROM information_schema.columns
       WHERE table_name='admin_users' AND column_name='permissions'
     `);
-    const hadPermissionsColumn =
-      ((permColExisted as any).rows?.length ?? (permColExisted as any).length ?? 0) > 0;
+    // R135 (DB-1): rowsFromResult replaces the `as any` dual-driver cast —
+    // `.rows?.length ?? .length ?? 0 > 0` is exactly extractRows' unwrapping
+    // (rows array → its length, bare array → its length, else 0).
+    const hadPermissionsColumn = rowsFromResult(permColExisted).length > 0;
 
     await db.execute(sql`
       ALTER TABLE admin_users
@@ -3236,7 +3351,12 @@ export async function runMigrations() {
 
     // ── Seed: Admin user ────────────────────────────────────────────────────
     const adminCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM admin_users`);
-    const adminCount = (adminCountResult as any).rows?.[0] ?? (adminCountResult as any)[0];
+    // R135 (DB-1): rowsFromResult replaces the `as any` dual-driver cast
+    // (`.rows?.[0] ?? result[0]`); the row shape keeps BOTH count spellings
+    // the Number() fallback below reads (c / count).
+    const adminCount = rowsFromResult<{ c?: number | string; count?: number | string }>(
+      adminCountResult,
+    )[0];
     if (Number(adminCount?.c ?? adminCount?.count ?? 0) === 0) {
       const adminUsername = process.env.ADMIN_USERNAME || "admin";
       const adminPassword = process.env.ADMIN_PASSWORD;
@@ -3263,7 +3383,11 @@ export async function runMigrations() {
     const demoSeedAllowed =
       process.env.NODE_ENV !== "production" || process.env.ALLOW_DEMO_SEED === "true";
     const productCountResult = await db.execute(sql`SELECT COUNT(*) as c FROM products`);
-    const productCount = (productCountResult as any).rows?.[0] ?? (productCountResult as any)[0];
+    // R135 (DB-1): rowsFromResult replaces the `as any` dual-driver cast —
+    // same c/count dual spelling as the admin seed count above.
+    const productCount = rowsFromResult<{ c?: number | string; count?: number | string }>(
+      productCountResult,
+    )[0];
     if (demoSeedAllowed && Number(productCount?.c ?? productCount?.count ?? 0) < 12) {
       const products = [
         {
@@ -3379,7 +3503,9 @@ export async function runMigrations() {
         const existRes = await db.execute(
           sql`SELECT id FROM products WHERE name = ${p.name} LIMIT 1`,
         );
-        const existRow = (existRes as any).rows?.[0] ?? (existRes as any)[0];
+        // R135 (DB-1): rowsFromResult replaces the `as any` dual-driver cast
+        // (`.rows?.[0] ?? result[0]`); id is absent on the no-row path.
+        const existRow = rowsFromResult<{ id?: number }>(existRes)[0];
         let productId: number;
 
         if (existRow?.id) {
@@ -3390,7 +3516,10 @@ export async function runMigrations() {
             VALUES (${p.name}, ${p.description}, ${p.image_url}, ${p.price}, ${p.category}, true, false, ${p.usage_terms})
             RETURNING id
           `);
-          const insertedRow = (insertedResult as any).rows?.[0] ?? (insertedResult as any)[0];
+          // R135 (DB-1): rowsFromResult replaces the `as any` dual-driver cast;
+          // RETURNING guarantees the row, so id is non-optional here (the
+          // previous `any` masked exactly this contract).
+          const insertedRow = rowsFromResult<{ id: number }>(insertedResult)[0];
           productId = insertedRow.id;
         }
 
@@ -3398,7 +3527,9 @@ export async function runMigrations() {
         const invRes = await db.execute(
           sql`SELECT COUNT(*) as c FROM inventory WHERE product_id = ${productId} AND is_sold = false`,
         );
-        const invRow = (invRes as any).rows?.[0] ?? (invRes as any)[0];
+        // R135 (DB-1): rowsFromResult replaces the `as any` dual-driver cast;
+        // COUNT always returns one row, c absent only on the degenerate path.
+        const invRow = rowsFromResult<{ c?: number | string }>(invRes)[0];
         const invCount = Number(invRow?.c ?? 0);
 
         if (invCount < 5) {
@@ -3958,11 +4089,18 @@ export async function runMigrations() {
     // indexes ever reached production — the perf claims were inert and
     // the drizzle snapshot silently lied about the live schema.
     // Idempotent CREATE INDEX IF NOT EXISTS keeps cold boots safe.
+    // R135 (DB-1 / V1-M34): the two user-history composites are created
+    // in their KEYSET shape (user_id, created_at DESC, id DESC) — the
+    // 0005-era (user_id, created_at) spelling is superseded. Fresh
+    // installs get the keyset shape directly; legacy-shape databases are
+    // converged by the V1-M34 probe-gated swap stage at the tail (same
+    // name → this IF NOT EXISTS no-ops there, the V1-M24 notifications
+    // precedent). Chain mirror: 0023.
     await db.execute(sql`
       CREATE INDEX IF NOT EXISTS idx_orders_user_created
-        ON orders (user_id, created_at);
+        ON orders (user_id, created_at DESC, id DESC);
       CREATE INDEX IF NOT EXISTS idx_wallet_ledger_user_created
-        ON wallet_ledger (user_id, created_at);
+        ON wallet_ledger (user_id, created_at DESC, id DESC);
       CREATE INDEX IF NOT EXISTS idx_users_created
         ON users (created_at);
       CREATE INDEX IF NOT EXISTS idx_risk_events_created_id_desc
@@ -4204,6 +4342,14 @@ export async function runMigrations() {
     // consumers, pure write amplification on the money INSERT table.
     // Probe-gated (V1-M27 idiom). See applyWalletLedgerTypeIndexDropStage.
     await applyWalletLedgerTypeIndexDropStage();
+
+    // ── V1-M34 (R135, DB-1): the R135 serving-index wave — the ──
+    // couponWatcher expiry-scan partial (idx_coupons_expires_at, additive
+    // V1-M31 form) + the two user-history keyset swaps
+    // (idx_wallet_ledger_user_created / idx_orders_user_created →
+    // (user_id, created_at DESC, id DESC), probe-gated V1-M24 form —
+    // zero DDL on steady-state boots). See applyR135IndexWaveStage docs.
+    await applyR135IndexWaveStage();
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

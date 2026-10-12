@@ -12,7 +12,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
 
 /**
  * Per-product FAQ entry shape (stored in `products.faq` as a JSONB
@@ -123,9 +122,8 @@ export const productsTable = pgTable(
   }),
 );
 
-export const insertProductSchema = createInsertSchema(productsTable).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+// R135 (DB-1): insertProductSchema removed — zero consumers repo-wide
+// (grep-verified) along with its drizzle-zod import (the dependency line
+// left shared/db/package.json the same round; the zod perimeter lives in
+// shared/api-zod, which owns request-body validation).
 export type Product = typeof productsTable.$inferSelect;

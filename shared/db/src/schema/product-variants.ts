@@ -11,7 +11,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
 import { productsTable } from "./products";
 
 /**
@@ -113,9 +112,7 @@ export const productVariantsTable = pgTable(
   }),
 );
 
-export const insertProductVariantSchema = createInsertSchema(productVariantsTable).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+// R135 (DB-1): insertProductVariantSchema removed — zero consumers
+// repo-wide (grep-verified) along with its drizzle-zod import (the
+// dependency line left shared/db/package.json the same round).
 export type ProductVariant = typeof productVariantsTable.$inferSelect;

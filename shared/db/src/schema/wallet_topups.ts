@@ -12,7 +12,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
 import { usersTable } from "./users";
 
 export const topupStatusEnum = pgEnum("topup_status", ["pending", "approved", "rejected"]);
@@ -80,8 +79,6 @@ export const walletTopupsTable = pgTable(
   }),
 );
 
-export const insertWalletTopupSchema = createInsertSchema(walletTopupsTable).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+// R135 (DB-1): insertWalletTopupSchema removed — zero consumers repo-wide
+// (grep-verified) along with its drizzle-zod import (the dependency line
+// left shared/db/package.json the same round).

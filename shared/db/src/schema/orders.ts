@@ -11,7 +11,6 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { inventoryTable } from "./inventory";
 import { productsTable } from "./products";
 import { productVariantsTable } from "./product-variants";
@@ -108,7 +107,24 @@ export const ordersTable = pgTable(
     statusCreatedIdx: index("idx_orders_status_created").on(t.status, t.createdAt),
     // Round-3 (8-c §4.5): the user's own orders list sorts by createdAt
     // DESC filtered by user_id — composite covers both in one index.
-    userCreatedIdx: index("idx_orders_user_created").on(t.userId, t.createdAt),
+    // R135 (DB-1 / V1-M34): extended to the FULL keyset tail
+    // (user_id, created_at DESC, id DESC) — same rationale as the
+    // wallet_ledger twin (routes/orders.ts sorts WHERE user_id ORDER BY
+    // created_at DESC today; the id DESC tiebreaker makes the index
+    // keyset-ready the day that list adopts cursor pagination, the
+    // idx_risk_events_created_id_desc house shape). Raw sql`col DESC`
+    // expression columns (NOT .desc() — the R134-A8-F1 convention:
+    // drizzle-kit 0.31.9 serializes .desc() as DESC NULLS LAST and would
+    // diverge from the boot twin's plain DESC; on these NOT NULL columns
+    // the two are order-identical, so this is chain↔boot parity, not a
+    // live change). Boot twin: migrate.ts applyR135IndexWaveStage
+    // (V1-M34 probe-gated same-name swap) + the base round-4 block;
+    // drizzle mirror: chain 0023.
+    userCreatedIdx: index("idx_orders_user_created").on(
+      t.userId,
+      sql`created_at DESC`,
+      sql`id DESC`,
+    ),
     // R98-DB-01: V1-M16 (migrate.ts applyProductVariantsStage) creates this
     // live for the admin variant-delete order-history guard (COUNT WHERE
     // variant_id). Declared here so the drizzle chain + snapshot carry it
@@ -132,9 +148,7 @@ export const ordersTable = pgTable(
   }),
 );
 
-export const insertOrderSchema = createInsertSchema(ordersTable).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+// R135 (DB-1): insertOrderSchema removed — zero consumers repo-wide
+// (grep-verified) along with its drizzle-zod import (the dependency line
+// left shared/db/package.json the same round).
 export type Order = typeof ordersTable.$inferSelect;

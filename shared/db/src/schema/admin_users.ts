@@ -1,5 +1,4 @@
 import { pgTable, serial, varchar, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 
 export const adminUsersTable = pgTable("admin_users", {
   id: serial("id").primaryKey(),
@@ -56,8 +55,7 @@ export const adminUsersTable = pgTable("admin_users", {
     .$onUpdate(() => new Date()),
 });
 
-export const insertAdminUserSchema = createInsertSchema(adminUsersTable).omit({
-  id: true,
-  createdAt: true,
-});
+// R135 (DB-1): insertAdminUserSchema removed — zero consumers repo-wide
+// (grep-verified) along with its drizzle-zod import (the dependency line
+// left shared/db/package.json the same round).
 export type AdminUser = typeof adminUsersTable.$inferSelect;

@@ -8,7 +8,6 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 
 export const flashSalesTable = pgTable(
   "flash_sales",
@@ -32,8 +31,7 @@ export const flashSalesTable = pgTable(
   }),
 );
 
-export const insertFlashSaleSchema = createInsertSchema(flashSalesTable).omit({
-  id: true,
-  createdAt: true,
-});
+// R135 (DB-1): insertFlashSaleSchema removed — zero consumers repo-wide
+// (grep-verified) along with its drizzle-zod import (the dependency line
+// left shared/db/package.json the same round).
 export type FlashSale = typeof flashSalesTable.$inferSelect;

@@ -52,7 +52,23 @@ export const walletLedgerTable = pgTable(
     // future wallet statement pages) sort a user's full ledger by date —
     // one row per money event, so this index keeps that O(log n) as the
     // ledger grows.
-    userCreatedIdx: index("idx_wallet_ledger_user_created").on(t.userId, t.createdAt),
+    // R135 (DB-1 / V1-M34): extended to the FULL keyset tail
+    // (user_id, created_at DESC, id DESC) — the wallet statement's
+    // ORDER BY created_at DESC, id DESC (routes/wallet.ts) needs the id
+    // tiebreaker for deterministic same-second pagination, the
+    // idx_risk_events_created_id_desc house shape for that ORDER BY
+    // family. Raw sql`col DESC` expression columns (NOT .desc() — the
+    // R134-A8-F1 convention: drizzle-kit 0.31.9 serializes .desc() as
+    // DESC NULLS LAST and would diverge from the boot twin's plain DESC;
+    // on these NOT NULL columns the two are order-identical, so this is
+    // chain↔boot parity, not a live change). Boot twin: migrate.ts
+    // applyR135IndexWaveStage (V1-M34 probe-gated same-name swap) + the
+    // base round-4 block; drizzle mirror: chain 0023.
+    userCreatedIdx: index("idx_wallet_ledger_user_created").on(
+      t.userId,
+      sql`created_at DESC`,
+      sql`id DESC`,
+    ),
     // R118-A3 F3: the signed-delta invariant the boot SQL applies live —
     // V1-M9 created chk_ledger_amount_pos (amount > 0), V1-M10 replaced
     // it with this sign-free form because adjustments store SIGNED
