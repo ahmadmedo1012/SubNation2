@@ -27,8 +27,12 @@ export function ActivityTimelineCard({
   activitiesError: string | null;
   onRetry: () => void;
 }) {
+  // R139 (precision): the resting edge joins the family value (/55 → /60)
+  // and the failure ink migrates to --status-error (the §6 status-token
+  // source — the shadcn destructive channel was off-source for a severity
+  // ink; the reason text below is the §6 pairing and stays byte-identical).
   return (
-    <div className="bg-card border border-border/55 rounded-xl p-4">
+    <div className="bg-card border border-border/60 rounded-xl p-4">
       {/* R125-I5 (A3-5): honest count — the timeline used to render
                 whatever arrived under a bare «سجل النشاط» heading, an
                 audit log presented as complete. The header now names the
@@ -79,7 +83,7 @@ export function ActivityTimelineCard({
                 {activity.success ? (
                   <CheckCircle className="w-4 h-4 text-status-success" />
                 ) : (
-                  <XCircle className="w-4 h-4 text-destructive" />
+                  <XCircle className="w-4 h-4 text-status-error" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -94,7 +98,7 @@ export function ActivityTimelineCard({
                 </div>
                 <p className="text-sm text-muted-foreground">{activity.identifier}</p>
                 {activity.failureReason && (
-                  <p className="text-xs text-destructive mt-1">{activity.failureReason}</p>
+                  <p className="text-xs text-status-error mt-1">{activity.failureReason}</p>
                 )}
                 <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                   {activity.provider && <span>المزود: {activity.provider}</span>}

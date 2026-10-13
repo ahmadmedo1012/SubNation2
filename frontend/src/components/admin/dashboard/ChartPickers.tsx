@@ -55,10 +55,19 @@ export function ChartPickers({
             key={g.value}
             onClick={() => onGranularityChange(g.value)}
             aria-pressed={granularity === g.value}
-            className={`px-2 py-1 rounded text-3xs font-bold transition-all duration-150 ${
+            /* R139 (precision): the selected chip migrates to the calm
+               active pill — bg-primary/15 + text-primary-text +
+               border-primary/30 + font-bold, BOTH states carrying the
+               border box (the login-tab geometry: chips sit on a recessed
+               bg-muted/40 track exactly as those tabs sat on bg-muted/30).
+               The old bg-card + shadow-sm "raised segment" was a second
+               selected-state vocabulary; one family now covers nav items,
+               login tabs, risk chips and these pickers. aria-pressed and
+               the px/py text scale are byte-identical (admin density). */
+            className={`px-2 py-1 rounded text-3xs border transition-all duration-150 ${
               granularity === g.value
-                ? "bg-card shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {g.label}
@@ -77,10 +86,14 @@ export function ChartPickers({
             key={opt.days}
             onClick={() => onDaysChange(opt.days)}
             aria-pressed={chartDays === opt.days}
-            className={`px-2.5 py-1 rounded text-2xs font-bold transition-all duration-150 ${
+            /* R139 (precision): same calm-active migration as the
+               granularity cluster above — one selected-state vocabulary
+               for both picker tracks (period at text-2xs keeps its own
+               scale). */
+            className={`px-2.5 py-1 rounded text-2xs border transition-all duration-150 ${
               chartDays === opt.days
-                ? "bg-card shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {opt.label}

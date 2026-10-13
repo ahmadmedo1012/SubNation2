@@ -57,7 +57,11 @@ export function PaymentReferenceField({
         required={required}
         dir="ltr"
         autoComplete="off"
-        className="text-left font-mono h-11 rounded-xl border-border/50 focus:border-primary/45 bg-card"
+        /* R139 (precision): border-border/50 + focus:border-primary/45
+           overrides stripped — the shared Input family owns the AA
+           resting border and the ONE focus system (the mobile-flow
+           amount twin's form). h-11 = the 44px storefront floor. */
+        className="text-left font-mono h-11 bg-card"
       />
       <p className="text-2xs text-muted-foreground mt-1.5 leading-relaxed">
         {required

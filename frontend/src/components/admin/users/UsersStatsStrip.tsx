@@ -64,7 +64,14 @@ export function UsersStatsStrip({
             <stat.icon className={`w-4 h-4 ${stat.color}`} />
           </div>
           <div>
-            <div className={`font-bold text-sm tabular-nums ${stat.color}`}>{stat.value}</div>
+            {/* R139 (precision): money emphasis by weight+size, not color —
+                the loaded-sample values drop their status inks for plain
+                foreground (the MetricCard value idiom + the OrdersStatsPanel
+                revenue-tile decision: wallet totals / spend / averages are
+                not statuses). The token tint stays where the MetricCard keeps
+                it — the icon stage + the quiet /15 tile border; tabular-nums
+                already rode every amount. */}
+            <div className="font-bold text-sm tabular-nums">{stat.value}</div>
             <div className="text-3xs text-muted-foreground leading-tight mt-0.5">{stat.label}</div>
           </div>
         </div>

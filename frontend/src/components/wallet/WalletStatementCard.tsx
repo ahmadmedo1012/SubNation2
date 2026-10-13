@@ -37,7 +37,11 @@ export function WalletStatementCard({
   return (
     <section
       aria-labelledby="wallet-statement-heading"
-      className="bg-card border border-border/55 rounded-2xl p-5 mt-5"
+      /* R139 (precision): /55 → /60 — the family resting edge. The card
+         stays FLAT on purpose: the balance hero above owns the page's
+         one elevated register (two-layer calm elevation); a long
+         scrolling statement reads as paper, not a floating panel. */
+      className="bg-card border border-border/60 rounded-2xl p-5 mt-5"
     >
       <div className="flex items-center gap-2.5 mb-4">
         <ArrowLeftRight className="w-4 h-4 text-muted-foreground" />
@@ -64,16 +68,12 @@ export function WalletStatementCard({
       </div>
 
       {loading ? (
-        /* Statement skeleton — same shape as the topup list's, so the
-           two right-column lists feel like one family. */
-        <div className="space-y-2.5">
+        /* Statement skeleton — mirrors the hairline receipt rows it
+           previews (divide-y /20 + plain py rows; the old boxed chips
+           flashed a different list than the one that landed). */
+        <div className="divide-y divide-border/20">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              /* R125-I7 (A7 B-12 / R124-A3 #12): 2px border-l accent
-                 stripe → the plain 1px border (craft-floor cap). */
-              className="bg-card border border-border rounded-xl p-4 flex items-center gap-4"
-            >
+            <div key={i} className="flex items-center gap-4 py-4">
               <div className="w-10 h-10 rounded-xl bg-muted skeleton-shimmer shrink-0" />
               <div className="flex-1 space-y-2">
                 <div className="h-4 bg-muted skeleton-shimmer rounded-lg w-2/5" />
@@ -94,16 +94,26 @@ export function WalletStatementCard({
         />
       ) : entries.length === 0 ? (
         <div className="text-center py-10 text-muted-foreground">
-          <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
-            <ArrowLeftRight className="w-7 h-7 opacity-25" />
+          {/* R139 (precision): the empty stage joins the r138-h icon
+              stage values (bg-muted/60 tile + /35 edge + /35 glyph +
+              /85 title — the shared EmptyState family 139-d aligned). */}
+          <div className="w-16 h-16 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center mx-auto mb-4">
+            <ArrowLeftRight className="w-7 h-7 opacity-35" />
           </div>
-          <p className="font-bold text-base mb-1.5 text-foreground/80">لا توجد حركات بعد</p>
+          <p className="font-bold text-base mb-1.5 text-foreground/85">لا توجد حركات بعد</p>
           <p className="text-xs text-muted-foreground max-w-[220px] mx-auto leading-relaxed">
             ستظهر هنا عمليات الشحن والشراء والاسترداد في محفظتك
           </p>
         </div>
       ) : (
-        <div className="space-y-2.5 lg:max-h-[480px] overflow-y-auto scrollbar-none">
+        /* R139 (precision): THE STATEMENT rides the receipt rhythm — a
+           statement IS a receipt (FINAL_UX_SYSTEM §4: every LYD movement
+           explainable). divide-y divide-border/20 hairlines replace the
+           boxed chip rows (hairlines at row boundaries = the CartSummary
+           slip's paper idiom); the row itself loses its hover wash —
+           read-only accountability lines promise no interactivity (the
+           139-g audit-trail decision). */
+        <div className="divide-y divide-border/20 lg:max-h-[480px] overflow-y-auto scrollbar-none">
           {entries.map((e, i: number) => (
             <LedgerEntryRow key={e.id ?? i} entry={e} index={i} />
           ))}

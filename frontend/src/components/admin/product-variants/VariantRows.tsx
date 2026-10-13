@@ -82,32 +82,41 @@ export function VariantRows({
           </Button>
         </div>
       ) : (
-        <div className="bg-card border border-border/55 rounded-xl overflow-x-auto">
+        /* R139 (precision): container edge /55 → /60 — the resting
+           border family value every catalog card rides; the row
+           hairlines (/30) and calm hover:bg-muted/10 step below are
+           already the family register, and the money columns
+           (cost/price/computed) verified tabular-nums. */
+        <div className="bg-card border border-border/60 rounded-xl overflow-x-auto">
           <table className="w-full text-2xs min-w-[680px]">
+            {/* R139 (precision): th font-bold → font-semibold — the
+               quiet header-row register (bg-muted/20-30 + 600) the
+               orders table and the r138 family ride; 700 stays on the
+               row DATA (titles/prices) where the weight ladder belongs. */}
             <thead className="bg-muted/30 text-muted-foreground">
               <tr>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   الباقة
                 </th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   التكلفة
                 </th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   السعر
                 </th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   المحسوب
                 </th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   SKU
                 </th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   الترتيب
                 </th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   الحالة
                 </th>
-                <th scope="col" className="text-right font-bold px-2 py-1.5">
+                <th scope="col" className="text-right font-semibold px-2 py-1.5">
                   إجراءات
                 </th>
               </tr>

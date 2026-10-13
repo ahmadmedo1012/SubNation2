@@ -39,10 +39,20 @@ export function ReferralsFilters({
             <button
               key={f.value}
               onClick={() => onStatusFilterChange(f.value)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all press-spring ${
+              /* R139 (precision): the status chips join the r138 calm-pill
+                 family (the no-trough row shape — RiskFilterChips /
+                 ProductsToolbar's dialect): active = bg-primary/15 +
+                 text-primary-text + border-primary/30 + font-bold; the old
+                 solid bg-primary + white ink + brand shadow was the
+                 pre-r138 raised segment. Both states carry a border box
+                 (inactive = muted/30 + border/30) so the 1px toggle jitter
+                 dies; base weight steps 700→600 with bold reserved for the
+                 active state (the OrdersFilters ladder). onClick + DOM
+                 byte-identical. */
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all press-spring ${
                 statusFilter === f.value
-                  ? "bg-primary text-white shadow-sm shadow-primary/25"
-                  : "bg-card border border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                  ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
+                  : "bg-muted/30 border border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
               }`}
             >
               {f.label}

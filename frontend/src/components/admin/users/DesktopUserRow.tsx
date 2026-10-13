@@ -41,7 +41,14 @@ export const DesktopUserRow = React.memo(function DesktopUserRow({
 }: UserRowProps & { idx: number }) {
   return (
     <tr
-      className={`border-b border-border/30 transition-colors hover:bg-muted/20 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
+      /* R139 (precision): the row register (the r138-e cart line-data
+         precedent, the DesktopOrderRow twin) — seams step /30→/60
+         (matching the header seam above; one hairline rhythm per table)
+         and hover calms to a bg-muted/30 wash with NO elevation. The
+         zebra wash and the memo bail-out contract are untouched. NO
+         selected state exists in this table (rows are action-per-row
+         via the edit pencil, not selectable) — nothing to migrate. */
+      className={`border-b border-border/60 transition-colors hover:bg-muted/30 ${idx % 2 !== 0 ? "bg-muted/[0.035]" : ""}`}
     >
       <td className="px-4 py-2.5 font-mono font-bold text-sm">
         {displayUserName(user as unknown as AdminUserShape)}
@@ -50,6 +57,12 @@ export const DesktopUserRow = React.memo(function DesktopUserRow({
         <ProviderBadges user={user as unknown as Record<string, unknown>} />
       </td>
       <td className="px-4 py-2.5 font-bold text-primary-text tabular-nums">
+        {/* R125-I2 (A6-B6): money cell — raw --primary on a dark card is
+         * 3.76:1 (under the 4.5:1 text floor; dark is the admin
+         * default). --primary-text is the text-safe variant (5.75:1
+         * dark / 5.30 light). R139 (precision): verified the family
+         * keeps this ink on table money cells — the orders lane's
+         * amount cell rides the identical pair. */}
         {formatCurrency(user.wallet_balance)}
       </td>
       <td className="px-4 py-2.5">

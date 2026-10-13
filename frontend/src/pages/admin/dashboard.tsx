@@ -384,37 +384,56 @@ export default function AdminDashboardPage() {
   return (
     <AdminLayout onRefresh={handleRefresh} badges={badges}>
       <div className="space-y-6">
-        {/* Urgent alert */}
-        {/* R122 (A2-P2): finance-gated — the topups page is finance-scoped
-            (nav + backend), and the old banner deep-linked EVERY admin
-            into an honest-but-dead 403 card. */}
-        {canSeeMoney && (stats?.pending_topups ?? 0) > 0 && (
-          <UrgentTopupsBanner pendingTopups={stats!.pending_topups} />
-        )}
+        {/* R139 (precision): the dashboard's ONE sanctioned atmosphere
+            moment — .ambient-wash over the above-the-fold zone (the
+            urgent banner + the KPI grid + the quick-actions strip:
+            everything above the charts/orders row). The r139 brief pins
+            exactly one wash per admin SESSION: every other admin page
+            stays flat, and the charts column below stays quieter on
+            purpose (the KPI grid is the page's prominent surface — it
+            also rides the two-layer calm elevation in MetricCard — so
+            the wash + elevation pair reads as ONE depth statement, the
+            GuestHero/AuthedHero register). Static, GPU-free,
+            pointer-events-none; absolute (out of flow) so the space-y
+            rhythm is untouched. */}
+        <div className="relative space-y-6">
+          <div className="absolute inset-0 ambient-wash pointer-events-none" />
+          {/* Urgent alert */}
+          {/* R122 (A2-P2): finance-gated — the topups page is finance-scoped
+              (nav + backend), and the old banner deep-linked EVERY admin
+              into an honest-but-dead 403 card. */}
+          {canSeeMoney && (stats?.pending_topups ?? 0) > 0 && (
+            <UrgentTopupsBanner pendingTopups={stats!.pending_topups} />
+          )}
 
-        {/* KPI cards */}
-        {statsLoading ? (
-          /* R136 (UX-1): SkeletonText — the 6-card KPI grid becomes one
-             announcing wrapper with the grid classes + card geometry
-             (bg-card border rounded-2xl h-28) verbatim. */
-          <SkeletonText
-            count={6}
-            wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-3"
-            className="bg-card border border-border rounded-2xl h-28"
-            lastShorter={false}
-          />
-        ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {METRIC_CARDS.map((card, i) => (
-              <MetricCard key={card.label} card={card} index={i} chartData={chartData} />
-            ))}
-          </div>
-        )}
+          {/* KPI cards */}
+          {statsLoading ? (
+            /* R136 (UX-1): SkeletonText — the 6-card KPI grid becomes one
+               announcing wrapper with the grid classes + card geometry
+               (bg-card border rounded-2xl h-28) verbatim.
+               R139 (precision): the skeleton tiles mirror the loaded
+               MetricCard's NEW resting chrome — border-border/60 + the
+               two-layer calm elevation — so the loading→loaded swap never
+               changes the frame, only fills it in. */
+            <SkeletonText
+              count={6}
+              wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-3"
+              className="bg-card border border-border/60 rounded-2xl h-28 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"
+              lastShorter={false}
+            />
+          ) : (
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {METRIC_CARDS.map((card, i) => (
+                <MetricCard key={card.label} card={card} index={i} chartData={chartData} />
+              ))}
+            </div>
+          )}
 
-        {/* Quick actions strip */}
-        {stats && !statsLoading && (
-          <QuickActionsStrip canSeeMoney={canSeeMoney} pendingTopups={stats.pending_topups} />
-        )}
+          {/* Quick actions strip */}
+          {stats && !statsLoading && (
+            <QuickActionsStrip canSeeMoney={canSeeMoney} pendingTopups={stats.pending_topups} />
+          )}
+        </div>
 
         {/* Charts + Recent Orders row */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">

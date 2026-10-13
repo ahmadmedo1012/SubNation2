@@ -33,10 +33,14 @@ export function DirectExecutionBadge({ item }: { item: DirectExecution }) {
       : null;
   return (
     <div
-      className={`flex items-start gap-2 text-xs rounded-xl px-3 py-2.5 border shadow-sm ${
+      /* R139 (precision): the failure arm joins the --status-error family
+         (one red vocabulary across the console) and the resting
+         shadow-sm retires — a status chip is paper, not an elevated
+         surface (the family's no-elevation-on-resting-chips rule). */
+      className={`flex items-start gap-2 text-xs rounded-xl px-3 py-2.5 border ${
         ok
           ? "bg-status-success/10 border-status-success/30 text-status-success"
-          : "bg-destructive/10 border-destructive/30 text-destructive"
+          : "bg-status-error/10 border-status-error/30 text-status-error"
       }`}
     >
       {ok ? (

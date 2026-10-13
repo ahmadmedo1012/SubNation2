@@ -80,10 +80,20 @@ export const TopupCard = React.memo(function TopupCard({
 }: TopupCardProps) {
   return (
     <div
-      className={`float-in stagger-${Math.min(idx + 1, 8)} bg-card rounded-2xl border overflow-hidden transition-all hover:shadow-md hover:shadow-black/10 ${
+      /* R139 (precision): the queue card joins the row register (the
+         r138-e cart line-data precedent — a queue row is line data,
+         not a tile): the colored resting glow
+         (shadow-status-warning/4) and the hover elevation
+         (hover:shadow-md) retire — no glow halos, no per-row
+         elevation. The pending triage mark survives on the warning
+         border + the top strip, and hover becomes a border step
+         only: non-pending /60→/100 (the family resting step),
+         pending warning /20→/40 so the semantic mark survives hover.
+         transition-all narrows to the colors it still animates. */
+      className={`float-in stagger-${Math.min(idx + 1, 8)} bg-card rounded-2xl border overflow-hidden transition-colors ${
         t.status === "pending"
-          ? "border-status-warning/20 shadow-sm shadow-status-warning/4"
-          : "border-border/60"
+          ? "border-status-warning/20 hover:border-status-warning/40"
+          : "border-border/60 hover:border-border"
       }`}
     >
       {t.status === "pending" && (
@@ -211,7 +221,13 @@ export const TopupCard = React.memo(function TopupCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-9 border-status-error/30 text-status-error hover:bg-status-error/10 font-bold active:scale-[0.97] transition-transform px-5"
+                /* R139 (precision): quiet danger at rest (the toolbar
+                   bulk-reject twin's recipe) — neutral border/60 +
+                   muted ink at rest; the error ink surfaces on hover
+                   and the severity lives in RejectModal's destructive
+                   confirm. The solid-success approve sibling stays
+                   the loud one (the money-creating action). */
+                className="h-9 border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10 font-bold active:scale-[0.97] transition-transform px-5"
                 onClick={() => onReject(t)}
                 disabled={isProcessing}
               >

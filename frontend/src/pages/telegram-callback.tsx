@@ -2,6 +2,7 @@ import { useAuth } from "@/lib/auth";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { Button } from "@/components/ui/button";
 
 const HANG_TIMEOUT_MS = 12_000;
 
@@ -204,12 +205,18 @@ export default function TelegramCallbackPage() {
             <p className="text-xs leading-relaxed">
               قد تكون الشبكة بطيئة. حاول مرة أخرى من صفحة تسجيل الدخول.
             </p>
-            <Link
-              href="/login"
-              className="mt-2 inline-flex items-center justify-center h-10 px-5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold press-spring shadow-md shadow-primary/22"
-            >
-              العودة لتسجيل الدخول
-            </Link>
+            {/* R139 (precision): canonical CTA (R116-S1) — the raw
+                hand-rolled link (h-10 + flat bg-primary + hover:bg-
+                primary/90 + text-white + shadow-md shadow-primary/22)
+                retires for the system Button, the EXACT conversion
+                auth-callback.tsx already shipped (its R116-S1 comment:
+                "gradient variant, text-primary-foreground replaces the
+                hand-rolled bg-primary/text-white link"). The two bridge
+                pages are one family — one CTA register. href + label
+                byte-identical. */}
+            <Button asChild size="lg" className="mt-2">
+              <Link href="/login">العودة لتسجيل الدخول</Link>
+            </Button>
           </>
         ) : (
           <>

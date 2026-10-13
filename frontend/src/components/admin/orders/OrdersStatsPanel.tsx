@@ -52,7 +52,7 @@ export function OrdersStatsPanel({
         </div>
         <div className="flex items-center gap-3">
           {!showStats && (
-            <span className="text-xs text-muted-foreground font-normal">
+            <span className="text-xs text-muted-foreground font-normal tabular-nums">
               {couponCount} طلب بكوبون · خصم {formatCurrency(totalDiscounts)}
             </span>
           )}
@@ -64,8 +64,11 @@ export function OrdersStatsPanel({
         </div>
       </button>
 
+      {/* R139 (precision): receipt rhythm — the collapsible section's
+          boundary rule softens /50→/20 (the r138 hairline value at
+          section seams, the CartSummaryAside rule). */}
       {showStats && (
-        <div className="border-t border-border/50 p-4 space-y-4">
+        <div className="border-t border-border/20 p-4 space-y-4">
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {/* Total revenue */}
@@ -74,7 +77,12 @@ export function OrdersStatsPanel({
                 <TrendingUp className="w-3 h-3" />
                 إجمالي الإيرادات
               </div>
-              <div className="font-bold text-base tabular-nums text-primary-text">
+              {/* R139 (precision): money emphasis by weight+size, not
+                  color — the revenue tile drops its brand tint for
+                  plain foreground (font-bold + text-base over the
+                  text-2xs label already carry the step; the r138
+                  receipt rule). */}
+              <div className="font-bold text-base tabular-nums">
                 {formatCurrency(totalRevenueAll)}
               </div>
               <div className="text-3xs text-muted-foreground mt-0.5">
@@ -82,7 +90,11 @@ export function OrdersStatsPanel({
               </div>
             </div>
 
-            {/* Total discounts */}
+            {/* Total discounts — R139 (precision): the success ink on
+                this tile (label, value, and the top-coupon discount
+                rows below) is the documented r138 exception —
+                discount-reads-positive is semantic status, not
+                emphasis (the CartSummaryAside decision); it stays. */}
             <div className="bg-status-success/5 rounded-2xl p-3 border border-status-success/15">
               <div className="flex items-center gap-1.5 text-2xs text-status-success mb-1.5">
                 <BadgePercent className="w-3 h-3" />
@@ -173,7 +185,7 @@ export function OrdersStatsPanel({
               الإيرادات" silently describe a slice. The dashboard
               KPI reads /admin/stats — the server-side truth. */}
           {!knownTotal && (
-            <p className="text-3xs text-muted-foreground pt-1 border-t border-border/30 mt-1">
+            <p className="text-3xs text-muted-foreground pt-1 border-t border-border/20 mt-1">
               الإحصاءات تعكس الطلبات المعروضة ({formatCount(allOrdersCount, ORDER_COUNT_FORMS)}) —
               الإجماليات الكاملة في لوحة التحكم
             </p>

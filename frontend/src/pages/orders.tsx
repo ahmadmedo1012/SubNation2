@@ -94,33 +94,39 @@ const FILTER_TONES: Record<
   "neutral" | "info" | "warning" | "success" | "error",
   { active: string; idle: string }
 > = {
+  /* R139 (precision): the filter chips join the calm pill dialect —
+     active = the tinted trio ("الكل" rides the primary trio; the
+     status buckets ride their status token at the same alphas), with
+     NO shadow anywhere on either state; idle = the family muted box
+     (bg-muted/30 + border/30 + the /60 hover wash — the tone reveals
+     only on the active state). The old inverted "all" fill, the
+     per-tone /45 edges and the tone-tinted idle hovers were the
+     pre-r138 raised-toggle register. Both states keep the border box
+     (the base className's `border`) — no 1px toggle jitter. aria-pressed
+     is pinned by orders-filter-url. */
   neutral: {
-    active: "bg-foreground text-background border-foreground shadow-sm shadow-black/20",
-    idle: "bg-muted/40 border-border/55 text-muted-foreground hover:text-foreground hover:bg-muted/60",
+    active: "bg-primary/15 text-primary-text border-primary/30",
+    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
   },
   // R116-S2 (P3): the refunded/failed bucket rides the INFO tone — a
   // refund is not a failure (the money came back; the pill + row accent
   // already carry status-info). Pure «فشل» red mislabeled every
   // refunded order in the list.
   info: {
-    active:
-      "bg-status-info/15 border-status-info/45 text-status-info shadow-sm shadow-status-info/20",
-    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-info hover:border-status-info/35",
+    active: "bg-status-info/15 text-status-info border-status-info/30",
+    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
   },
   warning: {
-    active:
-      "bg-status-warning/15 border-status-warning/45 text-status-warning shadow-sm shadow-status-warning/20",
-    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-warning hover:border-status-warning/35",
+    active: "bg-status-warning/15 text-status-warning border-status-warning/30",
+    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
   },
   success: {
-    active:
-      "bg-status-success/15 border-status-success/45 text-status-success shadow-sm shadow-status-success/20",
-    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-success hover:border-status-success/35",
+    active: "bg-status-success/15 text-status-success border-status-success/30",
+    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
   },
   error: {
-    active:
-      "bg-status-error/15 border-status-error/45 text-status-error shadow-sm shadow-status-error/20",
-    idle: "bg-card border-border/55 text-muted-foreground hover:text-status-error hover:border-status-error/35",
+    active: "bg-status-error/15 text-status-error border-status-error/30",
+    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
   },
 };
 
@@ -299,7 +305,10 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3 mb-7 page-in flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-primary/12 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
+          <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            {/* R139 (precision): shadow-inner + the /12 fill retired —
+                the flat page-header tile family every account page
+                rides (wallet/loyalty/referrals/status). */}
             <ShoppingBag className="w-5 h-5 text-primary" />
           </div>
           <div>
@@ -310,7 +319,9 @@ export default function OrdersPage() {
           </div>
         </div>
         {!isLoading && orders.length > 0 && (
-          <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shadow-sm shrink-0">
+          /* R139 (precision): the count chip drops its resting
+             shadow-sm — a static badge, not a floating layer. */
+          <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shrink-0">
             {/* R94-A1 #11 (P3): Arabic pluralization via the shared
                 formatCount (طلبان / طلبات / طلباً) instead of a frozen
                 singular «طلب» after every count. R120-B7 (A6-F1): once a
@@ -518,10 +529,19 @@ export default function OrdersPage() {
                   float-in ${staggerClass}
                   bg-card border border-border/60 border-r-[3px] ${statusAccentBorder(order.status)}
                   rounded-xl p-4
-                  hover:border-border hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5
-                  transition-all duration-200 cursor-pointer group active:scale-[0.995] active:translate-y-0
+                  card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
+                  cursor-pointer group
                 `}
                 >
+                  {/* R139 (precision): the card's hand-rolled hover lift
+                      (hover:-translate-y-0.5 + transition-all + the
+                      active: overrides) is replaced by the family's
+                      unified .card-spring — the exact ProductCard recipe
+                      (one sanctioned spring: hover lift + active press,
+                      border step + the calm neutral xl elevation).
+                      hover:shadow-black/20 → /25 matches that family
+                      value. The status accent edge + StatusBadge tokens
+                      are untouched (pinned by order-refund-receipt). */}
                   <div className="flex items-center gap-3.5">
                     {/* Product image */}
                     <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
@@ -622,7 +642,7 @@ export default function OrdersPage() {
                           <span>{statusLabel(order.status)}</span>
                         </StatusBadge>
                       </div>
-                      <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-[-2px] transition-all duration-150 shrink-0" />
+                      <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-primary-text group-hover:translate-x-[-2px] transition-all duration-150 shrink-0" />
                     </div>
                   </div>
                 </div>

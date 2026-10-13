@@ -24,7 +24,11 @@ const HOW_REFERRAL_WORKS = [
 
 export function ReferralBox({ data }: { data: LoyaltyData }) {
   return (
-    <div className="bg-gradient-to-br from-primary/10 via-card to-card border border-primary/20 rounded-2xl p-5 float-in stagger-3">
+    /* R139 (precision): the gradient shell (from-primary/10 via-card
+       + border-primary/20) retires for the solid family card — the
+       r138 resting edge; the box's identity rides the Gift tile, the
+       reward ink and the calm-tint CTA below (139-f/i's panel recipe). */
+    <div className="bg-card border border-border/60 rounded-2xl p-5 float-in stagger-3">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <h2 className="font-bold text-base mb-1">ادعُ أصدقاءك</h2>
@@ -32,8 +36,10 @@ export function ReferralBox({ data }: { data: LoyaltyData }) {
             {/* R115 (policy B): اعتماد — the award lands on the
                 friend's first APPROVED topup, not at signup. */}
             عند اشتراك صديقك واعتماد أول شحن له،
-            <span className="text-status-warning font-bold">
-              {" "}
+            <span className="text-status-warning font-bold tabular-nums">
+              {/* R139 (precision): tabular-nums on the reward number —
+                  the mission's reward-values register (weight +
+                  tabular, values from the API's points_rate). */}{" "}
               تحصل على {data.points_rate.points_per_referral} نقطة
             </span>
           </p>
@@ -52,8 +58,12 @@ export function ReferralBox({ data }: { data: LoyaltyData }) {
                zeroes the five tracking utilities app-wide, so the
                SAME referral code rendered with 0.2em spacing on
                /referrals and 0 here. Arbitrary form unified to
-               tracking-[0.2em] for LTR mono runs. */
-            className="flex-1 bg-background/50 border border-border rounded-xl px-3 py-2.5 font-mono text-sm font-bold tracking-[0.2em] truncate text-left"
+               tracking-[0.2em] for LTR mono runs.
+               R139 (precision): the code box joins the WELL register
+               (bg-muted/60 + /40 — the money-critical stage the user
+               copies, the USSD-code-panel twin; the old translucent
+               background/50 + full-strength border was pre-r138). */
+            className="flex-1 bg-muted/60 border border-border/40 rounded-xl px-3 py-2.5 font-mono text-sm font-bold tracking-[0.2em] truncate text-left"
           >
             {data.referral_code}
           </div>
@@ -62,8 +72,11 @@ export function ReferralBox({ data }: { data: LoyaltyData }) {
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <div
             dir="ltr"
-            className="flex-1 bg-background/40 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono text-left"
+            className="flex-1 bg-muted/40 border border-border/30 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono text-left"
           >
+            {/* R139 (precision): the link box rides the well register's
+                quieter twin (muted/40 + /30 — secondary datum under the
+                code; unified with the /referrals link row). */}
             {data.referral_link || `${window.location.origin}/register?ref=${data.referral_code}`}
           </div>
           <CopyButton
@@ -76,10 +89,13 @@ export function ReferralBox({ data }: { data: LoyaltyData }) {
       </div>
 
       <div className="grid grid-cols-3 gap-2 text-center text-xs mb-3">
+        {/* R139 (precision): the step tiles join the nested-stat-tile
+            register (bg-muted/20 + /40 — the register 139-j kept for
+            in-card stat tiles). */}
         {HOW_REFERRAL_WORKS.map((s) => (
           <div
             key={s.step}
-            className="bg-background/40 border border-border/40 rounded-xl p-2.5 flex flex-col items-center gap-1.5"
+            className="bg-muted/20 border border-border/40 rounded-xl p-2.5 flex flex-col items-center gap-1.5"
           >
             <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
               {s.icon}

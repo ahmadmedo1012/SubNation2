@@ -31,6 +31,14 @@ const STATUS_META: Record<
     icon: typeof CheckCircle2;
   }
 > = {
+  /* R139 (precision): VERIFIED, no chrome change — the aggregate banner
+     already speaks the contract this lane pins: every state rides the
+     theme-aware --status-* token trio (/10 fill + /30 edge + full ink
+     on the label), and every state — ok/degraded/failing/unknown —
+     carries its REASON text (label + description); degraded/unknown
+     are never bare red/green walls, and the "unknown" fallback fails
+     CLOSED (never green, the comment below). The header tile + AA
+     link pair + the 44px refresh control were already family. */
   // R94-A1 #5 (P2, WCAG AA): raw -400 shades measured 1.92–2.54:1 on
   // white/light surfaces — the shared --status-* tokens carry
   // theme-aware values tuned for AA contrast on card surfaces.

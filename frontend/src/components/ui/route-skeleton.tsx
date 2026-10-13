@@ -119,8 +119,22 @@ function CatalogShell() {
  */
 export function ProductCardShell() {
   return (
-    <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
-      <div className="aspect-square skeleton-shimmer" />
+    // R139 (precision, r138-b parity): border-border/50 → /60 — the real
+    //   ProductCard's resting edge moved 70→60 in the r138 family round;
+    //   the skeleton kept /50, a 10% alpha step on every card container
+    //   at each shimmer→content swap of the 8-card catalog grid (the
+    //   exact drift class this shell exists to eliminate). Deliberately
+    //   NO r138-B two-layer calm shadow: that elevation is the
+    //   PROMINENT-card register — placeholders rest at the skeleton
+    //   family's flatter, quieter step.
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+      {/* R139 (precision): the well carries the real card's bg-muted/60
+          shelf class — a REGISTER marker riding along render-neutral:
+          .skeleton-shimmer owns the base fill and, later in the
+          @layer utilities source order, wins the background-color
+          cascade (the R136 riding-tint idiom; the /60 wash's pixel
+          parity is capped by the orchestrator-owned utility). */}
+      <div className="aspect-square bg-muted/60 skeleton-shimmer" />
       <div className="p-3.5 space-y-2.5">
         <div className="flex justify-between gap-2">
           <div className="h-3.5 skeleton-shimmer rounded-lg w-3/5" />
@@ -128,7 +142,12 @@ export function ProductCardShell() {
         </div>
         <div className="h-2.5 skeleton-shimmer rounded w-full" />
         <div className="h-2.5 skeleton-shimmer rounded w-4/5" />
-        <div className="pt-2.5 mt-1 flex justify-between items-center border-t border-border/25">
+        {/* R139 (precision, border-rhythm consistency): divider /25 → /20 —
+            the real ProductCard's internal divider (and, since r138-e,
+            the checkout receipt's section rules) ride the /20 hairline
+            family value; the skeleton's /25 was the lone outlier between
+            the two /20 surfaces it previews. */}
+        <div className="pt-2.5 mt-1 flex justify-between items-center border-t border-border/20">
           <div className="h-4 skeleton-shimmer rounded w-20" />
           <div className="h-5 w-10 skeleton-shimmer rounded-full" />
         </div>
@@ -218,9 +237,26 @@ function ProductShell() {
       <div className="flex flex-col max-lg:gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
         {/* START column — media + title/description/features */}
         <section className="max-lg:contents lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
-          <div className="aspect-[16/9] skeleton-shimmer" />
+          {/* R139 (precision, r138-f parity): the media plane carries the
+              real page's bg-muted/60 shelf class (the same wash the
+              ProductCard well adopted) — a register marker riding along
+              render-neutral: .skeleton-shimmer owns the fill and wins the
+              utilities-layer source order (R136 riding-tint idiom). The
+              section chrome is verified parity — lg:border-border/55 +
+              lg:shadow-xl are the exact classes ProductMediaSection rides. */}
+          <div className="aspect-[16/9] bg-muted/60 skeleton-shimmer" />
           <div className="max-lg:px-5 max-lg:pt-5 lg:p-5 space-y-4">
-            <div className="h-7 skeleton-shimmer rounded-lg w-3/4" />
+            {/* R139 (precision, r138-f): the real h1 moved text-fluid-2xl →
+                text-fluid-3xl — clamp(1.85rem … 2.9rem) measures ≈29.5px on
+                a 390px viewport and caps at 46.4px. h-7=28px was the
+                fluid-2xl-era pick (that clamp ran 22→32px, midpoint 27 ≈
+                28); fluid-3xl's clamp midpoint is ≈38px and h-9=36px is the
+                closest step in the shell vocabulary (h-8=32 sits 6px under
+                the midpoint and 14px under the desktop cap) — the skeleton
+                title now rests inside the real title's measure band on
+                every viewport instead of under it. w-3/4 + rounded-lg
+                unchanged. */}
+            <div className="h-9 skeleton-shimmer rounded-lg w-3/4" />
             <div className="h-4 skeleton-shimmer rounded w-full" />
             <div className="h-4 skeleton-shimmer rounded w-2/3" />
             {/* Feature checklist grid */}
@@ -367,6 +403,13 @@ function CheckoutShell() {
           <div className="h-3.5 w-56 skeleton-shimmer rounded" />
         </div>
       </div>
+      {/* R139 (precision, drift-3 verification): the three mirrored cards
+          (payment / coupon / summary) already rest at the r138 family edge
+          border-border/60 — verified against PaymentMethodCard / CouponCard
+          / CartSummaryAside. Deliberately NO two-layer calm shadow: the
+          r138-B elevation is the PROMINENT-card register; placeholders keep
+          the skeleton family's flatter rest (border rhythm, not shadow
+          richness). The one real drift is the summary's section rule below. */}
       <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-5">
         {/* Payment + coupon stack (main column) */}
         <div className="space-y-4">
@@ -405,7 +448,12 @@ function CheckoutShell() {
                 <div className="h-3.5 w-14 skeleton-shimmer rounded" />
               </div>
             ))}
-            <div className="pt-3 mt-2 border-t border-border/25 flex justify-between items-center">
+            {/* R139 (precision, r138-e parity): /25 → /20 — the receipt
+                metaphor moved the real CartSummaryAside's section rules to
+                the /20 hairline family ("paper, not a hard edge" — the
+                ProductCard internal-divider value); the skeleton's rule
+                rode /25, harder than the receipt it previews. */}
+            <div className="pt-3 mt-2 border-t border-border/20 flex justify-between items-center">
               <div className="h-4 w-16 skeleton-shimmer rounded" />
               <div className="h-5 w-20 skeleton-shimmer rounded-lg" />
             </div>
@@ -424,7 +472,18 @@ function AdminShell() {
         <div className="h-7 w-44 skeleton-shimmer rounded-lg" />
         <div className="h-9 w-28 skeleton-shimmer rounded-xl" />
       </div>
-      <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+      {/* R139 (precision, admin register): frame /50 → /60 — every real
+          admin table container this shell fronts rides the resting
+          border/60 family (OrdersTable / RiskEventsTable /
+          ReferralsTable: `bg-card border border-border/60 rounded-2xl`),
+          and the canonical admin TableSkeleton rides the same /60 frame
+          (verified by this round's admin-skeleton pass) — the route-level
+          fallback was the lone /50 outlier, flashing a 10% softer frame on
+          every admin cold load before the real tables swap in. Inner bars
+          stay byte-identical: the rows' border-border/30 already rhyme;
+          the header divider + row heights are the admin lane's in-flight
+          inner chrome (wave-2), not this lane's register. */}
+      <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
         <div className="h-12 border-b border-border/40 skeleton-shimmer" />
         {Array.from({ length: 6 }).map((_, i) => (
           <div

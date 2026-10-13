@@ -314,14 +314,30 @@ export default function AdminCouponsPage() {
             {loadError && (
               <div
                 role="alert"
-                className="mb-4 p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+                /* R139 (precision): the load-failure banner joins the
+                   r138 calm-error register (the ChartErrorBanner
+                   idiom): the frame drops its status-error/10 + /25
+                   red wall for the card family's resting chrome
+                   (bg-card + border-border/60 + rounded-2xl — the
+                   same shape as the table it sits above), the error
+                   tone concentrates in the icon stage (an error/8
+                   fill + /22 edge + full-ink glyph — the ONE red
+                   accent on the card), the message moves to the /80
+                   foreground headline ink and the retry keeps the
+                   error ink; the retry's hand-rolled press-spring
+                   retires with the wall (the idiom's retry is a
+                   quiet underline). mb-4 layout + role/onClick are
+                   byte-identical. */
+                className="mb-4 p-4 rounded-2xl bg-card border border-border/60 flex items-center gap-3"
               >
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{loadError}</span>
+                <div className="w-9 h-9 rounded-xl bg-status-error/8 border border-status-error/22 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-4 h-4 text-status-error" />
+                </div>
+                <span className="min-w-0 text-sm font-bold text-foreground/80">{loadError}</span>
                 <button
                   type="button"
                   onClick={() => fetchCoupons()}
-                  className="ms-auto text-xs underline underline-offset-2 hover:opacity-80 press-spring"
+                  className="ms-auto shrink-0 text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80"
                 >
                   إعادة المحاولة
                 </button>
@@ -334,7 +350,13 @@ export default function AdminCouponsPage() {
                 action={
                   <button
                     onClick={() => setShowCreate(true)}
-                    className="text-xs text-primary hover:underline press-spring"
+                    /* R139 (precision): the exit link rides the
+                       text-safe brand ink (--primary-text — the
+                       A6-B6 rule: raw primary measured under the
+                       text floor) + the quiet link register the
+                       tickets empty branches use; the hand-rolled
+                       press-spring retires with the raw ink. */
+                    className="text-xs text-primary-text hover:underline"
                   >
                     + إنشاء أول كوبون
                   </button>

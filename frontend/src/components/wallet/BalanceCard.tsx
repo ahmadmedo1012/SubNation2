@@ -34,7 +34,7 @@ export function BalanceCard({
   const tier = wallet?.loyalty_tier ?? "bronze";
 
   return loading ? (
-    <div className="rounded-2xl h-36 skeleton-shimmer border border-border/45" />
+    <div className="rounded-2xl h-36 skeleton-shimmer border border-border/60" />
   ) : error ? (
     /* 93-C5 / F-05 (A4 #7): the card used to silently vanish on a
        failed /api/wallet probe — the money page's primary datum
@@ -49,19 +49,37 @@ export function BalanceCard({
   ) : wallet ? (
     <div
       ref={glowRef}
-      className="relative overflow-hidden rounded-2xl border border-primary/22 bg-gradient-to-br from-primary/14 via-primary/5 to-card p-4 sm:p-5 shadow-xl shadow-primary/8"
+      /* R139 (precision): the balance hero joins the r138 family — the
+         pre-r138 surface (brand gradient fill + border-primary/22 +
+         shadow-xl shadow-primary/8 brand glow) is retired for the solid
+         bg-card on the /60 resting edge + the two-layer calm elevation
+         (the page's ONE prominent-card register — the long statement
+         below stays flat). The atmosphere moves to the sanctioned
+         static pair: .ambient-wash (two-point radial) + .hairline-glow
+         (lit top edge) — the mission's explicit "wallet balance hero
+         is a legitimate candidate", the login/admin-login card lift.
+         The R115-A10 blob-drift layer + its page-owned glowStyle stay
+         byte-identical (the viewport-pause machinery is logic, not
+         chrome); only its alpha joins the r138 hero-blob family value. */
+      className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"
     >
+      <div className="absolute inset-0 ambient-wash pointer-events-none" />
+      <div className="hairline-glow" />
       <div className="absolute inset-0 dot-grid opacity-35 pointer-events-none" />
       <div
-        className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/10 blur-3xl pointer-events-none blob-drift"
+        className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-primary/14 blur-3xl pointer-events-none blob-drift"
         style={glowStyle}
       />
-      <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-primary/9 blur-2xl pointer-events-none" />
 
       <div className="relative flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-1.5 text-primary/65 text-xs font-bold mb-2">
-            <Wallet className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-bold mb-2">
+            {/* R139 (precision): the eyebrow whisper joins the muted label
+                register (the amount's weight+size carry the hierarchy —
+                receipt emphasis, never a tinted label); the glyph keeps
+                the AA-safe brand accent explicitly. */}
+            <Wallet className="w-3.5 h-3.5 text-primary-text" />
             الرصيد المتاح
           </div>
           <div className="text-3xl sm:text-4xl font-bold tabular-nums mb-3 leading-none text-foreground num-pop break-words">
@@ -103,7 +121,7 @@ export function BalanceCard({
           /* R123-E4a (P3-d): border from the shared tier map, text
               tone from tierColor() — was a second inline ladder
               duplicating the helper's palette. */
-          className={`shrink-0 px-3 py-2 rounded-xl border text-2xs font-bold bg-background/30 ${TIER_BADGE_BORDER[tier] ?? "border-border/40"} ${tierColor(tier)}`}
+          className={`shrink-0 px-3 py-2 rounded-xl border text-2xs font-bold bg-card ${TIER_BADGE_BORDER[tier] ?? "border-border/40"} ${tierColor(tier)}`}
         >
           {tierLabel(tier)}
         </div>

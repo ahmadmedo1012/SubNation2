@@ -15,7 +15,14 @@ export function AlertsEmptyState({ filter }: { filter: FilterType }) {
       role="status"
       className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground"
     >
-      <div className="w-16 h-16 rounded-2xl bg-muted/40 flex items-center justify-center">
+      <div
+        /* R139 (precision): the tile joins the muted-well family —
+           bg-muted/60 + /35 edge (the shared EmptyState's icon stage
+           values); the LARGER w-16 floating-icon shape stays as the
+           documented exception (EmptyState.tsx names this page's
+           bigger glyph as a deliberately-different empty). */
+        className="w-16 h-16 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center"
+      >
         {filter === "unread" ? (
           <Bell className="w-7 h-7 text-muted-foreground" />
         ) : (
@@ -23,7 +30,9 @@ export function AlertsEmptyState({ filter }: { filter: FilterType }) {
         )}
       </div>
       <div className="text-center">
-        <div className="font-semibold text-foreground/60">
+        {/* R139 (precision): /60 → /85 — the register's title ink (the
+            empty headline is the block's one prominent line). */}
+        <div className="font-semibold text-foreground/85">
           {filter === "unread" ? "لا توجد تنبيهات غير مقروءة" : "لا توجد تنبيهات"}
         </div>
         <div className="text-xs mt-1 text-muted-foreground">

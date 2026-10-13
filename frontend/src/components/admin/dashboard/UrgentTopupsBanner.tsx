@@ -12,7 +12,17 @@ export function UrgentTopupsBanner({ pendingTopups }: { pendingTopups: number })
     /* R125-I2 (A6-B4): every raw yellow-400 ink/tint on this banner
        collapses to ~1.4-1.5:1 on the shipped light admin theme —
        the --status-warning token family replaces them (the
-       StatusBadge ink — both-theme safe). */
+       StatusBadge ink — both-theme safe).
+       R139 (precision): VERIFIED quiet-danger-at-rest, no class change —
+       the /8 surface tint + /20 edge is already the calmest warning
+       register r138 pinned for banners (login's primary/8 banners),
+       the severity lives in CONTENT (the plural-routed count + the
+       «يحتاج إلى موافقة يدوية فورية» reason line — the §6 risk-state
+       contract), and the icon stage (warning/15 tile + full-ink glyph)
+       carries the one accent. The CTA keeps the warning ink + /30
+       border pill at rest (no filled red/amber button). The banner
+       also stays FLAT (no elevation) — the KPI grid below is this
+       page's one elevated register. */
     <div className="flex items-center justify-between p-4 bg-status-warning/8 border border-status-warning/20 rounded-2xl gap-4 float-in">
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-xl bg-status-warning/15 flex items-center justify-center shrink-0">

@@ -34,8 +34,12 @@ export function AdminAccountCard({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-3 min-w-0">
           <div
+            /* R139 (precision): the shield avatar tile joins the well
+               family — the inactive stage softens to bg-muted/60 (the
+               GlobalSearch thumbnail + dashboard icon-stage register); the
+               active stage keeps its quiet bg-primary/10 token tint. */
             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-              admin.is_active ? "bg-primary/10" : "bg-muted"
+              admin.is_active ? "bg-primary/10" : "bg-muted/60"
             }`}
           >
             <ShieldCheck
@@ -52,7 +56,11 @@ export function AdminAccountCard({
                     totp/معطّل badge family on text-safe
                     tokens — raw text-primary on the /10
                     tint is 3.56:1 dark (A6-B6). */
-                <span className="text-3xs font-bold bg-primary/10 text-primary-text px-1.5 py-0.5 rounded">
+                /* R139 (precision): the identity chip gains the border
+                    box its «جميع الصلاحيات» sibling already rides (the
+                    static-badge family — this was the one unboxed chip in
+                    the row; the primary/20 edge matches the sibling). */
+                <span className="text-3xs font-bold bg-primary/10 text-primary-text border border-primary/20 px-1.5 py-0.5 rounded">
                   أنت
                 </span>
               )}
@@ -80,9 +88,18 @@ export function AdminAccountCard({
             </button>
             <button
               onClick={() => onToggleActive(admin)}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${
+              /* R139 (precision): quiet danger at rest — the DISABLE
+                 trigger (session-killing, confirm-gated as destructive in
+                 the page) drops its resting low-stock ink/border for the
+                 neutral family (border/60 + muted ink); the error ink
+                 surfaces on hover only, and the severity lives in the
+                 page's destructive confirm step (the topups reject
+                 recipe). The ENABLE sibling keeps its success ink — the
+                 account-reviving action is the positive one (the
+                 approve-sibling rule). */
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-colors ${
                 admin.is_active
-                  ? "border-status-low-stock/40 text-status-low-stock hover:bg-status-low-stock/10"
+                  ? "border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10"
                   : "border-status-success/40 text-status-success hover:bg-status-success/10"
               }`}
             >

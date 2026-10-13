@@ -46,17 +46,29 @@ export function OrdersFilters({
                  aria-pressed exposes the toggle state to assistive
                  tech (the coupons.tsx chip-bar idiom). */
               aria-pressed={active}
+              /* R139 (precision): the active status chip joins the r138
+                 calm-pill family — bg-primary/15 + text-primary-text +
+                 border-primary/30 + font-bold (the VariantSelector /
+                 CatalogFiltersBar dialect). Both states now carry a
+                 border box (inactive = transparent), killing the 1px
+                 text jitter the borderless inactive state caused on
+                 toggle; the old bg-card + shadow-sm read as a mini
+                 elevation lifting the active chip. Inactive stays
+                 quiet muted ink over the trough with a muted/30 hover
+                 wash. aria-pressed byte-identical. */
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
                 active
-                  ? "bg-card shadow-sm text-foreground font-bold"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
+                  : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
               }`}
             >
               {s.label}
               {count > 0 && (
-                <span
-                  className={`text-3xs font-bold px-1 rounded ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
-                >
+                /* R139 (precision): the count chip's dead active/
+                   inactive ternary (both branches were identical)
+                   collapses to one muted ink — quiet metadata on both
+                   pill states. */
+                <span className="text-3xs font-bold px-1 rounded text-muted-foreground">
                   {count}
                 </span>
               )}
@@ -75,10 +87,15 @@ export function OrdersFilters({
             /* R124-I5 (A6 F10): same toggle-state exposure as the
                status chips. */
             aria-pressed={dateRange === dr.days}
+            /* R139 (precision): the date quick-filter joins the status
+               chips' calm-pill dialect (one row, one language):
+               active = bg-primary/15 + primary-text + /30 border +
+               bold; inactive = transparent border box + muted ink +
+               muted/30 hover wash. */
             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
               dateRange === dr.days
-                ? "bg-card shadow-sm text-foreground font-bold"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
+                : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
             }`}
           >
             {dr.label}

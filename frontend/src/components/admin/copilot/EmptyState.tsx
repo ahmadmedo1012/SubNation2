@@ -13,7 +13,11 @@ export function EmptyState({ flags, onPick }: { flags: PhaseFlags; onPick: (s: s
   return (
     <div className="space-y-4 py-2">
       <div className="text-center space-y-2">
-        <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center">
+        {/* R139 (precision): the hero tile drops its decorative gradient
+            (from-primary/30 → /10) for the page-header icon-stage family
+            (bg-primary/10 + border-primary/20 + primary ink — the
+            ReferralsHeader/PromotionsHeader tile register). */}
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
           <Sparkles className="w-7 h-7 text-primary" />
         </div>
         <div className="font-bold text-sm">كيف يمكنني مساعدتك؟</div>

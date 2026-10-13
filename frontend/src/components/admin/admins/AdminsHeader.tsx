@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/admins.tsx —
 // the page header (h1 + «إضافة مسؤول» CTA). The CTA opens the create
@@ -14,13 +15,18 @@ export function AdminsHeader({ onAdd }: { onAdd: () => void }) {
         <h1 className="text-xl font-bold mb-0.5">إدارة المسؤولين</h1>
         <p className="text-muted-foreground text-sm">إنشاء وإدارة حسابات المسؤولين وصلاحياتهم</p>
       </div>
-      <button
+      {/* R139 (precision): the CTA de-hand-rolls onto the shared Button —
+          the ProductsHeader «منتج جديد» recipe (flat bg-primary fill +
+          hover /90 + h-9 + press feedback; the buttonVariants chrome rides
+          along). h-9 ≥ the 24px admin edge floor. onClick + label
+          byte-identical. */}
+      <Button
         onClick={onAdd}
-        className="flex items-center gap-2 px-3.5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold shadow-sm hover:bg-primary/90"
+        className="bg-primary hover:bg-primary/90 h-9 active:scale-[0.97] transition-transform"
       >
-        <Plus className="w-3.5 h-3.5" />
+        <Plus className="w-4 h-4 ml-1.5" />
         إضافة مسؤول
-      </button>
+      </Button>
     </div>
   );
 }

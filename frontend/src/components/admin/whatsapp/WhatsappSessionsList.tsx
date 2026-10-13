@@ -52,11 +52,23 @@ export function WhatsappSessionsList({
   onOpenPairForm: (sessionId: string) => void;
 }) {
   return (
-    <div className="divide-y divide-border">
+    /* R139 (precision): the session rows join the /20 hairline rhythm —
+       the r139 lane spec's receipt register for session/device info rows
+       (the in-card separator value 139-e shipped on the mobile order
+       cards). NOTE for seam triage: the system lane's top-level list
+       cards (RecentAlerts / top-routes) ride divide-border/40 — one step
+       firmer; the whatsapp rows sit INSIDE the section card so the
+       softer hairline reads as the nested layer. Row DOM byte-identical. */
+    <div className="divide-y divide-border/20">
       {sessions.map((session) => {
         const meta = statusMeta(session.status);
         const sessionBusy = busy?.startsWith(`${session.id}:`);
         return (
+          /* R139 (precision): VERIFIED, no change — the connection status
+             rides the canonical StatusBadge (STATUS_META tone tokens:
+             success/warning/info/error per state, the 93-C7 migration);
+             quiet tinted pill, never a full-status wall. Session identity
+             (name/id) stays dir="ltr" mono. */
           <div key={session.id} className="p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
@@ -93,7 +105,15 @@ export function WhatsappSessionsList({
                 </Button>
                 <Button
                   size="sm"
-                  variant="destructive"
+                  variant="outline"
+                  /* R139 (precision): quiet danger at rest (139-e's
+                     TopupCard reject recipe) — the solid destructive
+                     fill retires for the neutral outline register; the
+                     error ink surfaces on hover and the severity lives
+                     in the useConfirm destructive dialog the page fires
+                     («حذف الجلسة؟», destructive: true). onClick/disabled/
+                     spinner ternary byte-identical. */
+                  className="text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10"
                   onClick={() => void onDeleteSession(session)}
                   disabled={sessionBusy}
                 >
@@ -110,7 +130,14 @@ export function WhatsappSessionsList({
             {pairTarget === session.id ? (
               <form
                 onSubmit={onRequestPairCode}
-                className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2"
+                /* R139 (precision): the pair form's panel joins the resting
+                   register (139-f's VariantFormPanel recipe): the brand-tinted
+                   border-primary/20 + bg-primary/5 retires for
+                   border-border/60 + the bg-muted/15 wash — the active
+                   pairing target is carried by the form's own contents (the
+                   primary submit + the issued code), not a tinted shell.
+                   onSubmit + every field byte-identical. */
+                className="rounded-xl border border-border/60 bg-muted/15 p-3 space-y-2"
               >
                 <div className="text-xs text-muted-foreground">
                   اكتب رقم واتساب بصيغة دولية، مثال: <span dir="ltr">21891XXXXXXX</span>
@@ -144,8 +171,12 @@ export function WhatsappSessionsList({
                         copy button stays usable ("على الأرجح" — the
                         display can't know the true expiry; the
                         backend sends none). */}
+                    {/* R139 (precision): the code chip's edge joins the
+                       resting family (border-border/60 — was the
+                       full-strength border-border); bg-background stays
+                       for the value-token contrast inside the muted panel. */}
                     <code
-                      className={`text-xl font-bold tracking-[0.25em] bg-background border border-border rounded-lg px-3 py-2 transition-opacity ${
+                      className={`text-xl font-bold tracking-[0.25em] bg-background border border-border/60 rounded-lg px-3 py-2 transition-opacity ${
                         pairCodeStale ? "opacity-50" : ""
                       }`}
                       dir="ltr"
@@ -182,7 +213,12 @@ export function WhatsappSessionsList({
             )}
 
             {qrImage && pairTarget === session.id && (
-              <div className="rounded-xl border border-border bg-background p-4 flex flex-col items-center gap-2">
+              /* R139 (precision): the QR stage joins the calm well family —
+                 bg-muted/60 + border-border/40 (the cart-thumbnail /
+                 enrichment copy-well / GlobalSearch image-shelf register);
+                 was bg-background + the full-strength border-border. The
+                 64×64 QR art + caption + alt byte-identical. */
+              <div className="rounded-xl border border-border/40 bg-muted/60 p-4 flex flex-col items-center gap-2">
                 <img src={qrImage} alt={`رمز QR لجلسة ${session.name}`} className="w-64 h-64" />
                 <span className="text-xs text-muted-foreground">
                   من واتساب: الأجهزة المرتبطة ← ربط جهاز

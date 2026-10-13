@@ -39,17 +39,26 @@ export function MethodTabs({
                 variant pills (home.tsx / product.tsx), not
                 class-only state. */
             aria-pressed={method === m.id}
-            className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border-2 transition-all duration-180 text-center sm:text-right press-spring min-w-0 ${
+            className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border transition-all duration-180 text-center sm:text-right press-spring min-w-0 ${
+              /* R139 (precision): the money-path selector joins the PDP
+                 VariantSelector trio — active = the tinted pill
+                 (bg-primary/15 + border-primary/30 + primary-text ink,
+                 NO shadow anywhere in the selector), inactive = the
+                 family muted box. border-2 → border: the 1px box is the
+                 family geometry (the old 2px + shadow-sm read as a
+                 raised pre-r138 toggle). aria-pressed byte-identical. */
               method === m.id
-                ? "border-primary/50 bg-primary/7 shadow-sm"
-                : "border-border/50 hover:border-border/80 bg-card"
+                ? "border-primary/30 bg-primary/15 text-foreground"
+                : "border-border/30 bg-card hover:border-border/70 hover:bg-muted/60 text-foreground/80"
             }`}
           >
             <div
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${method === m.id ? "bg-primary shadow-sm shadow-primary/30" : "bg-muted/60"}`}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                method === m.id ? "bg-primary/15" : "bg-muted/60"
+              }`}
             >
               <m.icon
-                className={`w-4 h-4 ${method === m.id ? "text-white" : "text-muted-foreground"}`}
+                className={`w-4 h-4 ${method === m.id ? "text-primary-text" : "text-muted-foreground"}`}
               />
             </div>
             <div className="min-w-0">

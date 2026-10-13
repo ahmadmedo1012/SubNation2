@@ -116,7 +116,23 @@ export function OnboardingPage() {
           ))}
         </div>
 
-        <div className="bg-card border border-border/55 rounded-3xl p-6 sm:p-7 shadow-2xl shadow-black/20 reveal-up">
+        <div className="relative overflow-hidden bg-card border border-border/55 rounded-3xl p-6 sm:p-7 shadow-2xl reveal-up">
+          {/* R139 (precision): the welcome card joins the r138-g auth
+              atmosphere family — this page's own docblock says "match the
+              auth pages for visual continuity", and login/register ride
+              exactly this layer pair: .ambient-wash (two-point static
+              radial, index.css owns the alphas) + .hairline-glow (the
+              lit top edge the chrome family shares). The page-level
+              blob-drift layers + dot-grid above STAY — login/register
+              kept theirs too; the card wash is the page's ONE r138
+              atmosphere moment (static, GPU-free, pointer-events-none;
+              overflow-hidden clips both layers to the rounded-3xl
+              corners). shadow-black/20 → bare shadow-2xl: the color
+              override was login's R116-S1 retirement (25% black forced
+              under the light-theme card). border/55 stays — the auth
+              family's own edge value. */}
+          <div className="absolute inset-0 ambient-wash pointer-events-none" />
+          <div className="hairline-glow" />
           {step === 1 ? (
             <div className="space-y-5">
               <div className="text-center space-y-2.5">
@@ -166,7 +182,14 @@ export function OnboardingPage() {
                   the affordance (the R116-S1 CTA recipe's own rationale). */}
               <Button
                 onClick={() => setStep(2)}
-                className="w-full h-12 font-bold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/22"
+                /* R139 (precision): canonical CTA (R116-S1) — size="lg"
+                   owns the 48px geometry + the variant recipe (fill,
+                   elevation, hover, press-spring, ONE focus ring); the
+                   hand-rolled w-full h-12 + bg-primary + hover:bg-
+                   primary/90 + shadow-lg shadow-primary/22 stack dies.
+                   Label/handler byte-identical. */
+                size="lg"
+                className="w-full font-bold"
               >
                 التالي
               </Button>
@@ -187,7 +210,10 @@ export function OnboardingPage() {
                 <Button
                   onClick={() => completeAndGo("/")}
                   disabled={completing}
-                  className="w-full h-12 font-bold rounded-xl bg-primary hover:bg-primary/90 shadow-lg shadow-primary/22"
+                  /* R139 (precision): canonical CTA (R116-S1) — same
+                     conversion as «التالي» above. */
+                  size="lg"
+                  className="w-full font-bold"
                 >
                   تصفّح الكتالوج
                 </Button>
@@ -195,7 +221,11 @@ export function OnboardingPage() {
                   variant="outline"
                   onClick={() => completeAndGo("/wallet")}
                   disabled={completing}
-                  className="w-full h-12 font-bold rounded-xl"
+                  /* R139 (precision): canonical CTA (R116-S1) — the
+                     outline twin rides the same recipe; the bare w-full
+                     h-12 hand-roll dies. */
+                  size="lg"
+                  className="w-full font-bold"
                 >
                   شحن المحفظة أولاً
                 </Button>
@@ -243,6 +273,13 @@ function FeatureRow({
 }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl bg-muted/20 border border-border/40">
+      {/* R139 (precision): the benefit tiles already speak the family's
+          weight+size register — title font-bold text-sm over a text-xs
+          muted description, ink untouched (emphasis is weight+size, NOT
+          color); the tile itself is the nested-row register (bg-muted/20
+          + /40) and the icon stage keeps its primary tint (the
+          page-header tile family r138 left on cart/orders/notifications).
+          Verified — byte-identical. */}
       <div className="w-9 h-9 rounded-lg bg-primary/8 border border-primary/15 flex items-center justify-center shrink-0">
         <Icon className="w-4 h-4 text-primary" aria-hidden="true" />
       </div>

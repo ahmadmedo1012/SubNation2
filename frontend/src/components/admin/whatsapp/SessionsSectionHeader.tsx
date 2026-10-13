@@ -18,7 +18,11 @@ export function SessionsSectionHeader({
   onRefresh: () => void;
 }) {
   return (
-    <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+    /* R139 (precision): the header divider joins the /60 seam value (the
+       orders-table header seam 139-e shipped; the HttpAnalytics top-routes
+       twin below gets the same value this round) — one seam weight across
+       the lane instead of the full-strength border-border. */
+    <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between">
       <div className="flex items-center gap-2 font-bold">
         <KeyRound className="w-4 h-4 text-primary" />
         الجلسات الحالية

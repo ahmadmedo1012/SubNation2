@@ -9,7 +9,7 @@ import type { AdminAuthStatsSummary } from "@/components/admin/security/security
 export function AuthStatsGrid({ stats }: { stats: AdminAuthStatsSummary }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div className="bg-card border border-border/55 rounded-xl p-4">
+      <div className="bg-card border border-border/60 rounded-xl p-4">
         <div className="flex items-center gap-3">
           <Activity className="w-5 h-5 text-primary" />
           <div>
@@ -18,7 +18,7 @@ export function AuthStatsGrid({ stats }: { stats: AdminAuthStatsSummary }) {
           </div>
         </div>
       </div>
-      <div className="bg-card border border-border/55 rounded-xl p-4">
+      <div className="bg-card border border-border/60 rounded-xl p-4">
         <div className="flex items-center gap-3">
           <CheckCircle className="w-5 h-5 text-status-success" />
           <div>
@@ -27,16 +27,22 @@ export function AuthStatsGrid({ stats }: { stats: AdminAuthStatsSummary }) {
           </div>
         </div>
       </div>
-      <div className="bg-card border border-border/55 rounded-xl p-4">
+      {/* R139 (precision): the resting edge joins the family value
+          (/55 → /60, the table-container register) and the failure ink
+          migrates to --status-error (the §6 status-token source — the
+          destructive pair was the shadcn channel, near-identical red but
+          off-source; icon + value move together, the reason-bearing
+          context stays the timeline rows below). */}
+      <div className="bg-card border border-border/60 rounded-xl p-4">
         <div className="flex items-center gap-3">
-          <XCircle className="w-5 h-5 text-destructive" />
+          <XCircle className="w-5 h-5 text-status-error" />
           <div>
             <p className="text-sm text-muted-foreground">فاشلة</p>
-            <p className="text-2xl font-bold text-destructive">{stats.failure}</p>
+            <p className="text-2xl font-bold text-status-error">{stats.failure}</p>
           </div>
         </div>
       </div>
-      <div className="bg-card border border-border/55 rounded-xl p-4">
+      <div className="bg-card border border-border/60 rounded-xl p-4">
         <div className="flex items-center gap-3">
           <Shield className="w-5 h-5 text-primary" />
           <div>

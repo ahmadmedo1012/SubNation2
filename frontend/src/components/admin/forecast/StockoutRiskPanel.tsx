@@ -146,11 +146,20 @@ export function StockoutRiskPanel() {
   const isCalibrating = data.pipeline_state === "calibrating";
 
   return (
-    <div className="border border-border/40 rounded-2xl bg-card/60 overflow-hidden">
+    /* R139 (precision): the panel joins the chart-panel family
+       (NewUsersChart's register — solid bg-card + /60 edge, FLAT: the
+       products page's one elevated register is 139-f's editor card);
+       bg-card/60 + /40 edge was the pre-r138 translucent idiom. */
+    <div className="border border-border/60 rounded-2xl bg-card overflow-hidden">
       {/* 94-C2 (A2 colors): header/banner accents unified on the
           --status-warning token — the panel previously mixed amber,
           yellow AND orange raw shades for the same "warning" meaning. */}
-      <header className="flex items-center gap-2 px-4 py-3 border-b border-border/40 bg-gradient-to-l from-status-warning/5 to-transparent">
+      {/* R139 (precision): the header band drops its decorative
+          from-status-warning/5 gradient wash for the register's quiet
+          muted/30 band + /60 seam — the warning identity stays in the
+          ShieldAlert icon + the stale/calibrating strip below (severity
+          in content, not in the frame). */}
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-muted/30">
         <ShieldAlert className="w-4 h-4 text-status-warning" />
         <h2 className="text-sm font-bold flex-1">خطر النفاد</h2>
         <span className="text-2xs text-muted-foreground">
@@ -162,7 +171,10 @@ export function StockoutRiskPanel() {
         <button
           onClick={() => query.refetch()}
           disabled={query.isFetching}
-          className="p-1 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+          /* R139 (precision): p-1 → p-1.5 — the refresh affordance crosses
+             the admin ≥24px edge-target floor (4+14+4 = 22px → 26px); the
+             CopilotHeader icon-button register. */
+          className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
           aria-label="تحديث"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${query.isFetching ? "animate-spin" : ""}`} />
@@ -171,7 +183,7 @@ export function StockoutRiskPanel() {
 
       {(isStale || isCalibrating) && (
         <div
-          className={`flex items-start gap-2 px-4 py-2 text-2xs bg-status-warning/10 text-status-warning border-b border-border/40`}
+          className={`flex items-start gap-2 px-4 py-2 text-2xs bg-status-warning/10 text-status-warning border-b border-border/60`}
         >
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>
@@ -187,7 +199,9 @@ export function StockoutRiskPanel() {
           لا توجد منتجات معرضة لخطر النفاد.
         </div>
       ) : (
-        <ul className="divide-y divide-border/30">
+        /* R139 (precision): row seams divide/30 → /60 — one seam value
+           with the orders/risk grids. */
+        <ul className="divide-y divide-border/60">
           {data.rows.map((r) => (
             <RiskRow key={r.product_id} row={r} />
           ))}
@@ -222,7 +236,10 @@ function RiskRow({ row }: { row: AtRiskRow }) {
         aria-expanded={open}
         className="w-full flex items-center gap-3 text-right group"
       >
-        <div className="w-9 h-9 rounded-lg bg-muted/40 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
+        {/* R139 (precision): the product thumb joins the shelf family —
+           bg-muted/40 → bg-muted/60 (the GlobalSearch thumb / image-well
+           register; /40 edge stays the well edge). */}
+        <div className="w-9 h-9 rounded-lg bg-muted/60 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
           {row.product_image_url ? (
             <img
               src={row.product_image_url}

@@ -152,7 +152,12 @@ export function StepDot({
 }) {
   return (
     <div className="flex items-center gap-2 text-xs font-bold">
-      <div className="w-6 h-6 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 shadow-sm bg-primary text-white shadow-primary/30">
+      {/* R139 (precision): the numbered legend marker keeps its solid
+          primary disc (the documented R125-I7 marker style) but drops
+          the shadow-sm shadow-primary/30 brand glow — zero
+          brand-colored shadows is a family-wide r138 retirement; the
+          ink moves to the AA-safe text-primary-foreground token. */}
+      <div className="w-6 h-6 rounded-full flex items-center justify-center text-2xs font-bold shrink-0 bg-primary text-primary-foreground">
         {n}
       </div>
       {htmlFor ? (

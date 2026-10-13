@@ -64,16 +64,28 @@ export function UsersToolbar({
         <button
           onClick={onToggleFilters}
           aria-expanded={showFilters}
+          /* R139 (precision): the filter toggle joins the r138 calm-pill
+             dialect — active bg-primary/15 + text-primary-text +
+             border-primary/30 + font-bold (the /15 tint, not the older
+             /10), resting a bg-muted/30 box with the /30 border BOTH
+             states carry (kills the 1px toggle jitter the borderless
+             secondary wash caused). The ProductsToolbar chip row shape:
+             a standalone pill owns its border box. aria-expanded is
+             byte-identical. */
           className={`flex items-center gap-1.5 px-3 h-9 rounded-lg border text-xs font-semibold transition-all ${
             hasFilters || showFilters
-              ? "bg-primary/10 border-primary/30 text-primary-text"
-              : "bg-secondary/40 border-border text-muted-foreground hover:text-foreground"
+              ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+              : "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
           }`}
         >
           <Filter className="w-3.5 h-3.5" />
           فلترة
           {hasFilters && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
         </button>
+        {/* R139 (precision): verified canonical — the CSV export already
+            rides the shared Button (size="sm" variant="outline", h-9 ≥ the
+            24px admin edge floor); no hand-rolled shadow/fill to retire.
+            The search box rides the shared Input family. */}
         {showExport && (
           <Button
             size="sm"

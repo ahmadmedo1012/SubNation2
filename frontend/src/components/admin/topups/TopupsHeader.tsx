@@ -83,6 +83,12 @@ export function TopupsHeader({
                 {/* R125-I2 (A6-B4 + A1-8): status-warning ink (both
                     themes) + the statusLabel vocabulary — «معلق»
                     never matched the «قيد الانتظار» tabs. */}
+                {/* R139 (precision): the warning ink is verified, not
+                    decoration — this sum is semantically PENDING money
+                    (it pairs with the chip above and the queue cards'
+                    warning edges), the same documented exception class
+                    as the r138 discount-keeps-success rule. Weight +
+                    tabular-nums carry the emphasis. */}
                 <span className="text-status-warning font-bold tabular-nums">
                   {formatCurrency(pendingTotal)} إجمالي قيد الانتظار
                 </span>

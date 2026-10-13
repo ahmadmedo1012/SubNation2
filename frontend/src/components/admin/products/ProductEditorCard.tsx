@@ -39,7 +39,13 @@ export function ProductEditorCard({
   updatePending: boolean;
 }) {
   return (
-    <div className="bg-card border border-primary/20 rounded-2xl overflow-hidden shadow-lg shadow-primary/5">
+    /* R139 (precision): the editor shell leaves its brand-tinted border
+       AND brand-colored lg glow (the drift the r138 family retired) for
+       the resting border-border/60 family + the two-layer calm elevation
+       (neutral black, the prominent-card recipe): this is the page's
+       one prominent card, and the form's activity is carried by its
+       contents, not a colored edge. */
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/15">
         <div>
           <h2 className="font-bold text-sm">{editingId ? "تعديل المنتج" : "إضافة منتج جديد"}</h2>
@@ -184,7 +190,11 @@ export function ProductEditorCard({
           />
           {form.image_url.trim() && (
             <div className="mt-2 flex items-center gap-2.5">
-              <div className="relative w-16 h-16 shrink-0 rounded-xl border border-border/50 bg-card overflow-hidden">
+              {/* R139 (precision): the preview thumb rhymes with the
+                  catalog card's new shelf — bg-muted/60 well on a
+                  border-border/40 edge (bg-card was the same tone as
+                  the card body, so the preview read as a bare image). */}
+              <div className="relative w-16 h-16 shrink-0 rounded-xl border border-border/40 bg-muted/60 overflow-hidden">
                 <img
                   src={form.image_url.trim()}
                   alt="معاينة"

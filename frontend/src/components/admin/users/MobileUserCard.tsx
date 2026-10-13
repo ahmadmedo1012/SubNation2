@@ -15,7 +15,14 @@ import { ProviderBadges } from "@/components/admin/users/ProviderBadges";
 /** Mobile card. */
 export const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit }: UserRowProps) {
   return (
-    <div className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border hover:shadow-md hover:shadow-black/10 transition-all">
+    <div
+      /* R139 (precision): the mobile card joins the row register (the
+         MobileOrderCard twin) — hover is the border step ONLY (the old
+         hover shadow lifted a line-data card; rows are not tiles) and
+         the transition narrows to the colors it actually animates. The
+         resting /60 edge + float-in entrance stay byte-identical. */
+      className="float-in bg-card border border-border/60 rounded-2xl p-4 flex items-center gap-3 hover:border-border transition-colors"
+    >
       <div className="flex-1 min-w-0">
         <div className="font-mono font-bold text-sm truncate">
           {displayUserName(user as unknown as AdminUserShape)}

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { EmptyHero } from "@/components/EmptyState";
 import { useSeo } from "@/hooks/useSeo";
 import { buildItemListLd } from "@/lib/seo-builders";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
@@ -97,14 +98,27 @@ function FlashCard({
       {/* R116-S1 card convergence: ProductCard's hover physics
           (card-spring + token shadow) and aspect-square ratio replace
           the ad-hoc -translate-y-1 / shadow-black / active-scale stack. */}
+      {/* R139 (precision): the card shell joins the r138-b ProductCard
+          register byte-for-byte — resting border /50 → /60, hover
+          border/80 → full border (the 60→100 step), and the two-layer
+          calm elevation at rest (1px contact line + contained ambient,
+          neutral black) + hover:shadow-xl hover:shadow-black/25 +
+          transition duration-280. Same grid, same datum, same card
+          language on / and /flash-sales. */}
       <div
         className={`float-in ${stagger}
-          bg-card border border-border/50 rounded-2xl overflow-hidden
-          card-spring hover:border-border/80 hover:shadow-xl
+          bg-card border border-border/60 rounded-2xl overflow-hidden
+          transition-all duration-280 ease-out
+          shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]
+          card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
           cursor-pointer group`}
       >
         <div className="relative">
-          <div className="relative aspect-square bg-card overflow-hidden">
+          {/* R139 (precision): bg-card → bg-muted/60 — the r138-b image
+              shelf (ProductCard's well rides the exact class; the empty
+              fallback's tinted gradient + tile already ride the shared
+              CATEGORY_ACCENT idiom). */}
+          <div className="relative aspect-square bg-muted/60 overflow-hidden">
             {product.image_url ? (
               <img
                 src={product.image_url}
@@ -131,17 +145,36 @@ function FlashCard({
           </div>
 
           {isDeal && (
-            <div className="absolute top-3 right-3 z-10 bg-status-error text-destructive-foreground text-2xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-status-error/40 flex items-center gap-1">
+            /* R139 (precision): the discount chip converges on ProductCard's
+               r138-b badge byte-for-byte — bg-primary + text-primary-foreground
+               + text-3xs + px-1.5 py-0.5 + shadow-md shadow-primary/30 (ONE
+               primary-chip elevation value; was bg-status-error +
+               shadow-lg shadow-status-error/40 — the colored-shadow drift
+               r138 retired, and an error-channel reading of a DISCOUNT). The
+               FlashSaleBanner (the sanctioned flash urgency vocabulary) is
+               primary-branded end-to-end; the same product's discount chip
+               must not switch channel between / and /flash-sales. Urgency
+               stays carried by the countdown chip + the hero flame stage.
+               The −{discount}% U+2212 glyph (93-C8) is byte-identical. */
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-0.5 bg-primary text-primary-foreground text-3xs font-bold px-1.5 py-0.5 rounded-full shadow-md shadow-primary/30">
               {/* 93-C8 (A11 §5): U+2212 minus to match product.tsx's
                   discount rendering (was an ASCII hyphen). */}
-              <Tag className="w-3 h-3" />−{discount}%
+              <Tag className="w-2 h-2" />−{discount}%
             </div>
           )}
 
           {!expired && (
-            <div className="absolute top-3 left-3 z-10 bg-background/90 backdrop-blur-sm border border-border/60 text-foreground text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
+            /* R139 (precision): glass retired — bg-background/90 +
+               backdrop-blur-sm → solid bg-card (the round's recipe; at 90%
+               alpha the blur was sub-perceptual anyway, so the swap is
+               register-level). dir="ltr" isolation added on the label span —
+               the WhatsApp OTP-countdown vocabulary (tabular-nums + LTR run
+               stays coherent if the label ever grows a unit suffix); pure
+               digits render identically either way, so this is correctness
+               hardening, not a visual change. */
+            <div className="absolute top-3 left-3 z-10 bg-card border border-border/60 text-foreground text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
               <Clock className="w-3 h-3 text-status-warning" />
-              {timeLabel}
+              <span dir="ltr">{timeLabel}</span>
             </div>
           )}
         </div>
@@ -157,9 +190,14 @@ function FlashCard({
             {product.name}
           </div>
           <div className="flex items-baseline gap-2">
-            {/* R116-S1: price rides --primary-text (the AA text variant of
-                the brand hue) like every other price in the storefront. */}
-            <span className="font-bold text-lg text-primary-text tabular-nums">
+            {/* R139 (precision): text-primary-text → text-foreground +
+                leading-none — the r138 money register (ProductCard's price
+                rides the exact pair): emphasis by weight + size +
+                tabular-nums, NOT brand ink. The PDP keeps its text-primary
+                large-text price moment; grid cards read colorless. Strike
+                keeps its muted line-through + tabular-nums (page-owned
+                text-xs geometry). */}
+            <span className="font-bold text-foreground text-lg leading-none tabular-nums">
               {formatCurrency(salePrice)}
             </span>
             {isDeal && (
@@ -248,12 +286,29 @@ export default function FlashSalesPage() {
       {/* Header */}
       <div className="text-center mb-9 page-in">
         <div className="relative w-16 h-16 mx-auto mb-5">
-          <div className="absolute inset-0 rounded-2xl bg-status-error/15 blur-2xl" />
-          <div className="relative w-16 h-16 rounded-2xl bg-status-error/15 border border-status-error/30 flex items-center justify-center shadow-lg shadow-status-error/20">
+          {/* R139 (precision): the halo joins the sanctioned hero-tile glow
+              family values — bg/6 + blur-xl (EmptyHero's own atmosphere
+              vocabulary; was /15 + blur-2xl — a VISIBLE glow halo, the §1
+              banned register). The urgency stays loud on the tile itself
+              (tint + token border + full-ink flame); atmosphere reads
+              sub-perceptual beneath it. */}
+          <div className="absolute inset-0 rounded-2xl bg-status-error/6 blur-xl" />
+          {/* R139 (precision): shadow-lg shadow-status-error/20 dropped —
+              the colored-shadow drift r138 retired (139-f's exact cut on
+              ProductsHeader). Icon stages carry no elevation: the tint +
+              border-status-error/30 + full-ink glyph carry the urgency
+              (the 139-d ChartErrorBanner / r138-h EmptyState stage
+              register — token tints, never a colored glow edge). */}
+          <div className="relative w-16 h-16 rounded-2xl bg-status-error/15 border border-status-error/30 flex items-center justify-center">
             <Flame className="w-8 h-8 text-status-error" />
           </div>
         </div>
-        <h1 className="text-3xl font-bold mb-2">عروض فلاش</h1>
+        {/* R139 (precision): text-3xl → text-fluid-3xl — the storefront
+            page-title scale (home hero + PDP + the category landings' h1s
+            all ride it; text-3xl was this page's lone static outlier — at
+            390px the two render ~identically, ≥sm the marketing page gets
+            the marketing scale). */}
+        <h1 className="text-fluid-3xl font-bold mb-2">عروض فلاش</h1>
         <p className="text-muted-foreground font-bold text-sm">
           {activeSale ? activeSale.title : "خصومات على أفضل الاشتراكات الرقمية"}
         </p>
@@ -261,9 +316,20 @@ export default function FlashSalesPage() {
 
       {isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {/* R139 (precision): the skeleton grid mirrors the page's own grid
+              byte-for-byte (GridShell — the route-level "grid" shape built
+              for this page — rides the same classes; 139-a verified the
+              pair). aspect-[4/3] → aspect-square: §3's "skeletons shaped
+              like the content" — the FlashCard media is square, and the
+              4:3→1:1 swap shifted every card's fold position at the
+              shimmer→content transition. bg-muted/60 rides along as the
+              register marker (render-neutral — .skeleton-shimmer wins the
+              background-color cascade; the 139-a ProductCardShell idiom).
+              No resting elevation on placeholders (the skeleton family's
+              flatter step). */}
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-              <div className="aspect-[4/3] bg-muted skeleton-shimmer" />
+              <div className="aspect-square bg-muted/60 skeleton-shimmer" />
               <div className="p-4 space-y-2">
                 <div className="h-3 bg-muted skeleton-shimmer rounded w-1/3" />
                 <div className="h-4 bg-muted skeleton-shimmer rounded w-2/3" />
@@ -287,27 +353,41 @@ export default function FlashSalesPage() {
           onRetry={() => refetch()}
         />
       ) : onSale.length === 0 ? (
-        <div className="text-center py-20 px-4 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-muted/60 border border-border/40 flex items-center justify-center">
-            <Sparkles className="w-8 h-8 opacity-25" />
-          </div>
-          <p className="font-bold text-lg mb-1.5 text-foreground/80">لا عرض نشط حالياً</p>
-          <p className="text-sm mb-7 max-w-xs mx-auto leading-relaxed">
-            تابعنا أو راجع الكتالوج — العروض تعود قريباً!
-          </p>
-          <Button asChild size="lg" className="w-full sm:w-auto">
-            <Link href="/">
-              <Sparkles className="w-4 h-4" />
-              تصفح الكتالوج
-            </Link>
-          </Button>
-        </div>
+        /* R139 (precision): EmptyHero adoption — this page's hand-rolled
+           empty block WAS one of the four byte-identical first-run sites
+           the component canonized (R136 UX-1; orders/cart/notifications
+           all adopted — flash-sales was the lone fork left, and drifted:
+           w-16/w-8 tile, /50 edge, silent swap). Pure swap per the
+           component's own contract: title/description/CTA byte-identical,
+           the canonical Button rides the bare action slot, className="px-4"
+           preserves the page's horizontal breathing room under the w-full
+           mobile CTA. Adoption nets role="status" + the decorative
+           aria-hidden icon — the documented a11y win every EmptyHero
+           adoption ships. */
+        <EmptyHero
+          icon={Sparkles}
+          title="لا عرض نشط حالياً"
+          description="تابعنا أو راجع الكتالوج — العروض تعود قريباً!"
+          className="px-4"
+          action={
+            <Button asChild size="lg" className="w-full sm:w-auto">
+              <Link href="/">
+                <Sparkles className="w-4 h-4" />
+                تصفح الكتالوج
+              </Link>
+            </Button>
+          }
+        />
       ) : (
         <>
           {/* Honest expired notice — replaces every countdown chip once
               the (real) sale window has closed. */}
           {saleEnded && (
-            <div className="flex items-center justify-center gap-2 mb-5 p-3.5 bg-muted/30 border border-border/50 rounded-xl text-sm font-bold text-muted-foreground reveal-up">
+            /* R139 (precision): border-border/50 → /60 — the resting
+               card-frame family value (the /50 scatter this round retired
+               on every storefront frame). The warning Clock ink stays —
+               «انتهى» is a literal expiry reading, the semantic-ink rule. */
+            <div className="flex items-center justify-center gap-2 mb-5 p-3.5 bg-muted/30 border border-border/60 rounded-xl text-sm font-bold text-muted-foreground reveal-up">
               <Clock className="w-4 h-4 text-status-warning" />
               انتهى هذا العرض
             </div>

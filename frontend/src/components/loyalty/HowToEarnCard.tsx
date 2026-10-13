@@ -55,10 +55,15 @@ export function HowToEarnCard({
     <div className="bg-card border border-border/60 rounded-2xl p-5 float-in stagger-5">
       <h2 className="font-bold text-sm mb-3">كيف تكسب النقاط؟</h2>
       <div className="space-y-2">
+        {/* R139 (precision): the earn legend rows keep their boxed
+            nested-tile register but drop the hover wash — read-only
+            legend lines promise no interactivity (the 139-g audit-trail
+            discipline); the value span gains tabular-nums (numbers
+            from the API's rate/threshold fields). */}
         {HOW_TO_EARN.map((row, i) => (
           <div
             key={i}
-            className="flex items-center justify-between gap-3 p-3 bg-muted/20 hover:bg-muted/35 rounded-xl transition-colors"
+            className="flex items-center justify-between gap-3 p-3 bg-muted/20 rounded-xl"
           >
             <div className="flex items-center gap-3 min-w-0">
               <div
@@ -68,7 +73,7 @@ export function HowToEarnCard({
               </div>
               <span className="text-sm font-semibold leading-snug">{row.label}</span>
             </div>
-            <span className="text-xs font-bold text-primary-text whitespace-nowrap">
+            <span className="text-xs font-bold text-primary-text whitespace-nowrap tabular-nums">
               {row.points}
             </span>
           </div>

@@ -131,7 +131,9 @@ export function SessionManager() {
   };
 
   return (
-    <div className="bg-card border border-border/55 rounded-2xl p-5 float-in" dir="rtl">
+    <div className="bg-card border border-border/60 rounded-2xl p-5 float-in" dir="rtl">
+      {/* R139 (precision): /55 → /60 — the section-card resting edge
+          every profile sibling now rides (the r138 family value). */}
       <div className="flex items-center gap-2.5 mb-4">
         <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
           <Smartphone className="w-3.5 h-3.5 text-primary-text" />
@@ -147,7 +149,10 @@ export function SessionManager() {
         /* B15-2: the honest outage state — a failed load is NEVER the
          * «لا توجد جلسات نشطة» empty list. Inline Arabic line + retry
          * (the admin error-banner idiom, scaled to the card). */
-        <div role="alert" className="flex flex-wrap items-center gap-2 py-2 text-sm text-destructive">
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-2 py-2 text-sm text-destructive"
+        >
           <WifiOff className="w-4 h-4 shrink-0" />
           <span>{loadError}</span>
           <button
@@ -166,9 +171,15 @@ export function SessionManager() {
             <div
               key={session.id}
               className={`flex items-center justify-between p-3 border rounded-xl ${
-                session.current ? "border-primary/25 bg-primary/5" : "border-border/40 bg-muted/20"
+                session.current ? "border-primary/30 bg-primary/8" : "border-border/40 bg-muted/20"
               }`}
             >
+              {/* R139 (precision): the current-session tint joins the
+                  family's tinted-selected pair (border-primary/30 +
+                  bg-primary/8 — orders' selected rows, MobileOrderCard,
+                  admin TicketCard; was /25 + /5, the pre-r138 values).
+                  Non-current rows already ride the nested-row register
+                  (bg-muted/20 + /40) — byte-identical. */}
               <div className="min-w-0">
                 <p className="font-bold text-sm truncate">{session.device}</p>
                 <p className="text-3xs text-muted-foreground">
@@ -182,7 +193,10 @@ export function SessionManager() {
                 </p>
               </div>
               {session.current && (
-                <span className="text-3xs bg-primary/15 text-primary-text border border-primary/25 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">
+                <span className="text-3xs bg-primary/15 text-primary-text border border-primary/30 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">
+                  {/* R139 (precision): chip edge /25 → /30 — the one
+                      static-badge border value the family converged on
+                      (139-f's variant-count badge decision). */}
                   الحالي
                 </span>
               )}
@@ -195,7 +209,14 @@ export function SessionManager() {
         variant="outline"
         onClick={() => void handleLogoutAll()}
         disabled={loading}
-        className="w-full mt-4 h-10 border-destructive/25 text-destructive hover:bg-destructive/7 hover:border-destructive/45 font-bold rounded-xl gap-2 transition-all"
+        /* R124-I4 (A4 F1) twin: h-10 (40px) → min-h-11 — the 44px floor
+           the profile logout sibling above already rides.
+           R139 (precision): quiet danger at rest — the destructive
+           ink/border/wash trio retires for muted ink + the
+           status-error hover family (the cart clear-trigger's exact
+           register, pinned by money-path-chrome-r139). Severity lives
+           in the useConfirm destructive dialog above. */
+        className="w-full mt-4 min-h-11 border-border/60 text-muted-foreground hover:text-status-error hover:bg-status-error/10 hover:border-status-error/30 font-bold rounded-xl gap-2 transition-all"
       >
         <LogOut className="w-4 h-4" />
         تسجيل الخروج من جميع الأجهزة

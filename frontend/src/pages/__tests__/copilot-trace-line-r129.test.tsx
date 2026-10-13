@@ -8,7 +8,9 @@
  *
  *   • "✓ …" → a Check svg carrying the success ink + the Arabic label
  *     WITHOUT the ✓ glyph (AT reads the label only)
- *   • "✗ …" → an X svg with the destructive ink + clean label
+ *   • "✗ …" → an X svg with the error ink + clean label
+ *     (R139: the ink moved text-destructive → text-status-error — the
+ *     token family; the pin followed the source)
  *   • "🔍 …" (and the other 6 tool emoji) → the tool's lucide icon +
  *     clean label — spot-checked on the search + wrench + fallback arms
  *   • a plain string (no marker) → text-only line, NO svg
@@ -32,11 +34,13 @@ describe("R129-B1: ProgressTraceLine (A6 P4-4) — glyphs render as lucide icons
     expect(el.textContent).not.toContain("✓");
   });
 
-  it("status ✗ arm: destructive X icon + the clean label", () => {
+  it("status ✗ arm: error X icon + the clean label", () => {
     const el = line("✗ تعذّر تحديث المخزون");
     const svg = el.querySelector("svg");
     expect(svg).not.toBeNull();
-    expect(svg?.getAttribute("class") ?? "").toContain("text-destructive");
+    // R139 (precision): the ✗ glyph's ink joined the --status-error
+    // family (its ✓ twin's token pair) — pin updated with the source.
+    expect(svg?.getAttribute("class") ?? "").toContain("text-status-error");
     expect(el.textContent).toContain("تعذّر تحديث المخزون");
     expect(el.textContent).not.toContain("✗");
   });

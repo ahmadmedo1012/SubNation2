@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
@@ -37,7 +38,11 @@ export function TicketThread({
   messagesEndRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div className="bg-card border border-border/55 rounded-2xl overflow-hidden shadow-lg shadow-black/12 float-in">
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] float-in">
+      {/* R139 (precision): the thread card is the page's prominent active
+          surface — border/55 + shadow-lg shadow-black/12 retire for the
+          family resting edge + the r138 two-layer calm elevation
+          (CartSummaryAside/PaymentMethodCard register). */}
       {/* Status bar */}
       <div
         className={`h-[3px] ${
@@ -50,7 +55,10 @@ export function TicketThread({
       />
 
       {/* Ticket meta */}
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-border/25 bg-muted/8 flex-wrap">
+      <div className="flex items-center gap-2 px-5 py-3 border-b border-border/60 bg-muted/30 flex-wrap">
+        {/* R139 (precision): the meta band joins the quiet table-band
+            register (bg-muted/30 on a /60 seam — the admin
+            TicketDetailPane twin, 139-h); was bg-muted/8 on a /25 seam. */}
         <span
           className={`inline-flex items-center gap-1 text-2xs px-2 py-1 rounded-full border font-bold ${STATUS_CONFIG[selectedTicket.status]?.color} ${STATUS_CONFIG[selectedTicket.status]?.border}`}
         >
@@ -58,7 +66,10 @@ export function TicketThread({
           {STATUS_CONFIG[selectedTicket.status]?.label}
         </span>
         {selectedTicket.category && (
-          <span className="text-2xs text-muted-foreground bg-muted/40 border border-border/40 px-2 py-1 rounded-full flex items-center gap-1">
+          <span className="text-2xs text-muted-foreground bg-muted/30 border border-border/35 px-2 py-1 rounded-full flex items-center gap-1">
+            {/* R139 (precision): /40+/40 → the TicketsList chip register
+                (bg-muted/30 + /35) — ONE category-chip value across the
+                page's two extracts. */}
             {categoryIcon(selectedTicket.category)} {categoryLabel(selectedTicket.category)}
           </span>
         )}
@@ -91,8 +102,12 @@ export function TicketThread({
         >
           {selectedTicket.replies.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <div className="w-12 h-12 rounded-2xl bg-muted/40 border border-border/30 flex items-center justify-center mb-3">
-                <MessageSquare className="w-5 h-5 opacity-20" />
+              <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center mb-3">
+                {/* R139 (precision): the no-messages tile joins the shared
+                    icon-stage family (bg-muted/60 + /35 edge + ghost glyph
+                    at opacity-35 — the EmptyState register; was
+                    bg-muted/40 + /30 + opacity-20). */}
+                <MessageSquare className="w-5 h-5 opacity-35" />
               </div>
               <p className="text-sm font-semibold">لا توجد رسائل بعد</p>
               <p className="text-xs text-muted-foreground mt-1">اكتب ردك أدناه لبدء المحادثة</p>
@@ -130,11 +145,18 @@ export function TicketThread({
                       rounded-2xl px-4 py-2.5 text-sm leading-relaxed
                       ${
                         isUser
-                          ? "bg-primary text-white rounded-tl-md shadow-md shadow-primary/22"
-                          : "bg-muted/55 border border-border/35 rounded-tr-md text-foreground/90"
+                          ? "bg-primary text-white rounded-tl-md"
+                          : "bg-muted/60 border border-border/40 rounded-tr-md text-foreground/90"
                       }
                     `}
                     >
+                      {/* R139 (precision): the thread pair rhymes with the
+                          calm-pair treatment — the customer bubble is the
+                          SOLID brand voice (shadow-md shadow-primary/22
+                          dies: no elevation on a chat bubble, the admin
+                          TicketDetailPane operator twin), the support
+                          bubble is the paper well (bg-muted/55 + /35 →
+                          the /60 + /40 well pair 139-h pinned). */}
                       {r.message}
                     </div>
                     <div
@@ -155,7 +177,10 @@ export function TicketThread({
       )}
 
       {/* Reply input */}
-      <div className="border-t border-border/25 p-4">
+      <div className="border-t border-border/20 p-4">
+        {/* R139 (precision): the reply seam is the thread's terminal
+            receipt hairline (/20 — the admin pane's reply-seam value,
+            139-h); was /25. */}
         {selectedTicket.status === "closed" ? (
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/25 border border-border/30 rounded-xl px-4 py-3">
             <CheckCircle className="w-3.5 h-3.5 text-status-success shrink-0" />
@@ -175,7 +200,12 @@ export function TicketThread({
                  round-trip error. */
               maxLength={4000}
               enterKeyHint="send"
-              className="flex-1 h-11 rounded-xl bg-muted/30 border-border/50 focus:border-primary/40 transition-all"
+              /* R139 (precision): the field register returns to the shared
+                 Input — the border-border/50 override sat under the
+                 A4-F12 3:1 border floor and focus:border-primary/40
+                 competed with the ONE focus system; the component owns
+                 both now (only the 44px row geometry stays). */
+              className="flex-1 h-11"
               dir="rtl"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -184,11 +214,20 @@ export function TicketThread({
                 }
               }}
             />
-            <button
+            <Button
               type="submit"
+              size="icon"
               disabled={sending || !replyText.trim()}
               aria-label="إرسال الرد"
-              className="w-11 h-11 rounded-xl bg-primary hover:bg-primary/90 text-white flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/25 press-spring"
+              /* R139 (precision): canonical send — the raw <button>'s
+                 hand-rolled chrome (flat bg-primary + hover:bg-primary/90
+                 + text-white + shadow-md shadow-primary/25 +
+                 active:scale-90) retires for Button size="icon"; w-11
+                 h-11 preserves the 44px storefront floor + the h-11
+                 reply-field pairing (the 96-F6 contract in the comment
+                 above). type/disabled/aria-label + the Loader2↔Send
+                 swap byte-identical. */
+              className="w-11 h-11"
             >
               {sending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -198,7 +237,7 @@ export function TicketThread({
                    last 2 un-mirrored Send icons in the app. */
                 <Send className="w-4 h-4 -scale-x-100" />
               )}
-            </button>
+            </Button>
           </form>
         )}
       </div>

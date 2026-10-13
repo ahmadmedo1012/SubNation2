@@ -71,11 +71,21 @@ export const LedgerEntryRow = memo(function LedgerEntryRow({
 }) {
   const { text, credit } = ledgerAmountDisplay(entry);
   return (
-    <div
-      className={`float-in stagger-${Math.min(index, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors`}
-    >
+    /* R139 (precision): receipt rhythm — the boxed chip row (bg-muted/18
+       + border/30 + rounded + hover wash) becomes a hairline receipt
+       line (the /20 rules come from the parent's divide-y; py-3 spans
+       them edge to edge). Emphasis is weight+size, never hue: the
+       amount steps UP to text-sm/700 while the label drops to 600 —
+       the CartSummaryAside ladder (money data leads, identifiers sit
+       one step down). The signed dir="ltr" run carries credit/debit;
+       the ink ladder (credits full foreground, debits one step
+       quieter) replaces the success-green ALL credits wore — a refund
+       credit rendered brand-success read as a generic win, not the
+       refund §4 names via its «استرداد» label. Read-only row: no
+       hover (accountability lines promise no interactivity). */
+    <div className={`float-in stagger-${Math.min(index, 8)} flex items-center gap-3 py-3`}>
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-bold mb-0.5">{ledgerEntryLabel(entry)}</div>
+        <div className="text-xs font-semibold mb-0.5">{ledgerEntryLabel(entry)}</div>
         <div className="flex items-center gap-1.5 flex-wrap">
           {typeof entry.balance_after === "number" && (
             <span className="text-3xs text-muted-foreground tabular-nums">
@@ -91,8 +101,8 @@ export const LedgerEntryRow = memo(function LedgerEntryRow({
           layout; tabular-nums aligns the column of amounts. */}
       <span
         dir="ltr"
-        className={`text-xs font-bold tabular-nums shrink-0 ${
-          credit ? "text-status-success" : "text-foreground/85"
+        className={`text-sm font-bold tabular-nums shrink-0 ${
+          credit ? "text-foreground" : "text-foreground/80"
         }`}
       >
         {text}

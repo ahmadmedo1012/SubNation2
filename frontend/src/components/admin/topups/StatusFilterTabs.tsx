@@ -49,19 +49,29 @@ export function StatusFilterTabs({
                aria-pressed exposes the toggle state (the
                coupons.tsx chip-bar idiom). */
             aria-pressed={active}
+            /* R139 (precision): the active tab joins the r138 calm-pill
+               family — bg-primary/15 + text-primary-text +
+               border-primary/30 + font-bold (the CatalogFiltersBar /
+               VariantSelector dialect; the orders twin in
+               components/admin/orders/OrdersFilters.tsx rides the same
+               recipe). Both states carry a border box (inactive =
+               transparent) so the 1px text jitter dies on toggle; the
+               old bg-card + shadow-sm lifted the active chip as a mini
+               elevation. Inactive stays quiet muted ink with a muted/30
+               hover wash. aria-pressed + the URL write-back onClick are
+               byte-identical. */
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap ${
               active
-                ? "bg-card shadow-sm text-foreground font-bold"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
+                : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
             }`}
           >
             {s.label}
             {count !== null && count > 0 && (
-              <span
-                className={`text-3xs font-bold ${active ? "text-muted-foreground" : "text-muted-foreground"}`}
-              >
-                {count}
-              </span>
+              /* R139 (precision): the count chip's dead active/inactive
+                 ternary (both branches were identical) collapses to one
+                 muted ink — quiet metadata on both pill states. */
+              <span className="text-3xs font-bold text-muted-foreground">{count}</span>
             )}
           </button>
         );

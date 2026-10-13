@@ -376,6 +376,12 @@ export default function AdminTicketsPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold">تذاكر الدعم</h1>
+              {/* R139 (precision): verified, not changed — both header
+                  counters already ride the token-tint pill family
+                  (a /15 fill + /30 edge + full ink on --status-info /
+                  --status-warning), the §6 status-via-tokens dialect;
+                  the awaiting-reply chip keeps its semantic warning
+                  voice. */}
               {pendingCount > 0 && (
                 <span className="bg-status-info/15 text-status-info border border-status-info/30 text-xs font-bold px-2.5 py-1 rounded-full">
                   {pendingCount} نشطة
@@ -512,10 +518,21 @@ export default function AdminTicketsPage() {
               messagesEndRef={messagesEndRef}
             />
           ) : (
-            <div className="hidden lg:flex lg:col-span-3 bg-card border border-border rounded-2xl items-center justify-center">
+            <div
+              /* R139 (precision): the resting placeholder joins the /60
+                 border family (the pane + queue cards ride the same
+                 edge; the full-strength border was the page's outlier)
+                 and the glyph joins the icon-stage register — the
+                 bg-muted/60 tile + /35 edge + /35 ghost glyph (the
+                 ChartsEmptyState migration), with the title on the
+                 register's /85 ink. A resting column, no elevation. */
+              className="hidden lg:flex lg:col-span-3 bg-card border border-border/60 rounded-2xl items-center justify-center"
+            >
               <div className="text-center text-muted-foreground">
-                <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-15" />
-                <p className="font-bold text-sm">اختر تذكرة للعرض</p>
+                <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto mb-3 flex items-center justify-center">
+                  <MessageSquare className="w-5 h-5 opacity-35" />
+                </div>
+                <p className="font-bold text-sm text-foreground/85">اختر تذكرة للعرض</p>
                 <p className="text-xs mt-1">انقر على تذكرة من القائمة</p>
               </div>
             </div>

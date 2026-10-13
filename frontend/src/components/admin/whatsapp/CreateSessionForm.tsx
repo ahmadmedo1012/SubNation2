@@ -22,7 +22,11 @@ export function CreateSessionForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="rounded-2xl border border-border bg-card p-4 space-y-3">
+    /* R139 (precision): the form card joins the resting border family —
+       border-border/60 (the page's sessions section + every sibling admin
+       card); the full-strength border-border was an outlier. The Input +
+       canonical Button already ride the shared recipes. */
+    <form onSubmit={onSubmit} className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
       <div className="flex items-center gap-2 font-bold">
         <Plus className="w-4 h-4 text-primary" />
         إضافة جلسة

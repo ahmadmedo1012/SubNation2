@@ -26,7 +26,11 @@ export function CalculatorOutputsCard({
   calcError: string | null;
 }) {
   return (
-    <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-3">
+    /* R139 (precision): border/55 → /60 + solid — the outputs card joins
+       the resting family (the r139 one-edge register; bg-card was already
+       solid). Stays FLAT: the writable PricingConfigCard above owns this
+       page's one elevated register. */
+    <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-3">
       <h2 className="font-bold text-sm flex items-center gap-2">
         <Sparkles className="w-4 h-4 text-primary" /> النتائج
       </h2>
@@ -39,7 +43,12 @@ export function CalculatorOutputsCard({
       {calcError && (
         <div
           role="alert"
-          className="flex items-start gap-2.5 p-3 border border-destructive/25 bg-destructive/5 rounded-xl text-destructive"
+          /* R139 (precision): the stale-marker banner joins the page's
+             --status-error vocabulary (the configLoadError alert's
+             triple) — the raw destructive channel retires with
+             RISK_STATE_TONE.LOSS this round; role/semantics and the
+             R126-L3 copy byte-identical. */
+          className="flex items-start gap-2.5 p-3 border border-status-error/25 bg-status-error/5 rounded-xl text-status-error"
         >
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <div className="min-w-0 text-xs leading-relaxed">
@@ -117,7 +126,7 @@ export function CalculatorOutputsCard({
               </div>
             )}
             {result.coupon && !result.coupon.valid && (
-              <div className="flex justify-between items-center gap-2 py-1 text-destructive text-3xs">
+              <div className="flex justify-between items-center gap-2 py-1 text-status-error text-3xs">
                 {/* R125-I3 (A2-10c): the ⚠️ emoji is gone — lucide
                     icon, the R124 promotions-toast convention. */}
                 <span className="flex items-center gap-1">
@@ -126,20 +135,29 @@ export function CalculatorOutputsCard({
                 <span>{result.coupon.reason_invalid}</span>
               </div>
             )}
-            <div className="flex justify-between py-2 border-t border-border/40 mt-2">
+            <div className="flex justify-between py-2 border-t border-border/20 mt-2">
               <span className="font-bold">السعر النهائي</span>
               {/* R126-L5 (A1-18): the headline money number rode raw
                   text-primary — 3.76:1 on the dark card (A6-B6's
                   measured figure), text-base is not large text, and
                   dark is the admin DEFAULT. text-primary-text is the
                   B-6 sweep class (AA both themes). */}
-              <span className="tabular-nums font-bold text-primary-text text-base">
+              {/* R139 (precision): receipt register — the terminal
+                  amount drops the brand tint for plain foreground:
+                  weight (700) + size (text-base, the only 16px money
+                  on the slip) carry the emphasis (the CartSummaryAside
+                  colorless-terminal pin); no color, no AA question. */}
+              <span className="tabular-nums font-bold text-base">
                 {fmt(result.pricing.final_price)} د.ل
               </span>
             </div>
           </div>
 
-          <div className="border-t border-border/40 pt-3 space-y-2">
+          {/* R139 (precision): receipt rhythm — every section boundary
+              below rides the /20 hairline (paper, not a hard edge — the
+              CartSummaryAside section-rule value); emphasis stays
+              weight+size, money stays tabular-nums. */}
+          <div className="border-t border-border/20 pt-3 space-y-1.5">
             <MarginRow
               label="الربح الإجمالي"
               hint="السعر النهائي ناقص التكلفة"
@@ -168,7 +186,7 @@ export function CalculatorOutputsCard({
               the same cost base. Answers "how bad can an allowed
               combination get?" before the operator ever creates
               one. */}
-          <div className="border-t border-border/40 pt-3">
+          <div className="border-t border-border/20 pt-3">
             <div className="flex items-center gap-1.5 mb-2">
               <TrendingDown className="w-3.5 h-3.5 text-status-warning shrink-0" />
               <h3 className="text-xs font-bold">
@@ -189,7 +207,7 @@ export function CalculatorOutputsCard({
                     result.worst_case.gross_lyd == null
                       ? "text-muted-foreground"
                       : result.worst_case.gross_lyd < 0
-                        ? "text-destructive"
+                        ? "text-status-error"
                         : ""
                   }`}
                   dir="ltr"
@@ -206,7 +224,7 @@ export function CalculatorOutputsCard({
                     result.worst_case.contribution_lyd == null
                       ? "text-muted-foreground"
                       : result.worst_case.contribution_lyd < 0
-                        ? "text-destructive"
+                        ? "text-status-error"
                         : ""
                   }`}
                   dir="ltr"
@@ -223,7 +241,7 @@ export function CalculatorOutputsCard({
                     result.worst_case.referred_contribution_lyd == null
                       ? "text-muted-foreground"
                       : result.worst_case.referred_contribution_lyd < 0
-                        ? "text-destructive"
+                        ? "text-status-error"
                         : ""
                   }`}
                   dir="ltr"
@@ -239,7 +257,7 @@ export function CalculatorOutputsCard({
           {/* R115 (Part 15): the guardrails block — break-even,
               the program-inclusive safe minimum, and the max safe
               discount at the current price. */}
-          <div className="border-t border-border/40 pt-3">
+          <div className="border-t border-border/20 pt-3">
             <div className="flex items-center gap-1.5 mb-2">
               <Shield className="w-3.5 h-3.5 text-primary shrink-0" />
               <h3 className="text-xs font-bold">حدود الأمان</h3>
@@ -277,7 +295,7 @@ export function CalculatorOutputsCard({
           {/* R115: the applied config line — the operator sees
               WHICH rule produced these numbers (incl. the discount
               cap that bounds the worst-case above). */}
-          <p className="text-3xs text-muted-foreground border-t border-border/40 pt-2 leading-relaxed">
+          <p className="text-3xs text-muted-foreground border-t border-border/20 pt-2 leading-relaxed">
             القاعدة المطبَّقة: 1$ = {fmt(result.config.usd_to_lyd)} د.ل · هامش{" "}
             {fmtFactor(result.config.markup_percent)}% · سقف الخصم المجمّع{" "}
             {result.config.max_total_discount_pct}%
@@ -285,11 +303,11 @@ export function CalculatorOutputsCard({
 
           {/* Warnings */}
           {result.warnings.length > 0 && (
-            <div className="border-t border-border/40 pt-3 space-y-2">
+            <div className="border-t border-border/20 pt-3 space-y-2">
               {result.warnings.map((w, i) => {
                 const tone =
                   w.severity === "loss"
-                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                    ? "border-status-error/40 bg-status-error/10 text-status-error"
                     : w.severity === "low_margin"
                       ? "border-status-warning/40 bg-status-warning/10 text-status-warning"
                       : w.severity === "cap"

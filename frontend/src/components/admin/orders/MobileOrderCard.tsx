@@ -24,8 +24,13 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
 }: OrderRowProps) {
   return (
     <div
+      /* R139 (precision): the selected tint aligns with the desktop
+         row's bg-primary/8 — one selection dialect across both
+         layouts (the border-primary/40 edge still does the signaling
+         here); the resting /60 → hover /100 border step was already
+         the r138 family recipe, left untouched. */
       className={`bg-card border rounded-2xl p-4 cursor-pointer transition-colors ${
-        isSelected ? "border-primary/40 bg-primary/3" : "border-border/60 hover:border-border"
+        isSelected ? "border-primary/40 bg-primary/8" : "border-border/60 hover:border-border"
       }`}
       onClick={() => onToggleExpand(order.id)}
     >
@@ -89,7 +94,11 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
             ? `إخفاء بيانات تسليم الطلب ${order.order_code}`
             : `عرض بيانات تسليم الطلب ${order.order_code}`
         }
-        className="w-full flex items-center gap-2 text-2xs text-muted-foreground border-t border-border/30 pt-2 mt-2 text-right hover:text-foreground transition-colors"
+        /* R139 (precision): card-internal section boundaries (this
+           meta rule + the three expansion separators below) soften
+           /30→/20 — the r138 receipt hairline value at section
+           seams. */
+        className="w-full flex items-center gap-2 text-2xs text-muted-foreground border-t border-border/20 pt-2 mt-2 text-right hover:text-foreground transition-colors"
       >
         <span className="font-mono">{order.order_code}</span>
         {order.created_at && (
@@ -105,11 +114,11 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
       {expanded &&
         order.has_credentials &&
         (credsFailed ? (
-          <div className="mt-2 pt-2 border-t border-border/30 text-xs text-destructive">
+          <div className="mt-2 pt-2 border-t border-border/20 text-xs text-destructive">
             تعذّر تحميل بيانات التسليم
           </div>
         ) : creds ? (
-          <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
+          <div className="mt-2 pt-2 border-t border-border/20 space-y-1.5">
             {creds.delivered_email && (
               <MaskedCredential label="البريد" value={creds.delivered_email} />
             )}
@@ -129,7 +138,7 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
             )}
           </div>
         ) : (
-          <div className="mt-2 pt-2 border-t border-border/30 text-xs text-muted-foreground">
+          <div className="mt-2 pt-2 border-t border-border/20 text-xs text-muted-foreground">
             جارٍ تحميل بيانات التسليم…
           </div>
         ))}

@@ -52,7 +52,11 @@ export const STATUS_CONFIG: Record<
     label: "مغلقة",
     color: "text-muted-foreground bg-muted/30",
     icon: <CheckCircle className="w-3 h-3" />,
-    border: "border-border",
+    // R139 (precision): full-strength border-border → /50 — the
+    // neutral status-chip edge value the canonical admin StatusBadge's
+    // neutral tone rides (bg-muted/45 + border-border/50); one neutral
+    // status register across the two consoles' ticket surfaces.
+    border: "border-border/50",
   },
 };
 

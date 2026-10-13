@@ -24,6 +24,11 @@
  *      aria-label and countdowns («(60 ث)», M:SS), lang="en" on the
  *      WhatsApp brand badge, 16px inputs (iOS zoom), 44px micro-links,
  *      enterKeyHint="done" (A6 #16/#17, A1 P1-4, A2 P2-9, P3-1).
+ *   4b. R139 (b — the r138-g follow-up): the OTP-mechanism disclosure
+ *      «سيصلك رمز التحقق عبر WhatsApp» rides the PHONE step at the
+ *      138-g hint register (text-xs muted) — never the pristine button
+ *      row (provider-family symmetry) and never the code step (§8
+ *      bare-code isolation: nothing competes with the 6 digits).
  *   5. Error funnel: every failure routes through getErrorMessage —
  *      the route's precise Arabic `error` beats its generic `code`.
  *   6. OTP expiry countdown from expires_at («ينتهي خلال M:SS»).
@@ -193,6 +198,39 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
     renderSignIn();
     const badge = screen.getByText("WhatsApp");
     expect(badge.getAttribute("lang")).toBe("en");
+  });
+
+  it("R139 (b): the OTP-mechanism line rides the phone step — 12px muted register, plain text, never pristine", () => {
+    // Pristine: the provider-selection row stays symmetric — Google and
+    // Telegram carry no helper line, so WhatsApp's entry button must not
+    // either; the disclosure lands only once the user has CHOSEN the
+    // WhatsApp path (still before the send commits anything).
+    renderSignIn();
+    expect(screen.queryByText(/سيصلك رمز التحقق/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "المتابعة عبر WhatsApp" }));
+    const line = screen.getByText(/سيصلك رمز التحقق عبر/);
+    // The 138-g hint register: text-xs + muted + centered (same family as
+    // the three channel-status hints — the "too dim" audit fix that
+    // raised them 2xs→xs this component's own info register).
+    expect(line.className).toContain("text-xs");
+    expect(line.className).toContain("text-muted-foreground");
+    // A6 #16: the Latin brand is wrapped for screen-reader pronunciation.
+    expect(line.querySelector('span[lang="en"]')?.textContent).toBe("WhatsApp");
+    // Plain visible text — the copy authorization carries zero aria deltas.
+    expect(line.getAttribute("aria-live")).toBeNull();
+    expect(line.getAttribute("role")).toBeNull();
+  });
+
+  it("R139 (b): the mechanism line leaves with the phone step — §8 bare-code isolation", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { success: true, expires_at: isoIn(300) }));
+    renderSignIn();
+    typePhone(openPhoneStep(), PHONE);
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
+    await screen.findByPlaceholderText("رمز التحقق");
+    // On the OTP surface nothing competes with the 6 digits
+    // (FINAL_UX_SYSTEM.md §8 — the WhatsApp-OTP-bare rule).
+    expect(screen.queryByText(/سيصلك رمز التحقق/)).not.toBeInTheDocument();
   });
 
   it("phone input: 16px (text-base) + enterKeyHint=done — no iOS focus zoom (A1 P1-4)", () => {

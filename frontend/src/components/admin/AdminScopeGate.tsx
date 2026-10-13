@@ -41,6 +41,14 @@ export function AdminScopeGate({ scope }: { scope: string }): ReactNode {
   const label = ADMIN_SCOPE_LABELS[scope] ?? scope;
   return (
     <AdminLayout>
+      {/* R139 (precision): VERIFIED, no visual change — the gate already
+          rides the quiet-warning register r138 pinned for banners: the
+          AA --status-warning ink pair on a /10 tint + /30 edge (both
+          themes safe, the R125-I2 A6-B4 decision), with the severity
+          living in the CONTENT (the honest reason line — which scope is
+          missing + who to ask), never in a heavier red/amber wall. The
+          one-line density is the admin dialect; six r139 domain agents
+          inherit this gate verbatim. */}
       <p className="text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
         هذه الصفحة تتطلب صلاحية {label} — تواصل مع مسؤول النظام
       </p>

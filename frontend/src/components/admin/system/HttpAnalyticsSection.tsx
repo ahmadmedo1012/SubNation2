@@ -120,7 +120,11 @@ export function HttpAnalyticsSection({
           {/* Top routes table */}
           {metrics.http.topRoutes.length > 0 && (
             <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              {/* R139 (precision): the table's header seam joins the /60
+                  value (139-e's orders-table header seam — one seam weight
+                  across the admin lanes; was the full-strength
+                  border-border, this lane's lone outlier). */}
+              <div className="px-4 py-3 border-b border-border/60 flex items-center gap-2">
                 <Box className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-3xs text-muted-foreground font-bold">
                   أكثر المسارات نشاطاً

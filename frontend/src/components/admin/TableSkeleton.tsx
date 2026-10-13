@@ -20,6 +20,17 @@ interface TableSkeletonProps {
  *
  * NOT used by topups.tsx — its skeleton is card-shaped (stacked
  * payment cards), a different layout entirely.
+ *
+ * R139 (precision): VERIFIED against the loaded tables it mirrors —
+ * no class changes needed. The frame already rides the resting
+ * border/60 family (identical to OrdersTable/UsersStatsPanel's
+ * `bg-card border border-border/60 rounded-2xl`), the row dividers
+ * already sit at border-border/30 (DesktopOrderRow's exact
+ * `border-b border-border/30` rhythm), the zebra bg-muted/5 + the
+ * bg-muted shimmer cells are the muted rhythm, and the /30 row edge
+ * under the /60 frame keeps frame-vs-content hierarchy. Pinned here
+ * so the six r139 domain agents consume a skeleton whose resting
+ * chrome already rhymes with their loaded tables.
  */
 export function TableSkeleton({ rows = 6, cells, zebra = true }: TableSkeletonProps) {
   return (

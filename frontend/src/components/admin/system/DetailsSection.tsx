@@ -23,6 +23,12 @@ export function DetailsSection({
   children: ReactNode;
 }): ReactElement {
   return (
+    /* R139 (precision): VERIFIED, no change — the collapsible shell every
+       advanced-diagnostics panel renders through already rides the r138
+       resting register (solid bg-card + border-border/60 + rounded-2xl);
+       the nine section panels inherit it, the inner /40 seam is the
+       family's card-internal divider, and the native <details> semantics
+       (zero JS state) are untouched this round. */
     <details
       open={defaultOpen}
       className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none"

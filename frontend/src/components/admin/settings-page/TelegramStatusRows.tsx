@@ -33,6 +33,10 @@ export function TelegramStatusRows({ settings }: { settings: TelegramSettings | 
           failText: "غير موجود",
         },
       ].map((row) => (
+        /* R139 (precision): VERIFIED, no change — the ok/fail verdicts
+           ride the --status-success/error ink pair on the quiet
+           bg-muted/25 + border-border/60 inset rows (the R126-L5 AA
+           fix); mono config keys, no status walls. */
         <div
           key={row.label}
           className="flex items-center justify-between px-4 py-3 bg-muted/25 border border-border/60 rounded-2xl"

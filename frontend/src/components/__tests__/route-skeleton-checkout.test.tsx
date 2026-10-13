@@ -58,4 +58,36 @@ describe("RouteSkeleton — checkout shape (B4 P1-5 / B6-P1-5)", () => {
     expect(status).toHaveAttribute("aria-label", "جارٍ تحميل الصفحة");
     expect(status.querySelectorAll(".skeleton-shimmer").length).toBeGreaterThan(0);
   });
+
+  // R139 (precision): the r138-e receipt register — the summary rule and
+  // the three cards' border family, verified against CartSummaryAside /
+  // PaymentMethodCard / CouponCard.
+  it("the summary's section rule rides the r138-e receipt hairline family (R139)", () => {
+    render(<RouteSkeleton shape="checkout" />);
+
+    const rule = document.querySelector(".border-t");
+    expect(rule).toBeInstanceOf(HTMLElement);
+    // r138-e moved the real CartSummaryAside's section rules to the /20
+    // hairline family ("paper, not a hard edge" — the ProductCard
+    // internal-divider value); the skeleton's rule rode /25, harder
+    // than the receipt it previews.
+    expect((rule as HTMLElement).className).toContain("border-border/20");
+    expect((rule as HTMLElement).className).not.toContain("border-border/25");
+  });
+
+  it("the three cards rest at the family edge border-border/60 with NO two-layer calm shadow (R139)", () => {
+    render(<RouteSkeleton shape="checkout" />);
+
+    const cards = Array.from(document.querySelectorAll(".bg-card")) as HTMLElement[];
+    expect(cards.length).toBeGreaterThanOrEqual(3);
+    for (const card of cards) {
+      // Verified against PaymentMethodCard / CouponCard /
+      // CartSummaryAside — the family resting edge since r138.
+      expect(card.className).toContain("border-border/60");
+      // The r138-B two-layer calm elevation is the PROMINENT-card
+      // register; placeholders keep the skeleton family's flatter
+      // rest (border rhythm, not shadow richness).
+      expect(card.className).not.toContain("shadow-[");
+    }
+  });
 });

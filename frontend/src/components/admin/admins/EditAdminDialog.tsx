@@ -1,5 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { AlertTriangle, CheckCircle, Loader2, Lock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AdminDialogShell } from "@/components/admin/admins/AdminDialogShell";
 import { ScopeCheckboxGrid } from "@/components/admin/admins/ScopeCheckboxGrid";
 import { type AdminAccount, type ScopeOption } from "@/components/admin/admins/admins-meta";
@@ -50,18 +52,25 @@ export function EditAdminDialog({
           <label htmlFor="admins-f5-17484" className="text-xs font-bold mb-1 block">
             الاسم الظاهر
           </label>
-          <input
+          {/* R139 (precision): shared Input family (the create dialog's
+              register — see admins-f1 above); id/type/value/onChange/
+              required byte-identical. */}
+          <Input
             id="admins-f5-17484"
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
             required
           />
         </div>
         <div>
           <label className="text-xs font-bold mb-1 block">الصلاحيات</label>
           {isSuper ? (
+            /* R139 (precision): the primary tint STAYS — super-admin
+               identity is this lane's brand semantic (the «جميع
+               الصلاحيات» chip rides the same pair), not a status; the
+               /5 fill + /20 edge is already the quiet static-badge
+               register. */
             <div className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg text-xs">
               <Lock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
               <div>
@@ -83,18 +92,18 @@ export function EditAdminDialog({
           لتغيير اسم المستخدم أو كلمة المرور لهذا الحساب، يجب أن يقوم المسؤول نفسه بذلك من صفحة
           "حسابي".
         </div>
+        {/* R139 (precision): the footer de-hand-rolls onto the shared
+            Button family (the create dialog's register — ghost cancel +
+            the h-9 flat-primary submit; type/disabled/onClick + the
+            Loader2/CheckCircle spinner swap byte-identical). */}
         <div className="flex items-center justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-          >
+          <Button type="button" variant="ghost" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             disabled={saving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-bold disabled:opacity-50 flex items-center gap-1.5"
+            className="h-9 bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
           >
             {saving ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -102,7 +111,7 @@ export function EditAdminDialog({
               <CheckCircle className="w-3.5 h-3.5" />
             )}
             حفظ
-          </button>
+          </Button>
         </div>
       </form>
     </AdminDialogShell>

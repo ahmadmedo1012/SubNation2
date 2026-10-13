@@ -46,7 +46,10 @@ export function SchedulerDetailsSection({
                    * on its own /10 tint is 3.56:1 on dark (text
                    * floor 4.5:1); the mono `leader` value is
                    * TEXT. */
-                  <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary-text">
+                  /* R139 (precision): the chip edge joins the static-badge
+                     family's single border value — border-primary/30
+                     (139-f's lane-wide call, the calm-pill border). */
+                  <span className="text-3xs font-mono px-1.5 py-0.5 rounded bg-primary/10 border border-primary/30 text-primary-text">
                     leader
                   </span>
                 )}

@@ -20,10 +20,14 @@ export function InstructionsPanel() {
     "سيتم مراجعته من الإدارة.",
   ];
   return (
-    <ol className="mt-3 mb-4 bg-muted/25 border border-border/45 rounded-xl p-3.5 space-y-2 text-xs leading-relaxed">
+    <ol className="mt-3 mb-4 bg-muted/60 border border-border/40 rounded-xl p-3.5 space-y-2 text-xs leading-relaxed">
+      {/* R139 (precision): the instructions legend joins the calm well
+          family (bg-muted/60 + /40 edge — the same register the LyPay
+          bank-coordinates panel rides; the old /25 + /45 inset was the
+          pre-r138 value). */}
       {steps.map((s, i) => (
         <li key={i} className="flex items-start gap-2">
-          <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 border border-primary/30 text-primary text-3xs font-bold flex items-center justify-center">
+          <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 border border-primary/30 text-primary-text text-3xs font-bold flex items-center justify-center">
             {i + 1}
           </span>
           <span className="text-foreground/85 pt-0.5">{s}</span>
@@ -59,7 +63,14 @@ export function TransferCodePanel({
     "flex items-center justify-center gap-2 w-full h-11 rounded-xl font-bold text-sm transition-all press-spring";
 
   return (
-    <div className="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-3.5">
+    /* R139 (precision): the transfer-code panel drops its brand-tinted
+       shell (border-primary/25 + bg-primary/5 — the pre-r138 idiom
+       139-f/i retired on VariantFormPanel and the whatsapp pair
+       panel) for the resting /60 edge + the muted/15 wash; the panel's
+       identity rides the primary-text header + the canonical CTA. The
+       USSD code box joins the WELL register (bg-muted/60 + /40 — the
+       money-critical stage the user dials/copies, the QR-stage twin). */
+    <div className="mt-3 rounded-xl border border-border/60 bg-muted/15 p-3.5">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 text-xs font-bold text-primary-text">
           <PhoneCall className="w-3.5 h-3.5" />
@@ -91,12 +102,12 @@ export function TransferCodePanel({
                had 0.2em. The arbitrary tracking-[0.2em] form carries the
                intended spacing for Latin-only runs; the guard's
                letter-join protection stays intact for Arabic. */
-            className="font-mono font-bold text-base sm:text-lg tracking-[0.2em] rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
+            className="font-mono font-bold text-base sm:text-lg tracking-[0.2em] rounded-lg bg-muted/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
           >
             {code}
           </div>
         ) : (
-          <div className="rounded-lg bg-background/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground/80 text-sm">
+          <div className="rounded-lg bg-muted/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground/80 text-sm">
             أدخل المبلغ لإنشاء الرمز تلقائياً
           </div>
         )}
@@ -114,7 +125,13 @@ export function TransferCodePanel({
       {href ? (
         <a
           href={href}
-          className={`${buttonClasses} bg-primary text-white hover:bg-primary/90 shadow-md shadow-primary/25`}
+          /* R139 (precision): the one-tap dial CTA drops the retired
+             hand-rolled stack (hover:bg-primary/90 + shadow-md
+             shadow-primary/25 — the named r138 retirements) and the raw
+             text-white for the AA ink token; the flat primary fill +
+             press-spring + h-11 floor stay (an <a> can't ride Button,
+             the tel: semantics are the payload). */
+          className={`${buttonClasses} bg-primary text-primary-foreground`}
         >
           <PhoneCall className="w-4 h-4" />
           تحويل الرصيد

@@ -1,5 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Loader2, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AdminDialogShell } from "@/components/admin/admins/AdminDialogShell";
 import { ScopeCheckboxGrid } from "@/components/admin/admins/ScopeCheckboxGrid";
 import { type ScopeOption } from "@/components/admin/admins/admins-meta";
@@ -54,12 +56,18 @@ export function CreateAdminDialog({
           <label htmlFor="admins-f1-17486" className="text-xs font-bold mb-1 block">
             اسم المستخدم
           </label>
-          <input
+          {/* R139 (precision): the form surfaces rhyme with the shared
+              Input family (the UserEditDialog register) — the raw
+              hand-rolled fields (page-fill + /60 edge + rounded-lg) ride
+              the canonical h-10 rounded-xl field with the ONE focus
+              system; id / type / value / onChange / required /
+              minLength / maxLength / autoComplete are byte-identical
+              props. */}
+          <Input
             id="admins-f1-17486"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
             minLength={3}
             maxLength={100}
             required
@@ -69,12 +77,11 @@ export function CreateAdminDialog({
           <label htmlFor="admins-f2-17484" className="text-xs font-bold mb-1 block">
             الاسم الظاهر
           </label>
-          <input
+          <Input
             id="admins-f2-17484"
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
             placeholder="افتراضياً: نفس اسم المستخدم"
           />
         </div>
@@ -82,12 +89,11 @@ export function CreateAdminDialog({
           <label htmlFor="admins-f3-15951" className="text-xs font-bold mb-1 block">
             كلمة المرور
           </label>
-          <input
+          <Input
             id="admins-f3-15951"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
             minLength={8}
             required
             autoComplete="new-password"
@@ -105,18 +111,20 @@ export function CreateAdminDialog({
             onRetry={onRetryScopes}
           />
         </div>
+        {/* R139 (precision): the footer de-hand-rolls onto the shared
+            Button family — cancel becomes the ghost variant (transparent
+            border box + muted/45 hover wash), submit the ProductsHeader
+            primary recipe (flat bg-primary + hover /90 + h-9 + press
+            feedback). type/disabled/onClick + the Loader2/Plus spinner
+            swap are byte-identical. */}
         <div className="flex items-center justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 text-sm font-bold text-muted-foreground hover:text-foreground"
-          >
+          <Button type="button" variant="ghost" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             disabled={saving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-bold disabled:opacity-50 flex items-center gap-1.5"
+            className="h-9 bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
           >
             {saving ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -124,7 +132,7 @@ export function CreateAdminDialog({
               <Plus className="w-3.5 h-3.5" />
             )}
             إنشاء
-          </button>
+          </Button>
         </div>
       </form>
     </AdminDialogShell>

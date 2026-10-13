@@ -231,7 +231,10 @@ export default function NotificationsPage() {
         </div>
         {!isLoading && rows.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shadow-sm shrink-0">
+            <div className="text-sm font-bold text-muted-foreground bg-card border border-border/60 px-3 py-1.5 rounded-full shrink-0">
+              {/* R139 (precision): shadow-sm retired — static count chips
+                  carry no elevation (the 139-h ticket-filter decision);
+                  the /60 edge was already the family value. */}
               {/* The paged envelope carries the TRUE total (unlike the
                   orders plain-array contract) — «عرض X من Y» until the
                   last page lands, then the plain count. */}
@@ -264,10 +267,13 @@ export default function NotificationsPage() {
         <SkeletonText
           count={4}
           wrapperClassName="space-y-2.5"
-          className="h-20 rounded-2xl border border-border/35"
+          className="h-20 rounded-2xl border border-border/60"
           lastShorter={false}
         />
-      ) : isError ? (
+      ) : /* R139 (precision): /35 → /60 — row-frame parity with the loaded
+           list (read rows rest at /60 after this round; the 139-a
+           loading→loaded frame-swap discipline). */
+      isError ? (
         /* Distinct from "no notifications": an outage must never read as
            an empty history (the 93-C5 / F-05 class). */
         <FetchErrorCard
@@ -300,9 +306,23 @@ export default function NotificationsPage() {
               <div
                 key={n.id}
                 className={`float-in stagger-${Math.min(i, 8)} relative bg-card border ${
-                  isRead ? "border-border/50" : "border-primary/25 bg-primary/[0.03]"
+                  isRead
+                    ? "border-border/60 hover:border-border"
+                    : "border-primary/30 bg-primary/[0.03] hover:border-primary/50"
                 } rounded-2xl px-4 py-3.5 transition-colors`}
               >
+                {/* R139 (precision): the row register joins the family —
+                    read seams /50 → /60 (one resting edge grid-wide);
+                    hover = the calm border step ONLY (cart's line rows:
+                    /60 → full; no elevation, no lift — the inner button
+                    keeps its own hover:opacity). The unread edge /25 →
+                    /30 (the family's one static-emphasis border value)
+                    with the matching /50 hover step; the unread TINT
+                    (bg-primary/[0.03]) + the 1px token stripe + the
+                    pulsing dot below stay byte-identical — they are the
+                    bell's own unread language (TYPE_CONFIG tokens), and
+                    this page renders as "the same surface as the panel,
+                    widened". */}
                 {!isRead && (
                   /* The bell's unread language: 1px inline-start stripe
                      (R124-A3 #12 refuse rule) + the row tint. */

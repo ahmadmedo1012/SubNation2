@@ -37,7 +37,13 @@ export function AuditTrailTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-right text-xs text-muted-foreground border-b border-border/55">
+            <tr
+              /* R139 (precision): the header band joins the table register
+                 (the UsersDesktopTable / OrdersTable idiom) — a solid
+                 bg-muted/30 quiet band + the /60 seam; th cells already
+                 ride font-semibold + muted ink. */
+              className="text-right text-xs text-muted-foreground border-b border-border/60 bg-muted/30"
+            >
               <th scope="col" className="py-2 px-3 font-semibold">
                 المسؤول
               </th>
@@ -57,7 +63,13 @@ export function AuditTrailTable({
           </thead>
           <tbody>
             {auditLogs.map((log) => (
-              <tr key={log.id} className="border-b border-border/30 align-top">
+              /* R139 (precision): row seams step /30→/60 — one hairline
+                 rhythm per table (matching the header seam above; the
+                 139-e row register). No hover wash is ADDED here: the
+                 audit rows are read-only accountability lines (no row
+                 handler, no expansion) — a hover affordance would promise
+                 interactivity this table never had. */
+              <tr key={log.id} className="border-b border-border/60 align-top">
                 <td className="py-2.5 px-3">
                   {/* R128 (B3-F4): the @username attribution is
                                   admin/webhook-controlled text that

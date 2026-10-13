@@ -13,6 +13,13 @@ export function QuickActionsStrip({
   pendingTopups: number;
 }) {
   return (
+    /* R139 (precision): VERIFIED, no class change — the chips already
+       ride the r138 resting register (border-border/60 → hover
+       border-border, bg-secondary/60 muted fill, quiet warning /8
+       tint for the topups CTA with severity in the count label);
+       they sit inside the ambient-wash zone wrapper in the page but
+       carry no elevation of their own (the KPI grid is the page's one
+       elevated register). */
     <div className="flex flex-wrap items-center gap-2">
       {/* 94-C2 (A2 P2-10): uppercase/tracking dropped — the label
           is Arabic (A11 §8). */}

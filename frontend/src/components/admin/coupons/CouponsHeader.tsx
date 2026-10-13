@@ -25,6 +25,9 @@ export function CouponsHeader({
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
+          {/* R139 (precision): verified, not changed — the header's
+              primary stage (a /10 fill + /20 edge) is MetricCard's
+              highlight-tile pair, the KPI icon-stage family value. */}
           <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
             <Tag className="w-4 h-4 text-primary" />
           </div>
@@ -35,7 +38,12 @@ export function CouponsHeader({
         </div>
         <Button
           onClick={onCreate}
-          className="gap-1.5 text-sm bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 press-spring"
+          /* R139 (precision): the primary-tinted md drop shadow is
+             dropped — a colored shadow reads as a glow on .light
+             (the r138 family retired brand-tinted shadows; the
+             products header CTA made the same cut this round); the
+             flat primary fill + press-spring carry the CTA. */
+          className="gap-1.5 text-sm bg-primary hover:bg-primary/90 press-spring"
         >
           <Plus className="w-3.5 h-3.5" />
           كوبون جديد
@@ -59,11 +67,22 @@ export function CouponsHeader({
           </div>
         </div>
         <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-2">
+          {/* R139 (precision): the active-count ink is verified, not
+              changed — «نشطة» is a literal status reading (the count
+              of live coupons), so the success ink stays by the same
+              rule that keeps the topups pending-total warning (the
+              139-e semantic-count decision); weight + size already
+              carry the emphasis. */}
           <div className="text-2xl font-bold text-status-success tabular-nums">{activeCount}</div>
           <div className="text-xs text-muted-foreground mt-0.5">نشطة</div>
         </div>
         <div className="bg-card border border-border/60 rounded-2xl p-4 text-center float-in stagger-3">
-          <div className="text-2xl font-bold text-primary tabular-nums">{totalUsed}</div>
+          {/* R139 (precision): the usage count is NOT a status — the
+              brand ink was emphasis-by-color, the thing the r138
+              receipt register retires; plain foreground + the 2xl/
+              bold weight step carry it (the MetricCard value
+              register). tabular-nums stays. */}
+          <div className="text-2xl font-bold text-foreground tabular-nums">{totalUsed}</div>
           <div className="text-xs text-muted-foreground mt-0.5">مرات الاستخدام</div>
         </div>
       </div>

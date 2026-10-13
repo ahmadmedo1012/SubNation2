@@ -100,7 +100,6 @@ export default function AdminEnrichmentPage() {
   const { hasAdminPermission } = useAuth();
   const canView = hasAdminPermission("inventory");
 
-
   // R125-I3 (A2-1): the queue is CURSOR-paginated server-side
   // (routes/admin/enrichment.ts — ?cursor= + next_cursor) but the page
   // fetched one 25-row page and rendered it as the whole queue while
@@ -308,7 +307,12 @@ function DraftCard({
   };
 
   return (
-    <div className="border border-border/40 rounded-2xl bg-card/60 overflow-hidden">
+    /* R139 (precision): the queue card goes solid — the translucent
+       60%-alpha card fill → solid bg-card (the r138 "solid surfaces"
+       family; the translucency was the pre-r138 idiom) on the resting
+       border-border/60 edge (was /40 — the family value every catalog
+       card rides). The interior hairlines keep their /40 step. */
+    <div className="border border-border/60 rounded-2xl bg-card overflow-hidden">
       <header className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-muted/30">
         <span className="text-sm font-bold flex-1">
           {draft.product_name}
@@ -316,7 +320,12 @@ function DraftCard({
             #{draft.product_id}
           </span>
         </span>
-        <span className="text-2xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+        {/* R139 (precision): the field-type chip gains the bordered
+            tinted-pill box (border-primary/30) — the catalog lane's
+            static-badge family (ProductCard variant badge, the
+            InventoryUploadDialog «كود» badge); a borderless tinted
+            pill is the one shape the r138 family retired. */}
+        <span className="text-2xs text-primary bg-primary/10 border border-primary/30 px-2 py-0.5 rounded-full">
           {FIELD_LABEL[draft.field_name]}
         </span>
         <span className="text-3xs text-muted-foreground" dir="ltr">
@@ -326,9 +335,13 @@ function DraftCard({
 
       <div className="p-3 space-y-3">
         {!editing && (
+          /* R139 (precision): the generated-copy well joins the r138
+              well family — bg-muted/60 (was a translucent background
+              wash with no family value) on the /40 edge; reads as a
+              quiet inset against the now-solid card. */
           <div
             dir="auto"
-            className="text-sm leading-relaxed bg-background/60 border border-border/40 rounded-xl p-3 whitespace-pre-wrap"
+            className="text-sm leading-relaxed bg-muted/60 border border-border/40 rounded-xl p-3 whitespace-pre-wrap"
           >
             {draft.generated_text}
           </div>

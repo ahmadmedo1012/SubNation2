@@ -47,8 +47,13 @@ export function AuthProvidersSummary({
       {/* R126-L5 (A3-4): the auth-summary pill joins the :889
           role-badge idiom on text-primary-text (raw text-primary
           on the /10 tint is 3.56:1 dark). */}
+      {/* R139 (precision): the pill edge joins the static-badge family's
+          single border value — border-primary/30 (139-f's lane-wide call:
+          the InventoryUploadDialog «كود» badge + the calm-pill border) —
+          and the enabled/total count rides tabular-nums (the numeric
+          read-only register). */}
       <span
-        className={`text-xs font-bold px-2.5 py-1 rounded-full border ${enabledCount > 0 ? "bg-primary/10 text-primary-text border-primary/20" : "bg-muted text-muted-foreground border-border"}`}
+        className={`text-xs font-bold px-2.5 py-1 rounded-full border tabular-nums ${enabledCount > 0 ? "bg-primary/10 text-primary-text border-primary/30" : "bg-muted text-muted-foreground border-border"}`}
       >
         {enabledCount}/{providersCount}
       </span>

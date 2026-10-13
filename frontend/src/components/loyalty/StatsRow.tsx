@@ -17,6 +17,15 @@ export function StatsRow({
   data: LoyaltyData;
   tierProgressPercent: number;
 }) {
+  /* R139 (precision): VERIFIED, no chrome change — the three tiles
+     already speak the family: solid bg-card on the /60 resting edge,
+     float-in stagger, tabular-nums on every numeral, and the mission's
+     sanctioned "weight+size emphasis WITH token tints" (points =
+     warning-gold identity, tier = tierColor, referrals = info; the
+     icon stages + token tints carry the identity). The tier progress
+     bar's gradient fill is pinned BY SELECTOR in
+     loyalty-history.test.tsx (div.bg-gradient-to-l) — deliberate,
+     not drift. */
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {/* Points */}

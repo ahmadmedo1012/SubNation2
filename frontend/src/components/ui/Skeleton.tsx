@@ -172,7 +172,16 @@ export function SkeletonCard({ count = 3, wrapperClassName, className }: Skeleto
         // border-r accent stripe — the craft-floor cap for colored side
         // stripes is 1px (the plain border already provides the edge).
         // Geometry moved VERBATIM from the orders card skeleton.
-        <div key={i} className={cn("bg-card border border-border rounded-xl p-4", className)}>
+        // R139 (precision): border-border → border-border/60 — the
+        // verbatim extraction inherited the r92-era full-strength edge
+        // while the real OrderCard has rested at /60 since round-93
+        // (orders.tsx OrderCard): every row of the orders list hardened
+        // its border at the shimmer→content swap, the exact drift class
+        // this round closes — and /60 is the r138 resting-border family
+        // this primitive speaks for. Tile + line tints unchanged
+        // (bg-muted stays the R136 riding tint; the shimmer utility
+        // owns the fill).
+        <div key={i} className={cn("bg-card border border-border/60 rounded-xl p-4", className)}>
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-muted skeleton-shimmer shrink-0" />
             <div className="flex-1 space-y-2">

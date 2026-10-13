@@ -47,7 +47,13 @@ interface CategoryTheme {
   chipBg: string;
   /** Chip text colour. */
   chipText: string;
-  /** Chip border. */
+  /** Chip border. R139 (precision): /25 + hover /45 → /30 + hover /55 —
+   *  the static-badge family value (/30 — the same step 139-f/139-i landed
+   *  on every tinted chip edge) + the tinted-chip hover step the home hero's
+   *  brand chips ride (border-success/30 → hover /55). Applies to the
+   *  sibling-chip row AND the hero icon tile — one border value lane-wide.
+   *  The /10 fill + /15 hover fill + text-cat-* ink stay: R124 (A3-F1)
+   *  AA-audited exactly this trio on the chips' own tints. */
   chipBorder: string;
   /** Icon for the chip (lucide). */
   Icon: ComponentType<{ className?: string }>;
@@ -61,7 +67,7 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     headingBorder: "border-cat-streaming",
     chipBg: "bg-cat-streaming/10 hover:bg-cat-streaming/15",
     chipText: "text-cat-streaming",
-    chipBorder: "border-cat-streaming/25 hover:border-cat-streaming/45",
+    chipBorder: "border-cat-streaming/30 hover:border-cat-streaming/55",
     Icon: Tv2,
   },
   music: {
@@ -71,7 +77,7 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     headingBorder: "border-cat-music",
     chipBg: "bg-cat-music/10 hover:bg-cat-music/15",
     chipText: "text-cat-music",
-    chipBorder: "border-cat-music/25 hover:border-cat-music/45",
+    chipBorder: "border-cat-music/30 hover:border-cat-music/55",
     Icon: Music2,
   },
   software: {
@@ -81,7 +87,7 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     headingBorder: "border-cat-software",
     chipBg: "bg-cat-software/10 hover:bg-cat-software/15",
     chipText: "text-cat-software",
-    chipBorder: "border-cat-software/25 hover:border-cat-software/45",
+    chipBorder: "border-cat-software/30 hover:border-cat-software/55",
     Icon: AppWindow,
   },
   vpn: {
@@ -91,7 +97,7 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     headingBorder: "border-cat-vpn",
     chipBg: "bg-cat-vpn/10 hover:bg-cat-vpn/15",
     chipText: "text-cat-vpn",
-    chipBorder: "border-cat-vpn/25 hover:border-cat-vpn/45",
+    chipBorder: "border-cat-vpn/30 hover:border-cat-vpn/55",
     Icon: ShieldCheck,
   },
   "ai-tools": {
@@ -101,7 +107,7 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     headingBorder: "border-cat-ai-tools",
     chipBg: "bg-cat-ai-tools/10 hover:bg-cat-ai-tools/15",
     chipText: "text-cat-ai-tools",
-    chipBorder: "border-cat-ai-tools/25 hover:border-cat-ai-tools/45",
+    chipBorder: "border-cat-ai-tools/30 hover:border-cat-ai-tools/55",
     Icon: Sparkles,
   },
   "seo-tools": {
@@ -111,7 +117,7 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     headingBorder: "border-cat-seo-tools",
     chipBg: "bg-cat-seo-tools/10 hover:bg-cat-seo-tools/15",
     chipText: "text-cat-seo-tools",
-    chipBorder: "border-cat-seo-tools/25 hover:border-cat-seo-tools/45",
+    chipBorder: "border-cat-seo-tools/30 hover:border-cat-seo-tools/55",
     Icon: TrendingUp,
   },
   education: {
@@ -121,7 +127,7 @@ const CATEGORY_THEME: Record<CategoryMeta["slug"], CategoryTheme> = {
     headingBorder: "border-cat-education",
     chipBg: "bg-cat-education/10 hover:bg-cat-education/15",
     chipText: "text-cat-education",
-    chipBorder: "border-cat-education/25 hover:border-cat-education/45",
+    chipBorder: "border-cat-education/30 hover:border-cat-education/55",
     Icon: GraduationCap,
   },
 };
@@ -271,10 +277,24 @@ export default function CategoryPage() {
       {/* Hero — matches home page's hero-card pattern, tinted with the
           category's specific accent so /category/streaming feels violet,
           /category/music feels emerald, etc. */}
+      {/* R139 (precision): the hero-card family's r138 atmosphere pair lands
+          here — ambient-wash + hairline-glow (GuestHero/AuthedHero both ride
+          the pair; this card's own "matches home page's hero-card pattern"
+          contract). ONE atmosphere moment per page — this hero card is it;
+          the cat-tinted gradient, 1px edge stripe and static blur orb stay
+          the category's identity layers stacked on top. border-border/40 +
+          shadow-lg STAY the hero-card family's own resting edge (both home
+          heroes ride the exact pair) — deliberately NOT swept to the /60
+          card-frame value, which would split this card from its twins. */}
       <header className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-6 shadow-lg float-in">
+        <div className="absolute inset-0 ambient-wash pointer-events-none" />
         <div
           className={`absolute inset-0 bg-gradient-to-l ${theme.heroGradient} via-transparent to-transparent pointer-events-none`}
         />
+        {/* R139 (precision): the pair's second half — the lit top edge
+            (position/inset baked into the utility; rides under the cat-tint
+            gradient, over the wash, exactly as AuthedHero stacks them). */}
+        <div className="hairline-glow" />
         <div
           /* R125-I7 (A7 B-12 / R124-A3 #12): w-[2px] → w-px — the
               craft-floor cap for colored side stripes is 1px. */
@@ -293,7 +313,13 @@ export default function CategoryPage() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground font-semibold mb-1">فئة {meta.label}</p>
-              <h1 className="text-fluid-2xl font-bold text-foreground">{meta.h1}</h1>
+              {/* R139 (precision): text-fluid-2xl → text-fluid-3xl — the
+                  storefront page-title scale (the PDP h1's r138-f move + the
+                  home hero's h1). The landing's h1 is the page's anchor: it
+                  must out-anchor everything below it (h2s ride text-base,
+                  ProductCard titles text-sm) the same way the PDP title
+                  out-anchors its own sections. */}
+              <h1 className="text-fluid-3xl font-bold text-foreground">{meta.h1}</h1>
             </div>
           </div>
           <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-3xl">
@@ -337,7 +363,13 @@ export default function CategoryPage() {
             onRetry={() => refetchProducts()}
           />
         ) : products.length === 0 ? (
-          <div className="bg-card border border-border/55 rounded-2xl py-12 px-4 text-center float-in">
+          /* R139 (precision): border-border/55 → /60 — the resting card-frame
+             family value (r138's ProductCard/FetchErrorCard/EmptyHero all
+             rest at /60; /55 was the pre-r138 scatter every wave-mate
+             retired). Icon-less minimal variant by DESIGN — EmptyState's own
+             docblock lists category as a deliberate non-adoption, so this
+             block stays hand-rolled; only the edge joins the family. */
+          <div className="bg-card border border-border/60 rounded-2xl py-12 px-4 text-center float-in">
             <p className="font-bold mb-2 text-foreground/80">لا توجد منتجات في هذه الفئة حالياً.</p>
             {/* R116-S1 CTA recipe: the empty state's primary conversion
                 action rides the canonical Button (was a bare text link). */}
@@ -374,7 +406,14 @@ export default function CategoryPage() {
           {meta.faqs.map((item, i) => (
             <details
               key={i}
-              className="group bg-card border border-border/55 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none float-in"
+              /* R139 (precision): border-border/55 → /60 — the resting
+                 card-frame family value (the /55 scatter r139 retired
+                 lane-wide). The support lane's FaqSection twin still rides
+                 /55 — the support lane owns that convergence; the family
+                 value wins here first. Summary hover:bg-muted/15 + the
+                 answer divider border-t /40 stay byte-identical to that
+                 twin (a matched pair — not drift this round re-invents). */
+              className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none float-in"
             >
               <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
                 <span className="text-sm font-bold flex-1">{item.question}</span>
@@ -415,7 +454,13 @@ export default function CategoryPage() {
             })}
           <button
             onClick={() => navigate("/")}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 border bg-card border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
+            /* R139 (precision): the neutral escape chip joins the calm-pill
+               dialect's resting arm — bg-muted/30 + border-border/30 + the
+               /70 border + /60 fill hover steps (the CatalogFiltersBar
+               category-chip inactive state, byte-for-byte; was bg-card +
+               border-border/50 + hover /80 + hover:bg-secondary/40 — the
+               pre-dialect chip register). aria/handler byte-identical. */
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 border bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
           >
             كل المنتجات
           </button>

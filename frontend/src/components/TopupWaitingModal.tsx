@@ -10,6 +10,7 @@
 // deleted; its mobile-geometry expectations are folded into this
 // component's tests (topup-waiting-modal-aria.test.tsx).
 import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
+import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -276,7 +277,7 @@ function WaitingBody({
       </p>
 
       {amount !== undefined && (
-        <div className="bg-muted/30 border border-border/45 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
+        <div className="bg-muted/30 border border-border/40 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
           <span className="text-xs text-muted-foreground font-bold">المبلغ</span>
           <span className="font-bold text-sm tabular-nums">{formatCurrency(amount)}</span>
         </div>
@@ -288,10 +289,14 @@ function WaitingBody({
       </div>
 
       {canDismiss && (
+        /* R139 (precision): the dismiss affordance stays a quiet muted
+           control (not a canonical primary); only the edge joins the
+           /60 family value. min-h-11 pinned by
+           topup-waiting-modal-aria. */
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 w-full min-h-11 py-2.5 rounded-xl bg-muted/50 border border-border/55 text-sm font-bold hover:bg-muted/70 transition-colors press-spring"
+          className="mt-5 w-full min-h-11 py-2.5 rounded-xl bg-muted/50 border border-border/60 text-sm font-bold hover:bg-muted/70 transition-colors press-spring"
         >
           إغلاق والمتابعة
         </button>
@@ -333,7 +338,7 @@ function ApprovedBody({
       </div>
 
       {balance !== null && (
-        <div className="bg-muted/30 border border-border/45 rounded-xl px-4 py-3 mb-5 flex items-center justify-between">
+        <div className="bg-muted/30 border border-border/40 rounded-xl px-4 py-3 mb-5 flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground font-bold">
             <Wallet className="w-3.5 h-3.5" />
             الرصيد الحالي
@@ -349,13 +354,15 @@ function ApprovedBody({
         // to dismiss the modal. The "تم" path is preserved as a soft
         // secondary in case they changed their mind.
         <div className="space-y-2">
-          <button
-            type="button"
-            onClick={onContinue}
-            className="w-full min-h-11 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
-          >
+          {/* R139 (precision): the state CTAs de-hand-roll onto the
+             shared Button — the retired stack (bg-primary/
+             hover:bg-primary/90 + shadow-md shadow-primary/20) dies;
+             buttonVariants owns the fill/press/ONE focus system.
+             min-h-11 (the 44px floor) is preserved ON TOP of the
+             default size — the aria suite pins it on every action. */}
+          <Button type="button" onClick={onContinue} className="w-full min-h-11 font-bold">
             متابعة الشراء
-          </button>
+          </Button>
           <button
             type="button"
             onClick={onClose}
@@ -365,13 +372,9 @@ function ApprovedBody({
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full min-h-11 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
-        >
+        <Button type="button" onClick={onClose} className="w-full min-h-11 font-bold">
           تم
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -410,13 +413,15 @@ function RejectedBody({ adminNote, onClose }: { adminNote: string | null; onClos
             the user in the wallet, where the ?return= product path stays
             armed in sessionStorage (only the approved «متابعة الشراء»
             consumes it) — a rejected attempt never strands the
-            round-trip. */}
-        <Link
-          href="/support"
-          className="w-full min-h-11 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold transition-colors press-spring shadow-md shadow-primary/20"
-        >
-          تواصل مع الدعم
-        </Link>
+            round-trip.
+            R139 (precision): asChild composition — the anchor wears the
+            canonical Button classes directly (one tab stop, no nested
+            button; the a4-f1 sweep's sanctioned form); the retired
+            hand-rolled stack dies with the raw <button>. min-h-11 rides
+            the pinned 44px floor. */}
+        <Button asChild className="w-full min-h-11 font-bold">
+          <Link href="/support">تواصل مع الدعم</Link>
+        </Button>
         <button
           type="button"
           onClick={onClose}

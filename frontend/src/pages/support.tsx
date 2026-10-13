@@ -342,8 +342,12 @@ export default function SupportPage() {
             <button
               onClick={() => setSelectedTicket(null)}
               aria-label="رجوع لقائمة التذاكر"
-              className="w-11 h-11 rounded-xl flex items-center justify-center bg-secondary/60 hover:bg-secondary border border-border/50 transition-all press-spring"
+              className="w-11 h-11 rounded-xl flex items-center justify-center bg-secondary/60 hover:bg-secondary border border-border/60 transition-all press-spring"
             >
+              {/* R139 (precision): border /50 → /60 — the resting-edge
+                  family value (the secondary fill/hover stay: the X twin
+                  and the layout-owned bell's own close button ride the
+                  same secondary hover register). */}
               <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
@@ -388,7 +392,14 @@ export default function SupportPage() {
                aria-pressed pills below. */
             aria-expanded={showCreate}
             aria-controls="support-create-ticket"
-            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 active:scale-[0.97] transition-all gap-1.5 rounded-xl shrink-0"
+            /* R139 (precision): canonical CTA — the hand-rolled stack
+               (flat bg-primary + hover:bg-primary/90 + shadow-md
+               shadow-primary/22 + active:scale) retires for
+               buttonVariants: the default variant owns the fill,
+               elevation, hover and press-spring, exactly like the
+               FetchErrorCard retry's r138 conversion. aria wiring
+               byte-identical. */
+            className="gap-1.5 shrink-0"
           >
             <Plus className="w-4 h-4" />
             تذكرة جديدة
@@ -451,7 +462,10 @@ export default function SupportPage() {
           </p>
           <Button
             asChild
-            className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
+            /* R139 (precision): canonical CTA — same de-hand-roll as the
+               header's «تذكرة جديدة»: buttonVariants owns fill/shadow/
+               hover/press; the label + Link target byte-identical. */
+            className="gap-1.5"
           >
             <Link href="/login?redirect=/support">
               <Headphones className="w-4 h-4" />
@@ -470,10 +484,13 @@ export default function SupportPage() {
           <SkeletonText
             count={3}
             wrapperClassName="space-y-3"
-            className="h-24 rounded-2xl border border-border/35"
+            className="h-24 rounded-2xl border border-border/60"
             lastShorter={false}
           />
-        ) : listError ? (
+        ) : /* R139 (precision): /35 → /60 — row-frame parity with the
+             loaded TicketsList rows (which rest at /60 after this
+             round; the 139-a loading→loaded discipline). */
+        listError ? (
           /* 93-C5 / F-05: distinct from "no tickets" — an outage/expired
              session previously read as "لا توجد تذاكر دعم". Same error-card
              idiom as orders/loyalty (B4 P1-4 class). */
@@ -483,7 +500,11 @@ export default function SupportPage() {
             titleClassName="text-sm"
             title="تعذّر تحميل التذاكر"
             description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم حاول مجدداً"
-            retryClassName="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
+            /* R139 (precision): the retry's hand-rolled chrome override
+               (flat bg-primary + shadow-md shadow-primary/22) is RETIRED
+               — dropping retryClassName lets the card's r138 canonical
+               default ride (Button default recipe + min-h-11 + gap-2,
+               the exact conversion FetchErrorCard itself shipped). */
             onRetry={fetchTickets}
           />
         ) : tickets.length === 0 ? (
@@ -506,7 +527,16 @@ export default function SupportPage() {
             action={
               <Button
                 onClick={() => setShowCreate(true)}
-                className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl gap-1.5"
+                /* R139 (precision): THE flagged EmptyState action-slot
+                   hand-roll (138-h) → the canonical recipe — the flat
+                   bg-primary + hover:bg-primary/90 + shadow-md
+                   shadow-primary/22 stack retires for buttonVariants
+                   (the shared component owns fill, elevation, hover,
+                   press + the ONE focus ring). EmptyState itself is
+                   shared/polished — the CTA passes through its action
+                   slot with canonical classes only. Label + handler
+                   byte-identical. */
+                className="gap-1.5"
               >
                 <Plus className="w-4 h-4" />
                 تذكرة جديدة

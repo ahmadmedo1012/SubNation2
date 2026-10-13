@@ -19,6 +19,7 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
+import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
@@ -44,7 +45,9 @@ interface ReferralEvent {
 
 function SkeletonRow() {
   return (
-    <div className="flex items-center gap-3 p-4 border-b border-border/30 last:border-0">
+    /* R139 (precision): the skeleton rows mirror the loaded event
+       rows' /20 hairline (loading→loaded parity). */
+    <div className="flex items-center gap-3 p-4 border-b border-border/20 last:border-0">
       <div className="w-9 h-9 rounded-xl bg-muted/50 skeleton-shimmer" />
       <div className="flex-1 space-y-2">
         <div className="h-3 bg-muted/50 rounded-full w-28 skeleton-shimmer" />
@@ -297,21 +300,30 @@ export default function ReferralsPage() {
             ].map((s, i) => (
               <div
                 key={i}
-                className={`bg-card border border-border/50 rounded-2xl p-4 float-in stagger-${i}`}
+                className={`bg-card border border-border/60 rounded-2xl p-4 float-in stagger-${i}`}
               >
                 <div
                   className={`w-7 h-7 rounded-lg border flex items-center justify-center mb-2.5 ${s.bg}`}
                 >
                   <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
                 </div>
-                <div className={`text-2xl font-bold tabular-nums ${s.color}`}>{s.value}</div>
+                {/* R139 (precision): the stat VALUE drops its per-tile hue
+                    for plain ink + weight + size + tabular-nums — the
+                    139-j admin-referrals twin decision (counts are not
+                    statuses; the icon stage above carries the identity).
+                    Tile edge /50 → /60 — the family resting value. */}
+                <div className="text-2xl font-bold tabular-nums text-foreground">{s.value}</div>
                 <div className="text-xs text-muted-foreground mt-0.5 font-semibold">{s.label}</div>
               </div>
             ))}
           </div>
 
           {/* Referral code + link card */}
-          <div className="relative bg-gradient-to-br from-primary/12 via-card to-card border border-primary/20 rounded-2xl p-5 mb-4 overflow-hidden float-in stagger-4">
+          {/* R139 (precision): the gradient shell (from-primary/12
+              via-card + border-primary/20) retires for the solid family
+              card — loyalty's ReferralBox twin; the quiet static corner
+              blob stays as the card's depth cue (AuthedHero's twin). */}
+          <div className="relative bg-card border border-border/60 rounded-2xl p-5 mb-4 overflow-hidden float-in stagger-4">
             {/* Ambient blob */}
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
 
@@ -350,7 +362,10 @@ export default function ReferralsPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <div
                     dir="ltr"
-                    className="flex-1 bg-background/50 border border-border/50 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono leading-relaxed text-left"
+                    /* R139 (precision): the link row rides the well
+                        register's quieter twin (muted/40 + /30), unified
+                        with loyalty's ReferralBox link box. */
+                    className="flex-1 bg-muted/40 border border-border/30 rounded-xl px-3 py-2 text-xs text-muted-foreground truncate font-mono leading-relaxed text-left"
                   >
                     {referralLink}
                   </div>
@@ -360,16 +375,16 @@ export default function ReferralsPage() {
 
               {/* Share button */}
               {!loading && (
-                <button
-                  onClick={handleShare}
-                  /* R124-I1 (A4 P2): py-3 + min-h-11 — the page's primary
-                      action rode ~40px (py-2.5), under the app-wide 44px
-                      tap floor the share/CTA controls enforce elsewhere. */
-                  className="w-full flex items-center justify-center gap-2 py-3 min-h-11 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-bold transition-all active:scale-[0.98] shadow-md shadow-primary/25 press-spring"
-                >
+                /* R139 (precision): the page-primary share CTA
+                    de-hand-rolls onto the canonical Button — size="lg" +
+                    w-full (the R116-S1 recipe); the retired stack
+                    (hover:bg-primary/90 + shadow-md shadow-primary/25 +
+                    raw text-white) dies with it. handleShare is
+                    byte-identical. */
+                <Button onClick={handleShare} size="lg" className="w-full font-bold">
                   <Share2 className="w-4 h-4" />
                   مشاركة الرابط
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -382,7 +397,10 @@ export default function ReferralsPage() {
               </div>
               <p className="text-sm text-foreground/80 leading-snug">
                 تحصل على{" "}
-                <span className="font-bold text-status-warning">
+                {/* R139 (precision): tabular-nums on the reward number —
+                    weight + tabular, the value from the API's
+                    points_rate (no hardcoded constants). */}
+                <span className="font-bold text-status-warning tabular-nums">
                   {overview.points_rate.points_per_referral} نقطة
                 </span>{" "}
                 عن كل إحالة ناجحة (تُقيد عند اعتماد أول شحن لصديقك) — قابلة للتحويل إلى رصيد في
@@ -392,7 +410,9 @@ export default function ReferralsPage() {
           )}
 
           {/* How it works */}
-          <div className="bg-card border border-border/50 rounded-2xl p-5 mb-4 float-in stagger-6">
+          {/* R139 (precision): /50 → /60 (family edge); the step tiles'
+              /30 → /40 joins the nested-stat-tile register. */}
+          <div className="bg-card border border-border/60 rounded-2xl p-5 mb-4 float-in stagger-6">
             <div className="flex items-center gap-2 mb-4">
               <Trophy className="w-4 h-4 text-primary" />
               <h2 className="font-bold text-sm">كيف يعمل البرنامج؟</h2>
@@ -401,14 +421,17 @@ export default function ReferralsPage() {
               {STEPS.map((s) => (
                 <div
                   key={s.step}
-                  className="flex flex-col items-center text-center gap-2 p-3 bg-muted/20 rounded-xl border border-border/30"
+                  className="flex flex-col items-center text-center gap-2 p-3 bg-muted/20 rounded-xl border border-border/40"
                 >
                   <div
                     className={`w-9 h-9 rounded-xl border flex items-center justify-center ${s.bg}`}
                   >
                     <s.icon className={`w-4 h-4 ${s.color}`} />
                   </div>
-                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-3xs font-bold flex items-center justify-center">
+                  {/* R139 (precision): text-primary-text — the AA-safe
+                      brand ink on 11px bold numerals (the wallet
+                      InstructionsPanel circles' twin). */}
+                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary-text text-3xs font-bold flex items-center justify-center">
                     {s.step}
                   </span>
                   <p className="text-xs text-foreground/75 font-semibold leading-snug">{s.text}</p>
@@ -418,14 +441,20 @@ export default function ReferralsPage() {
           </div>
 
           {/* Referral history */}
-          <div className="bg-card border border-border/50 rounded-2xl overflow-hidden float-in stagger-7">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/40">
+          {/* R139 (precision): card /50 → /60; the header/body seam
+              /40 → /60 and the event rows /30 → /20 — the whatsapp
+              section register (a FIRM seam under the section header,
+              receipt hairlines between the nested rows). */}
+          <div className="bg-card border border-border/60 rounded-2xl overflow-hidden float-in stagger-7">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/60">
               <div className="flex items-center gap-2">
                 <Users className="w-3.5 h-3.5 text-muted-foreground" />
                 <h2 className="font-bold text-sm">سجل الإحالات</h2>
               </div>
               {events.length > 0 && (
-                <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full font-bold">
+                /* R139 (precision): the count chip joins the static-badge
+                    box family (muted/30 fill + /30 edge). */
+                <span className="text-xs text-muted-foreground bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full font-bold tabular-nums">
                   {events.length}
                 </span>
               )}
@@ -441,17 +470,21 @@ export default function ReferralsPage() {
               <div className="py-14 text-center text-muted-foreground">
                 <div className="relative w-16 h-16 mx-auto mb-3">
                   <div className="absolute inset-0 bg-muted/30 rounded-2xl blur-sm" />
-                  <div className="relative w-16 h-16 rounded-2xl bg-muted/20 border border-border/30 flex items-center justify-center">
-                    <Users className="w-7 h-7 opacity-20" />
+                  {/* R139 (precision): the empty stage joins the r138-h
+                      icon-stage values (muted/60 tile + /35 edge + /35
+                      glyph + /85 title); the muted blur halo stays — a
+                      neutral depth cue, not the banned brand glow. */}
+                  <div className="relative w-16 h-16 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center">
+                    <Users className="w-7 h-7 opacity-35" />
                   </div>
                 </div>
-                <p className="text-sm font-bold text-foreground/70 mb-1">لا توجد إحالات بعد</p>
+                <p className="text-sm font-bold text-foreground/85 mb-1">لا توجد إحالات بعد</p>
                 <p className="text-xs text-muted-foreground max-w-[220px] mx-auto leading-relaxed">
                   شارك رابطك مع أصدقائك وابدأ في كسب النقاط
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-border/30">
+              <div className="divide-y divide-border/20">
                 {events.map((ev, i) => {
                   const credited = ev.status === "credited";
                   return (
@@ -500,7 +533,7 @@ export default function ReferralsPage() {
                       {/* Status / Points */}
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {credited ? (
-                          <span className="text-xs font-bold text-status-warning bg-status-warning/10 border border-status-warning/20 px-2 py-0.5 rounded-full">
+                          <span className="text-xs font-bold text-status-warning bg-status-warning/10 border border-status-warning/20 px-2 py-0.5 rounded-full tabular-nums">
                             +{ev.points_earned} نقطة
                           </span>
                         ) : (
@@ -527,7 +560,10 @@ export default function ReferralsPage() {
                 the 44px tap-target floor while converting. */}
             <Link
               href="/loyalty"
-              className="inline-flex items-center min-h-11 gap-1.5 mx-auto text-sm text-muted-foreground hover:text-primary transition-colors press-spring"
+              /* R124-I4 (A5 #1): hover:text-primary is sub-AA on the
+                  hover state — the text-safe twin (the 139-j back-link
+                  sweep's storefront twin). */
+              className="inline-flex items-center min-h-11 gap-1.5 mx-auto text-sm text-muted-foreground hover:text-primary-text transition-colors press-spring"
             >
               <Star className="w-3.5 h-3.5" />
               عرض نقاطي وبرنامج الولاء

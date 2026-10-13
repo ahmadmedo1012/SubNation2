@@ -61,8 +61,13 @@ export function ScopeCheckboxGrid({
             role="checkbox"
             aria-checked={checked}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-right text-sm border transition-colors ${
+              /* R139 (precision): the checked tile joins the calm selected
+                 tint (the pill trio — bg-primary/15 + border-primary/30;
+                 the old /10 fill + /40 edge was the louder pre-r138 pair).
+                 role="checkbox"/aria-checked + the label weight ride
+                 byte-identical; the inner checkbox square is untouched. */
               checked
-                ? "bg-primary/10 border-primary/40 text-foreground"
+                ? "bg-primary/15 border-primary/30 text-foreground"
                 : "bg-background border-border/60 text-muted-foreground hover:border-border"
             }`}
           >

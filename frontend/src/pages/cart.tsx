@@ -218,10 +218,12 @@ export default function CartPage() {
           title="سلتك فارغة"
           description="ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة"
           action={
-            <Button
-              asChild
-              className="min-h-11 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold"
-            >
+            /* R139 (precision): the empty-state browse CTA de-hand-rolled
+               onto the canonical recipe (139-c's pin-suite flagged it as
+               the last pre-r138 hero chrome on a money page's CTA —
+               size="lg" + w-full sm:w-auto carries the affordance; the
+               hand-rolled bg/shadow/scale stack retires). */
+            <Button asChild size="lg" className="w-full sm:w-auto gap-2 font-bold">
               <Link href="/">
                 <Sparkles className="w-4 h-4" />
                 متابعة التسوق

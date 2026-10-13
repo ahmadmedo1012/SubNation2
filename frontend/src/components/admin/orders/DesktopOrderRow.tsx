@@ -29,8 +29,16 @@ export const DesktopOrderRow = React.memo(function DesktopOrderRow({
   return (
     <React.Fragment>
       <tr
-        className={`border-b border-border/30 transition-colors hover:bg-muted/20 cursor-pointer group ${
-          isSelected ? "bg-primary/3" : (idx ?? 0) % 2 !== 0 ? "bg-muted/[0.035]" : ""
+        /* R139 (precision): the row register (the r138-e cart
+           line-data precedent — rows are line data, not tiles):
+           seams step /30→/60 (the table's hairline rhythm, matching
+           the header seam), hover calms to a bg-muted/30 wash with
+           NO elevation, and the selected tint rises /3→/8 — half the
+           calm pill's /15, so a persistent selection out-reads the
+           zebra while staying a tint, never a primary fill. The zebra
+           wash and the memo bail-out contract are untouched. */
+        className={`border-b border-border/60 transition-colors hover:bg-muted/30 cursor-pointer group ${
+          isSelected ? "bg-primary/8" : (idx ?? 0) % 2 !== 0 ? "bg-muted/[0.035]" : ""
         }`}
       >
         <td className="px-4 py-2.5">
@@ -130,7 +138,13 @@ export const DesktopOrderRow = React.memo(function DesktopOrderRow({
       </tr>
       {expanded && (
         <tr className="bg-muted/10">
-          <td colSpan={8} className="px-4 py-3 border-b border-border/30">
+          <td
+            colSpan={8}
+            /* R139 (precision): the expansion's closing seam joins the
+               /60 row rhythm (was /30) — one seam value across the
+               grid. */
+            className="px-4 py-3 border-b border-border/60"
+          >
             <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs">
               {/* B6-03 (R116): values render from the per-order credentials
                   fetch (the list no longer decrypts) — masking + copy UX

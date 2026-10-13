@@ -357,14 +357,28 @@ export default function AdminAlertsPage() {
         {isError && alerts.length > 0 && (
           <div
             role="alert"
-            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+            /* R139 (precision): the poll-failure banner joins the r138
+               calm-error register (the ChartErrorBanner idiom): the
+               frame drops its status-error/10 + /25 red wall for the
+               card family's resting chrome (bg-card + border-border/60
+               + rounded-2xl), the error tone concentrates in the icon
+               stage (an error/8 fill + /22 edge + full-ink WifiOff —
+               the ONE red accent), the message moves to the /80
+               foreground headline ink and the retry keeps the error
+               ink — severity lives in CONTENT (message + role=alert +
+               glyph), not a tinted wall. role/onClick byte-identical. */
+            className="p-4 rounded-2xl bg-card border border-border/60 flex items-center gap-3"
           >
-            <WifiOff className="w-4 h-4 shrink-0" />
-            <span className="min-w-0">{getErrorMessage(error)}</span>
+            <div className="w-9 h-9 rounded-xl bg-status-error/8 border border-status-error/22 flex items-center justify-center shrink-0">
+              <WifiOff className="w-4 h-4 text-status-error" />
+            </div>
+            <span className="min-w-0 text-sm font-bold text-foreground/80">
+              {getErrorMessage(error)}
+            </span>
             <button
               type="button"
               onClick={() => refetch()}
-              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+              className="ms-auto shrink-0 text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80"
             >
               إعادة المحاولة
             </button>

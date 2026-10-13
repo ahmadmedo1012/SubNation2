@@ -318,7 +318,13 @@ export default function LoyaltyPage() {
         <SkeletonText
           count={3}
           wrapperClassName="grid grid-cols-1 sm:grid-cols-3 gap-4"
-          className="bg-card border border-border rounded-2xl h-[108px]"
+          /* R139 (precision): border-border (full strength) → /60 —
+             the loaded StatsRow tiles' resting edge (139-a's
+             loading→loaded frame-parity discipline; the r136 docblock
+             recorded the geometry as "verbatim", but the tiles it
+             previews have rested at /60 since r138 — the full-strength
+             edge flashed on every cold load's swap). */
+          className="bg-card border border-border/60 rounded-2xl h-[108px]"
           lastShorter={false}
         />
       ) : loadError ? (

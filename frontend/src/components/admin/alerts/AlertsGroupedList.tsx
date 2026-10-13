@@ -32,7 +32,11 @@ export function AlertsGroupedList({
                 letter-spacing severs Arabic letter connections
                 (A11 §8, rule documented in layout.tsx). */}
             <span className="text-2xs font-bold text-muted-foreground">{group.label}</span>
-            <div className="flex-1 h-px bg-border/40" />
+            {/* R139 (precision): the group rule joins the /20 hairline
+                family (the receipt-rhythm value at quiet section
+                boundaries — r138-e's card-internal-separator decision);
+                /40 was a between-value. */}
+            <div className="flex-1 h-px bg-border/20" />
             <span className="text-3xs text-muted-foreground">{group.items.length}</span>
           </div>
 
@@ -51,10 +55,17 @@ export function AlertsGroupedList({
                      the row surface alone (bg-card/40 + border/40,
                      no shadow, no hover) — text stays at its
                      token contrast. */
+                  /* R139 (precision): the unread row joins the calm
+                     queue register — the resting shadow + its hover
+                     elevation retire (no row elevation; the hover is
+                     the border step /60 → full alone, the topups-card
+                     decision), while the read row keeps its quieter
+                     /40 surface untouched (the pinned B-15 read/
+                     unread distinction rides exactly these fills). */
                   className={`group flex items-start gap-3 px-4 py-3 rounded-2xl border transition-all duration-150 ${
                     alert.isRead
                       ? "bg-card/40 border-border/40 cursor-default"
-                      : "bg-card border-border/60 shadow-sm cursor-pointer hover:border-border hover:shadow-md hover:shadow-black/10"
+                      : "bg-card border-border/60 cursor-pointer hover:border-border"
                   }`}
                 >
                   {/* Unread dot */}

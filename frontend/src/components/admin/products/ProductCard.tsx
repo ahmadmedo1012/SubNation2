@@ -59,8 +59,15 @@ const ProductCard = React.memo(function ProductCard({
   return (
     <div
       className={`bg-card border rounded-2xl overflow-hidden transition-all hover:shadow-lg hover:shadow-black/10 ${
+        /* R139 (precision): the selected card drops the ring + colored
+           md-shadow stack (a selection state wearing BOTH a ring and a
+           brand-colored shadow — row elevation + glow) for the calm
+           tinted dialect: border-primary/30 + bg-primary/5, the same
+           1px border width every other branch carries. The family's
+           selected-row tint; the neutral hover:shadow-lg step above
+           stays the only elevation. */
         isSelected
-          ? "border-primary/40 ring-1 ring-primary/20 shadow-md shadow-primary/5"
+          ? "border-primary/30 bg-primary/5"
           : !product.is_active
             ? "opacity-55 border-border/60"
             : product.stock_count === 0
@@ -88,8 +95,13 @@ const ProductCard = React.memo(function ProductCard({
               <Square className="w-4 h-4" />
             )}
           </button>
+          {/* R139 (precision): the thumb joins the r138 shelf family —
+              bg-muted/60 well + border-border/40 edge (the cart thumbnail
+              / EmptyState tile vocabulary; the old bg-muted was the same
+              tone as the card body, sub-perceptual as a well). The cat-hue
+              fallback tiles keep their semantic wash on top. */}
           <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/50 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "bg-muted") : "bg-muted"}`}
+            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-border/40 ${!product.image_url ? (CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "bg-muted/60") : "bg-muted/60"}`}
           >
             {product.image_url ? (
               <img
@@ -99,9 +111,12 @@ const ProductCard = React.memo(function ProductCard({
                 decoding="async"
                 className="w-full h-full object-contain p-1.5"
                 onError={(e) => {
+                  // R139 (precision): the failed-image fallback wash matches
+                  // the well's new bg-muted/60 (one shelf tone — class
+                  // literal only, the swap logic untouched).
                   e.currentTarget.style.display = "none";
                   e.currentTarget.parentElement!.classList.add(
-                    CATEGORY_INITIAL_COLOR[product.category ?? ""]?.split(" ")[0] ?? "bg-muted",
+                    CATEGORY_INITIAL_COLOR[product.category ?? ""]?.split(" ")[0] ?? "bg-muted/60",
                   );
                 }}
               />
@@ -152,7 +167,12 @@ const ProductCard = React.memo(function ProductCard({
               return (
                 <span
                   title="عدد باقات المنتج — اضغط «الباقات» للإدارة"
-                  className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/25"
+                  /* R139 (precision): the static-badge edge /25 → the
+                     family /30 — one border value across the catalog
+                     lane (the InventoryUploadDialog «كود» badge + the
+                     r138 family pill border ride /30; a same-family
+                     10% alpha spread is vocabulary drift). */
+                  className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/30"
                 >
                   {formatCount(count, {
                     one: "باقة",

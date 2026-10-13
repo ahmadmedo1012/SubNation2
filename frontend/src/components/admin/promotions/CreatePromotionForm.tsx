@@ -31,7 +31,9 @@ export function CreatePromotionForm({
   onCancel: () => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="bg-card border border-border/55 rounded-2xl p-5 space-y-4">
+    /* R139 (precision): border/55 → /60 — the create shell joins the
+       resting one-edge register (bg-card already solid, flat). */
+    <form onSubmit={onSubmit} className="bg-card border border-border/60 rounded-2xl p-5 space-y-4">
       <h2 className="font-bold text-sm flex items-center gap-2">
         <Sparkles className="w-4 h-4 text-primary" /> إنشاء عرض جديد
       </h2>
@@ -104,14 +106,20 @@ export function CreatePromotionForm({
         const d = parseFloat(form.discount_percent);
         if (!Number.isFinite(d) || d <= 0) return null;
         return (
-          <div className="p-3 rounded-xl border border-primary/25 bg-primary/8">
+          /* R139 (precision): receipt register — the live price preview
+             leaves the brand-tinted box (bg-primary/8 + border-primary/25)
+             for the hairline-ruled slip row (border-t border-border/20,
+             the VariantFormPanel expected-price conversion); the projected
+             price drops text-primary + font-mono for weight +
+             tabular-nums — emphasis by weight+size, never color. */
+          <div className="border-t border-border/20 pt-2.5">
             {/* 94-C2 (A2 P2-10): uppercase/tracking dropped —
                       letter-spacing severs Arabic letter connections
                       (A11 §8, rule documented in layout.tsx). */}
             <div className="text-3xs text-muted-foreground font-bold mb-1">معاينة سريعة</div>
             <div className="text-xs text-foreground/90 leading-relaxed">
-              منتج بسعر <span className="font-mono font-bold">10.00 د.ل</span> سيُعرض بـ{" "}
-              <span className="font-mono font-bold text-primary">
+              منتج بسعر <span className="font-bold tabular-nums">10.00 د.ل</span> سيُعرض بـ{" "}
+              <span className="font-bold tabular-nums">
                 {/* 96-F7 (R96 A6 #18): formatCurrency — the manual
                           toFixed(2) skipped the two-decimal + grouping
                           money convention (see utils.ts). */}

@@ -52,7 +52,11 @@ export function ProgressTraceLine({ line }: { line: string }) {
   if (line.startsWith("✗ ")) {
     return (
       <div className={lineClasses}>
-        <X className="w-3 h-3 shrink-0 text-destructive" aria-hidden />
+        {/* R139 (precision): text-destructive → text-status-error — the ✗
+            failure glyph joins its ✓ success twin on the --status-* family
+            (the pair the R129 render pin asserts; the pin's class
+            assertion was updated with it). */}
+        <X className="w-3 h-3 shrink-0 text-status-error" aria-hidden />
         <span>{line.slice(2)}</span>
       </div>
     );

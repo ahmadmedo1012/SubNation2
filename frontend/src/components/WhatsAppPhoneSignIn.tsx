@@ -470,7 +470,10 @@ export function WhatsAppPhoneSignIn({
           «غير مرتبطة حاليًا») as the qr_ready/failed differentiators;
           the audit's "cryptic — should explain that the OTP arrives on
           WhatsApp" clarification is reported as the copy-owner
-          follow-up rather than silently reworded under a substring pin. */}
+          follow-up rather than silently reworded under a substring pin.
+          R139 (b): that follow-up has now LANDED — as a brand-new line
+          on the phone step (under the input/submit row below), NOT a
+          reword of these three pinned strings; they stay byte-identical. */}
       {step === "pristine" && channelStatus === "settling" && (
         <p className="text-xs text-muted-foreground text-center leading-relaxed">
           قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وتصبح جاهزة خلال أقل من
@@ -577,6 +580,34 @@ export function WhatsAppPhoneSignIn({
                   )}
                 </button>
               </div>
+              {/* R139 (b — the r138-g follow-up, via copy authorization):
+                  the OTP-mechanism disclosure the live-site audit asked
+                  for ("users deserve to know a verification code arrives
+                  on WhatsApp BEFORE they commit"). Lives HERE — the
+                  phone step, directly under the input/submit row: after
+                  the user has chosen the WhatsApp path, BEFORE the send
+                  commits the number. Deliberately NOT (a) on the pristine
+                  button row — that row is the provider family and the
+                  Google/Telegram peers carry no helper line (a permanent
+                  caption would unbalance the trio); (b) on the code step
+                  — §8 bare-code isolation: nothing competes with the 6
+                  digits. Honest by construction: /api/auth/whatsapp/start
+                  has the backend send the 6-digit code through the paired
+                  WhatsApp channel (whatsapp-otp.service.ts — «سيصلك» is
+                  the same future verb the code step echoes with «لم يصلك
+                  الرمز؟»); the anti-phishing «لا تشارك هذا الرمز مع أحد»
+                  lives in the WhatsApp MESSAGE itself (the §8 channel
+                  idiom), so the web entry carries the mechanism only.
+                  Register = the 138-g hint family (text-xs muted,
+                  centered) — one step above the 11px carriers fine print
+                  below it, so the statement leads and the detail trails.
+                  Plain visible text: no aria/role/ live semantics (zero
+                  a11y deltas on this lane); Latin brand wrapped lang="en"
+                  per the A6 #16 family. Grep-clean when added: «سيصلك» had
+                  zero hits across src/tests (no pin collision). */}
+              <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                سيصلك رمز التحقق عبر <span lang="en">WhatsApp</span>
+              </p>
               <p className="text-2xs text-muted-foreground text-center">
                 تُقبل أرقام ليبيانا ومدار التي تبدأ بـ 091 / 092 / 093 / 094.
               </p>

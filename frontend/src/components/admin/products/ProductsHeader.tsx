@@ -61,7 +61,11 @@ export function ProductsHeader({
       </div>
       <Button
         onClick={onCreate}
-        className="bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 h-9 active:scale-[0.97] transition-transform"
+        /* R139 (precision): the primary-tinted md drop shadow is dropped —
+           a colored shadow reads as a glow on .light (the r138 family
+           retired brand-tinted shadows); the primary fill alone carries
+           the CTA. h-9 stays (≥24px admin edge floor). */
+        className="bg-primary hover:bg-primary/90 h-9 active:scale-[0.97] transition-transform"
       >
         <Plus className="w-4 h-4 ml-1.5" /> منتج جديد
       </Button>

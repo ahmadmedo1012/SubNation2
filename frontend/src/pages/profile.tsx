@@ -264,8 +264,13 @@ export default function ProfilePage() {
           /* R136 (UX-1): Skeleton — the identity-card placeholder's
              geometry rides className verbatim; role="status" + sr-only
              «جارٍ التحميل…» is net-new (the swap was silent). */
-          <Skeleton className="rounded-2xl h-36 border border-border/45" />
-        ) : meError ? (
+          <Skeleton className="rounded-2xl h-36 border border-border/60" />
+        ) : /* R139 (precision): /45 → /60 — the family resting edge every
+             section card on this page now rides; the loaded identity
+             card's tier border is dynamic (per-tier /20 tints) so the
+             shell takes the family's calm default (the 139-a parity
+             discipline: placeholder mirrors the loaded FRAME). */
+        meError ? (
           /* R115 (A8 #4): a failed /auth/me probe must not quietly remove
              the identity card — same error-card idiom as the wallet
              balance card (93-C5 / F-05). */
@@ -278,8 +283,14 @@ export default function ProfilePage() {
         ) : user ? (
           <div
             ref={tierGlow.ref}
-            className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-lg shadow-black/8 ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}
+            className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}
           >
+            {/* R139 (precision): the identity card is the page's ONE
+                prominent card — shadow-lg shadow-black/8 retires for the
+                r138 two-layer calm elevation (CartSummaryAside/
+                PaymentMethodCard register). The tier gradient itself
+                stays: TIER_GRADIENTS rides the theme-aware --tier-*
+                tokens (R128 A1-F3) — semantic identity, not decoration. */}
             <div className="absolute inset-0 dot-grid opacity-25 pointer-events-none" />
             <div
               className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-primary/7 blur-2xl pointer-events-none blob-drift"
@@ -288,7 +299,15 @@ export default function ProfilePage() {
 
             <div className="relative flex items-start gap-4">
               {/* Avatar */}
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/8 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
+              {/* R139 (precision): calm well — the pre-r138 avatar stack
+                  (from-primary/25→primary/8 gradient + shadow-inner
+                  bevel) retires for the well family (bg-muted/60 +
+                  border-border/40 — the cart/orders image-well pair).
+                  The tier gradient + tier badge + primary blob already
+                  carry the card's color identity; the initial keeps
+                  text-primary (2xl bold = large text, ≥3:1 on the muted
+                  well). */}
+              <div className="w-14 h-14 rounded-2xl bg-muted/60 border border-border/40 flex items-center justify-center shrink-0">
                 <span className="text-2xl font-bold text-primary select-none">
                   {/* Prefer first character of display_name (Telegram /
                       Google users). Fall back to last 2 phone digits
@@ -439,8 +458,15 @@ export default function ProfilePage() {
           ].map((item) => (
             <Link key={item.href} href={item.href}>
               <div
-                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border bg-card hover:border-border/80 hover:shadow-md hover:shadow-black/8 hover:-translate-y-0.5 transition-all cursor-pointer group press-spring text-center ${item.border}`}
+                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border bg-card hover:border-border hover:shadow-md hover:shadow-black/8 hover:-translate-y-0.5 transition-all cursor-pointer group press-spring text-center ${item.border}`}
               >
+                {/* R139 (precision): hover:border-border/80 → full — the
+                    r138 hover step (resting tint edge → /100 neutral).
+                    The soft neutral lift (shadow-md black/8 + -translate)
+                    stays: the storefront's interactive-card hover
+                    vocabulary (orders rows ride shadow-xl/black/20,
+                    home's quick-action chips shadow-lg) — only the
+                    admin dialect retires card hovers. */}
                 <div
                   className={`w-10 h-10 rounded-xl ${item.bg} border ${item.border} flex items-center justify-center group-hover:scale-105 transition-transform duration-200`}
                 >
@@ -454,7 +480,7 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Linked Accounts ─────────────────────────────────── */}
-        <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-1">
+        <div className="bg-card border border-border/60 rounded-2xl p-5 float-in stagger-1">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center shrink-0">
               <LinkIcon className="w-3.5 h-3.5 text-primary" />
@@ -468,6 +494,10 @@ export default function ProfilePage() {
                 <div
                   key={`${id.provider}-${id.providerUid}`}
                   className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-muted/20"
+                  /* R139 (precision): the in-card provider rows already
+                     ride the nested-row register (bg-muted/20 + /40 —
+                     the family 139-j pinned on OrdersStatsPanel's
+                     nested tiles); byte-identical. */
                 >
                   <div className="flex items-center gap-3">
                     {id.provider === "google.com" ? (
@@ -509,8 +539,15 @@ export default function ProfilePage() {
                       onClick={() => void handleUnlinkProvider(id.provider, id.providerUid)}
                       disabled={unlinkingProvider === id.providerUid}
                       aria-label={`فصل ${providerDisplayName(id.provider)}`}
-                      className="h-11 min-w-11 px-3 rounded-xl text-xs font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/8 hover:border-destructive/25 border border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 press-spring"
+                      className="h-11 min-w-11 px-3 rounded-xl text-xs font-bold text-muted-foreground hover:text-status-error hover:bg-status-error/10 hover:border-status-error/30 border border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 press-spring"
                     >
+                      {/* R139 (precision): quiet danger — the resting ink
+                          was already muted (text-muted-foreground); the
+                          hover channel moves destructive/* → the
+                          status-error token family the storefront pins
+                          (cart's clear trigger rides the exact trio,
+                          money-path-chrome-r139). Severity lives in the
+                          useConfirm destructive dialog above. */}
                       {unlinkingProvider === id.providerUid ? (
                         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       ) : (
@@ -526,7 +563,15 @@ export default function ProfilePage() {
               /* R94-A1 #8: the fetch failed — show the failure, not the
                  «link your account» advice (that advice is false for a
                  user whose providers exist but didn't load). */
-              <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-status-error/22 bg-status-error/8">
+              <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-border/40 bg-muted/20">
+                {/* R139 (precision): calm-error row — the red wall
+                    (status-error/22 frame + error/8 fill) retires for
+                    the sibling provider-row register (neutral frame);
+                    severity concentrates in the ink (error glyph + bold
+                    headline) + the Arabic copy, the FetchErrorCard
+                    r138 decision ("the error tone concentrates… the ONE
+                    red accent"), scaled from the centered card to this
+                    compact in-card row. role/aria byte-identical. */}
                 <div className="flex items-center gap-2.5 min-w-0">
                   <AlertCircle className="w-4 h-4 text-status-error shrink-0" />
                   <div className="min-w-0">
@@ -541,8 +586,11 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={refetchProviders}
-                  className="shrink-0 text-xs font-bold text-status-error border border-status-error/25 px-3 py-1.5 rounded-xl hover:bg-status-error/10 transition-colors press-spring"
+                  className="shrink-0 text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80 px-3 py-1.5 rounded-xl transition-colors press-spring"
                 >
+                  {/* R139 (precision): the boxed error-border retry →
+                      the error-ink underline register (139-h's
+                      StaleQueueBanner / 139-i's whatsapp banner twin). */}
                   إعادة المحاولة
                 </button>
               </div>
@@ -601,8 +649,8 @@ export default function ProfilePage() {
 
         {/* ── Security Options ────────────────────────────────── */}
 
-        {/* ── Danger zone ─────────────────────────────────────── */}
-        <div className="bg-card border border-border/55 rounded-2xl p-5 float-in stagger-3">
+        {/* ── Danger zone ─────────────────────────────────── */}
+        <div className="bg-card border border-border/60 rounded-2xl p-5 float-in stagger-3">
           {/* 96-F6 (R96 A6 #1, profile.tsx site): uppercase + tracking-wider
               removed — letter-spacing breaks Arabic letter joining (the
               header text «خيارات الحساب» is Arabic; the classes were a
@@ -616,8 +664,14 @@ export default function ProfilePage() {
             }}
             /* R124-I4 (A4 F1): h-10 (40px) → min-h-11 — the 44px floor
                every sibling control here already rides (destructive-ish
-               account action on a mobile-visible page). */
-            className="w-full min-h-11 border-destructive/25 text-destructive hover:bg-destructive/7 hover:border-destructive/45 font-bold transition-all rounded-xl gap-2"
+               account action on a mobile-visible page).
+               R139 (precision): quiet danger at rest — the destructive
+               ink/border/wash trio retires for muted ink + the
+               status-error hover family (the cart clear-trigger's exact
+               register, pinned by money-path-chrome-r139). Log-out is
+               reversible; red shouting at rest on a settings page is
+               what the r138 family retired. */
+            className="w-full min-h-11 border-border/60 text-muted-foreground hover:text-status-error hover:bg-status-error/10 hover:border-status-error/30 font-bold transition-all rounded-xl gap-2"
           >
             <LogOut className="w-4 h-4" />
             تسجيل الخروج

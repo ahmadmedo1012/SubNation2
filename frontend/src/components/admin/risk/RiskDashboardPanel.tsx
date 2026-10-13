@@ -38,7 +38,11 @@ export function RiskDashboardPanel({
       {isPending && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" aria-hidden="true">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="border border-border/40 rounded-xl p-3 bg-card/60">
+            /* R139 (precision): the skeleton tiles mirror the loaded
+               DashCard chrome (border/60 + solid bg-card) so the
+               loading→loaded swap never flashes a translucent frame
+               (the MetricCard skeleton-mirror rule). */
+            <div key={i} className="border border-border/60 rounded-xl p-3 bg-card">
               <div className="h-3 w-20 rounded-md skeleton-shimmer" />
               <div className="h-6 w-12 rounded-md skeleton-shimmer mt-1.5" />
             </div>
@@ -104,7 +108,10 @@ export function RiskDashboardPanel({
         </div>
       )}
       {data && data.top_rules.length > 0 && (
-        <div className="border border-border/40 rounded-2xl bg-card/60 p-3">
+        /* R139 (precision): the strip solidifies — bg-card/60 → bg-card
+           + edge /40 → /60 (the resting family; the r138 translucent
+           retirement). */
+        <div className="border border-border/60 rounded-2xl bg-card p-3">
           <div className="text-xs text-muted-foreground mb-2 font-bold">
             أكثر القواعد إطلاقاً (24 ساعة)
           </div>

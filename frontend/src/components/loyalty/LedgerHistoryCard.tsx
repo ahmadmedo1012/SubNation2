@@ -42,9 +42,11 @@ export function LedgerHistoryCard({
       </div>
 
       {historyLoading ? (
-        <div className="space-y-2.5">
+        /* R139 (precision): the skeleton mirrors the hairline receipt
+           rows it previews (divide-y /20 + plain py rows). */
+        <div className="divide-y divide-border/20">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 bg-muted/20 rounded-xl">
+            <div key={i} className="flex items-center gap-3 py-3">
               <div className="w-7 h-7 rounded-lg bg-muted skeleton-shimmer shrink-0" />
               <div className="flex-1 space-y-2">
                 <div className="h-3.5 bg-muted skeleton-shimmer rounded-full w-2/5" />
@@ -65,26 +67,39 @@ export function LedgerHistoryCard({
         />
       ) : history.length === 0 ? (
         <div className="text-center py-10 text-muted-foreground">
-          <div className="w-14 h-14 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-3.5">
-            <Star className="w-6 h-6 opacity-25" />
+          {/* R139 (precision): the empty stage joins the r138-h icon
+              stage values (muted/60 tile + /35 edge + /35 glyph +
+              /85 title). */}
+          <div className="w-14 h-14 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center mx-auto mb-3.5">
+            <Star className="w-6 h-6 opacity-35" />
           </div>
-          <p className="font-bold text-sm mb-1 text-foreground/80">لا توجد حركات نقاط بعد</p>
+          <p className="font-bold text-sm mb-1 text-foreground/85">لا توجد حركات نقاط بعد</p>
           <p className="text-xs text-muted-foreground max-w-[220px] mx-auto leading-relaxed">
             ستظهر هنا نقاط الشراء والإحالة والتحويل
           </p>
         </div>
       ) : (
-        <div className="space-y-2.5 lg:max-h-[420px] overflow-y-auto scrollbar-none">
+        /* R139 (precision): the POINTS HISTORY rides the receipt
+           rhythm — the wallet statement's twin (§4: the loyalty page
+           shows the points history; balances stay explainable).
+           divide-y /20 hairlines replace the boxed chip rows; the row
+           drops its hover wash (read-only accountability lines). */
+        <div className="divide-y divide-border/20 lg:max-h-[420px] overflow-y-auto scrollbar-none">
           {history.map((e, i) => {
             const delta = e.points_delta ?? 0;
             const gain = delta >= 0;
             return (
               <div
                 key={e.id ?? i}
-                className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/20 hover:bg-muted/35 rounded-xl transition-colors`}
+                className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 py-3`}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold mb-0.5">{e.type_label ?? e.type ?? "حركة"}</div>
+                  {/* R139 (precision): receipt ladder — the identifier
+                      drops to 600 so the signed points datum (700 + the
+                      size step below) leads; emphasis by weight+size. */}
+                  <div className="text-xs font-semibold mb-0.5">
+                    {e.type_label ?? e.type ?? "حركة"}
+                  </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {typeof e.points_after === "number" && (
                       <span className="text-3xs text-muted-foreground tabular-nums">
@@ -111,11 +126,17 @@ export function LedgerHistoryCard({
                 </div>
                 <span className="flex items-center gap-1 shrink-0">
                   {/* dir="ltr": the sign must lead the number inside
-                      the RTL layout; the unit sits in the RTL flow. */}
+                      the RTL layout; the unit sits in the RTL flow.
+                      R139 (precision): the delta joins the statement's
+                      ink ladder (gains full foreground / losses one
+                      step quieter — weight+size, never hue; the signed
+                      run + the plural noun carry the direction). The
+                      points BALANCE tile above keeps its warning tint
+                      (the loyalty identity the mission sanctions). */}
                   <span
                     dir="ltr"
-                    className={`text-xs font-bold tabular-nums ${
-                      gain ? "text-status-warning" : "text-foreground/80"
+                    className={`text-sm font-bold tabular-nums ${
+                      gain ? "text-foreground" : "text-foreground/80"
                     }`}
                   >
                     {gain ? "+" : "-"}

@@ -351,16 +351,25 @@ export default function AdminWhatsAppPage() {
             FetchErrorCard inside the sessions section below instead
             of this banner + the misleading «لا توجد جلسات بعد» pair. */}
         {error && sessions.length > 0 && (
+          /* R139 (precision): the stale-refresh banner joins the r138
+             calm-error register (139-d's ChartErrorBanner idiom): the
+             destructive/25 + destructive/5 red frame retires for the card
+             family's resting border-border/60 + solid bg-card, and the
+             error tone concentrates in the ink — the XCircle glyph + the
+             retry affordance — while the message text moves to
+             text-foreground/80. Severity lives in CONTENT (message +
+             role="alert" + the error-ink retry), not a tinted wall;
+             handler + role byte-identical. */
           <div
             role="alert"
-            className="rounded-xl border border-destructive/25 bg-destructive/5 p-3 flex gap-2 text-sm text-destructive"
+            className="rounded-xl border border-border/60 bg-card p-3 flex gap-2 text-sm"
           >
-            <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>{error}</span>
+            <XCircle className="w-4 h-4 mt-0.5 shrink-0 text-status-error" />
+            <span className="text-foreground/80">{error}</span>
             <button
               type="button"
               onClick={() => void loadSessions()}
-              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80 shrink-0"
+              className="ms-auto text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80 shrink-0"
             >
               إعادة المحاولة
             </button>
@@ -374,7 +383,12 @@ export default function AdminWhatsAppPage() {
           onSubmit={createSession}
         />
 
-        <section className="rounded-2xl border border-border bg-card overflow-hidden">
+        {/* R139 (precision): the sessions section frame joins the resting
+            border family — border-border/60 (every sibling admin card:
+            the settings cards, the system DetailsSection shell, the
+            orders/topups tables); the full-strength border-border was the
+            lane's lone outlier. */}
+        <section className="rounded-2xl border border-border/60 bg-card overflow-hidden">
           <SessionsSectionHeader
             loading={loading}
             refreshing={refreshing}

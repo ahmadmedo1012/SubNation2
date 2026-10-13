@@ -101,7 +101,14 @@ export function TopupsToolbar({
           <Button
             size="sm"
             variant="outline"
-            className="h-9 border-status-error/30 text-status-error hover:bg-status-error/10 text-xs"
+            /* R139 (precision): quiet danger at rest — the bulk-reject
+               trigger drops its resting error ink/border for the
+               neutral family (border/60 + muted ink); the error ink
+               surfaces on hover only, and the severity itself lives in
+               BulkConfirmModal's destructive confirm step (the cart's
+               إفراغ السلة recipe). The approve sibling keeps its
+               success ink — money-creating, not destructive. */
+            className="h-9 border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10 text-xs"
             onClick={() => setBulkAction("reject")}
           >
             <XCircle className="w-3.5 h-3.5 ml-1.5" />

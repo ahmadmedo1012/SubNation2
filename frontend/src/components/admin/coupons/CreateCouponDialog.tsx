@@ -112,10 +112,21 @@ export function CreateCouponDialog({
                      idiom" — the citation finally points at a real
                      implementation). */
                   aria-pressed={form.type === t}
-                  className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold border transition-all press-spring ${
+                  /* R139 (precision): the type toggle joins the r138
+                     calm-pill dialect (the PDP VariantSelector /
+                     money-path decision, pinned this round): the ACTIVE
+                     chip drops its SOLID primary fill + white ink for
+                     the family's /15 tint + primary-text + /30 edge
+                     (weight carries the selected state), and the
+                     resting chip swaps its card fill + full-strength
+                     edge for the muted/30 box + /30 edge + /70 border
+                     hover step — both states already boxed, no toggle
+                     jitter. aria-pressed + the 110-M guard-clearing
+                     onClick are byte-identical. */
+                  className={`flex-1 py-2 px-2 rounded-lg text-xs font-semibold border transition-all press-spring ${
                     form.type === t
-                      ? "bg-primary text-white border-primary"
-                      : "bg-card border-border text-muted-foreground hover:border-border/80"
+                      ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                      : "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
                   }`}
                 >
                   {t === "percentage" ? (

@@ -31,12 +31,17 @@ export function UsersFilterPanel({
       <div className="flex flex-wrap gap-6">
         <div>
           <div className="text-3xs font-bold text-muted-foreground mb-2">مستوى الولاء</div>
-          {/* R128 (A3-F1): the tier chips converge on the
-              segmented-raised idiom (orders/topups/tickets/products
-              chip bars) — the bordered primary-tint was the 4th
-              filter-chip shape in the console. The value-neutral
-              active state is the raised card chip, not a tint. */}
-          <div className="flex gap-1 flex-wrap bg-secondary/40 border border-border/60 rounded-2xl p-1">
+          {/* R139 (precision): the tier chips leave the segmented-control
+              shell (a secondary-tinted tray + borderless resting chips + a
+              card-colored active tile with its soft shadow — the R128
+              segmented-raised decision) for the r138 calm pill dialect —
+              active bg-primary/15 + text-primary-text + border-primary/30 +
+              font-bold, resting a bg-muted/30 box with the /30 border BOTH
+              states carry (kills the 1px toggle jitter the borderless active
+              caused). The ProductsToolbar / RiskFilterChips row shape: each
+              pill owns its border box, so the tray wash is gone. aria-pressed
+              untouched (the R124-C2 toggle exposure). */}
+          <div className="flex gap-1.5 flex-wrap">
             {TIER_FILTERS.map((t) => (
               <button
                 key={t.value}
@@ -45,10 +50,10 @@ export function UsersFilterPanel({
                    visual — aria-pressed exposes the toggle state
                    (the orders.tsx/topups.tsx chip-bar idiom). */
                 aria-pressed={tierFilter === t.value}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   tierFilter === t.value
-                    ? "bg-card shadow-sm text-foreground font-bold"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                    : "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
                 }`}
               >
                 {t.label}
@@ -64,7 +69,11 @@ export function UsersFilterPanel({
                 data). Server-side sort is a documented follow-up. */}
             الترتيب (ضمن المعروض)
           </div>
-          <div className="flex gap-1 flex-wrap bg-secondary/40 border border-border/60 rounded-2xl p-1">
+          {/* R139 (precision): same calm-pill migration as the tier bar
+              above — one chip language per panel (the sort chips ride the
+              identical border-boxed pair; the R128 raised-segment shell is
+              gone). aria-pressed untouched. */}
+          <div className="flex gap-1.5 flex-wrap">
             {SORT_OPTIONS.map((s) => (
               <button
                 key={s.value}
@@ -72,10 +81,10 @@ export function UsersFilterPanel({
                 /* R124-C2 (A6 F10): same toggle-state exposure as
                    the tier chips (single-select radio behavior). */
                 aria-pressed={sortBy === s.value}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   sortBy === s.value
-                    ? "bg-card shadow-sm text-foreground font-bold"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                    : "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
                 }`}
               >
                 {s.label}

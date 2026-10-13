@@ -16,14 +16,28 @@ export function StaleListErrorBanner({
   return (
     <div
       role="alert"
-      className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
+      /* R139 (precision): the stale-list banner joins the r138/r139
+         calm-error register (the ChartErrorBanner / StaleQueueBanner
+         idiom — 139-h flagged this as the lane's last red wall): the
+         frame drops the status-error/10 + /25 tinted wall for the card
+         family's calm resting chrome, severity concentrates in the
+         icon stage (error/8 fill + /22 edge + full-ink glyph — the ONE
+         red accent), and the message carries the /80 foreground
+         headline register. role=alert + onRetry byte-identical. */
+      className="p-3 rounded-2xl bg-card border border-border/60 flex items-center gap-3"
     >
-      <WifiOff className="w-4 h-4 shrink-0" />
-      <span className="min-w-0">{message ?? "تعذّر تحديث قائمة الطلبات"}</span>
+      {/* R139 (precision): the icon stage — w-9 square, an /8 token
+          fill + /22 edge; the full-ink glyph carries the state. */}
+      <div className="w-9 h-9 rounded-xl bg-status-error/8 border border-status-error/22 flex items-center justify-center shrink-0">
+        <WifiOff className="w-4 h-4 text-status-error" />
+      </div>
+      <span className="min-w-0 text-sm font-bold text-foreground/80">
+        {message ?? "تعذّر تحديث قائمة الطلبات"}
+      </span>
       <button
         type="button"
         onClick={onRetry}
-        className="ms-auto text-xs underline underline-offset-2 hover:opacity-80"
+        className="ms-auto shrink-0 text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80"
       >
         إعادة المحاولة
       </button>

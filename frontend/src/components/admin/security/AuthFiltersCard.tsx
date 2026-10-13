@@ -16,7 +16,13 @@ export function AuthFiltersCard({
   onFiltersChange: (next: AuthTimelineFilters) => void;
 }) {
   return (
-    <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
+    /* R139 (precision): the resting edge joins the family value (/55 →
+       /60). The two raw <select>s stay byte-identical on purpose — the
+       admin console has NO shared select family yet (pricing rides a
+       /55 muted inset, the product editor a full-border secondary fill),
+       so unifying them here would invent one; a dedicated select sweep
+       owns that. The labels/id/value/onChange lockstep is untouched. */
+    <div className="bg-card border border-border/60 rounded-xl p-4 flex gap-4 flex-wrap">
       <div className="flex items-center gap-2">
         <label htmlFor="security-f1-11119" className="text-sm font-semibold">
           الإجراء:

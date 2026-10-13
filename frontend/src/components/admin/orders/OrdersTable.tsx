@@ -44,7 +44,16 @@ export function OrdersTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-border bg-card/85 supports-[backdrop-filter]:bg-card/65 backdrop-blur-md">
+            {/* R139 (precision): the header band goes solid — the old
+                bg-card/85 + supports-backdrop-blur glass pair is r138-
+                retired (glass → solid surfaces); bg-muted/30 is the
+                admin header-band family (risk-event.tsx / enrichment.tsx
+                headers ride it) and the seam joins the /60 hairline
+                rhythm the rows below now speak. The th cells already
+                carry the quiet treatment (font-semibold + muted ink +
+                text-2xs). sticky/z-10 stay byte-identical (z-10 = the
+                documented local-stacking layer). */}
+            <tr className="sticky top-0 z-10 border-b border-border/60 bg-muted/30">
               {/* 96-F7 (R96 A6 #15): scope="col" so screen readers
                   announce the header↔cell relation on vertical
                   sweeps instead of a bare "خلية". */}
@@ -124,7 +133,13 @@ export function OrdersTable({
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2.5 border-t border-border bg-muted/10 flex items-center justify-between text-xs text-muted-foreground">
+      {/* R139 (precision): receipt rhythm on the money summary band —
+          the boundary rule softens /100→/20 (the r138 hairline value;
+          stacked on the last row's /60 seam it reads as the terminal
+          double-rule of a slip) and tabular-nums rides the whole line:
+          the counts and the «مجموع المعروض» sum are digits. Emphasis
+          stays weight-only — no color on the amount. */}
+      <div className="px-4 py-2.5 border-t border-border/20 bg-muted/10 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
         <span>
           {formatCount(filtered.length, ORDER_COUNT_FORMS)}
           {search && ` · نتائج "${search}"`}

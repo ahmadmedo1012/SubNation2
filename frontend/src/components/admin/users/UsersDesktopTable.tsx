@@ -23,7 +23,17 @@ export function UsersDesktopTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-border bg-card/85 supports-[backdrop-filter]:bg-card/65 backdrop-blur-md">
+            <tr
+              /* R139 (precision): the header band goes solid — the old
+                 translucent bg-card pair + backdrop-blur support guard is
+                 r138-retired glass (the OrdersTable twin's exact move);
+                 bg-muted/30 is the admin header-band family and the seam
+                 joins the /60 hairline rhythm the rows below speak. The
+                 th cells already carry the quiet register (font-semibold +
+                 muted ink + text-2xs). sticky/z-10 stay byte-identical
+                 (z-10 = the documented local-stacking layer). */
+              className="sticky top-0 z-10 border-b border-border/60 bg-muted/30"
+            >
               {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
                   announce the header↔cell relation on vertical
                   sweeps instead of a bare "خلية". */}
@@ -85,7 +95,12 @@ export function UsersDesktopTable({
           </tbody>
         </table>
       </div>
-      <div className="px-4 py-2.5 border-t border-border bg-muted/10 text-xs text-muted-foreground flex items-center justify-between">
+      {/* R139 (precision): receipt rhythm on the honest-count band — the
+          boundary rule softens to the r138 hairline value (stacked on the
+          last row's /60 seam it reads as the terminal double-rule of a
+          slip) and tabular-nums rides the line: the count is digits.
+          Emphasis stays weight-only — no color on the amount. */}
+      <div className="px-4 py-2.5 border-t border-border/20 bg-muted/10 text-xs text-muted-foreground tabular-nums flex items-center justify-between">
         <span>{formatCount(rows.length, USER_COUNT_FORMS)}</span>
         <span className="text-muted-foreground">انقر على قلم التحرير للتعديل</span>
       </div>

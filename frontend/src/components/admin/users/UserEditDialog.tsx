@@ -104,7 +104,14 @@ export function UserEditDialog({
         {editingUser && (
           <>
             {/* Current snapshot */}
-            <div className="grid grid-cols-3 gap-2 p-3.5 bg-muted/25 border border-border/50 rounded-2xl">
+            {/* R139 (precision): the money snapshot aligns with the tier
+                read-only box 30 lines below (bg-muted/30 + border/60 — the
+                resting family value; the /25 fill + /50 edge were the
+                pre-r138 scatter). Receipt register on the values: weight +
+                tabular-nums already carry the emphasis (the wallet ink is
+                the R125-I2 AA pair the orders money cells ride; the tier
+                ink is the read-only tier token — both verified, kept). */}
+            <div className="grid grid-cols-3 gap-2 p-3.5 bg-muted/30 border border-border/60 rounded-2xl">
               {[
                 {
                   label: "الرصيد",
@@ -134,7 +141,11 @@ export function UserEditDialog({
               </span>
               <span>
                 الإنفاق:{" "}
-                <strong className="text-status-success">
+                {/* R139 (precision): spend is not a status — the success
+                    ink on this strong drops for plain foreground (the
+                    OrdersHeader revenue-chip decision; the sibling
+                    strongs already ride foreground). */}
+                <strong className="text-foreground">
                   {formatCurrency(editingUser.lifetime_spend)}
                 </strong>
               </span>
@@ -166,7 +177,10 @@ export function UserEditDialog({
                 <Label htmlFor="user-edit-wallet" className="mb-2 block text-sm font-semibold">
                   تعديل المحفظة (د.ل)
                 </Label>
-                <div className="flex gap-1 mb-2 bg-secondary/50 border border-border/60 rounded-2xl p-1">
+                {/* R139 (precision): the tray wash aligns to the family's
+                    bg-secondary/40 (the OrdersFilters / StatusFilterTabs /
+                    SettingsTabBar trays) — one tray value per console. */}
+                <div className="flex gap-1 mb-2 bg-secondary/40 border border-border/60 rounded-2xl p-1">
                   {WALLET_MODES.map((opt) => (
                     <button
                       key={opt.value}
@@ -180,7 +194,20 @@ export function UserEditDialog({
                          pin). */
                       aria-pressed={form.wallet_mode === opt.value}
                       onClick={() => onWalletModeChange(opt.value as EditUserForm["wallet_mode"])}
-                      className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-50 ${form.wallet_mode === opt.value ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      /* R139 (precision): the money-mode chips join the
+                         calm-pill family (the ChartPickers / StatusFilterTabs
+                         track form — the tray stays, the raised card-colored
+                         active segment goes): active bg-primary/15 +
+                         primary-text + border-primary/30 + font-bold, resting
+                         the transparent border box + muted ink + muted/30
+                         hover wash. Both states boxed — no 1px jitter on a
+                         money-mode control. aria-pressed + the finance-gated
+                         disabled/title wiring byte-identical. */
+                      className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-50 ${
+                        form.wallet_mode === opt.value
+                          ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                      }`}
                     >
                       {opt.icon && <opt.icon className="w-3 h-3" />}
                       {opt.label}

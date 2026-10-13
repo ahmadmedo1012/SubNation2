@@ -42,7 +42,9 @@ export const ReferralRowItem = React.memo(function ReferralRowItem({
   const credited = row.status === "credited";
   return (
     <div
-      className={`flex flex-col md:grid md:grid-cols-[1fr_1fr_100px_130px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/15 transition-colors ${idx % 2 !== 0 ? "bg-muted/5" : ""}`}
+      /* R139 (precision): the row register — hover wash bg-muted/15 →
+         /30 (the orders-row hover step; zebra kept — not drift). */
+      className={`flex flex-col md:grid md:grid-cols-[1fr_1fr_100px_130px_90px] gap-2 md:gap-4 items-start md:items-center px-4 py-3 hover:bg-muted/30 transition-colors ${idx % 2 !== 0 ? "bg-muted/5" : ""}`}
     >
       {/* Referrer */}
       <div className="flex items-center gap-2">
@@ -91,9 +93,13 @@ export const ReferralRowItem = React.memo(function ReferralRowItem({
       {/* Action */}
       <div>
         {credited ? (
-          /* R126-L5 (A3 item-10): pending-count text joins the warning
-             sweep (yellow-400 fails the light theme at ~1.5:1). */
-          <div className="flex items-center gap-1 text-xs text-status-warning font-bold">
+          /* R139 (precision): receipt register on the granted-points value
+             — weight (700) + tabular-nums carry it, not warning ink: this
+             arm renders on CREDITED rows (the value is already granted —
+             the §4 API value, display-only); the pending state is the
+             sibling BUTTON. Star inherits the row ink like the Cart line
+             totals. */
+          <div className="flex items-center gap-1 text-xs font-bold tabular-nums">
             <Star className="w-3 h-3" />+{row.points_earned}
           </div>
         ) : (

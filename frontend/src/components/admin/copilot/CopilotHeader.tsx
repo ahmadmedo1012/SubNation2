@@ -42,7 +42,13 @@ export function CopilotHeader({
       : { label: "قراءة", tone: "info" };
 
   return (
-    <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-gradient-to-l from-primary/5 to-transparent">
+    /* R139 (precision): the header drops its decorative
+       from-primary/5 gradient wash for the family's quiet chrome
+       (border-b border-border → /60, no band — the panel's own surface
+       carries it); the Bot tile joins the page-header icon-stage family
+       (bg-primary/10 + border-primary/20 + primary ink — the gradient
+       disc + shadow-lg + ring retire). */
+    <div className="flex items-center gap-2 px-4 py-3 border-b border-border/60">
       <button
         onClick={onToggleHistory}
         className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
@@ -51,8 +57,8 @@ export function CopilotHeader({
       >
         <Menu className="w-4 h-4" />
       </button>
-      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground flex items-center justify-center shrink-0 shadow-lg shadow-primary/20">
-        <Bot className="w-4 h-4" />
+      <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+        <Bot className="w-4 h-4 text-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-bold text-sm flex items-center gap-2">

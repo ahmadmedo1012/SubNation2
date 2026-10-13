@@ -21,6 +21,11 @@ export function RiskFilterChips({
   return (
     <>
       {/* Filter chips */}
+      {/* R139 (precision): VERIFIED, no change — this bar IS the calm
+          dialect's origin family (active = tone-tinted /15 + /40 border +
+          font-bold, the "all" chip = the primary trio, inactive =
+          bg-muted/30 + border/30 + muted/60 hover wash; both states boxed,
+          aria-pressed live). Churn would be regression, not polish. */}
       <div className="flex items-center gap-2 flex-wrap">
         {FILTERS.map((f) => {
           const active = f.value === filter;

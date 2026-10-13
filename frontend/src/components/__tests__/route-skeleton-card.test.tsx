@@ -54,6 +54,66 @@ describe("ProductCardShell — mobile CTA placeholder (96-F4 / R96 A1 M12)", () 
 });
 
 /**
+ * R139 (precision): the r138 register parity — the flagged drifts this
+ * round closed (r138-b/r138-f/r138-e left the skeleton family one round
+ * behind the real surfaces it mirrors).
+ */
+describe("RouteSkeleton — r138 register parity (R139)", () => {
+  it("ProductCardShell rests at the real card's border-border/60 with the bg-muted/60 shelf marker", () => {
+    const { container } = render(<ProductCardShell />);
+    const card = container.firstElementChild as HTMLElement;
+    // r138-b: the real ProductCard's resting edge went 70→60; the
+    // skeleton kept /50 — a 10% alpha step on every card container at
+    // each shimmer→content swap of the 8-card catalog grid.
+    expect(card.className).toContain("border-border/60");
+    expect(card.className).not.toContain("border-border/50");
+    // The well carries the real card's shelf class — a REGISTER marker
+    // riding along render-neutral (.skeleton-shimmer owns the base fill
+    // and wins the @layer utilities source order; the R136 riding-tint
+    // idiom — the /60 wash's pixel parity is capped by the utility).
+    const media = card.firstElementChild as HTMLElement;
+    expect(media.className).toContain("bg-muted/60");
+    expect(media.className).toContain("skeleton-shimmer");
+    // NO two-layer calm elevation — the r138-B shadow is the
+    // PROMINENT-card register; placeholders rest at the skeleton
+    // family's flatter, quieter step.
+    expect(card.className).not.toContain("shadow-[");
+  });
+
+  it("ProductCardShell's internal divider rides the /20 hairline family value", () => {
+    const { container } = render(<ProductCardShell />);
+    const divider = container.querySelector(".border-t") as HTMLElement | null;
+    expect(divider).toBeInstanceOf(HTMLElement);
+    // R139 (precision, border-rhythm consistency): the real ProductCard
+    // divider (and, since r138-e, the checkout receipt's section rules)
+    // ride /20 — the skeleton's /25 was the lone outlier between the two
+    // /20 surfaces it previews.
+    expect(divider!.className).toContain("border-border/20");
+    expect(divider!.className).not.toContain("border-border/25");
+  });
+
+  it("the product shell's title bar tracks the PDP h1's fluid-3xl (h-7 → h-9)", () => {
+    const { container } = render(<RouteSkeleton shape="product" />);
+    const sections = container.querySelectorAll("section");
+    // r138-f: the real h1 went text-fluid-2xl → text-fluid-3xl — ≈29.5px
+    // mobile, 46.4px desktop cap, clamp midpoint ≈38px. h-9=36px is the
+    // closest step in the shell vocabulary (h-7=28px was the
+    // fluid-2xl-era midpoint pick for that clamp's 22→32px range).
+    const titleBar = sections[0].querySelector(".space-y-4 > .h-9");
+    expect(titleBar).toBeInstanceOf(HTMLElement);
+    expect(titleBar!.className).toContain("w-3/4");
+    expect(sections[0].querySelector(".space-y-4 > .h-7")).toBeNull();
+    // The 16:9 media plane carries the real page's bg-muted/60 shelf
+    // marker (render-neutral riding tint — see ProductCardShell above);
+    // the section chrome (lg:border-border/55 + lg:shadow-xl) is
+    // verified parity with ProductMediaSection.
+    const media = sections[0].querySelector('[class*="aspect-[16/9]"]');
+    expect(media).toBeInstanceOf(HTMLElement);
+    expect((media as HTMLElement).className).toContain("bg-muted/60");
+  });
+});
+
+/**
  * R123-E4b (P2 + CLS): the product shape must mirror pages/product.tsx —
  * the real page root is max-w-xl below lg and lg:max-w-6xl with the
  * R116-S2 two-column desktop split, a recommendations rail and (below
@@ -121,6 +181,18 @@ describe("RouteSkeleton width/archetype shells (R123-E4b P3-c)", () => {
     const narrow = render(<RouteSkeleton shape="list-narrow" />);
     const narrowRoot = narrow.container.querySelector(".max-w-2xl") as HTMLElement | null;
     expect(narrowRoot).toBeInstanceOf(HTMLElement);
+  });
+
+  it("the admin shell's table frame rests at the admin family's border-border/60 (R139)", () => {
+    const { container } = render(<RouteSkeleton shape="admin" />);
+    // Every real admin table container (OrdersTable / RiskEventsTable /
+    // ReferralsTable) and the canonical admin TableSkeleton ride the
+    // resting /60 frame — the route-level fallback was the lone /50
+    // outlier, flashing a softer frame on every admin cold load.
+    const frame = container.querySelector(".bg-card.rounded-2xl") as HTMLElement | null;
+    expect(frame).toBeInstanceOf(HTMLElement);
+    expect(frame!.className).toContain("border-border/60");
+    expect(frame!.className).not.toContain("border-border/50");
   });
 
   it("grid (flash-sales) is a max-w-6xl card grid with NO filter row", () => {

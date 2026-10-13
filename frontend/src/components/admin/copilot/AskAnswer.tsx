@@ -58,7 +58,11 @@ export function AskAnswer({
           ))}
         </div>
       )}
-      <div className="group relative bg-muted/40 border border-border/50 rounded-2xl rounded-tr-md px-3.5 py-2.5 text-sm shadow-sm">
+      {/* R139 (precision): the counterpart bubble completes the pair —
+          bg-muted/40 → /60 + border/50 edge (the tickets user-bubble
+          register, TurnView's solid-primary operator twin on the other
+          side); shadow-sm retires (thread content rests flat paper). */}
+      <div className="group relative bg-muted/60 border border-border/50 rounded-2xl rounded-tr-md px-3.5 py-2.5 text-sm">
         <MarkdownLite text={answer} />
         <button
           onClick={() => void handleCopy()}
@@ -83,7 +87,10 @@ export function AskAnswer({
           <div className="mt-1.5 space-y-1 pr-3 border-r-2 border-primary/20">
             {toolUses.map((tu, i) => (
               <div key={i} className="font-mono leading-5 text-3xs">
-                <span className="text-primary">{tu.name}</span>(
+                {/* R139 (precision): text-primary → text-primary-text —
+                    the 11px tool name rides the text-safe brand ink (the
+                    R126-L5 sweep class; raw primary is a surface color). */}
+                <span className="text-primary-text">{tu.name}</span>(
                 <span className="text-muted-foreground">{Object.keys(tu.input).length} args</span>)
               </div>
             ))}

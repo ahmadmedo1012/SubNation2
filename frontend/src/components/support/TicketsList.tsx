@@ -29,12 +29,20 @@ export function TicketsList({
             onClick={() => onOpenTicket(t.id)}
             className={`
               float-in stagger-${Math.min(i, 8)}
-              w-full bg-card border border-border/50 border-r-[3px] rounded-2xl p-4
-              hover:border-border/80 hover:shadow-lg hover:shadow-black/12 hover:-translate-y-0.5
+              w-full bg-card border border-border/60 border-r-[3px] rounded-2xl p-4
+              hover:border-border hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5
               transition-all duration-220 text-right group active:scale-[0.995] active:translate-y-0
               ${t.status === "open" ? "border-r-status-info/55" : t.status === "in_progress" ? "border-r-status-warning/55" : "border-r-border/40"}
             `}
           >
+            {/* R139 (precision): the row register rhymes with its
+                DOCUMENTED twin — orders.tsx's statusAccentBorder comment
+                names THIS ticket-card idiom as the shared one, and the
+                orders rows ride border/60 + hover:border-border +
+                hover:shadow-xl hover:shadow-black/20; the /50 edge,
+                /80 hover step and shadow-lg/black/12 were the drift.
+                The 3px status edge stripe + status tints stay
+                byte-identical (the shared idiom). */}
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">

@@ -639,7 +639,10 @@ export default function WalletPage() {
 
           {/* Form card */}
           <div
-            className={`bg-card border border-border/55 rounded-2xl p-5 transition-all duration-300 ${pendingBlocked ? "opacity-50 pointer-events-none select-none" : ""}`}
+            /* R139 (precision): /55 → /60 — the family resting edge
+               (the balance hero above and the statement below ride the
+               same value; one seam weight on the page). */
+            className={`bg-card border border-border/60 rounded-2xl p-5 transition-all duration-300 ${pendingBlocked ? "opacity-50 pointer-events-none select-none" : ""}`}
           >
             <div className="flex items-center gap-2.5 mb-5">
               <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">

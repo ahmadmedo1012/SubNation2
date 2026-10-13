@@ -69,7 +69,10 @@ export function RejectModal({
       description={
         topup ? (
           <>
-            <span className="font-mono font-bold text-foreground">
+            {/* R139 (precision): money rides tabular-nums (the receipt
+                rule) — emphasis stays weight-only: plain foreground
+                ink + font-bold, no color on the amount. */}
+            <span className="font-mono font-bold text-foreground tabular-nums">
               {formatCurrency(topup.amount)}
             </span>{" "}
             · {displayUserName(userFromRow(topup))}

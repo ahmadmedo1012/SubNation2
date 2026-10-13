@@ -31,11 +31,19 @@ export function TicketsPartialEmptyState({
        ?category= URL filter makes this dead-end shareable,
        so the block must be the honest default. */
     <div className="flex-1 flex flex-col items-center justify-center py-14 text-muted-foreground bg-card border border-border/60 rounded-2xl space-y-3">
-      <MessageSquare className="w-10 h-10 mb-1 opacity-20" />
-      <p className="text-sm font-bold text-foreground/80">
+      {/* R139 (precision): the icon joins the shared admin EmptyState's
+          icon-stage register — a bg-muted/60 tile + /35 edge + the
+          w-5 ghost glyph (the proportions 139-d aligned; the bare
+          w-10 low-ghost glyph was the pre-r138 idiom). */}
+      <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center mb-1">
+        <MessageSquare className="w-5 h-5 opacity-35" />
+      </div>
+      <p className="text-sm font-bold text-foreground/85">
         لا تذاكر بفئة {categoryLabel} ضمن الصفحات المحمّلة
       </p>
-      <p className="text-xs">قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل</p>
+      <p className="text-xs leading-relaxed max-w-xs">
+        قد تكون النتائج غير مكتملة — حمّل المزيد لعرض الكل
+      </p>
       <div className="flex justify-center gap-2 flex-wrap">
         <LoadMoreButton busy={loadingMoreTickets} disabled={loading} onClick={onFetchNext} />
         <button
@@ -65,17 +73,25 @@ export function TicketsHardEmptyState({
        one is active (the users tier-empty wording) instead
        of claiming the whole queue is empty. */
     <div className="flex-1 flex flex-col items-center justify-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl">
-      <MessageSquare className="w-10 h-10 mb-3 opacity-25" />
-      <p className="font-bold">
+      {/* R139 (precision): same icon-stage rhyme as the partial branch
+          (bg-muted/60 tile + /35 edge + /35 glyph) + the register's
+          title ink /85 and hint shape (xs + leading-relaxed +
+          max-w-xs) — the two empty branches speak one register. */}
+      <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center mb-3">
+        <MessageSquare className="w-5 h-5 opacity-35" />
+      </div>
+      <p className="font-bold text-sm text-foreground/85">
         {categoryFilter ? `لا توجد تذاكر بفئة ${categoryLabel}` : "لا توجد تذاكر"}
       </p>
-      <p className="text-sm mt-1">
+      <p className="text-xs mt-1 leading-relaxed max-w-xs">
         {categoryFilter ? "جرّب فئة أخرى أو أزل الفلتر" : "ستظهر تذاكر الدعم هنا"}
       </p>
       {categoryFilter && (
         <button
           onClick={onClearCategory}
-          className="text-xs text-primary-text hover:underline mt-3"
+          /* R139 (precision): mt-3 → mt-5 — the shared register's
+             action breathing room (the EmptyState decision). */
+          className="text-xs text-primary-text hover:underline mt-5"
         >
           إلغاء فلتر الفئة
         </button>

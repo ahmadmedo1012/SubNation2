@@ -45,7 +45,11 @@ export function VariantFormPanel({
   resetForm: () => void;
 }) {
   return (
-    <div className="bg-muted/15 border border-primary/20 rounded-xl p-4 space-y-3">
+    /* R139 (precision): the panel edge joins the resting border family
+       (border-primary/20 → border-border/60) — the dialog's active
+       editing surface is carried by the header + the primary submit,
+       not a brand-tinted border; bg-muted/15 wash stays. */
+    <div className="bg-muted/15 border border-border/60 rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-bold flex items-center gap-1.5">
           <Layers className="w-3.5 h-3.5 text-primary" />
@@ -199,9 +203,14 @@ export function VariantFormPanel({
         {/* Live expected price — the engine formula with the
             CURRENT rule, before any save. */}
         {expectedPrice != null && factor != null && rate != null && (
-          <div className="sm:col-span-2 flex items-center justify-between px-3 py-2.5 bg-primary/8 border border-primary/20 rounded-lg">
+          /* R139 (precision): receipt rhythm — the money preview drops
+             its primary-tinted box + brand ink for the family's slip
+             register: a /20 hairline rule at the boundary + emphasis
+             by weight (label 400 → amount 700) and size (2xs → xs),
+             NOT color — the CartSummaryAside terminal-line idiom. */
+          <div className="sm:col-span-2 flex items-center justify-between border-t border-border/20 pt-2.5">
             <span className="text-2xs text-muted-foreground">السعر المتوقع (يُحسب تلقائيًا)</span>
-            <span className="text-xs font-bold text-primary tabular-nums">
+            <span className="text-xs font-bold tabular-nums">
               {fmtUsd(Number.isFinite(previewCost) ? previewCost : 0)} × {fmtFactor(factor)} ×{" "}
               {fmtFactor(rate)} = {formatCurrency(expectedPrice)}
             </span>

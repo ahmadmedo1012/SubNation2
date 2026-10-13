@@ -341,6 +341,11 @@ export default function AdminSystemPage(): ReactElement | null {
             </p>
           </div>
           {health && (
+            /* R139 (precision): VERIFIED, no change — the aggregate health
+               pill already rides the quiet token-tint register: the
+               STATUS_META bg/border tints + the status ink on the label,
+               the state dot on the token fill — never a full-status wall
+               (the R128 A1-D1/F1 token migration). */
             <div
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${aggregateMeta.bg} ${aggregateMeta.border}`}
             >

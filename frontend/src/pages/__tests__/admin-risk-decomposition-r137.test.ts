@@ -117,8 +117,13 @@ describe("R137 (FE) — admin/risk.tsx decomposition: page stays an orchestratio
     // keep the verbatim shapes at their new address.
     const table = read("src/components/admin/risk/RiskEventsTable.tsx");
     expect(table).toContain("min-w-[720px]");
+    // R139 (precision): pin updated with the source — the sticky-glass
+    // thead (bg-card/85 + backdrop-blur-md) retired with the r138
+    // family's glass ban; the register is the solid bg-muted/30 quiet
+    // band + border-b/60 (the OrdersTable header 139-e shipped). The
+    // sticky + z-10 long-scroll affordance survives verbatim.
     expect(table).toContain(
-      "sticky top-0 z-10 text-xs text-muted-foreground bg-card/85 backdrop-blur-md",
+      "sticky top-0 z-10 text-xs text-muted-foreground bg-muted/30 border-b border-border/60",
     );
     expect(table).toContain("aria-label={`فتح تحقيق الحدث رقم ${e.id}`}");
     expect(table).toContain("after:absolute after:inset-0 after:content-['']");

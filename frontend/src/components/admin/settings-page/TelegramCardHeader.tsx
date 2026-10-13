@@ -15,6 +15,10 @@ import type { TelegramSettings } from "./settings-page-meta";
 export function TelegramCardHeader({ settings }: { settings: TelegramSettings | null }) {
   return (
     <div className="flex items-center gap-2.5 mb-5">
+      {/* R139 (precision): VERIFIED, no change — the configured state
+          rides the canonical StatusBadge (the /12 tint + status-ink +
+          /28 edge quiet-token pair), the tile is the info-token well;
+          never a full-status wall. */}
       <div className="w-9 h-9 rounded-xl bg-status-info/10 border border-status-info/20 flex items-center justify-center">
         <Bot className="w-4.5 h-4.5 text-status-info" />
       </div>

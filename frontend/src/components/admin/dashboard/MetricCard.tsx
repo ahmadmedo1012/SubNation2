@@ -47,8 +47,23 @@ export function MetricCard({
            + the codebase's ONLY ad-hoc rgba shadow
            (shadow-[0_0_0_1px_rgba(251,146,60,0.12)]) migrate to
            the --status-low-stock token and the urgent sibling's
-           exact shape (border + hover border/shadow, no ring). */
-        className={`float-in stagger-${index + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group ${card.urgent ? "border-status-warning/25 hover:border-status-warning/40 hover:shadow-status-warning/10" : card.lowStock ? "border-status-low-stock/30 hover:border-status-low-stock/45 hover:shadow-status-low-stock/15" : card.highlight ? "border-primary/20 hover:border-primary/35 hover:shadow-primary/10" : "border-border/60 hover:border-border"}`}
+           exact shape (border + hover border/shadow, no ring).
+           R139 (precision): the KPI grid is the dashboard's prominent
+           surface (the mission's own call), so the tiles adopt the
+           r138 two-layer calm elevation at REST — the tight contact
+           line (1px 2px @30%) + contained ambient wash (10px 28px
+           −14px @40%), deliberately NEUTRAL black (status-tinted
+           shadows read as color on .light, the same reason
+           ProductCard's elevation went neutral). The hover ladder
+           rides the family's neutral step — hover:shadow-xl
+           hover:shadow-black/25 — which RETIRES the R128 colored
+           hover-shadow tints (/10–/15 barely registered and a colored
+           haze is not how a quiet-premium surface says "hover"); the
+           state signal stays where it always lived: the token BORDER
+           (warning/low-stock/primary edges below + their hover
+           steps). Charts-column cards stay flat on purpose — one
+           elevated register per page. */
+        className={`float-in stagger-${index + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] hover:shadow-xl hover:shadow-black/25 ${card.urgent ? "border-status-warning/25 hover:border-status-warning/40" : card.lowStock ? "border-status-low-stock/30 hover:border-status-low-stock/45" : card.highlight ? "border-primary/20 hover:border-primary/35" : "border-border/60 hover:border-border"}`}
       >
         <div className="flex items-start justify-between gap-2 mb-2.5">
           <div

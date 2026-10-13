@@ -27,7 +27,8 @@ export interface LatestTopup {
  */
 export function LatestTopupPin({ topup }: { topup: LatestTopup }) {
   return (
-    <div className="lg:hidden flex items-center gap-3 p-3 bg-card border border-border/55 rounded-xl">
+    /* R139 (precision): /55 → /60 — the family resting edge. */
+    <div className="lg:hidden flex items-center gap-3 p-3 bg-card border border-border/60 rounded-xl">
       {topupStatusIcon(topup.status)}
       <div className="flex-1 min-w-0">
         <div className="text-xs font-bold tabular-nums">

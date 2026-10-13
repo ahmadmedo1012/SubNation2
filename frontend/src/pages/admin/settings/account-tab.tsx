@@ -14,6 +14,8 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Check, Eye, EyeOff, Key, Loader2, Save, UserCog } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -310,12 +312,20 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
             <label htmlFor="settings-f1-17486" className="text-xs font-bold mb-1 block">
               اسم المستخدم
             </label>
-            <input
+            {/* R139 (precision): the account form's writable fields join the
+                shared Input — the nine bare <input class="bg-background
+                border-border/60 rounded-lg"> holdouts were the admin
+                console's last hand-rolled fields (every other admin surface
+                rides Input); the swap brings the input-premium register,
+                the A4-F12 ≥3:1 resting border and the ONE focus-visible
+                ring (the old borderless-focus fields had none). id/value/
+                onChange/minLength/maxLength/required/autoComplete all
+                forward verbatim. */}
+            <Input
               id="settings-f1-17486"
               type="text"
               value={profileUsername}
               onChange={(e) => setProfileUsername(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
               minLength={3}
               maxLength={100}
               required
@@ -325,12 +335,11 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
             <label htmlFor="settings-f2-17484" className="text-xs font-bold mb-1 block">
               الاسم الظاهر
             </label>
-            <input
+            <Input
               id="settings-f2-17484"
               type="text"
               value={profileDisplayName}
               onChange={(e) => setProfileDisplayName(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
               maxLength={100}
             />
           </div>
@@ -339,31 +348,33 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
           <label htmlFor="settings-f3-38230" className="text-xs font-bold mb-1 block">
             كلمة المرور الحالية للتأكيد
           </label>
-          <input
+          <Input
             id="settings-f3-38230"
             type="password"
             value={profilePassword}
             onChange={(e) => setProfilePassword(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
             autoComplete="current-password"
             required
           />
         </div>
-        <button
-          type="submit"
-          disabled={profileSaving}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm disabled:opacity-50 flex items-center gap-2"
-        >
+        {/* R139 (precision): the form's primary save retires its hand-roll
+            (flat bg-primary + rounded-lg + active:scale-95) for the
+            canonical Button recipe — the gradient fill, shadow-md/25,
+            press-spring and the global focus ring all ride buttonVariants
+            (the 139-d login-CTA convergence). min-h-9 keeps the admin
+            density floor (≥24px); label + disabled + spinner ternary
+            byte-identical. */}
+        <Button type="submit" disabled={profileSaving}>
           {profileSaving ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ الحفظ…
+              <Loader2 className="animate-spin" /> جارٍ الحفظ…
             </>
           ) : (
             <>
-              <Save className="w-3.5 h-3.5" /> حفظ التغييرات
+              <Save /> حفظ التغييرات
             </>
           )}
-        </button>
+        </Button>
       </form>
 
       {/* Password form */}
@@ -386,12 +397,11 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
           <label htmlFor="settings-f4-27077" className="text-xs font-bold mb-1 block">
             كلمة المرور الحالية
           </label>
-          <input
+          <Input
             id="settings-f4-27077"
             type="password"
             value={pwCurrent}
             onChange={(e) => setPwCurrent(e.target.value)}
-            className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
             autoComplete="current-password"
             required
           />
@@ -402,12 +412,16 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
               كلمة المرور الجديدة
             </label>
             <div className="relative">
-              <input
+              {/* R139 (precision): shared Input (see the profile form) — the
+                  appended pl-12 reserves the physical-LEFT span the 44px
+                  reveal button below sits in (twMerge: pl overrides the
+                  base px on that side only, the right padding survives). */}
+              <Input
                 id="settings-f5-27063"
                 type={pwShowNew ? "text" : "password"}
                 value={pwNew}
                 onChange={(e) => setPwNew(e.target.value)}
-                className="w-full px-3 py-2 pl-12 bg-background border border-border/60 rounded-lg text-sm"
+                className="pl-12"
                 autoComplete="new-password"
                 minLength={8}
                 required
@@ -432,33 +446,30 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
             <label htmlFor="settings-f6-35008" className="text-xs font-bold mb-1 block">
               تأكيد كلمة المرور الجديدة
             </label>
-            <input
+            <Input
               id="settings-f6-35008"
               type={pwShowNew ? "text" : "password"}
               value={pwConfirm}
               onChange={(e) => setPwConfirm(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
               autoComplete="new-password"
               minLength={8}
               required
             />
           </div>
         </div>
-        <button
-          type="submit"
-          disabled={pwSaving}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold text-sm disabled:opacity-50 flex items-center gap-2"
-        >
+        {/* R139 (precision): canonical Button recipe (the profile form's
+            save twin) — handler/disabled/label ternary byte-identical. */}
+        <Button type="submit" disabled={pwSaving}>
           {pwSaving ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ التحديث…
+              <Loader2 className="animate-spin" /> جارٍ التحديث…
             </>
           ) : (
             <>
-              <Key className="w-3.5 h-3.5" /> تحديث كلمة المرور
+              <Key /> تحديث كلمة المرور
             </>
           )}
-        </button>
+        </Button>
       </form>
     </div>
   );

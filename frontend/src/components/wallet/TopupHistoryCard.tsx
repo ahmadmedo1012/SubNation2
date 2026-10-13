@@ -25,7 +25,8 @@ export function TopupHistoryCard({
 }) {
   return (
     <div className="lg:col-span-2">
-      <div className="bg-card border border-border/55 rounded-2xl p-5 lg:sticky lg:top-20">
+      {/* R139 (precision): /55 → /60 — the family resting edge. */}
+      <div className="bg-card border border-border/60 rounded-2xl p-5 lg:sticky lg:top-20">
         <div className="flex items-center gap-2.5 mb-4">
           <TrendingUp className="w-4 h-4 text-muted-foreground" />
           <h2 className="font-bold text-sm">سجل الشحن</h2>
@@ -47,14 +48,14 @@ export function TopupHistoryCard({
 
         {loading ? (
           /* Ledger skeleton — prevents the "no topups yet" empty state
-             from flashing during the initial fetch. */
+             from flashing during the initial fetch. Mirrors the loaded
+             queue rows' boxed-chip register (bg-muted/20 + border/30 —
+             the 139-a loading→loaded parity discipline). */
           <div className="space-y-2.5">
             {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                /* R125-I7 (A7 B-12 / R124-A3 #12): 2px border-l accent
-               stripe → the plain 1px border (craft-floor cap). */
-                className="bg-card border border-border rounded-xl p-4 flex items-center gap-4"
+                className="bg-muted/20 border border-border/30 rounded-xl p-4 flex items-center gap-4"
               >
                 <div className="w-10 h-10 rounded-xl bg-muted skeleton-shimmer shrink-0" />
                 <div className="flex-1 space-y-2">
@@ -79,10 +80,13 @@ export function TopupHistoryCard({
           />
         ) : topups.length === 0 ? (
           <div className="text-center py-10 text-muted-foreground">
-            <div className="w-16 h-16 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center mx-auto mb-4">
-              <Clock className="w-7 h-7 opacity-25" />
+            {/* R139 (precision): the empty stage joins the r138-h icon
+                stage values (muted/60 tile + /35 edge + /35 glyph +
+                /85 title). */}
+            <div className="w-16 h-16 rounded-2xl bg-muted/60 border border-border/35 flex items-center justify-center mx-auto mb-4">
+              <Clock className="w-7 h-7 opacity-35" />
             </div>
-            <p className="font-bold text-base mb-1.5 text-foreground/80">لا توجد طلبات شحن بعد</p>
+            <p className="font-bold text-base mb-1.5 text-foreground/85">لا توجد طلبات شحن بعد</p>
             <p className="text-xs text-muted-foreground max-w-[200px] mx-auto leading-relaxed">
               ابدأ بشحن محفظتك لشراء اشتراكاتك المفضلة
             </p>
@@ -100,7 +104,11 @@ export function TopupHistoryCard({
             ).map((t, i: number) => (
               <div
                 key={t.id}
-                className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/18 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors group`}
+                /* R139 (precision): the queue rows keep their boxed-chip
+                   register (they are the topup QUEUE, not the statement —
+                   status icons + badges live here); only the nonstandard
+                   /18 fill joins the family's /20 value. */
+                className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/20 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors group`}
               >
                 <div className="shrink-0">{topupStatusIcon(t.status)}</div>
                 <div className="flex-1 min-w-0">

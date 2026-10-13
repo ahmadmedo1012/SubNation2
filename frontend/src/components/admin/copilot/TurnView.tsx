@@ -30,7 +30,14 @@ export function TurnView({
     <div className="space-y-2">
       {/* User question */}
       <div className="flex justify-end">
-        <div className="max-w-[88%] bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-foreground rounded-2xl rounded-tl-md px-3.5 py-2.5 text-sm whitespace-pre-wrap shadow-sm">
+        {/* R139 (precision): the pair treatment rhymes with the tickets
+           thread (TicketDetailPane's admin bubble — the operator side
+           rides the SOLID brand fill, no gradient, no border, no
+           elevation): from-primary/15→to-primary/5 gradient + border +
+           shadow-sm retire for bg-primary + primary-foreground. The
+           assistant counterpart (AskAnswer) rides the muted/60 + /50
+           edge — one coherent pair, mirrored corners. */}
+        <div className="max-w-[88%] bg-primary text-primary-foreground rounded-2xl rounded-tl-md px-3.5 py-2.5 text-sm whitespace-pre-wrap">
           {turn.question}
         </div>
       </div>
@@ -48,7 +55,11 @@ export function TurnView({
       )}
 
       {turn.error && (
-        <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
+        /* R139 (precision): the error banner joins the --status-error
+           family (the TurnView/HistoryView/DirectExecutionBadge triples
+           all migrate this round — one red vocabulary in the console);
+           the retry affordance + copy byte-identical. */
+        <div className="flex items-start gap-2 text-xs text-status-error bg-status-error/10 border border-status-error/30 rounded-xl px-3 py-2">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span className="flex-1">{turn.error}</span>
           <button

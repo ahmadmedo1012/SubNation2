@@ -79,7 +79,16 @@ export function ProductsToolbar({
           </button>
         )}
       </div>
-      <div className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1 overflow-x-auto scrollbar-none">
+      {/* R139 (precision): the category bar leaves the segmented-control
+          shell (a secondary-tinted tray + borderless resting chips + a
+          card-colored active tile with its soft shadow) for the r138
+          calm pill dialect — active bg-primary/15 + text-primary-text +
+          border-primary/30 + font-bold, resting a bg-muted/30 box with
+          the /30 border BOTH states carry (kills the 1px toggle jitter
+          the borderless active caused). The CatalogFiltersBar /
+          RiskFilterChips row shape: each pill owns its border box, so
+          the tray wash is gone. aria-pressed untouched. */}
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
         {CATEGORY_FILTERS.map((c) => (
           <button
             key={c.value}
@@ -88,10 +97,10 @@ export function ProductsToolbar({
                aria-pressed exposes the toggle state (the
                orders.tsx/topups.tsx chip-bar idiom). */
             aria-pressed={categoryFilter === c.value}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all whitespace-nowrap ${
               categoryFilter === c.value
-                ? "bg-card shadow-sm text-foreground font-bold"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                : "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
             }`}
           >
             {c.label}

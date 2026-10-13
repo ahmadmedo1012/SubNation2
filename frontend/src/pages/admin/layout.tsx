@@ -395,7 +395,12 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     <div className="flex flex-col h-full">
       {/* Sidebar header */}
       <div
-        className={`p-3 border-b border-border flex items-center gap-2 ${collapsed ? "justify-center" : "justify-between"}`}
+        /* R139 (precision): the sidebar's resting chrome joins the r138
+           border/60 family — the storefront Navbar's resting edge
+           (border-border/35) and the card family's border/60 are the two
+           sanctioned resting weights; a full border-border edge on a
+           permanent side rail read heavier than every card it frames. */
+        className={`p-3 border-b border-border/60 flex items-center gap-2 ${collapsed ? "justify-center" : "justify-between"}`}
       >
         {!collapsed ? (
           <div className="flex items-center gap-2.5">
@@ -444,7 +449,10 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       />
 
       {/* Footer: search hint + logout */}
-      <div className="p-2.5 border-t border-border space-y-0.5">
+      {/* R139 (precision): border-border/60 — same resting-edge family as
+          the header above and the rail's outer edge (one weight for all
+          sidebar chrome dividers). */}
+      <div className="p-2.5 border-t border-border/60 space-y-0.5">
         {!collapsed && canGlobalSearch && (
           <button
             onClick={() => setShowSearch(true)}
@@ -481,7 +489,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
 
       {/* Desktop sidebar */}
       <aside
-        className={`hidden md:flex flex-col shrink-0 bg-card border-l border-border transition-all duration-200 ${collapsed ? "w-[52px]" : "w-52"}`}
+        className={`hidden md:flex flex-col shrink-0 bg-card border-l border-border/60 transition-all duration-200 ${collapsed ? "w-[52px]" : "w-52"}`}
       >
         {sidebarContent}
       </aside>
@@ -491,8 +499,13 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           Radix Drawer migration is a documented follow-up (§11.2 rule 6). */}
       {mobileOpen && (
         <>
+          {/* R139 (precision): bg-black/65 → /70 — the drawer is a modal
+              surface (role=dialog + aria-modal below); the app-dialog
+              overlay family pins /70 + blur, and the two admin overlays
+              (this drawer, the ⌘K palette) drift at /65. One scrim value
+              across every modal in the app. */}
           <div
-            className="md:hidden fixed inset-0 bg-black/65 z-40 backdrop-blur-sm"
+            className="md:hidden fixed inset-0 bg-black/70 z-40 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
           <aside
@@ -502,7 +515,15 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             aria-modal="true"
             aria-label="قائمة الإدارة"
             tabIndex={-1}
-            className="md:hidden fixed right-0 top-0 bottom-0 w-[min(18rem,85vw)] bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-right-4 duration-200"
+            /* R139 (precision): the drawer panel retires its glass-era
+               wide shadow + full border — border-border/60 (the resting
+               family) and shadow-sm as the single contact shadow: the
+               R124-A3 #10 "declare elevation once" rule the app-dialog
+               shell already rides (over the dark blurred scrim a 2xl
+               spread was invisible anyway — the border is the edge
+               device). Focus-trap/drawer logic and every attribute
+               above are byte-identical (R125 contract). */
+            className="md:hidden fixed right-0 top-0 bottom-0 w-[min(18rem,85vw)] bg-card border-l border-border/60 z-50 shadow-sm animate-in slide-in-from-right-4 duration-200"
           >
             {sidebarContent}
           </aside>
@@ -520,7 +541,19 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             standalone or landscape-Safari the h-12 bar otherwise sits
             under the notch/Dynamic Island. env() is 0 where no inset
             exists, so desktop is pixel-identical. */}
-        <div className="sticky top-0 z-30 border-b border-border bg-card/93 backdrop-blur-md pt-[env(safe-area-inset-top)]">
+        {/* R139 (precision): the topbar retires the LAST glass surface in
+            the admin shell — bg-card/93 + backdrop-blur-md → solid bg-card
+            (the r138 "glass retired everywhere" rule; the Navbar's R96 F-4
+            recipe). The resting edge drops to border-border/60 (the
+            sidebar/card resting family — a full border-border under the
+            brand hairline read as a double rule), and .hairline-glow adds
+            the top-edge 1px primary/30 glint the storefront chrome family
+            (Navbar/MobileNav) shares — the admin bar's top edge is the
+            page's topmost chrome row, exactly where that vocabulary lives.
+            Sticky establishes the containing block for the absolute
+            hairline; safe-area chrome below is untouched (R126 A13-F11). */}
+        <div className="sticky top-0 z-30 border-b border-border/60 bg-card pt-[env(safe-area-inset-top)]">
+          <div className="hairline-glow" />
           <div className="px-4 md:px-5 h-12 flex items-center gap-3">
             <button
               /* 96-F7 (R96 M12): p-2 + w-5 icons ≈ 36×36px hit area (was

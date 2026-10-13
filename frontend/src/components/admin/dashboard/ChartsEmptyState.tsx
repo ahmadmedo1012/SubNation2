@@ -39,9 +39,20 @@ export function ChartsEmptyState({
           onDaysChange={onDaysChange}
         />
       </div>
+      {/* R139 (precision): the no-data-yet art adopts the icon-stage
+          vocabulary — the storefront EmptyState register (r138-h): a
+          w-12 muted/60 well tile + border-border/35 edge holding a
+          w-5 opacity-35 glyph, replacing the bare w-9 opacity-20 icon.
+          Emptiness now reads as a deliberate stage on every surface in
+          the app (the admin shared EmptyState got the same tile this
+          round — one family), and the title's /80 ink joins it at
+          text-foreground/85 (the shared register's title value).
+          The leading-relaxed hint + the pickers above are untouched. */}
       <div className="flex flex-col items-center justify-center text-center text-muted-foreground py-8">
-        <BarChart2 className="w-9 h-9 mb-3 opacity-20" />
-        <p className="text-sm font-bold text-foreground/80">لا توجد بيانات بعد</p>
+        <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto mb-3 flex items-center justify-center">
+          <BarChart2 className="w-5 h-5 opacity-35" />
+        </div>
+        <p className="text-sm font-bold text-foreground/85">لا توجد بيانات بعد</p>
         <p className="text-xs mt-1 leading-relaxed">
           ستظهر الرسوم البيانية مع أول طلب أو تسجيل مستخدم جديد
         </p>

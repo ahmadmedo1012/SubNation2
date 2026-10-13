@@ -401,8 +401,8 @@ export function InventoryUploadDialog({
             lie the operator discovered post-submit). */}
         {parsed.totalLines > 0 && !loadingExisting && !dedupAvailable && (
           <p className="text-xs text-muted-foreground bg-muted/40 border border-border/60 rounded-lg px-3 py-2">
-            لم يُمكن جلب المخزون الحالي — لن تُوسم العناصر المكررة مع قاعدة البيانات قبل
-            الرفع (يظل فحص التكرار عند الخادم قائماً)
+            لم يُمكن جلب المخزون الحالي — لن تُوسم العناصر المكررة مع قاعدة البيانات قبل الرفع (يظل
+            فحص التكرار عند الخادم قائماً)
           </p>
         )}
 
@@ -416,23 +416,30 @@ export function InventoryUploadDialog({
                 {parsed.entries.length})
               </h3>
             </div>
-            <div className="bg-card border border-border/55 rounded-xl overflow-x-auto">
+            {/* R139 (precision): container edge /55 → /60 (the resting
+                border family) + th font-bold → font-semibold — the quiet
+                header-row register the r138 family rides. The dropzone
+                above was verified coherent: border-2 dashed stays (the
+                affordance), resting border-border/60, active
+                border-primary + bg-primary/5 — no other real drift, so
+                nothing else moves (progress vocabulary untouched). */}
+            <div className="bg-card border border-border/60 rounded-xl overflow-x-auto">
               <table className="w-full text-2xs">
                 <thead className="bg-muted/30 text-muted-foreground">
                   <tr>
                     {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
                         announce the header↔cell relation on vertical
                         sweeps instead of a bare "خلية". */}
-                    <th scope="col" className="text-right font-bold px-2 py-1.5 w-10">
+                    <th scope="col" className="text-right font-semibold px-2 py-1.5 w-10">
                       #
                     </th>
-                    <th scope="col" className="text-right font-bold px-2 py-1.5 w-20">
+                    <th scope="col" className="text-right font-semibold px-2 py-1.5 w-20">
                       النوع
                     </th>
-                    <th scope="col" className="text-right font-bold px-2 py-1.5">
+                    <th scope="col" className="text-right font-semibold px-2 py-1.5">
                       المعرّف
                     </th>
-                    <th scope="col" className="text-right font-bold px-2 py-1.5">
+                    <th scope="col" className="text-right font-semibold px-2 py-1.5">
                       حالة
                     </th>
                   </tr>

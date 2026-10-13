@@ -49,10 +49,20 @@ export function AlertsTypeChips({
               key={s.key}
               onClick={() => onSetFilter(filter === s.key ? "all" : (s.key as FilterType))}
               aria-pressed={filter === s.key}
+              /* R139 (precision): the ACTIVE chip's severity tuple is
+                 verified, not changed — TYPE_META already drives it
+                 with --status-* token tints (a /10 fill + /20 edge +
+                 full ink per severity), the §6 status-via-tokens
+                 dialect, and the row's reason text (label + live
+                 count) rides along. Only the RESTING chip joins the
+                 pill family's tray-less values: the muted/20 wash +
+                 /40 edge + text-only hover swaps for the /30 box +
+                 /30 edge + /70 border hover step (the products
+                 category-bar dialect). aria-pressed untouched. */
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-150 ${
                 filter === s.key
                   ? `font-bold ${m.bg} ${m.border} ${m.color}`
-                  : "bg-muted/20 border-border/40 text-muted-foreground hover:text-foreground"
+                  : "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
               }`}
             >
               <m.icon className="w-3 h-3" />

@@ -84,7 +84,10 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <header className="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/20">
+      {/* R139 (precision): the header band joins the register —
+          bg-muted/20 → /30 + border-b border-border → /60 (the
+          CopilotHeader/StaleListError band idiom). */}
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-muted/30">
         <span className="text-sm font-bold flex-1">إجراءات سابقة (آخر 25)</span>
         <button
           onClick={() => query.refetch()}
@@ -109,7 +112,9 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
           </div>
         )}
         {query.isError && (
-          <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-3 py-2">
+          /* R139 (precision): the failure banner joins the --status-error
+             family (one red vocabulary across the console). */
+          <div className="flex items-center gap-2 text-xs text-status-error bg-status-error/10 border border-status-error/30 rounded-xl px-3 py-2">
             <AlertTriangle className="w-4 h-4" /> فشل تحميل السجل
           </div>
         )}
@@ -124,10 +129,10 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
           const oneLine =
             e.intent_text.length > 100 ? e.intent_text.slice(0, 100) + "…" : e.intent_text;
           return (
-            <div
-              key={e.id}
-              className="border border-border/40 rounded-xl bg-card/60 p-3 space-y-1.5"
-            >
+            /* R139 (precision): the entry cards solidify — bg-card/60 →
+               bg-card + edge /40 → /60 (the resting family; the r138
+               translucent retirement). */
+            <div key={e.id} className="border border-border/60 rounded-xl bg-card p-3 space-y-1.5">
               <div className="flex items-center gap-2 text-xs">
                 <StatusBadge variant={meta.tone} size="xs" icon={meta.icon}>
                   {meta.label}

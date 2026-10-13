@@ -68,7 +68,7 @@ export function PromotionsList({
           </Button>
         </div>
       ) : sales.length === 0 ? (
-        <div className="bg-card border border-border/55 rounded-2xl p-8 text-center">
+        <div className="bg-card border border-border/60 rounded-2xl p-8 text-center">
           <Zap className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
           <p className="text-sm font-bold mb-1">لا توجد عروض بعد</p>
           <p className="text-xs text-muted-foreground">اضغط "إنشاء عرض" لإطلاق أول حملة تخفيضات.</p>
@@ -80,10 +80,15 @@ export function PromotionsList({
           return (
             <div
               key={s.id}
+              /* R139 (precision): the active sale drops the ring — the calm
+                 tinted-selected register (border-status-success/30 + a
+                 bg-status-success/5 wash, the ProductCard selected recipe):
+                 no ring, no colored shadow; the «نشط» pill + the border
+                 carry the active read. Resting rows join the /60 edge. */
               className={`bg-card border rounded-2xl p-4 ${
                 s.is_currently_active
-                  ? "border-status-success/30 ring-1 ring-status-success/15"
-                  : "border-border/55"
+                  ? "border-status-success/30 bg-status-success/5"
+                  : "border-border/60"
               }`}
             >
               <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -101,15 +106,23 @@ export function PromotionsList({
                       </span>
                     )}
                     {!s.is_active && (
-                      <span className="text-3xs font-bold bg-muted/40 text-muted-foreground border border-border px-1.5 py-0.5 rounded-full">
+                      /* R139 (precision): the stopped pill's full-strength
+                         border-border edge joins the neutral StatusBadge
+                         register (border-border/50 on bg-muted/45 — the
+                         value every neutral pill in the family rides). */
+                      <span className="text-3xs font-bold bg-muted/40 text-muted-foreground border border-border/50 px-1.5 py-0.5 rounded-full">
                         متوقف
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                    <span className="font-mono font-bold text-primary">
-                      {s.discount_percent}% خصم
-                    </span>
+                    {/* R139 (precision): receipt register on the discount
+                        number — weight (700) + tabular-nums carry it, not
+                        the brand tint (a % is not a status; the
+                        OrdersHeader revenue-chip rule); font-mono drops
+                        with the tint — tabular-nums is the money-digit
+                        convention. */}
+                    <span className="font-bold tabular-nums">{s.discount_percent}% خصم</span>
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {/* 93-C6 / F-06 (PR-1): formatRelativeTime now
@@ -156,9 +169,15 @@ export function PromotionsList({
                     /* R125-I3 (A2-6): the row action names the DESTRUCTIVE
                            verb — it sat beside a reversible «إيقاف» button
                            while being labeled the same. */
+                    /* R139 (precision): quiet danger at rest — the trash
+                       trigger drops its resting error ink for muted ink;
+                       the error ink surfaces on hover, and the severity
+                       lives in the page's destructive confirm (the
+                       topups single-card reject recipe). aria/title
+                       byte-identical. */
                     aria-label={`حذف العرض «${s.title}» نهائياً`}
                     title="حذف نهائي"
-                    className="gap-1.5 text-destructive hover:text-destructive"
+                    className="gap-1.5 text-muted-foreground hover:text-status-error hover:bg-status-error/10"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>

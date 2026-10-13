@@ -23,13 +23,21 @@ export function MarginRow({
     lyd == null
       ? "text-muted-foreground"
       : lyd < 0
-        ? "text-destructive"
+        ? "text-status-error"
         : pct != null && pct < 5
           ? "text-status-warning"
           : "text-status-success";
   const Icon = lyd == null ? Info : lyd < 0 ? TrendingDown : TrendingUp;
   return (
-    <div className="flex items-center justify-between py-2.5 px-3 bg-muted/20 border border-border/40 rounded-lg">
+    /* R139 (precision): receipt register — the tier rows leave the boxed
+       bg-muted/20 + border/40 chip for the hairline-ruled slip shape
+       (border-b border-border/20 between tiers, none after the last —
+       the CartSummaryAside sums register; the 139-f VariantFormPanel
+       preview-row conversion). The semantic tone ladder stays (§6: risk
+       states ride token tints — LOSS-tier negative now rides
+       --status-error, not the raw destructive channel); emphasis was
+       always weight (700 value / bold label), never the box. */
+    <div className="flex items-center justify-between py-2.5 border-b border-border/20 last:border-0">
       <div className="flex items-center gap-2">
         <Icon className={`w-4 h-4 ${tone}`} />
         <div>

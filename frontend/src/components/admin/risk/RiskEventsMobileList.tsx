@@ -32,7 +32,10 @@ export function RiskEventsMobileList({ events }: { events: RiskEventRow[] }) {
                 </div>
                 <div className="font-mono text-xs font-bold mb-1">{e.event_type}</div>
                 <div className="text-xs text-muted-foreground mb-2">{userLabel}</div>
-                <div className="flex items-center justify-between text-2xs text-muted-foreground border-t border-border/30 pt-2">
+                {/* R139 (precision): card-internal separator /30 → /20 —
+                    the receipt hairline value (the MobileOrderCard
+                    card-internal register). */}
+                <div className="flex items-center justify-between text-2xs text-muted-foreground border-t border-border/20 pt-2">
                   <span>{e.action_taken}</span>
                   <span>{formatDate(e.created_at)}</span>
                 </div>

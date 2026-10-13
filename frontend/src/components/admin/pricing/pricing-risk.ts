@@ -17,11 +17,20 @@ export const RISK_STATE_LABEL: Record<RiskState, string> = {
 // Never bare colors (A5 Part 15): each state renders WITH its warning
 // text — the tone classes below carry the color, riskExplanation()
 // supplies the WHY.
+// R139 (precision): the map is the §6 risk-state SOURCE — verified all
+// four tones ride the --status-* token family. LOSS shipped on the raw
+// --destructive channel (border/bg/ink), the one bare-red remnant in a
+// lane whose own doc rule says "never bare red/green" and whose sibling
+// alert surfaces (PricingConfigCard's configLoadError) already spoke
+// status-error; it now rides border-status-error/40 + bg-status-error/10
+// + text-status-error — the exact shape of SAFE/WATCH/THIN (theme-aware
+// AA-tuned ink, dark 0 80% 64% / light 0 75% 42%). The LABEL + WHY-text
+// contract is untouched (riskExplanation rides byte-identical).
 export const RISK_STATE_TONE: Record<RiskState, string> = {
   SAFE: "border-status-success/40 bg-status-success/10 text-status-success",
   WATCH: "border-status-warning/40 bg-status-warning/10 text-status-warning",
   THIN: "border-status-low-stock/40 bg-status-low-stock/10 text-status-low-stock",
-  LOSS: "border-destructive/40 bg-destructive/10 text-destructive",
+  LOSS: "border-status-error/40 bg-status-error/10 text-status-error",
 };
 
 /** The WHY next to the badge — the backend's own Arabic warning when one

@@ -7,6 +7,9 @@ import { Info } from "lucide-react";
 
 export function AuthHowItWorksInfo() {
   return (
+    /* R139 (precision): VERIFIED, no change — the info box rides the
+       lane's quiet inset register (bg-muted/30 + border-border/50);
+       the [SET] code chip is the mono token family. */
     <div className="flex items-start gap-3 p-4 bg-muted/30 border border-border/50 rounded-2xl">
       <Info className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
       <div className="text-xs text-muted-foreground leading-relaxed space-y-1">

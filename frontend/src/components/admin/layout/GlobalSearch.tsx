@@ -257,7 +257,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-modal="true"
       aria-label="بحث سريع"
-      className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm flex items-start justify-center pt-[8vh] sm:pt-[12vh] px-4"
+      className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-start justify-center pt-[8vh] sm:pt-[12vh] px-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
       // R125 (A6 B-9): the Tab half of the aria-modal promise — focus
       // cycles inside the palette instead of walking into the page
@@ -266,7 +266,15 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
         if (overlayRef.current) trapTabKey(overlayRef.current, e);
       }}
     >
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[84vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      {/* R139 (precision): the palette card joins the modal family's
+          "declare elevation once" register (the app-dialog shell's R124-A3
+          #10 rule): shadow-2xl → shadow-sm — over the dark blurred scrim a
+          wide spread was invisible, so the border is the edge device and
+          shadow-sm is the single contact shadow. bg-black/65 → /70 on the
+          scrim above mirrors the same family's overlay value (the admin
+          mobile drawer rides it too this round — one scrim across every
+          modal). */}
+      <div className="bg-card border border-border rounded-2xl shadow-sm w-full max-w-lg max-h-[84vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Input */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border">
           {loading ? (
@@ -292,7 +300,11 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             aria-activedescendant={total > 0 ? `global-search-option-${safeActive}` : undefined}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-right"
           />
-          <kbd className="text-3xs font-mono text-muted-foreground bg-muted/50 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
+          {/* R139 (precision): bg-muted/50 → /60 — the esc chip joins the
+              kbd register every other ⌘K/esc/↵ chip in the shell rides
+              (SearchTriggers + the sidebar footer + this palette's own
+              footer row). */}
+          <kbd className="text-3xs font-mono text-muted-foreground bg-muted/60 border border-border/60 px-1.5 py-0.5 rounded shrink-0">
             esc
           </kbd>
         </div>
@@ -359,9 +371,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                       aria-selected={safeActive === i}
                       onClick={goToOrders}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                        safeActive === i
-                          ? "bg-primary/10 ring-1 ring-primary/25"
-                          : "hover:bg-muted/40"
+                        safeActive === i ? "bg-primary/15" : "hover:bg-muted/40"
                       }`}
                     >
                       <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -402,10 +412,13 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                         role="option"
                         aria-selected={safeActive === flatIdx}
                         onClick={goToUsers}
+                        /* R139 (precision): the keyboard highlight migrates to
+                           the calm-active fill — bg-primary/15, no ring (the
+                           r138 selected-state vocabulary; the ring was a
+                           competing edge device next to the ONE focus
+                           system). */
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                          safeActive === flatIdx
-                            ? "bg-primary/10 ring-1 ring-primary/25"
-                            : "hover:bg-muted/40"
+                          safeActive === flatIdx ? "bg-primary/15" : "hover:bg-muted/40"
                         }`}
                       >
                         <div className="w-7 h-7 rounded-lg bg-status-info/10 flex items-center justify-center shrink-0">
@@ -440,13 +453,19 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                         role="option"
                         aria-selected={safeActive === flatIdx}
                         onClick={goToProducts}
+                        /* R139 (precision): same calm-active fill as the two
+                           sibling option rows above — one selected-state
+                           vocabulary down the whole flattened list. */
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
-                          safeActive === flatIdx
-                            ? "bg-primary/10 ring-1 ring-primary/25"
-                            : "hover:bg-muted/40"
+                          safeActive === flatIdx ? "bg-primary/15" : "hover:bg-muted/40"
                         }`}
                       >
-                        <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border/40">
+                        {/* R139 (precision): the product thumbnail well joins
+                            the image-shelf family — bg-muted → bg-muted/60
+                            (ProductCard's media plane, the empty-state tile:
+                            one well family); border-border/40 → /35, the
+                            tile family's edge. */}
+                        <div className="w-7 h-7 rounded-lg bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/35">
                           {p.image_url ? (
                             <img
                               src={p.image_url}

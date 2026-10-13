@@ -8,6 +8,9 @@ import { Info } from "lucide-react";
 
 export function TelegramSetupGuide() {
   return (
+    /* R139 (precision): VERIFIED, no change — the guide keeps its quiet
+       inset box (bg-muted/30 + border-border/50, the lane's info-box
+       family) with the R126-L5 primary-text mono tokens. */
     <div className="mt-5 p-4 bg-muted/30 border border-border/50 rounded-2xl">
       <div className="flex items-center gap-2 mb-3">
         <Info className="w-4 h-4 text-muted-foreground" />

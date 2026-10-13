@@ -53,7 +53,11 @@ function CopyField({
 }) {
   const [revealed, setRevealed] = useState(!secret);
   return (
-    <div className="group flex items-start justify-between gap-3 px-5 py-3.5 hover:bg-muted/15 transition-colors">
+    <div className="group flex items-start justify-between gap-3 px-5 py-3.5 hover:bg-muted/30 transition-colors">
+      {/* R139 (precision): the row hover joins the family /30 wash
+          (the rows carry the interactive CopyButton/reveal controls —
+          the wash is earned); the /20 hairlines between rows come from
+          the parent's divide-y below. */}
       <div className="min-w-0 flex-1">
         {/* 96-F4 (R96 A6 #1): uppercase/tracking-wider removed from the
             Arabic credential labels («البريد الإلكتروني»/«كلمة المرور») —
@@ -222,9 +226,9 @@ export default function OrderDetailPage() {
       <div className="max-w-2xl mx-auto px-4 py-10">
         <Skeleton className="h-4 w-24 rounded mb-6" />
         <div className="space-y-3">
-          <Skeleton className="h-[180px] rounded-2xl border border-border/35" />
-          <Skeleton className="h-[140px] rounded-2xl border border-border/35" />
-          <Skeleton className="h-[80px] rounded-2xl border border-border/35" />
+          <Skeleton className="h-[180px] rounded-2xl border border-border/60" />
+          <Skeleton className="h-[140px] rounded-2xl border border-border/60" />
+          <Skeleton className="h-[80px] rounded-2xl border border-border/60" />
         </div>
       </div>
     );
@@ -270,12 +274,16 @@ export default function OrderDetailPage() {
     // a connection error with an infinite retry loop.
     return (
       <div className="max-w-2xl mx-auto px-4 py-24 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-muted/55 border border-border/35 mx-auto mb-4 flex items-center justify-center">
+        <div className="w-16 h-16 rounded-2xl bg-muted/60 border border-border/40 mx-auto mb-4 flex items-center justify-center">
           <Package className="w-7 h-7 text-muted-foreground" />
         </div>
         <p className="font-bold text-lg mb-1">الطلب غير موجود</p>
         <p className="text-sm text-muted-foreground mb-5">تأكد من رقم الطلب أو عُد لقائمة طلباتك</p>
-        <Button onClick={() => navigate("/orders")} variant="outline" className="gap-2 rounded-xl">
+        <Button
+          onClick={() => navigate("/orders")}
+          variant="outline"
+          className="gap-2 rounded-xl min-h-11"
+        >
           <ArrowRight className="w-4 h-4" />
           العودة للطلبات
         </Button>
@@ -314,7 +322,11 @@ export default function OrderDetailPage() {
 
       <div className="space-y-3">
         {/* ── Header card ───────────────────────────────────────── */}
-        <div className="bg-card border border-border/55 rounded-2xl overflow-hidden shadow-lg shadow-black/10 float-in">
+        {/* R139 (precision): the page's prominent card joins the r138
+            two-layer calm elevation (the neutral black recipe — the old
+            shadow-lg shadow-black/10 single drop read as a floating
+            panel) + the /60 family resting edge. */}
+        <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] float-in">
           {/* Top color bar — R115-I1 (A8 P2-3): refunded carries the
               status-info accent (matching the pill + the orders-list
               treatment): the money came back, not a failure. */}
@@ -335,7 +347,7 @@ export default function OrderDetailPage() {
             <div className="flex items-start justify-between gap-3 mb-3">
               <div className="flex items-center gap-3.5 min-w-0">
                 {(order as { product_image_url?: string }).product_image_url ? (
-                  <div className="w-12 h-12 rounded-xl bg-muted/45 border border-border/35 overflow-hidden shrink-0">
+                  <div className="w-12 h-12 rounded-xl bg-muted/60 border border-border/40 overflow-hidden shrink-0">
                     <img
                       src={(order as { product_image_url?: string }).product_image_url}
                       alt={order.product_name ?? ""}
@@ -347,9 +359,12 @@ export default function OrderDetailPage() {
                 ) : (
                   /* R125-I7 (A7 B-6 class, computed): sibling of the cart
                      fallback — text-primary/45 measured 1.62:1 dark /
-                     2.11:1 light on the primary/8 tile; full
-                     --muted-foreground: 7.69:1 / 5.90:1. */
-                  <div className="w-12 h-12 rounded-xl bg-primary/8 border border-primary/15 flex items-center justify-center shrink-0">
+                     2.11:1 light on the old primary/8 tile; full
+                     --muted-foreground: 7.69:1 / 5.90:1.
+                     R139 (precision): the fallback tile joins the shelf
+                     register too (muted/60 + /40 — the orders-list
+                     letter tile). */
+                  <div className="w-12 h-12 rounded-xl bg-muted/60 border border-border/40 flex items-center justify-center shrink-0">
                     <span className="text-xl font-bold text-muted-foreground select-none">
                       {(order.product_name ?? "؟")[0]}
                     </span>
@@ -423,17 +438,24 @@ export default function OrderDetailPage() {
                     {formatCurrency(originalAmount)}
                   </div>
                 )}
-                {/* R124-I4 (A5 #1): money value on the raw surface token
-                    — text-primary-text, the checkout totals idiom. */}
-                <div className="font-bold text-xl tabular-nums text-primary-text">
+                {/* R124-I4 (A5 #1) + R139 (precision): the money value
+                    drops the brand tint for plain foreground — the r138
+                    receipt-terminal decision (CartSummaryAside's own
+                    «الإجمالي» row: weight 700 + the text-xl size step
+                    carry the emphasis, never color; the old comment's
+                    "checkout totals idiom" predates that round). */}
+                <div className="font-bold text-xl tabular-nums text-foreground">
                   {formatCurrency(order.amount ?? 0)}
                 </div>
               </div>
             </div>
 
-            {/* Coupon badge */}
+            {/* Coupon badge — R139 (precision): the coupon line's seam
+                joins the /20 receipt hairline value; the «وفّرت» chip
+                gains tabular-nums (money). The success ink stays — the
+                discount-reads-positive exception (documented register). */}
             {couponCode && discountAmount && (
-              <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-border/15 text-xs text-status-success">
+              <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-border/20 text-xs text-status-success">
                 <Tag className="w-3 h-3 shrink-0" />
                 <span>
                   كوبون{" "}
@@ -441,7 +463,7 @@ export default function OrderDetailPage() {
                     {couponCode}
                   </span>
                 </span>
-                <span className="mr-auto font-bold bg-status-success/10 border border-status-success/22 px-2 py-0.5 rounded-full">
+                <span className="mr-auto font-bold bg-status-success/10 border border-status-success/22 px-2 py-0.5 rounded-full tabular-nums">
                   وفّرت {formatCurrency(discountAmount)}
                 </span>
               </div>
@@ -472,7 +494,7 @@ export default function OrderDetailPage() {
                 <div className="text-3xs text-muted-foreground">انسخ بياناتك بأمان</div>
               </div>
             </div>
-            <div className="divide-y divide-border/15">
+            <div className="divide-y divide-border/20">
               {order.delivered_email && (
                 <CopyField label="البريد الإلكتروني" value={order.delivered_email} />
               )}
@@ -527,7 +549,14 @@ export default function OrderDetailPage() {
                   styling. */}
               <Button
                 asChild
-                className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold"
+                /* R139 (precision): de-hand-rolled — the bg-primary/
+                   hover:bg-primary/90 + shadow-md shadow-primary/22
+                   overrides re-implemented buttonVariants on top of
+                   Button (the R116-S1 ban); the default variant owns the
+                   fill/hover/press/ONE focus system. h-10 → min-h-11:
+                   the 44px storefront floor (the error-card recovery
+                   pair above already rides it). */
+                className="gap-1.5 rounded-xl min-h-11 px-5 font-bold"
               >
                 <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -536,8 +565,10 @@ export default function OrderDetailPage() {
               </Button>
             </div>
           ) : (
-            <div className="bg-card border border-border/50 rounded-2xl p-7 text-center float-in stagger-1">
-              <div className="w-12 h-12 rounded-2xl bg-muted/50 border border-border/35 mx-auto mb-3 flex items-center justify-center">
+            <div className="bg-card border border-border/60 rounded-2xl p-7 text-center float-in stagger-1">
+              {/* R139 (precision): the prep tile joins the well family
+                  (muted/60 + /40); card edge /50 → /60. */}
+              <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/40 mx-auto mb-3 flex items-center justify-center">
                 <Clock className="w-5 h-5 text-muted-foreground pulse-dot" />
               </div>
               <p className="font-bold text-sm mb-1">قيد الإعداد</p>
@@ -623,7 +654,10 @@ export default function OrderDetailPage() {
                  one anchor, one tab stop. */
               <Button
                 asChild
-                className="gap-1.5 rounded-xl h-10 px-5 bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 font-bold"
+                /* R139 (precision): the failed-state twin of the
+                   decrypt-failure CTA above — same de-hand-roll, same
+                   44px floor. */
+                className="gap-1.5 rounded-xl min-h-11 px-5 font-bold"
               >
                 <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -640,7 +674,14 @@ export default function OrderDetailPage() {
               composition — one anchor, one tab stop. */}
           <Button
             asChild
-            className="w-full bg-primary hover:bg-primary/90 font-bold shadow-md shadow-primary/22 gap-1.5 rounded-xl"
+            /* R139 (precision): the page-primary pair canonicalizes —
+               size="lg" (the R116-S1 recipe; the hand-rolled
+               bg-primary/hover:bg-primary/90 + shadow-md
+               shadow-primary/22 overrides die) and BOTH twins ride it
+               so the 2-col grid stays height-matched; the outline twin
+               keeps its variant. */
+            size="lg"
+            className="w-full font-bold gap-1.5"
           >
             <Link href="/">
               <Sparkles className="w-4 h-4" />
@@ -650,7 +691,8 @@ export default function OrderDetailPage() {
           <Button
             variant="outline"
             onClick={() => navigate("/orders")}
-            className="gap-1.5 rounded-xl"
+            size="lg"
+            className="w-full font-bold gap-1.5"
           >
             <ShoppingCart className="w-4 h-4" />
             كل طلباتي

@@ -58,9 +58,22 @@ export function TicketDetailPane({
   messagesEndRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div className="lg:col-span-3 bg-card border border-border rounded-2xl overflow-hidden flex flex-col">
+    <div
+      /* R139 (precision): the pane shell joins the resting /60 border
+         family (the queue cards + both empty branches already ride
+         /60; the full-strength edge was this pane's outlier — it is a
+         content column, not a floating layer, so NO two-layer calm
+         elevation: the orders-table family keeps grid columns flat). */
+      className="lg:col-span-3 bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col"
+    >
       {/* Header */}
-      <div className="flex items-start justify-between px-5 py-4 border-b border-border bg-muted/15">
+      <div
+        /* R139 (precision): the header band joins the quiet table-band
+           register — bg-muted/30 (the OrdersTable/VariantRows header
+           value; /15 was a one-off band wash) on a /60 seam (one
+           chrome weight with the shell). */
+        className="flex items-start justify-between px-5 py-4 border-b border-border/60 bg-muted/30"
+      >
         <div className="flex-1 min-w-0">
           <button
             onClick={onClose}
@@ -92,6 +105,11 @@ export function TicketDetailPane({
             <button
               onClick={() => onStatus(selected.id, "closed")}
               disabled={statusBusy === selected.id}
+              /* R139 (precision): verified, not changed — the close /
+                 re-open actions already ride quiet --status-* token
+                 tints (a /10 fill + /20 edge + full ink), the §6
+                 status-via-tokens dialect; severity never lives in
+                 these resting action buttons. */
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-status-success/10 text-status-success border border-status-success/20 hover:bg-status-success/15 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {statusBusy === selected.id ? (
@@ -118,7 +136,11 @@ export function TicketDetailPane({
           <button
             onClick={onClose}
             aria-label="إغلاق تفاصيل التذكرة"
-            className="hidden lg:flex p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+            /* R139 (precision): the icon button's hover wash joins the
+               muted/60 register (the alerts row actions + the shell's
+               kbd family; the old secondary wash was the pre-r138
+               idiom). Target stays ≥24px (p-1.5 + w-4 icon = 26px). */
+            className="hidden lg:flex p-1.5 rounded-lg hover:bg-muted/60 transition-colors text-muted-foreground"
           >
             <X className="w-4 h-4" />
           </button>
@@ -152,7 +174,18 @@ export function TicketDetailPane({
                   className={`max-w-[78%] ${isAdmin ? "items-end" : "items-start"} flex flex-col gap-1`}
                 >
                   <div
-                    className={`rounded-2xl px-4 py-2.5 ${isAdmin ? "bg-primary text-white rounded-tl-sm" : "bg-muted/60 border border-border/50 rounded-tr-sm"}`}
+                    /* R139 (precision): the thread pair, verified coherent
+                       — operator = brand voice (solid primary bubble,
+                       no edge, mirrored by the primary avatar),
+                       customer = paper (muted/60 well, mirrored by the
+                       muted avatar); the mirrored corner notches keep
+                       the sides distinct in RTL. The customer edge
+                       joins the muted-well family value /40 (the
+                       CartSummaryAside thumbnail wells + ProductCard
+                       shelf ride the same bg-muted/60 + /40 pair; the
+                       old /50 was a between-value nowhere else in the
+                       family). */
+                    className={`rounded-2xl px-4 py-2.5 ${isAdmin ? "bg-primary text-white rounded-tl-sm" : "bg-muted/60 border border-border/40 rounded-tr-sm"}`}
                   >
                     <p className="text-sm leading-relaxed">{r.message}</p>
                   </div>
@@ -171,9 +204,26 @@ export function TicketDetailPane({
       </div>
 
       {/* Reply box */}
-      <form onSubmit={onSubmit} className="border-t border-border p-4">
+      <form
+        onSubmit={onSubmit}
+        /* R139 (precision): the reply seam softens to the /20 receipt
+           hairline — the terminal rule under the thread's "slip"
+           (the OrdersTable footer + CartSummaryAside terminal line
+           ride the same value at their writing/summary boundary);
+           the band seam above stays /60, so the pane reads
+           band → paper → terminal rule. The form rides the shared
+           Input/Button components (verified) — the send button's
+           flat primary fill + press scale is the wave-2 admin-CTA
+           register (ProductsHeader keeps the same pair). */
+        className="border-t border-border/20 p-4"
+      >
         {selected.status === "closed" && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/50 rounded-lg px-3 py-2 mb-3">
+          <div
+            /* R139 (precision): the closed hint's edge joins the well
+               family value /40 (the customer bubble's pair — one
+               container-edge weight inside the pane). */
+            className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 border border-border/40 rounded-lg px-3 py-2 mb-3"
+          >
             <CheckCircle className="w-3.5 h-3.5 text-status-success" />
             هذه التذكرة مغلقة — أعد فتحها للرد
           </div>

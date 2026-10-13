@@ -24,7 +24,11 @@ export function SearchTriggers({
         >
           <Search className="w-3 h-3" />
           <span>بحث...</span>
-          <kbd className="text-3xs font-mono bg-muted border border-border/50 px-1 py-0.5 rounded group-hover:opacity-100 transition-opacity">
+          {/* R139 (precision): the ⌘K kbd chip's fill joins the muted-well
+              family — bg-muted → bg-muted/60, the exact value the sidebar
+              footer's sibling ⌘K chip rides (one shell, one kbd register);
+              border-border/50 is untouched. */}
+          <kbd className="text-3xs font-mono bg-muted/60 border border-border/50 px-1 py-0.5 rounded group-hover:opacity-100 transition-opacity">
             ⌘K
           </kbd>
         </button>

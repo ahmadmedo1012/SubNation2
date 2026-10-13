@@ -32,7 +32,15 @@ export function RecentOrdersStream({
     <div
       className={`${showChartsColumn ? "xl:col-span-2" : "xl:col-span-5"} bg-card border border-border/60 rounded-2xl overflow-hidden flex flex-col`}
     >
-      <div className="sticky top-0 z-10 px-4 py-3.5 border-b border-border flex items-center justify-between bg-card/80 supports-[backdrop-filter]:bg-card/60 backdrop-blur-md">
+      {/* R139 (precision): the stream's sticky mini-header retires the
+          LAST glass surface in the dashboard — bg-card/80 +
+          supports-[backdrop-filter]:bg-card/60 + backdrop-blur-md →
+          solid bg-card (r138's "glass retired everywhere" rule). Rows
+          scrolling under the header now hide instead of blurring
+          through it; the divider drops to border-border/60 to match
+          the card frame's resting edge (the inner row rhythm below
+          keeps its /40). Sticky/z-10 geometry untouched. */}
+      <div className="sticky top-0 z-10 px-4 py-3.5 border-b border-border/60 flex items-center justify-between bg-card">
         <div className="flex items-center gap-2">
           <Zap className="w-3.5 h-3.5 text-primary" />
           <h2 className="font-bold text-sm">آخر الطلبات</h2>

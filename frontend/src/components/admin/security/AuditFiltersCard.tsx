@@ -15,7 +15,13 @@ export function AuditFiltersCard({
   onFilterChange: (patch: Partial<AuditFilterDraft>) => void;
 }) {
   return (
-    <div className="bg-card border border-border/55 rounded-xl p-4 flex gap-4 flex-wrap">
+    /* R139 (precision): the resting edge joins the family value (/55 →
+       /60). The four raw date/text/number fields stay byte-identical on
+       purpose — same reasoning as the auth filter card's selects (no
+       shared select/date family exists in the console; the audit bar's
+       bare-border fields are pre-r138 quiet and carry the ONE global
+       focus system already). id/type/value/onChange/dir untouched. */
+    <div className="bg-card border border-border/60 rounded-xl p-4 flex gap-4 flex-wrap">
       <div className="flex items-center gap-2">
         <label htmlFor="audit-action-filter" className="text-sm font-semibold">
           الإجراء:

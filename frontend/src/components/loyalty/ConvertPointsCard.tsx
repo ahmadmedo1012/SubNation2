@@ -135,7 +135,10 @@ export function ConvertPointsCard({
                 const points = parseInt(convertPoints) || 0;
                 if (!rate || points < rate || points % rate !== 0) return null;
                 return (
-                  <p className="text-xs text-status-success mt-1.5 px-1 font-bold">
+                  <p className="text-xs text-status-success mt-1.5 px-1 font-bold tabular-nums">
+                    {/* R139 (precision): tabular-nums — money preview
+                        (the receipt register; the success ink stays —
+                        the gains/discount-reads-positive exception). */}
                     ستحصل على {formatCurrency(points / rate)}
                   </p>
                 );
@@ -144,7 +147,15 @@ export function ConvertPointsCard({
           <Button
             type="submit"
             disabled={converting || !convertPoints}
-            className="bg-primary hover:bg-primary/90 shrink-0 h-11 px-5 font-bold active:scale-95 transition-all"
+            /* R139 (precision): de-hand-rolled — bg-primary/
+               hover:bg-primary/90/active:scale-95/transition-all were
+               re-implementing buttonVariants on top of Button (the
+               R116-S1 ban); the default variant owns fill, hover,
+               press-spring and the ONE focus system now. h-11 keeps the
+               44px storefront floor. The journey (gates, intent key,
+               invalidations) is byte-identical — pinned by
+               loyalty-convert-journey. */
+            className="shrink-0 h-11 px-5 font-bold"
           >
             {converting ? "جارٍ…" : "تحويل"}
           </Button>

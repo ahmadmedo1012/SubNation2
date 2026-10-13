@@ -249,8 +249,12 @@ export default function AdminSettingsPage() {
             tint measured 1.99:1 on the light theme (A6-B4's figure);
             the token measures 6.04:1 on white / 5.09:1 on the /12 tint
             light and ≥9:1 dark (index.css F3-06). */}
+        {/* R139 (precision): the banner edge joins the shared
+            AdminScopeGate's canonical /30 (139-d verified + pinned that
+            register this round) — this page's /25 was the lone softer
+            outlier among the scope-gate family. */}
         {(activeTab === "auth" || activeTab === "integrations") && !canManageSettings && (
-          <p className="text-xs text-status-warning bg-status-warning/10 border border-status-warning/25 rounded-xl px-3 py-2">
+          <p className="text-xs text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
             إدارة المصادقة والتكاملات تتطلب صلاحية الإعدادات — تواصل مع مسؤول النظام
           </p>
         )}
@@ -280,9 +284,15 @@ export default function AdminSettingsPage() {
             ) : loadError ? (
               /* R120-B4 (A2-F10): the shared error-card idiom — a failed
                   providers load is NOT an empty provider list. */
+              /* R139 (precision): the frame joins the r138 calm-error
+                 register (139-d's ChartErrorBanner / the FetchErrorCard
+                 re-tune): the status-error/22 edge retires for the card
+                 family's resting border-border/60 — severity lives in
+                 the CONTENT (role="alert" + the bold «تعذّر» headline +
+                 the retry), not a red frame around the card. */
               <div
                 role="alert"
-                className="text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl"
+                className="text-center py-10 text-muted-foreground bg-card border border-border/60 rounded-2xl"
               >
                 <p className="font-bold text-sm mb-1.5 text-foreground/80">
                   تعذّر تحميل طرق المصادقة
@@ -328,9 +338,14 @@ export default function AdminSettingsPage() {
                     failure and offers the retry (the old
                     `.catch(() => null)` rendered confidently-wrong
                     rows off a null payload). */
+                /* R139 (precision): same calm-error frame swap as the
+                   «المصادقة» twin above — border-border/60 on the inset
+                   tile (bg-muted/20 stays: the card nests inside the
+                   p-6 integrations card, a bg-card fill would vanish
+                   against its parent). */
                 <div
                   role="alert"
-                  className="text-center py-10 text-muted-foreground bg-muted/20 border border-status-error/22 rounded-2xl"
+                  className="text-center py-10 text-muted-foreground bg-muted/20 border border-border/60 rounded-2xl"
                 >
                   <p className="font-bold text-sm mb-1.5 text-foreground/80">
                     تعذّر تحميل حالة التكاملات

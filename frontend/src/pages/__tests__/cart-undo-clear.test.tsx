@@ -430,7 +430,13 @@ describe("CartPage — R120-B2 (A4-F6 labels + A3-F4/F13 empty CTA + A1-F9 links
     // same-named elements, anchor 152×20 + button 152×38).
     const cta = screen.getByRole("link", { name: "متابعة التسوق" });
     expect(cta).toHaveAttribute("href", "/");
-    expect(cta.className).toContain("min-h-11");
+    // R139 (precision): the empty-state CTA de-hand-rolled onto the
+    // canonical recipe — Button size="lg" rides h-12 (48px, ABOVE the
+    // 44px floor the old min-h-11 hand-roll encoded) + w-full sm:w-auto
+    // (the R116-S1 storefront CTA idiom). The negative guard stays: a
+    // min-h-9 regression would shrink the target below the floor.
+    expect(cta.className).toContain("h-12");
+    expect(cta.className).toContain("w-full");
     expect(cta.className).not.toContain("min-h-9");
     expect(screen.queryByRole("button", { name: "متابعة التسوق" })).not.toBeInTheDocument();
   });

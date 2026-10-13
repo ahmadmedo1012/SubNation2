@@ -47,20 +47,30 @@ export function TelegramDiagnosticPing({
       </div>
 
       {tgTestResult && (
+        /* R139 (precision): the diagnostic result joins the quiet
+           token-tint register (the WhatsappHeader banner idiom — this
+           lane's own r126-tuned model): the frame softens to the /5
+           tint + /20 edge (was the /10 + /25 full-status wall) and the
+           status ink concentrates on the verdict — icon + bold headline
+           — while the technical detail lines (error message, hint,
+           attempts) drop to the muted secondary ink instead of riding
+           full green/red. Never a full-status wall; DOM byte-identical. */
         <div
           className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs ${
             tgTestResult.delivered
-              ? "bg-status-success/10 border-status-success/25 text-status-success"
-              : "bg-status-error/10 border-status-error/25 text-status-error"
+              ? "bg-status-success/5 border-status-success/20"
+              : "bg-status-error/5 border-status-error/20"
           }`}
         >
           {tgTestResult.delivered ? (
-            <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-status-success" />
           ) : (
-            <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-status-error" />
           )}
           <div className="min-w-0 flex-1 space-y-1">
-            <div className="font-bold">
+            <div
+              className={`font-bold ${tgTestResult.delivered ? "text-status-success" : "text-status-error"}`}
+            >
               {tgTestResult.delivered
                 ? "تم التسليم بنجاح"
                 : tgTestResult.configured
@@ -68,15 +78,19 @@ export function TelegramDiagnosticPing({
                   : "النظام غير مُعدّ"}
             </div>
             {tgTestResult.errorMessage && (
-              <div className="font-mono text-3xs opacity-90 break-all">
+              <div className="font-mono text-3xs text-muted-foreground break-all">
                 {tgTestResult.errorMessage}
               </div>
             )}
             {tgTestResult.hint && (
-              <div className="text-2xs opacity-90 leading-relaxed">{tgTestResult.hint}</div>
+              <div className="text-2xs text-muted-foreground leading-relaxed">
+                {tgTestResult.hint}
+              </div>
             )}
             {tgTestResult.attempts > 0 && (
-              <div className="text-3xs opacity-75">عدد المحاولات: {tgTestResult.attempts}</div>
+              <div className="text-3xs text-muted-foreground tabular-nums">
+                عدد المحاولات: {tgTestResult.attempts}
+              </div>
             )}
           </div>
         </div>

@@ -120,7 +120,10 @@ function TermsContent() {
           R123-E4b 72f977f, R124 craft sweep 76a4547) while claiming
           «مايو 2026»; a legal page whose freshness stamp contradicts its
           own git history erodes the trust the stamp exists to build. */}
-      <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
+      {/* R139 (precision): /30 → /20 — the stamp's terminal rule joins
+          the receipt-hairline family value (the section-boundary /20
+          CartSummaryAside canonized); one hairline weight family-wide. */}
+      <p className="text-xs text-muted-foreground pt-4 border-t border-border/20">
         آخر تحديث: أكتوبر 2026
       </p>
     </div>
@@ -183,7 +186,10 @@ function PrivacyContent() {
       {/* R125-I7 (A7 B-13): same truth-up as the terms tab — the privacy
           copy's last substantive revision is October 2026 (git history:
           5d2de5b → 76a4547), not May. */}
-      <p className="text-xs text-muted-foreground pt-4 border-t border-border/30">
+      {/* R139 (precision): /30 → /20 — the stamp's terminal rule joins
+          the receipt-hairline family value (the section-boundary /20
+          CartSummaryAside canonized); one hairline weight family-wide. */}
+      <p className="text-xs text-muted-foreground pt-4 border-t border-border/20">
         آخر تحديث: أكتوبر 2026
       </p>
     </div>
@@ -261,7 +267,16 @@ export default function TermsPage() {
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 bg-secondary/50 border border-border rounded-xl p-1 mb-8">
+      {/* R139 (precision): the tab row migrates to the calm active pill
+          — the raised-segment register (bg-card + shadow-sm active,
+          borderless inactive) was the pre-r138 segmented-control idiom
+          every r139 lane retired; the storefront twin is login.tsx's
+          tab pair (bg-muted/30 track + border-border/40 + rounded-2xl,
+          chips rounded-xl, active trio, inactive boxed-transparent).
+          BOTH states carry the border box — the 1px login↔register-
+          style toggle jitter dies. aria-pressed + handleTabClick
+          byte-identical; min-h-11 (R123-E4b P3-f) keeps the 44px floor. */}
+      <div className="flex gap-1 bg-muted/30 border border-border/40 rounded-2xl p-1 mb-8">
         {TABS.map(({ id, label, Icon }) => (
           <button
             key={id}
@@ -273,10 +288,10 @@ export default function TermsPage() {
             /* R123-E4b (P3-f): min-h-11 — the old px-4 py-2.5 chip measured
                 ≈40px, under the 44px touch floor the app enforces on every
                 other control. */
-            className={`min-h-11 flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
+            className={`min-h-11 flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all duration-150 ${
               tab === id
-                ? "bg-card shadow-sm text-foreground font-bold"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
+                : "border border-transparent text-muted-foreground font-semibold hover:text-foreground"
             }`}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -291,7 +306,11 @@ export default function TermsPage() {
           narrows) — the full-width column measured ~90 Arabic
           chars/line at 14px, over the craft-floor's 65–75ch long-form
           band, fatiguing the one page users read under refund-stress. */}
-      <div className="bg-card border border-border rounded-2xl p-6 md:p-8">
+      <div className="bg-card border border-border/60 rounded-2xl p-6 md:p-8">
+        {/* R139 (precision): full-strength border-border → /60 — the
+            card-family resting edge (one value grid-wide; the reading
+            measure + prose typography inside are untouched — this page
+            is typography-forward by design). */}
         <div className="max-w-[65ch]">
           {tab === "terms" && <TermsContent />}
           {tab === "privacy" && <PrivacyContent />}

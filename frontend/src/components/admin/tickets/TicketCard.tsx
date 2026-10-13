@@ -33,7 +33,17 @@ export function TicketCard({
     <button
       key={t.id}
       onClick={() => onOpen(t.id)}
-      className={`float-in stagger-${Math.min(idx + 1, 8)} w-full bg-card border rounded-2xl p-4 text-right transition-all duration-150 hover:shadow-md group ${isActive ? "border-primary/40 bg-primary/4 shadow-sm shadow-primary/5" : "border-border/60 hover:border-border"}`}
+      /* R139 (precision): the queue row joins the r138 calm register —
+         the selected tint drops its brand-tinted micro shadow + the
+         nonstandard /4 wash for the family's bg-primary/8 selection
+         fill (the mobile order-card's exact pair: primary/40 edge +
+         /8 tint, edge does the signaling); the resting edge was
+         already the /60 family. The hover retires its shadow-md —
+         a calm border step only (/60 → full), the topups-card
+         decision this round; no row elevation in the queue. The
+         staggered float-in, the open-status pulse dot and the
+         awaiting-reply cue are sanctioned motion, byte-identical. */
+      className={`float-in stagger-${Math.min(idx + 1, 8)} w-full bg-card border rounded-2xl p-4 text-right transition-all duration-150 group ${isActive ? "border-primary/40 bg-primary/8" : "border-border/60 hover:border-border"}`}
     >
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">

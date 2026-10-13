@@ -19,7 +19,12 @@ export function RecomputePreviewCard({
   onClosePreview: () => void;
 }) {
   return (
-    <div className="bg-card border border-status-warning/30 rounded-2xl p-5 space-y-4">
+    /* R139 (precision): the §6 destructive-contract preview joins the
+       calm family — the warning-tinted shell border (status-warning/30)
+       goes to the resting border-border/60 register; the severity stays
+       where the dialect puts it: the Eye icon stage + «معاينة فقط — لم
+       يُعدّل أي سعر بعد» + the APPLY step's destructive confirm. */
+    <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-status-warning/10 border border-status-warning/20 flex items-center justify-center shrink-0">
@@ -46,23 +51,28 @@ export function RecomputePreviewCard({
         <>
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-muted/20 border border-border/40 rounded-xl text-center">
-              <div className="font-bold text-lg tabular-nums text-status-warning">
-                {dryRun.variants_drifted}
-              </div>
+              {/* R139 (precision): receipt rhythm on the preview numbers —
+                  weight (700) + size (text-lg) + tabular-nums carry the
+                  emphasis, NOT color: the drifted-count is impact data,
+                  not a status (the OrdersStatsPanel revenue-tile rule);
+                  the warning identity lives in the icon stage + subtitle. */}
+              <div className="font-bold text-lg tabular-nums">{dryRun.variants_drifted}</div>
               <div className="text-3xs text-muted-foreground">باقة سينحرف سعرها</div>
             </div>
             <div className="p-3 bg-muted/20 border border-border/40 rounded-xl text-center">
-              <div className="font-bold text-lg tabular-nums text-status-warning">
-                {dryRun.products_affected}
-              </div>
+              <div className="font-bold text-lg tabular-nums">{dryRun.products_affected}</div>
               <div className="text-3xs text-muted-foreground">منتجًا يتأثر</div>
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-border/50 rounded-xl">
+          {/* R139 (precision): the BEFORE→AFTER sample table joins the
+              register — container /50 → /60 edge, thead bg-muted/15 →
+              the /30 quiet band, row seams /30 → /60 (one seam value
+              with the orders grid). */}
+          <div className="overflow-x-auto border border-border/60 rounded-xl">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border/60 bg-muted/15 text-muted-foreground">
+                <tr className="border-b border-border/60 bg-muted/30 text-muted-foreground">
                   <th className="px-3 py-2 text-right font-semibold">الباقة</th>
                   <th className="px-3 py-2 text-right font-semibold">المنتج</th>
                   <th className="px-3 py-2 text-left font-semibold">السعر الحالي</th>
@@ -72,7 +82,7 @@ export function RecomputePreviewCard({
               </thead>
               <tbody>
                 {dryRun.sample.map((s) => (
-                  <tr key={s.variant_id} className="border-b border-border/30 last:border-0">
+                  <tr key={s.variant_id} className="border-b border-border/60 last:border-0">
                     <td className="px-3 py-2 tabular-nums" dir="ltr">
                       #{s.variant_id}
                     </td>
@@ -87,7 +97,12 @@ export function RecomputePreviewCard({
                     </td>
                     <td
                       className={`px-3 py-2 tabular-nums font-bold ${
-                        s.delta >= 0 ? "text-status-success" : "text-destructive"
+                        /* R139 (precision): the −delta joins its + sibling
+                           on the --status-* family — the signed-direction
+                           pair reads success/error tokens (the discount
+                           exception class), never the raw destructive
+                           channel. */
+                        s.delta >= 0 ? "text-status-success" : "text-status-error"
                       }`}
                       dir="ltr"
                     >

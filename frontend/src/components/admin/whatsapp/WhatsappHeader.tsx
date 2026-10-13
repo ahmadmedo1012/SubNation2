@@ -46,6 +46,11 @@ export function WhatsappHeader() {
         )}
       </div>
 
+      {/* R139 (precision): VERIFIED, no change — the pairing warning
+          banner already rides the quiet token-tint register (the
+          status-warning /5 tint + /20 edge with the warning ink on the
+          icon only, body muted — the r126-L5 AA-tuned pair); never a
+          full-status wall. */}
       <div className="rounded-2xl border border-status-warning/20 bg-status-warning/5 p-4 flex gap-3 text-sm">
         <AlertTriangle className="w-5 h-5 text-status-warning shrink-0" />
         <p className="text-muted-foreground leading-6">

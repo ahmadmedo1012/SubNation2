@@ -49,17 +49,23 @@ export function LyPayFlow({
       {/* Step 1: Bank info */}
       <div>
         <StepDot n={1} label="معلومات الحساب المصرفي" />
-        <div className="mt-3 bg-muted/25 border border-border/45 rounded-xl p-4 space-y-3.5 text-sm">
+        {/* R139 (precision): the bank-coordinates panel joins the calm
+            well family — bg-muted/60 + border/40 (the QR-stage/
+            cart-thumb register; the old /25 fill + /45 edge was the
+            pre-r138 inset), and the nested row separators drop to the
+            /20 receipt hairline (the whatsapp session-row value —
+            hairlines INSIDE a card, firmer seams BETWEEN cards). */}
+        <div className="mt-3 bg-muted/60 border border-border/40 rounded-xl p-4 space-y-3.5 text-sm">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <InfoRow label="اسم الحساب" value={LYPAY_INFO.account_name} />
             <InfoRow label="البنك" value={LYPAY_INFO.bank} />
           </div>
           <InfoRow label="الفرع" value={LYPAY_INFO.branch} />
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/20">
             <InfoRow label="رقم الحساب" value={LYPAY_INFO.account_number} />
             <CopyButton text={LYPAY_INFO.account_number} label="نسخ" size="md" />
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/30">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-border/20">
             <div className="min-w-0">
               <div className="text-2xs text-muted-foreground mb-0.5 font-semibold">IBAN</div>
               <div dir="ltr" className="font-mono font-bold text-sm break-all text-left">
@@ -99,9 +105,13 @@ export function LyPayFlow({
                     mobile-flow chips above. */
                 aria-pressed={amount === String(p)}
                 className={`flex-1 min-w-[64px] min-h-11 py-2 rounded-xl text-sm font-bold transition-all border press-spring ${
+                  /* R139 (precision): the lypay twin of the mobile flow's
+                     preset chips — the solid primary fill + brand shadow
+                     retire for the money-path trio (see
+                     MobileTransferForm). aria-pressed byte-identical. */
                   amount === String(p)
-                    ? "border-primary bg-primary text-white shadow-md shadow-primary/22"
-                    : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70"
+                    ? "border-primary/30 bg-primary/15 text-primary-text"
+                    : "border-border/30 bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:border-border/70"
                 }`}
               >
                 {p}

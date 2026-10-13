@@ -13,6 +13,8 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // from raw emerald/yellow hues (+ a square `rounded` on the secret
 // chip) to the canonical StatusBadge on the --status-* tokens.
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -248,7 +250,17 @@ export function ProviderCard({
                     )}
                   </label>
                   <div className="relative">
-                    <input
+                    {/* R139 (precision): the credential field joins the shared
+                        Input (the admin console's last bare <input> — see
+                        account-tab): the mono/ltr/text-left register rides
+                        appended classes (twMerge keeps base px-3 for the
+                        physical-left padding while pr-12 overrides the
+                        right side the 44px reveal button reserves), and the
+                        field's hand-rolled focus:border-primary/50 +
+                        focus:ring-1 ring-primary/20 — a SECOND focus
+                        system — retires for the ONE focus-visible ring.
+                        id/type/value/onChange/placeholder/dir byte-identical. */}
+                    <Input
                       id={fieldId}
                       type={field.isSecret && !showSecret[field.key] ? "password" : "text"}
                       value={config[field.key] ?? ""}
@@ -261,7 +273,7 @@ export function ProviderCard({
                           : (field.placeholder ?? "")
                       }
                       dir="ltr"
-                      className="w-full bg-background border border-border/70 rounded-lg px-3 py-2 text-sm font-mono text-left outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground pr-12"
+                      className="font-mono text-left pr-12"
                     />
                     {field.isSecret && (
                       <button
@@ -316,25 +328,28 @@ export function ProviderCard({
 
           {/* Actions */}
           <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white font-bold text-sm hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-60"
-            >
+            {/* R139 (precision): the provider save retires its hand-roll
+                (flat bg-primary + hover:bg-primary/90 + active:scale-95)
+                for the canonical Button recipe — gradient fill, press-
+                spring and the global focus ring ride buttonVariants
+                (the 139-d login-CTA convergence); min-h-9 keeps the
+                admin ≥24px floor. onClick/disabled + the three label
+                states (spinner/saved/save) byte-identical. */}
+            <Button onClick={handleSave} disabled={saving}>
               {saving ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> جارٍ الحفظ…
+                  <Loader2 className="animate-spin" /> جارٍ الحفظ…
                 </>
               ) : saved ? (
                 <>
-                  <CheckCircle className="w-3.5 h-3.5" /> تم الحفظ
+                  <CheckCircle /> تم الحفظ
                 </>
               ) : (
                 <>
-                  <Save className="w-3.5 h-3.5" /> حفظ التغييرات
+                  <Save /> حفظ التغييرات
                 </>
               )}
-            </button>
+            </Button>
 
             <a
               href={provider.setup_url}
@@ -346,7 +361,8 @@ export function ProviderCard({
               دليل الإعداد
             </a>
 
-            {error && <span className="text-xs text-destructive mr-auto">{error}</span>}
+            {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error, the 139-i triage decision — bare error TEXT rides the status family; composed destructive BOXES keep their themed surface family). */}
+            {error && <span className="text-xs text-status-error mr-auto">{error}</span>}
           </div>
         </div>
       )}

@@ -361,7 +361,11 @@ export function AdminSecurityDashboard() {
         <div
           role="tablist"
           aria-label="أقسام الأمان"
-          className="flex flex-wrap gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1 w-fit"
+          /* R139 (precision): the tray wash aligns to the family's
+             bg-secondary/40 (the OrdersFilters / StatusFilterTabs /
+             SettingsTabBar trays — the settings twin is this bar's cited
+             idiom source and migrated in the same wave). */
+          className="flex flex-wrap gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1 w-fit"
         >
           {SECURITY_TABS.map((tab) => (
             <button
@@ -370,10 +374,19 @@ export function AdminSecurityDashboard() {
               id={`security-tab-${tab.id}`}
               aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all duration-150 ${
+              /* R139 (precision): the active tab joins the r138 calm-pill
+                 family (the StatusFilterTabs / OrdersFilters track form —
+                 the tray stays, the raised card-colored active segment
+                 goes): active bg-primary/15 + text-primary-text +
+                 border-primary/30 + font-bold, resting the transparent
+                 border box + muted ink + muted/30 hover wash — both
+                 states boxed, no 1px jitter on toggle.
+                 role="tab"/aria-selected/id/onClick byte-identical (the
+                 pane coordination is page-owned per the r137 contract). */
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-all duration-150 ${
                 activeTab === tab.id
-                  ? "bg-card shadow-sm text-foreground font-bold"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary/15 text-primary-text border-primary/30 font-bold"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
               }`}
             >
               <tab.icon className="w-3.5 h-3.5" />
@@ -388,7 +401,10 @@ export function AdminSecurityDashboard() {
             <AuditFiltersCard auditFilters={auditFilters} onFilterChange={setAuditFilter} />
 
             {/* ── Audit trail table ───────────────────────────────── */}
-            <div className="bg-card border border-border/55 rounded-xl p-4">
+            {/* R139 (precision): the resting edge joins the family value —
+                /55 → /60 (every real admin table container rides /60; the
+                pane skeleton below mirrors it). */}
+            <div className="bg-card border border-border/60 rounded-xl p-4">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <h2 className="text-lg font-bold">سجل إجراءات المسؤولين</h2>
                 {/* Honest count (the users/topups idiom): the loaded

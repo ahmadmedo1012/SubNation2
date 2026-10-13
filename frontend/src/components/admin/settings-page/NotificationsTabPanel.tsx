@@ -31,6 +31,10 @@ export function NotificationsTabPanel() {
           "رفض طلب شحن",
           "إتمام طلب شراء جديد",
         ].map((event) => (
+          /* R139 (precision): VERIFIED, no change — the fixed-event rows
+             keep the R120-B4 descriptive register (no per-row status
+             semantics) on the quiet bg-muted/20 + border-border/50
+             inset-box family this lane's info rows share. */
           <div
             key={event}
             className="flex items-center gap-3 px-4 py-3 bg-muted/20 border border-border/50 rounded-2xl"

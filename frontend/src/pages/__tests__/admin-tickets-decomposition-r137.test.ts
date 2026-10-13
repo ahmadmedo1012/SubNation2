@@ -146,7 +146,13 @@ describe("R137 (FE) — admin/tickets.tsx decomposition: page stays an orchestra
     // verbatim shapes at their new address so the existing render pins
     // stay meaningful through the extract.
     const pane = read("src/components/admin/tickets/TicketDetailPane.tsx");
-    expect(pane).toContain('<form onSubmit={onSubmit} className="border-t border-border p-4">');
+    // R139 (precision): the reply-form seam pin follows the class-only
+    // r139 migration — the full-strength edge softened to the /20
+    // receipt hairline (the terminal-rule register) and the tag grew
+    // an R139 rationale comment (multi-line attributes); the onSubmit
+    // wiring + padding are unchanged, pinned separately now.
+    expect(pane).toContain("onSubmit={onSubmit}");
+    expect(pane).toContain('className="border-t border-border/20 p-4"');
     expect(pane).toContain('aria-label="إرسال الرد"');
     expect(pane).toContain('<Send className="w-4 h-4 -scale-x-100" />');
     expect(pane).toContain("<div ref={messagesEndRef} />");

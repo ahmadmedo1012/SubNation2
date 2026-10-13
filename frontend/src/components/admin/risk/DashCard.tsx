@@ -15,8 +15,12 @@ export function DashCard({
   hint?: string;
   tone?: "ok" | "warn" | "danger";
 }) {
+  // R139 (precision): the ok tone solidifies — bg-card/60 → bg-card (the
+  // r138 translucent retirement) with the family's /60 resting edge; the
+  // warn/danger tints keep their token borders + /5 washes (§6 severity
+  // tiles — token tints, and the hint/reason line below keeps the WHY).
   const tones = {
-    ok: "border-border/40 bg-card/60",
+    ok: "border-border/60 bg-card",
     warn: "border-status-warning/30 bg-status-warning/5",
     danger: "border-status-error/30 bg-status-error/5",
   };
@@ -28,7 +32,9 @@ export function DashCard({
   return (
     <div className={`border rounded-xl p-3 ${tones[tone]}`}>
       <div className="text-3xs text-muted-foreground">{label}</div>
-      <div className={`text-xl font-bold mt-0.5 ${valueColor[tone]}`}>{value}</div>
+      {/* R139 (precision): + tabular-nums — the counts ride the money-digit
+          convention (the MetricCard value register). */}
+      <div className={`text-xl font-bold mt-0.5 tabular-nums ${valueColor[tone]}`}>{value}</div>
       {hint && <div className="text-3xs text-muted-foreground mt-1">{hint}</div>}
     </div>
   );

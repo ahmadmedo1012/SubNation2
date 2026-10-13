@@ -60,7 +60,14 @@ export function OrdersHeader({
           {filteredCount !== allOrdersCount && (
             <>
               <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-              <span className="text-status-success font-bold tabular-nums">
+              {/* R139 (precision): money emphasis by weight+size, not
+                  color (the r138 receipt rule) — the filtered-revenue
+                  chip drops its decorative success ink for plain
+                  foreground; font-bold + tabular-nums carry it. This
+                  is revenue, not a status — no semantic register to
+                  keep (unlike the topups pending-total, which keeps
+                  warning ink as semantic-pending money). */}
+              <span className="text-foreground font-bold tabular-nums">
                 {formatCurrency(totalRevenue)}
               </span>
             </>

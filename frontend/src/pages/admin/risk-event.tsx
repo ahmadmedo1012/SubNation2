@@ -277,7 +277,13 @@ export default function AdminRiskEventPage() {
 
         {Object.keys(event.statistical_signals).length > 0 && (
           <Section title="إشارات إحصائية">
-            <pre className="text-2xs font-mono bg-background/60 border border-border/40 rounded-lg p-2 overflow-x-auto">
+            <pre
+              /* R139 (precision): bg-background/60 → bg-muted/60 — the
+                 signal dump joins the r138 well family (quiet inset on
+                 the now-solid section card, the enrichment copy-well
+                 register). */
+              className="text-2xs font-mono bg-muted/60 border border-border/40 rounded-lg p-2 overflow-x-auto"
+            >
               {JSON.stringify(event.statistical_signals, null, 2)}
             </pre>
           </Section>
@@ -334,6 +340,13 @@ export default function AdminRiskEventPage() {
                 size="sm"
                 disabled={labelMut.isPending}
                 onClick={() => labelMut.mutate("confirmed_fraud")}
+                /* R139 (precision): VERIFIED, stays canonical-destructive
+                   — the solid surface channel IS buttonVariants (AA pair,
+                   R128 A1-F2). Unlike the topups quiet-danger triggers,
+                   this label POST has NO confirm step: the solid red
+                   surface is the action's ONLY severity carrier, so
+                   quieting it would delete the signal rather than move
+                   it into a confirm. */
                 className="gap-2"
               >
                 <XCircle className="w-3.5 h-3.5" /> احتيال مؤكد
@@ -358,7 +371,10 @@ export default function AdminRiskEventPage() {
               </Button>
             </div>
             {labelMut.isError && (
-              <div className="text-xs text-destructive">{(labelMut.error as Error).message}</div>
+              /* R139 (precision): text-destructive → text-status-error —
+                 the page's red vocabulary is the --status-error family
+                 (the honest-reason gates above already rode it). */
+              <div className="text-xs text-status-error">{(labelMut.error as Error).message}</div>
             )}
             {labelMut.isSuccess && (
               <div className="text-xs text-status-success">تم حفظ التصنيف.</div>
@@ -372,8 +388,13 @@ export default function AdminRiskEventPage() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border border-border/40 rounded-2xl bg-card/60 overflow-hidden">
-      <header className="px-3 py-2 border-b border-border/40 bg-muted/30 text-xs font-bold">
+    /* R139 (precision): the register — section shell solidifies
+       (bg-card/60 → bg-card, edge /40 → /60, the r138 translucent
+       retirement) and the header band joins the table idiom
+       (border-b /60 + font-semibold 600 — 700 stays on the stat
+       values). */
+    <section className="border border-border/60 rounded-2xl bg-card overflow-hidden">
+      <header className="px-3 py-2 border-b border-border/60 bg-muted/30 text-xs font-semibold">
         {title}
       </header>
       <div className="p-3">{children}</div>
@@ -383,9 +404,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Stat({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="border border-border/40 rounded-xl bg-card/60 px-3 py-2">
+    /* R139 (precision): solidified like Section + tabular-nums on the
+       value (the top-line panel numbers ride the money-digit
+       convention — score/confidence/date). */
+    <div className="border border-border/60 rounded-xl bg-card px-3 py-2">
       <div className="text-3xs text-muted-foreground">{label}</div>
-      <div className={`text-sm font-bold mt-0.5 ${mono ? "font-mono" : ""}`}>{value}</div>
+      <div className={`text-sm font-bold mt-0.5 tabular-nums ${mono ? "font-mono" : ""}`}>
+        {value}
+      </div>
     </div>
   );
 }

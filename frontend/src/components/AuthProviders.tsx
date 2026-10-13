@@ -322,6 +322,26 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
   }
 
   return (
+    // R139 (b): the provider-stack seam stays 2.5 (10px) — pinned, not
+    // drift-left. WHY: (1) the provider FAMILY extends across this
+    // component's boundary — login.tsx/register.tsx wrap the WhatsApp
+    // peer button at mt-2.5, so the rendered group reads [Google 10px
+    // Telegram 10px WhatsApp]; widening only the intra-component seam to
+    // space-y-3 would step that family 12/10 — the exact r138-g refusal
+    // ("would have created 10/10/12 drift"), inverted. Moving all three
+    // seams in lockstep is a page-lane decision, not this component's.
+    // (2) The auth card's mb-4 (16px) rhythm separates SECTIONS (value
+    // banner → auth methods); a run of same-height (h-11) same-register
+    // peer buttons is ONE section, and the repo's within-family row band
+    // is 2.5/3 (28 / 46 space-y hits) — 10px keeps the three buttons
+    // reading as a single choice cluster instead of three separate CTAs.
+    // (3) The audit's flag-word was "uniform but narrow": the uniformity
+    // is the property worth keeping; 2px of air is not worth family
+    // drift. Register audit same round: ProviderButton / TelegramLogin
+    // Button / the WhatsApp pristine button share a byte-identical
+    // resting register (border-border/60, h-11, hover:bg-muted/50 +
+    // hover:border-border, press-spring + active:scale-[0.97]) — no real
+    // drift found, nothing "fixed" by taste.
     <div className="space-y-2.5">
       {dividerLabel && (
         <div className="flex items-center gap-3">

@@ -60,7 +60,11 @@ export function CalculatorInputsCard({
   loading: boolean;
 }) {
   return (
-    <div className="bg-card border border-border/55 rounded-2xl p-5 space-y-4">
+    /* R139 (precision): border/55 → /60 — the inputs card joins the
+       resting one-edge register (bg-card already solid; flat — the
+       PricingConfigCard owns the page's elevated register). The two
+       native selects' /55 edges follow so the card speaks one value. */
+    <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4">
       <h2 className="font-bold text-sm flex items-center gap-2">
         <Tag className="w-4 h-4 text-primary" /> المدخلات
       </h2>
@@ -82,7 +86,7 @@ export function CalculatorInputsCard({
             // always reset to the auto (cheapest-active) mode.
             setVariantId("");
           }}
-          className="w-full bg-muted/20 border border-border/55 rounded-xl px-3 py-2 text-sm"
+          className="w-full bg-muted/20 border border-border/60 rounded-xl px-3 py-2 text-sm"
         >
           <option value="custom">— سعر مخصّص (للاختبار) —</option>
           {products.map((p) => {
@@ -118,7 +122,7 @@ export function CalculatorInputsCard({
             id="pricing-calc-variant"
             value={variantId === "" ? "" : String(variantId)}
             onChange={(e) => setVariantId(e.target.value === "" ? "" : Number(e.target.value))}
-            className="w-full bg-muted/20 border border-border/55 rounded-xl px-3 py-2 text-sm"
+            className="w-full bg-muted/20 border border-border/60 rounded-xl px-3 py-2 text-sm"
             disabled={selectedVariants.length === 0}
           >
             <option value="">تلقائي — أرخص باقة نشطة</option>

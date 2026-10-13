@@ -10,6 +10,8 @@
  */
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { CheckCircle, Loader2, RefreshCw, Shield, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -149,7 +151,11 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
         <div className="flex flex-col md:flex-row items-center gap-6 p-6 bg-muted/20 border border-border/50 rounded-xl">
           <div className="shrink-0 bg-white p-3 rounded-xl shadow-sm">
             {setupData.qrCode ? (
-              <img src={setupData.qrCode} alt="رمز الاستجابة السريعة للتحقق بخطوتين"  /* R134 (A3-F5): Arabic — the flow around it is Arabic */ className="w-32 h-32" />
+              <img
+                src={setupData.qrCode}
+                alt="رمز الاستجابة السريعة للتحقق بخطوتين"
+                /* R134 (A3-F5): Arabic — the flow around it is Arabic */ className="w-32 h-32"
+              />
             ) : (
               // QR is generated client-side after the backend mints the
               // 2FA secret — usually <100ms, but on slow devices the
@@ -197,17 +203,35 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
               dir="ltr"
-              className="w-full max-w-[200px] h-11 bg-background border border-border/70 rounded-xl px-4 text-center text-lg tracking-widest font-mono focus:border-primary/50 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+              /* R139 (precision): the OTP field keeps its specialized
+                  geometry (h-11 pair with the verify CTA, text-lg centered
+                  mono — the sanctioned bespoke-OTP register the storefront's
+                  WhatsAppPhoneSignIn rides) but joins its token family: the
+                  resting border /70 → muted-foreground/75 (the A4-F12 ≥3:1
+                  call) and the hand-rolled focus:ring-1 ring-primary/20 — a
+                  SECOND, sub-3:1 focus system — retires for the ONE ring
+                  (ring-2 ring-ring, the F3-12 fix). tracking-widest → the
+                  arbitrary tracking-[0.2em] form (R122 A1 P2-4: the global
+                  Arabic letter-spacing guard zeroes the five NAMED tracking
+                  utilities on ALL runs — the old class was a no-op). */
+              className="w-full max-w-[200px] h-11 bg-background border border-muted-foreground/75 rounded-xl px-4 text-center text-lg tracking-[0.2em] font-mono outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring transition-all"
             />
-            <button
+            {/* R139 (precision): the verify CTA retires its hand-roll (flat
+                bg-primary + hover:bg-primary/90) for the canonical Button
+                recipe — h-11 + px-6 appended to preserve the exact pairing
+                with the OTP field beside it; the gradient fill, press-
+                spring and the global focus ring ride buttonVariants.
+                onClick/disabled + label byte-identical. */}
+            <Button
               onClick={verifySetup}
               disabled={code.length !== 6 || loading}
-              className="h-11 px-6 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 disabled:opacity-50 transition-all"
+              className="h-11 px-6"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "تفعيل"}
-            </button>
+              {loading ? <Loader2 className="animate-spin" /> : "تفعيل"}
+            </Button>
           </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error — the 139-i triage decision). */}
+          {error && <p className="text-xs text-status-error">{error}</p>}
         </div>
       </div>
     );
@@ -252,12 +276,15 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
               >
                 كلمة المرور الحالية
               </label>
-              <input
+              {/* R139 (precision): shared Input (the account-tab/provider
+                  convergence — the admin console's writable fields ride one
+                  input family + ONE focus ring). id/type/autoComplete/value/
+                  onChange/required/dir byte-identical. */}
+              <Input
                 id="settings-2fa-current-password"
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-background border border-border/60 rounded-lg text-sm"
                 autoComplete="current-password"
                 required
                 /* R125-I5: the same lockout as change-password applies to
@@ -266,7 +293,8 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
                 dir="ltr"
               />
             </div>
-            {error && <p className="text-xs text-destructive">{error}</p>}
+            {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error — the 139-i triage decision). */}
+            {error && <p className="text-xs text-status-error">{error}</p>}
             <div className="flex items-center gap-2">
               <button
                 type="submit"
@@ -295,7 +323,8 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
           </form>
         ) : (
           <>
-            {error && <p className="text-xs text-destructive">{error}</p>}
+            {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error — the 139-i triage decision). */}
+            {error && <p className="text-xs text-status-error">{error}</p>}
             <button
               onClick={() => setShowRotate(true)}
               className="flex items-center gap-2 h-10 px-5 rounded-xl bg-muted/40 text-foreground font-bold text-sm hover:bg-muted/60 transition-all border border-border/60"
@@ -315,7 +344,8 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
         المصادقة الثنائية (2FA) تضيف طبقة أمان إضافية لحسابك. عند تسجيل الدخول، ستحتاج إلى إدخال رمز
         التحقق من تطبيق مثل Google Authenticator.
       </p>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error — the 139-i triage decision). */}
+      {error && <p className="text-xs text-status-error">{error}</p>}
       <button
         onClick={startSetup}
         disabled={loading}

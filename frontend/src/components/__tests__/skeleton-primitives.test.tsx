@@ -143,6 +143,11 @@ describe("SkeletonCard — the orders card-row shell (R136 UX-1)", () => {
     expect(cards).toHaveLength(4);
     for (const card of cards) {
       expect(card.className).toContain("border");
+      // R139 (precision): the row edge rhymes with the real OrderCard
+      // (border-border/60 since round-93) and the r138 resting family —
+      // was the verbatim-extracted full-strength border-border, which
+      // hardened every row at the orders list's shimmer→content swap.
+      expect(card.className).toContain("border-border/60");
       expect(card.className).toContain("rounded-xl");
       expect(card.className).toContain("p-4");
       // The composite row: w-12 tile, h-4 title line, chip pair.

@@ -18,7 +18,11 @@ export function ChangeDiff({ change }: { change: PreviewChange }) {
         {change.field}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-border/40">
-        <div className="bg-destructive/5 px-2 py-1.5 text-xs whitespace-pre-wrap break-words">
+        {/* R139 (precision): the قبل tile joins its بعد sibling on the
+            --status-* family — bg-destructive/5 → bg-status-error/5 (the
+            signed-direction pair reads error/success tokens, the same
+            exception class as the dry-run delta column). */}
+        <div className="bg-status-error/5 px-2 py-1.5 text-xs whitespace-pre-wrap break-words">
           <div className="text-3xs text-muted-foreground mb-0.5">قبل</div>
           {fmt(change.before)}
         </div>

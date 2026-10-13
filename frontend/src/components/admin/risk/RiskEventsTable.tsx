@@ -25,7 +25,13 @@ export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
                        table without the sticky-glass header — adopt the
                        orders/users money-directory recipe (sticky glass
                        thead, semibold th, border-b rows, one zebra value). */
-              className="sticky top-0 z-10 text-xs text-muted-foreground bg-card/85 backdrop-blur-md border-b border-border"
+              /* R139 (precision): the r138 family retires the GLASS —
+                         bg-card/85 + backdrop-blur-md → the solid
+                         bg-muted/30 quiet band + border-b border-border/60
+                         (the OrdersTable header register 139-e shipped);
+                         sticky + z-10 stay (the long-scroll affordance),
+                         semibold th already rode. */
+              className="sticky top-0 z-10 text-xs text-muted-foreground bg-muted/30 border-b border-border/60"
             >
               <tr>
                 {/* 96-F7 (R96 A6 #15 + #6): scope="col" for screen
@@ -63,7 +69,11 @@ export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
                 return (
                   <tr
                     key={e.id}
-                    className={`relative border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer ${
+                    /* R139 (precision): the row register — seams /30 → /60
+                       + hover /20 → /30 (one seam/hover value with the
+                       orders grid); zebra kept (not drift); the score cell
+                       gains tabular-nums to match its mobile twin. */
+                    className={`relative border-b border-border/60 hover:bg-muted/30 transition-colors cursor-pointer ${
                       i % 2 !== 0 ? "bg-muted/[0.035]" : ""
                     }`}
                   >
@@ -78,7 +88,7 @@ export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
                       {e.rule_fired.slice(0, 2).join(", ") || "—"}
                       {e.rule_fired.length > 2 && ` +${e.rule_fired.length - 2}`}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{e.score}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{e.score}</td>
                     <td className="px-4 py-2.5 text-2xs text-muted-foreground">{e.action_taken}</td>
                     <td className="px-4 py-2.5 text-2xs text-muted-foreground whitespace-nowrap">
                       {/* R125-I4 (A3-10): the whole row navigates —

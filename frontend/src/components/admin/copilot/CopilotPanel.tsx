@@ -688,8 +688,12 @@ export function CopilotPanel() {
       {/* Slide-out panel */}
       {open && (
         <>
+          {/* R139 (precision): the scrim joins the modal family —
+              bg-black/50 → /70 (the 139-d drawer/GlobalSearch register;
+              the panel below is a role="dialog" aria-modal surface, and
+              /50 under-read the stack). */}
           <div
-            className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm animate-in fade-in duration-150"
+            className="fixed inset-0 bg-black/70 z-40 backdrop-blur-sm animate-in fade-in duration-150"
             onClick={() => setOpen(false)}
           />
           <aside
@@ -706,7 +710,12 @@ export function CopilotPanel() {
             onKeyDown={(e) => {
               if (panelRef.current) trapTabKey(panelRef.current, e);
             }}
-            className={`fixed top-0 bottom-0 left-0 ${panelWidth} ${panelHeight} bg-card border-l border-border z-50 shadow-2xl animate-in slide-in-from-left-8 duration-200 flex outline-none`}
+            /* R139 (precision): declare elevation once — the panel's
+               shadow-2xl → shadow-sm + border-l border-border → /60 (the
+               139-d drawer/GlobalSearch modal recipe, R124-A3 #10); the
+               trap wiring, dialog semantics and slide-in ride
+               byte-identical. */
+            className={`fixed top-0 bottom-0 left-0 ${panelWidth} ${panelHeight} bg-card border-l border-border/60 z-50 shadow-sm animate-in slide-in-from-left-8 duration-200 flex outline-none`}
           >
             {/* History sidebar (collapsible) */}
             {showHistory && (

@@ -15,7 +15,12 @@ export function StatusFilterTabs({
   onSelect: (value: string) => void;
 }) {
   return (
-    <div className="flex gap-1 bg-secondary/50 border border-border/60 rounded-2xl p-1">
+    <div
+      /* R139 (precision): the tray wash aligns to the family segment
+         value (the orders/topups status trays ride the same secondary
+         /40 + border /60 pair; /50 was this bar's lone outlier). */
+      className="flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1"
+    >
       {STATUS_FILTERS.map((s) => (
         <button
           key={s.value}
@@ -24,7 +29,17 @@ export function StatusFilterTabs({
              aria-pressed exposes the toggle state (the
              orders.tsx/topups.tsx chip-bar idiom). */
           aria-pressed={statusFilter === s.value}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${statusFilter === s.value ? "bg-card shadow-sm text-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}
+          /* R139 (precision): the active tab joins the r138 calm-pill
+             family — bg-primary/15 + text-primary-text +
+             border-primary/30 + font-bold (the exact dialect the
+             orders/topups status twins shipped this round). Both
+             states carry a border box (inactive = transparent) so the
+             1px text jitter dies on toggle; the old card-colored chip
+             + its soft shadow read as a mini elevation lifting the
+             active tab out of the tray. Inactive stays quiet muted
+             ink with a muted/30 hover wash. aria-pressed + the
+             onSelect wiring are byte-identical. */
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${statusFilter === s.value ? "bg-primary/15 text-primary-text border border-primary/30 font-bold" : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}
         >
           {s.label}
         </button>

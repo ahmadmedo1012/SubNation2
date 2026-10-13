@@ -80,12 +80,17 @@ export function MobileTransferForm({
               /* R124-I1 (A5 P2, WCAG 4.1.2): aria-pressed exposes
                   which network is selected — the money path's
                   selector groups follow the tested home.tsx /
-                  product.tsx toggle-button idiom. */
+                  product.tsx toggle-button idiom.
+                  R139 (precision): network tiles keep their per-network
+                  token tints (the R94-A1/R124-I1 AA pair — semantic
+                  brand hues) but join the 1px family geometry — the old
+                  border-2 + active shadow-sm was the pre-r138
+                  raised-toggle register (see the method tabs above). */
               aria-pressed={network === n.value}
-              className={`py-3 rounded-xl border-2 font-bold text-sm transition-all press-spring ${
+              className={`py-3 rounded-xl border font-bold text-sm transition-all press-spring ${
                 network === n.value
-                  ? `${n.border} ${n.bg} ${n.color} shadow-sm`
-                  : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
+                  ? `${n.border} ${n.bg} ${n.color}`
+                  : "border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70"
               }`}
             >
               {n.label}
@@ -113,9 +118,15 @@ export function MobileTransferForm({
                   the method tabs above). */
               aria-pressed={amount === String(p)}
               className={`flex-1 min-w-[52px] min-h-11 py-2 rounded-xl text-sm font-bold transition-all border press-spring ${
+                /* R139 (precision): the money preset chips drop the SOLID
+                   primary fill + shadow-md shadow-primary/25 for the
+                   r138 money-path trio — the PDP VariantSelector decision
+                   (tinted /15 + /30 edge + primary-text ink; NO shadow
+                   anywhere in the selector, pinned by
+                   money-path-chrome-r139). aria-pressed byte-identical. */
                 amount === String(p)
-                  ? "border-primary bg-primary text-white shadow-md shadow-primary/25"
-                  : "border-border/50 bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                  ? "border-primary/30 bg-primary/15 text-primary-text"
+                  : "border-border/30 bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:border-border/70"
               }`}
             >
               {p}
@@ -149,7 +160,13 @@ export function MobileTransferForm({
           onBlur={onAmountBlur}
           required
           dir="ltr"
-          className="text-left h-11 rounded-xl border-border/50 focus:border-primary/45 bg-card"
+          className="text-left h-11 bg-card"
+          /* R139 (precision): border-border/50 + focus:border-primary/45
+             overrides stripped — the shared Input family owns the
+             A4-F12 AA resting border (muted-foreground/75) and the ONE
+             focus system (ring-2 ring-ring); the lypay twin below
+             already rode exactly this canonical form. h-11 = the 44px
+             storefront floor, bg-card = the solid-surface idiom. */
         />
       </div>
 
@@ -209,8 +226,8 @@ export function MobileTransferForm({
                 aria-pressed={senderPhone === phone}
                 className={`min-h-11 px-2.5 py-1 rounded-lg text-xs font-mono border transition-all flex items-center justify-center ${
                   senderPhone === phone
-                    ? "bg-primary/15 border-primary/50 text-primary-text"
-                    : "bg-secondary/30 border-border/50 hover:bg-secondary/50 text-muted-foreground"
+                    ? "bg-primary/15 border-primary/30 text-primary-text"
+                    : "bg-muted/30 border-border/30 hover:bg-muted/60 text-muted-foreground"
                 }`}
               >
                 {phone}
@@ -239,12 +256,12 @@ export function MobileTransferForm({
             aria-describedby={
               senderPhoneTouched && senderPhoneErr ? "topup-sender-phone-error" : undefined
             }
-            className={`text-left pl-10 h-11 rounded-xl bg-card transition-all ${
+            className={`text-left pl-10 h-11 bg-card transition-all ${
               senderPhoneTouched && senderPhoneErr
                 ? "border-destructive/60"
                 : senderPhoneTouched && senderPhone.length === 10 && !senderPhoneErr
                   ? "border-status-success/55"
-                  : "border-border/50 focus:border-primary/45"
+                  : ""
             }`}
             maxLength={10}
           />

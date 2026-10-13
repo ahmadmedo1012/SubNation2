@@ -189,7 +189,17 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-gradient-to-bl from-primary/5 via-background to-background">
+    /* R139 (precision): the operator entry mirrors the storefront
+       login's r138-g treatment — the hand-rolled linear atmosphere
+       (bg-gradient-to-bl from-primary/5) retires for the flat
+       bg-background + the sanctioned .ambient-wash INSIDE the card
+       below (the two-point static radial the storefront auth card,
+       GuestHero and AuthedHero ride): one atmosphere vocabulary, and
+       the admin session's own one-wash budget (the dashboard's
+       above-the-fold zone) never overlaps this surface — the login
+       page is PRE-session; once authenticated the operator lands on
+       the dashboard and this page is gone. */
+    <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-background">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-primary/10">
@@ -207,7 +217,21 @@ export default function AdminLoginPage() {
           </p>
         </div>
 
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-xl shadow-black/10">
+        {/* R139 (precision): the card gets the r138-g lift — .ambient-wash
+            + .hairline-glow inside a relative overflow-hidden frame (the
+            storefront login card's exact layer pair: the two-point radial
+            lifts the card off the page, the top-edge primary/30 hairline
+            replaces the flat top-border read; overflow-hidden clips both
+            to the rounded-2xl corners). The resting edge joins the
+            border/60 family and shadow-xl shadow-black/10 collapses into
+            the r138 two-layer calm elevation (the tight contact line +
+            contained ambient wash, neutral black) — this card is the
+            screen's ONE prominent surface, so it takes the prominent-card
+            recipe instead of a raw shadow token. Static, GPU-free,
+            pointer-events-none — depth cue, not decoration. */}
+        <div className="relative overflow-hidden bg-card border border-border/60 rounded-2xl p-6 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+          <div className="absolute inset-0 ambient-wash pointer-events-none" />
+          <div className="hairline-glow" />
           <form onSubmit={handleSubmit} className="space-y-4">
             {!needs2FA ? (
               <>
@@ -298,9 +322,19 @@ export default function AdminLoginPage() {
               </div>
             )}
 
+            {/* R139 (precision): the canonical CTA — the pre-R116-S1
+                hand-roll (flat bg-primary + hover:bg-primary/90 +
+                shadow-lg shadow-primary/25 + active:scale) retires for
+                Button's default recipe via size="lg" (the gradient fill,
+                shadow-md/25 elevation, press-spring and the ONE focus
+                system all ride buttonVariants now). Full-width at every
+                breakpoint — a single-column auth form is the R116-S1
+                recipe's w-full half; the label/disabled/spinner contract
+                is byte-identical. */}
             <Button
               type="submit"
-              className="w-full h-11 bg-primary hover:bg-primary/90 font-bold text-base shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
+              size="lg"
+              className="w-full font-bold"
               disabled={loginMutation.isPending || isVerifying}
             >
               {loginMutation.isPending || isVerifying ? (

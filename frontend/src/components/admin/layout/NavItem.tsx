@@ -53,13 +53,25 @@ export function NavItem({
         title={collapsed ? item.label : undefined}
       >
         <div
+          /* R139 (precision): the active item migrates to the r138 calm
+             active pill — bg-primary/15 + text-primary-text +
+             border-primary/30 + font-bold (the login tab pair /
+             MobileNav / RiskFilterChips family, one vocabulary for every
+             selected state). Two deltas vs the old border-primary/20:
+             (1) /20 → /30 — the trio's pinned edge alpha (a /20 edge
+             vanished on the muted sidebar); (2) BOTH states now carry
+             the border box — the inactive branch adds
+             border-transparent, so the active↔inactive toggle can never
+             shift the label by a pixel (the jitter the duo killed on
+             the storefront). The aria-current contract above is
+             byte-identical — visual layer only. */
           className={`
-            relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold
+            relative flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold border
             transition-all duration-150 group
             ${
               active
-                ? "bg-primary/15 text-primary-text font-bold border border-primary/20"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                ? "bg-primary/15 text-primary-text font-bold border-primary/30"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/60"
             }
             ${collapsed ? "justify-center px-2" : ""}
           `}

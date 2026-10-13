@@ -23,8 +23,13 @@ export function FaqSection() {
         {SUPPORT_FAQ.map((item, i) => (
           <details
             key={i}
-            className="group bg-card border border-border/55 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none"
+            className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none"
           >
+            {/* R139 (precision): /55 → /60 — the card-family resting edge
+                (one value grid-wide). The accordion affordances — summary
+                semantics, marker suppression, the group-open chevron
+                rotator — are byte-identical (the R137 extraction's
+                "verbatim move" contract). */}
             <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
               <span className="text-sm font-bold flex-1">{item.question}</span>
               <ChevronLeft className="w-4 h-4 text-muted-foreground transition-transform group-open:-rotate-90 shrink-0" />
