@@ -212,8 +212,14 @@ describe("R139 (139-j) — pricing: the §6 destructive contract (dry-run previe
     expect(previewCard).toContain('"bg-card border border-border/60 rounded-2xl p-5 space-y-4"');
     expect(previewCard).toContain('"border-b border-border/60 bg-muted/30 text-muted-foreground"');
     expect(previewCard).toContain('"border-b border-border/60 last:border-0"');
-    expect(previewCard).toContain('text-right font-semibold">الباقة');
-    expect(previewCard).toContain('text-left font-semibold">السعر الحالي');
+    // R141: whitespace-free matching for the two header pins — r140 added
+    // scope="col" to RecomputePreviewCard's th row and prettier wrapped
+    // each th's text onto its own line, breaking the byte-adjacent pins
+    // on pure layout (classes + cell text unchanged; the component's own
+    // note: «Classes byte-identical»).
+    const squash = (s: string): string => s.replace(/\s+/g, "");
+    expect(squash(previewCard)).toContain(squash('text-right font-semibold">الباقة'));
+    expect(squash(previewCard)).toContain(squash('text-left font-semibold">السعر الحالي'));
     expect(previewCard.split('className="font-bold text-lg tabular-nums"').length - 1).toBe(2);
     expect(previewCard).not.toContain("text-lg tabular-nums text-status-warning");
     expect(stripComments(previewCard)).not.toContain("text-destructive");

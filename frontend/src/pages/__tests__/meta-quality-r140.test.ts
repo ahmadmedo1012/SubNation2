@@ -379,7 +379,13 @@ describe("R-140-h page shapes — not-found (soft-404)", () => {
 
   it("the description sits in the 50–160 band (R-140-h fix: was 40 chars)", () => {
     const call = seoCall(NOT_FOUND_SRC, "not-found");
-    expect(call).toContain(`description: "${NF_DESC}"`);
+    // R141: whitespace-normalized match — prettier wrapped not-found's
+    // long description onto its own line (`description:\n  "…"`) when
+    // r140's own source landed, and the byte-exact pin failed on pure
+    // formatting. The pinned contract is the VALUE inside the call, not
+    // the line layout.
+    const flat = (s: string): string => s.replace(/\s+/g, " ");
+    expect(flat(call)).toContain(flat(`description: "${NF_DESC}"`));
     expect(NF_DESC.length).toBeGreaterThanOrEqual(50);
     expect(NF_DESC.length).toBeLessThanOrEqual(160);
     // and mirrors the visible body copy family (unfurl coherence).

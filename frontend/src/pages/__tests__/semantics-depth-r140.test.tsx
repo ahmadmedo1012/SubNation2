@@ -138,8 +138,16 @@ describe("R-140-l — the admin real-table register: scope + accessible name", (
 
   it("RecomputePreviewCard: the money sample keeps the r139 byte pins over the scoped th", () => {
     const src = strippedRealTables["src/components/admin/pricing/RecomputePreviewCard.tsx"];
-    expect(src).toContain('text-right font-semibold">الباقة');
-    expect(src).toContain('text-left font-semibold">السعر الحالي');
+    // R141: whitespace-free matching for the two header pins — r140 added
+    // scope="col" (this register's one unscoped table) and prettier
+    // wrapped each th's text onto its own line, so the byte-adjacent
+    // `…font-semibold">الباقة` pins broke on pure layout. The pinned
+    // contract is the class string + the cell text on the SAME th, not
+    // their line adjacency (the component's own note: «Classes
+    // byte-identical»).
+    const squash = (s: string): string => s.replace(/\s+/g, "");
+    expect(squash(src)).toContain(squash('text-right font-semibold">الباقة'));
+    expect(squash(src)).toContain(squash('text-left font-semibold">السعر الحالي'));
     expect(src).toContain('"border-b border-border/60 bg-muted/30 text-muted-foreground"');
   });
 });

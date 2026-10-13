@@ -8,7 +8,7 @@ import path from "path";
 import { defineConfig, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { gzipSync } from "zlib";
-import { injectGoogleSiteVerification } from "./src/lib/seo";
+import { indexOfOutsideComments, injectGoogleSiteVerification } from "./src/lib/seo";
 
 /**
  * Bundle budget plugin that checks gzip size of the main index JS bundle.
@@ -403,24 +403,76 @@ export function buildPreloadGateTag(homeChunks: string[]): string {
  * pending stylesheet waits for that stylesheet, which would push the
  * home fetch behind the CSS on cold storefront boots). Returns the
  * input unchanged when there is no home chunk (nothing to gate) or no
- * <head> to anchor against. The $$ escaping neutralizes any `$` in the
- * tag for String.replace (belt-and-suspenders — hash chars are
- * [A-Za-z0-9_-]).
+ * head element to anchor against.
+ *
+ * R141 (the r140 boot-order incident): the anchor is now COMMENT-AWARE
+ * via indexOfOutsideComments — the old `html.replace(/(<head[^>]*>)/)`
+ * matched the FIRST byte-level sequence, so a comment that spells out a
+ * literal head-open tag in prose (anywhere before the real element)
+ * would hijack the injection into the comment. In the r140 shell the
+ * real head luckily preceded the decoy so the gate still landed
+ * correctly — but a future comment ABOVE the head element (a license
+ * banner, a doctype note) would have broken it the same way the
+ * head-CLOSE decoy broke the font/entry/PWA injections. Slice-splicing
+ * instead of String.replace also removes the `$`-escaping hazard
+ * entirely (the tag is interpolated as literal bytes, never as a
+ * replacement pattern).
  */
 export function injectPreloadGate(html: string, homeChunks: string[]): string {
   if (homeChunks.length === 0) return html;
   const tag = buildPreloadGateTag(homeChunks);
-  return html.replace(/(<head[^>]*>)/, `$1\n    ${tag.replace(/\$/g, "$$$$")}`);
+  const headOpenAt = indexOfOutsideComments(html, "<head");
+  if (headOpenAt === -1) return html;
+  const openTag = /<head[^>]*>/.exec(html.slice(headOpenAt));
+  if (!openTag) return html; // "<head" without a closing `>` — not an anchor we can trust.
+  const at = headOpenAt + openTag[0].length;
+  return html.slice(0, at) + `\n    ${tag}` + html.slice(at);
 }
 
 /**
- * Inject <link rel="preload"> for the critical Readex Pro woff2 fonts
- * (Arabic 400/600/700 + Latin 400 — the LCP-text faces).
+ * R141 (the r140 boot-order incident) — the font-preload injection,
+ * extracted from criticalPreloadInject's transformIndexHtml so the
+ * decoy-comment regression is unit-testable as a pure transform
+ * (the preload-gate / seo-head-inject test idiom).
  *
- * Why preload: the browser only discovers @font-face rules AFTER it has
- * parsed the index CSS bundle. Without a preload, the woff2 fetch waits
- * on the CSS download + parse (~50-100 ms on mobile). Preload makes the
- * browser start the woff2 fetch in parallel with the CSS, shaving
+ * The old body was `html.replace(/(\s*<\/head>)/, `\n    ${tagBlock}$1`)`
+ * — a FIRST-byte-match replace. r140's BOOT ORDER comment spelled out
+ * the literal head-close tag sequence in its prose ~25 lines above the
+ * real element, so this replace (and, independently, Vite's own
+ * head-end injection and the PWA registerSW injector, which use the
+ * same first-match discipline) injected the ENTIRE payload inside the
+ * comment: the deployed shell carried no font preloads, no entry
+ * module, no stylesheet, no SW registration — a shell that can never
+ * boot («يتطلب الموقع تشغيل JavaScript» live outage). The anchor is
+ * now indexOfOutsideComments — the first head-close sequence that is
+ * provably NOT inside a comment. Output shape for a healthy shell is
+ * byte-identical to the old replace (tags on their own indented lines,
+ * the pre-existing whitespace before the close tag preserved).
+ */
+export function injectCriticalFontPreloads(html: string, tags: string[]): string {
+  if (tags.length === 0) return html;
+  const headCloseAt = indexOfOutsideComments(html, "</head");
+  if (headCloseAt === -1) return html;
+  // Consume the whitespace run before the close tag, exactly like the
+  // old `(\s*<\/head>)` capture — re-emitted after the tag block.
+  let start = headCloseAt;
+  while (start > 0 && /\s/.test(html[start - 1])) start -= 1;
+  const tagBlock = tags.join("\n    ");
+  return html.slice(0, start) + `\n    ${tagBlock}` + html.slice(start);
+}
+
+/**
+ * Build-time injection of the critical Readex Pro woff2 font preloads
+ * (Arabic 400/600/700 + Latin 400 — the LCP-text faces) plus the admin-
+ * gated home-chunk preload. The tag EMISSION (which woff2 files, which
+ * home chunks) lives in the handler below; the tag INJECTION (where in
+ * the shell they land) is the exported injectCriticalFontPreloads above
+ * — extracted in R141 so the decoy-comment regression is unit-testable.
+ *
+ * Why preload at all: the browser only discovers @font-face rules AFTER
+ * it has parsed the index CSS bundle. Without a preload, the woff2 fetch
+ * waits on the CSS download + parse (~50-100 ms on mobile). Preload makes
+ * the browser start the woff2 fetch in parallel with the CSS, shaving
  * ~10-30 ms off LCP for Arabic-text LCP elements (most of the homepage).
  *
  * F4-F4 (R111): the Arabic 700 face joined the preload set. The guest
@@ -556,12 +608,14 @@ function criticalPreloadInject(): Plugin {
 
         if (tags.length === 0) return html;
 
-        // Inject right before the </head> close so the hints sit
-        // alongside the existing network hints. The browser starts the
-        // font/chunk fetches during HTML parse, in parallel with the CSS
-        // bundle and the entry script.
-        const tagBlock = tags.join("\n    ");
-        return html.replace(/(\s*<\/head>)/, `\n    ${tagBlock}$1`);
+        // R141: the injection body moved to injectCriticalFontPreloads
+        // (comment-aware head-close anchor). The old
+        // `html.replace(/(\s*<\/head>)/, ...)` matched the FIRST byte
+        // sequence — r140's BOOT ORDER comment spelled out the literal
+        // head-close tag text in its prose, so the preloads (and Vite's
+        // own head-end payload, which anchors the same way) landed
+        // INSIDE the comment: a dead shell, the live no-JS outage.
+        return injectCriticalFontPreloads(html, tags);
       },
     },
   };

@@ -10,6 +10,60 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R141 — the hotfix round: the r140 boot-order decoy (live no-JS outage) closed — 2026-10-13
+
+The operator reported the site dead — «يتطلب الموقع تشغيل JavaScript»
+on desktop, a white screen on mobile. **Root cause (byte-level, live-
+reproduced)**: r140's BOOT ORDER documentation comment in
+`frontend/index.html` spelled out the literal head-close tag sequence
+inside its prose («[build-injected, before …]», point 3). Every
+injector in the build pipeline anchors on the FIRST byte-level match of
+that sequence — Vite's own head-end injection (entry module + CSS +
+vendor modulepreloads), `criticalPreloadInject`'s font preloads, and the
+PWA registerSW injector — so the ENTIRE injected payload landed INSIDE
+the comment and shipped as inert text. The deployed shell carried no
+entry script, no stylesheet, no font preloads and no SW registration:
+a shell that can never boot. The backend had already met this exact
+class in its R120 hotfix (spa-shell.ts rewrites only non-comment
+segments); the frontend build pipeline now carries the same discipline.
+
+**The fix (three layers + the debt)**:
+- **The trigger removed** (index.html): the BOOT ORDER comment rewritten
+  tag-sequence-free — positions described in words, never in tags — plus
+  an in-comment TAG-SEQUENCE BAN documenting the incident for every
+  future editor.
+- **The anchors hardened** (`src/lib/seo.ts` + `vite.config.ts`): new
+  `indexOfOutsideComments` primitive (comment-aware first-match, fail-
+  safe on unclosed comments) now backs `injectCriticalFontPreloads`
+  (extracted from `criticalPreloadInject` for pure-transform testing),
+  `injectPreloadGate` (head-open anchor), and `injectGoogleSiteVerifi-
+  cation`'s head-close fallback. Healthy-shell output byte-identical to
+  the old replaces.
+- **The regression gates** (`shell-head-anchors.test.ts`, 17 tests):
+  the primitive itself, each injector against the reconstructed r140
+  incident fixture (decoy comment + real element — the payload must
+  land outside every comment), the GSC fallback, and the REAL
+  index.html source hygiene (no comment may ever contain a literal
+  head open/close sequence — the ban enforced forever).
+- **r140's own four red tests closed** (pre-existing on pristine
+  origin/main, none caused by this fix): `meta-quality-r140` (not-found
+  description pin, prettier-wrapped), `r139-debt-closure-r140`
+  (FlashSaleBanner dir-span pin, prettier-wrapped),
+  `semantics-depth-r140` + `admin-financial-growth-visual-r139`
+  (RecomputePreviewCard header pins — r140 added `scope="col"`, prettier
+  wrapped the th texts, byte-adjacency broke). All four now match
+  whitespace-normalized: the pinned contract is the value, not the line
+  layout.
+
+**Verified centrally**: typecheck green · lint 0 errors · **frontend
+243 files / 2,306 tests green (+17, one new suite)** · production build
+green with the built shell structurally verified (entry + CSS +
+modulepreloads + 4 font preloads + registerSW ALL outside comments,
+exactly 4 src'd scripts — the R126 inspection contract restored) · real
+browser boot against the built shell: `#static-offline` removed
+synchronously, the storefront renders (navbar, hero, catalog copy),
+console clean. Commit `<R141-SHA>`.
+
 ## Round R140 — the maturity round: four new dimensions, sixteen agents, every lane frozen — 2026-10-13
 
 The operator ordered «استمر بشكل اكبر واوسع» — bigger and wider. R139

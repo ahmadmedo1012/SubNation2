@@ -170,16 +170,36 @@
     <link rel="dns-prefetch" href="https://www.google.com" />
     <link rel="dns-prefetch" href="https://www.gstatic.com" />
 
-    <!-- R-140-b — BOOT ORDER (the critical path this tag sits on):
-         1. [build-injected, right after <head> opens] the external
-            preload-gate script — non-admin boots append the home
-            chunk's modulepreload during head parse (vite.config.ts:
+    <!-- R-140-b — BOOT ORDER (the critical path this tag sits on).
+         R141 HOTFIX — THE TAG-SEQUENCE BAN (learned the hard way): this
+         comment must NEVER spell out a literal head open/close tag
+         sequence, not even as prose inside brackets. r140 shipped point
+         3 below with the literal head-close tag text written out here —
+         and every build-time injector in the pipeline (Vite's own
+         head-end injection for the entry module + CSS + vendor
+         modulepreloads, criticalPreloadInject's font preloads, the PWA
+         registerSW injector) anchors on the FIRST such byte sequence in
+         the raw HTML, comment or not. The decoy swallowed the ENTIRE
+         injected payload into this comment: the deployed shell carried
+         no entry script, no stylesheet, no font preloads and no SW
+         registration — a dead shell that can never boot, surfacing live
+         as the «يتطلب الموقع تشغيل JavaScript» reveal on desktop and a
+         white screen on mobile (no CSS at all). The anchors our side
+         owns are now comment-aware (indexOfOutsideComments in
+         src/lib/seo.ts, used by vite.config.ts) and
+         shell-head-anchors.test.ts pins both layers — but the prose
+         here stays tag-sequence-free regardless: describe positions in
+         words ("the head element opens / closes"), never in tags.
+         1. [build-injected, right after the head element opens] the
+            external preload-gate script — non-admin boots append the
+            home chunk's modulepreload during head parse (vite.config.ts:
             PRELOAD_GATE_SOURCE; pinned by preload-gate.test.ts).
          2. THIS script (/init.js, below) — the theme class from
             localStorage lands BEFORE first paint, so light-mode users
             never see a dark flash.
-         3. [build-injected, before </head>] the CSS link, vendor
-            modulepreloads and the 4 critical woff2 font preloads.
+         3. [build-injected, before the head element closes] the CSS
+            link, vendor modulepreloads and the 4 critical woff2 font
+            preloads.
          4. body — #root carries the static-offline no-JS fallback
             (6 s CSS reveal); a healthy main.tsx removes it
             synchronously during module evaluation.
@@ -190,7 +210,7 @@
             first-4 card-image warming) → the main body (error-buffer
             install, Sentry schedule, direction lock, offline-reveal
             removal, API config, idle analytics) → createRoot().
-            render(<App />) → AuthGate probe → home mounts on the
+            render of App → AuthGate probe → home mounts on the
             already-warm chunk + seeded cache → hero/LCP paints with
             the preloaded fonts resident. -->
     <script src="/init.js"></script>

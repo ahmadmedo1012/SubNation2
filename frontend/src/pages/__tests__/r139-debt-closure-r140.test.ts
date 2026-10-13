@@ -97,8 +97,17 @@ describe("R140 (a) — category eyebrow: «let the h1 speak» (the r139-k author
 
 describe("R140 (b) — FlashSaleBanner countdown: STRUCTURAL LTR isolation (139-k's layout-owned flag)", () => {
   it("each digit group is an isolated LTR run — span-level dir, exactly one per segment", () => {
-    expect(banner).toContain(
-      '<span dir="ltr" className="font-bold tabular-nums text-2xs sm:text-xs leading-tight">',
+    // R141: whitespace-free match — prettier wrapped this span's
+    // attributes onto their own lines when r140's source landed, and
+    // live()'s collapse-to-single-space left `…leading-tight" >` where
+    // the byte pin demanded `…leading-tight">`. The pinned contract is
+    // the attribute set + class string on the SAME span, not its line
+    // layout; squash both sides so any future re-wrap stays green.
+    const squash = (s: string): string => s.replace(/\s+/g, "");
+    expect(squash(banner)).toContain(
+      squash(
+        '<span dir="ltr" className="font-bold tabular-nums text-2xs sm:text-xs leading-tight">',
+      ),
     );
     // Exactly ONE dir="ltr" in the file = per-digit isolation, NOT a
     // wrapping container (which would flip the segments' RTL flex order —
