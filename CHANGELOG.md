@@ -10,6 +10,99 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R138 — the deep visual round: atmosphere, premium resting states, the quiet receipt — 2026-10-13
+
+The operator ordered «ادخل في جولة تانية من مننظور مختلف بشكل كامل
+واستخدم كل مهاراتك واكمل المشروع مع التركيز على المظهر وتجربة
+المستخدم» — a completely different lens: appearance and user experience.
+R136/R137 were engineering-lens (decomposition); R138 is designer-lens.
+**Grounding**: a live-site visual audit (agent-browser screenshots of
+subnation.ly at 1440px/390px/login + VLM design critique) read the hero
+as «just a dark rectangle with text» (the blob vocabulary existed but its
+call-site alphas — primary/8 and /5 — rendered sub-perceptual), the
+filter bar as «too heavy», the login tab state as ambiguous-at-a-glance.
+**Method**: one orchestrator-owned CSS foundation + 8 parallel styling
+agents on disjoint file sets (hero / ProductCard / nav chrome / filters /
+money path / PDP / auth / emotional floor), every decision inside the
+FINAL_UX_SYSTEM.md quiet-premium contract (no gradient text, no glass, no
+glow halos, no sweep, weights 400/600/700 only, ≥11px, one focus system).
+**Verified centrally**: typecheck green · lint 0 errors · **217 files /
+1,677 tests green** (+2 suites, +16 tests) · production build + PWA green
+· VLM re-critique **7/10, from 3-4** («the hero is a designed space now»,
+filter bar «much better integrated»). Commit `fd9086d`.
+
+### Foundation (index.css — orchestrator-owned, single-writer this round)
+- **`.ambient-wash`** — two-point static radial atmosphere (primary 10%
+  at the reading corner, info-cool 6% on the diagonal); static and
+  GPU-free — a depth cue, not decoration. Consumers: GuestHero,
+  AuthedHero, login card, register card, not-found.
+- **`.hairline-glow`** — the top-edge 1px `primary/30` gradient hairline,
+  position/inset/pointer-events baked in; dedupes the MobileNav + Footer
+  inline copies (byte-equal stops) and adopted net-new by Navbar, the
+  PDP sticky buy bar, and the auth cards.
+
+### The eight surfaces (agents 138-a…138-h)
+- **Hero (a)**: ambient-wash + hairline-glow layers added; blobs
+  **8→14 / 5→9**; directional gradient **10→12**; AuthedHero mirrored
+  (one family, identical values). The 96-F5 off-screen pause preserved
+  byte-identically. StatsWidgets audited — deliberately unchanged.
+- **ProductCard (b)**: resting border **70→60** (wider resting→hover
+  gap), resting shadow → the **two-layer calm elevation**
+  (`0 1px 2px rgb(0 0 0/0.3), 0 10px 28px -14px rgb(0 0 0/0.4)` —
+  neutral black, not primary-tinted: primary at 4-6% reads as *color*
+  on `.light`), image well **bg-card → bg-muted/60** (the shelf — was
+  same-tone as the body at ~1.3:1), badge shadow **primary/40→30**;
+  +3 new pins in the r120 regression suite, resting-chrome re-pinned.
+- **Nav chrome (c)**: Navbar's **glass retired** (scrolled
+  `bg-card/95 backdrop-blur-3xl shadow-md` → solid `bg-card` +
+  `shadow-sm`; resting `/80+blur-xl` → solid; both drawers and the
+  desktop categories dropdown likewise) — the 96-F4 MobileNav recipe
+  completed across the family; hairline-glow everywhere; Footer edge
+  **/30→/35** (the family's content-facing value). FlashSaleBanner
+  audited — deliberately unchanged (contrast-pinned promo dialect).
+- **Filters (d)**: search + sort fields **bg-card → bg-card/60**;
+  inactive chips **card/border-50 → muted/30 + border/30**; the active
+  category chip **solid `bg-primary text-primary-foreground` → the calm
+  tinted pill `bg-primary/15 text-primary-text border-primary/30`**
+  (kills the 1px toggle jitter — both states carry the border box);
+  chip gap **1.5→2**; bar→grid margins **4/6 → 5/8**.
+- **Money path (e)**: `CartSummaryAside` got the **receipt metaphor** —
+  hairline `/20` rules at section boundaries only, the terminal
+  double-rule above «الإجمالي», emphasis by **weight+size, not color**
+  (terminal amount lost `text-primary-text`); cart's 3 money CTAs →
+  the canonical `size="lg"` recipe (hand-rolled h-12/shadows removed);
+  line-item title **700→600** (price stays 700 — the hierarchy was
+  inverted); unit price `text-primary-text → text-foreground` (ink for
+  money); clear-cart trigger quiet-at-rest. 15 suites / 138 tests green.
+- **PDP (f)**: selected plan/duration pills → the tinted dialect
+  (**AA 5.19:1 dark / 4.54:1 light** at 14px bold, measured on the full
+  composite stack); **h1 fluid-2xl → fluid-3xl** (the title measured
+  ≈23.6px on 390px — UNDER the price's fixed 30px, inverting the anchor
+  order on mobile); media shelf **bg-muted/60** + `drop-shadow-2xl→lg`;
+  sticky buy bar glass retired + hairline-glow + the mirrored
+  two-layer elevation (`0_-1px_2px…` bottom-docked); 4 CTAs → canonical.
+- **Auth (g)**: login/register tabs → the **calm-active trio**
+  (`bg-primary/15 text-primary-text border-primary/30` — the MobileNav
+  family; both states carry the border box); footer rows
+  **muted→foreground (8.45→18.7:1)**; ValueChips **3xs→2xs +
+  foreground** (17.3:1); card **mt-5→mt-4** (the 120px void below);
+  ambient-wash + hairline-glow lift, symmetric. WhatsApp OTP hints
+  **2xs→xs**. Copy byte-identical (strings are test-pinned).
+- **Emotional floor (h)**: `FetchErrorCard` — the red leaves the frame
+  (**`border-status-error/22 → border-border/60`** resting family) and
+  concentrates in the icon stage (the ONE accent); all 3 retry CTAs →
+  canonical recipe + **min-h-11 net-new** on section/compact; not-found
+  got ambient-wash + ring alphas raised one quiet step + the quiet-chip
+  family; EmptyState proportions refined; order-detail's success moment
+  audited — deliberately unchanged (already the sanctioned ladder).
+
+### Follow-ups flagged (not implemented — outside ownership lanes)
+`product/CtaBlock` compact-twins' register (F, partially adopted) ·
+route-skeleton `ProductCardShell` border `/50` vs the new `/60` family ·
+an optional money-path chrome regression pin suite · the AuthProviders
+stack seam (10px uniform — uniform but narrow) · the WhatsApp OTP
+mechanism copy clarification (pinned; needs the copy owner).
+
 ## Round R137 — the total-surface decomposition: 22 monoliths split across three parallel agent waves, the route registry extracted, the a11y labeling guard — 2026-10-13
 
 The operator ordered «وادخل في الجولة التالية ويجب ان تكون اعمق واشمل واضخم»
