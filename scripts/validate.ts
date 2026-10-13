@@ -12,7 +12,6 @@
  *   2. Run OTP login validation
  *   4. Run Redis ping + rate-limit round-trip
  *   5. Run Socket.IO connect → emit → receive on `user:{userId}`
- *   6. Run worker heartbeat freshness check
  *   7. Run admin dashboard load smoke test
  *   8. Run mobile rendering smoke test
  *   9. Run Lighthouse mobile ≥90 + desktop ≥98 on home
@@ -167,8 +166,7 @@ async function dispatchValidationFailureAlert(
       },
       dedupKey: `validation_suite_failure|${checkName}`,
       summary: `Validation check "${checkName}" failed or timed out`,
-      runbookUrl:
-        "https://github.com/subnation/subnation2/blob/main/MONITORING_RUNBOOK.md#validation-suite-failure",
+      runbookUrl: "https://github.com/ahmadmedo1012/SubNation2/blob/main/OPERATIONS_RUNBOOK.md",
     };
 
     // Dispatch to all channels
@@ -726,7 +724,6 @@ function printHelp(): void {
     "  - OTP login validation",
     "  - Redis ping + rate-limit round-trip",
     "  - Socket.IO connect → emit → receive",
-    "  - Worker heartbeat freshness",
     "  - Admin dashboard load smoke test",
     "  - Mobile rendering smoke test",
     "  - Lighthouse mobile ≥90 + desktop ≥98 on home (43.2)",

@@ -12,7 +12,12 @@ import { SkeletonText } from "@/components/ui/Skeleton";
 // untouched, so the .then chain's reject-on-!ok semantics are
 // preserved. fetchJsonOrNull keeps its R120-B4 isAdminUnauthorized
 // guard (already 401-aware).
-import { AdminSessionExpiredError, adminFetchJson, isAdminUnauthorized } from "@/lib/admin-session";
+import {
+  AdminSessionExpiredError,
+  adminFetch,
+  adminFetchJson,
+  isAdminUnauthorized,
+} from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { Bell, Bot, Info, KeyRound, Shield, UserCog } from "lucide-react";
@@ -147,7 +152,13 @@ export default function AdminSettingsPage() {
   // mid-session defers to the global handler instead of a local error
   // card on top.
   const fetchJsonOrNull = async (url: string): Promise<Record<string, unknown> | null> => {
-    const res = await fetch(url, { headers: adminHeaders });
+    // D-1/D-3 (R142): adminFetch = the session-aware wrapper + the 20 s
+    // app-wide timeout contract — this was the one settings fetch still on
+    // a bare fetch (the header comment claimed otherwise). The local
+    // ok-guard + "__unauthorized__" sentinel below stay (decomposition
+    // pin); an expired-session 401 now arrives as
+    // AdminSessionExpiredError from adminFetch itself.
+    const res = await adminFetch(url, { headers: adminHeaders });
     if (isAdminUnauthorized(res, url)) throw new Error("__unauthorized__");
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as {
@@ -166,10 +177,32 @@ export default function AdminSettingsPage() {
         fetchJsonOrNull("/api/admin/settings"),
         fetchJsonOrNull("/api/admin/settings/auth"),
       ]);
-      if (sysSettings) setSettings(sysSettings as unknown as TelegramSettings);
+      // N-4 (R142): the backend emits EXACTLY {telegram_configured,
+      // platform_name, currency, maintenance_mode}
+      // (backend/src/routes/admin/settings.ts:15-22) — the legacy local
+      // type's telegram_bot_set / telegram_chat_set were NEVER emitted, so
+      // the two key rows read undefined and permanently rendered
+      // «غير موجود». TelegramSettings now mirrors the real 4-field
+      // contract; the shape gate keeps a garbage 200 out of the rows.
+      if (
+        sysSettings &&
+        typeof sysSettings.telegram_configured === "boolean" &&
+        typeof sysSettings.platform_name === "string" &&
+        typeof sysSettings.currency === "string" &&
+        typeof sysSettings.maintenance_mode === "boolean"
+      ) {
+        setSettings(sysSettings as unknown as TelegramSettings);
+      }
       if (authData && Array.isArray(authData.providers))
         setProviders(authData.providers as AuthProvider[]);
     } catch (err) {
+      // D-1 (R142): adminFetch throws this AFTER the global handler has
+      // toasted + redirected — stay quiet locally (runTelegramTest's
+      // quiet-catch idiom).
+      if (err instanceof AdminSessionExpiredError) {
+        setLoading(false);
+        return;
+      }
       if (err instanceof Error && err.message === "__unauthorized__") {
         // The global 401 handler toasted + redirected — nothing local.
         setLoading(false);

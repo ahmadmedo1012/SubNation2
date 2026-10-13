@@ -6,7 +6,10 @@ import { pageParam } from "../lib/http";
 import { idempotency } from "../middlewares/idempotency";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { insertLedgerEntry } from "../lib/ledger";
-import { roundLyd } from "../lib/money";
+// G-6 (R142): formatLyd — the R128 B8-D3 en-US grouping canon (M17);
+// the convert success message was the one LYD display still on raw
+// toFixed(2) («1500.00 د.ل» instead of «1,500.00 د.ل»).
+import { formatLyd, roundLyd } from "../lib/money";
 import {
   claimIdempotencyKey,
   findIdempotencyClaimed,
@@ -323,7 +326,7 @@ router.post(
         lyd_credited: lydValue,
         new_points: result.newPoints,
         new_balance: result.newBalance,
-        message: `تم تحويل ${pointsToConvert} نقطة إلى ${lydValue.toFixed(2)} د.ل`,
+        message: `تم تحويل ${pointsToConvert} نقطة إلى ${formatLyd(lydValue)}`,
       });
     } catch (err) {
       if (err instanceof ConflictError) {

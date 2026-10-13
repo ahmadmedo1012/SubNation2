@@ -20,29 +20,10 @@ import { adminCopilotHistoryRouter } from "../admin/copilot/history";
  * no-op). entity_type/entity_id are documented deprecated no-ops.
  */
 
-const COPILOT_ACTIONS_DDL = `
-CREATE TABLE copilot_actions (
-  id serial PRIMARY KEY,
-  preview_id varchar(32),
-  admin_id integer NOT NULL,
-  intent_text text NOT NULL,
-  tool_name varchar(100),
-  action_class varchar(50) NOT NULL,
-  risk_tier varchar(20) NOT NULL,
-  outcome varchar(20) NOT NULL,
-  failure_reason text,
-  before_state jsonb,
-  after_state jsonb,
-  confirmed_once_at timestamptz,
-  confirmed_twice_at timestamptz,
-  executed_at timestamptz,
-  model_id varchar(64),
-  model_input_tokens integer,
-  model_output_tokens integer,
-  correlation_id varchar(64) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-`;
+// R142 (E-1/F-2): copilot_actions now ships from the shared harness
+// (test/db.ts prod-parity DDL, in the TRUNCATE list) — the local
+// duplicate CREATE + the explicit TRUNCATE below were removed (the
+// harness create made them collide with "already exists").
 
 function buildApp(): Express {
   const app = express();
@@ -101,12 +82,10 @@ async function get(url: string, path: string, token: string) {
 
 beforeAll(async () => {
   await initTestDb();
-  await db.execute(sql.raw(COPILOT_ACTIONS_DDL));
 });
 
 beforeEach(async () => {
   await resetTestDb();
-  await db.execute(sql.raw("TRUNCATE copilot_actions RESTART IDENTITY"));
 });
 
 describe("GET /api/admin/copilot/history — contract (A5-02/A5-06)", () => {

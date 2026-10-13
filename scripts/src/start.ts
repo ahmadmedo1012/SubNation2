@@ -15,7 +15,10 @@ if (missing.length > 0) {
 }
 
 const port = parsePreferredPort(process.env.PORT ?? process.env.API_PORT, 8080, "PORT");
-const origin = process.env.APP_URL ?? process.env.RENDER_EXTERNAL_URL ?? `http://127.0.0.1:${port}`;
+// R142 (A-7): the RENDER_EXTERNAL_URL middle term is gone — Render retired
+// 2026-10-05 and the platform injection can never exist on Coolify/compose;
+// it read as if the split-era fallback was still live.
+const origin = process.env.APP_URL ?? `http://127.0.0.1:${port}`;
 
 console.log(`SubNation production server: ${origin}`);
 

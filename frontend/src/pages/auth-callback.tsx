@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -15,44 +14,31 @@ const HANG_TIMEOUT_MS = 12_000;
  * /api/auth/probe to detect the cookie session and set the sentinel
  * token; this page just bounces to "/" and lets the SPA re-hydrate.
  *
- * Legacy path: older Firebase / Telegram redirects still place
- * `?token=…` in the URL. We continue to honour them so a deploy that
- * lands the backend change before the frontend (or vice-versa) does
- * not strand sessions. The legacy branch is removed once every active
- * session has rolled over via the cookie path.
+ * H-4 (R142): the legacy `?token=` branch is DELETED — its own doc
+ * mandated removal "once every active session has rolled over via the
+ * cookie path", and that rollover completed long ago (98-F3 predates
+ * 40+ rounds; every 30-day session minted since carries the cookie
+ * only, and no mint route returns a body-borne token). The branch was
+ * dormant-but-armed login-CSRF-shaped code: any future route that ever
+ * echoed a real token would have re-armed it.
  *
- * Recovery path: if neither token nor auth_error is in the URL AND
- * there is no cookie session either, the SPA's auth guards on "/" will
- * redirect to /login. The hang state below covers a different failure
- * mode — if THIS module never paints further (network of the next
- * chunk stalls, browser is offline mid-transition), users would see a
- * permanent spinner. We surface a manual escape after 12s.
+ * Recovery path: if no auth_error is in the URL AND there is no cookie
+ * session either, the SPA's auth guards on "/" will redirect to
+ * /login. The hang state below covers a different failure mode — if
+ * THIS module never paints further (network of the next chunk stalls,
+ * browser is offline mid-transition), users would see a permanent
+ * spinner. We surface a manual escape after 12s.
  */
 export default function AuthCallbackPage() {
-  const { setToken } = useAuth();
   const [, navigate] = useLocation();
   const [hangVisible, setHangVisible] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
     const error = params.get("auth_error");
 
     if (error) {
       navigate(`/login?error=${encodeURIComponent(error)}`);
-      return;
-    }
-
-    if (token) {
-      // Legacy path — see component doc above.
-      // A8-09 (round-94): scrub the token out of the address bar + history
-      // the moment it is read. A crafted `?token=` link used to leave the
-      // injected credential sitting in the URL (browser history, screen
-      // shares, referrer leakage to embedded third parties). replaceState
-      // with a clean path removes it before the SPA continues.
-      setToken(token);
-      window.history.replaceState(null, "", window.location.pathname);
-      navigate("/");
       return;
     }
 

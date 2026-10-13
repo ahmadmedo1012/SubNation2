@@ -1,7 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { db, initTestDb, productsTable, resetTestDb } from "../../test/db";
+import { db, initTestDb, productVariantsTable, productsTable, resetTestDb } from "../../test/db";
 import { productsRouter } from "../products";
 
 /**
@@ -35,7 +35,7 @@ function buildApp() {
 async function call<T = unknown>(
   app: express.Express,
   path: string,
-): Promise<{ status: number; body: T; text: string }> {
+): Promise<{ status: number; body: T; text: string; cacheControl: string }> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       const addr = server.address();
@@ -49,7 +49,12 @@ async function call<T = unknown>(
         });
         const text = await res.text();
         const body = text ? JSON.parse(text) : null;
-        resolve({ status: res.status, body: body as T, text });
+        resolve({
+          status: res.status,
+          body: body as T,
+          text,
+          cacheControl: res.headers.get("cache-control") ?? "",
+        });
       } catch (err) {
         reject(err);
       } finally {
@@ -263,9 +268,12 @@ describe("R122 (A11-F2) — English + adversarial behavior is unchanged", () => 
 
 // ═══════════════════════════════════════════════════════════════════════════
 // R132 — round 2: category intent, mixed-script queries, duration/tier
-// compounds, and exact-match-first ranking. The seed mirrors the LIVE
-// catalog's plan-shaped naming ("Netflix Premium 1-Month",
-// "PlayStation Plus 12-Month" — the real product/variant convention).
+// compounds, and exact-match-first ranking. NOTE (R142 I-2): this seed
+// deliberately carries Latin duration/tier fragments INSIDE NAMES — it
+// pins the name-fragment arm of the R132 tiers (real for names like
+// "Windows 10 Pro"). It does NOT mirror the LIVE catalog's dominant
+// shape (brand-level names + ARABIC variant labels) — that shape is
+// pinned by seedLiveVariantCatalog in the R142 describe below.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Plan-shaped catalog: duration/tier fragments in the names, every live
@@ -457,5 +465,182 @@ describe("R132 — duration/tier compounds + exact-match-first ranking", () => {
     expect(prices).toBeDefined();
     // price_asc over the three Netflix-matching rows: Gift (10) first.
     expect((body as Array<{ name: string }>)[0].name).toBe("Gift Netflix Card");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// R142 — I-1 (multi-word phrases with rider tokens), I-2 (durations in
+// ARABIC variant labels on brand-level names — the LIVE catalog shape,
+// verified via /api/products/by-slug/netflix-premium: labels «شهر واحد»،
+// «سنة كاملة») and I-3 (search stays uncacheable at the edge).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** LIVE-shaped catalog: brand-level product names + Arabic variant labels —
+ * durations live ONLY in the labels, never in the names. */
+async function seedLiveVariantCatalog() {
+  const rows = await db
+    .insert(productsTable)
+    .values([
+      { name: "Netflix", slug: "netflix", price: "79.80", category: "streaming" },
+      { name: "Spotify", slug: "spotify", price: "59.80", category: "music" },
+      { name: "ChatGPT Plus", slug: "chatgpt-plus", price: "99.00", category: "ai-tools" },
+      { name: "IPVanish VPN", slug: "ipvanish-vpn", price: "199.00", category: "vpn" },
+      {
+        name: "Lifetime Cloud Storage",
+        slug: "lifetime-cloud-storage",
+        price: "980.00",
+        category: "software",
+      },
+    ])
+    .returning({ id: productsTable.id, name: productsTable.name });
+  const byName = new Map(rows.map((r) => [r.name, r.id]));
+  await db.insert(productVariantsTable).values([
+    {
+      productId: byName.get("Netflix")!,
+      durationLabel: "شهر واحد",
+      costPrice: "40.00",
+      priceLyd: "79.80",
+    },
+    {
+      productId: byName.get("Netflix")!,
+      durationLabel: "سنة كاملة",
+      costPrice: "400.00",
+      priceLyd: "799.00",
+    },
+    {
+      productId: byName.get("Spotify")!,
+      durationLabel: "شهر واحد",
+      costPrice: "30.00",
+      priceLyd: "59.80",
+    },
+    {
+      productId: byName.get("ChatGPT Plus")!,
+      durationLabel: "شهر واحد",
+      costPrice: "50.00",
+      priceLyd: "99.00",
+    },
+    {
+      productId: byName.get("IPVanish VPN")!,
+      durationLabel: "سنة كاملة",
+      costPrice: "100.00",
+      priceLyd: "199.00",
+    },
+    {
+      productId: byName.get("Lifetime Cloud Storage")!,
+      durationLabel: "مدى الحياة",
+      costPrice: "490.00",
+      priceLyd: "980.00",
+    },
+  ]);
+}
+
+describe("R142 I-2 — durations live in ARABIC variant labels (the live catalog shape)", () => {
+  it("«شهر» finds every product with a month variant — the name-only ILIKEs matched zero of these", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    await expect(searchNames(app, "شهر")).resolves.toEqual(
+      expect.arrayContaining(["Netflix", "Spotify", "ChatGPT Plus"]),
+    );
+    const names = await searchNames(app, "شهر");
+    expect(names).toHaveLength(3);
+    // year/lifetime variants must NOT match a month query
+    expect(names).not.toContain("IPVanish VPN");
+    expect(names).not.toContain("Lifetime Cloud Storage");
+  });
+
+  it("«سنة» finds the year-variant products — including via the ta-marbuta twin («سنة» label vs folded «سنه» query)", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    // «سنة» normalizes to «سنه» on the query side; the ة twin keeps the
+    // label spelling («سنة كاملة») reachable (arabic-search variantTerms).
+    await expect(searchNames(app, "سنة")).resolves.toEqual(
+      expect.arrayContaining(["Netflix", "IPVanish VPN"]),
+    );
+  });
+
+  it("«شهر واحد» — the EXACT string the variant selector renders — finds the month plans", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    const names = await searchNames(app, "شهر واحد");
+    expect(names).toEqual(expect.arrayContaining(["Netflix", "Spotify", "ChatGPT Plus"]));
+    expect(names).toHaveLength(3);
+  });
+
+  it("«نتفلكس شهر» finds Netflix (brand OR branch) and every month plan honestly rides along", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    const names = await searchNames(app, "نتفلكس شهر");
+    expect(names).toContain("Netflix");
+    expect(names).toContain("Spotify"); // the «شهر» EXISTS arm
+    expect(names).not.toContain("IPVanish VPN");
+  });
+
+  it("archived products stay invisible to the EXISTS arm too (the is_archived AND still composes)", async () => {
+    await seedLiveVariantCatalog();
+    const [archived] = await db
+      .insert(productsTable)
+      .values({
+        name: "Archived Monthly",
+        slug: "archived-monthly",
+        price: "10.00",
+        category: "software",
+        isArchived: true,
+      })
+      .returning({ id: productsTable.id });
+    await db.insert(productVariantsTable).values({
+      productId: archived.id,
+      durationLabel: "شهر واحد",
+      costPrice: "5.00",
+      priceLyd: "10.00",
+    });
+    const app = buildApp();
+    const names = await searchNames(app, "شهر");
+    expect(names).not.toContain("Archived Monthly");
+    expect(names).toHaveLength(3);
+  });
+});
+
+describe("R142 I-1 — multi-word phrases survive rider tokens (route level)", () => {
+  it("«اشتراك شات جي بي تي» finds the ChatGPT product (was 0 results live)", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    await expect(searchNames(app, "اشتراك شات جي بي تي")).resolves.toEqual(["ChatGPT Plus"]);
+  });
+
+  it("«شات جي بي تي برو» keeps the ChatGPT intent at the top (was every *Pro* product live)", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    const names = await searchNames(app, "شات جي بي تي برو");
+    expect(names[0]).toBe("ChatGPT Plus");
+    // No orphaned %pro% branch noise: nothing else in this seed carries pro.
+    expect(names).toEqual(["ChatGPT Plus"]);
+  });
+
+  it("«في بي ان سنوي» finds the year-plan VPN product via its brand arm (was 0 results live)", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    // The window resolves «في بي ان» → vpn beside the duration word; the
+    // year-variant EXISTS arm needs the label-side spelling («سنة», pinned
+    // by the «سنة» test above) — «سنوي» itself is not a label substring.
+    const names = await searchNames(app, "في بي ان سنوي");
+    expect(names).toEqual(["IPVanish VPN"]);
+  });
+});
+
+describe("R142 I-3 — search responses stay uncacheable at the edge (B6-02)", () => {
+  it("a search request ships no-store, NOT the catalogCache public s-maxage stamp", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    const search = await call(app, `/api/products?search=${encodeURIComponent("نتفلكس")}`);
+    expect(search.status).toBe(200);
+    expect(search.cacheControl).toBe("no-store");
+  });
+
+  it("the no-search list keeps its edge-cache stamp (the fix is search-scoped only)", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    const list = await call(app, "/api/products");
+    expect(list.status).toBe(200);
+    expect(list.cacheControl).toBe("public, max-age=0, s-maxage=60, stale-while-revalidate=300");
   });
 });

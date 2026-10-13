@@ -171,4 +171,23 @@ describe("ErrorBoundary — slim chrome fallback (R118-B2 / A2 F-5)", () => {
       "{!isAdmin && !isChromeless && (\n        <ErrorBoundary resetKey={location} fallback={null}>\n          <Navbar />",
     );
   });
+
+  it("B-3 (R142): the error-path Sentry import is best-effort — the chain ends in a swallow (source pin)", () => {
+    // The documented stale-chunk window: a render error fires right
+    // after a deploy while the visitor's shell still references the
+    // previous release's vendor-sentry chunk — the dynamic import
+    // REJECTS. Before B-3 the void chain had no .catch, so an
+    // unhandledrejection fired at the exact moment the boundary was
+    // rendering its recovery UI (console noise + one spurious event in
+    // boot-sentry's error buffer).
+    //
+    // The rejection itself cannot be reproduced in jsdom (vitest
+    // externalizes @sentry/react — the dynamic import inside a source
+    // module resolves the real module and never rejects), so this pins
+    // the componentDidCatch chain's SHAPE the money-races-r140 way: the
+    // void import MUST terminate in the best-effort swallow, exactly
+    // like instrument.ts / route-chunk-warmup (the repo's own idiom).
+    const src = readFileSync(resolve(process.cwd(), "src/components/ErrorBoundary.tsx"), "utf8");
+    expect(src).toMatch(/void import\("@sentry\/react"\)[\s\S]*?\.catch\(\(\) => \{\}\);/);
+  });
 });

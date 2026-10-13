@@ -397,6 +397,13 @@ const MODIFIER_LOOKUP: ReadonlyMap<string, string> = (() => {
 })();
 
 /**
+ * R142 (I-2): the modifier terms whose intent lives in the variant
+ * duration/plan LABELS (Arabic «شهر واحد»، «سنة كاملة») rather than in
+ * product names — only these mint variant-label EXISTS terms.
+ */
+const DURATION_MODIFIER_TERMS = new Set(["month", "year", "week", "day"]);
+
+/**
  * R122 (A11-F2): per-request work is BOUNDED — an adversarial
  * 10k-char query must not mint an unbounded OR chain (the B6-02 class
  * of self-DoS, this time on the SQL-parameter axis).
@@ -454,6 +461,16 @@ export interface ArabicSearchExpansion {
    * the plan-level intent surfaces above the OR recall.
    */
   compounds: Array<{ brand: string; modifier: string; digits?: string }>;
+  /**
+   * R142 (I-2): raw Arabic DURATION tokens (each with its ta-marbuta
+   * variant — «سنه»/«سنة») that matched a modifier. The live catalog
+   * carries durations in ARABIC `product_variants` labels («شهر واحد»،
+   * «سنة كاملة») while product names are brand-level ("Netflix") with no
+   * Latin month/year fragments — the route ORs an
+   * `EXISTS (variant label ILIKE %token%)` branch per term so
+   * `search=شهر` again matches every month-plan product.
+   */
+  variantTerms: string[];
 }
 
 /** R132 bounds — the OR chain stays capped for adversarial input. */
@@ -463,6 +480,14 @@ const MAX_CATEGORIES = 3;
 /** Digit tokens this short are pure noise for the compound AND. */
 const MIN_DIGIT_LENGTH = 1;
 const MAX_DIGIT_LENGTH = 3;
+
+/** R142 (I-1): longest consecutive-token window tried against the
+ * alias/category lookups when a single token fails to resolve — bounded
+ * so an adversarial query can't mint unbounded window probes. */
+const MAX_PHRASE_WINDOW = 4;
+/** R142 (I-2): cap on the variant-label EXISTS branches (≤2 forms per
+ * matched duration token — token + ta-marbuta twin). */
+const MAX_VARIANT_TERMS = 6;
 
 /**
  * R132: the full expansion. Pure-function and deterministic like its
@@ -481,13 +506,13 @@ export function expandArabicSearch(query: string): ArabicSearchExpansion {
     .filter((t) => t.length > 0)
     .slice(0, MAX_TOKENS_CONSIDERED);
   if (tokens.length === 0) {
-    return { nameTerms: [], categories: [], latinTerms: [], compounds: [] };
+    return { nameTerms: [], categories: [], latinTerms: [], compounds: [], variantTerms: [] };
   }
 
   const hasArabicToken = tokens.some((t) => ARABIC_LETTER.test(t));
   if (!hasArabicToken) {
     // Pure English/digits — the R122 invariant: byte-identical SQL.
-    return { nameTerms: [], categories: [], latinTerms: [], compounds: [] };
+    return { nameTerms: [], categories: [], latinTerms: [], compounds: [], variantTerms: [] };
   }
 
   const nameTerms: string[] = [];
@@ -509,6 +534,21 @@ export function expandArabicSearch(query: string): ArabicSearchExpansion {
   const digitTokens: string[] = [];
   const latinTokens: string[] = [];
   const categoryHits = new Set<string>();
+  // R142 (I-2): duration tokens for the variant-label EXISTS branches.
+  const variantTerms: string[] = [];
+  const addVariantTerm = (token: string) => {
+    // The query side folds ة→ه, but live variant labels keep the ة
+    // («سنة كاملة») — emit both forms so either spelling matches.
+    for (const form of [token, token.replace(/ه$/, "ة")]) {
+      if (
+        form.length > 0 &&
+        !variantTerms.includes(form) &&
+        variantTerms.length < MAX_VARIANT_TERMS
+      ) {
+        variantTerms.push(form);
+      }
+    }
+  };
 
   // Whole-query collapsed forms FIRST (brand phrase, then category
   // phrase) — a recognized multi-word phrase resolves as one unit and
@@ -518,7 +558,8 @@ export function expandArabicSearch(query: string): ArabicSearchExpansion {
   const categoryPhrase = CATEGORY_LOOKUP.get(collapsed);
 
   let translitBudget = phrase ? 0 : MAX_TRANSLIT_TERMS;
-  for (const token of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
     if (!ARABIC_LETTER.test(token)) {
       // R132: mixed-script — ride Latin/digit tokens along (bounded).
       // Pure-English queries never reach here (guard above). Pure
@@ -560,6 +601,10 @@ export function expandArabicSearch(query: string): ArabicSearchExpansion {
         // month-plan product) — honest breadth for a modifier-only query.
         addTerm(modifier);
       }
+      // R142 (I-2): durations live in ARABIC variant labels live — the
+      // token itself is the variant-side match term (tier words stay
+      // name-side only).
+      if (DURATION_MODIFIER_TERMS.has(modifier)) addVariantTerm(token);
       continue;
     }
 
@@ -577,6 +622,32 @@ export function expandArabicSearch(query: string): ArabicSearchExpansion {
       }
     }
     if (contained) continue;
+
+    // R142 (I-1): the whole-query collapse only resolves a phrase that IS
+    // the entire query — any rider word («اشتراك …», «… برو») broke every
+    // multi-word phrase. Try collapsed windows of CONSECUTIVE tokens
+    // (longest first) against the alias/category lookups; on a hit the
+    // window resolves as one unit and its tokens are skipped (no
+    // «جي»/«بي»/«تي» skeleton noise).
+    let phraseWindowHit = false;
+    for (let len = Math.min(MAX_PHRASE_WINDOW, tokens.length - i); len >= 2; len--) {
+      const windowKey = tokens.slice(i, i + len).join("");
+      const windowAlias = ALIAS_LOOKUP.get(windowKey);
+      if (windowAlias) {
+        addTerm(windowAlias);
+        i += len - 1; // skip the consumed tokens
+        phraseWindowHit = true;
+        break;
+      }
+      const windowCategory = CATEGORY_LOOKUP.get(windowKey);
+      if (windowCategory) {
+        categoryHits.add(windowCategory);
+        i += len - 1;
+        phraseWindowHit = true;
+        break;
+      }
+    }
+    if (phraseWindowHit) continue;
 
     if (translitBudget > 0 && !categoryMatched) {
       // A category-matched token is RESOLVED — its skeleton is noise.
@@ -616,6 +687,7 @@ export function expandArabicSearch(query: string): ArabicSearchExpansion {
     // «netflix نتفلكس», must not mint a duplicate ILIKE branch).
     latinTerms: latinTokens.filter((t) => !seen.has(t)).slice(0, MAX_LATIN_TERMS),
     compounds,
+    variantTerms,
   };
 }
 

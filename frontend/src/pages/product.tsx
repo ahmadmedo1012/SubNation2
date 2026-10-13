@@ -48,6 +48,7 @@ import {
   getListOrdersQueryKey,
   getMe,
   getProduct,
+  validateCoupon as validateCouponApi,
   type CreateOrderBody,
   type Order,
   type Product,
@@ -436,26 +437,36 @@ export default function ProductPage() {
       const basePrice = selectedVariant
         ? (selectedVariant.sale_price ?? selectedVariant.price)
         : (product.sale_price ?? product.price);
-      const r = await fetch("/api/coupons/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code: couponInput.trim().toUpperCase(), order_amount: basePrice }),
+      // C-1 (R142): the raw fetch carried NO abort (a stalled link kept
+      // the «تحقق» spinner armed until the browser's ~300 s TCP timeout)
+      // and an unguarded r.json() leaked English SyntaxError text into
+      // the Arabic toast when a proxy 502 answered HTML. The generated
+      // validateCoupon() rides customFetch's 20 s budget + ApiError
+      // envelope (the loyalty convertPoints idiom from the same round);
+      // auth rides the shared bearer-token getter from main.tsx.
+      const data = await validateCouponApi({
+        code: couponInput.trim().toUpperCase(),
+        order_amount: basePrice,
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
       // R98-01: the variant changed under the in-flight request — the
       // response describes a price the user is no longer buying. Drop
       // it; the void effect already reset the chip/error state.
       if (generation !== couponGenerationRef.current) return;
-      setCouponResult(data);
+      // ValidatedCoupon.description is optional in the generated
+      // contract; CouponResult requires it — normalize once at the
+      // boundary so the chip/CTA state never sees undefined.
+      setCouponResult({ ...data, description: data.description ?? null });
     } catch (err: unknown) {
       if (generation !== couponGenerationRef.current) return;
       // Persist the error inline (visible until the user types a new
       // code) AND fire a toast for the immediate "something happened"
       // cue. Inline-only would be invisible if the user looked away;
       // toast-only would disappear in 4s before the user could read it.
-      const message =
-        err instanceof Error ? err.message : "تعذّر التحقق من الكوبون — حاول مرة أخرى";
+      // C-1: getErrorMessage prefers the backend's own Arabic sentence
+      // and collapses network/middleware English to the Arabic fallback
+      // (the 96-F7 leak guard) — a 502 HTML body can no longer surface
+      // "Unexpected token '<'…" here.
+      const message = getErrorMessage(err) || "تعذّر التحقق من الكوبون — حاول مرة أخرى";
       setCouponError(message);
       toast({
         title: "تعذّر تطبيق الكوبون",

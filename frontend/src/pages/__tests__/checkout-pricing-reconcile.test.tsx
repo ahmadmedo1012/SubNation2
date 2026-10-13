@@ -261,6 +261,49 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
     expect(readCart()).toHaveLength(0);
   });
 
+  it("G-3 (R142): a 404 landing after remove-then-re-ADD of the same key does NOT remove the re-added line", async () => {
+    // The stale-closure drop: the re-quote effect captured the ORIGINAL
+    // items snapshot (qty 2); while the quote is in flight the shopper
+    // removes the line and re-adds the same (productId, variantId) —
+    // the re-add lands in localStorage with the add-time quantity (1).
+    // The old code matched the RE-ADDED line by key and removed it on
+    // the (possibly transient) 404 verdict; the G-3 guard compares the
+    // live line's quantity against the stale snapshot's — superseded
+    // intent fails the equality and SURVIVES.
+    seedCart();
+    let resolveQuote: (v: never) => void = () => {};
+    getProductMock.mockReturnValue(
+      new Promise((_resolve, _reject) => {
+        resolveQuote = _reject as (v: never) => void;
+      }),
+    );
+    renderPage();
+
+    // While the quote is in flight: remove + re-add the same key with
+    // the re-add's fresh quantity (1 ≠ the snapshot's 2) — written
+    // straight to storage exactly like a cross-tab edit would land.
+    await act(async () => {
+      const readded = [{ ...CART_ITEM, quantity: 1 }];
+      localStorage.setItem("subnation_cart_v2", JSON.stringify(readded));
+    });
+
+    // The (transient) 404 verdict lands.
+    await act(async () => {
+      resolveQuote(httpApiError("المنتج غير موجود", 404) as never);
+    });
+
+    // The re-added line SURVIVES: no drop notice, the cart was not
+    // emptied by the stale verdict (the server re-validates at charge).
+    await waitFor(() => {
+      expect(getProductMock).toHaveBeenCalled();
+    });
+    await act(async () => {});
+    expect(screen.queryByText(/أُزيل من الطلب/)).not.toBeInTheDocument();
+    expect(screen.queryByText("سلتك فارغة")).not.toBeInTheDocument();
+    expect(readCart()).toHaveLength(1);
+    expect(readCart()[0].quantity).toBe(1);
+  });
+
   it("no change: silent — no notices, snapshot totals stand, CTA usable", async () => {
     seedCart();
     getProductMock.mockResolvedValue(liveProduct()); // byte-identical pricing + stock

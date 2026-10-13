@@ -22,6 +22,7 @@
 import { copilotPreviewsTable, db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 
 const DELETE_BATCH_SIZE = 1000;
 
@@ -56,14 +57,25 @@ async function batchedDelete(whereSql: string): Promise<number> {
 }
 
 export async function reapExpiredCopilotPreviews(): Promise<number> {
-  const deleted = await batchedDelete(`p.expires_at < NOW() - INTERVAL '24 hours'`);
-  if (deleted > 0) {
-    logger.info(
-      { category: "copilot.reaper", deleted },
-      "copilot reaper removed expired preview row(s)",
-    );
+  // L-3 (R142): the reaper's only RECURRING trigger is the throttled
+  // opportunistic fire from the admin copilot surface — whose catch is
+  // warn-log-only, so a persistent DB failure was invisible to Sentry.
+  // Capture here exactly like the sibling watchers; the boot one-shot
+  // chain's own capture remains the fallback for boot-time failures.
+  try {
+    const deleted = await batchedDelete(`p.expires_at < NOW() - INTERVAL '24 hours'`);
+    if (deleted > 0) {
+      logger.info(
+        { category: "copilot.reaper", deleted },
+        "copilot reaper removed expired preview row(s)",
+      );
+    }
+    return deleted;
+  } catch (err) {
+    logger.error({ err, category: "copilot.reaper" }, "copilot reaper failed");
+    captureSchedulerFailure("copilot_reaper", err);
+    return 0;
   }
-  return deleted;
 }
 
 // F11: the purge moved to the raw batched DELETE above — reference the

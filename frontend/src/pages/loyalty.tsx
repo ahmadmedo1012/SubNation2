@@ -1,11 +1,17 @@
+import { apiErrorData } from "@/components/checkout/checkout-errors";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { SkeletonText } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { ErrorCode, getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getGetMeQueryKey, getGetWalletQueryKey } from "@workspace/api-client-react";
+import {
+  convertPoints as convertPointsApi,
+  getGetMeQueryKey,
+  getGetWalletQueryKey,
+} from "@workspace/api-client-react";
 import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -227,30 +233,24 @@ export default function LoyaltyPage() {
     const intentKey = loadStoredConvertKey(fingerprint) ?? generateIdempotencyKey();
     persistStoredConvertKey(fingerprint, intentKey);
     try {
-      const res = await fetch("/api/loyalty/convert-points", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-          "Idempotency-Key": intentKey,
+      // G-1 (R142): the raw fetch carried NO abort — a dead link kept the
+      // CTA armed until the browser's ~300 s TCP timeout, so the durable
+      // retry contract was unreachable in exactly the failure mode it
+      // exists for. The generated convertPoints() rides customFetch's 20 s
+      // budget (checkout's createOrder / the wallet topup mutation idiom);
+      // the durable Idempotency-Key stays attached per call and non-2xx
+      // responses arrive as ApiError with the {error, code} envelope on
+      // .data (customFetch parses the body safely — a non-JSON 502 is an
+      // honest Arabic error, never an English SyntaxError).
+      const result = await convertPointsApi(
+        { points: pts },
+        {
+          headers: {
+            ...headers,
+            "Idempotency-Key": intentKey,
+          },
         },
-        body: JSON.stringify({ points: pts }),
-      });
-      const result = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        message?: string;
-        code?: string;
-      };
-      if (!res.ok) {
-        // 99-M4: only a non-IN_FLIGHT rejection resolves the intent — a 409
-        // IDEMPOTENCY_IN_FLIGHT means the same-key conversion is still
-        // executing server-side and the retry MUST replay it (keep the key).
-        if (result?.code !== "IDEMPOTENCY_IN_FLIGHT") clearStoredConvertKey();
-        // R111-F2 Q1: the vague «فشلت العملية» fallback is below the
-        // app's error-copy bar — calm + actionable, matching the
-        // page-banner phrasing family («تعذّر … — حاول مرة أخرى»).
-        throw new Error(result?.error || "تعذّر إتمام العملية — حاول مرة أخرى");
-      }
+      );
       toast({ title: "تم التحويل", description: result.message });
       // 99-M4: success is terminal — the next conversion mints a fresh key.
       clearStoredConvertKey();
@@ -271,10 +271,16 @@ export default function LoyaltyPage() {
       queryClient.invalidateQueries({ queryKey: LOYALTY_OVERVIEW_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: LOYALTY_LEDGER_QUERY_KEY });
     } catch (err: unknown) {
-      // R111-F2 Q1 (same family as the throw above): actionable fallback
-      // instead of the vague «فشلت العملية».
-      const message =
-        err instanceof Error && err.message ? err.message : "تعذّر إتمام العملية — حاول مرة أخرى";
+      // 99-M4: only a DEFINITIVE HTTP rejection resolves the intent — a
+      // 409 IDEMPOTENCY_IN_FLIGHT (the same-key conversion is still
+      // executing server-side) and a network-level failure (the outcome
+      // is unknown — the retry must replay) both keep the durable key.
+      const envelope = apiErrorData(err);
+      if (envelope && envelope.code !== ErrorCode.IDEMPOTENCY_IN_FLIGHT) clearStoredConvertKey();
+      // R111-F2 Q1 (calm + actionable fallback): getErrorMessage prefers
+      // the backend's own Arabic sentence and collapses network/middleware
+      // text to the Arabic fallback (the 96-F7 leak guard).
+      const message = getErrorMessage(err) || "تعذّر إتمام العملية — حاول مرة أخرى";
       // Inline + persistent (cleared on the next attempt) — the toast
       // alone expired after 4 s, losing the failure on a money action.
       setConvertError(message);

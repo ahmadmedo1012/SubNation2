@@ -62,7 +62,7 @@ modulepreloads + 4 font preloads + registerSW ALL outside comments,
 exactly 4 src'd scripts — the R126 inspection contract restored) · real
 browser boot against the built shell: `#static-offline` removed
 synchronously, the storefront renders (navbar, hero, catalog copy),
-console clean. Commit `<R141-SHA>`.
+console clean. Commit `a9f5e83`.
 
 ## Round R140 — the maturity round: four new dimensions, sixteen agents, every lane frozen — 2026-10-13
 
@@ -77,7 +77,7 @@ index.css, every decision inside the FINAL_UX_SYSTEM contract.
 **Verified centrally**: typecheck green · lint 0 errors (49 warnings —
 the exact R139 baseline) · **frontend 242 files / 2,289 tests green
 (+383 tests, sixteen new suites)** · **backend 872 suites / 2,390 tests
-green** · production build + PWA green. Commit `<R140-SHA>`.
+green** · production build + PWA green. Commit `3ba4ef1` (round record: `3fe3cc8`).
 
 ### Wave 1 — CWV, boot, and the r139 debt closure
 - **Image discipline** (140-a): every catalog-art `<img>` (14 audited
@@ -1802,3 +1802,37 @@ Let's Encrypt at origin) executed 2026-10-01/02** — release ledger:
 `docs/deployment/FINAL_SIGNOFF.md`. Per-round detail: `git log` + the round
 reports and inspection folders indexed in `docs/README.md` (historical
 rounds now live under `docs/history/` — executed R122).
+
+## R142 — Full-repository engineering assurance round (2026-10-14)
+
+**Scope:** mission-driven whole-repo audit + verified delivery. Phase 1A
+re-verified the live release with fresh evidence (deployed = a9f5e83 via
+SENTRY_RELEASE id baked in served chunks; real-browser boot desktop +
+mobile, zero console errors; journeys green). 16 audit lanes (A–O + COV)
+covered all 1,704 tracked files / 474,487 text lines with per-file
+dispositions (coverage-manifest.jsonl, 0 problems at the final gate).
+
+**Findings:** 0×P0/P1 across the repository. 3×P2 (G-1 loyalty fetch hang,
+J-1 destructive-confirm AA fail, N-1 orval header-param drop), 39×P3,
+45×P4 — full ledger in docs/engineering/R142/findings-ledger.md.
+
+**Implemented this round:** the three P2s + 30 P3s + 16 cheap P4s —
+money-path robustness (loyalty 20 s timeout, wallet fetch-time
+idempotency-key, checkout re-add guard), truthful availability across
+hero chips / streaming copy / product SEO / available-only empty state,
+the admin hang class (adminFetch 20 s + SSE exemption), the live settings
+integrations bug, multi-word Arabic search, og:url/og:type shell arms,
+title-clamp word boundary, comment-aware GSC anchor, CI boot smoke
+(proven against a sabotaged shell), OpenAPI header-param survival gate,
+harness prod-parity + copilot tables, and 9 new regression suites
+(mutation-verified where risk demanded). Suite growth: backend
+2,390 → 2,458, frontend 2,306 → 2,325.
+
+**Deferred with decisions:** spec-documentation churn (N-2/N-3/N-5),
+coverage thresholds before a measured baseline (A-2/M-3), migration
+body-execution test (F-1), BuildKit secret mount (H-2), upstream CVEs
+(H-3), 43 P4 debt items (lane files).
+
+**Tooling:** gstack v1.91.98.0 instruction-tier digest (official Hermes
+mode) + Ponytail v5 rules injected into every lane; ledger in
+/home/z/my-project/r142-tools/TOOLING-LEDGER.md.

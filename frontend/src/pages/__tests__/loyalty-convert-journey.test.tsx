@@ -34,10 +34,19 @@ import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import LoyaltyPage from "@/pages/loyalty";
 
-vi.mock("@workspace/api-client-react", () => ({
-  getGetMeQueryKey: () => ["/api/auth/me"],
-  getGetWalletQueryKey: () => ["/api/wallet"],
-}));
+// G-1 (R142): the convert POST now rides the REAL generated convertPoints()
+// (customFetch → the stubbed global fetch below), so the full 20 s-abort +
+// ApiError envelope contract is exercised — importOriginal keeps the real
+// module while the two key fns stay pinned to the same values the real
+// ones return (isolation from the rest of the generated graph).
+vi.mock("@workspace/api-client-react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@workspace/api-client-react")>();
+  return {
+    ...actual,
+    getGetMeQueryKey: () => ["/api/auth/me"],
+    getGetWalletQueryKey: () => ["/api/wallet"],
+  };
+});
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ token: "test token" }),
@@ -61,14 +70,14 @@ type ConvertResponder = () => Response | Promise<Response>;
 const convertQueue: ConvertResponder[] = [];
 const loyaltyState = { points: 500 };
 
-/** Minimal Response-like object (the loyalty-error-state harness shape). */
-function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+/** Real Response objects — customFetch (behind the generated client) reads
+ *  .headers + .text(), which the old ok/json-only stubs lacked. */
+function resLike(over: { status?: number; body?: unknown } = {}) {
+  const { status = 200, body = {} } = over;
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function loyaltyPayload(points: number) {
@@ -91,7 +100,8 @@ const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input.toString();
   if (url === CONVERT_URL) {
     convertCalls.push({
-      headers: (init?.headers ?? {}) as Record<string, string>,
+      // customFetch hands fetch a Headers INSTANCE — read it as one.
+      headers: Object.fromEntries(new Headers(init?.headers).entries()),
       body: JSON.parse(String(init?.body ?? "{}")) as { points: number },
     });
     const respond = convertQueue.shift();
@@ -129,7 +139,8 @@ async function openConvertForm(): Promise<{
 }
 
 function convertKeyOf(callIndex: number): string {
-  const key = convertCalls[callIndex]?.headers["Idempotency-Key"];
+  // Headers normalizes names to lowercase — the capture stores them that way.
+  const key = convertCalls[callIndex]?.headers["idempotency-key"];
   if (typeof key !== "string") throw new Error(`no Idempotency-Key on call ${callIndex}`);
   return key;
 }
@@ -171,9 +182,9 @@ describe("LoyaltyPage — convert-points SUCCESS journey (T2: only the error ban
     await waitFor(() => expect(convertCalls).toHaveLength(1));
     const call = convertCalls[0];
     expect(call.body).toEqual({ points: 300 });
-    expect(call.headers["Authorization"]).toBe("Bearer test token");
+    expect(call.headers["authorization"]).toBe("Bearer test token");
     // The intent key is a UUID v4 (generateIdempotencyKey).
-    expect(call.headers["Idempotency-Key"]).toMatch(
+    expect(call.headers["idempotency-key"]).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
 
@@ -235,7 +246,6 @@ describe("LoyaltyPage — convert-points SUCCESS journey (T2: only the error ban
 
     convertQueue.push(() =>
       resLike({
-        ok: false,
         status: 409,
         body: {
           error: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
@@ -268,9 +278,7 @@ describe("LoyaltyPage — convert-points SUCCESS journey (T2: only the error ban
     const { input } = await openConvertForm();
     fireEvent.change(input, { target: { value: "300" } });
 
-    convertQueue.push(() =>
-      resLike({ ok: false, status: 400, body: { error: "رصيد النقاط غير كافٍ" } }),
-    );
+    convertQueue.push(() => resLike({ status: 400, body: { error: "رصيد النقاط غير كافٍ" } }));
     clickConvert();
     await waitFor(() => expect(convertCalls).toHaveLength(1));
     const key1 = convertKeyOf(0);

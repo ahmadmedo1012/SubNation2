@@ -364,6 +364,17 @@ jobs:
         # raw English in Arabic toasts) until someone notices.
         run: pnpm --filter @workspace/scripts exec tsx ../scripts/check-error-code-sync.ts
 
+      - name: OpenAPI header-param survival gate
+        # R142 (N-1): the orval react-query client target DROPS every
+        # spec header param (all 7 at R142 — Idempotency-Key on the six
+        # money mutations + the Telegram webhook secret), so money paths
+        # pass keys through per-call RequestInit headers on customFetch —
+        # an escape hatch that lived nowhere until this gate's ledger.
+        # The check fails when a spec header param silently vanishes from
+        # codegen, when the ledger goes stale (orval starts emitting), or
+        # when the zod mirror loses one the spec still declares.
+        run: pnpm --filter @workspace/scripts exec tsx ../scripts/check-openapi-header-params.ts
+
       - name: Migration drift check
         # Regenerates Drizzle migrations from the schema, then verifies the
         # working tree is unchanged. If a dev edited the schema without
@@ -514,6 +525,37 @@ jobs:
         # so this single command builds the full deployable artifact.
         # The vite build embeds the bundle-budget + CSP inline-script gates.
         run: pnpm --filter @workspace/api-server run build
+
+      - name: Boot smoke — the built shell must be bootable
+        # M-2 (R142): the R141 dead shell shipped through green CI — no
+        # push-time gate ever looked at the BUILT artifact (the e2e job is
+        # dispatch/weekly-only). Browser-free, deterministic: assert the
+        # module entry + entry stylesheet + PWA registerSW script are
+        # present OUTSIDE HTML comments in the built index.html — the
+        # shell-head-anchors.test.ts semantics (a swallowed tag is inert).
+        run: |
+          node -e '
+            const { readFileSync } = require("fs");
+            const live = readFileSync("frontend/dist/public/index.html", "utf8")
+              .replace(/<!--[\s\S]*?-->/g, "");
+            const failures = [];
+            if (!/<script[^>]*type="module"[^>]*src="[^"]*\/index-[A-Za-z0-9-_]+\.js"/.test(live))
+              failures.push("module entry script (index-*.js) not found outside HTML comments");
+            const css = [...live.matchAll(/<link\b[^>]*>/g)].some((m) => {
+              const rel = m[0].match(/\brel="([^"]*)"/)?.[1];
+              const href = m[0].match(/\bhref="([^"]*)"/)?.[1];
+              return rel === "stylesheet" && /\.css$/.test(href ?? "");
+            });
+            if (!css) failures.push("entry stylesheet link (.css) not found outside HTML comments");
+            if (!/<script\b[^>]*src="\/registerSW\.js"/.test(live))
+              failures.push("PWA registerSW script not found outside HTML comments");
+            if (failures.length) {
+              console.error("[boot-smoke] FAIL — the built shell cannot boot:");
+              for (const f of failures) console.error("  - " + f);
+              process.exit(1);
+            }
+            console.log("[boot-smoke] OK — entry module + stylesheet + registerSW live outside comments");
+          '
 
   # ─────────────────────────────────────────────────────────────────────────
   # E2E smoke — R123-E2: the committed guest read-only Playwright suite

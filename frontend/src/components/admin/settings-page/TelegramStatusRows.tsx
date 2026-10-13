@@ -21,14 +21,24 @@ export function TelegramStatusRows({ settings }: { settings: TelegramSettings | 
         {
           icon: Key,
           label: "TELEGRAM_BOT_TOKEN",
-          ok: settings?.telegram_bot_set,
+          // N-4 (R142): the backend only exposes the AGGREGATE
+          // telegram_configured (isTelegramConfigured() = token ∧ chat id
+          // both set) — the old per-key reads (telegram_bot_set) were
+          // never emitted and always rendered «غير موجود». Both key rows
+          // now ride the aggregate verdict: «تم الضبط» is TRUE whenever
+          // configured (both env vars present). shortcut: a partial
+          // config (token set, chat missing) still reads «غير موجود» on
+          // both rows — the real per-key signal needs the backend to emit
+          // the two booleans (spec + handler + codegen); the diagnostic
+          // «اختبار» ping below is the per-case drilldown until then.
+          ok: settings?.telegram_configured,
           okText: "تم الضبط",
           failText: "غير موجود",
         },
         {
           icon: Hash,
           label: "TELEGRAM_CHAT_ID",
-          ok: settings?.telegram_chat_set,
+          ok: settings?.telegram_configured,
           okText: "تم الضبط",
           failText: "غير موجود",
         },

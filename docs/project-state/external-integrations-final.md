@@ -4,6 +4,14 @@ Date: 2026-10-05 (Vercel→Coolify migration + cleanup mission). Supersedes the
 Vercel/Render-era sections of `docs/deployment/*` (those remain as labeled
 historical evidence). No secret values appear in this file.
 
+> **R142 correction (supersedes this record's Sentry/Telegram rows, dated
+> 2026-10-05):** Sentry (`SENTRY_DSN` / `VITE_SENTRY_DSN`) and the Telegram
+> ops channel (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` + the approval
+> webhook) both went LIVE at R121/R121-B (2026-10-07) — see
+> `docs/project-state/source-of-truth.md` (Monitoring row) and
+> `OPERATIONS_RUNBOOK.md` §§11–12, the current-truth surfaces. The rows
+> below saying "Off / unset" describe the pre-R121 state.
+
 ## Production source of truth
 
 ```
@@ -31,7 +39,7 @@ deploy. Rollback = redeploy previous Coolify deployment.
 | Search Console (`VITE_GSC_VERIFICATION`) | NEVER configured (empty on Vercel; only the placeholder comment in index.html). Injection mechanism verified working (`vite.config.ts` seoHeadInject) | Set build-time when the operator supplies the token |
 | Google OAuth (`GOOGLE_CLIENT_ID` / `VITE_GOOGLE_CLIENT_ID`) | Never set anywhere; the only reader is a legacy env fallback (auth-settings.ts) documented in the dead-code list | — |
 | reCAPTCHA | Dormant CSP entries only (backend/src/app.ts:178-180,234-244); zero code references; Firebase Phone auth permanently rejected server-side | — |
-| Sentry (`SENTRY_DSN` / `VITE_SENTRY_DSN`) | Off (never had values). CSP ready. The single console notice about a missing DSN is intentional (97-F6) | Optional operator supply |
+| Sentry (`SENTRY_DSN` / `VITE_SENTRY_DSN`) | **LIVE since R121-B (2026-10-07)** — both sides configured (this row's pre-R121 "Off (never had values)" text was stale). CSP ready | Live — no operator action |
 
 ## Analytics status
 
@@ -123,8 +131,10 @@ already baked as `<link rel="canonical" href="https://subnation.ly/">`).
    runtime envs, add `VITE_FIREBASE_AUTH_ENABLED=true` as a build-time env,
    allow-list `subnation.ly` (+ www) in the Firebase console authorized
    domains, then redeploy and verify the popup→session exchange.
-2. Optional: GA4 ID, Search Console token, Sentry DSNs, Telegram alert-bot
-   pair, Redis (deliberately unset by design), inventory restock for
+2. Optional: GA4 ID, Search Console token, Redis
+   (deliberately unset by design), inventory restock for
    provider-backed products (or wait for the Embronic integration prepared in
    `docs/pending/embronic-adapter-design.md` — moved there by the R122
-   docs reorg).
+   docs reorg). (Sentry DSNs and the Telegram alert-bot pair were on this
+   list until R121/R121-B configured them — both LIVE, do not re-supply or
+   "clean up" the `TELEGRAM_*`/`SENTRY_*` env vars.)

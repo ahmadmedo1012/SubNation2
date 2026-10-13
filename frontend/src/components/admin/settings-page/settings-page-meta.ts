@@ -15,11 +15,20 @@ export function tabAllowed(id: string, canManageSettings: boolean): boolean {
   return id === "auth" || id === "integrations" ? canManageSettings : true;
 }
 
+/**
+ * N-4 (R142): GET /api/admin/settings' REAL contract — the backend emits
+ * exactly these four fields (backend/src/routes/admin/settings.ts:15-22;
+ * the spec's AdminSettings matches). The previous shape claimed
+ * telegram_chat_set / telegram_bot_set booleans the backend has NEVER
+ * emitted, so the integrations tab's key rows read undefined and always
+ * rendered «غير موجود».
+ */
 export interface TelegramSettings {
-  telegram_chat_set: boolean;
-  /** Present when API exposes aggregate Telegram readiness */
-  telegram_configured?: boolean;
-  telegram_bot_set?: boolean;
+  /** isTelegramConfigured() — BOTH env vars (token + chat id) present. */
+  telegram_configured: boolean;
+  platform_name: string;
+  currency: string;
+  maintenance_mode: boolean;
 }
 
 /** R125-I5 (A3-12, whatsapp sibling idiom): the structured result of the

@@ -190,7 +190,16 @@ function buildShareDescription(description: string | null, displayPrice: string)
  * is clamped.
  */
 function clampSeoTitleForShell(title: string): string {
-  return title.length <= 60 ? title : title.slice(0, 59).trim() + "…";
+  if (title.length <= 60) return title;
+  // R142 (K-1): cut at the last WORD BOUNDARY inside the budget — the
+  // verbatim MetaTags.clamp algorithm (R122-A7). The old raw character
+  // cut shipped mid-word shards («…| SubN…») on long titles, disagreeing
+  // with the hydrated SERP title; a single unbroken word longer than the
+  // budget still falls back to the character cut.
+  const sliced = title.slice(0, Math.max(0, 60 - 1)).trimEnd();
+  const lastSpace = sliced.lastIndexOf(" ");
+  const cut = lastSpace > 0 ? sliced.slice(0, lastSpace) : sliced;
+  return cut.trimEnd() + "…";
 }
 
 /**
@@ -283,8 +292,11 @@ async function lookupProductForShareSurfaces(
 export const SHELL_CATEGORY_META: Record<string, { metaTitle: string; metaDescription: string }> = {
   streaming: {
     metaTitle: "البث المباشر في ليبيا — Netflix و Disney+ | SubNation",
+    // I-4 (R142): Shahid VIP dropped — the live catalog sells neither it
+    // nor Crunchyroll; the frontend CATEGORY_META twin (categories.ts)
+    // carries the same edit (the parity suite pins the pair verbatim).
     metaDescription:
-      "اشترِ اشتراكات Netflix و Disney+ و Shahid VIP و Amazon Prime Video بالدينار الليبي. تسليم فوري في طرابلس وبنغازي ومصراتة وكامل ليبيا.",
+      "اشترِ اشتراكات Netflix و Disney+ و Amazon Prime Video بالدينار الليبي. تسليم فوري في طرابلس وبنغازي ومصراتة وكامل ليبيا.",
   },
   music: {
     metaTitle: "اشتراكات الموسيقى في ليبيا — Spotify | SubNation",
@@ -412,10 +424,17 @@ export interface SpaShellMeta {
   robots?: string;
   /** Absolute og:image URL for product pages (A11-F3b, R126-L6).
    *  Rewrites og:image AND strips the baseline og:image:width/height
-   *  (the 1280×720 pair belongs to opengraph.jpg; product art carries
+   *  (the 1200×630 pair belongs to opengraph.jpg; product art carries
    *  its own per-file dimensions — omitted beats wrong). Undefined
    *  leaves the static og set untouched. */
   ogImage?: string;
+  /** R142 (K-2): rewrites og:url wherever a canonical is set — the
+   *  static baseline's homepage-shaped og:url survived every rewrite,
+   *  so every non-home raw shell claimed homepage OG identity. */
+  ogUrl?: string;
+  /** R142 (K-2): rewrites og:type ("product" on PDP routes — the
+   *  static baseline says `website` on every route). */
+  ogType?: string;
 }
 
 /**
@@ -448,7 +467,7 @@ function rewriteCanonical(html: string, href: string | null): string {
 /**
  * A11-F3b (R126-L6): REMOVE an existing meta tag outright (used for the
  * baseline og:image:width/height pair when og:image points at product
- * art — the 1280×720 numbers belong to opengraph.jpg and would be a
+ * art — the 1200×630 numbers belong to opengraph.jpg and would be a
  * wrong claim beside a /products/*.webp image; omitted beats wrong).
  * Same marker contract as rewriteMetaTag: no tag, no change.
  */
@@ -571,6 +590,16 @@ function rewriteSpaShellMeta(html: string, meta: SpaShellMeta): string {
       out = removeMetaTag(out, "property", "og:image:width");
       out = removeMetaTag(out, "property", "og:image:height");
     }
+    // R142 (K-2): OG identity arms — the raw shell must not claim
+    // homepage identity on a product/category route (og:url always said
+    // the apex; og:type always said `website`). Same no-tag-no-change
+    // contract as every other arm.
+    if (meta.ogUrl !== undefined) {
+      out = rewriteMetaTag(out, "property", "og:url", meta.ogUrl);
+    }
+    if (meta.ogType !== undefined) {
+      out = rewriteMetaTag(out, "property", "og:type", meta.ogType);
+    }
     if (meta.canonical !== undefined) {
       out = rewriteCanonical(out, meta.canonical);
     }
@@ -612,6 +641,9 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
           title: meta.metaTitle,
           description: meta.metaDescription,
           canonical: `${origin}/category/${category[1]}`,
+          // R142 (K-2): OG identity follows the canonical — the raw shell
+          // used to keep the static homepage og:url on every category.
+          ogUrl: `${origin}/category/${category[1]}`,
         }
       : { status: 200, canonical: null, robots: "noindex,follow" };
   }
@@ -675,6 +707,10 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
       // replaceState'd to it client-side — R117 F-4).
       canonical: `${origin}/product/${row.slug ?? slugOrId}`,
       ogImage,
+      // R142 (K-2): the PDP is an OG `product` object at its own URL —
+      // the static baseline said `website` at the apex on every route.
+      ogUrl: `${origin}/product/${row.slug ?? slugOrId}`,
+      ogType: "product",
     };
   }
 
@@ -685,6 +721,8 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
       title: staticMeta.title,
       description: staticMeta.description,
       canonical: `${origin}${norm}`,
+      // R142 (K-2): OG identity follows the canonical.
+      ogUrl: `${origin}${norm}`,
     };
   }
 

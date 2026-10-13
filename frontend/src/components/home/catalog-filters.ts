@@ -111,7 +111,12 @@ export const BRANDS: HeroBrand[] = [
   { latin: "Spotify", ar: "سبوتيفاي", cat: "music" },
   { latin: "Disney+", ar: "ديزني+", cat: "streaming" },
   { latin: "YouTube", ar: "يوتيوب", cat: "streaming" },
-  { latin: "Shahid VIP", ar: "شاهد", cat: "streaming" },
+  // I-4 (R142): Shahid VIP swapped for Paramount+ — the live catalog no
+  // longer sells Shahid (lane I's 2026-10-13 probe: search=شاهد → 0), so
+  // the chip's own R120-B1 rule ("a chip that filters to nothing misleads
+  // shoppers") fired on it; Paramount+ is verified-live in streaming
+  // (docs/SEO_PRODUCTS.json). Restocking Shahid re-adds it the same way.
+  { latin: "Paramount+", ar: "باراماونت+", cat: "streaming" },
   { latin: "ExpressVPN", ar: "إكسبرس في بي إن", cat: "vpn" },
   { latin: "ChatGPT Plus", ar: "شات جي بي تي", cat: "ai-tools" },
   { latin: "Windows 10", ar: "ويندوز 10", cat: "software" },

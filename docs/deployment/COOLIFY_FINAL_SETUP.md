@@ -144,10 +144,13 @@ Emergency fallback (Coolify builder broken): redeploy this resource as a
 registry image `ghcr.io/ahmadmedo1012/subnation2:sha-<short>` — private
 package, so the VM needs a one-time `docker login ghcr.io` with a
 `read:packages` PAT. Same env, same pinning rule.
-**PENDING (r113):** the `subnation2` GHCR package does not exist yet — the
-repo's `docker.yml` workflow has never run (it triggers manually / on `v*`
-tags, and GitHub Actions is currently billing-suspended). One manual
-`workflow_dispatch` run after Actions is restored publishes the first
+**PENDING (r113; Actions state corrected R142):** the `subnation2` GHCR
+package does not exist yet — the repo's `docker.yml` workflow has never
+been dispatched (it triggers manually / on `v*` tags; Actions itself is
+LIVE on every push since R119 — the r113-era "billing-suspended" state is
+history; see the authoritative STATUS banner in
+`.github/workflows/docker.yml`). One manual
+`workflow_dispatch` run publishes the first
 sha-tagged image; until then the only rollback path is redeploy-from-git
 (the primary path anyway).
 

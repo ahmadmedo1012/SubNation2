@@ -212,6 +212,27 @@ export default function CheckoutPage() {
         const dropped: string[] = [];
         const lineNotice = (line: LocalCartItem, productId: number) =>
           `${line.name.trim() || `#${productId}`} لم يعد متاحاً للشراء — أُزيل من الطلب.`;
+        // G-3 (R142): the drop branches iterate this effect's STALE items
+        // snapshot, but removeItem is KEY-targeted — a remove-then-re-add
+        // of the same (productId, variantId) while the quote was in flight
+        // would otherwise remove the RE-ADDED line on a possibly-transient
+        // verdict (a transient 404 killing a live intent). Guard: at drop
+        // time, re-read the LIVE cart and only remove when the line still
+        // occupying the key carries THIS snapshot's quantity — a re-add
+        // resets it to the add-time quantity, so a superseded intent fails
+        // the equality and survives. Unverifiable storage (null) or an
+        // already-user-removed line means nothing to mutate — no drop,
+        // no notice (the old code dropped unconditionally on stale data).
+        const removeIfStillSameIntent = (line: LocalCartItem): boolean => {
+          const live = readLiveCartItems();
+          if (!live) return false;
+          const current = live.find(
+            (l) => l.productId === line.productId && l.variantId === line.variantId,
+          );
+          if (!current || current.quantity !== line.quantity) return false;
+          removeItem(line.productId, line.variantId);
+          return true;
+        };
         for (let i = 0; i < pending.length; i++) {
           const productId = pending[i];
           const result = settled[i];
@@ -224,8 +245,7 @@ export default function CheckoutPage() {
             if (archived) {
               for (const line of items) {
                 if (line.productId !== productId) continue;
-                dropped.push(lineNotice(line, productId));
-                removeItem(productId, line.variantId);
+                if (removeIfStillSameIntent(line)) dropped.push(lineNotice(line, productId));
               }
             }
             continue;
@@ -238,8 +258,7 @@ export default function CheckoutPage() {
             // drop point.
             for (const line of items) {
               if (line.productId !== productId) continue;
-              dropped.push(lineNotice(line, productId));
-              removeItem(productId, line.variantId);
+              if (removeIfStillSameIntent(line)) dropped.push(lineNotice(line, productId));
             }
             continue;
           }
@@ -247,8 +266,7 @@ export default function CheckoutPage() {
             if (line.productId !== productId) continue;
             const quote = quoteLineFromProduct(live, line);
             if (quote.status === "unavailable") {
-              dropped.push(lineNotice(line, productId));
-              removeItem(productId, line.variantId);
+              if (removeIfStillSameIntent(line)) dropped.push(lineNotice(line, productId));
               continue;
             }
             const snapshotPrice = line.salePriceLYD ?? line.priceLYD;

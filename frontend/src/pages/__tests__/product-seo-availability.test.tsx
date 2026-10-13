@@ -151,6 +151,39 @@ describe("ProductPage — Product LD availability threading (D2-F2)", () => {
   });
 });
 
+// ── J-3 (R142): the meta-description fallback must not claim availability
+// the payload itself denies — an OOS product with empty curated fields
+// used to fall back to «…متوفر بالدينار الليبي… تسليم فوري بعد الدفع»
+// while the same payload's Offer LD said OutOfStock (the F1 class at the
+// crawler surface). The gate keys off the SAME is_available the JSON-LD
+// builder threads.
+describe("ProductPage — availability-gated description fallback (J-3)", () => {
+  it("OOS + empty curated description → meta description carries NO availability claim", async () => {
+    currentProduct = { ...OUT_OF_STOCK_PRODUCT, description: "" };
+    renderPage();
+
+    expect(await screen.findAllByText(/نفد المخزون/)).not.toHaveLength(0);
+    const desc = metaContent('meta[name="description"]');
+    expect(desc).toBeTruthy();
+    expect(desc).toContain("Netflix شهر");
+    expect(desc).not.toContain("متوفر");
+    expect(desc).not.toContain("تسليم فوري");
+
+    // …while the structured data agrees with the OOS verdict.
+    expect(readProductLd()?.offers?.availability).toBe("https://schema.org/OutOfStock");
+  });
+
+  it("in-stock + empty curated description → the availability fallback stands", async () => {
+    currentProduct = { ...IN_STOCK_PRODUCT, description: "" };
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: /اشترِ الآن/ })).toBeInTheDocument();
+    const desc = metaContent('meta[name="description"]');
+    expect(desc).toContain("متوفر بالدينار الليبي");
+    expect(desc).toContain("تسليم فوري");
+  });
+});
+
 // ── R124 (A10-F1): unknown product → the noindex 404 surface ─────────────
 
 describe("ProductPage — unknown product 404 SEO (R124 A10-F1)", () => {

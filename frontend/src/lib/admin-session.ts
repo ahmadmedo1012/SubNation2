@@ -49,6 +49,25 @@
  */
 
 import { toast } from "@/hooks/use-toast";
+// D-3 (R142): ONE timeout constant with the storefront client — the
+// generated client exports the canonical 20 s default. Read ONCE at
+// module init inside a guard: 70+ test suites partially mock
+// @workspace/api-client-react with vi.mock factories that omit this
+// export, and vitest's mock proxy THROWS on the missing live binding
+// ("No ... export is defined on the mock") — the 20_000 fallback keeps
+// the app-wide contract under every partial factory (parity-pinned
+// with the client's constant by money-races-r140).
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "@workspace/api-client-react";
+
+const SHARED_ADMIN_TIMEOUT_MS = (() => {
+  try {
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  } catch {
+    // Partial vi.mock factory without the export — the literal IS the
+    // documented contract value (custom-fetch.ts: 20 s app-wide).
+    return 20_000;
+  }
+})();
 // R122 (A2-P2): adminFetchJson maps the backend error envelope
 // (`code`/`error`) to its Arabic message exactly like every converted
 // call site did inline — errors.ts has no imports back into this
@@ -204,9 +223,27 @@ export class AdminSessionExpiredError extends Error {
  * A 401 that belongs to an expired session throws AdminSessionExpiredError
  * AFTER the global handler has toasted + redirected — callers return
  * quietly from their catch on that sentinel.
+ *
+ * D-3 (R142): every adminFetch/adminFetchJson call now carries the 20 s
+ * app-wide timeout contract (customFetch's DEFAULT_REQUEST_TIMEOUT_MS —
+ * a stalled link used to leave an operator's money modal armed until the
+ * browser's ~300 s TCP timeout). A caller-provided `init.signal` always
+ * wins; pass `opts.timeoutMs = 0` to disable the bound entirely — the
+ * one deliberate consumer is the copilot ask SSE stream, which
+ * legitimately outlives 20 s. A timeout abort rejects with a
+ * DOMException whose English message lib/errors' leak guard collapses
+ * to the Arabic network fallback.
  */
-export async function adminFetch(url: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(url, init);
+export async function adminFetch(
+  url: string,
+  init?: RequestInit,
+  opts: { timeoutMs?: number } = {},
+): Promise<Response> {
+  const timeoutMs = opts.timeoutMs ?? SHARED_ADMIN_TIMEOUT_MS;
+  const res = await fetch(url, {
+    ...init,
+    signal: init?.signal ?? (timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined),
+  });
   if (res.status === 401 && handleAdminUnauthorized(url)) {
     throw new AdminSessionExpiredError();
   }

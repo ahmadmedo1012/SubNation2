@@ -52,7 +52,15 @@ export function productSeoInput({
         description: (
           productAny?.seo_description?.trim() ||
           product.description ||
-          `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`
+          // J-3 (R142): the static fallback used to claim «متوفر…تسليم
+          // فوري» for ANY product with empty curated fields — including
+          // OOS ones, whose own JSON-LD Offer (D2-F2) asserts
+          // OutOfStock and whose page renders «نفد المخزون» (the F1
+          // brand-availability-from-nothing class, at the crawler
+          // surface). The OOS arm states only category-level truth.
+          (product.is_available
+            ? `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`
+            : `${product.name} بالدينار الليبي على SubNation — راجع صفحة المنتج لمعرفة التوفر الحالي.`)
         ).slice(0, 160),
         image: product.image_url ?? undefined,
         type: "product",

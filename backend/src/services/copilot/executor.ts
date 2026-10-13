@@ -15,21 +15,31 @@
  *   4. Tool is one we know how to execute.
  *
  * Post-execute:
- *   - Stamp `consumed_at` on the preview.
+ *   - Stamp `consumed_at` on the preview INSIDE the same transaction, as a
+ *     conditional claim (E-1/R142 — see PreviewAlreadyConsumedError).
  *   - Write `copilot_actions` + `audit_logs` rows atomically.
  *   - Return outcome + new audit id.
  */
 
 import { db, productsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { logger } from "../../lib/logger";
 import { recordExecute } from "./audit";
-import {
-  claimHighRiskForExecute,
-  claimUnconsumedPreview,
-  markConsumed,
-  type PreviewRow,
-} from "./preview-store";
+import { claimHighRiskForExecute, claimUnconsumedPreview, type PreviewRow } from "./preview-store";
+
+/**
+ * E-1 (R142): thrown INSIDE an executor tx when the conditional
+ * consumed_at stamp matched 0 rows — a concurrent confirm already
+ * consumed the preview. Throwing rolls the whole tx back (product write
+ * + copilot_actions + audit_logs) so a double-click inside the claim
+ * window can no longer double-execute; the catch maps it to the
+ * "consumed" outcome the route answers with an honest 409.
+ */
+class PreviewAlreadyConsumedError extends Error {
+  constructor() {
+    super("preview already consumed by a concurrent confirm");
+  }
+}
 
 export type ExecuteOutcome =
   | { kind: "success"; actionId: number; afterState: unknown }
@@ -159,18 +169,27 @@ export async function executeLowRiskConfirm(args: {
         }),
       });
 
+      // E-1 (R142): single-use is a conditional CLAIM, not check-then-act.
+      // The claim SELECT above races against a concurrent confirm; stamping
+      // consumed_at INSIDE the tx with an isNull(consumed_at) predicate makes
+      // the loser's stamp match 0 rows → throw → full rollback (no duplicate
+      // copilot_actions/audit_logs for one admin intent).
+      const { copilotPreviewsTable } = await import("@workspace/db");
+      const [consumed] = await tx
+        .update(copilotPreviewsTable)
+        .set({ consumedAt: new Date() })
+        .where(
+          and(eq(copilotPreviewsTable.id, preview.id), isNull(copilotPreviewsTable.consumedAt)),
+        )
+        .returning({ id: copilotPreviewsTable.id });
+      if (!consumed) throw new PreviewAlreadyConsumedError();
+
       return actionRow.id;
     });
   } catch (err) {
+    if (err instanceof PreviewAlreadyConsumedError) return { kind: "consumed" };
     logger.error({ err, previewId: preview.id }, "copilot executor: transaction failed");
     return { kind: "failure", reason: err instanceof Error ? err.message : String(err) };
-  }
-
-  // Mark the preview consumed AFTER the transaction commits.
-  try {
-    await markConsumed(preview.id);
-  } catch (err) {
-    logger.warn({ err, previewId: preview.id }, "copilot: markConsumed failed");
   }
 
   // Re-read the after state once more to return to the caller (the value
@@ -356,18 +375,22 @@ export async function executeHighRiskDoubleConfirm(args: {
       });
 
       // Stamp confirmed_twice_at + consumed_at inside the same tx.
-      await tx
-        .update((await import("@workspace/db")).copilotPreviewsTable)
+      // E-1 (R142): the consumed stamp is a CONDITIONAL claim
+      // (isNull(consumed_at)) — a concurrent double-confirm matches 0
+      // rows → throw → rollback (the duplicate action/audit rows vanish).
+      const { copilotPreviewsTable: previewsT } = await import("@workspace/db");
+      const [consumedTwiceRow] = await tx
+        .update(previewsT)
         .set({ confirmedTwiceAt, consumedAt: new Date() })
-        .where(eq((await import("@workspace/db")).copilotPreviewsTable.id, preview.id));
+        .where(and(eq(previewsT.id, preview.id), isNull(previewsT.consumedAt)))
+        .returning({ id: previewsT.id });
+      if (!consumedTwiceRow) throw new PreviewAlreadyConsumedError();
 
       return actionRow.id;
     });
   } catch (err) {
-    logger.error(
-      { err, previewId: preview.id },
-      "copilot high-risk executor: transaction failed",
-    );
+    if (err instanceof PreviewAlreadyConsumedError) return { kind: "consumed" };
+    logger.error({ err, previewId: preview.id }, "copilot high-risk executor: transaction failed");
     return { kind: "failure", reason: err instanceof Error ? err.message : String(err) };
   }
 

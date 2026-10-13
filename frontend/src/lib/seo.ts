@@ -88,6 +88,37 @@ export function indexOfOutsideComments(html: string, needle: string): number {
   return -1;
 }
 
+/**
+ * R142 B-1: the first `re` match that sits OUTSIDE any HTML comment —
+ * the regex twin of {@link indexOfOutsideComments} (same alternating
+ * non-comment / comment walker, same fail-safe on an unclosed comment).
+ * The PRIMARY viewport anchor used to be a bare `re.exec(html)` over
+ * the whole document: a comment quoting a viewport-shaped meta (an
+ * example snippet in prose — exactly how r140's BOOT ORDER comment
+ * quoted the head-close tag) would have spliced the GSC meta INSIDE
+ * the comment, silently killing Search Console verification. The
+ * R141 hotfix hardened only the head-close FALLBACK; this brings the
+ * primary path to the same discipline. `re` must be non-global (no
+ * lastIndex state); a match cannot legally straddle a comment boundary.
+ */
+function execOutsideComments(html: string, re: RegExp): RegExpExecArray | null {
+  let cursor = 0;
+  while (cursor < html.length) {
+    const commentOpen = html.indexOf("<!--", cursor);
+    const segmentEnd = commentOpen === -1 ? html.length : commentOpen;
+    const match = re.exec(html.slice(cursor, segmentEnd));
+    if (match) {
+      match.index += cursor;
+      return match;
+    }
+    if (commentOpen === -1) return null;
+    const commentClose = html.indexOf("-->", commentOpen + 4);
+    if (commentClose === -1) return null;
+    cursor = commentClose + 3;
+  }
+  return null;
+}
+
 const HTML_ATTR_ESCAPES: Record<string, string> = {
   "&": "&amp;",
   "<": "&lt;",
@@ -131,7 +162,9 @@ export function injectGoogleSiteVerification(html: string, token: string): strin
 
   const tag = buildGscVerificationMeta(token);
 
-  const viewport = VIEWPORT_META_RE.exec(html);
+  // R142 B-1: comment-aware PRIMARY anchor (the execOutsideComments
+  // walker — the R141 fallback discipline, applied to the viewport path).
+  const viewport = execOutsideComments(html, VIEWPORT_META_RE);
   if (viewport) {
     const at = viewport.index + viewport[0].length;
     return html.slice(0, at) + `\n    ${tag}` + html.slice(at);

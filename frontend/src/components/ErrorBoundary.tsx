@@ -60,14 +60,20 @@ export class ErrorBoundary extends Component<Props, State> {
     // event — still vastly cheaper than blocking every cold visit on
     // Sentry. Errors during the brief boot-defer window are also caught
     // by the window error/rejection buffer in lib/boot-sentry.
-    void import("@sentry/react").then((Sentry) => {
-      Sentry.withScope((scope) => {
-        scope.setContext("react", {
-          componentStack: errorInfo.componentStack,
+    void import("@sentry/react")
+      .then((Sentry) => {
+        Sentry.withScope((scope) => {
+          scope.setContext("react", {
+            componentStack: errorInfo.componentStack,
+          });
+          Sentry.captureException(error);
         });
-        Sentry.captureException(error);
-      });
-    });
+      })
+      // B-3 (R142): best-effort, same as instrument.ts / route-chunk-warmup —
+      // a stale vendor-sentry chunk (deploy raced the visitor's shell) must
+      // not surface an unhandledrejection exactly while the boundary
+      // renders its recovery UI.
+      .catch(() => {});
   }
 
   componentDidUpdate(prevProps: Props, _prevState: State) {

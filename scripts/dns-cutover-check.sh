@@ -41,7 +41,12 @@ TARGET_IP="${2:-}"
 # ── 1. current DNS state (read-only) ────────────────────────────────────────
 printf '\n== current DNS (read-only) ==\n'
 if command -v dig >/dev/null 2>&1; then
-  A_NOW="$(dig +short A "$DOMAIN" @1.1.1.1 2>/dev/null | rg '^[0-9]+\.' | head -1 || true)"
+  # R142 (A-6): grep -E, not rg — ripgrep is an audit-sandbox tool, not a
+  # standard VM package; when absent the old pipeline failed inside the
+  # `|| true` and A_NOW stayed empty, reporting "no A record published yet"
+  # even mid-cutover with a live record (display-only, but this script's
+  # entire job is operator truth).
+  A_NOW="$(dig +short A "$DOMAIN" @1.1.1.1 2>/dev/null | grep -E '^[0-9]+\.' | head -1 || true)"
   [ -n "$A_NOW" ] && inf "current A record (via 1.1.1.1): ${A_NOW}" || inf "no A record published yet (first-time cutover)"
   TTL_NOW="$(dig A "$DOMAIN" @1.1.1.1 +noall +answer 2>/dev/null | awk '{print $2}' | head -1 || true)"
   if [ -n "${TTL_NOW:-}" ] && [ "${TTL_NOW}" -gt 300 ] 2>/dev/null; then

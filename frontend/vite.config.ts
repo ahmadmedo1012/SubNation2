@@ -33,6 +33,48 @@ import { indexOfOutsideComments, injectGoogleSiteVerification } from "./src/lib/
 // pinned by tests: instrument-replay-lazy.test.ts + the eager-path
 // bundle budget gate.
 
+// ── B-2/M-1 (R142): comment-aware measurement scans ─────────────────────────
+//
+// The bundle-budget gate resolves WHAT to measure from the built
+// index.html. Both scans below run on the comment-stripped shell — the
+// same discipline the R125 CSP inline-script gate established inside
+// closeBundle: a tag quoted inside an HTML comment is not a bootable
+// tag, so a decoy entry script or a commented-out modulepreload/
+// stylesheet link must never reach the measurement (the r140/R141
+// decoy-comment class). Pure + exported so the discipline is pinned by
+// bundle-budget-gate.test.ts (the preload-gate test idiom).
+
+/**
+ * The module-entry chunk filename the built shell actually boots — the
+ * R118 ground-truth lookup (route splitting emits multiple index-*.js
+ * chunks; the HTML's <script type="module" src> picks the real entry).
+ */
+export function findBundleEntry(html: string): string | undefined {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .match(/<script[^>]*type="module"[^>]*src="[^"]*\/(index-[A-Za-z0-9-_]+\.js)"/)?.[1];
+}
+
+/**
+ * The eager file set the R120-B5 sum gate measures: the entry chunk
+ * plus every modulepreload JS / stylesheet CSS link the shell declares
+ * OUTSIDE comments. (The A2 F7 home-chunk skip is gate policy, not
+ * parsing — it stays in the plugin.)
+ */
+export function collectEagerFiles(html: string, entryFile: string): Set<string> {
+  const eagerFiles = new Set<string>([entryFile]);
+  for (const tagMatch of html.replace(/<!--[\s\S]*?-->/g, "").matchAll(/<link\b[^>]*>/g)) {
+    const tag = tagMatch[0];
+    const rel = tag.match(/\brel="([^"]*)"/)?.[1] ?? "";
+    const href = tag.match(/\bhref="([^"]*)"/)?.[1];
+    if (!href) continue;
+    const file = path.basename(href);
+    if (rel === "modulepreload" && /\.js$/.test(file)) eagerFiles.add(file);
+    else if (rel === "stylesheet" && /\.css$/.test(file)) eagerFiles.add(file);
+  }
+  return eagerFiles;
+}
+
 function bundleBudgetPlugin(): Plugin {
   return {
     name: "bundle-budget",
@@ -81,10 +123,7 @@ function bundleBudgetPlugin(): Plugin {
         process.exit(1);
       }
 
-      const entryMatch = html.match(
-        /<script[^>]*type="module"[^>]*src="[^"]*\/(index-[A-Za-z0-9-_]+\.js)"/,
-      );
-      const indexFile = entryMatch?.[1];
+      const indexFile = findBundleEntry(html);
       if (!indexFile) {
         console.error("[bundle-budget] No module entry index-*.js found in index.html");
         process.exit(1);
@@ -130,16 +169,7 @@ function bundleBudgetPlugin(): Plugin {
       // stylesheet(s). Resolve the set from the HTML (the same ground
       // truth as the entry lookup), sum their gzip sizes, and gate the
       // SUM: hard-fail above 160 KiB, warn above 145 KiB.
-      const eagerFiles = new Set<string>([indexFile]);
-      for (const tagMatch of html.matchAll(/<link\b[^>]*>/g)) {
-        const tag = tagMatch[0];
-        const rel = tag.match(/\brel="([^"]*)"/)?.[1] ?? "";
-        const href = tag.match(/\bhref="([^"]*)"/)?.[1];
-        if (!href) continue;
-        const file = path.basename(href);
-        if (rel === "modulepreload" && /\.js$/.test(file)) eagerFiles.add(file);
-        else if (rel === "stylesheet" && /\.css$/.test(file)) eagerFiles.add(file);
-      }
+      const eagerFiles = collectEagerFiles(html, indexFile);
 
       // A2 F7 (R124): the deliberately modulepreload-linked HOME route
       // chunk is skipped from the eager sum. It is not part of the
@@ -930,7 +960,7 @@ export default defineConfig({
       // (seo-builders og:image + JSON-LD logo), which never run a
       // service worker. Keeping it in the manifest burned ~66 KB of the
       // 5 GB monthly bandwidth budget per NEW visitor for zero runtime
-      // value. favicon.svg (163 B) stays.
+      // value. favicon.svg (355 B, the R128-L2 brand-asset suite) stays.
       includeAssets: ["favicon.svg"],
       workbox: {
         // R128-IMP-4 (B5-F1): NEVER inherit the Vite build's sourcemap.

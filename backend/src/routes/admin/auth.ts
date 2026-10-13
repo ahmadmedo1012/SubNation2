@@ -2,12 +2,13 @@ import { AdminLoginBody } from "@workspace/api-zod";
 import { adminUsersTable, db } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { Router, type CookieOptions } from "express";
-import jwt from "jsonwebtoken";
+import jwt, { JsonWebTokenError } from "jsonwebtoken";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import { writeAuditLog } from "../../lib/audit";
 import { encrypt, safeDecrypt } from "../../lib/encryption";
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from "../../lib/crypto";
 import { ADMIN_JWT_SECRET, signAdminToken } from "../../lib/jwt";
+import { captureSubsystemException } from "../../lib/sentry";
 import {
   createAdminSession,
   isValidAdminSession,
@@ -412,10 +413,26 @@ router.post("/login/verify-2fa", async (req, res) => {
       role: admin.role,
       permissions: admin.permissions ?? [],
     });
-  } catch {
+  } catch (err) {
+    // E-3 (R142): jwt.verify rejections (JsonWebTokenError — incl. the
+    // TokenExpiredError / NotBeforeError subclasses) are the expected 401
+    // noise this catch existed for. Everything else (a Postgres blip
+    // inside the admin select, the lockout store, or createAdminSession)
+    // used to be laundered into the same uniform 401 — a DB outage
+    // mid-2FA looked identical to a bad temp token, with zero log lines
+    // and zero Sentry events. Distinguish: JWT-shaped noise keeps the
+    // 401; internal failures are captured and answered with the honest
+    // 500 envelope (fail-closed either way — no session is minted).
+    if (err instanceof JsonWebTokenError) {
+      return res
+        .status(401)
+        .json(createErrorResponse("جلسة غير صالحة أو منتهية الصلاحية", ErrorCode.UNAUTHORIZED));
+    }
+    captureSubsystemException("auth", err, { route: "login/verify-2fa" });
+    logger.warn({ err, category: "auth" }, "[admin-auth] verify-2fa internal error");
     return res
-      .status(401)
-      .json(createErrorResponse("جلسة غير صالحة أو منتهية الصلاحية", ErrorCode.UNAUTHORIZED));
+      .status(500)
+      .json(createErrorResponse("حدث خطأ، حاول مجدداً", ErrorCode.INTERNAL_ERROR));
   }
 });
 

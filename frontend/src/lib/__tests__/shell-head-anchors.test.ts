@@ -219,6 +219,34 @@ describe("injectGoogleSiteVerification — head-close fallback hardening", () =>
     expect(at).toBeLessThan(indexOfOutsideComments(out, "</head"));
     expect(at).toBeGreaterThan(out.indexOf("</head")); // the decoy precedes it
   });
+
+  // R142 B-1: the PRIMARY (viewport) anchor is comment-aware now too —
+  // a decoy viewport meta quoted inside a comment above the REAL one
+  // used to splice the GSC meta into the comment (the r140 BOOT ORDER
+  // class; the R141 hotfix had hardened only the fallback path).
+  it("the PRIMARY anchor skips a decoy viewport meta inside a comment and lands after the REAL one", () => {
+    const shell = `<!doctype html><html><head>
+    <!-- example snippet (do not copy):
+         <meta name="viewport" content="width=device-width, initial-scale=1" />
+         goes right here -->
+    <meta charset="UTF-8" />
+    <meta data-rh="true" name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>t</title>
+  </head><body><div id="root"></div></body></html>`;
+    const out = injectGoogleSiteVerification(shell, "tok");
+    const at = out.indexOf('name="google-site-verification"');
+    expect(at).toBeGreaterThan(0);
+    expect(insideComment(out, at)).toBe(false);
+    // After the REAL (multiline, data-rh) viewport tag…
+    expect(at).toBeGreaterThan(
+      out.indexOf('content="width=device-width, initial-scale=1, viewport-fit=cover"'),
+    );
+    // …before the title (the decoy inside the comment never anchored it).
+    expect(at).toBeLessThan(out.indexOf("<title>"));
+    // The decoy prose is untouched — the comment still documents.
+    expect(out).toContain('<meta name="viewport" content="width=device-width, initial-scale=1" />');
+  });
 });
 
 describe("the REAL index.html — the tag-sequence ban (source hygiene)", () => {

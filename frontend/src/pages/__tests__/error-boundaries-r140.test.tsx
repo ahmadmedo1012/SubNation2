@@ -237,9 +237,13 @@ describe("R-140-f — the Sentry dynamic-import error path stays guarded (source
   it("componentDidCatch still lazy-imports @sentry/react and ships the componentStack context", () => {
     // Mock-friendly pin: the SDK is imported ON the error path only —
     // scanning the source proves the guard without booting Sentry.
-    expect(BOUNDARY).toContain('void import("@sentry/react").then((Sentry) => {');
+    // B-3 (R142): the import chain now carries a .catch — the pin tracks
+    // the multiline shape (import → then → capture, catch closes).
+    expect(BOUNDARY).toContain('void import("@sentry/react")');
+    expect(BOUNDARY).toContain(".then((Sentry) => {");
     expect(BOUNDARY).toContain("Sentry.captureException(error)");
     expect(BOUNDARY).toContain("componentStack");
+    expect(BOUNDARY).toContain(".catch(() => {})");
   });
 
   it("the class API + reset machinery is byte-identical (98-F7 / R118-B2 contracts)", () => {

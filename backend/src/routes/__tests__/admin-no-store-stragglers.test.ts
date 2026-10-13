@@ -29,28 +29,9 @@ import { copilotRouter } from "../admin/copilot";
  * ALSO proves the router-level header applies to error envelopes.
  */
 
-const COPILOT_PREVIEWS_DDL = `
-CREATE TABLE copilot_previews (
-  id varchar(32) PRIMARY KEY,
-  admin_id integer NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
-  intent_text text NOT NULL,
-  tool_name varchar(100) NOT NULL,
-  action_class varchar(50) NOT NULL,
-  risk_tier varchar(20) NOT NULL,
-  affected_ids jsonb NOT NULL,
-  affected_entity_type varchar(50) NOT NULL,
-  record_versions jsonb NOT NULL,
-  preview_payload jsonb NOT NULL,
-  model_id varchar(64) NOT NULL,
-  correlation_id varchar(64) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  expires_at timestamptz NOT NULL,
-  consumed_at timestamptz,
-  confirmed_once_at timestamptz,
-  cooldown_starts_at timestamptz,
-  confirmed_twice_at timestamptz
-);
-`;
+// R142 (E-1/F-2): copilot_previews ships from the shared harness
+// (test/db.ts prod-parity DDL, in the TRUNCATE list) — the local
+// duplicate CREATE + re-create-per-case were removed.
 
 function buildApp(): Express {
   const app = express();
@@ -97,9 +78,11 @@ beforeAll(async () => {
 }, 60_000);
 
 beforeEach(async () => {
+  // R142 (E-1/F-2): copilot_previews is harness-owned now (test/db.ts
+  // prod-parity DDL, truncated by resetTestDb) — the old per-case
+  // DROP+CREATE cycle is gone: the DROP would cascade-fight
+  // copilot_actions' FK and the CREATE collided with the harness.
   await resetTestDb();
-  await db.execute(sql.raw("DROP TABLE IF EXISTS copilot_previews"));
-  await db.execute(sql.raw(COPILOT_PREVIEWS_DDL));
 });
 
 describe("R123-E5 — no-store on the four admin GET stragglers", () => {

@@ -5,7 +5,7 @@ graph TB
 
         N --> HTTP["Express app (app.ts)<br/>helmet CSP → cloudflareClientIp → compression →<br/>CORS origin gate → rate limiters → pino → cookie →<br/>CSRF origin gate → /api router → SPA static → errors"]
 
-        N --> BOOT["bootMigrations() (migrate.ts)<br/>fingerprint fast-path in system_settings<br/>49 CREATE TABLEs + V1-M9..M23 reconcile stages<br/>production exits(1) on critical failure"]
+        N --> BOOT["bootMigrations() (migrate.ts)<br/>fingerprint fast-path in system_settings<br/>44 CREATE TABLEs + V1-M9..M34 reconcile stages<br/>production exits(1) on critical failure"]
 
         N --> SOCK["Socket.IO default namespace<br/>JWT + DB-session handshake auth<br/>rooms: join-user / join-admin"]
 

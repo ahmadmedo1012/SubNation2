@@ -46,8 +46,12 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
     h1: "اشتراكات البث المباشر في ليبيا",
     intro:
       "اختر اشتراكك المفضل لخدمات البث المباشر العالمية والعربية بالدينار الليبي. " +
-      "نوفر اشتراكات Netflix، Disney+، Shahid VIP، Amazon Prime Video، Apple TV+، " +
-      "Crunchyroll و YouTube Premium بأسعار محلية وتسليم فوري بعد الدفع. " +
+      // I-4 (R142): Shahid VIP + Crunchyroll dropped — the live catalog
+      // sells neither (lane I's 2026-10-13 probe: search=شاهد → 0; the 17
+      // stocked streaming names are enumerated in docs/SEO_PRODUCTS.json).
+      // The remaining five are all live; restocking a brand re-adds it.
+      "نوفر اشتراكات Netflix، Disney+، Amazon Prime Video، Apple TV+ " +
+      "و YouTube Premium بأسعار محلية وتسليم فوري بعد الدفع. " +
       "كل الاشتراكات أصلية ومضمونة، مع دعم فني سريع طوال أيام الأسبوع. " +
       "ادفع من محفظتك بالدينار الليبي عبر مدار أو ليبيانا واستلم تفاصيل الحساب " +
       "خلال ثوانٍ. الاشتراك صالح للاستخدام في جميع المدن الليبية: طرابلس، " +
@@ -57,8 +61,12 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
        the full ≤60-char budget — the previous ai-tools title (63) was
        word-boundary-clamped at runtime, eating its tail first. */
     metaTitle: "البث المباشر في ليبيا — Netflix و Disney+ | SubNation",
+    // I-4 (R142): Shahid VIP dropped from the CTR copy too (unstocked —
+    // the live catalog sells neither it nor Crunchyroll). The comment
+    // sits ABOVE the value (not inside the concat expression): the
+    // category-parity suite extracts this prop by parsing the source.
     metaDescription:
-      "اشترِ اشتراكات Netflix و Disney+ و Shahid VIP و Amazon Prime Video بالدينار " +
+      "اشترِ اشتراكات Netflix و Disney+ و Amazon Prime Video بالدينار " +
       "الليبي. تسليم فوري في طرابلس وبنغازي ومصراتة وكامل ليبيا.",
     faqs: [
       {

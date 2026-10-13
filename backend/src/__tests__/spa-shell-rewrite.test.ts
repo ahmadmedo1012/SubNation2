@@ -57,6 +57,8 @@ const SPA_STUB_HTML = `<!DOCTYPE html>
 <meta property="og:image" content="https://subnation.ly/opengraph.jpg">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="720">
+<meta property="og:url" content="https://subnation.ly/">
+<meta property="og:type" content="website">
 <link rel="canonical" href="https://subnation.ly/">
 </head>
 <body><div id="root">SUBNATION-SPA-SHELL-STUB</div></body>
@@ -336,6 +338,54 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     expect(desc).toBe("D".repeat(160));
   });
 
+  // R142 (K-1): the clamp must be the MetaTags WORD-BOUNDARY algorithm,
+  // not a raw character cut — the two LIVE money-page titles (61 chars,
+  // both ending «… | SubNation») shipped mid-word shards («…| SubNat…»)
+  // in the raw shell while the hydrated page clamped at the word
+  // boundary (raw ≠ hydrated — the split-title signal R122 closed).
+  it("R142 K-1: spaced over-long titles clamp at the WORD BOUNDARY — no mid-word shards (the two live money-page titles)", async () => {
+    const [lifetimeRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Lifetime Cloud Storage",
+        slug: "lifetime-cloud-storage",
+        price: "980.00",
+        category: "software",
+        seoTitle: "تخزين سحابي مدى الحياة — من 500 جيجا إلى بلا حدود | SubNation",
+        description: "وصف",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+    const [hallmarkRow] = await db
+      .insert(productsTable)
+      .values({
+        name: "Hallmark Movies Now",
+        slug: "hallmark-movies-now",
+        price: "60.00",
+        category: "streaming",
+        seoTitle: "اشتراك Hallmark — أفلام عائلية ورومانسية في ليبيا | SubNation",
+        description: "وصف",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+
+    const lifetime = await get(`/product/${lifetimeRow.slug}`);
+    const lifetimeTitle = titleOf(lifetime.body)!;
+    expect(lifetimeTitle).toBe("تخزين سحابي مدى الحياة — من 500 جيجا إلى بلا حدود |…");
+    // the raw-cut shard class ("…| SubNat…") must be gone
+    expect(lifetimeTitle).not.toMatch(/SubN/);
+    expect(metaContent(lifetime.body, "property", "og:title")).toBe(lifetimeTitle);
+
+    const hallmark = await get(`/product/${hallmarkRow.slug}`);
+    const hallmarkTitle = titleOf(hallmark.body)!;
+    expect(hallmarkTitle).toBe("اشتراك Hallmark — أفلام عائلية ورومانسية في ليبيا |…");
+    expect(hallmarkTitle).not.toMatch(/SubN/);
+    for (const t of [lifetimeTitle, hallmarkTitle]) {
+      expect(t.length).toBeLessThanOrEqual(60);
+      expect(t.endsWith("…")).toBe(true);
+    }
+  });
+
   it("R122: whitespace-only seo overrides fall back to the defaults (trim, not truthiness)", async () => {
     const [seoRow] = await db
       .insert(productsTable)
@@ -437,6 +487,51 @@ describe("SPA shell rewrite — product og:image (A11-F3b, R126-L6)", () => {
   });
 });
 
+// ── R142 (K-2): OG identity arms — og:url/og:type follow the canonical ──────
+
+describe("SPA shell rewrite — og:url / og:type identity (R142 K-2)", () => {
+  it("a PRODUCT shell advertises itself as the OG object: og:url = the product URL, og:type = product", async () => {
+    const r = await get(`/product/${activeProduct.slug}`);
+    expect(metaContent(r.body, "property", "og:url")).toBe(
+      `https://subnation.ly/product/${activeProduct.slug}`,
+    );
+    expect(metaContent(r.body, "property", "og:type")).toBe("product");
+    // …and the og:url now AGREES with the canonical (the pre-fix shell
+    // said canonical=/product/x while og:url=the homepage).
+    expect(canonicalHref(r.body)).toBe(`https://subnation.ly/product/${activeProduct.slug}`);
+  });
+
+  it("a numeric /product/:id shell canonicalizes og:url to the row's SLUG url too", async () => {
+    const r = await get(`/product/${activeProduct.id}`);
+    expect(metaContent(r.body, "property", "og:url")).toBe(
+      `https://subnation.ly/product/${activeProduct.slug}`,
+    );
+  });
+
+  it("a CATEGORY shell rewrites og:url to the category URL; og:type stays `website` (only the PDP is a product object)", async () => {
+    const r = await get("/category/vpn");
+    expect(metaContent(r.body, "property", "og:url")).toBe("https://subnation.ly/category/vpn");
+    expect(metaContent(r.body, "property", "og:type")).toBe("website");
+  });
+
+  it("a STATIC route shell (flash-sales) rewrites og:url to the route URL", async () => {
+    const r = await get("/flash-sales");
+    expect(metaContent(r.body, "property", "og:url")).toBe("https://subnation.ly/flash-sales");
+  });
+
+  it('the HOME shell keeps the static baseline og identity (already correct for "/")', async () => {
+    const r = await get("/");
+    expect(metaContent(r.body, "property", "og:url")).toBe("https://subnation.ly/");
+    expect(metaContent(r.body, "property", "og:type")).toBe("website");
+  });
+
+  it("noindex families keep the static og identity (never rewritten — the family is unindexable by design)", async () => {
+    const r = await get("/login");
+    expect(metaContent(r.body, "property", "og:url")).toBe("https://subnation.ly/");
+    expect(metaContent(r.body, "property", "og:type")).toBe("website");
+  });
+});
+
 // ── A7-F7: dead product slugs are a REAL 404 ────────────────────────────────
 
 describe("SPA shell rewrite — dead product slugs answer 404 (A7-F7)", () => {
@@ -465,14 +560,26 @@ describe("SPA shell rewrite — noindex families in the raw shell (A7-F16)", () 
   it.each([
     ["/login", "/login"],
     ["/register", "/register"],
+    ["/forgot-password", "/forgot-password"],
+    ["/onboarding", "/onboarding"],
+    ["/auth/telegram-callback", "/auth/telegram-callback"],
     ["/cart", "/cart"],
     ["/checkout", "/checkout"],
     ["/wallet", "/wallet"],
     ["/orders", "/orders"],
     ["/orders/123", "/orders/123"],
+    ["/loyalty", "/loyalty"],
+    ["/referrals", "/referrals"],
     ["/profile", "/profile"],
     ["/admin", "/admin"],
     ["/admin/users", "/admin/users"],
+    ["/status", "/status"],
+    // R142 (K-3): the 7 previously-unpinned families — deleting any
+    // SHELL_NOINDEX_RES line used to pass CI while robots.txt and the
+    // SPA's NOINDEX_ROUTES kept walling the family (the r140-m
+    // /notifications class, re-openable by a one-line edit).
+    ["/notifications", "/notifications"],
+    ["/notifications?page=2", "/notifications?page=2"],
   ])(
     "%s → noindex,follow + canonical stripped (index,follow NEVER in raw HTML)",
     async (label, url) => {

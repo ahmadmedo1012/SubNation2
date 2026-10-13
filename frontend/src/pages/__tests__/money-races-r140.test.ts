@@ -292,14 +292,33 @@ describe("R-140-o B — the gate chain per money mutation (task a)", () => {
     );
   });
 
-  it("wallet topup submit: the key rides a ref read at render time + rotates at every payload-defining reset point", () => {
-    // 96-F6: ONE key per submission intent — read at render, rotated ONLY
-    // at explicit reset points (see the ORVAL HEADER-TIMING CONTRACT note
-    // in lib/idempotency.ts for the same-handler rotation residual).
-    expect(walletPage).toMatch(/"Idempotency-Key": topupKeyRef\.current,/);
+  it("wallet topup submit: the key is FETCH-TIME read (stable request object) + rotates at every payload-defining reset point", () => {
+    // 96-F6: ONE key per submission intent — rotated ONLY at explicit
+    // reset points. G-2 (R142) closed the ORVAL HEADER-TIMING residual
+    // (lib/idempotency.ts documents the class): the render-time header
+    // capture shipped the PRE-rotation key with the submit-time
+    // POST-normalization body. The pin is now the stable-request-object
+    // contract — synced at EVERY rotation point (resetTopupKey), the
+    // mount restore, and belt-and-suspenders immediately before mutate.
+    expect(walletPage).toMatch(/request: topupRequestRef\.current,/);
+    expect(walletPage).toMatch(
+      /const syncTopupRequestKey = \(\) => \{\s*topupRequestRef\.current\.headers\["Idempotency-Key"\] = topupKeyRef\.current \?\? "";\s*\};/,
+    );
+    // every rotation point funnels through resetTopupKey → the sync.
     expect(walletPage).toMatch(/resetTopupKey\(topupIntentFingerprint\(/);
-    // the intent key is durable (sessionStorage) for the refresh retry.
+    expect(walletPage).toMatch(
+      /persistTopupIntentKey\(nextFingerprint, topupKeyRef\.current\);\s*syncTopupRequestKey\(\);/,
+    );
+    // the intent key is durable (sessionStorage) for the refresh retry —
+    // and the restored key reaches the stable request object too.
     expect(walletPage).toMatch(/loadTopupIntentKey\(fingerprint\)/);
+    expect(walletPage).toMatch(/topupKeyRef\.current = restored;\s*syncTopupRequestKey\(\);/);
+    // belt-and-suspenders: the wire key is re-synced in the submit
+    // handler itself, AFTER the normalization rotation, BEFORE mutate.
+    const submitSync = walletPage.indexOf("syncTopupRequestKey();");
+    const mutateCall = walletPage.indexOf("topupMutation.mutate({");
+    expect(submitSync).toBeGreaterThan(-1);
+    expect(mutateCall).toBeGreaterThan(submitSync);
   });
 
   it("PDP single-buy: buyPending guard + mint-or-reuse BEFORE createOrder + in-flight-409 key retention", () => {
@@ -326,8 +345,11 @@ describe("R-140-o B — the gate chain per money mutation (task a)", () => {
     );
     expect(loyaltyPage).toMatch(/persistStoredConvertKey\(fingerprint, intentKey\);/);
     expect(loyaltyPage).toMatch(/"Idempotency-Key": intentKey,/);
+    // G-1 (R142): the convert POST rides the generated client — non-2xx
+    // arrives as ApiError, so the envelope lives on .data (checkout's
+    // apiErrorData reader) instead of a hand-parsed body.
     expect(loyaltyPage).toMatch(
-      /if \(result\?\.code !== "IDEMPOTENCY_IN_FLIGHT"\) clearStoredConvertKey\(\);/,
+      /if \(envelope && envelope\.code !== ErrorCode\.IDEMPOTENCY_IN_FLIGHT\) clearStoredConvertKey\(\);/,
     );
     expect(read("src/components/loyalty/ConvertPointsCard.tsx")).toMatch(
       /disabled=\{converting \|\| !convertPoints\}/,

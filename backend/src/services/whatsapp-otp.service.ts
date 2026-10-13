@@ -19,6 +19,7 @@ import { logAuthActivity } from "../lib/auth-activity";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
 import { createUserSession } from "../lib/session";
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 import {
   generateOtp,
   hashOtp,
@@ -831,6 +832,22 @@ async function safeLog(params: {
 const OTP_PRUNE_BATCH_SIZE = 1000;
 
 export async function pruneExpiredOtps(): Promise<number> {
+  // L-3 (R142): this prune's only RECURRING trigger is the throttled
+  // opportunistic fire from startOtp — whose catch is warn-log-only, so a
+  // persistent DB failure was invisible to Sentry for weeks on a sleeping
+  // instance. Capture here exactly like the sibling watchers
+  // (stockWatcher/couponWatcher/flashSaleWatcher) do; the boot one-shot
+  // chain's own capture remains the fallback for boot-time failures.
+  try {
+    return await pruneExpiredOtpsInner();
+  } catch (err) {
+    logger.error({ err, category: "maintenance" }, "whatsapp-otp prune failed");
+    captureSchedulerFailure("whatsapp_otp_prune", err);
+    return 0;
+  }
+}
+
+async function pruneExpiredOtpsInner(): Promise<number> {
   // R127-L3 (B7 P2-6): expires_at (indexed) — see the doc comment above.
   const cutoff = new Date(Date.now() - 23 * 60 * 60 * 1000);
   let deleted = 0;

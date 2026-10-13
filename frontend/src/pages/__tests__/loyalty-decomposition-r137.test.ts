@@ -80,8 +80,10 @@ describe("R137 (FE) — loyalty.tsx decomposition: page stays an orchestration c
       "const intentKey = loadStoredConvertKey(fingerprint) ?? generateIdempotencyKey();",
     );
     expect(page).toContain("persistStoredConvertKey(fingerprint, intentKey);");
+    // G-1 (R142): the raw fetch became the generated convertPoints call —
+    // the in-flight retention reads the typed error envelope now.
     expect(page).toContain(
-      'if (result?.code !== "IDEMPOTENCY_IN_FLIGHT") clearStoredConvertKey();',
+      "if (envelope && envelope.code !== ErrorCode.IDEMPOTENCY_IN_FLIGHT) clearStoredConvertKey();",
     );
     // And the lifecycle's implementation lives in the pure module the
     // page imports by name (never duplicated inline).

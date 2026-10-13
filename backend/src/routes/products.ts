@@ -66,6 +66,14 @@ router.get("/", catalogCache, async (req, res) => {
   // query measured 6.5 ms on live data volumes, well within budget.
   const hasSearch = typeof search === "string" && search.trim().length > 0;
 
+  // I-3 (R142, B6-02 edge parity): search responses stay uncacheable at
+  // the EDGE too. catalogCache above stamps every list response with
+  // `public, s-maxage=60, stale-while-revalidate=300`; an edge rule
+  // honoring it would mint an unbounded ?search= key space (the exact
+  // class B6-02 removed in-process) plus 60 s-stale results. Override
+  // for the search shape — the house no-store value.
+  if (hasSearch) res.set("Cache-Control", "no-store");
+
   // R136 (BE-3 extraction): the loader body moved verbatim to
   // services/catalog.service.ts (loadProductList). The route narrows the
   // raw query values to the same locals the inline closure captured.

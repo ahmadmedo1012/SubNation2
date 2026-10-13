@@ -62,10 +62,18 @@ beforeEach(async () => {
   await resetTestDb();
   // Strip the four harness-carried CHECKs back to the pristine pre-stage
   // state (single statements for pglite — the v1m26 idiom).
-  await db.execute(sql.raw("ALTER TABLE cart_items DROP CONSTRAINT IF EXISTS chk_cart_items_quantity_pos"));
-  await db.execute(sql.raw("ALTER TABLE products DROP CONSTRAINT IF EXISTS chk_products_price_pos"));
-  await db.execute(sql.raw("ALTER TABLE product_variants DROP CONSTRAINT IF EXISTS chk_variant_price_pos"));
-  await db.execute(sql.raw("ALTER TABLE referral_events DROP CONSTRAINT IF EXISTS chk_referral_status"));
+  await db.execute(
+    sql.raw("ALTER TABLE cart_items DROP CONSTRAINT IF EXISTS chk_cart_items_quantity_pos"),
+  );
+  await db.execute(
+    sql.raw("ALTER TABLE products DROP CONSTRAINT IF EXISTS chk_products_price_pos"),
+  );
+  await db.execute(
+    sql.raw("ALTER TABLE product_variants DROP CONSTRAINT IF EXISTS chk_variant_price_pos"),
+  );
+  await db.execute(
+    sql.raw("ALTER TABLE referral_events DROP CONSTRAINT IF EXISTS chk_referral_status"),
+  );
   // (Re-)provision the per-file tables fresh (no CHECKs; one statement
   // per execute — pglite rejects multi-command prepared statements).
   for (const table of PER_FILE_TABLES) {
@@ -119,9 +127,15 @@ describe("V1-M29 — applyDomainCheckConstraintsStage (R123-A7 P3)", () => {
 
   it("violation pre-check: dirty cart quantity → ALERT + skip that one, the other seven still apply", async () => {
     const [user] = await db.insert(usersTable).values({ phone: nextPhone() }).returning();
+    // R142 (F-2): the harness cart_items now carries prod's
+    // fk_cart_items_product — seed a REAL product instead of the
+    // dangling id=1 (the FK fires before the CHECK we're testing).
+    const host = await db
+      .execute(sql`INSERT INTO products (name, price) VALUES ('v1m29-dirty-host', 10) RETURNING id`)
+      .then((r) => (r as unknown as { rows: Array<{ id: number }> }).rows[0]);
     await db.execute(sql`
       INSERT INTO cart_items (user_id, product_id, quantity)
-      VALUES (${user.id}, 1, 0)
+      VALUES (${user.id}, ${host.id}, 0)
     `);
 
     await applyDomainCheckConstraintsStage();
@@ -129,9 +143,7 @@ describe("V1-M29 — applyDomainCheckConstraintsStage (R123-A7 P3)", () => {
     // The dirty table's CHECK was skipped…
     expect(await constraintExists("chk_cart_items_quantity_pos")).toBe(false);
     // …nothing was deleted…
-    const orphans = await db.execute(
-      sql`SELECT count(*) AS c FROM cart_items WHERE quantity = 0`,
-    );
+    const orphans = await db.execute(sql`SELECT count(*) AS c FROM cart_items WHERE quantity = 0`);
     const rows = (orphans as unknown as { rows?: Array<{ c: number | string }> }).rows ?? [];
     expect(Number(rows[0]?.c ?? 0)).toBe(1);
     // …a deduped admin alert fired…
@@ -148,11 +160,15 @@ describe("V1-M29 — applyDomainCheckConstraintsStage (R123-A7 P3)", () => {
     const [user] = await db.insert(usersTable).values({ phone: nextPhone() }).returning();
 
     // cart_items: quantity 0 (the handler's >= 1 validation bypassed).
+    // R142 (F-2): same fk_cart_items_product story — seed the host row.
+    const cartHost = await db
+      .execute(sql`INSERT INTO products (name, price) VALUES ('v1m29-cart-host', 10) RETURNING id`)
+      .then((r) => (r as unknown as { rows: Array<{ id: number }> }).rows[0]);
     expect(
       await constraintViolationName(
         db.execute(sql`
           INSERT INTO cart_items (user_id, product_id, quantity)
-          VALUES (${user.id}, 1, 0)
+          VALUES (${user.id}, ${cartHost.id}, 0)
         `),
       ),
     ).toBe("chk_cart_items_quantity_pos");

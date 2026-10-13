@@ -9,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
 
 /**
  * Drop-in async replacement for `window.confirm()` that renders a
@@ -131,7 +132,15 @@ export function useConfirm() {
               onClick={() => settle(true)}
               className={
                 state.destructive
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  ? /* J-1 (R142): the token-based destructive surface — white
+                     on the raw --destructive channel computed 4.00:1 (AA
+                     fail; R128-A1-F2 created --destructive-surface for
+                     exactly this dialog class). The variant's classes
+                     merge through the Action's own twMerge over its
+                     buttonVariants() base, so the AA fill + destructive
+                     border + shadow win; the Action base already pins the
+                     min-h-11 (44px) money-path tap floor. */
+                    buttonVariants({ variant: "destructive" })
                   : undefined
               }
             >

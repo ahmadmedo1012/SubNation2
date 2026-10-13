@@ -92,7 +92,13 @@ export function RejectModal({
             إلغاء
           </Button>
           <Button
-            className="flex-1 h-9 bg-destructive hover:bg-destructive/90 text-destructive-foreground active:scale-[0.97] shadow-sm shadow-destructive/20"
+            /* J-1 (R142): variant="destructive" rides the AA
+               --destructive-surface token (the raw hand-rolled
+               bg-destructive fill computed 4.00:1) + min-h-11 replaces
+               h-9 — the 44px money-path floor the useConfirm twin and
+               BulkConfirmModal already enforce. */
+            variant="destructive"
+            className="flex-1 min-h-11 active:scale-[0.97]"
             onClick={() => onConfirm(note)}
             disabled={loading}
           >

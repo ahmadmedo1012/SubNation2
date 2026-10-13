@@ -108,12 +108,17 @@ export default function AdminOrdersPage() {
   // order's expansion is opened, then cached per order id for the page's
   // lifetime (re-expansions are instant and never re-hit the audited
   // endpoint). A failure is remembered too — retry spam on a dead
-  // endpoint would re-log audit rows for nothing.
+  // endpoint would re-log audit rows for nothing (D-2/R142: the
+  // remembering now ends when the row COLLAPSES, so the toast's «حاول
+  // فتح الطلب مرة أخرى» is an honest instruction, not a no-op).
   const [credentialsCache, setCredentialsCache] = useState<Map<number, OrderCredentials>>(
     () => new Map(),
   );
   const [failedCredentialIds, setFailedCredentialIds] = useState<Set<number>>(() => new Set());
   const credentialsInFlight = useRef<Set<number>>(new Set());
+  // D-2 (R142): the previously-expanded row id — the expand effect below
+  // uses it to forget a failed credentials fetch when its row collapses.
+  const prevExpandedRowRef = useRef<number | null>(null);
 
   const ensureOrderCredentials = useCallback(
     async (orderId: number) => {
@@ -214,6 +219,24 @@ export default function AdminOrdersPage() {
   // make repeat calls safe no-ops while allOrders identity changes per
   // refetch.
   useEffect(() => {
+    const prev = prevExpandedRowRef.current;
+    prevExpandedRowRef.current = expandedRow;
+    // D-2 (R142): a failed credentials fetch used to be sticky for the
+    // page's lifetime — the failure toast said «حاول فتح الطلب مرة
+    // أخرى», but ensureOrderCredentials early-returned on the remembered
+    // id, so that exact retry was a no-op until a full reload. COLLAPSING
+    // the row now forgets the failure: the next expansion re-fires the
+    // audited fetch (the B6-03 retry-spam guard stays armed while the
+    // row is open — a failure never re-fetches on refetch-driven effect
+    // re-runs).
+    if (prev !== null && prev !== expandedRow) {
+      setFailedCredentialIds((prevSet) => {
+        if (!prevSet.has(prev)) return prevSet;
+        const next = new Set(prevSet);
+        next.delete(prev);
+        return next;
+      });
+    }
     if (expandedRow === null) return;
     const row = allOrders.find((o) => o.id === expandedRow);
     if (row?.has_credentials) {

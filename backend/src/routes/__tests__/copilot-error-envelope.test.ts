@@ -33,28 +33,9 @@ import { copilotRouter } from "../admin/copilot";
  * their requireCopilotPhase gates (defaults are all-off).
  */
 
-const COPILOT_PREVIEWS_DDL = `
-CREATE TABLE copilot_previews (
-  id varchar(32) PRIMARY KEY,
-  admin_id integer NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
-  intent_text text NOT NULL,
-  tool_name varchar(100) NOT NULL,
-  action_class varchar(50) NOT NULL,
-  risk_tier varchar(20) NOT NULL,
-  affected_ids jsonb NOT NULL,
-  affected_entity_type varchar(50) NOT NULL,
-  record_versions jsonb NOT NULL,
-  preview_payload jsonb NOT NULL,
-  model_id varchar(64) NOT NULL,
-  correlation_id varchar(64) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  expires_at timestamptz NOT NULL,
-  consumed_at timestamptz,
-  confirmed_once_at timestamptz,
-  cooldown_starts_at timestamptz,
-  confirmed_twice_at timestamptz
-);
-`;
+// R142 (E-1/F-2): copilot_previews ships from the shared harness
+// (test/db.ts prod-parity DDL) — the local duplicate CREATE was
+// removed (collided with "already exists").
 
 function buildApp(): Express {
   const app = express();
@@ -142,9 +123,11 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  // R142 (E-1/F-2): copilot_previews is harness-owned now (test/db.ts
+  // prod-parity DDL, truncated by resetTestDb) — the old per-case
+  // DROP+CREATE cycle is gone (the DROP cascade-fights
+  // copilot_actions' FK; the CREATE collided with the harness).
   await resetTestDb();
-  await db.execute(sql.raw("DROP TABLE IF EXISTS copilot_previews"));
-  await db.execute(sql.raw(COPILOT_PREVIEWS_DDL));
   // Phase gates: ask needs phase1, draft needs phase2, and since R134
   // (A1-F10) the previews GET + cancel carry the phase3 gate their
   // confirm siblings always had — seed all three on so every envelope
@@ -277,9 +260,7 @@ describe("copilot error envelopes — byte-identical after the createErrorRespon
         body: JSON.stringify({ phase1_enabled: true }),
       });
       expect(res.status).toBe(403);
-      expect(res.text).toBe(
-        '{"error":"لا تملك صلاحية الوصول إلى هذه الصفحة","code":"FORBIDDEN"}',
-      );
+      expect(res.text).toBe('{"error":"لا تملك صلاحية الوصول إلى هذه الصفحة","code":"FORBIDDEN"}');
     } finally {
       close();
     }

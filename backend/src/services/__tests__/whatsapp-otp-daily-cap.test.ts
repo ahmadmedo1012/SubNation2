@@ -33,6 +33,12 @@ function mockDbBoundary() {
       insert: vi.fn().mockReturnValue({
         values: vi.fn().mockResolvedValue(undefined),
       }),
+      // R142 (L-3): startOtp's throttled prune (db.execute DELETE …
+      // RETURNING) needs a resolved empty batch — without it the prune
+      // threw inside the new L-3 capture wrapper and its logger.error
+      // polluted errorSpy's exactly-once cap-announcement count.
+      // An empty rows array ends the batch loop immediately (0 deleted).
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
     },
     referralEventsTable: {},
     usersTable: {},

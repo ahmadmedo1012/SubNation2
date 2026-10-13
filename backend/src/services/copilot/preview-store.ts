@@ -6,8 +6,10 @@
  * id, and rows owned by other admins are invisible (FR-AUTH-005).
  *
  * Single-use enforcement is encoded in the SQL: createPreview stamps the
- * row with a 5-minute expiry; markFirstConfirmed and markExecuted require
- * the row to still be unconsumed and unexpired.
+ * row with a 5-minute expiry; markFirstConfirmed requires the row to still
+ * be unconsumed and unexpired, and the executors stamp consumed_at as a
+ * CONDITIONAL in-tx claim (isNull(consumed_at) — E-1/R142) so a concurrent
+ * double-confirm rolls back instead of double-executing.
  */
 
 import { db, copilotPreviewsTable } from "@workspace/db";
@@ -132,14 +134,6 @@ export async function claimUnconsumedPreview(
     .limit(1);
   if (!row) return null;
   return row as unknown as PreviewRow;
-}
-
-/** Stamp consumed_at on a preview row. */
-export async function markConsumed(id: string): Promise<void> {
-  await db
-    .update(copilotPreviewsTable)
-    .set({ consumedAt: new Date() })
-    .where(eq(copilotPreviewsTable.id, id));
 }
 
 /**

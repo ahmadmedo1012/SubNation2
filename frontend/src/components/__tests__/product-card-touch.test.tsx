@@ -30,6 +30,9 @@ vi.mock("@/lib/cart", () => ({
   // the mock honors the boolean contract (a void mock read as a refusal).
   useCart: () => ({ addItem: (...args: unknown[]) => (addItemMock(...args), true) }),
   useCartCommands: () => ({ addItem: (...args: unknown[]) => (addItemMock(...args), true) }),
+  // C-2 (R142): the card imports the real threshold constant now — the
+  // module mock must carry it (the value mirrors cart.tsx's definition).
+  LOW_STOCK_THRESHOLD: 3,
 }));
 
 const toastMock = vi.fn();

@@ -150,14 +150,17 @@ export const GuestHero = memo(function GuestHero({
                 Editorial intro — the only on-page Arabic prose
                 that gives Google a topic-vector beyond the title.
                 Every target keyword appears EXACTLY ONCE: سوق،
-                اشتراكات، البث المباشر، نتفلكس، ديزني+، شاهد،
+                اشتراكات، البث المباشر، نتفلكس، ديزني+،
                 سبوتيفاي، ويندوز، VPN، الذكاء الاصطناعي،
                 شات جي بي تي، الدينار الليبي، تسليم فوري.
                 R120-B1 (A7-F5): the examples now mirror the LIVE
                 catalog only (PlayStation Plus / Adobe / Microsoft
                 365 categories were archived 2026-09-19 — Windows,
                 VPNs and AI tools are what actually sells). The
-                paragraph visually collapses to 2 lines below sm
+                I-4 (R142) sweep dropped شاهد — the live catalog
+                stopped selling it (lane I's 2026-10-13 probe); every
+                remaining example is stocked. The paragraph visually
+                collapses to 2 lines below sm
                 (R120-B1 / A1-F3) but the FULL text stays in the
                 DOM — the toggle below re-reveals it.
               */}
@@ -165,8 +168,8 @@ export const GuestHero = memo(function GuestHero({
                 SubNation
               </strong>{" "}
               سوق إلكتروني متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة اشتراكات
-              البثّ المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي، ومفاتيح البرامج
-              مثل ويندوز، وشبكات VPN مثل إكسبرس، وأدوات الذكاء الاصطناعي مثل شات جي بي تي — كلّها
+              البثّ المباشر مثل نتفلكس وديزني+، وخدمات الموسيقى مثل سبوتيفاي، ومفاتيح البرامج مثل
+              ويندوز، وشبكات VPN مثل إكسبرس، وأدوات الذكاء الاصطناعي مثل شات جي بي تي — كلّها
               بالدينار الليبي مع تسليم فوري بعد الدفع.
             </p>
             {/* R120-B1 (A1-F3): expand toggle for the collapsed prose
@@ -210,7 +213,15 @@ export const GuestHero = memo(function GuestHero({
                     <Link
                       key={brand.latin}
                       href={`/category/${brand.cat}`}
-                      aria-label={inStock ? `${brand.ar} — متوفر الآن` : brand.ar}
+                      /* F1 (R142): category-level truth, not brand-level —
+                         the dot + tint key off the CATEGORY having ANY
+                         stocked product, so the accessible name must not
+                         claim this specific brand is «متوفر الآن» (with
+                         the live catalog ~98% نفد, a stocked streaming
+                         category can still hold Netflix sold out). ATs
+                         get the honest statement; sighted users keep the
+                         green dot's scannability. */
+                      aria-label={inStock ? `${brand.ar} — فئة فيها منتجات متوفرة` : brand.ar}
                       className={`shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 text-2xs font-bold rounded-full whitespace-nowrap transition-all duration-150 press-spring float-in stagger-${Math.min(i + 1, 8)} ${
                         inStock
                           ? "bg-status-success/8 border border-status-success/30 text-foreground hover:border-status-success/55"

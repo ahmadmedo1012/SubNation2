@@ -44,6 +44,10 @@ vi.mock("@/lib/cart", () => ({
   // ProductCard rides the commands context (R111-F4-F1) — the home
   // grid tests render real cards, so the mock must cover it too.
   useCartCommands: () => ({ addItem: vi.fn() }),
+  // C-2 (R142): ProductCard imports the threshold constant now — the
+  // mock must export it or the import reads undefined (mock factory
+  // replaces the WHOLE module surface).
+  LOW_STOCK_THRESHOLD: 3,
 }));
 
 vi.mock("@/lib/theme", () => ({

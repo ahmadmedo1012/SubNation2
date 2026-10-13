@@ -76,7 +76,10 @@ CREATE TABLE users (
   loyalty_tier varchar(50) NOT NULL DEFAULT 'bronze',
   lifetime_spend numeric(10,2) NOT NULL DEFAULT '0.00',
   referral_code varchar(20) UNIQUE,
-  referred_by integer REFERENCES users(id),
+  -- R142 (F-2): prod parity — migrate.ts fkStatements ships
+  -- fk_users_referred_by ON DELETE SET NULL (a referrer delete must not
+  -- cascade-delete the referee); the harness previously had no ON DELETE.
+  referred_by integer REFERENCES users(id) ON DELETE SET NULL,
   -- V1-M21 (R115): exactly-once guard for the welcome-bonus grant
   -- (policy B — first approved topup, all channels).
   welcome_bonus_granted boolean NOT NULL DEFAULT false,
@@ -172,7 +175,9 @@ CREATE TABLE orders (
   delivered_usage_terms text,
   delivered_at timestamptz,
   coupon_code varchar(50),
-  discount_amount numeric(10,2) DEFAULT '0.00',
+  -- R142 (F-2): prod parity — NOT NULL (migrate.ts:3100-3104, R97-DB-03);
+  -- the harness previously omitted it, certifying prod-forbidden NULLs.
+  discount_amount numeric(10,2) NOT NULL DEFAULT '0.00',
   -- V1-M22 (R115): first-class refund reconciliation columns.
   refunded_at timestamptz,
   refund_amount numeric(10,2),
@@ -270,7 +275,10 @@ CREATE TABLE wallet_ledger (
   balance_before numeric(10,2) NOT NULL,
   balance_after numeric(10,2) NOT NULL,
   reference_id integer,
-  reference_type varchar(32), -- AUD103-8 (r103): align with schema/migrate varchar(32)
+  -- R142 (F-2): prod parity — varchar(50), matching migrate.ts:3003 /
+  -- schema/wallet_ledger.ts / chain 0000 (the previous varchar(32) here
+  -- was the drift, and the old comment claimed the opposite).
+  reference_type varchar(50),
   description varchar(500),
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -354,7 +362,8 @@ CREATE TABLE flash_sales (
 -- R115 max_total_discount_pct) + any other key/value rows. savePricingConfig
 -- writes here in tests that exercise the real DB path.
 CREATE TABLE system_settings (
-  key varchar(100) PRIMARY KEY,
+  -- R142 (F-2): prod parity — migrate.ts:2920 ships VARCHAR(255).
+  key varchar(255) PRIMARY KEY,
   value text NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -371,14 +380,18 @@ CREATE TABLE cart_items (
   CONSTRAINT chk_cart_items_quantity_pos CHECK (quantity >= 1),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  -- migrate.ts cart_items CREATE TABLE ships this FK live (R98-DB-02
-  -- mirror); named like the boot SQL so parity tests can pin it.
-  CONSTRAINT fk_cart_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  -- migrate.ts cart_items CREATE TABLE ships these FKs live (R98-DB-02
+  -- mirror); named like the boot SQL so parity tests can pin them.
+  -- R142 (F-2): fk_cart_items_product was missing from the harness.
+  CONSTRAINT fk_cart_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_cart_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
 
 CREATE TABLE sessions (
   id varchar(255) PRIMARY KEY,
-  user_id integer NOT NULL,
+  -- R142 (F-2): prod parity — migrate.ts:3091 ships the FK ON DELETE
+  -- CASCADE; the harness previously had a bare integer column.
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   user_agent varchar(255),
   ip_address varchar(45),
   expires_at timestamptz NOT NULL,
@@ -499,6 +512,61 @@ CREATE TABLE notifications (
 -- boot swap converge (user_id, created_at DESC) for the bell sort.
 CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 
+-- R142 (E-1): copilot_previews + copilot_actions — prod parity (migrate.ts
+-- copilot pipeline batch) so the executor's single-use claim is testable
+-- against the REAL columns (consumed_at conditional stamp included).
+CREATE TABLE copilot_previews (
+  id varchar(32) PRIMARY KEY,
+  admin_id integer NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
+  intent_text text NOT NULL,
+  tool_name varchar(100) NOT NULL,
+  action_class varchar(50) NOT NULL,
+  risk_tier varchar(20) NOT NULL,
+  affected_ids jsonb NOT NULL,
+  affected_entity_type varchar(50) NOT NULL,
+  record_versions jsonb NOT NULL,
+  preview_payload jsonb NOT NULL,
+  model_id varchar(64) NOT NULL,
+  correlation_id varchar(64) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  confirmed_once_at timestamptz,
+  cooldown_starts_at timestamptz,
+  confirmed_twice_at timestamptz
+);
+CREATE INDEX idx_copilot_previews_admin_created
+  ON copilot_previews(admin_id, created_at DESC);
+CREATE INDEX idx_copilot_previews_expires ON copilot_previews(expires_at);
+CREATE INDEX idx_copilot_previews_action_class ON copilot_previews(action_class);
+
+CREATE TABLE copilot_actions (
+  id serial PRIMARY KEY,
+  preview_id varchar(32) REFERENCES copilot_previews(id) ON DELETE SET NULL,
+  admin_id integer NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
+  intent_text text NOT NULL,
+  tool_name varchar(100),
+  action_class varchar(50) NOT NULL,
+  risk_tier varchar(20) NOT NULL,
+  outcome varchar(20) NOT NULL,
+  failure_reason text,
+  before_state jsonb,
+  after_state jsonb,
+  confirmed_once_at timestamptz,
+  confirmed_twice_at timestamptz,
+  executed_at timestamptz,
+  model_id varchar(64),
+  model_input_tokens integer,
+  model_output_tokens integer,
+  correlation_id varchar(64) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_copilot_actions_admin_created
+  ON copilot_actions(admin_id, created_at DESC);
+CREATE INDEX idx_copilot_actions_action_class ON copilot_actions(action_class);
+CREATE INDEX idx_copilot_actions_outcome ON copilot_actions(outcome);
+CREATE INDEX idx_copilot_actions_preview ON copilot_actions(preview_id);
+
 -- V1-M9 (B8-10) composites for the admin "status + newest-first" lists,
 -- declared by the schema TS and created by applyMoneyConstraintStage.
 -- R123-E5 (V1-M27): idx_cart_items_user dropped — a strict prefix of
@@ -531,6 +599,8 @@ const TABLES = [
   "support_tickets",
   "audit_logs",
   "notifications",
+  "copilot_previews",
+  "copilot_actions",
 ];
 
 /** Build the fresh schema once. Call in a global beforeAll. */

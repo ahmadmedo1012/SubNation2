@@ -4,7 +4,8 @@
 > (originally written for the Oracle VM; live host since 2026-10 = Contabo —
 > R117 live probe; the choreography is host-neutral). Companions:
 > `COOLIFY_FINAL_SETUP.md` (deploy shape) · `CLOUDFLARE_FINAL_CUTOVER.md` (DNS)
-> · `RENDER_LEGACY_FALLBACK.md` (the old origin) · `docs/DISASTER_RECOVERY.md`
+> · `docs/history/RENDER_LEGACY_FALLBACK.md` (the old origin) ·
+> `docs/DISASTER_RECOVERY.md`
 > (data loss is NOT a rollback). Neon Postgres is the source of truth and
 > **never rolls back** — everything else here is reversible in minutes.
 
@@ -65,15 +66,21 @@ docker pull ghcr.io/ahmadmedo1012/subnation2:sha-<short>   # PRIVATE package —
 # one-time: docker login ghcr.io with a read:packages PAT
 ```
 
-Availability honesty (re-verified 2026-10-01): openwa's workflow publishes a
-`sha-<short>` tag on every push to `main` — `sha-ba6a843` is verified
-PRESENT on GHCR as a multi-arch index (linux/amd64 + linux/arm64) and CI is
-green for it. **SubNation2's workflow is manual-dispatch / `v*`-tag only**
-(metered minutes) AND Actions is currently disabled — **NO
-`subnation2` GHCR image exists for any commit**. §2 is therefore NOT
-available as a SubNation rollback path until Actions is restored and the
-workflow is dispatched once (`FINAL_OPERATOR_INPUTS.md` §account-level
-cleanup). For openwa, image rollback works today. In Coolify: switch the
+Availability honesty (re-verified 2026-10-01; Actions state corrected R142):
+openwa's workflow publishes a `sha-<short>` tag on every push to `main` —
+`sha-ba6a843` is verified PRESENT on GHCR as a multi-arch index
+(linux/amd64 + linux/arm64) and CI is green for it. **SubNation2's docker
+publisher is manual-dispatch / `v*`-tag only** (R122: the repo is public —
+Actions minutes are free; the tag-only discipline stays because publishing
+on every push would add nothing over Coolify's own VM build) and, per the
+authoritative STATUS banner in `.github/workflows/docker.yml` (verified
+2026-10-09), **NO completed publish is on record — no `subnation2` GHCR
+image exists for any commit**. Actions itself is LIVE on every push since
+R119 (§1) — the gap is the never-dispatched publisher, not disabled
+Actions. §2 is therefore NOT available as a SubNation rollback path until
+the workflow is dispatched once and the `sha-<short>` tag is verified in
+GHCR (needs a read:packages PAT — the package is private). For openwa,
+image rollback works today. In Coolify: switch the
 resource from Git build to the registry image, pin the exact tag, redeploy
 (`COOLIFY_FINAL_SETUP.md` §2.3 emergency path).
 §4's migration gate applies to image rollbacks identically.
@@ -87,7 +94,7 @@ Rolls users back to the PREVIOUS ORIGIN, not to older code on this VM.
   old Render origin (`subnation.ly` → Render) exists only while the legacy
   stack is still deployed AND un-suspended — as of the r111 record it is
   **billing-suspended (503)**, so a DNS rollback to Render is NOT currently
-  available. Truth + options: `RENDER_LEGACY_FALLBACK.md` §2.
+  available. Truth + options: `docs/history/RENDER_LEGACY_FALLBACK.md` §2.
 - Steps: Cloudflare dashboard → `subnation.ly` A record → the previous value
   recorded in Migration Phase 0 (proxied/orange; `www` CNAME follows the
   apex). Delay is TTL-bounded: at 300 s most resolvers follow within ≤5 min;
@@ -171,7 +178,7 @@ boot — it stops an old binary from running its corpus, but does NOT make that
 binary compatible with a newer schema. Use only to boot a known-compatible
 previous binary while fixing forward; unset immediately after
 (`ENVIRONMENT_MATRIX.md`). When in doubt about a specific stage, read the
-stage's probe in `migrate.ts` + `MIGRATION_RUNBOOK.md` before touching anything.
+stage's probe in `migrate.ts` + `docs/deprecated/MIGRATION_RUNBOOK.md` before touching anything.
 
 ## 5. OpenWA rollback (image pin + session survival)
 
@@ -211,7 +218,7 @@ QR re-pair.
 | DB gone weird (queries failing, healthz `neon` failing/degraded) | **STOP — Neon is NEVER rolled back.** Move to `docs/DISASTER_RECOVERY.md` (Scenario A/B); do not redeploy anything that writes |
 | Bad data (bug wrote wrong rows) | Targeted restore via the drill path — `docs/DISASTER_RECOVERY.md` Scenario A + restore-drill procedure; fix forward in code |
 | TLS broken (browser cert warnings/loops) | Cloudflare settings, not code: Full (strict) / WebSockets ON / Rocket Loader off — `CLOUDFLARE_FINAL_CUTOVER.md` §3–4 |
-| VM dead (whole stack unreachable) | Not a rollback — re-provision VM + Coolify + redeploy + restore from backup: `ORACLE_FINAL_SETUP.md` + `COOLIFY_FINAL_SETUP.md` + `docs/DISASTER_RECOVERY.md` |
+| VM dead (whole stack unreachable) | Not a rollback — re-provision VM + Coolify + redeploy + restore from backup: `docs/deprecated/ORACLE_FINAL_SETUP.md` + `COOLIFY_FINAL_SETUP.md` + `docs/DISASTER_RECOVERY.md` |
 
 ## 8. After ANY rollback
 

@@ -12,6 +12,7 @@
     "validate": "tsx ../scripts/validate.ts",
     "check:openapi": "tsx ../scripts/check-openapi-routes.ts",
     "check:error-codes": "tsx ../scripts/check-error-code-sync.ts",
+    "check:header-params": "tsx ../scripts/check-openapi-header-params.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate:env": "tsx ./src/validate-production-env.ts"
   },

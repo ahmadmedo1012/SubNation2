@@ -99,13 +99,19 @@ export const bodyParserRecovery: ErrorRequestHandler = (err, req, res, next) => 
   // Could not salvage. Return clean 400. No Sentry — overwhelmingly
   // bot-probe traffic.
   safeInc(bodyParseErrorsTotal, { reason: "invalid_json" });
+  // E-2 (R142): the raw preview could carry plaintext credentials inside
+  // the malformed body (`{"password":"hunter2",` — a truncated body on a
+  // flaky mobile network is the legitimate case). pino's REDACT_PATHS
+  // redacts object FIELDS, never substrings inside a string, so the
+  // preview bypassed the whole redaction design. Length only —
+  // path/method/content-type already identify the probe.
   logger.warn(
     {
       category: "monitoring",
       path: req.path,
       method: req.method,
       contentType: req.headers["content-type"],
-      bodyPreview: rawBody.slice(0, 80),
+      bodyLength: rawBody.length,
     },
     "[body-parse] rejected malformed body",
   );

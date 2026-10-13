@@ -46,13 +46,22 @@ const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
     return resLike({ body: { message: "تم تحويل النقاط بنجاح" } });
   }
   if (url === "/api/loyalty") return resLike({ body: loyaltyPayload(state.points) });
-  return resLike({ ok: false, status: 404, body: { error: `unexpected url: ${url}` } });
+  return resLike({ status: 404, body: { error: `unexpected url: ${url}` } });
 });
 
 vi.mock("@workspace/api-client-react", () => ({
   getGetMeQueryKey: () => ["/api/auth/me"],
   getGetWalletQueryKey: () => ["/api/wallet"],
   customFetch: (input: string | URL, init?: RequestInit) => fetchMock(input, init),
+  // G-1 (R142): loyalty's convert POST now rides the generated client —
+  // route it through the same fetchMock so the conversion journey (and
+  // its Idempotency-Key header) stays observable.
+  convertPoints: (body: unknown, init?: RequestInit) =>
+    fetchMock("/api/loyalty/convert-points", {
+      ...init,
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -82,14 +91,15 @@ function loyaltyPayload(points: number) {
   };
 }
 
-/** Minimal Response-like object (the loyalty harness shape). */
-function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+/** Real Response objects — convertPoints rides the generated client
+ *  (customFetch) since G-1, which reads .headers + .text(); the old
+ *  ok/json-only stubs lacked both. */
+function resLike(over: { status?: number; body?: unknown } = {}) {
+  const { status = 200, body = {} } = over;
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function callsTo(url: string): number {

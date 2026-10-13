@@ -86,6 +86,18 @@ vi.mock("@workspace/api-client-react", () => ({
   useGetMe: () => ({ data: { id: 7, wallet_balance: 1_000_000 }, isLoading: false }),
   useGetProduct: () => ({ data: PRODUCT, isLoading: false }),
   useGetProductRecommendations: () => ({ data: [], isLoading: false }),
+  // C-1 (R142): the page's coupon validation rides the generated client
+  // now — route it through the SAME validateFetchMock (init.body stays
+  // observable for the per-variant re-validation assertions) and parse
+  // the stub's JSON exactly like the real client would.
+  validateCoupon: async (body: unknown, init?: RequestInit) => {
+    const res = await validateFetchMock("/api/coupons/validate", {
+      ...init,
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({

@@ -2,7 +2,7 @@ import { memo, useRef } from "react";
 import { Link } from "wouter";
 import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useCartCommands } from "@/lib/cart";
+import { useCartCommands, LOW_STOCK_THRESHOLD } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
@@ -221,7 +221,12 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   const FallbackIcon = CATEGORY_ICON[cat] ?? Package;
   const unavailable = !product.is_available;
   const staggerClass = STAGGER[Math.min(index, 8)] ?? "";
-  const isLowStock = product.is_available && product.stock_count > 0 && product.stock_count <= 3;
+  // C-2 (R142): the whisper threshold rides cart.tsx's single exported
+  // definition (its own comment promises "the storefront's single
+  // definition of «متبقٍ N فقط»") — the inline 3 drifted silently if an
+  // operator ever raised the constant.
+  const isLowStock =
+    product.is_available && product.stock_count > 0 && product.stock_count <= LOW_STOCK_THRESHOLD;
   // R111-F4-F1 (P2): commands-only cart subscription. The card reads NO
   // live cart state (no is-in-cart flag — the CTA label never changes),
   // so it rides CartCommandsContext, whose value identity is stable for
@@ -769,7 +774,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           onClick={handleAddToCart}
           aria-label={`أضف ${product.name} إلى السلة`}
           title="أضف للسلة"
-          className="hidden md:flex absolute bottom-3 left-3 z-10 h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary/90 active:scale-90 transition-all duration-150 press-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+          className="hidden md:flex absolute bottom-3 left-3 z-10 h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary/90 active:scale-90 transition-all duration-150 press-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
         >
           <ShoppingCart className="w-3.5 h-3.5" aria-hidden="true" />
         </button>

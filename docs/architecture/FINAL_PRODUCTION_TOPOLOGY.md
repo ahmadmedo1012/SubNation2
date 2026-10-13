@@ -50,7 +50,7 @@ There is no second origin anywhere in the path.
 > and the migration runbooks describe), TLS is a Let's Encrypt cert at origin,
 > and no `cf-ray`/`server: cloudflare` headers appear (the Cloudflare zone is
 > DNS-only, grey-cloud). Verify and reconcile: if the fleet moved hosts, update
-> the DR/backup runbook host references (`ORACLE_FINAL_SETUP.md`,
+> the DR/backup runbook host references (`docs/deprecated/ORACLE_FINAL_SETUP.md`,
 > `DISASTER_RECOVERY.md`) to the real host. *(Reconciled R118, 2026-10-06 —
 > the host-naming truth pass landed across this docs tree.)*
 
@@ -77,10 +77,12 @@ starting a new one** (`FINAL_ROLLBACK_RUNBOOK.md` §0).
 ```
  subnation ──DATABASE_URL (sslmode=require)──► Neon Postgres (external)
                                              business schema (boot reconciler
-                                             V1-M6…V1-M23; drizzle mirror chain
-                                             0015 applied live — 0016 (R118)
-                                             has landed, in merge `966d70f`;
-                                             autosuspend-aware
+                                             V1-M6…V1-M34 — updated R142, the
+                                             R120/R123/R135 waves landed since
+                                             the old V1-M23 line; drizzle mirror
+                                             chain 0000–0023 = 24 migrations
+                                             (journal linear; latest snapshot
+                                             == schema); autosuspend-aware
                                              pool: small max, short idle)
  openwa   ──PERSISTENCE_URL (sslmode=require)► same Neon
                                              openwa_sessions (gateway-created,
@@ -114,7 +116,7 @@ name which shape each port belongs to.
 Two-layer rule: a port is reachable only if BOTH the provider security group
 (e.g. the Contabo firewall, if enabled) and the host iptables/ufw allow it.
 Original contract + `ss -tlnp` expectations:
-`ORACLE_FINAL_SETUP.md` §6 (Oracle-era provisioning guide — adapt the
+`docs/deprecated/ORACLE_FINAL_SETUP.md` §6 (Oracle-era provisioning guide — adapt the
 provider-console part to the actual host).
 
 ## 5. Secrets map (values: `SECRET_HANDLING_FINAL.md`)
@@ -136,7 +138,7 @@ backup is mandatory — five of these can never be re-derived.
 | openwa container | OTP requests → 503 + `Retry-After`; store + admin + sockets fully alive | OTP only | restart/redeploy; session auto-restores from Neon |
 | subnation container | Traefik 502 on the domain; DNS still points at the VM; openwa idles | whole app surface | Coolify redeploy; boot migrations no-op; `FINAL_ROLLBACK_RUNBOOK.md` §1 |
 | Traefik (Coolify edge) | 502/timeout on EVERYTHING public — containers still run | all public traffic | `docker restart` the Coolify edge container |
-| Whole VM | Cloudflare answers DNS but the origin is gone (DNS-only zone: browsers get connection timeouts / no answer) | entire stack | re-provision VM (`ORACLE_FINAL_SETUP.md` — Oracle-era guide, adapt for the Contabo console) + Coolify (`COOLIFY_FINAL_SETUP.md`) + restore (`DISASTER_RECOVERY.md`) |
+| Whole VM | Cloudflare answers DNS but the origin is gone (DNS-only zone: browsers get connection timeouts / no answer) | entire stack | re-provision VM (`docs/deprecated/ORACLE_FINAL_SETUP.md` — Oracle-era guide, adapt for the Contabo console) + Coolify (`COOLIFY_FINAL_SETUP.md`) + restore (`DISASTER_RECOVERY.md`) |
 | Neon | healthz `neon` degraded→failing; DB-backed API errors; scheduled jobs retry; openwa runs on its local folder until the DB returns | all data reads/writes | Neon-side incident; `DISASTER_RECOVERY.md` scenarios |
 | Cloudflare (DNS-only today) | domain-resolution issues only — no edge exists in the live path | DNS resolution | wait out the incident / `CLOUDFLARE_FINAL_CUTOVER.md` §8; if the zone were ever re-proxied, edge errors/blank return to this row |
 
@@ -149,7 +151,7 @@ Neon is the only persistent state.
 | Asset | Backed up? | Truth |
 |---|---|---|
 | Neon logical dump | **YES** | nightly `scripts/backup-cron.sh` on the VM host cron (03:15 UTC, keep 14) + optional off-VM presigned PUT (`BACKUP_PRESIGNED_PUT_URL`) — the off-VM copy is the PRIMARY recovery mechanism |
-| VM config / OS | no | re-provisionable from `ORACLE_FINAL_SETUP.md` in ~1 h (Oracle-era guide — adapt for the actual host) |
+| VM config / OS | no | re-provisionable from `docs/deprecated/ORACLE_FINAL_SETUP.md` in ~1 h (Oracle-era guide — adapt for the actual host) |
 | Coolify config | no | re-creatable from `COOLIFY_FINAL_SETUP.md` + git |
 | openwa `/data` volume | no | re-pairable via QR in minutes (Neon blobs restore first) |
 | Code + compose + runbooks | yes | git is the source of truth |

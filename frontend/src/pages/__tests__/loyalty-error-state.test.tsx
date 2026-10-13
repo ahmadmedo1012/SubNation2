@@ -58,14 +58,15 @@ const state = {
   ledgerOk: true,
 };
 
-/** Minimal Response-like object — avoids depending on a global Response. */
-function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+/** Real Response objects — the convert POST rides the generated client
+ *  (customFetch) since G-1, which reads .headers + .text(); the old
+ *  ok/json-only stubs lacked both. */
+function resLike(over: { status?: number; body?: unknown } = {}) {
+  const { status = 200, body = {} } = over;
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 /** URL router: /api/loyalty (page data) × /api/loyalty/ledger (history)
@@ -73,7 +74,7 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 const fetchMock = vi.fn(async (input: string | URL) => {
   const url = typeof input === "string" ? input : input.toString();
   if (url === "/api/loyalty/ledger") {
-    if (!state.ledgerOk) return resLike({ ok: false, status: 500, body: { error: "boom" } });
+    if (!state.ledgerOk) return resLike({ status: 500, body: { error: "boom" } });
     return resLike({ body: state.ledger });
   }
   if (url === "/api/loyalty/convert-points") {
@@ -81,11 +82,10 @@ const fetchMock = vi.fn(async (input: string | URL) => {
   }
   if (url === "/api/loyalty") {
     if (state.loyaltyFail === "reject") throw new TypeError("network down");
-    if (state.loyaltyFail === "500")
-      return resLike({ ok: false, status: 500, body: { error: "internal" } });
+    if (state.loyaltyFail === "500") return resLike({ status: 500, body: { error: "internal" } });
     return resLike({ body: state.loyaltyBody });
   }
-  return resLike({ ok: false, status: 404, body: { error: "unexpected url" } });
+  return resLike({ status: 404, body: { error: "unexpected url" } });
 });
 
 function renderPage() {
@@ -165,7 +165,7 @@ describe("LoyaltyPage — load failures are distinct from empty data (B4 P1-3)",
 
     // The convert POST fails with a backend error envelope.
     fetchMock.mockImplementationOnce(async () =>
-      resLike({ ok: false, status: 400, body: { error: "رصيد النقاط غير كافٍ" } }),
+      resLike({ status: 400, body: { error: "رصيد النقاط غير كافٍ" } }),
     );
     fireEvent.click(screen.getByRole("button", { name: "تحويل" }));
 

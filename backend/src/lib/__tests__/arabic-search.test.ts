@@ -260,6 +260,7 @@ describe("expandArabicSearch (R132) — mixed-script queries", () => {
         categories: [],
         latinTerms: [],
         compounds: [],
+        variantTerms: [],
       });
     }
   });
@@ -326,6 +327,64 @@ describe("expandArabicSearch (R132) — R132 Libyan brand variants", () => {
     ["تيدال", "tidal"],
   ])("expandArabicSearchTerms(%j) → [%j]", (query, term) => {
     expect(expandArabicSearchTerms(query)).toEqual([term]);
+  });
+});
+
+describe("expandArabicSearch (R142 I-1) — multi-word phrases survive rider tokens", () => {
+  it("«اشتراك شات جي بي تي» (a filler word before the phrase) resolves ChatGPT", () => {
+    const exp = expandArabicSearch("اشتراك شات جي بي تي");
+    expect(exp.nameTerms).toContain("chatgpt");
+    // the filler keeps its skeleton (R122 behavior for «اشتراك نتفلكس»),
+    // the phrase words must NOT mint «جي»/«بي»/«تي» skeleton noise.
+    expect(exp.nameTerms.filter((t) => ["jy", "by", "ty", "jyb", "jyby"].includes(t))).toEqual([]);
+  });
+
+  it("«شات جي بي تي برو» (a modifier after the phrase) → the chatgpt ∧ pro compound", () => {
+    const exp = expandArabicSearch("شات جي بي تي برو");
+    expect(exp.nameTerms).toContain("chatgpt");
+    expect(exp.compounds).toEqual([{ brand: "chatgpt", modifier: "pro" }]);
+  });
+
+  it("«في بي ان سنوي» resolves the vpn phrase beside a duration word", () => {
+    const exp = expandArabicSearch("في بي ان سنوي");
+    expect(exp.nameTerms).toContain("vpn");
+    expect(exp.variantTerms).toContain("سنوي");
+  });
+
+  it("a rider word that breaks the phrase still keeps the existing single-token behavior (no false phrase)", () => {
+    // «جي بي» is NOT a key — the tokens fall to skeletons exactly as R132 did.
+    const exp = expandArabicSearch("جي بي");
+    expect(exp.nameTerms.every((t) => t !== "chatgpt")).toBe(true);
+  });
+
+  it("the whole-query phrase path still wins when the query IS the phrase (skeleton suppression kept)", () => {
+    const exp = expandArabicSearch("شات جي بي تي");
+    expect(exp.nameTerms).toEqual(["chatgpt"]);
+  });
+
+  it("a multi-word CATEGORY phrase rides along a filler word («اشتراك ادوات سيو»)", () => {
+    const exp = expandArabicSearch("اشتراك ادوات سيو");
+    expect(exp.categories).toContain("seo-tools");
+  });
+});
+
+describe("expandArabicSearch (R142 I-2) — duration tokens for the variant-label EXISTS branch", () => {
+  it("duration words emit their Arabic token (+ ta-marbuta twin) as variantTerms", () => {
+    expect(expandArabicSearch("شهر").variantTerms).toEqual(["شهر"]);
+    // «سنة» normalizes to «سنه» — the ة twin keeps the live label spelling
+    // («سنة كاملة») reachable.
+    expect(expandArabicSearch("سنة").variantTerms).toEqual(["سنه", "سنة"]);
+    expect(expandArabicSearch("شهر واحد").variantTerms).toEqual(["شهر"]);
+  });
+
+  it("tier modifiers emit NO variantTerms (durations are the variant-axis words)", () => {
+    expect(expandArabicSearch("برو").variantTerms).toEqual([]);
+    expect(expandArabicSearch("بريميوم").variantTerms).toEqual([]);
+  });
+
+  it("variantTerms stay bounded for an adversarial many-modifier query", () => {
+    const exp = expandArabicSearch("شهر سنه اسبوع يوم برو بلس");
+    expect(exp.variantTerms.length).toBeLessThanOrEqual(6);
   });
 });
 

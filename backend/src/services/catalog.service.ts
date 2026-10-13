@@ -351,6 +351,17 @@ export async function loadProductList(params: ProductListParams) {
   }) =>
     sql`(${productsTable.name} ILIKE ${"%" + escapeLikeTerm(brand) + "%"} AND ${productsTable.name} ILIKE ${"%" + escapeLikeTerm(modifier) + "%"}${digits ? sql` AND (${productsTable.name} ILIKE ${escapeLikeTerm(digits) + "-%"} OR ${productsTable.name} ILIKE ${"% " + escapeLikeTerm(digits) + "-%"} OR ${productsTable.name} ILIKE ${"% " + escapeLikeTerm(digits)})` : sql``})`;
 
+  // R142 (I-2): one duration-token EXISTS branch — the LIVE catalog
+  // carries durations in ARABIC variant labels («شهر واحد»، «سنة كاملة»)
+  // while product names are brand-level ("Netflix") with no Latin
+  // month/year fragments, so `search=شهر` matched zero rows through the
+  // name-only ILIKEs. The Arabic token matches the Arabic label as-is
+  // (ta-marbuta twin included — see arabic-search variantTerms).
+  const variantLabelExists = (token: string) => {
+    const pattern = `%${escapeLikeTerm(token)}%`;
+    return sql`EXISTS (SELECT 1 FROM ${productVariantsTable} pv WHERE pv.product_id = ${productsTable.id} AND (pv.duration_label ILIKE ${pattern} OR pv.plan_label ILIKE ${pattern}))`;
+  };
+
   // Build SQL filter conditions — pushdown to the database.
   const conditions = [eq(productsTable.isActive, true), eq(productsTable.isArchived, false)];
   if (typeof category === "string" && category.trim()) {
@@ -386,7 +397,10 @@ export async function loadProductList(params: ProductListParams) {
     //     for «نتفلكس ١٢ شهر») — the plan-level intent;
     //   - categories: `category = <slug>` equality for Arabic category
     //     words («افلام» → streaming) — no English name token means
-    //     "movies", so the category IS the honest match.
+    //     "movies", so the category IS the honest match;
+    //   - variantTerms (R142 I-2): EXISTS-on-variant-label branches for
+    //     Arabic duration tokens («شهر» → every product with a «شهر…»
+    //     variant) — the live catalog's duration axis.
     // All branches stay inside the ≤500-row bounded list query.
     const likePatterns = [
       sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(rawTerm) + "%"}`,
@@ -394,9 +408,8 @@ export async function loadProductList(params: ProductListParams) {
         (term) => sql`${productsTable.name} ILIKE ${"%" + escapeLikeTerm(term) + "%"}`,
       ),
       ...expansion.compounds.map((c) => compoundCondition(c)),
-      ...expansion.categories.map(
-        (slug) => sql`LOWER(${productsTable.category}) = LOWER(${slug})`,
-      ),
+      ...expansion.variantTerms.map((token) => variantLabelExists(token)),
+      ...expansion.categories.map((slug) => sql`LOWER(${productsTable.category}) = LOWER(${slug})`),
     ];
     const searchCondition = or(...likePatterns);
     // or() types as SQL | undefined; likePatterns always holds the raw
@@ -480,9 +493,7 @@ export async function loadProductList(params: ProductListParams) {
     const prefixTerms = [rawTerm, ...expansion.nameTerms, ...expansion.latinTerms];
     const compoundTier = or(...expansion.compounds.map((c) => compoundCondition(c)));
     const prefixTier = or(
-      ...prefixTerms.map(
-        (term) => sql`${productsTable.name} ILIKE ${escapeLikeTerm(term) + "%"}`,
-      ),
+      ...prefixTerms.map((term) => sql`${productsTable.name} ILIKE ${escapeLikeTerm(term) + "%"}`),
     );
     query = query.orderBy(
       sql`CASE WHEN ${compoundTier ?? sql`false`} THEN 0 WHEN ${prefixTier ?? sql`false`} THEN 1 ELSE 2 END`,

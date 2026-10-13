@@ -159,15 +159,38 @@ export default function WalletPage() {
   // at each call site; the closure state at rotation time is stale by
   // one setState).
   const topupKeyRef = useRef<string | null>(null);
+  // G-2 (R142): the orval mutationFn closes over the `request` object at
+  // RENDER time — a key rotated in the SAME synchronous handler as
+  // mutate() (the submit-time fractional→whole normalization below)
+  // shipped the PRE-rotation key with the POST-normalization body. That
+  // was the one window where a network-failure-after-commit + refresh
+  // retry could mint a second pending topup (lypay without a reference
+  // has no DB dedup). The request object is now a STABLE ref whose
+  // headers are read AT FETCH TIME (createTopup's getHeaders runs when
+  // the mutation executes, not when the hook rendered) and synced at
+  // every key-mutation point: lazy init, every resetTopupKey rotation,
+  // the mount restore, and belt-and-suspenders right before mutate().
+  // Authorization is re-synced per render (token parity with the old
+  // per-render literal — same values, same empty-string deletion
+  // behavior in customFetch's Round-3 auth gate).
+  const topupRequestRef = useRef<{ headers: Record<string, string> }>({
+    headers: {},
+  });
+  topupRequestRef.current.headers.Authorization = token ? `Bearer ${token}` : "";
+  const syncTopupRequestKey = () => {
+    topupRequestRef.current.headers["Idempotency-Key"] = topupKeyRef.current ?? "";
+  };
   // Lazy init — idempotent null-guard (StrictMode double-render safe).
   // In-memory only: the mount restore below decides what the DURABLE
   // key for this visit is.
   if (topupKeyRef.current === null) {
     topupKeyRef.current = generateIdempotencyKey();
+    syncTopupRequestKey();
   }
   const resetTopupKey = (nextFingerprint: string) => {
     topupKeyRef.current = generateIdempotencyKey();
     persistTopupIntentKey(nextFingerprint, topupKeyRef.current);
+    syncTopupRequestKey();
   };
   // 96-F6 (R96 A2 P1-6): shared amount-field onChange — sanitizer +
   // key rotation. Used by BOTH topup flows' amount inputs.
@@ -305,6 +328,7 @@ export default function WalletPage() {
     const restored = loadTopupIntentKey(fingerprint);
     if (restored) {
       topupKeyRef.current = restored;
+      syncTopupRequestKey();
     } else if (topupKeyRef.current) {
       // Non-null by the lazy init above (render ran before this effect).
       persistTopupIntentKey(fingerprint, topupKeyRef.current);
@@ -438,15 +462,11 @@ export default function WalletPage() {
     .at(0);
 
   const topupMutation = useCreateTopup({
-    request: {
-      headers: {
-        Authorization: token ? `Bearer ${token}` : "",
-        // 96-F6 (R96 §5.1): per-intent idempotency key — see topupKeyRef
-        // above for the rotation contract. Read at render time; a retry
-        // of an unchanged intent replays the SAME key.
-        "Idempotency-Key": topupKeyRef.current,
-      },
-    },
+    // G-2 (R142): the STABLE request object — see topupRequestRef above.
+    // Its headers are read at fetch time, so every rotation (including
+    // the submit-time normalization rotation) is on the wire for the
+    // mutate() that follows it in the SAME synchronous handler.
+    request: topupRequestRef.current,
     mutation: {
       onSuccess(created) {
         // 96-F6 (R96 §5.1): the intent was successfully submitted —
@@ -571,6 +591,11 @@ export default function WalletPage() {
     // 93-C5 / F-03: trim once at the boundary (the backend trims again +
     // rejects >100 chars; maxLength on the input already bounds typing).
     const trimmedReference = paymentReference.trim().slice(0, 100);
+    // G-2 (R142): belt-and-suspenders — the stable request object already
+    // syncs at every rotation point, but the pre-mutate sync guarantees
+    // the wire key matches topupKeyRef.current even if a future rotation
+    // path forgets to call syncTopupRequestKey.
+    syncTopupRequestKey();
     topupMutation.mutate({
       data: {
         amount: normalizedAmount,

@@ -1747,7 +1747,11 @@ export async function applyMoneyArithmeticChecksStage(
 // precedent): the superseded CREATE INDEX statements that lived in the
 // runMigrations BODY blocks (products / wallet_ledger / missing-indexes
 // / risk / forecast) were REMOVED in the same edit — fresh databases
-// never get the redundant twins. The four creators inside FROZEN
+// never get the redundant twins. R142 (F-3) completed the sweep:
+// the fifth body creator, missing-indexes' idx_users_referral_code
+// (dropped from the chain by 0012 and from the schema by the same r103
+// edit, but left creating + re-dropping on every full reconcile), is
+// now removed too. The four creators inside FROZEN
 // numbered stages (V1-M9's idx_cart_items_user, V1-M12's
 // idx_idempotency_keys_order, V1-M16's idx_product_variants_product,
 // V1-M21's idx_points_ledger_user) are deliberately NOT modified (the
@@ -2434,7 +2438,9 @@ export async function applyR135IndexWaveStage(
     if (indexdef.includes("(user_id, created_at)")) {
       await execute(sql.raw(`DROP INDEX IF EXISTS ${name}`));
       await execute(
-        sql.raw(`CREATE INDEX IF NOT EXISTS ${name} ON ${table} (user_id, created_at DESC, id DESC)`),
+        sql.raw(
+          `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (user_id, created_at DESC, id DESC)`,
+        ),
       );
       logger.info(
         { category: "storage", index: name, table },
@@ -3278,7 +3284,11 @@ export async function runMigrations() {
       -- are converged by the V1-M24 probe-gated swap stage below — same
       -- name, so this IF NOT EXISTS no-ops there.
       CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code) WHERE referral_code IS NOT NULL;
+      -- F-3 (R142): idx_users_referral_code used to be created here — the
+      -- r103 cleanup dropped it from the chain + schema + added the V1-M15
+      -- probe-gated DROP, but missed THIS body creator, so every full
+      -- reconcile created it and dropped it again (two needless catalog
+      -- statements on users; fresh installs kept a transient index).
       CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_user_auth_identities_provider_uid ON user_auth_identities(provider, provider_uid);
       CREATE INDEX IF NOT EXISTS idx_user_auth_identities_user ON user_auth_identities(user_id);

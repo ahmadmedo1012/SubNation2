@@ -1,17 +1,19 @@
 %% External integrations — verified status 2026-10-05
+%% (R142 correction: Sentry + Telegram ops env went LIVE R121/R121-B,
+%%  2026-10-07 — nodes moved accordingly; source-of-truth.md is authoritative)
 graph TB
     subgraph LIVE["LIVE in production"]
         NEON["Neon PostgreSQL<br/>calm-art-99771185<br/>ep-spring-term-avwgxrte-pooler<br/>DATABASE_URL + PERSISTENCE_URL"]
-        TG["Telegram<br/>login (DB-config) LIVE ·<br/>alert bot env unset = degraded channel ·<br/>approval webhook disabled (env unset)"]
+        TG["Telegram<br/>login (DB-config) LIVE ·<br/>ops alert channel LIVE since R121 ·<br/>approval webhook LIVE (env set)"]
         WA["OpenWA / WhatsApp<br/>gateway healthy · session subnation-otp<br/>paired & READY since 2026-10-05"]
         GSC2["Let's Encrypt via Traefik<br/>cert for subnation.ly + www"]
+        SENTRY["Sentry — SENTRY_DSN + VITE_SENTRY_DSN LIVE since R121-B<br/>(CSP allows *.ingest.sentry.io)"]
     end
 
     subgraph OFF["OFF (disabled / missing creds — operator input needed)"]
         FB["Firebase / Google login<br/>backend: FIREBASE_* env absent → 503<br/>frontend: VITE_FIREBASE_* absent → provider hidden<br/>GOOGLE_CLIENT_ID absent"]
         GA["GA4 — VITE_GA_TRACKING_ID unset<br/>(CSP already allows googletagmanager)"]
         GSC["Search Console meta — VITE_GSC_VERIFICATION unset"]
-        SENTRY["Sentry — SENTRY_DSN + VITE_SENTRY_DSN unset<br/>(CSP allows *.ingest.sentry.io)"]
         ALERTS["Discord/generic alert webhooks — unset"]
     end
 

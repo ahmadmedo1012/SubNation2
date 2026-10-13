@@ -802,11 +802,17 @@ router.get("/sessions", requireUser, async (req, res) => {
   // Real session rows written by createUserSession at every login. The
   // previous implementation returned a single hardcoded "current" row —
   // pure cosmetics that made the device list meaningless.
+  // E-5 (R142): the one unbounded user list — bounded in practice by the
+  // 30-day expiry filter + authLimiter on mints, but every sibling list
+  // (notifications R128-IMP-5, wallet/loyalty ledgers) carries the clamp
+  // idiom. 200 covers any real device list; a user with >200 LIVE
+  // sessions has a bug, not a device list.
   const rows = await db
     .select()
     .from(sessionsTable)
     .where(and(eq(sessionsTable.userId, authReq.userId), gte(sessionsTable.expiresAt, new Date())))
-    .orderBy(desc(sessionsTable.createdAt));
+    .orderBy(desc(sessionsTable.createdAt))
+    .limit(200);
 
   return res.json({
     sessions: rows.map((r) => ({

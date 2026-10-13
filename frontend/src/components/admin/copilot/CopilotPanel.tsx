@@ -410,16 +410,24 @@ export function CopilotPanel() {
     // below are byte-for-byte unchanged. Only a session-expired 401
     // behaves differently (AdminSessionExpiredError into the caller's
     // catch, after the global toast + redirect).
-    const resp = await adminFetch("/api/admin/copilot/ask", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        intent_text: text,
-        history,
-        stream: true,
-        context: { route: window.location.pathname },
-      }),
-    });
+    // D-3 (R142): timeoutMs 0 — this is the ONE deliberate unbounded
+    // adminFetch: the SSE stream (multi-round tool calls + streaming
+    // tokens) legitimately outlives the 20 s default, and the signal
+    // would abort the in-flight body read mid-answer.
+    const resp = await adminFetch(
+      "/api/admin/copilot/ask",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          intent_text: text,
+          history,
+          stream: true,
+          context: { route: window.location.pathname },
+        }),
+      },
+      { timeoutMs: 0 },
+    );
     if (!resp.ok) {
       const body = (await resp.json().catch(() => null)) as { error?: string } | null;
       throw new Error(getErrorMessage(body) || `request failed (${resp.status})`);

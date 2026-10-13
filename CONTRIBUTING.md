@@ -28,10 +28,13 @@ locally first so the PR lands green:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm --filter @workspace/api-server exec vitest run      # backend suite (242 files)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (178 files)
+pnpm --filter @workspace/api-server exec vitest run      # backend suite (~255 files, R142)
+pnpm --filter @workspace/subnation run test:run          # frontend suite (~244 files, R142)
 pnpm build                                               # includes the bundle budget gate
 ```
+
+(Suite sizes are approximations that grow every round — the CHANGELOG's
+round entries carry the exact centrally-verified counts.)
 
 Contract rules the gates enforce:
 
@@ -47,9 +50,10 @@ Contract rules the gates enforce:
   the money suite green and an explicit note in the PR.
 - **E2e smoke (scheduled, not per-push)**: the guest-only Playwright suite
   runs weekly + on dispatch; it needs a reachable stack via the
-  `E2E_BASE_URL` repository variable (unset, it defaults to
-  `localhost:8080` and the weekly heartbeat fails loudly — set the
-  variable to the live URL; the suite is production-safe by design).
+  `E2E_BASE_URL` repository variable — set to the live URL since R130
+  (OPERATIONS_RUNBOOK.md §14); unset it would default to
+  `localhost:8080` and the weekly heartbeat would fail loudly (the suite
+  is production-safe by design).
 
 ## Conventions
 

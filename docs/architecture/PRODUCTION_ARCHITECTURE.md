@@ -36,7 +36,7 @@ Coolify/Traefik (LE at origin) → subnation Express :8080 + openwa :2785
 > and the migration runbooks describe), TLS is a Let's Encrypt cert at origin,
 > and no `cf-ray`/`server: cloudflare` headers appear (Cloudflare zone is
 > DNS-only). Verify and reconcile: if the fleet moved hosts, update the
-> DR/backup runbook host references (`ORACLE_FINAL_SETUP.md`,
+> DR/backup runbook host references (`docs/deprecated/ORACLE_FINAL_SETUP.md`,
 > `DISASTER_RECOVERY.md`) to the real host.
 
 The unique engineering content below is what the TOPOLOGY does **not** carry.
@@ -143,19 +143,19 @@ This is the same scheduler behaviour folded into the request lifecycles in
 ## 3. Schema authority — boot reconciler + Drizzle chain
 
 The database schema is created/reconciled by the boot reconciler
-`backend/src/migrate.ts` (labeled stages **V1-M6 … V1-M23** — the current chain;
-the V1-M11 number was never used). The boot reconciler is the source of truth at
-runtime; the Drizzle chain mirrors it for the CI drift gate.
+`backend/src/migrate.ts` (labeled stages **V1-M6 … V1-M34** — the current
+chain, updated R142; the V1-M11 number was never used). The boot reconciler
+is the source of truth at runtime; the Drizzle chain mirrors it for the CI
+drift gate.
 
-- **Drizzle chain** in `shared/db/drizzle/`: **0000–0015** (mirror re-emitted
-  R117; runtime chain V1-M23). 0013 (r110) re-synced the mirror for the CI drift
-  gate; 0014 (r115 — the loyalty economics core: points_ledger, precise
-  reversals, unified welcome policy) and 0015 (R117 — the V1-M23
-  `wallet_topups.reviewed_by` re-emit) are the latest re-emits. The old
-  "0000–0012 at bb4418e / 0013 lands in r110" text was stale.
+- **Drizzle chain** in `shared/db/drizzle/`: **0000–0023** — 24 migrations
+  (updated R142). 0013 (r110) re-synced the mirror for the CI drift gate;
+  the R118–R135 waves extended the chain through the R135 serving-index
+  re-emit (0023). The old "0000–0015 / runtime chain V1-M23" text was
+  stale (10 boot-stages / 8 mirror files behind).
 - **Migrate stages** run at every boot: probe → alert pattern, idempotent
-  DO-block existence checks. Current max stage is **V1-M23** (the r107 map's
-  "V1-M6…V1-M20" / "12 migrations" counts were stale).
+  DO-block existence checks. Current max stage is **V1-M34** (R135, DB-1 —
+  the serving-index wave; the "V1-M23" line above it was the R117 state).
 
 ---
 

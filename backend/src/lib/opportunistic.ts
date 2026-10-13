@@ -56,6 +56,16 @@ interface ThrottleEntry {
 const registry = new Map<string, ThrottleEntry>();
 
 /**
+ * L-2 (R142): a run this old that is STILL marked in-flight is hung —
+ * every throttled body is DB work the pool/statement timeouts bound, so
+ * a 10-minute-old "in flight" means the promise never settled. Re-arm
+ * instead of letting it disable the job until restart (the pre-fix guard
+ * was unbounded: one never-settling fn() killed that key forever, with
+ * no log line). Exported for the unit test.
+ */
+export const HUNG_RUN_FLOOR_MS = 10 * 60_000;
+
+/**
  * Fire a throttled, fire-and-forget maintenance job.
  *
  * @param key           Stable identity of the job (e.g. "flash-sale-sweep").
@@ -75,11 +85,26 @@ export function fireThrottledMaintenance(
   const entry = registry.get(key);
 
   if (entry) {
-    if (entry.inFlight) return false; // a hung run must not stack twins
-    if (now - entry.startedAt < minIntervalMs) return false; // throttled
+    if (entry.inFlight) {
+      if (now - entry.startedAt < HUNG_RUN_FLOOR_MS) {
+        // L-2 (R142): visible in the logs instead of the old silent skip.
+        logger.debug(
+          { category: "maintenance", job: key, startedAt: entry.startedAt },
+          `[opportunistic] "${key}" skipped — previous run still in flight`,
+        );
+        return false; // a hung run must not stack twins (until the floor)
+      }
+      // Older than the floor: treat as hung — fall through and re-arm.
+    } else if (now - entry.startedAt < minIntervalMs) {
+      return false; // throttled
+    }
   }
 
-  registry.set(key, { startedAt: now, inFlight: true });
+  // L-2 (R142): capture the ENTRY object (not a re-read of the registry)
+  // so a re-arm after a hung run can never have its flag falsely cleared
+  // by the stale promise's finally.
+  const armed: ThrottleEntry = { startedAt: now, inFlight: true };
+  registry.set(key, armed);
 
   void (async () => {
     try {
@@ -90,8 +115,7 @@ export function fireThrottledMaintenance(
         `[opportunistic] maintenance job "${key}" failed (non-fatal)`,
       );
     } finally {
-      const current = registry.get(key);
-      if (current) current.inFlight = false;
+      armed.inFlight = false;
     }
   })();
 

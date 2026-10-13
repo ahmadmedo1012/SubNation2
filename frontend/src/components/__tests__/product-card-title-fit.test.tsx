@@ -43,6 +43,9 @@ const addItemMock = vi.fn();
 vi.mock("@/lib/cart", () => ({
   useCart: () => ({ addItem: (...args: unknown[]) => addItemMock(...args) }),
   useCartCommands: () => ({ addItem: (...args: unknown[]) => addItemMock(...args) }),
+  // C-2 (R142): the card imports the real threshold constant now — the
+  // module mock must carry it (the value mirrors cart.tsx's definition).
+  LOW_STOCK_THRESHOLD: 3,
 }));
 
 const toastMock = vi.fn();

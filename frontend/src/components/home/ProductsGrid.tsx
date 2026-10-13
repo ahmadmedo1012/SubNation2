@@ -146,9 +146,21 @@ export function ProductsGrid({
               made). Also «جرّب» with shadda. */}
           {activeFilterCount > 0 ? (
             <>
-              <p className="font-bold text-base mb-1.5">لا توجد منتجات تطابق بحثك</p>
+              {/* I-5 (R142): an empty grid under «المتوفّر فقط» is NOT
+                  «no match» — with 44/45 live products نفد, matches
+                  exist but are sold out. The available-only variant says
+                  so and names the one-click recovery (clearing the
+                  filter); the mixed-filter case still gets the honest
+                  maybe-sold-out hint alongside the generic retry line. */}
+              <p className="font-bold text-base mb-1.5">
+                {availableOnly && activeFilterCount === 1
+                  ? "كل المنتجات المطابقة نفد المخزون حالياً"
+                  : "لا توجد منتجات تطابق بحثك"}
+              </p>
               <p className="text-sm text-muted-foreground mb-5">
-                جرّب تغيير الفلتر أو كلمة البحث
+                {availableOnly
+                  ? "قد تكون هناك نتائج مطابقة لكنها نفدت — جرّب إلغاء فلتر «المتوفّر فقط» لعرضها"
+                  : "جرّب تغيير الفلتر أو كلمة البحث"}
               </p>
             </>
           ) : (
