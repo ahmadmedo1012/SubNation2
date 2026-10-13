@@ -120,6 +120,16 @@ function FlashCard({
               CATEGORY_ACCENT idiom). */}
           <div className="relative aspect-square bg-muted/60 overflow-hidden">
             {product.image_url ? (
+              /* R140 (r139 debt closure — verified, no change):
+                 loading="lazy" + decoding="async" + alt={product.name}
+                 (the product's own name — descriptive, not "صورة") are
+                 all present. NO width/height attrs BY DESIGN: the img is
+                 absolutely positioned (inset-0 + m-auto) inside the
+                 fixed-ratio aspect-square shelf, which reserves the full
+                 layout box — CLS is structurally zero, and intrinsic
+                 width/height numbers would fight the max-w-[74%]
+                 max-h-[74%] object-contain containment (the ProductCard
+                 shelf's own twin idiom). */
               <img
                 src={product.image_url}
                 alt={product.name}
@@ -171,7 +181,12 @@ function FlashCard({
                the WhatsApp OTP-countdown vocabulary (tabular-nums + LTR run
                stays coherent if the label ever grows a unit suffix); pure
                digits render identically either way, so this is correctness
-               hardening, not a visual change. */
+               hardening, not a visual change. R140 (r139 debt closure):
+               the one-wrap-container form is the STRUCTURAL isolation —
+               the whole "HH:MM:SS" string is a single LTR run — and the
+               layout banner's digit spans now ride the same span-level
+               isolation (FlashSaleBanner.tsx), so the countdown family
+               is bidi-safe end-to-end. */
             <div className="absolute top-3 left-3 z-10 bg-card border border-border/60 text-foreground text-2xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 tabular-nums">
               <Clock className="w-3 h-3 text-status-warning" />
               <span dir="ltr">{timeLabel}</span>
@@ -308,6 +323,11 @@ export default function FlashSalesPage() {
             all ride it; text-3xl was this page's lone static outlier — at
             390px the two render ~identically, ≥sm the marketing page gets
             the marketing scale). */}
+        {/* R-140-l (semantics): VERIFIED — exactly one h1, always
+            mounted above the state swap (loading/error/empty/grid all
+            keep it); no section headings exist (a card grid — the
+            count line is a p, the sale banner is chrome), so the
+            heading ladder is h1-only and sequential. */}
         <h1 className="text-fluid-3xl font-bold mb-2">عروض فلاش</h1>
         <p className="text-muted-foreground font-bold text-sm">
           {activeSale ? activeSale.title : "خصومات على أفضل الاشتراكات الرقمية"}

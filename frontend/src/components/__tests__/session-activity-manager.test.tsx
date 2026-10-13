@@ -107,7 +107,7 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
 
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(4);
+    expect(invalidateSpy).toHaveBeenCalledTimes(5);
 
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
@@ -115,6 +115,10 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
       .map((arg) => JSON.stringify(arg.queryKey));
     expect(keys).toContain(JSON.stringify(["/api/wallet"]));
     expect(keys).toContain(JSON.stringify(["/api/wallet/topups"]));
+    // R-140-o: the wallet STATEMENT joined the storefront money set —
+    // a visibility resync that refreshed the balance/topups but left the
+    // §4 ledger surface stale contradicted the money screen itself.
+    expect(keys).toContain(JSON.stringify(["/api/wallet/ledger"]));
     expect(keys).toContain(JSON.stringify(["/api/auth/me"]));
 
     // The orders leg is a PREDICATE sweep (list variants + details).
@@ -137,12 +141,12 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     // Rapid re-focus — throttled.
     now += 1_000;
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(4);
+    expect(invalidateSpy).toHaveBeenCalledTimes(5);
 
     // 31 s later — fresh resync allowed.
     now += 30_000;
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(8);
+    expect(invalidateSpy).toHaveBeenCalledTimes(10);
 
     dateNowSpy.mockRestore();
   });
@@ -305,11 +309,11 @@ describe("SessionActivityManager — admin-family visibility resync (R127-B6-2)"
 
     await fireVisible();
 
-    // 4 storefront calls (orders predicate + wallet + topups + me — the
-    // pre-existing behavior for every authed session) + the 11-key admin
+    // 5 storefront calls (orders predicate + wallet + topups + ledger +
+    // me — R-140-o added the ledger family) + the 11-key admin
     // set (stats/orders/topups/users/tickets/risk×2/products — the R134
     // additions: chart-data + referrals + pricing/config).
-    expect(invalidateSpy).toHaveBeenCalledTimes(15);
+    expect(invalidateSpy).toHaveBeenCalledTimes(16);
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
@@ -367,13 +371,16 @@ describe("SessionActivityManager — SOCKET_RESYNC_EVENT storefront consumer (R1
       window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(4);
+    expect(invalidateSpy).toHaveBeenCalledTimes(5);
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
       .map((arg) => JSON.stringify(arg.queryKey));
     expect(keys).toContain(JSON.stringify(["/api/wallet"]));
     expect(keys).toContain(JSON.stringify(["/api/wallet/topups"]));
+    // R-140-o: the ledger family rides the resync event too (the
+    // storefront money set is ONE definition — lib/socket-resync.ts).
+    expect(keys).toContain(JSON.stringify(["/api/wallet/ledger"]));
     expect(keys).toContain(JSON.stringify(["/api/auth/me"]));
     const predicateCalls = invalidateSpy.mock.calls
       .map((call) => call[0])
@@ -391,7 +398,7 @@ describe("SessionActivityManager — SOCKET_RESYNC_EVENT storefront consumer (R1
       window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(8);
+    expect(invalidateSpy).toHaveBeenCalledTimes(10);
   });
 
   it("admin-only session: SAM does NOT invalidate on the event (SocketInitializer owns the admin branch)", async () => {

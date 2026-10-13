@@ -10,6 +10,202 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R140 — the maturity round: four new dimensions, sixteen agents, every lane frozen — 2026-10-13
+
+The operator ordered «استمر بشكل اكبر واوسع» — bigger and wider. R139
+closed the design language end-to-end, so R140 opened the lanes no round
+had owned at the same depth: **CWV/performance, SEO/structured data,
+accessibility depth, and robustness** — every lane audited against both
+the live site and code truth, real gaps closed, and every gain frozen
+with its own source-scan pin suite. **Method**: sixteen agents in three
+waves (6 + 7 + 3) on disjoint file sets, one orchestrator-owned
+index.css, every decision inside the FINAL_UX_SYSTEM contract.
+**Verified centrally**: typecheck green · lint 0 errors (49 warnings —
+the exact R139 baseline) · **frontend 242 files / 2,289 tests green
+(+383 tests, sixteen new suites)** · **backend 872 suites / 2,390 tests
+green** · production build + PWA green. Commit `<R140-SHA>`.
+
+### Wave 1 — CWV, boot, and the r139 debt closure
+- **Image discipline** (140-a): every catalog-art `<img>` (14 audited
+  sites) carries the honest 450×450 intrinsic (all 45 assets in
+  `public/products/` are single-rendition 450×450 webp — no srcset
+  invented, the no-srcset guard pinned), lazy+async below the fold, and
+  the PDP main image is the one sanctioned eager+`fetchpriority="high"`
+  LCP element; alt fallbacks fixed («صورة المنتج» family); the three
+  no-intrinsic sites (QR data-URLs, admin preview) pinned to their fixed
+  containers so a layout refactor trips a pin. 39 pins.
+- **Boot critical path** (140-b): the font story verified end-to-end —
+  Readex Pro self-hosted via @fontsource, exactly the 6 contract faces,
+  `font-display: swap`, woff2 preloads already emitted by the Vite
+  pipeline (verified byte-identical in dist AND on subnation.ly — the
+  old PageSpeed "Google Fonts 57KB" finding formally obsolete); the boot
+  order documented; the 6s offline-reveal mechanism intact; a
+  load-bearing finding preserved: fontsource's no-unicode-range subsets
+  still resolve per-codepoint correctly (proven by headless-Chromium
+  probe — do not "fix" it). 37 pins.
+- **Chunk architecture** (140-c): 139 chunks audited against a fresh
+  production build — vendor-charts (514KB) stays the one intentional
+  monster behind the admin-lazy ChartsLoader; the eager path rides
+  ~2.7KB under its budget gate (headroom flagged); 41/41 registry routes
+  wrapped in lazyWithRetry (zero bare `lazy()` survives); warmup covers
+  the five money families — widening candidates documented, not forced.
+  17 pins (incl. the first behavioral lazyWithRetry battery).
+- **Runtime performance** (140-d): home's `itemListLd` + `latestOrders`
+  memoized (the 50-item map ran on every keystroke — the historical
+  911-task/684ms story), `useDeferredValue` on the search mirror +
+  `startTransition` on both committed-search paths (the filter input
+  never lags), the memo fleet completed (GuestHero/AuthedHero/
+  RecentOrdersStrip/ProductsGrid with a documented value-props compare),
+  and the blob-pause census re-frozen one-to-one (6 sites / 7 files —
+  a new unpaused blob site fails a pin). 12 pins.
+- **The r139 debt closure** (140-e): the category eyebrow DELETED (the
+  craft-floor ban on kickers — the category was named three times in
+  ~200px); the FlashSaleBanner countdown now structurally isolated
+  (each digit group its own `dir="ltr"` run — the no-wrapper reasoning
+  documented: a container would flip the segments' RTL flex order); the
+  storefront section-rule scatter unified to ONE hairline family (/20 —
+  receipt-grade precedent); the named-tracking no-op remnants dead (3
+  kills + 1 principled conversion to the 2FA twin's `tracking-[0.2em]`);
+  the referrals twin resolved — admin referrals adopts the shared
+  StaleListErrorBanner. 19 pins.
+- **Error boundaries** (140-f): `withRouteBoundary` HOC wraps the seven
+  money/auth routes (checkout, wallet, cart, order-detail, loyalty,
+  login, register) — a render crash no longer takes the whole shell
+  down on a money path; the socket initializer got the last missing
+  slim boundary; the fallback restyled into the calm-error family
+  (canonical Button CTAs, `role="alert"`); a second chunk failure now
+  lands in the segment boundary (pinned behaviorally). 15 pins.
+
+### Wave 2 — SEO depth + accessibility depth
+- **JSON-LD completeness** (140-g): the emission inventory verified
+  COMPLETE (Product+Offer+Availability+Breadcrumb+FAQ-gated on PDP,
+  Breadcrumb+FAQ+ItemList on category, Organization+WebSite+SearchAction
+  +ItemList on home, FAQPage on support) — with the no-fabrication
+  guards frozen: AggregateRating deliberately absent (the DTO has zero
+  review fields; fabricating stars is the rich-results spam class) and
+  SearchAction kept only because `?search=` deep links are real. 33 pins.
+- **Meta quality** (140-h): the in-place upsert mechanism re-verified
+  (one title/description/og set — no duplicate can ship); the
+  private-page noindex belt-and-braces inventory complete (page-level
+  stamps + the App fallback `robotsForPath` over the robots.txt walls);
+  not-found's description raised 40→93 chars (WhatsApp-unfurl quality);
+  og:locale documented as ar_LY (territory-honest). 29 pins.
+- **The contrast sweep** (140-i, audit): 190 pairs × both themes
+  computed with the WCAG formula (gamma-space alpha compositing) +
+  usage census over 394 files — **the one failed audit in the historical
+  PageSpeed report is substantively closed** (Navbar 17.96:1, hero muted
+  8.45:1). Four failing families found; fixes proposed with math and
+  applied centrally (below). The report lives at
+  `.kiro/specs/observability-seo-cwv-maturity/inspection-data/contrast-sweep-r140.md`.
+- **Keyboard/focus on the money paths** (140-j): six real gaps closed —
+  focus re-lands on the re-enabled trigger when a wallet/checkout
+  submit fails (it died at `<body>`), the waiting modal restores its
+  trigger on close, the status-flip keeps focus on the new CTA, the
+  MAX_PENDING freeze became real `inert` (pointer-events never blocked
+  keyboard), the freeze banner announces politely. 20 pins + 293
+  regression tests green.
+- **Live regions** (140-k): the async money state speaks — cart changes
+  announce «أُضيف إلى السلة — N منتجات» (badge aria-hidden, undo/
+  cross-tab/cross-page covered), the wallet balance announces «الرصيد
+  المتاح الآن …», loyalty points «نقاطي الآن …»; sonner 2.0.7 verified
+  announced at the dist level; the polite/assertive split pinned (no
+  new assertive region beyond errors). 24 pins.
+- **Semantics depth** (140-l): every real admin table now announces its
+  Arabic name (aria-label) and scopes every column (`scope="col"` —
+  RecomputePreviewCard was the last unscoped money sample); every
+  storefront page view carries exactly one h1 (order-detail's error
+  views got theirs; onboarding's step 2 fixed; the admin shell's nested
+  second `<main>` retired — HTML forbids main-in-main); the receipt
+  div-rows and div-grid decisions frozen with rationale. 57 pins.
+- **Sitemap/robots freshness** (140-m, backend): per-category lastmod
+  made honest (one grouped aggregate scan — a VPN edit no longer
+  advertises `/category/music` as modified; empty categories omit
+  lastmod by the honest-unknown rule); `Disallow: /notifications` added
+  (the R128-IMP-5 page shipped without its wall); the sitemap URL set
+  pinned computed against the live frontend registries. 9 backend pins.
+
+### Wave 3 — offline/PWA, money races, consolidation
+- **Offline/PWA** (140-n): the SW strategy map frozen (precache-first
+  shell via navigateFallback, JS never precached — the stale-entry
+  hazard — SWR on catalog APIs, CacheFirst images/assets-js, money/auth
+  APIs never SW-cached); the hard-offline `/wallet` chain verified
+  green (shell → three calm FetchErrorCards, no white screen); the
+  manifest got its money-path shortcut («المحفظة»); the offline-banner
+  absence documented as a deliberate family decision with a proposal.
+  26 pins.
+- **Money-path races** (140-o): the double-submit gate chain verified
+  ×4 (disabled CTA + in-handler guard + idempotency key — loyalty's
+  missing guard closed centrally below); the idempotency lifecycle
+  contract documented canonically (mint-persist-flight-stable-replay-
+  rotate-on-new-intent; 409 in-flight KEEPS the key); quote-drift
+  verified via await-before-charge semantics; the socket's
+  `topup-updated` now also invalidates `/api/auth/me` + the wallet
+  LEDGER (an approval no longer leaves the navbar chip and §4 statement
+  contradicting the toast); invalidateQueries' cancel-and-supersede
+  verified against query-core. 21 pins.
+- **Consolidation** (140-p): MobileNav's cart-announce double closed
+  (the Navbar announcer owns the sentence; the tab keeps its accessible
+  name — one announcement fleet-wide); the static no-JS og baseline
+  completed (og:locale ar_LY + og:site_name + og:url, baked to the
+  production origin like og:image); the contrast-hardening suite (21
+  pins — including keep-raw negatives so the six large-text money spans
+  can never blindly "gain" `-text`) and the round-closure suite (13 pins
+  — the /20 family, the h1 fleet, the LyPayFlow twin, the spa-shell
+  wall).
+
+### Central fixes (orchestrator)
+- The contrast fixes applied at 140-i's audited sites: the toast action
+  button pins to `hsl(var(--primary))` (was `--toast-accent` — white on
+  the dark success/warning accents measured 1.96:1; latent but the first
+  `action:` caller must inherit an AA button); ~12 admin small-text
+  sites adopted `text-primary-text` (raw `--primary` measured
+  3.44–3.77:1 dark — the ink token exists for exactly this); the
+  10-site admin `hover:text-primary` sweep; 5 light-theme opacity
+  micro-steps (`/75→/85`, `/80→/90`, two alpha drops — the token-level
+  option rejected WITH math: no lightness value fixes /75 without
+  darkening all 923 muted surfaces); ErrorBoundary's dev `<pre>` plain.
+- The historical-red re-anchor: account-surfaces-visual-r139's
+  TopupWaitingModal pin was written against a pre-prettier multi-line
+  draft (fails at pristine HEAD) — re-anchored to the committed
+  single-line form.
+- The section-rule unification sites the lanes couldn't touch
+  (TrustFooter, RecentOrdersStrip bands+rows, FaqSection, not-found →
+  /20; CatalogFiltersBar's mobile chrome seam deliberately stays /15).
+- AuthedHero h2→h1 (the R124 demotion's premise — "the guest hero owns
+  the h1" — breaks when the branches are mutually exclusive: the authed
+  home, the most common storefront view, rendered zero h1).
+- LyPayFlow's focus-restoration twin (140-j's flag — the bank flow's
+  failed submit left keyboard users at the page top).
+- The loyalty re-entry guard (140-o's flag — a same-frame double-fire
+  armed the persistent destructive banner while the first attempt was
+  succeeding).
+- spa-shell's `SHELL_NOINDEX_RES` gained `/^\/notifications(\/|$)/`
+  (140-m's flag — the static shell stamped index,follow where the
+  hydrated SPA and robots.txt both say noindex).
+- The lint baseline restored: `withRouteBoundary`'s `ComponentType<any>`
+  → `<P extends object>` (full inference, no new warning — 49 stays).
+
+### The new pin suites (sixteen)
+`image-discipline-r140` (39) · `boot-critical-path-r140` (37) ·
+`chunk-architecture-r140` (17) · `runtime-perf-r140` (12) ·
+`r139-debt-closure-r140` (19) · `error-boundaries-r140` (15) ·
+`jsonld-completeness-r140` (33) · `meta-quality-r140` (29) ·
+`keyboard-money-paths-r140` (20) · `live-regions-r140` (24) ·
+`semantics-depth-r140` (57) · `offline-pwa-r140` (26) ·
+`money-races-r140` (21) · `contrast-hardening-r140` (21) ·
+`round-closure-r140` (13) · backend `seo.test.ts` (+5). Every lane's
+contracts are now frozen the way the r120/r126/r139 suites froze theirs.
+
+### Follow-ups flagged (documented, outside lanes)
+the offline-banner family decision (proposal in healthz.ts) ·
+entry-chunk precache for true cold-offline (report-only) · wallet's
+submit-time key timing (per-call key — checkout's idiom; narrow
+double-pending window) · loyalty's raw fetch has no timeout ·
+MethodTabs' radiogroup upgrade + aria-disabled parity in buttonVariants
+(both need visual-class changes — banned this round) · og:locale ar_LY
+revisit on real i18n · the GuestHero hover `/80` dim (borderline-keep ·
+transient) · PaymentReferenceField's hint binding (cosmetic).
+
 ## Round R139 — the total-precision round: 13 agents, three waves, the design language closed end-to-end — 2026-10-13
 
 The operator ordered «ابدأ في التالية الاعمق الاشمل والادق وباكبر عدد

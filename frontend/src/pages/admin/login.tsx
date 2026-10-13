@@ -303,7 +303,18 @@ export default function AdminLoginPage() {
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   required
                   dir="ltr"
-                  className="text-center h-11 tracking-widest text-lg font-mono"
+                  /* R140 (r139 debt closure — the remnant 139-d left):
+                     tracking-widest (dead — the global Arabic
+                     letter-spacing guard zeroes the named utilities)
+                     converts to the arbitrary tracking-[0.2em] form: the
+                     register the 2FA-setup OTP twin
+                     (two-factor-setup.tsx) and the storefront WhatsApp
+                     OTP field both ride. The named class never rendered
+                     tracked, so the field now gains its twin's real
+                     0.2em run — the fixed-length 6-digit OTP carries no
+                     wrap risk (the base32-secret exception does not
+                     apply). */
+                  className="text-center h-11 tracking-[0.2em] text-lg font-mono"
                   aria-describedby={error ? "admin-login-error" : undefined}
                   autoFocus
                 />

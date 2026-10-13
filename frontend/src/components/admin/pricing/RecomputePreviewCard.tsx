@@ -70,14 +70,31 @@ export function RecomputePreviewCard({
               the /30 quiet band, row seams /30 → /60 (one seam value
               with the orders grid). */}
           <div className="overflow-x-auto border border-border/60 rounded-xl">
-            <table className="w-full text-xs">
+            {/* R-140-l (semantics): the BEFORE→AFTER money sample is a
+                REAL <table> and joins the register's th contract —
+                scope="col" on every header (the 96-F7 family idiom
+                OrdersTable/UsersDesktopTable/AuditTrailTable ride; this
+                was the register's one unscoped table) + an Arabic
+                aria-label so screen readers announce WHAT the money
+                grid is instead of a bare «جدول». Classes byte-identical. */}
+            <table aria-label="عينة الأسعار قبل وبعد" className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border/60 bg-muted/30 text-muted-foreground">
-                  <th className="px-3 py-2 text-right font-semibold">الباقة</th>
-                  <th className="px-3 py-2 text-right font-semibold">المنتج</th>
-                  <th className="px-3 py-2 text-left font-semibold">السعر الحالي</th>
-                  <th className="px-3 py-2 text-left font-semibold">السعر الجديد</th>
-                  <th className="px-3 py-2 text-left font-semibold">الفرق</th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold">
+                    الباقة
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-semibold">
+                    المنتج
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">
+                    السعر الحالي
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">
+                    السعر الجديد
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-left font-semibold">
+                    الفرق
+                  </th>
                 </tr>
               </thead>
               <tbody>

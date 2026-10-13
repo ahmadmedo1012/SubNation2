@@ -21,17 +21,16 @@ import { Headphones, ShieldCheck, Truck } from "lucide-react";
 export function TrustFooter() {
   return (
     // ── Trust footer ──
-    <div className="mt-6 pt-5 sm:mt-10 sm:pt-8 border-t border-border/25">
+    // R140 central: the section rule joins the ONE hairline family
+    // (/20, receipt-grade) — the last storefront /25 scatter site.
+    <div className="mt-6 pt-5 sm:mt-10 sm:pt-8 border-t border-border/20">
       <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
         <li className="inline-flex items-center gap-1.5">
           <Truck className="w-3.5 h-3.5 text-status-warning shrink-0" aria-hidden="true" />
           تسليم فوري بعد الدفع — وبحد أقصى 24 ساعة
         </li>
         <li className="inline-flex items-center gap-1.5">
-          <ShieldCheck
-            className="w-3.5 h-3.5 text-status-success shrink-0"
-            aria-hidden="true"
-          />
+          <ShieldCheck className="w-3.5 h-3.5 text-status-success shrink-0" aria-hidden="true" />
           دفع آمن — محفظتك محمية وعملياتك موثّقة
         </li>
         <li className="inline-flex items-center gap-1.5">

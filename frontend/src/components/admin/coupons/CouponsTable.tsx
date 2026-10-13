@@ -46,6 +46,19 @@ export function CouponsTable({
   return (
     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
       {/* Header */}
+      {/* R-140-l (semantics): VERIFIED — this register member is a
+          responsive DIV-GRID, not a <table>: the md header row hides
+          below md and each row re-stacks as a flex-col card whose
+          text-3xs field labels live INSIDE the cells («الخصم» / «الحد
+          الأدنى»…). Retrofitting role="table"/"row"/"cell" would fight
+          that stacked-card layout (ARIA table rows must own their
+          cells; the intermediate divide-y wrapper breaks the required
+          ownership chain) — the REAL-table register
+          (OrdersTable/UsersDesktopTable/AuditTrailTable/RiskEventsTable/
+          VariantRows/InventoryUploadDialog/RecomputePreviewCard) is
+          where scope+aria-label semantics live. The mobile labels
+          carry the header↔cell relation here. No sortable columns —
+          the coupons console has no sort control at all. */}
       {/* R139 (precision): the header band joins the quiet table
           register — font-bold → font-semibold (the 600 header-row
           weight the orders/variants tables ride; 700 stays on row
@@ -76,9 +89,15 @@ export function CouponsTable({
             >
               {/* Code + description */}
               <div>
-                <div className="font-mono font-bold text-sm tracking-wider text-foreground">
-                  {coupon.code}
-                </div>
+                {/* R140 (r139 debt closure — same-class named-tracking
+                    no-op): tracking-wider dies — the global Arabic
+                    letter-spacing guard zeroes the named utilities, so
+                    the coupon code rendered untracked. Not converted to
+                    tracking-[…]: coupon codes are variable-length mono
+                    runs inside a 1fr grid cell — the same wrap/overflow
+                    risk class as the base32 secret; removal is a
+                    zero-visual-delta dead-code kill. */}
+                <div className="font-mono font-bold text-sm text-foreground">{coupon.code}</div>
                 {coupon.description && (
                   <div className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">
                     {coupon.description}

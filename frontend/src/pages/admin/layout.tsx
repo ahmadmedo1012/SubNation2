@@ -531,7 +531,16 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       )}
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto min-w-0">
+      {/* R-140-l (landmarks): this scroll column was a SECOND <main>
+          nested inside the app shell's <main id="main-content">
+          (routes.tsx wraps the admin Switch too) — HTML forbids a
+          main with a main ancestor, and screen readers exposed two
+          "main" landmarks per admin page. The app shell owns the ONE
+          main (the skip link + route-change focus already target
+          #main-content, which contains this whole shell); this column
+          is layout-only, so a <div> with the same classes keeps the
+          flex-1/overflow-auto scroll contract byte-identical. */}
+      <div className="flex-1 overflow-auto min-w-0">
         {/* Top bar */}
         {/* R126 (A13-F11): the sticky top bar grows by the top safe-area
             inset — the storefront Navbar's exact chrome pattern (env()
@@ -668,7 +677,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         <div className="max-w-7xl mx-auto px-4 md:px-5 pt-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:py-7">
           {children}
         </div>
-      </main>
+      </div>
       {/* R124-I5 (A6 F12): the launcher pops in once its own chunk
           lands (first admin visit only — cached afterwards); a null
           fallback avoids layout shift for a floating, non-critical

@@ -163,8 +163,12 @@ describe("R139-l — the topup money-path selectors (no solid fills, no shadows)
 
 describe("R139-l — TopupWaitingModal: calm waiting register, canonical CTAs", () => {
   it("every state CTA rides the shared Button — the hand-rolled stacks are gone", () => {
+    // R140 central re-anchor: prettier collapses the attribute list onto one
+    // line when it fits the print width — the pin was written against the
+    // pre-format multi-line draft. Same canonical Button, same onContinue
+    // handler; the single-line form is the committed source's shape.
     expect(WAITING).toContain(
-      '<Button\n            type="button"\n            onClick={onContinue}',
+      '<Button type="button" onClick={onContinue} className="w-full min-h-11 font-bold">',
     );
     expect(WAITING).not.toContain("hover:bg-primary/90");
     expect(WAITING).not.toContain("shadow-md");

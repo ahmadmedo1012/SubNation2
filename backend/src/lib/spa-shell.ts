@@ -391,6 +391,11 @@ const SHELL_NOINDEX_RES: RegExp[] = [
   /^\/profile(\/|$)/,
   /^\/admin(\/|$)/,
   /^\/status(\/|$)/,
+  // R140 central (140-m flag): the notifications wall — the hydrated SPA
+  // stamps noindex,follow (MetaTags) and robots.txt Disallows it (the
+  // R128-IMP-5 page), but this static shell stamped index,follow, telling
+  // non-rendering engines the opposite. Mirrors the parity rule above.
+  /^\/notifications(\/|$)/,
 ];
 
 /** Resolved per-route shell meta (exported for the shell-rewrite tests). */

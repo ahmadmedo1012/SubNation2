@@ -2,7 +2,12 @@ import type { Socket } from "socket.io-client";
 import { useEffect, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetWalletQueryKey, getListTopupsQueryKey } from "@workspace/api-client-react";
+import {
+  getGetMeQueryKey,
+  getGetWalletLedgerQueryKey,
+  getGetWalletQueryKey,
+  getListTopupsQueryKey,
+} from "@workspace/api-client-react";
 import { connectSocket } from "../lib/socket";
 import { NOTIFICATION_NEW_EVENT } from "../lib/socket-events";
 import { formatCurrency, statusLabel } from "@/lib/utils";
@@ -105,6 +110,27 @@ export function useSocket(userId?: number | string) {
             // 3s polling fallback.
             queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
             queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+            // R-140-o (money-screen resync, race audit): an APPROVED topup
+            // moves money into the wallet, and money that moved must reach
+            // EVERY balance surface in the same breath, not just the two
+            // this handler used to cover. With the app-wide defaults
+            // (staleTime 60 s, refetchOnWindowFocus/refetchOnReconnect
+            // both off) the two misses were on-screen contradictions:
+            //   • /api/auth/me — the Navbar balance chip renders
+            //     me.wallet_balance; without this invalidation the chip
+            //     kept the pre-approval figure for up to 60 s while the
+            //     toast + the wallet page itself showed the new one;
+            //   • /api/wallet/ledger — the wallet page's STATEMENT (the
+            //     FINAL_UX_SYSTEM §4 explainability surface: every LYD
+            //     movement) stayed missing the approval row indefinitely
+            //     while the user sat on /wallet (poll-less, focus-refetch
+            //     off). Both keys are the exact generated key functions
+            //     the consumers use — prefix-aligned with the resync set
+            //     in lib/socket-resync.ts. A rejection moves no money;
+            //     the extra refetch of unchanged data is harmless and
+            //     keeps the pair on ONE code path.
+            queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+            queryClient.invalidateQueries({ queryKey: getGetWalletLedgerQueryKey() });
 
             // R127-B6-7: the toast dedupe id keys on the topup ID (the
             // payload carries it — backend topup.service.ts emits

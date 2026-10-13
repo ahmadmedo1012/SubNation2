@@ -253,6 +253,13 @@ export default function ProfilePage() {
           <User className="w-5 h-5 text-primary" />
         </div>
         <div>
+          {/* R-140-l (semantics): VERIFIED — exactly one h1, always
+              mounted; the card sections ride the family's font-bold h2
+              register in document order («الحسابات المرتبطة» →
+              SessionManager's «الأجهزة النشطة» → «خيارات الحساب»),
+              so the ladder stays sequential h1→h2 with no skips. The
+              label/value rows (balance/points/referral code) are the
+              family's div pair idiom — not a table, not dl. */}
           <h1 className="text-xl font-bold">حسابي</h1>
           <p className="text-xs text-muted-foreground">إدارة بيانات ومعلومات حسابك</p>
         </div>

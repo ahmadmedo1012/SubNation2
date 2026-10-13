@@ -42,7 +42,13 @@ export function OrdersTable({
   return (
     <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        {/* R-140-l (semantics): Arabic aria-label — the money directory
+            announces WHAT it is (the page's «الطلبات» h1 lives in the
+            topbar, one landmark away) instead of a bare «جدول» with 8
+            unnamed columns. The family naming idiom (aria-label on
+            icon-only controls / role=status regions) extended to the
+            real-table register; scope="col" already rode every th. */}
+        <table aria-label="جدول الطلبات" className="w-full text-sm">
           <thead>
             {/* R139 (precision): the header band goes solid — the old
                 bg-card/85 + supports-backdrop-blur glass pair is r138-
@@ -68,7 +74,7 @@ export function OrdersTable({
                   aria-pressed={allFilteredSelected}
                   /* R120-B4 (A2-F13): same p-2 -m-1 hit-area fix
                      as the row selectors. */
-                  className="p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary transition-colors"
+                  className="p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary-text transition-colors"
                 >
                   {allFilteredSelected ? (
                     <CheckSquare className="w-3.5 h-3.5 text-primary" />

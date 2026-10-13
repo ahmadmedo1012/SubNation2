@@ -84,6 +84,18 @@
           "sizes": "96x96"
         }
       ]
+    },
+    {
+      "name": "المحفظة",
+      "short_name": "المحفظة",
+      "description": "شحن الرصيد وعرض بيان الحركات",
+      "url": "/wallet",
+      "icons": [
+        {
+          "src": "/pwa-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ]
 }

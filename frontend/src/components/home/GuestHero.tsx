@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { HeroBrand } from "@/components/home/catalog-filters";
 import type { CatalogStats } from "@workspace/api-client-react";
 import { ArrowLeft, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Link } from "wouter";
 
 // R136 (FE-3 decomposition): extracted verbatim from pages/home.tsx —
@@ -20,7 +20,19 @@ import { Link } from "wouter";
 // page owns the queries and the memos. DOM, classes and aria are
 // byte-identical.
 
-export function GuestHero({
+// R140-d (runtime perf): the hero rides React.memo — its four props are
+// all referentially stable across the page's keystroke re-renders
+// (heroBrands/categoryHasStock are useMemos in the page, stats is the
+// query's structurally-shared ref, statsPending a boolean), but the
+// search input's state lives at the page root (R136's single-owner
+// contract), so before this every keystroke in the catalog search
+// re-rendered the whole hero — ~12 brand chips, the SEO prose and the
+// stats column — for zero output change (the old WebCheck budget story:
+// 911 main-thread tasks / 684.7ms on this page). memo is transparent:
+// same props in, same DOM out; only the render work is skipped.
+// heroProseOpen (R120-B1) is INTERNAL state — internal updates still
+// re-render, the press-and-hold fold toggle is unaffected.
+export const GuestHero = memo(function GuestHero({
   heroBrands,
   categoryHasStock,
   stats,
@@ -276,4 +288,4 @@ export function GuestHero({
       </div>
     </div>
   );
-}
+});

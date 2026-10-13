@@ -79,9 +79,27 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
                   {r.image_url ? (
                     <img
                       src={r.image_url}
-                      alt={r.name}
+                      alt={r.name || "منتج مقترح"}
+                      /* R-140-a (image discipline): alt — the
+                         recommendations DTO carries no category
+                         (ProductRecommendation: id/slug/name/
+                         image_url/price), so the name IS the full
+                         descriptive context available; the ||
+                         fallback mirrors the letter-tile's (r.name
+                         || "؟") guard so a blank enrichment name
+                         can never render an empty alt on a content
+                         image. */
                       loading="lazy"
                       decoding="async"
+                      /* R-140-a (image discipline): 450×450 = the
+                         measured intrinsic of every live
+                         /products/*.webp (45 files re-probed this
+                         round — the R132 L4-F9 census). The
+                         aspect-[4/3] well already pins the box
+                         (CLS zero); these attrs keep the
+                         aspect-ratio reserve honest pre-CSS. */
+                      width={450}
+                      height={450}
                       className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
                       /* R115-I1 (A7 P3-9): ProductCard-parity fallback — a
                          dead enrichment URL swaps to the initial-letter

@@ -1,5 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import express, { type Express } from "express";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { db, initTestDb, productsTable, resetTestDb } from "../../test/db";
 
 /**
@@ -9,17 +11,35 @@ import { db, initTestDb, productsTable, resetTestDb } from "../../test/db";
  *
  * Pinned contracts:
  *   - robots.txt: content-type text/plain; the documented public
- *     allow-list (/, /product/, /category/, /support, /terms) and the
- *     private-surface disallow list (auth flow, cart/checkout funnels,
- *     user-private pages, admin, /status, /api/) — including the
- *     /orders disallow that covers order DETAIL urls; Sitemap: line
- *     points at the APP_ORIGIN sitemap;
+ *     allow-list (/, /product/, /category/, /flash-sales, /support,
+ *     /terms) and the private-surface disallow list (auth flow,
+ *     cart/checkout funnels, user-private pages incl. /notifications,
+ *     admin, /status, /api/) — including the /orders disallow that
+ *     covers order DETAIL urls; Sitemap: line points at the APP_ORIGIN
+ *     sitemap;
  *   - sitemap.xml: content-type application/xml; every <loc> carries
  *     the canonical APP_ORIGIN; ARCHIVED and INACTIVE products are
  *     excluded while active ones are listed by SLUG (id fallback only
  *     for slug-less rows); the static route set (home, 7 categories,
  *     support, terms, flash-sales) is present;
  *   - cache headers on both endpoints.
+ *
+ * r140-m (lane: sitemap/robots freshness + parity) added:
+ *   - the robots walls are FROZEN as the EXACT Allow/Disallow line set
+ *     (any wall edit must consciously re-pin this suite);
+ *   - route PARITY against the LIVE frontend registries, read as text
+ *     (the spa-shell-category-parity idiom): every route the SPA mounts
+ *     that its own NOINDEX_ROUTES (route-shapes.ts) classifies private
+ *     is robots-blocked, and every indexable one stays crawlable — the
+ *     pin that would have caught the R128-IMP-5 /notifications gap;
+ *   - the sitemap's static URL set is EXACTLY the SPA's indexable
+ *     static routes + the live CATEGORY_META slugs (frontend/src/lib/
+ *     categories.ts — the documented SSOT), with the /products alias
+ *     redirect and the retired gaming/productivity categories pinned
+ *     ABSENT;
+ *   - per-category lastmod honesty: each /category/<slug> entry carries
+ *     MAX(updated_at) of THAT category's rows (home + /flash-sales keep
+ *     the global MAX — they render the whole catalog).
  *
  * APP_URL is pinned before the module loads (the origin is resolved
  * once at import) — the test origin differs from the production default
@@ -75,6 +95,73 @@ async function getBody(url: string, path: string) {
   };
 }
 
+// ── r140-m: frontend registries, read as TEXT (spa-shell-parity idiom) ──────
+//
+// backend/src cannot import frontend modules (tsconfig rootDir: "src"),
+// so the LIVE route inventory is parsed from the frontend sources at
+// test time. The SPA's own noindex classification (route-shapes.ts
+// NOINDEX_ROUTES) is the privacy source of truth; routes.tsx is the
+// mounted-route inventory; categories.ts is the documented SSOT for the
+// backend sitemap's category set.
+
+const FRONTEND_APP_DIR = path.resolve(import.meta.dirname, "../../../../frontend/src/app");
+const ROUTES_TSX = readFileSync(path.join(FRONTEND_APP_DIR, "routes.tsx"), "utf8");
+const ROUTE_SHAPES_TS = readFileSync(path.join(FRONTEND_APP_DIR, "route-shapes.ts"), "utf8");
+const CATEGORIES_TS = readFileSync(
+  path.resolve(import.meta.dirname, "../../../../frontend/src/lib/categories.ts"),
+  "utf8",
+);
+
+/** Concrete <Route path="…"> literals from the SPA registry (both the storefront Switch and the admin Switch). */
+const SPA_PATHS: string[] = [...ROUTES_TSX.matchAll(/path="([^"]+)"/g)].map((m) => m[1] as string);
+
+/** The SPA's own noindex regexes, compiled from route-shapes.ts text. */
+const NOINDEX_REGEXES: RegExp[] = (() => {
+  const start = ROUTE_SHAPES_TS.indexOf("const NOINDEX_ROUTES");
+  if (start === -1) throw new Error("NOINDEX_ROUTES not found in route-shapes.ts");
+  const block = ROUTE_SHAPES_TS.slice(start, ROUTE_SHAPES_TS.indexOf("];", start));
+  const regexes = [...block.matchAll(/(\/\^\S+)\/,/g)].map((m) => new RegExp(m[1]!.slice(1)));
+  if (regexes.length < 10)
+    throw new Error(`NOINDEX_ROUTES extraction found only ${regexes.length} entries`);
+  return regexes;
+})();
+
+/** "/orders/ABC" → ["/orders/ABC", "/orders"] — the SPA's noindex families are per-root-segment (e.g. /^\/orders$/ + robots prefix "Disallow: /orders"), so classification tests the path AND its ancestor prefixes. */
+function ancestors(p: string): string[] {
+  const out = [p];
+  let idx = p.lastIndexOf("/");
+  while (idx > 0) {
+    out.push(p.slice(0, idx));
+    idx = p.lastIndexOf("/", idx - 1);
+  }
+  return out;
+}
+
+/** Does the SPA classify this concrete path (or any of its ancestor prefixes) as noindex? */
+function spaClassifiesPrivate(p: string): boolean {
+  return ancestors(p).some((a) => NOINDEX_REGEXES.some((re) => re.test(a)));
+}
+
+// ── r140-m: sitemap body parsing helpers ────────────────────────────────────
+
+function sitemapEntries(text: string): string[] {
+  return text
+    .split("<url>")
+    .slice(1)
+    .map((chunk) => chunk.split("</url>")[0] ?? "");
+}
+
+function entryFor(entries: string[], path: string): string | null {
+  return entries.find((e) => e.includes(`<loc>${TEST_ORIGIN}${path}</loc>`)) ?? null;
+}
+
+function lastmodOf(entries: string[], path: string): string | null {
+  const entry = entryFor(entries, path);
+  if (!entry) return null;
+  const m = entry.match(/<lastmod>([^<]+)<\/lastmod>/);
+  return m ? (m[1] as string) : null;
+}
+
 describe("GET /robots.txt (R118-A5 #16)", () => {
   it("serves the allow-list + private-surface disallow list with the right content type", async () => {
     const { url, close } = await listen(buildApp());
@@ -89,6 +176,7 @@ describe("GET /robots.txt (R118-A5 #16)", () => {
         "Allow: /",
         "Allow: /product/",
         "Allow: /category/",
+        "Allow: /flash-sales",
         "Allow: /support",
         "Allow: /terms",
       ]) {
@@ -108,7 +196,8 @@ describe("GET /robots.txt (R118-A5 #16)", () => {
 
       // Transactional funnels (V3-A2) + user-private pages. NOTE:
       // "Disallow: /orders" also covers the order DETAIL urls
-      // (/orders/:id) — prefix matching.
+      // (/orders/:id) — prefix matching. /notifications is the
+      // R128-IMP-5 page whose wall r140-m finally shipped.
       for (const disallow of [
         "Disallow: /cart",
         "Disallow: /checkout",
@@ -117,6 +206,7 @@ describe("GET /robots.txt (R118-A5 #16)", () => {
         "Disallow: /loyalty",
         "Disallow: /referrals",
         "Disallow: /profile",
+        "Disallow: /notifications",
       ]) {
         expect(res.text).toContain(`\n${disallow}\n`);
       }
@@ -221,6 +311,9 @@ describe("GET /sitemap.xml (R118-A5 #16)", () => {
       name: "Lastmod Product",
       slug: "lastmod-product",
       price: "10.00",
+      // r140-m: /category/vpn tracks its OWN category's rows — the
+      // fixture row must live in vpn for that entry to carry a lastmod.
+      category: "vpn",
       isActive: true,
       isArchived: false,
     });
@@ -340,6 +433,260 @@ describe("GET /sitemap.xml (R118-A5 #16)", () => {
 
       const warm = await getBody(url, "/sitemap.xml");
       expect(warm.text).toContain(`<loc>${TEST_ORIGIN}/product/fresh-product</loc>`);
+    } finally {
+      close();
+    }
+  });
+});
+
+// ── r140-m: per-category lastmod honesty ─────────────────────────────────────
+
+describe("GET /sitemap.xml (r140-m per-category lastmod)", () => {
+  it("each /category/<slug> carries its OWN category's MAX(updated_at); home + /flash-sales keep the global", async () => {
+    const vpnOld = new Date("2026-02-01T10:00:00.000Z");
+    const vpnNew = new Date("2026-08-15T12:00:00.000Z");
+    const musicNew = new Date("2026-03-10T09:30:00.000Z");
+    const archivedFuture = new Date("2027-01-01T00:00:00.000Z");
+    await db.insert(productsTable).values([
+      {
+        name: "VPN Old",
+        slug: "vpn-old",
+        price: "10.00",
+        category: "vpn",
+        isActive: true,
+        isArchived: false,
+        updatedAt: vpnOld,
+      },
+      {
+        name: "VPN New",
+        slug: "vpn-new",
+        price: "10.00",
+        category: "vpn",
+        isActive: true,
+        isArchived: false,
+        updatedAt: vpnNew,
+      },
+      {
+        name: "Music New",
+        slug: "music-new",
+        price: "10.00",
+        category: "music",
+        isActive: true,
+        isArchived: false,
+        updatedAt: musicNew,
+      },
+      // Archived rows must NEVER freshen a landing page they no longer
+      // appear on (neither vpn's nor the global MAX).
+      {
+        name: "VPN Dead",
+        slug: "vpn-dead",
+        price: "10.00",
+        category: "vpn",
+        isActive: true,
+        isArchived: true,
+        updatedAt: archivedFuture,
+      },
+    ]);
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await getBody(url, "/sitemap.xml");
+      expect(res.status).toBe(200);
+      const entries = sitemapEntries(res.text);
+
+      // Per-category MAX — vpn's own newest row, not the global stamp,
+      // not the archived row, not music's row.
+      expect(lastmodOf(entries, "/category/vpn")).toBe(vpnNew.toISOString());
+      expect(lastmodOf(entries, "/category/music")).toBe(musicNew.toISOString());
+      // The two DIVERGE — a VPN edit must not advertise /category/music.
+      expect(lastmodOf(entries, "/category/vpn")).not.toBe(lastmodOf(entries, "/category/music"));
+
+      // Home + /flash-sales render the ENTIRE active catalog → the
+      // global MAX (vpnNew is the newest live row).
+      expect(lastmodOf(entries, "/")).toBe(vpnNew.toISOString());
+      expect(lastmodOf(entries, "/flash-sales")).toBe(vpnNew.toISOString());
+
+      // A live category with ZERO products omits lastmod entirely —
+      // the R122 "honest unknown" rule (a borrowed timestamp would be
+      // exactly the noisy-lastmod trap that policy retired).
+      for (const empty of ["/category/software", "/category/streaming"]) {
+        expect(entryFor(entries, empty)).not.toContain("<lastmod>");
+      }
+    } finally {
+      close();
+    }
+  });
+});
+
+// ── r140-m: sitemap static-set parity with the frontend registries ──────────
+
+describe("GET /sitemap.xml (r140-m route parity)", () => {
+  it("the static URL set is EXACTLY the SPA's indexable static routes + the live CATEGORY_META slugs", async () => {
+    await db.insert(productsTable).values({
+      name: "Parity Product",
+      slug: "parity-product",
+      price: "10.00",
+      category: "vpn",
+      isActive: true,
+      isArchived: false,
+    });
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await getBody(url, "/sitemap.xml");
+      expect(res.status).toBe(200);
+
+      const locs = [...res.text.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1] as string);
+      const staticPaths = locs
+        .filter((l) => !l.startsWith(`${TEST_ORIGIN}/product/`))
+        .map((l) => l.slice(TEST_ORIGIN.length));
+
+      // Frontend sources of truth, parsed live:
+      //  • categories.ts CATEGORY_META — the documented SSOT for the
+      //    backend sitemap's category set (its own docblock says so);
+      //  • routes.tsx static indexable routes — concrete paths (no
+      //    :params, no splats) that the SPA's own NOINDEX_ROUTES does
+      //    NOT classify private, minus the /products alias redirect.
+      const frontendCategorySlugs = [...CATEGORIES_TS.matchAll(/^ {2}("?)([a-z-]+)\1: \{$/gm)].map(
+        (m) => m[2] as string,
+      );
+      expect([...frontendCategorySlugs].sort()).toEqual([
+        "ai-tools",
+        "education",
+        "music",
+        "seo-tools",
+        "software",
+        "streaming",
+        "vpn",
+      ]);
+
+      const staticIndexable = SPA_PATHS.filter(
+        (p) =>
+          !p.includes(":") && !p.includes("*") && p !== "/products" && !spaClassifiesPrivate(p),
+      );
+      // Extraction sanity: the four storefront money/marketing surfaces.
+      expect([...staticIndexable].sort()).toEqual(["/", "/flash-sales", "/support", "/terms"]);
+
+      const expected = [
+        ...new Set([...staticIndexable, ...frontendCategorySlugs.map((s) => `/category/${s}`)]),
+      ].sort();
+      expect([...staticPaths].sort()).toEqual(expected);
+
+      // The dynamic /product/:slug family IS enumerated (the money
+      // surface) — the fixture row proves it non-vacuously.
+      expect(locs).toContain(`${TEST_ORIGIN}/product/parity-product`);
+
+      // Deliberate absences, pinned: the R128 A2-F3 alias redirect
+      // (/products → / — listing both would be a duplicate-URL signal
+      // against the canonical) and the retired categories (noindex
+      // not-found until restocked).
+      expect(staticPaths).not.toContain("/products");
+      expect(staticPaths).not.toContain("/category/gaming");
+      expect(staticPaths).not.toContain("/category/productivity");
+    } finally {
+      close();
+    }
+  });
+});
+
+// ── r140-m: robots walls frozen + SPA classification parity ──────────────────
+
+describe("GET /robots.txt (r140-m walls + SPA parity)", () => {
+  it("the Allow/Disallow walls are FROZEN as the exact line set (any edit must consciously re-pin)", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await getBody(url, "/robots.txt");
+      expect(res.status).toBe(200);
+      const lines = res.text.split("\n").filter((l) => /^(Allow|Disallow): /.test(l));
+      expect(lines).toEqual([
+        // Public crawlable surface.
+        "Allow: /",
+        "Allow: /product/",
+        "Allow: /category/",
+        "Allow: /flash-sales",
+        "Allow: /support",
+        "Allow: /terms",
+        // Auth flow — never index (/forgot-password: retired route,
+        // wall deliberately retained — see seo.ts r140-m notes).
+        "Disallow: /login",
+        "Disallow: /register",
+        "Disallow: /forgot-password",
+        "Disallow: /onboarding",
+        "Disallow: /auth/",
+        // Transactional funnels (V3-A2).
+        "Disallow: /cart",
+        "Disallow: /checkout",
+        // User-private pages (incl. the R128-IMP-5 /notifications wall).
+        "Disallow: /wallet",
+        "Disallow: /orders",
+        "Disallow: /loyalty",
+        "Disallow: /referrals",
+        "Disallow: /profile",
+        "Disallow: /notifications",
+        // Admin + internal observability.
+        "Disallow: /admin",
+        "Disallow: /admin/",
+        "Disallow: /status",
+        // API surface.
+        "Disallow: /api/",
+      ]);
+    } finally {
+      close();
+    }
+  });
+
+  it("every noindex-classified route the SPA mounts is robots-blocked; every indexable one stays crawlable", async () => {
+    // The pin that would have caught the R128-IMP-5 /notifications gap:
+    // the SPA's own privacy classification (route-shapes.ts
+    // NOINDEX_ROUTES) and the served robots.txt walls must agree on
+    // EVERY route the registry actually mounts — in BOTH directions
+    // (a missing Disallow leaks an empty private page into the index; a
+    // stray Disallow silently de-indexes a money page).
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await getBody(url, "/robots.txt");
+      expect(res.status).toBe(200);
+
+      const rules = res.text
+        .split("\n")
+        .filter((l) => /^(Allow|Disallow): /.test(l))
+        .map((l) => ({
+          disallow: l.startsWith("Disallow"),
+          value: l.slice(l.indexOf(": ") + 2),
+        }));
+
+      // Google robots semantics: the longest matching prefix wins; a
+      // tie goes to Allow. "Allow: /" always matches, so the default
+      // is crawlable.
+      const blocked = (p: string): boolean => {
+        let bestLen = 0;
+        let isBlocked = false;
+        for (const r of rules) {
+          if (!p.startsWith(r.value)) continue;
+          if (r.value.length > bestLen || (r.value.length === bestLen && !r.disallow)) {
+            bestLen = r.value.length;
+            isBlocked = r.disallow;
+          }
+        }
+        return isBlocked;
+      };
+
+      // Extraction sanity — the registry parse found the real Switch.
+      expect(SPA_PATHS.length).toBeGreaterThan(20);
+      expect(SPA_PATHS).toContain("/");
+      expect(SPA_PATHS).toContain("/notifications");
+      expect(SPA_PATHS).toContain("/product/:slug");
+      expect(SPA_PATHS).toContain("/category/:slug");
+
+      for (const raw of SPA_PATHS) {
+        // :param segments and * splats → representative concrete paths.
+        const p = raw.replace(/:[^/]+/g, "x").replace(/\*/g, "nested");
+        if (spaClassifiesPrivate(p)) {
+          expect(blocked(p), `robots must block the SPA's private route ${raw}`).toBe(true);
+        } else {
+          expect(blocked(p), `robots must NOT block the SPA's indexable route ${raw}`).toBe(false);
+        }
+      }
     } finally {
       close();
     }

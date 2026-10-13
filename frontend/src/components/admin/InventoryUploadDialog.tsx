@@ -339,7 +339,7 @@ export function InventoryUploadDialog({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-bold text-primary hover:text-primary/80 flex items-center gap-1.5"
+              className="text-xs font-bold text-primary-text hover:text-primary-text/80 flex items-center gap-1.5"
             >
               <Upload className="w-3.5 h-3.5" />
               أو ارفع ملف .txt / .csv
@@ -424,7 +424,11 @@ export function InventoryUploadDialog({
                 border-primary + bg-primary/5 — no other real drift, so
                 nothing else moves (progress vocabulary untouched). */}
             <div className="bg-card border border-border/60 rounded-xl overflow-x-auto">
-              <table className="w-full text-2xs">
+              {/* R-140-l (semantics): Arabic aria-label rides the preview
+                  grid under its visible «معاينة» h3 (scope="col" already
+                  rode every th; the duplicate highlighting is per-row
+                  color + the حالة column — no interactive headers). */}
+              <table aria-label="معاينة أسطر المخزون" className="w-full text-2xs">
                 <thead className="bg-muted/30 text-muted-foreground">
                   <tr>
                     {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
@@ -552,7 +556,7 @@ function PreviewRow({
             حساب
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-3xs font-bold bg-primary/10 text-primary border border-primary/30 px-1.5 py-0.5 rounded">
+          <span className="inline-flex items-center gap-1 text-3xs font-bold bg-primary/10 text-primary-text border border-primary/30 px-1.5 py-0.5 rounded">
             <Key className="w-2.5 h-2.5" />
             كود
           </span>

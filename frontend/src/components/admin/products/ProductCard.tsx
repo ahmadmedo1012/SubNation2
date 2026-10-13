@@ -87,7 +87,7 @@ const ProductCard = React.memo(function ProductCard({
                the destructive action was visual-only — aria-pressed
                exposes it (the orders.tsx row-selector idiom). */
             aria-pressed={isSelected}
-            className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors"
+            className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary-text transition-colors"
           >
             {isSelected ? (
               <CheckSquare className="w-4 h-4 text-primary" />
@@ -109,6 +109,14 @@ const ProductCard = React.memo(function ProductCard({
                 alt={product.name}
                 loading="lazy"
                 decoding="async"
+                /* R-140-a (image discipline): width/height mirror the
+                   catalog art's measured 450×450 intrinsic (all 45
+                   /products/*.webp, the R132 L4-F9 census re-probed
+                   this round) — the fixed w-11 h-11 well already pins
+                   CLS at zero; the attrs keep the aspect-ratio
+                   reserve honest pre-CSS. */
+                width={450}
+                height={450}
                 className="w-full h-full object-contain p-1.5"
                 onError={(e) => {
                   // R139 (precision): the failed-image fallback wash matches
@@ -147,7 +155,7 @@ const ProductCard = React.memo(function ProductCard({
         {/* Stats bar — inline stock edit */}
         <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/25 border border-border/40 rounded-lg mb-3">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <span className="font-bold text-primary tabular-nums">
+            <span className="font-bold text-primary-text tabular-nums">
               {formatCurrency(product.price)}
             </span>
             {/* catalog-recon: variant-count badge — the display
@@ -172,7 +180,7 @@ const ProductCard = React.memo(function ProductCard({
                      lane (the InventoryUploadDialog «كود» badge + the
                      r138 family pill border ride /30; a same-family
                      10% alpha spread is vocabulary drift). */
-                  className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/30"
+                  className="text-3xs font-bold px-1.5 py-0.5 rounded border bg-primary/10 text-primary-text border-primary/30"
                 >
                   {formatCount(count, {
                     one: "باقة",
@@ -265,7 +273,7 @@ const ProductCard = React.memo(function ProductCard({
             size="sm"
             variant="outline"
             aria-label={`إدارة باقات ${product.name}`}
-            className="flex-1 min-w-[88px] h-8 text-xs text-primary active:scale-[0.97] transition-transform"
+            className="flex-1 min-w-[88px] h-8 text-xs text-primary-text active:scale-[0.97] transition-transform"
             onClick={() => onManageVariants(product)}
           >
             <Layers className="w-3 h-3 ml-1" /> الباقات

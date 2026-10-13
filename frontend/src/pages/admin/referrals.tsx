@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { StaleListErrorBanner } from "@/components/admin/orders/StaleListErrorBanner";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
@@ -23,7 +24,7 @@ import {
   type ListAdminReferralsStatus,
 } from "@workspace/api-client-react";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Gift, RefreshCw } from "lucide-react";
+import { Gift, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
@@ -230,22 +231,19 @@ export default function AdminReferralsPage() {
 
         {/* Refresh of an already-rendered list failed — keep the stale
             rows visible below, surface the failure inline (coupons.tsx
-            banner idiom) instead of blanking the page. */}
+            banner idiom) instead of blanking the page.
+            R140 (r139 debt closure): the hand-rolled twin (the pre-r139
+            red wall — bg-status-error/10 + border-status-error/25 + full
+            error ink on the message) is replaced by the SHARED
+            StaleListErrorBanner — the calm-error register admin/orders
+            rides and admin/tickets' StaleQueueBanner mirrors
+            byte-for-byte: calm card chrome (bg-card + border-border/60 +
+            rounded-2xl), severity concentrated in the icon stage
+            (error/8 fill + /22 edge + full-ink glyph), the /80 foreground
+            message, the error-ink retry. role="alert" + onRetry semantics
+            byte-identical; the message + retry callback stay page-owned. */}
         {!loading && loadError && data && (
-          <div
-            role="alert"
-            className="p-4 rounded-xl bg-status-error/10 border border-status-error/25 text-status-error text-sm font-bold flex items-center gap-2"
-          >
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{loadError}</span>
-            <button
-              type="button"
-              onClick={() => void listQuery.refetch()}
-              className="ms-auto text-xs underline underline-offset-2 hover:opacity-80 press-spring"
-            >
-              إعادة المحاولة
-            </button>
-          </div>
+          <StaleListErrorBanner message={loadError} onRetry={() => void listQuery.refetch()} />
         )}
 
         {/* Table */}

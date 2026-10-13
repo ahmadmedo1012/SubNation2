@@ -84,7 +84,7 @@ export const ReferralRowItem = React.memo(function ReferralRowItem({
       <div className="text-xs text-muted-foreground">
         <div>{formatRelativeTime(row.created_at)}</div>
         {credited && row.credited_at && (
-          <div className="text-status-success/70 text-3xs mt-0.5">
+          <div className="text-status-success text-3xs mt-0.5">
             قُيِِّد: {formatRelativeTime(row.credited_at)}
           </div>
         )}
@@ -111,7 +111,7 @@ export const ReferralRowItem = React.memo(function ReferralRowItem({
             // canCredit (users.tsx canEditMoney idiom).
             disabled={crediting || !canCredit}
             title={canCredit ? undefined : "يتطلب صلاحية المالية"}
-            className="h-7 px-2.5 text-xs gap-1 border-primary/25 text-primary hover:bg-primary/8 hover:border-primary/40"
+            className="h-7 px-2.5 text-xs gap-1 border-primary/25 text-primary-text hover:bg-primary/8 hover:border-primary/40"
           >
             {crediting ? (
               <RefreshCw className="w-3 h-3 animate-spin" />

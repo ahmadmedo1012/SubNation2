@@ -88,7 +88,13 @@ export function VariantRows({
            already the family register, and the money columns
            (cost/price/computed) verified tabular-nums. */
         <div className="bg-card border border-border/60 rounded-xl overflow-x-auto">
-          <table className="w-full text-2xs min-w-[680px]">
+          {/* R-140-l (semantics): Arabic aria-label — the variants grid
+              announces itself inside the dialog (scope="col" already
+              rode every th; per-row edit/toggle/delete buttons already
+              carry state-aware aria-labels). Not sortable — the
+              «الترتيب» column displays the operator-set sort_order,
+              it does not sort the view. */}
+          <table aria-label="جدول باقات المنتج" className="w-full text-2xs min-w-[680px]">
             {/* R139 (precision): th font-bold → font-semibold — the
                quiet header-row register (bg-muted/20-30 + 600) the
                orders table and the r138 family ride; 700 stays on the

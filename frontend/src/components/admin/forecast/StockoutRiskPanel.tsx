@@ -243,9 +243,23 @@ function RiskRow({ row }: { row: AtRiskRow }) {
           {row.product_image_url ? (
             <img
               src={row.product_image_url}
-              alt=""
+              /* R-140-a (image discipline): alt — was alt="" (empty on
+                 a CONTENT image). The thumb follows the family idiom
+                 the cart/orders/GlobalSearch thumbs ride: the product
+                 name IS the alt (the row's adjacent text carries the
+                 same name, the accepted thumb-family convention). */
+              alt={row.product_name}
               className="w-full h-full object-cover"
               loading="lazy"
+              decoding="async"
+              /* R-140-a (image discipline): width/height mirror the
+                 catalog art's measured 450×450 intrinsic (all 45
+                 /products/*.webp, the R132 L4-F9 census re-probed
+                 this round) — the fixed w-9 h-9 well already pins CLS
+                 at zero; the attrs keep the aspect-ratio reserve
+                 honest pre-CSS. */
+              width={450}
+              height={450}
             />
           ) : (
             <Package className="w-4 h-4 text-muted-foreground" />

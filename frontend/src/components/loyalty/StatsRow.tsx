@@ -2,6 +2,17 @@ import { Crown, Star, TrendingUp, Users } from "lucide-react";
 import { formatCount, formatCurrency, tierColor, tierLabel } from "@/lib/utils";
 import type { LoyaltyData } from "./loyalty-meta";
 
+// R-140-k: the points plural forms — the SAME table BalanceCard's points
+// cluster inlines (نقطة/نقطتان/نقاط/نقطة), kept local so the announcer
+// below can never disagree with the wallet card's count-word family.
+const POINTS_COUNT_FORMS = {
+  one: "نقطة",
+  two: "نقطتان",
+  few: "نقاط",
+  many: "نقطة",
+  other: "نقطة",
+} as const;
+
 // R137 (FE decomposition): extracted verbatim from pages/loyalty.tsx — the three stat tiles (points / tier + progress
 // bar / referrals). Presentational only: the overview query, the
 // error/loading branches around this grid and the tier math all stay
@@ -45,6 +56,19 @@ export function StatsRow({
         <div className="text-sm text-muted-foreground flex items-center gap-1">
           <span className="font-bold text-foreground tabular-nums">{data.points_value_lyd}</span>
           <span>د.ل</span>
+        </div>
+        {/* R-140-k (money-adjacent async state — the points announcer):
+            the visible points total is a plain text swap — after a
+            conversion the toast announces the DELTA («تم التحويل» + the
+            server's «تم تحويل N نقطة إلى X د.ل»), but the NEW points
+            TOTAL (this tile's datum) was silent until re-navigation.
+            sr-only polite region, same contract as BalanceCard's
+            balance announcer: mount-silent by construction (region +
+            first value appear together), announces only post-mount
+            changes, through formatCount so the digits and plural word
+            match the wallet family. Polite, never assertive. */}
+        <div aria-live="polite" role="status" className="sr-only">
+          {`نقاطي الآن ${formatCount(data.points, POINTS_COUNT_FORMS)}`}
         </div>
       </div>
 

@@ -1,13 +1,21 @@
 // ── Sentry boot deferral ────────────────────────────────────────────
-// The Sentry chunk (@sentry/react with Replay + BrowserTracing) is
-// ~155 KB gzip — bigger than React itself. Eager-importing it here
-// puts a `<link rel="modulepreload">` on the critical path that
-// contends with the LCP image bytes and adds ~250 ms TBT on mid-tier
-// mobile. lib/boot-sentry installs window error listeners + React
-// error-handler buffers SYNCHRONOUSLY (cheap), then schedules the
-// Sentry chunk via requestIdleCallback (with a 2 s timeout fallback).
-// Boot-window errors are queued and flushed once Sentry loads — none
-// are lost. See lib/boot-sentry.ts for full rationale.
+// The Sentry chunk (@sentry/react with BrowserTracing; the rrweb Replay
+// bytes ride a separate lazy chunk since A2 F1) is ~111 KB brotli —
+// bigger than React itself. Eager-importing it here puts a `<link
+// rel="modulepreload">` on the critical path that contends with the
+// LCP image bytes and adds ~250 ms TBT on mid-tier mobile. lib/boot-sentry
+// installs window error listeners + React error-handler buffers
+// SYNCHRONOUSLY (cheap), then loads the chunk per the R127-L10 (B4 D2)
+// schedule: sticky 10% replay-session winners on requestIdleCallback (2 s
+// timeout fallback — their replay must record the whole session), everyone
+// else at the LATER of the window `load` event / the first `pointerdown`
+// so the SDK bytes never ride inside the first-visit load window. The
+// FIRST buffered error short-circuits that gate (an early crash pulls the
+// SDK in at once). Boot-window errors are queued and flushed once Sentry
+// loads — none are lost. See lib/boot-sentry.ts for full rationale.
+// (R-140-b: this header was corrected to match the shipped schedule — it
+// still described the pre-R127 pure-rIC boot and the pre-A2F1 155 KB
+// figure.)
 import {
   installBootErrorBuffer,
   bufferedReactErrorHandler,
@@ -36,8 +44,10 @@ applyDocumentDirection("ar");
 
 // 98-F7 (R98-08b): successful boot — remove the static no-JS offline
 // fallback from #root (index.html) before React takes the container over.
-// Its delayed CSS reveal (2.5s) never gets a chance to fire; if this line
-// never runs, the div IS the offline message.
+// Its delayed CSS reveal (6 s — R128-IMP-4/B5-F4; the timer's rationale
+// lives with the style block in index.html) never gets a chance to fire;
+// if this line never runs, the div IS the offline message.
+// (R-140-b: the parenthetical said 2.5s — the pre-R128 value; corrected.)
 document.getElementById("static-offline")?.remove();
 
 // Configure API base URL from Vite env.

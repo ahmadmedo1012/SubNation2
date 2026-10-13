@@ -239,7 +239,15 @@ export default function OrderDetailPage() {
         <div className="w-16 h-16 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-4 flex items-center justify-center">
           <XCircle className="w-7 h-7 text-status-error" />
         </div>
-        <p className="font-bold text-lg mb-1">تعذّر تحميل الطلب</p>
+        {/* R-140-l (semantics): the connection-error view carries its
+            own h1 — every rendered view of this route names itself
+            (the family invariant: category.tsx's error branch and
+            not-found.tsx ride h1; a view with no heading left screen
+            readers inside an unnamed region after the routes' route
+            announcement). Classes verbatim — the h1 merely picks up
+            the family's h1–h4 1.3 Arabic-safe leading floor
+            (index.css, the R128-A4 rule every heading rides). */}
+        <h1 className="font-bold text-lg mb-1">تعذّر تحميل الطلب</h1>
         <p className="text-sm text-muted-foreground mb-5">
           حدث خطأ في الاتصال — تحقّق من اتصالك ثم أعد المحاولة. إن استمرت المشكلة تواصل مع الدعم.
         </p>
@@ -277,7 +285,10 @@ export default function OrderDetailPage() {
         <div className="w-16 h-16 rounded-2xl bg-muted/60 border border-border/40 mx-auto mb-4 flex items-center justify-center">
           <Package className="w-7 h-7 text-muted-foreground" />
         </div>
-        <p className="font-bold text-lg mb-1">الطلب غير موجود</p>
+        {/* R-140-l (semantics): same h1-once-per-view contract as the
+            connection-error branch above — the unknown/foreign order
+            code view names itself. */}
+        <h1 className="font-bold text-lg mb-1">الطلب غير موجود</h1>
         <p className="text-sm text-muted-foreground mb-5">تأكد من رقم الطلب أو عُد لقائمة طلباتك</p>
         <Button
           onClick={() => navigate("/orders")}
@@ -350,9 +361,20 @@ export default function OrderDetailPage() {
                   <div className="w-12 h-12 rounded-xl bg-muted/60 border border-border/40 overflow-hidden shrink-0">
                     <img
                       src={(order as { product_image_url?: string }).product_image_url}
-                      alt={order.product_name ?? ""}
+                      alt={order.product_name || "صورة المنتج"}
                       loading="lazy"
                       decoding="async"
+                      /* R-140-a (image discipline): alt — the old
+                         `?? ""` fallback could render an EMPTY alt on
+                         a content image when a legacy order ships a
+                         blank name; || gives it the honest «صورة
+                         المنتج» floor instead. width/height mirror
+                         the catalog art's measured 450×450 intrinsic
+                         (all 45 /products/*.webp, the R132 L4-F9
+                         census re-probed this round) — the fixed
+                         w-12 h-12 well already pins CLS at zero. */
+                      width={450}
+                      height={450}
                       className="w-full h-full object-contain p-1.5"
                     />
                   </div>
@@ -484,13 +506,25 @@ export default function OrderDetailPage() {
              one-shot signature, and the animation-count rule says the
              stagger entrance already carries the moment. Verified —
              no chrome change needed. */
-          <div className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in stagger-1">
+          /* R-140-l (semantics): the credentials card is this page's
+             statement region — bound to its h2 the WalletStatementCard
+             way (section + aria-labelledby="…-heading", the family's
+             ONE section-binding idiom for money/list cards). The
+             h2 follows the card-title family (wallet's «شحن المحفظة» /
+             profile's «الحسابات المرتبطة» — font-bold h2, classes
+             verbatim; only the tag + binding are new). */
+          <section
+            aria-labelledby="order-credentials-heading"
+            className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in stagger-1"
+          >
             <div className="flex items-center gap-3 px-5 py-3.5 border-b border-status-success/15 bg-status-success/5">
               <div className="w-7 h-7 rounded-lg bg-status-success/12 border border-status-success/22 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
               </div>
               <div>
-                <div className="font-bold text-sm">بيانات الحساب</div>
+                <h2 id="order-credentials-heading" className="font-bold text-sm">
+                  بيانات الحساب
+                </h2>
                 <div className="text-3xs text-muted-foreground">انسخ بياناتك بأمان</div>
               </div>
             </div>
@@ -523,7 +557,7 @@ export default function OrderDetailPage() {
                 </span>
               </div>
             )}
-          </div>
+          </section>
         ) : order.status !== "failed" && order.status !== "refunded" ? (
           decryptFailed ? (
             /* R118-B2 (A2): honest decrypt-failure card — same visual
@@ -538,7 +572,10 @@ export default function OrderDetailPage() {
               <div className="w-12 h-12 rounded-2xl bg-status-warning/10 border border-status-warning/25 mx-auto mb-3 flex items-center justify-center">
                 <ShieldAlert className="w-5 h-5 text-status-warning" />
               </div>
-              <p className="font-bold text-sm mb-1">تعذّر فك تشفير بيانات التسليم</p>
+              {/* R-140-l (semantics): card-title h2 (the family's
+                  font-bold h2 register) — the alert region names
+                  itself for heading-navigation. */}
+              <h2 className="font-bold text-sm mb-1">تعذّر فك تشفير بيانات التسليم</h2>
               <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto mb-4">
                 طلبك مكتمل ومحفوظ، لكن بيانات الحساب تعذّر فك تشفيرها حالياً. تواصل مع الدعم وستصلك
                 بياناتك فوراً.
@@ -571,7 +608,10 @@ export default function OrderDetailPage() {
               <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/40 mx-auto mb-3 flex items-center justify-center">
                 <Clock className="w-5 h-5 text-muted-foreground pulse-dot" />
               </div>
-              <p className="font-bold text-sm mb-1">قيد الإعداد</p>
+              {/* R-140-l (semantics): card-title h2 (the family's
+                  font-bold h2 register) — heading order stays
+                  sequential h1→h2 on every branch. */}
+              <h2 className="font-bold text-sm mb-1">قيد الإعداد</h2>
               {/* R125-I7 (A7 B-8): the delivery window is UNIFIED with the
                   storefront's dominant honest promise — «فور تأكيد الدفع،
                   وخلال 24 ساعة كحد أقصى» (home's trust strip,
@@ -616,13 +656,17 @@ export default function OrderDetailPage() {
                 <XCircle className="w-5 h-5 text-status-error" />
               )}
             </div>
-            <p
+            {/* R-140-l (semantics): card-title h2 (the family's
+                font-bold h2 register, tone classes verbatim) — the
+                terminal state names itself for heading-navigation;
+                one heading per mutually-exclusive card. */}
+            <h2
               className={`font-bold text-sm mb-1 ${
                 order.status === "refunded" ? "text-status-info" : "text-status-error"
               }`}
             >
               {order.status === "refunded" ? "تم الاسترداد" : "فشل الطلب"}
-            </p>
+            </h2>
             <p className="text-xs text-muted-foreground leading-relaxed tabular-nums">
               {order.status === "refunded"
                 ? `استُرد ${formatCurrency(order.amount ?? 0)} إلى محفظتك تلقائياً`
@@ -635,7 +679,7 @@ export default function OrderDetailPage() {
                  nothing — points silently vanished from /loyalty with no
                  explanation on any page; this line closes that promise
                  gap («خُصمت نقاط الشراء المستردة»). */
-              <p className="text-2xs text-muted-foreground/75 leading-relaxed mt-1 mb-4">
+              <p className="text-2xs text-muted-foreground/85 leading-relaxed mt-1 mb-4">
                 كما خُصمت نقاط الشراء المستردة — نقاط هذا الطلب من رصيد نقاطك.
               </p>
             )}

@@ -197,7 +197,20 @@ export function ProductEditorCard({
               <div className="relative w-16 h-16 shrink-0 rounded-xl border border-border/40 bg-muted/60 overflow-hidden">
                 <img
                   src={form.image_url.trim()}
-                  alt="معاينة"
+                  /* R-140-a (image discipline): alt — was the generic
+                     «معاينة»; descriptive now (the preview IS a
+                     product image preview). EAGER-LCP exception: it
+                     renders only after the admin types a URL — the
+                     load event drives the valid/invalid well-swap
+                     below, so lazy-loading the one image the admin is
+                     explicitly waiting on would only defer the
+                     feedback loop. decoding="async" keeps the decode
+                     off the keystroke path; NO width/height attrs —
+                     an arbitrary admin-typed URL has no knowable
+                     intrinsic, and the fixed w-16 h-16 well +
+                     max-w/max-h containment already pin CLS at zero. */
+                  alt="معاينة صورة المنتج"
+                  decoding="async"
                   className="absolute inset-0 m-auto max-w-[74%] max-h-[74%] w-auto h-auto object-contain"
                   onLoad={(e) => {
                     (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty(

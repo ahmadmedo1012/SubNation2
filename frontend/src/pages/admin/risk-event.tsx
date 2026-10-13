@@ -184,7 +184,7 @@ export default function AdminRiskEventPage() {
         <div className="space-y-3">
           <Link
             href="/admin/risk"
-            className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+            className="text-xs text-muted-foreground hover:text-primary-text inline-flex items-center gap-1"
           >
             <ArrowRight className="w-3 h-3" /> رجوع لقائمة الأحداث
           </Link>
@@ -219,7 +219,7 @@ export default function AdminRiskEventPage() {
       <div className="space-y-4 max-w-4xl">
         <Link
           href="/admin/risk"
-          className="text-xs text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+          className="text-xs text-muted-foreground hover:text-primary-text inline-flex items-center gap-1"
         >
           <ArrowRight className="w-3 h-3" /> رجوع لقائمة الأحداث
         </Link>

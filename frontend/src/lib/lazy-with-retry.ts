@@ -40,6 +40,13 @@ import { lazy, type ComponentType, type LazyExoticComponent } from "react";
  * The matcher below covers every observed variant. False-positives
  * (an unrelated TypeError happening to mention these strings) would
  * only trigger ONE reload, then bubble — no infinite-loop risk.
+ *
+ * R140-c: the one-reload semantics are pinned BEHAVIORALLY (jsdom +
+ * stubbed location.reload + a real Suspense/ErrorBoundary render:
+ * reload exactly once per pathname, bubble when the counter is armed,
+ * never reload for non-chunk errors) by src/pages/__tests__/
+ * chunk-architecture-r140.test.ts, alongside the frozen manualChunks
+ * rule list and the warm-up ↔ registry cross-reference.
  */
 
 const CHUNK_ERROR_PATTERNS = [

@@ -107,7 +107,7 @@ export function TransferCodePanel({
             {code}
           </div>
         ) : (
-          <div className="rounded-lg bg-muted/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground/80 text-sm">
+          <div className="rounded-lg bg-muted/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground text-sm">
             أدخل المبلغ لإنشاء الرمز تلقائياً
           </div>
         )}

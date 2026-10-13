@@ -479,6 +479,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               // live product asset (all 45 /products/*.webp are 450×450).
               width={450}
               height={450}
+              // R-140-a (image discipline): NO srcset/sizes by
+              // measurement — the catalog ships exactly ONE
+              // rendition per asset (all 45 /products/*.webp
+              // re-probed 450×450 this round), so a srcset would
+              // fabricate /products/*@2x URLs that 404. Revisit
+              // only when a second size actually exists in
+              // public/products/.
               // ── LCP optimization ─────────────────────────────────────
               // The homepage product grid is 2-cols on mobile, 2-3-4 on
               // tablet/desktop. The visible above-fold rows fit ~4 cards

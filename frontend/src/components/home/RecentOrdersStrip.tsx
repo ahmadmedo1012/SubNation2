@@ -30,11 +30,13 @@ export function RecentOrdersStrip({
       aria-hidden="true"
       className="bg-card border border-border/45 rounded-2xl overflow-hidden shadow-sm"
     >
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/25">
+      {/* R140 central: the band separator joins the /20 hairline family. */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/20">
         <div className="w-3.5 h-3.5 rounded-full skeleton-shimmer" />
         <div className="h-3 w-20 skeleton-shimmer rounded" />
       </div>
-      <div className="divide-y divide-border/15">
+      {/* R140 central: skeleton rows join the receipt-rhythm /20 grade. */}
+      <div className="divide-y divide-border/20">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-3 min-h-[52px]">
             <div className="w-8 h-8 rounded-xl bg-muted/50 skeleton-shimmer shrink-0" />
@@ -71,7 +73,8 @@ export function RecentOrdersStrip({
   ) : (
     orders.length > 0 && (
       <div className="bg-card border border-border/45 rounded-2xl overflow-hidden float-in stagger-1 shadow-sm">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/25">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/20">
+          {/* R140 central: the loaded band separator joins the /20 hairline family. */}
           <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
             <Clock className="w-3.5 h-3.5" />
             آخر الطلبات
@@ -90,7 +93,8 @@ export function RecentOrdersStrip({
             <ChevronLeft className="w-3 h-3" aria-hidden="true" />
           </Link>
         </div>
-        <div className="divide-y divide-border/15">
+        {/* R140 central: the loaded rows join the receipt-rhythm /20 grade. */}
+        <div className="divide-y divide-border/20">
           {orders.map((order) => (
             <Link key={order.id} href={`/orders/${order.order_code}`}>
               <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/15 active:bg-muted/25 transition-colors cursor-pointer group min-h-[52px]">
@@ -101,6 +105,14 @@ export function RecentOrdersStrip({
                       alt={order.product_name}
                       loading="lazy"
                       decoding="async"
+                      /* R-140-a (image discipline): width/height mirror
+                         the catalog art's measured 450×450 intrinsic
+                         (all 45 /products/*.webp, the R132 L4-F9
+                         census re-probed this round) — the fixed w-8
+                         h-8 well already pins CLS at zero; the attrs
+                         keep the aspect-ratio reserve honest pre-CSS. */
+                      width={450}
+                      height={450}
                       className="w-full h-full object-contain p-1"
                     />
                   ) : (
@@ -119,8 +131,7 @@ export function RecentOrdersStrip({
                         shape as the rest of the app. */}
                     <StatusBadge
                       variant={
-                        STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
-                        UNKNOWN_STATUS_TONE
+                        STATUS_TONE[order.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE
                       }
                       size="xs"
                     >

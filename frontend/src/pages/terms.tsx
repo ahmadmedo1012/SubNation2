@@ -228,6 +228,16 @@ export default function TermsPage() {
   // in-page #privacy anchor stays for UX/deep-links only. Both tabs
   // are legal/policy content with no transactional value, so robots
   // stays index,follow but priority in the sitemap is low.
+  // R-140-h (meta-quality sweep): verified conforming, no change needed —
+  // both tab titles carry the «— SubNation» brand tail inside the ≤60
+  // budget; both descriptions sit in the 50–160 band (~87 chars each),
+  // are Arabic, unique vs every other page's meta, and carry the
+  // legal-intent keywords (شروط الاستخدام / شحن المحفظة / الاشتراكات
+  // الرقمية / الاسترداد / سياسة الخصوصية). The full og set
+  // (og:title/description/type/url/image+dims/locale/site_name) and the
+  // /terms canonical come from MetaTags' shared emission; deliberately
+  // NO robots key in this call — public legal page → the index,follow
+  // default. Pinned by meta-quality-r140.test.ts.
   const isPrivacy = tab === "privacy";
   const seoBlock = useSeo({
     title: isPrivacy ? "سياسة الخصوصية — SubNation" : "الشروط والأحكام — SubNation",

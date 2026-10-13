@@ -21,7 +21,11 @@ import { ProductsGrid } from "@/components/home/ProductsGrid";
 import { RecentOrdersStrip } from "@/components/home/RecentOrdersStrip";
 import { MobileStatsStrip } from "@/components/home/StatsWidgets";
 import { TrustFooter } from "@/components/home/TrustFooter";
-import { clearSearchHistory, getSearchHistory, saveSearchHistory } from "@/components/home/search-history";
+import {
+  clearSearchHistory,
+  getSearchHistory,
+  saveSearchHistory,
+} from "@/components/home/search-history";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { keepPreviousData } from "@tanstack/react-query";
@@ -36,7 +40,63 @@ import {
   useListOrders,
   useListProducts,
 } from "@workspace/api-client-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentProps } from "react";
+import {
+  memo,
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
+/* ── R140-d (runtime perf): typing-isolation wrappers ────────────────────
+ * The search input's state lives at this page root by CONTRACT (R136's
+ * single-owner decomposition — the URL mirror, the query params and
+ * clearFilters all key off the same quartet, pinned by
+ * home-decomposition-r136), so every keystroke re-rendered the ENTIRE
+ * page: hero + stats strip + filter bar + the 50-card grid. Three of
+ * those sections are pure functions of props that typing never touches,
+ * so they ride React.memo at the usage site and skip the keystroke
+ * render entirely. Zero visual change: memo is transparent — same props
+ * in, same DOM out; only the render WORK is skipped (the old WebCheck
+ * budget story: 911 main-thread tasks / 684.7ms total, the most-visited
+ * page paying it on every keystroke).
+ *
+ * The cleaner long-term idiom is React.memo in each extract's own file;
+ * those files are owned by other lanes this round, so the wrappers live
+ * HERE at the orchestration site (flagged for the orchestrator to fold
+ * into the components later — GuestHero got its own-file memo because
+ * it IS in this round's lane). */
+const MemoAuthedHero = memo(AuthedHero);
+const MemoRecentOrdersStrip = memo(RecentOrdersStrip);
+
+/* R140-d: value-props-only equality for the grid. clearFilters and
+ * refetchProducts are deliberately EXEMPT from the compare, by
+ * documented invariant: clearFilters closes over stable useState
+ * setters only (every recreated version behaves identically) and
+ * refetchProducts is TanStack Query's stable ref — so skipping them
+ * cannot hide a behavior change, and it lets the grid bail on keystroke
+ * re-renders without useCallback-ing clearFilters (whose
+ * `const clearFilters = () => {` shape is frozen by the R136
+ * decomposition pin). Every prop that carries RENDERED VALUE is
+ * compared. */
+const gridPropsEqual = (
+  a: ComponentProps<typeof ProductsGrid>,
+  b: ComponentProps<typeof ProductsGrid>,
+) =>
+  a.isLoading === b.isLoading &&
+  a.productsError === b.productsError &&
+  a.products === b.products &&
+  a.displayProducts === b.displayProducts &&
+  a.activeFilterCount === b.activeFilterCount &&
+  a.searchInput === b.searchInput &&
+  a.category === b.category &&
+  a.sort === b.sort &&
+  a.availableOnly === b.availableOnly;
+
+const MemoProductsGrid = memo(ProductsGrid, gridPropsEqual);
 
 export default function HomePage() {
   const { token } = useAuth();
@@ -73,7 +133,14 @@ export default function HomePage() {
       // R94-A1 #16 (P3): the committed filter value is trimmed — a lone
       // space used to become params.search=" " (the backend ignores it
       // but the UI labeled it an active search over a full result set).
-      setSearch(val.trim());
+      // R140-d (e): the commit rides a transition — the visible text is
+      // ALREADY in the input (rendered urgently), so the query kickoff,
+      // the heading/count swap and the URL mirror are exactly the
+      // non-urgent work transitions exist for. keepPreviousData keeps
+      // the grid's content continuous across the fetch either way.
+      startTransition(() => {
+        setSearch(val.trim());
+      });
     }, 320);
   };
 
@@ -82,7 +149,14 @@ export default function HomePage() {
   // typing «نتف» then «نتفلكس» polluted the history with fragments.
   const commitSearch = (val: string) => {
     const query = val.trim();
-    setSearch(query);
+    // R140-d (e): same rationale as the debounce commit above — the
+    // input already shows the query; the search state's downstream
+    // re-render (heading, queryKey, URL mirror) is transition work.
+    // setShowSearchHistory stays URGENT: the dropdown closing is the
+    // primary feedback of pressing Enter.
+    startTransition(() => {
+      setSearch(query);
+    });
     setShowSearchHistory(false);
     if (query) {
       saveSearchHistory(query);
@@ -192,11 +266,28 @@ export default function HomePage() {
       request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
     },
   );
-  const latestOrders = recentOrders.slice(0, 4);
+  // R140-d (b): memoized — the slice allocated a fresh array every
+  // render (every keystroke), defeating any downstream memoization of
+  // the orders strip; recentOrders only changes when the query
+  // refetches, which is exactly when the strip should re-render.
+  const latestOrders = useMemo(() => recentOrders.slice(0, 4), [recentOrders]);
 
-  const activeFilterCount = [searchInput.trim(), category, sort, availableOnly ? "1" : ""].filter(
-    Boolean,
-  ).length;
+  // R140-d (e): the typing stream is DEFERRED for the grid's consumption.
+  // The input itself (CatalogFiltersBar's controlled value) stays urgent —
+  // the user's own typing must never lag — while everything downstream
+  // that only mirrors the query text (the results h2 label, the «مسح (n)»
+  // count, the empty-state escape routes) re-renders at transition
+  // priority, interruptible by the next keystroke. Pure scheduling: the
+  // committed DOM content is byte-identical, it just stops competing
+  // with the input for the main thread mid-typing.
+  const deferredSearchInput = useDeferredValue(searchInput);
+
+  const activeFilterCount = [
+    deferredSearchInput.trim(),
+    category,
+    sort,
+    availableOnly ? "1" : "",
+  ].filter(Boolean).length;
 
   // R120-B1 (A3-F3/A4-F4): available products lead the DEFAULT view —
   // 6+ dimmed نفد cards used to open the grid, telling shoppers the
@@ -243,6 +334,29 @@ export default function HomePage() {
     setAvailableOnly(false);
   };
 
+  // R140-d (b): the ItemList LD block was rebuilt on EVERY render —
+  // products.slice(0, 50).map(...) + buildItemListLd ran per keystroke
+  // in the search box (the old WebCheck main-thread story: 911 tasks /
+  // 684.7ms). category.tsx already memoizes its twin (itemList, the
+  // R136 idiom); home now matches. Zero output change: JsonLd's effect
+  // is keyed on the SERIALIZED value, so the DOM <script> payload is
+  // byte-identical — only the per-render allocation churn dies.
+  const itemListLd = useMemo(
+    () =>
+      // Emit ItemList only when products are loaded — an empty list LD
+      // is treated by Google as a thin/low-quality structured-data block.
+      products.length > 0
+        ? buildItemListLd(products.slice(0, 50).map((p) => ({ id: p.slug ?? p.id, name: p.name })))
+        : null,
+    [products],
+  );
+
+  // R-140-g (JSON-LD completeness audit): the emitted set is the mature
+  // full set — Organization + WebSite (the SearchAction inside it is
+  // REAL: `?search=` deep links land here and drive the catalog via
+  // readInitialFiltersFromUrl, mirrored back by the URL-mirror effect)
+  // + the ItemList above. No BreadcrumbList (single-level page).
+
   const seoBlock = useSeo({
     // Keyword-forward title for Arabic SERPs (brand at the end is fine —
     // brand searches resolve on URL/favicon anyway). Stays under 50
@@ -265,15 +379,8 @@ export default function HomePage() {
     jsonLd: [
       buildOrganizationLd(),
       buildWebsiteLd(),
-      // Emit ItemList only when products are loaded — an empty list LD
-      // is treated by Google as a thin/low-quality structured-data block.
-      ...(products.length > 0
-        ? [
-            buildItemListLd(
-              products.slice(0, 50).map((p) => ({ id: p.slug ?? p.id, name: p.name })),
-            ),
-          ]
-        : []),
+      // R140-d (b): rides the itemListLd memo above (see its comment).
+      ...(itemListLd ? [itemListLd] : []),
     ],
   });
 
@@ -305,8 +412,10 @@ export default function HomePage() {
           </div>
         ) : token && user ? (
           <div className="mb-5 page-in">
-            <AuthedHero user={user} />
-            <RecentOrdersStrip
+            {/* R140-d (runtime perf): the memo-wrapped hero trio twins —
+                see the wrappers' block comment at module top. */}
+            <MemoAuthedHero user={user} />
+            <MemoRecentOrdersStrip
               pending={ordersPending}
               error={ordersError}
               orders={latestOrders}
@@ -353,13 +462,18 @@ export default function HomePage() {
           debounceRef={debounceRef}
         />
 
-        <ProductsGrid
+        {/* R140-d (runtime perf): the memo-wrapped grid + the deferred
+            search stream — see the wrappers' block comment at module top
+            and the deferredSearchInput declaration. The filter bar above
+            keeps the URGENT searchInput (it renders the input itself);
+            only the results section rides the deferred value. */}
+        <MemoProductsGrid
           isLoading={isLoading}
           productsError={productsError}
           products={products}
           displayProducts={displayProducts}
           activeFilterCount={activeFilterCount}
-          searchInput={searchInput}
+          searchInput={deferredSearchInput}
           category={category}
           sort={sort}
           availableOnly={availableOnly}

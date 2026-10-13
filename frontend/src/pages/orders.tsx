@@ -314,6 +314,15 @@ export default function OrdersPage() {
           <div>
             {/* R128-A4 (F-3): leading-tight removed — the base h1–h4 1.3
                 Arabic-safe floor (index.css) owns the leading. */}
+            {/* R-140-l (semantics): VERIFIED — the header block renders
+                unconditionally, so exactly one h1 («طلباتي») rides every
+                state (loading/error/empty/list); no h2+ exists (the
+                filter chips are a toolbar, the rows are list lines, not
+                sections). The list itself is a div card-list — the
+                family idiom for stacked card lists (cart lines, wallet
+                statement, loyalty history all div; only
+                CartSummaryAside's receipt LINE ITEMS ride ul) — NOT a
+                money table, so no table semantics apply here. */}
             <h1 className="text-2xl font-bold">طلباتي</h1>
             <p className="text-sm text-muted-foreground">سجل مشترياتك ومتابعة حالتها</p>
           </div>
@@ -551,6 +560,15 @@ export default function OrdersPage() {
                           alt={order.product_name}
                           loading="lazy"
                           decoding="async"
+                          /* R-140-a (image discipline): width/height
+                             mirror the catalog art's measured 450×450
+                             intrinsic (all 45 /products/*.webp, the
+                             R132 L4-F9 census re-probed this round) —
+                             the fixed w-12 h-12 well already pins CLS
+                             at zero; the attrs keep the aspect-ratio
+                             reserve honest pre-CSS. */
+                          width={450}
+                          height={450}
                           className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
                         />
                       ) : (

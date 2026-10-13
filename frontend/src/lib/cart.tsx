@@ -8,6 +8,7 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
+import { formatCount } from "./utils";
 
 export interface LocalCartItem {
   productId: number;
@@ -188,6 +189,52 @@ export function lineStockNotice(
  * negative / non-number) reads null = UNKNOWN. */
 function normalizeStockCount(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+// ── R-140-k: the cart-change announcement contract ─────────────────────────
+//
+// The cart's COUNT is money-adjacent async state, and its transitions
+// were only PARTIALLY announced: the add/remove toasts fire at their call
+// sites (ProductCard / PDP «أُضيف إلى السلة», the cart page's
+// remove-with-undo «تمت إزالة المنتج»), but three real paths changed
+// the count with ZERO announcement — the undo toast's «تراجع» action
+// re-adds its line with no toast of its own, a cross-tab `storage`
+// re-sync applies ANOTHER tab's mutation to this tab silently, and a
+// checkout completed in a second tab drains the badge with nothing said
+// here. This pure builder turns a (prev → next) count transition into
+// the polite sentence the Navbar's sr-only live region announces —
+// Arabic forms VERBATIM from the toast family («أُضيف إلى السلة» /
+// «تمت إزالة المنتج») plus the new count through formatCount, so the
+// digits and pluralization can never diverge from the cart link's own
+// accessible name (the same word set as the table below). Polite by
+// design (c): cart changes are state updates, never interrupts.
+
+/** R-140-k: the cart-count plural forms for the change announcer — the
+ * SAME words the cart link's accessible name inlines in Navbar (kept
+ * inline there: every Navbar-rendering test mocks this module, so the
+ * link must not depend on this export at render time). Two tables, one
+ * vocabulary: live-regions-r140 pins the words on both sides, so the
+ * surfaces can never disagree on «2 منتجان» vs «2 منتجات». */
+export const CART_COUNT_FORMS = {
+  one: "منتج",
+  two: "منتجان",
+  few: "منتجات",
+  many: "منتجاً",
+  other: "منتج",
+} as const;
+
+/** R-140-k: the polite sentence for a cart count transition, or null
+ * when the transition is not announce-worthy (no change). The caller
+ * (Navbar) gates the FIRST settled observation — the provider's
+ * mount-time localStorage read is a LOAD, not a change. */
+export function cartChangeAnnouncement(prevCount: number, nextCount: number): string | null {
+  if (prevCount === nextCount) return null;
+  if (nextCount > prevCount) {
+    return `أُضيف إلى السلة — ${formatCount(nextCount, CART_COUNT_FORMS)}`;
+  }
+  return nextCount === 0
+    ? "تمت إزالة المنتج — السلة فارغة"
+    : `تمت إزالة المنتج — ${formatCount(nextCount, CART_COUNT_FORMS)}`;
 }
 
 /** The per-line quantity ceiling: the 99 mirror cap narrowed by a KNOWN

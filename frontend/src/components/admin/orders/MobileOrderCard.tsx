@@ -46,7 +46,7 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
           aria-pressed={isSelected}
           /* R120-B4 (A2-F13): same p-2 -m-1 hit-area fix as the desktop
              row selector. */
-          className="mt-0.5 p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary transition-colors shrink-0"
+          className="mt-0.5 p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary-text transition-colors shrink-0"
         >
           {isSelected ? (
             <CheckSquare className="w-4 h-4 text-primary" />

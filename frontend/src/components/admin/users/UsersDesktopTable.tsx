@@ -21,7 +21,14 @@ export function UsersDesktopTable({
   return (
     <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        {/* R-140-l (semantics): Arabic aria-label — the directory
+            announces itself (the page's «المستخدمون» h1 sits in the
+            toolbar above) instead of a bare «جدول»; scope="col"
+            already rode every th. No sortable headers exist here by
+            design — the sort rides the filter panel's aria-pressed
+            chips (client-side, the R120-B4 contract), so no th carries
+            aria-sort. */}
+        <table aria-label="جدول المستخدمين" className="w-full text-sm">
           <thead>
             <tr
               /* R139 (precision): the header band goes solid — the old

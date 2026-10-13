@@ -81,7 +81,11 @@ describe("R139 (139-f) — the catalog card: calm selected tint + the shelf rhym
   });
 
   it("the variant-count badge consolidates on the /30 static-badge border", () => {
-    expect(card).toContain("bg-primary/10 text-primary border-primary/30");
+    // R140 central re-anchor: text-primary → text-primary-text (140-i
+    // F2/F2′ — the badge is 11px small text; raw --primary measured
+    // 3.44:1 dark / 4.13:1 light on the /10 tint, the ink token clears
+    // AA on both). Same box, same border, same register — ink only.
+    expect(card).toContain("bg-primary/10 text-primary-text border-primary/30");
     expect(card).not.toContain("border-primary/25");
   });
 
@@ -130,8 +134,11 @@ describe("R139 (139-f) — inventory upload + enrichment queues", () => {
     expect(enrichment).toContain('"border border-border/60 rounded-2xl bg-card overflow-hidden"');
     expect(enrichment).not.toContain("bg-card/60");
     expect(enrichment).not.toContain("bg-background/60");
+    // R140 central re-anchor: text-primary → text-primary-text (140-i
+    // F2′ — the chip missed light-theme AA by 0.01–0.37 on the /10 fill;
+    // the ink token clears it on both themes). Byte-rest identical.
     expect(enrichment).toContain(
-      "text-primary bg-primary/10 border border-primary/30 px-2 py-0.5 rounded-full",
+      "text-primary-text bg-primary/10 border border-primary/30 px-2 py-0.5 rounded-full",
     );
     expect(enrichment).toContain("bg-muted/60 border border-border/40 rounded-xl p-3");
   });

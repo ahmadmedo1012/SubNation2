@@ -1,5 +1,6 @@
 import { Component, ReactNode } from "react";
 import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   children: ReactNode;
@@ -101,20 +102,42 @@ export class ErrorBoundary extends Component<Props, State> {
           // convention is min-h-[100dvh] (home.tsx:416 documents it);
           // 100vh over-scrolls under mobile browser chrome, clipping the
           // reload/home actions on the crash screen of all places.
-          className="min-h-[100dvh] bg-background flex items-center justify-center px-4"
+          className="min-h-[100dvh] bg-background flex items-center justify-center px-4 py-10"
           dir="rtl"
         >
-          <div className="text-center max-w-sm w-full space-y-7">
-            {/* Icon — 94-C3 (A3 P2-1): raw red-500/400 hues → the shared
-                --status-error family (same tone AuthErrorBanner/StatusBadge
-                ride), so the light theme keeps AA contrast. */}
-            <div className="mx-auto w-20 h-20 rounded-2xl bg-status-error/10 border border-status-error/22 flex items-center justify-center">
-              <AlertTriangle className="w-9 h-9 text-status-error" />
+          {/* R-140-f (the r139 calm-error register — fetch-error-card's
+              page scale, verbatim family): the crash screen used to be a
+              floating text column with HAND-ROLLED action buttons (flat
+              bg-primary + hover:bg-primary/90 + active:scale-95 +
+              shadow-lg shadow-primary/20 — exactly the pre-R116-S1
+              hand-roll R138's calm-error re-tune retired in
+              FetchErrorCard). The recovery experience now rides the
+              family card: a calm bg-card frame on the /60 resting border
+              (the state signal lives in the ONE red accent — the icon
+              stage — not a red wall), role="alert" so the state is
+              announced (the R125 A6 B-8 contract: an error screen is
+              never silent), and the canonical CTA recipes — the primary
+              reload rides Button size="lg" + w-full sm:w-auto (R116-S1),
+              the secondary home ride Button variant="outline". §3's
+              outage≠empty silhouette stays obvious: tinted error tile +
+              role="alert" + a real reload CTA vs an empty state's muted
+              ghost tile. */}
+          <div
+            role="alert"
+            className="w-full max-w-sm text-center bg-card border border-border/60 rounded-2xl px-6 py-10 sm:px-8"
+          >
+            {/* Icon stage — the ONE red accent on the card (94-C3 A3
+                P2-1: --status-error family; R130 A2-F2: the adjacent bold
+                Arabic headline carries the state, so the glyph is
+                decorative and hidden from the a11y tree). */}
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8 text-status-error" aria-hidden="true" />
             </div>
 
-            {/* Message */}
+            {/* Message — calm ink ladder: bold /80 headline (not a red
+                wall), muted explanation. Arabic copy verbatim. */}
             <div>
-              <h1 className="text-xl font-bold mb-2.5 text-foreground">حدث خطأ غير متوقع</h1>
+              <h1 className="font-bold text-lg mb-1.5 text-foreground/80">حدث خطأ غير متوقع</h1>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 نعتذر، حدث خطأ في هذه الصفحة.
                 <br />
@@ -125,31 +148,37 @@ export class ErrorBoundary extends Component<Props, State> {
                   <summary className="text-xs text-muted-foreground cursor-pointer hover:text-muted-foreground transition-colors">
                     تفاصيل الخطأ (للمطورين)
                   </summary>
-                  <pre className="mt-2 text-3xs text-status-error/75 bg-status-error/8 border border-status-error/15 rounded-lg p-3 overflow-auto text-left leading-relaxed">
+                  <pre className="mt-2 text-3xs text-status-error bg-status-error/8 border border-status-error/15 rounded-lg p-3 overflow-auto text-left leading-relaxed">
                     {this.state.error.message}
                   </pre>
                 </details>
               )}
             </div>
 
-            {/* Actions */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
+            {/* Actions — the REAL recovery affordances (a full reload and
+                an escape to home), both canonical Button recipes now: the
+                gradient fill, press-spring and the ONE focus-visible ring
+                ride buttonVariants instead of a local hand-roll. */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-7">
+              <Button
+                size="lg"
+                className="w-full sm:w-auto"
                 onClick={() => window.location.reload()}
-                className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:scale-95 text-primary-foreground font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-primary/20 w-full sm:w-auto"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw />
                 إعادة التحميل
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="w-full sm:w-auto"
                 onClick={() => {
                   window.location.href = "/";
                 }}
-                className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border text-muted-foreground hover:text-foreground font-semibold px-6 py-3 rounded-xl transition-all w-full sm:w-auto"
               >
-                <Home className="w-4 h-4" />
+                <Home />
                 الرئيسية
-              </button>
+              </Button>
             </div>
           </div>
         </div>

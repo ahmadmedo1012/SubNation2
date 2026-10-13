@@ -321,6 +321,12 @@ export default function SupportPage() {
   // SEO — title, canonical, OG, Twitter, robots, plus FAQPage JSON-LD
   // built from SUPPORT_FAQ. Note: the same Q&A is rendered visibly on
   // the page below (Google requires JSON-LD content to also be visible).
+  // R-140-g (JSON-LD completeness audit): the volatility check PASSED —
+  // SUPPORT_FAQ is a static in-repo canon (components/support/
+  // support-faq.ts), NOT an API-driven list, so freezing it into ld+json
+  // carries no staleness risk; it is single-sourced with the visible
+  // FaqSection accordion (the parity rule Google's FAQ rich-results
+  // require) and copy-pinned by support-faq-copy.test.tsx.
   const seoBlock = useSeo({
     title: "الدعم والأسئلة الشائعة — SubNation",
     description:

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
-import { useCart } from "@/lib/cart";
+import { cartChangeAnnouncement, useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
 import { categoryLabel, cn, formatCount, formatCurrency } from "@/lib/utils";
 import {
@@ -159,7 +159,36 @@ function trapTabKey(
 export function Navbar() {
   const { token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { itemCount } = useCart();
+  const { itemCount, isLoaded } = useCart();
+  // R-140-k (money-adjacent async state — the cart-change announcer):
+  // the badge count is visual chrome; its live announcement now rides a
+  // dedicated sr-only polite region below (the RouteAnnouncer idiom —
+  // aria-live="polite" + role="status" + .sr-only). The state machine:
+  // the prev-count mirror stays null until the cart provider reports
+  // isLoaded — the mount-time localStorage read is a LOAD, not a change,
+  // so a persisted cart never announces «أُضيف إلى السلة» on every page
+  // load. After that, every count DELTA (add, remove, undo re-add,
+  // cross-tab storage re-sync, checkout clear) maps through
+  // lib/cart.tsx's cartChangeAnnouncement — the toast-family Arabic
+  // verbatim + formatCount over the same plural forms the cart link's
+  // accessible name inlines (both tables are pinned to the same words:
+  // this file's «السلة، N …» pin and the live-regions-r140 unit pins).
+  // Polite, never assertive: a cart change is a state update, not an
+  // interrupt (the assertive register stays reserved for errors the
+  // user must act on).
+  const prevCartCountRef = useRef<number | null>(null);
+  const [cartAnnouncement, setCartAnnouncement] = useState("");
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (prevCartCountRef.current === null) {
+      // First settled observation — record, stay silent.
+      prevCartCountRef.current = itemCount;
+      return;
+    }
+    const announcement = cartChangeAnnouncement(prevCartCountRef.current, itemCount);
+    prevCartCountRef.current = itemCount;
+    if (announcement) setCartAnnouncement(announcement);
+  }, [itemCount, isLoaded]);
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   // R132 (L2-F4): the desktop categories dropdown — the one desktop nav
@@ -671,18 +700,22 @@ export function Navbar() {
                 : "فارغة"
             }`}
           >
-            {/* R128-IMP-4 (A13-F4 / B1 item 9): the cart badge's LIVE
-                REGION is this STABLE wrapper div, not the badge span —
-                a badge-span live region dies the day the badge becomes
-                key-remounted for an emphasis animation (mount-time
-                content is never announced; MobileNav's num-pop badge
-                already carries that keying, and this keeps both cart
-                badges on one contract). The wrapper persists across
-                count changes; its text (the badge number) announces
-                politely on N→M while both are >0. The 0→1 mount + 1→0
-                unmount can't announce — the add/remove toast covers
-                those (A13's own note: the toast remains the primary
-                signal). */}
+            {/* R128-IMP-4 (A13-F4 / B1 item 9) + R-140-k layering: the
+                badge's LIVE REGION is this STABLE wrapper div, not the
+                badge span — a badge-span live region dies the day the
+                badge becomes key-remounted for an emphasis animation
+                (mount-time content is never announced; MobileNav's
+                num-pop badge already carries that keying, and this
+                keeps both cart badges on one contract). The wrapper
+                persists across count changes. R-140-k: the badge SPAN
+                itself is now aria-hidden visual chrome — its bare,
+                contextless number (capped "9+") duplicated the R-140-k
+                announcer's contextual sentence («أُضيف إلى السلة — 12
+                منتجاً») as a second polite utterance on every change.
+                The count keeps TWO honest AT exposures: this link's
+                accessible name (the inline plural table above) for
+                navigation/focus, and the sr-only announcer region below
+                for change events. */}
             <div
               aria-live="polite"
               className="relative p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9"
@@ -692,13 +725,30 @@ export function Navbar() {
                 /* 96-F5 (R96-M20 + A6 #21): badge unified with the bell's —
                    inline-end physical corner (LEFT in RTL, like
                    NotificationBell's -left-0.5) and the same 9+ cap, so
-                   the two unread indicators read as one system. */
-                <span className="absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-3xs font-bold tabular-nums flex items-center justify-center shadow-sm shadow-primary/30">
+                   the two unread indicators read as one system.
+                   R-140-k: aria-hidden — see the wrapper comment above. */
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-3xs font-bold tabular-nums flex items-center justify-center shadow-sm shadow-primary/30"
+                >
                   {itemCount > 9 ? "9+" : itemCount}
                 </span>
               )}
             </div>
           </Link>
+
+          {/* R-140-k (money-adjacent async state): the cart-change
+              ANNOUNCER — sr-only, polite, the RouteAnnouncer idiom
+              (app/routes.tsx F3-07). Fed by the effect up top: silent on
+              load, announces every post-load count delta with the
+              toast-family Arabic verbatim + the formatCount total. This
+              is the region that covers the paths the add/remove toasts
+              can never reach: the undo toast's «تراجع» re-add, the
+              cross-tab storage re-sync, and a checkout completed in
+              another tab. */}
+          <div aria-live="polite" role="status" className="sr-only">
+            {cartAnnouncement}
+          </div>
         </div>
       </div>
 

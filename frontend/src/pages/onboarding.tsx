@@ -200,7 +200,16 @@ export function OnboardingPage() {
                 <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-status-success/12 border border-status-success/22 mx-auto">
                   <ShoppingBag className="w-6 h-6 text-status-success" />
                 </div>
-                <h2 className="text-xl font-bold">جاهز للبدء</h2>
+                {/* R-140-l (semantics): step 2's title is an h1, not an
+                    h2 — the two steps are mutually-exclusive VIEWS of
+                    this route, and the rendered page must carry exactly
+                    one h1 on every view (step 1 names itself above; a
+                    lone h2 with no h1 in the tree was an orphaned
+                    level). Classes verbatim — h1 and h2 share the same
+                    h1–h4 leading floor (index.css), so the tag swap is
+                    pixel-neutral; heading order stays sequential per
+                    rendered view. */}
+                <h1 className="text-xl font-bold">جاهز للبدء</h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   اختر إلى أين تتوجّه — يمكنك دائماً العودة لإعدادات حسابك من صفحة الملف الشخصي.
                 </p>

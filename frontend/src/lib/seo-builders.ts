@@ -76,6 +76,23 @@ export interface ProductLdInput {
    * substantive Product structured data and surfaces richer snippets.
    */
   descriptionLong?: string | null;
+  /**
+   * R-140-g (JSON-LD completeness audit — the AggregateRating judgment):
+   * this input deliberately carries NO rating/review fields, and
+   * buildProductLd therefore NEVER emits schema.org/AggregateRating.
+   * The generated Product DTO (shared/api-client-react api.schemas.ts)
+   * exposes no rating / review / reviewCount surface at all — its
+   * `order_count` counts PURCHASES, not reviews, and no ratingValue
+   * exists anywhere in the API shape. Dressing either up as review
+   * stars would fabricate social proof (the rich-results spam class
+   * Google penalizes harder than absent stars). When a real review
+   * surface ships: extend THIS input with the API's own fields, guard
+   * the emission (ratingValue bounded 1–5, reviewCount > 0), and
+   * update the no-fabrication pin in
+   * src/pages/__tests__/jsonld-completeness-r140.test.ts — it asserts
+   * the built Product LD carries no aggregateRating/reviewCount/
+   * ratingValue keys today.
+   */
 }
 
 export function buildProductLd(p: ProductLdInput) {

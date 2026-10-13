@@ -190,16 +190,29 @@ export function MobileNav() {
                 {/* Icon — the السلة icon carries the live count badge
                     (R120-B1 / A1-F8): the same 9+ cap + inline-end
                     corner idiom as the Navbar cart/bell badges. */}
-                {/* R128-IMP-4 (A13-F4 / B1 item 9): the LIVE REGION is this
-                    STABLE wrapper, not the badge span — the badge is
-                    key-remounted for the num-pop emphasis (R128-A5/A5-3
-                    below), and a keyed remount mounts a FRESH live region
-                    per change (mount-time content is never announced), so
+                {/* R128-IMP-4 (A13-F4 / B1 item 9) + R-140-p layering:
+                    the LIVE REGION is this STABLE wrapper, not the
+                    badge span — the badge is key-remounted for the
+                    num-pop emphasis (R128-A5/A5-3 below), and a keyed
+                    remount mounts a FRESH live region per change
+                    (mount-time content is never announced), so
                     aria-live on the badge itself would be dead. The
-                    wrapper persists across count changes; its text (the
-                    badge number) announces politely on N→M while both
-                    are >0. The 0→1 mount + 1→0 unmount can't announce —
-                    the add/remove toast covers those (A13's own note). */}
+                    wrapper persists across count changes and keeps its
+                    polite contract (the storefront-chrome-r120 pin
+                    reads it), but R-140-p: the badge SPAN itself is
+                    now aria-hidden visual chrome — the Navbar's
+                    R-140-k sr-only announcer (cartChangeAnnouncement)
+                    is in the DOM on EVERY viewport (the header's
+                    right-actions row is never display:none), so on
+                    phones it already speaks «أُضيف إلى السلة — N
+                    منتجات» on every count change, and this tab's own
+                    bare-number region was the pre-r140 DOUBLE
+                    (contextual sentence + contextless "3") 140-k
+                    flagged as half-closed. The count keeps TWO honest
+                    AT exposures: this tab's accessible name («السلة، N
+                    منتجات») for focus/navigation, and the Navbar
+                    announcer for change events — one sentence source,
+                    no per-tab announcer region to drift from it. */}
                 <span className="relative" aria-live={isCartTab ? "polite" : undefined}>
                   <tab.icon
                     strokeWidth={active ? 2.5 : 1.8}
@@ -219,9 +232,11 @@ export function MobileNav() {
                        idiom) replays whenever the visible number changes
                        (10→11 stays «9+» — no ghost pop). Before, the count
                        swapped as bare text and the "it worked" confirmation
-                       rested entirely on the toast. */
+                       rested entirely on the toast.
+                       R-140-p: aria-hidden — see the wrapper comment above. */
                     <span
                       key={itemCount > 9 ? "9+" : String(itemCount)}
+                      aria-hidden="true"
                       className="absolute -top-1.5 -left-2 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-3xs font-bold leading-none tabular-nums flex items-center justify-center shadow-sm shadow-primary/30 num-pop"
                     >
                       {itemCount > 9 ? "9+" : itemCount}

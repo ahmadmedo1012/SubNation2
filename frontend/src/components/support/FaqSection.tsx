@@ -34,7 +34,7 @@ export function FaqSection() {
               <span className="text-sm font-bold flex-1">{item.question}</span>
               <ChevronLeft className="w-4 h-4 text-muted-foreground transition-transform group-open:-rotate-90 shrink-0" />
             </summary>
-            <div className="px-4 pt-1 pb-4 border-t border-border/40 text-sm text-muted-foreground leading-relaxed">
+            <div className="px-4 pt-1 pb-4 border-t border-border/20 text-sm text-muted-foreground leading-relaxed">
               {item.answer}
             </div>
           </details>

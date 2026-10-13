@@ -1375,8 +1375,16 @@
 }
 
 /* Action / cancel buttons */
+/* R140 central (140-i F1): the action surface pins to brand primary —
+   white on --toast-accent measured 1.96:1 on the dark success/warning
+   variants (error/info 3.39/3.24 — all short of AA). The severity hue
+   stays carried by the accent strip + icon bubble; the button reads as
+   the standard brand CTA. New ratios: white on primary 4.93 dark /
+   5.29 light — AA on both themes, all five variants. Latent today
+   (zero production `action:` call sites), but use-toast.ts documents
+   the option — the first caller must inherit an AA button. */
 [data-sonner-toast][data-styled="true"].premium-toast [data-button] {
-  background: hsl(var(--toast-accent, var(--primary)));
+  background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
   border-radius: 10px;
   padding: 7px 14px;

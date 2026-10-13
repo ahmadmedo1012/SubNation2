@@ -543,6 +543,12 @@ export default function ProductPage() {
   // the pure builder computes the exact same argument; productFaqs
   // stays HERE because the FAQ accordion mount gates on the same array
   // (one source).
+  // R-140-g (JSON-LD completeness audit): the emitted set is the mature
+  // full stack — Product (Offer with the API-threaded price/LYD/
+  // availability) + BreadcrumbList (الرئيسية → الفئة → المنتج) +
+  // FAQPage (gated on the curated faq). AggregateRating is deliberately
+  // ABSENT: the Product DTO carries no review/rating fields — see the
+  // judgment note on ProductLdInput in lib/seo-builders.ts.
   // Only emit FAQPage JSON-LD when there's a non-empty curated FAQ list
   // on the product. Empty arrays are treated by Google as a thin
   // structured-data block.

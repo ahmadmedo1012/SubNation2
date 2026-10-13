@@ -89,6 +89,26 @@
       content="اشترِ Netflix والبث المباشر واشتراكات VPN وتراخيص Windows والبرامج وأدوات الذكاء الاصطناعي بالدينار الليبي (د.ل) — تسليم فوري في ليبيا."
     />
     <meta data-rh="true" property="og:type" content="website" />
+    <!-- R-140-p (140-h's flag): the static baseline was missing the three
+         og identity tags the runtime MetaTags already emits on every
+         route (og:locale / og:site_name / og:url — the per-route values
+         below are the App-fallback home shape). No-JS link unfurlers
+         and strict OG consumers read ONLY this static layer, so the
+         shell now names its locale, site, and URL. og:locale is ar_LY —
+         the territory-specific language_COUNTRY form, NOT Facebook's
+         generic ar_AR pseudo-locale (the R-140-h verdict at the
+         MetaTags emission site: a Libya-only storefront — Organization
+         LD addressCountry LY, LYD pricing, ar-only sitemap discipline).
+         og:url is baked to the canonical production origin exactly like
+         the og:image line above (the R110-F / seoHeadInject rationale:
+         Vite's %VAR% HTML substitution leaves the literal placeholder
+         behind when the env is unset, and VITE_APP_ORIGIN is unset by
+         default in the Docker build — subnation.ly is the PRODUCT
+         domain; docs/deployment/ENVIRONMENT_MATRIX.md). MetaTags
+         upserts each of these IN PLACE per route at runtime. -->
+    <meta data-rh="true" property="og:locale" content="ar_LY" />
+    <meta data-rh="true" property="og:site_name" content="SubNation" />
+    <meta data-rh="true" property="og:url" content="https://subnation.ly/" />
     <!-- R128-L2 (brand-asset suite): favicon.svg is the canonical mark
          (red #dc1840 tile, white shield + play knockout — the solid
          variant of the header Logo.tsx shield), favicon-32x32.png is the
@@ -106,16 +126,40 @@
     <!-- ── Network hints ───────────────────────────────────────────────
          preconnect runs the DNS+TLS+TCP handshake during HTML parse so
          the first request to each origin starts ~150 ms sooner on a
-         cold visit. Origins that we always hit on first paint go here
-         (reserved for a future image host; catalog art is local /products/*.webp). Origins that are only hit on
+         cold visit. No preconnect tags ship today: every first-paint
+         resource is same-origin (JS/CSS/fonts under /assets/, catalog
+         art /products/*.webp); the slot stays reserved for a future
+         cross-origin image host. Origins that are only hit on
          a delayed action (Firebase popup on login click, recaptcha)
          get dns-prefetch — cheaper signal that doesn't burn an idle
          TLS slot.
 
-         Note: Google Fonts is no longer in this list. Readex Pro is
-         now self-hosted via @fontsource and bundled by Vite — the
-         woff2 files live under /assets/ on the same origin and are
-         covered by the 1y immutable cache rule. -->
+         R-140-b — FONTS, the current truth (verified against the dist
+         build AND the live site): the old PageSpeed "Google Fonts
+         57 KB third-party" finding is fully retired — ZERO external
+         font requests ship. Readex Pro is self-hosted via
+         @fontsource/readex-pro (index.css imports 6 faces: arabic +
+         latin × 400/600/700 — exactly the contract's loaded weights),
+         emitted as content-hashed /assets/readex-pro-*.woff2 (~10 KB
+         arabic / ~14 KB latin per face, 1y immutable cache) with
+         font-display: swap baked into every @fontsource face CSS.
+
+         R-140-b — why THIS file deliberately carries NO font preload
+         link: the woff2 asset names carry content hashes that change
+         on every font bump, so a statically hardcoded href would 404
+         (wasted bytes + a console error on every boot after the next
+         @fontsource update). The 4 critical-face preloads (arabic
+         400/600/700 + latin 400 — the above-the-fold set: hero h1 +
+         prose + Navbar labels + the hero's Latin glyphs) are injected
+         at BUILD time by the criticalPreloadInject plugin in
+         vite.config.ts, which reads the rollup bundle and emits the
+         correct hashed URLs. Verified end-to-end in R-140-b: the
+         dual-subset faces (arabic + latin, same family+weight, no
+         unicode-range) resolve per codepoint inside the family — all
+         6 faces reach status=loaded on a real boot, Arabic text
+         renders from the arabic woff2 and Latin from the latin woff2.
+         If the font preload set ever needs to change, it changes in
+         vite.config.ts (criticalPreloadInject), never here. -->
     <!-- A7 (round-94): the crossorigin attribute is REMOVED. Product
          images are plain <img> (no-cors) requests — a crossorigin
          preconnect opens an ANONYMOUS CORS connection the image fetch
@@ -126,6 +170,29 @@
     <link rel="dns-prefetch" href="https://www.google.com" />
     <link rel="dns-prefetch" href="https://www.gstatic.com" />
 
+    <!-- R-140-b — BOOT ORDER (the critical path this tag sits on):
+         1. [build-injected, right after <head> opens] the external
+            preload-gate script — non-admin boots append the home
+            chunk's modulepreload during head parse (vite.config.ts:
+            PRELOAD_GATE_SOURCE; pinned by preload-gate.test.ts).
+         2. THIS script (/init.js, below) — the theme class from
+            localStorage lands BEFORE first paint, so light-mode users
+            never see a dark flash.
+         3. [build-injected, before </head>] the CSS link, vendor
+            modulepreloads and the 4 critical woff2 font preloads.
+         4. body — #root carries the static-offline no-JS fallback
+            (6 s CSS reveal); a healthy main.tsx removes it
+            synchronously during module evaluation.
+         5. The entry module — ESM evaluation order: lib/boot-sentry
+            (defines the error buffers) → App → app/boot-head-start
+            (its module-scope gate fires HERE, before main.tsx's body:
+            home-chunk warm-up + home-route-gated products prefetch +
+            first-4 card-image warming) → the main body (error-buffer
+            install, Sentry schedule, direction lock, offline-reveal
+            removal, API config, idle analytics) → createRoot().
+            render(<App />) → AuthGate probe → home mounts on the
+            already-warm chunk + seeded cache → hero/LCP paints with
+            the preloaded fonts resident. -->
     <script src="/init.js"></script>
   </head>
   <body>

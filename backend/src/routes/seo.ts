@@ -21,14 +21,17 @@ const APP_ORIGIN = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/
 // /robots.txt
 // ────────────────────────────────────────────────────────────────────────────
 //
-// Disallow list covers EVERY non-public route the SPA exposes:
+// Disallow list covers EVERY non-public route the SPA exposes
+// (r140-m parity audit against frontend/src/app/routes.tsx):
 //
 //   • Auth flow                    /login, /register, /forgot-password,
 //                                    /onboarding, /auth/, /auth/callback
-//   • User-private pages           /wallet, /orders, /loyalty, /referrals,
-//                                    /profile  (these render user-state-
-//                                    dependent content that's empty for an
-//                                    anonymous crawler — bad for SEO)
+//   • Cart + checkout funnels      /cart, /checkout (V3-A2)
+//   • User-private pages           /wallet, /orders (+ detail urls), /loyalty,
+//                                    /referrals, /profile, /notifications
+//                                    (these render user-state-dependent
+//                                    content that's empty for an anonymous
+//                                    crawler — bad for SEO)
 //   • Admin                        /admin, /admin/*
 //   • Internal observability       /status   (operational view; no
 //                                    customer-facing value)
@@ -36,10 +39,29 @@ const APP_ORIGIN = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/
 //
 // Public crawlable routes (allowed):
 //   • /                            home / catalog
-//   • /product/:id                 individual product pages (anonymous-
+//   • /product/<slug>              individual product pages (anonymous-
 //                                    renderable; the catalog data is public)
+//   • /category/<slug>             the 7 live category landings
+//   • /flash-sales                 on-sale money page (V3-A4)
 //   • /support                     help center (mostly static)
 //   • /terms                       legal
+//
+// r140-m notes:
+//   • /notifications gained its Disallow row here — the page shipped in
+//     R128-IMP-5 (A9-F2) and the SPA's own noindex mirror
+//     (frontend/src/app/route-shapes.ts NOINDEX_ROUTES) had flagged the
+//     missing wall since then.
+//   • /forgot-password is a RETIRED route (no entry in the SPA's route
+//     registry since the auth flow was consolidated; the URL 404s in the
+//     client router). The wall is kept deliberately: the noindex mirrors
+//     (route-shapes.ts NOINDEX_ROUTES + spa-shell.ts SHELL_NOINDEX_RES)
+//     still list the family, a Disallow on a dead path costs nothing, and
+//     it guards an accidental re-introduction. Removing it here would
+//     diverge the three walls for zero SEO gain.
+//   • /flash-sales gained its explicit Allow line — it was always
+//     crawlable via the blanket "Allow: /" (nothing disallowed it), but
+//     the documented public-surface list above now names every money
+//     page the sitemap advertises.
 //
 // Sitemap reference points at the dynamic /sitemap.xml below (not a static
 // file). Cache-Control max-age=300 so crawlers revisit hourly-ish without
@@ -55,6 +77,7 @@ const ROBOTS_BODY = [
   "Allow: /",
   "Allow: /product/",
   "Allow: /category/",
+  "Allow: /flash-sales",
   "Allow: /support",
   "Allow: /terms",
   "",
@@ -75,6 +98,8 @@ const ROBOTS_BODY = [
   "Disallow: /loyalty",
   "Disallow: /referrals",
   "Disallow: /profile",
+  // R128-IMP-5 shipped the page; r140-m ships the wall it asked for.
+  "Disallow: /notifications",
   "",
   "# Admin + internal observability",
   "Disallow: /admin",
@@ -132,13 +157,31 @@ let sitemapCache: SitemapCacheEntry | null = null;
  * editorial pages now OMIT lastmod entirely (honest "unknown" beats a
  * lie; sitemap.org makes the tag optional) until they gain a real
  * content-timestamp source.
+ *
+ * r140-m (lane parity/lastmod honesty): the category landings no longer
+ * share the GLOBAL catalog MAX — each /category/<slug> entry carries
+ * MAX(updated_at) of THAT category's rows only. The live sitemap's
+ * all-categories-one-timestamp shape was a bulk-import DATA artifact
+ * (every row's updated_at sits in one 20 s window), but the builder
+ * still re-stamped all 7 categories whenever ANY product changed — a
+ * VPN edit would advertise /category/music as modified. Per-category
+ * MAX fixes that with data the catalog already owns
+ * (products.category + products.updated_at). Home and /flash-sales keep
+ * the global MAX: they render the ENTIRE active catalog (flash-sales
+ * filters the whole list client-side over the site-wide singleton
+ * sale), so any product change genuinely changes them. A category with
+ * zero live products omits lastmod (the R122 "honest unknown" rule).
  */
 interface StaticRoute {
   path: string;
   changefreq: string;
   priority: string;
-  /** "catalog" = the catalog-driven global lastmod; "none" = omit the tag. */
-  lastmod: "catalog" | "none";
+  /**
+   * "catalog" = the global MAX(updated_at) (routes rendering the whole
+   *   catalog); "category" = MAX(updated_at) of that category's own rows
+   *   (path must be /category/<slug>); "none" = omit the tag.
+   */
+  lastmod: "catalog" | "category" | "none";
 }
 
 const STATIC_ROUTES: StaticRoute[] = [
@@ -149,13 +192,15 @@ const STATIC_ROUTES: StaticRoute[] = [
   // than /support + /terms because they're money pages with money
   // intent. Retired gaming/productivity pages are intentionally
   // absent: they render a noindex surface until restocked.
-  { path: "/category/streaming", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
-  { path: "/category/music", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
-  { path: "/category/software", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
-  { path: "/category/vpn", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
-  { path: "/category/ai-tools", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
-  { path: "/category/seo-tools", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
-  { path: "/category/education", changefreq: "weekly", priority: "0.9", lastmod: "catalog" },
+  // r140-m: lastmod "category" — each entry tracks its OWN category's
+  // MAX(updated_at) (see the R122/r140-m policy block above).
+  { path: "/category/streaming", changefreq: "weekly", priority: "0.9", lastmod: "category" },
+  { path: "/category/music", changefreq: "weekly", priority: "0.9", lastmod: "category" },
+  { path: "/category/software", changefreq: "weekly", priority: "0.9", lastmod: "category" },
+  { path: "/category/vpn", changefreq: "weekly", priority: "0.9", lastmod: "category" },
+  { path: "/category/ai-tools", changefreq: "weekly", priority: "0.9", lastmod: "category" },
+  { path: "/category/seo-tools", changefreq: "weekly", priority: "0.9", lastmod: "category" },
+  { path: "/category/education", changefreq: "weekly", priority: "0.9", lastmod: "category" },
   { path: "/support", changefreq: "monthly", priority: "0.4", lastmod: "none" },
   { path: "/terms", changefreq: "yearly", priority: "0.3", lastmod: "none" },
   // V3-A4: money page missing from the sitemap — index,follow but
@@ -201,15 +246,40 @@ function urlEntry(
 }
 
 async function buildSitemap(): Promise<string> {
-  // Catalog-driven lastmod (R122 A7-P2: now consumed ONLY by the routes
-  // whose rendered content IS the catalog — see STATIC_ROUTES).
-  const [{ maxUpdated }] = await db
-    .select({ maxUpdated: sql<string | null>`MAX(${productsTable.updatedAt})` })
+  // ONE grouped aggregate scan feeds BOTH lastmod tiers (r140-m):
+  //   • per-category MAX(updated_at) — the /category/<slug> entries;
+  //   • the global max over the same rows — home + /flash-sales (they
+  //     render the whole active catalog) and the product-entry fallback
+  //     shape. Archived/inactive rows are excluded, so a retired product
+  // can never freshen a landing page it no longer appears on.
+  const categoryRows = await db
+    .select({
+      category: productsTable.category,
+      maxUpdated: sql<string | null>`MAX(${productsTable.updatedAt})`,
+    })
     .from(productsTable)
-    .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)));
+    .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)))
+    .groupBy(productsTable.category);
 
   const fallbackLastmod = new Date().toISOString();
-  const globalLastmod = maxUpdated ? new Date(maxUpdated).toISOString() : fallbackLastmod;
+  // Keys are lowercased products.category values — the sitemap slugs are
+  // lowercase and the category page filters with a LOWER() equality, so a
+  // stray case variant still resolves instead of silently dropping the
+  // entry's lastmod.
+  const lastmodByCategory = new Map<string, string>();
+  let globalMaxMs: number | null = null;
+  for (const row of categoryRows) {
+    const raw = row.maxUpdated;
+    if (raw == null) continue;
+    const ms = new Date(raw).getTime();
+    if (Number.isNaN(ms)) continue;
+    if (globalMaxMs === null || ms > globalMaxMs) globalMaxMs = ms;
+    if (typeof row.category === "string" && row.category.length > 0) {
+      lastmodByCategory.set(row.category.toLowerCase(), new Date(ms).toISOString());
+    }
+  }
+  const globalLastmod =
+    globalMaxMs !== null ? new Date(globalMaxMs).toISOString() : fallbackLastmod;
 
   const products = await db
     .select({
@@ -221,13 +291,18 @@ async function buildSitemap(): Promise<string> {
     .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)))
     .limit(SITEMAP_MAX_URLS - STATIC_ROUTES.length);
 
+  /** r140-m: resolve a static entry's lastmod per the R122/r140-m policy. */
+  const lastmodFor = (r: StaticRoute): string | null => {
+    if (r.lastmod === "none") return null;
+    if (r.lastmod === "catalog") return globalLastmod;
+    const slug = r.path.startsWith("/category/") ? r.path.slice("/category/".length) : null;
+    // Unknown slug (or a live category with zero products) → omit the
+    // tag: the honest "unknown" beats a stale or borrowed timestamp.
+    return slug !== null ? (lastmodByCategory.get(slug) ?? null) : null;
+  };
+
   const staticEntries = STATIC_ROUTES.map((r) =>
-    urlEntry(
-      `${APP_ORIGIN}${r.path}`,
-      r.lastmod === "catalog" ? globalLastmod : null,
-      r.changefreq,
-      r.priority,
-    ),
+    urlEntry(`${APP_ORIGIN}${r.path}`, lastmodFor(r), r.changefreq, r.priority),
   );
 
   const productEntries = products.map((p) =>

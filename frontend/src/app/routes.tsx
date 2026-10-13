@@ -16,7 +16,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NavigationProgress } from "@/components/NavigationProgress";
 import { MetaTags } from "@/components/seo/MetaTags";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type ComponentType } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
@@ -27,22 +27,27 @@ import {
   HomePage,
   AuthCallbackPage,
   TelegramCallbackPage,
-  LoginPage,
-  LoyaltyPage,
+  // R-140-f: the seven segment-guarded pages are imported under *Lazy
+  // aliases and re-bound to their withRouteBoundary twins below — the
+  // route table's registration lines stay byte-identical (they are the
+  // r137 deletion surfaces pinned by app-decomposition-r137) while the
+  // SAME public names now resolve to the guarded components.
+  LoginPage as LoginPageLazy,
+  LoyaltyPage as LoyaltyPageLazy,
   OnboardingPage,
-  OrderDetailPage,
+  OrderDetailPage as OrderDetailPageLazy,
   OrdersPage,
   ProductPage,
   CategoryPage,
   ProfilePage,
   ReferralsPage,
   NotificationsPage,
-  RegisterPage,
+  RegisterPage as RegisterPageLazy,
   SupportPage,
   TermsPage,
-  WalletPage,
-  CartPage,
-  CheckoutPage,
+  WalletPage as WalletPageLazy,
+  CartPage as CartPageLazy,
+  CheckoutPage as CheckoutPageLazy,
   FlashSalesPage,
   AdminLoginPage,
   AdminDashboardPage,
@@ -71,6 +76,69 @@ import { FlashSaleBanner, Footer, MobileNav } from "@/app/app-shell";
 // Critical layout
 import { Navbar } from "@/components/layout/Navbar";
 import NotFound from "@/pages/not-found";
+
+/**
+ * R-140-f (money/auth route-segment boundaries — the r140 error lane):
+ * the ONLY per-route boundaries before this round were the admin subtree
+ * (Round-3 8-f §7, inside AdminProtectedRoutes) and the storefront
+ * chrome blocks (R118-B2's slim null fallbacks). Every storefront route
+ * — checkout, wallet/topup, cart, order-detail, loyalty included — rode
+ * the ONE app-level boundary around the whole public Switch. That
+ * boundary does catch a money-page crash, but it is the LAST line
+ * before a root unmount and its state is shared by every route; a
+ * chunk or render failure on a money path swapped the entire route
+ * area to the recovery screen and consumed the shared boundary.
+ *
+ * The money + auth funnels now get their OWN segment boundary (this one
+ * wrapper, reused): a render throw — or a lazyWithRetry SECOND chunk
+ * failure (the first reloads the page; the second rethrows, and the
+ * nearest boundary is this segment guard sitting INSIDE the
+ * Switch-level Suspense — React 19 surfaces a lazy-payload rejection to
+ * the closest error boundary, which is this one, not the outer app
+ * boundary) — is contained to the route the user is actually on, and
+ * the app-level boundary stays pristine as the backstop for every
+ * other route.
+ *
+ * 98-F7 contract at SEGMENT scope: resetKey = the live location (the
+ * wrapper renders inside wouter's Router, so useLocation reads the
+ * active path — including /orders/:orderCode param changes); an
+ * unrelated parent re-render cannot flicker the boundary, navigation
+ * resets it exactly, and leaving the route unmounts it entirely (the
+ * Switch renders only the matching route).
+ *
+ * Scope is deliberately MINIMAL — money paths + the auth funnel
+ * (login/register), nothing else: browsing surfaces keep the app-level
+ * boundary alone; the /auth/* callback pages are one-shot redirect
+ * handlers with their own inline hang/error states; and /admin keeps
+ * its existing subtree boundary.
+ */
+// R140 central: <P extends object> instead of ComponentType<any> — the
+// props-generic form keeps full inference (ComponentProps falls out of P)
+// without the no-explicit-any warning; the lint baseline stays at the
+// 49 pre-existing warnings.
+function withRouteBoundary<P extends object>(Page: ComponentType<P>) {
+  function GuardedPage(props: P) {
+    const [location] = useLocation();
+    return (
+      <ErrorBoundary resetKey={location}>
+        <Page {...props} />
+      </ErrorBoundary>
+    );
+  }
+  return GuardedPage;
+}
+
+// R-140-f: the guarded twins. The route table below keeps its
+// byte-identical registrations (`component={CartPage}` etc.) — these
+// consts re-bind the SAME names to the boundary-wrapped components, so
+// no <Route> line changes (the r137 deletion surfaces stay pinned).
+const LoginPage = withRouteBoundary(LoginPageLazy);
+const RegisterPage = withRouteBoundary(RegisterPageLazy);
+const WalletPage = withRouteBoundary(WalletPageLazy);
+const CartPage = withRouteBoundary(CartPageLazy);
+const CheckoutPage = withRouteBoundary(CheckoutPageLazy);
+const OrderDetailPage = withRouteBoundary(OrderDetailPageLazy);
+const LoyaltyPage = withRouteBoundary(LoyaltyPageLazy);
 
 /**
  * Suspense fallback that picks a skeleton shape based on the route

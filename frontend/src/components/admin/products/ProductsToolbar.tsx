@@ -110,7 +110,7 @@ export function ProductsToolbar({
       {(search || categoryFilter) && (
         <button
           onClick={onClearFilters}
-          className="text-xs text-muted-foreground hover:text-primary transition-colors"
+          className="text-xs text-muted-foreground hover:text-primary-text transition-colors"
         >
           مسح
         </button>

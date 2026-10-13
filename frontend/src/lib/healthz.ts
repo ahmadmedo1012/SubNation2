@@ -12,6 +12,19 @@ const SUMMARY_FALLBACK: HealthzSummary = { status: "degraded" };
  *
  * Never throws — degrades to "degraded" on any error so React Query
  * never enters an error state.
+ *
+ * R-140-n (offline/PWA depth — documented, deliberately unchanged):
+ * an OFFLINE client lands in that same "degraded" fallback: the fetch
+ * rejects with the browser's network TypeError and this module cannot
+ * distinguish "server degraded" from "my phone lost connectivity".
+ * That distinction needs navigator.onLine / online|offline events —
+ * a network-state UX the app does NOT have (no family precedent; the
+ * calm-register decision is that /status stays quiet rather than
+ * guessing the cause). Proposed minimal design if the family ever
+ * wants it: a `status: "offline"` arm here gated on navigator.onLine,
+ * rendered by pages/status.tsx with the FetchErrorCard calm register
+ * (WifiOff + «أنت غير متصل بالإنترنت» + retry), keeping server-side
+ * verdicts untouched. See the r140-n worklog entry before touching.
  */
 export async function fetchHealthzSummary(): Promise<HealthzSummary> {
   let res: Response;

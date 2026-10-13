@@ -43,16 +43,20 @@ export function AuthedHero({ user }: { user: User }) {
               craft-floor bans kickers/eyebrows over headings
               ("let the h1 speak"); the greeting carried no
               information the h2 doesn't. */}
-          {/* R124 (A5-F8 + A3-F7): h1 → h2 — a greeting is a
-              section heading, not the page's topic (the guest
-              SEO hero below owns the page's h1 identity; these
-              branches are mutually exclusive, but the greeting
-              must not outrank the catalog's h2s when it renders).
-              The gradient text is gone (craft-floor ban on
-              gradient type) — solid --primary-text (4.82:1 on the
-              light card / 6.05:1 dark) + weight carry the
+          {/* R140 central (140-l census): h2 → h1 — the R124-A5-F8
+              demotion reasoned "the guest SEO hero owns the page's h1",
+              but the branches are MUTUALLY EXCLUSIVE: when this branch
+              renders, GuestHero is unmounted and the page carried ZERO
+              h1 (an h2-only ladder — the most common storefront view).
+              The family's per-view invariant (onboarding's step-2
+              precedent, order-detail's error views) wins: exactly one
+              h1 per rendered view; the greeting IS the authed home's
+              topic. Pixel-neutral (h1/h2 share the fluid-2xl classes);
+              catalog sections stay h2 beneath it. The gradient text is
+              gone (craft-floor ban) — solid --primary-text (4.82:1 on
+              the light card / 6.05:1 dark) + weight carry the
               emphasis. */}
-          <h2 className="text-fluid-2xl font-bold text-primary-text">اشترِ اشتراكك المفضل اليوم</h2>
+          <h1 className="text-fluid-2xl font-bold text-primary-text">اشترِ اشتراكك المفضل اليوم</h1>
         </div>
         <div className="flex gap-2">
           <Link href="/wallet">

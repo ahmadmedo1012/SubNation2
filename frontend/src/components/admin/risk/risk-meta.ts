@@ -63,6 +63,6 @@ export const TONE_CHIP: Record<StatusBadgeVariant, string> = {
   "low-stock": "bg-status-low-stock/15 text-status-low-stock border-status-low-stock/40",
   info: "bg-status-info/15 text-status-info border-status-info/40",
   purple: "bg-status-purple/15 text-status-purple border-status-purple/40",
-  primary: "bg-primary/15 text-primary border-primary/40",
+  primary: "bg-primary/15 text-primary-text border-primary/40",
   neutral: "bg-muted/45 text-muted-foreground border-border/50",
 };

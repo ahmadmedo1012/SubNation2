@@ -273,7 +273,24 @@ export function FlashSaleBanner() {
                     urgent ? "bg-primary/15 border-primary/35" : "bg-card/60 border-border/60"
                   }`}
                 >
-                  <span className="font-bold tabular-nums text-2xs sm:text-xs leading-tight">
+                  {/* R140 (r139 debt closure — 139-k's layout-owned flag):
+                      each digit group is an isolated LTR run (dir="ltr" on
+                      the span), so no mixed-Arabic context can ever
+                      reorder the countdown — the same span-level
+                      isolation the /flash-sales page chip rides on its
+                      whole label. Deliberately NOT one wrapping dir="ltr"
+                      container over the segment row: that would flip the
+                      segments' RTL flex order (h rightmost — the Arabic
+                      reading order), a visual regression. The ":"
+                      separators are lone bidi-neutral glyphs and stay
+                      un-isolated. The two-digit runs are pure ASCII +
+                      tabular-nums, so this is correctness hardening with
+                      ZERO visual delta: segment boxes, order, spacing and
+                      separators byte-identical. */}
+                  <span
+                    dir="ltr"
+                    className="font-bold tabular-nums text-2xs sm:text-xs leading-tight"
+                  >
                     {String(seg.val).padStart(2, "0")}
                   </span>
                   {/* 94-C3 (A3 P2-11): 7px/50% was unreadable on small

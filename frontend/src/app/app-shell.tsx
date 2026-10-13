@@ -74,9 +74,21 @@ export function DeferredSocketInitializer() {
   if (!mounted) return null;
 
   return (
-    <Suspense fallback={null}>
-      <SocketInitializer />
-    </Suspense>
+    /* R-140-f (r140 error lane): the socket initializer was the LAST
+       defer-mounted chrome block without a boundary. It mounts ABOVE the
+       app route boundary (App.tsx's AuthGate sibling, outside AppRoutes),
+       so a render throw here — or a lazyWithRetry SECOND chunk failure
+       (the first reloads; the second rethrows) — had NO boundary between
+       it and the React root: React 19 unmounts the ENTIRE tree for an
+       invisible block. The Toaster got this exact guard in R130 (A5-F5);
+       the socket block follows the same convention — fallback={null},
+       the app keeps rendering, the operator merely loses live updates
+       until the next reload. */
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <SocketInitializer />
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

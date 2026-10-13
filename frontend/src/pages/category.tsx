@@ -163,6 +163,10 @@ export default function CategoryPage() {
   });
 
   // ── Structured data ──────────────────────────────────────────────
+  // R-140-g (JSON-LD completeness audit): the mature full set for a
+  // category landing — BreadcrumbList (الرئيسية → الفئة) + FAQPage
+  // (meta.faqs, the static per-category canon) + ItemList (the page's
+  // own products via home.tsx's buildItemListLd twin, ≤30 entries).
   const breadcrumb = useMemo(() => {
     if (!meta) return null;
     return buildBreadcrumbLd([
@@ -312,7 +316,19 @@ export default function CategoryPage() {
               <theme.Icon className={`w-5 h-5 ${theme.chipText}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground font-semibold mb-1">فئة {meta.label}</p>
+              {/* R140 (r139 debt closure — the eyebrow copy authorization
+                  RESOLVED): the «فئة …» kicker that sat above this h1 is
+                  DELETED. The r125 craft floor bans kickers/eyebrows over
+                  headings ("let the h1 speak" — GuestHero deleted its
+                  «ليبيا #1» pill row and AuthedHero its greeting eyebrow;
+                  this was the family's last storefront remnant), and the
+                  category was named THREE times inside ~200px: the
+                  breadcrumb crumb, the eyebrow, and this keyword-rich h1
+                  (every label — البث المباشر، الموسيقى، … — appears
+                  verbatim inside its own h1). The hero now reads icon
+                  stage → h1 → intro, the flash-sales header family
+                  shape. Zero SEO/aria impact: the h1 + metaTitle +
+                  breadcrumb carry the page's identity contracts. */}
               {/* R139 (precision): text-fluid-2xl → text-fluid-3xl — the
                   storefront page-title scale (the PDP h1's r138-f move + the
                   home hero's h1). The landing's h1 is the page's anchor: it
@@ -410,16 +426,24 @@ export default function CategoryPage() {
                  card-frame family value (the /55 scatter r139 retired
                  lane-wide). The support lane's FaqSection twin still rides
                  /55 — the support lane owns that convergence; the family
-                 value wins here first. Summary hover:bg-muted/15 + the
-                 answer divider border-t /40 stay byte-identical to that
-                 twin (a matched pair — not drift this round re-invents). */
+                 value wins here first. Summary hover:bg-muted/15 stays
+                 byte-identical to that twin (a matched pair). */
               className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none float-in"
             >
               <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
                 <span className="text-sm font-bold flex-1">{item.question}</span>
                 <ChevronLeft className="w-4 h-4 text-muted-foreground transition-transform group-open:-rotate-90 shrink-0" />
               </summary>
-              <div className="px-4 pt-1 pb-4 border-t border-border/40 text-sm text-muted-foreground leading-relaxed">
+              {/* R140 (r139 debt closure — the section-rule scatter): the
+                  answer divider joins the ONE storefront hairline family
+                  value /20 — the money-path receipt-grade precedent
+                  (divide-border/20 on every statement row; terms.tsx's
+                  two section rules already ride /20). /40 was the
+                  pre-r140 scatter r139-k flagged. FLAGGED for the
+                  orchestrator: the support lane's FaqSection twin
+                  (components/support/FaqSection.tsx:37) still rides /40 —
+                  both twins must land on /20 to stay a matched pair. */}
+              <div className="px-4 pt-1 pb-4 border-t border-border/20 text-sm text-muted-foreground leading-relaxed">
                 {item.answer}
               </div>
             </details>
@@ -430,7 +454,16 @@ export default function CategoryPage() {
       {/* Sibling-categories nav — each chip uses its OWN category accent
           so the user can see at a glance how the navigation maps to the
           themed surfaces. Mirrors the homepage chip styling. */}
-      <section className="pt-6 border-t border-border/40">
+      {/* R140 (r139 debt closure — the section-rule scatter): the page's
+          top-level section boundary joins the ONE storefront hairline
+          family /20. /20 over keeping /25: /20 is the
+          FINAL_UX_SYSTEM-documented hairline (the receipt rhythm —
+          divide-border/20), so no second value is invented; terms.tsx
+          already rides it on non-money section rules; and hairline weight
+          must not encode money-ness — the money register is weight +
+          size + tabular-nums, never line weight. The app-chrome seams
+          (Footer/Navbar /35 family) are a different register and stay. */}
+      <section className="pt-6 border-t border-border/20">
         {/* 93-C8 (A11 §8 top-20 #8): letter-spacing disconnects
             Arabic letter joins (بـ/تـ/ثـ…) and `uppercase` is a no-op on
             Arabic — removed; font-bold at a small size keeps the label

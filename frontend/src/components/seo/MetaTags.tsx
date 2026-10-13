@@ -21,7 +21,13 @@ export interface SeoInput {
   type?: "website" | "product" | "article";
   /** Public path for the canonical link, e.g. "/" or "/product/42" */
   path: string;
-  /** Locale code: "ar" forces dir=rtl + og:locale=ar_LY */
+  /** Locale code: "ar" emits og:locale=ar_LY (see the ar_LY note in
+   *  MetaTags' apply()).
+   *  NB (R-140-h mechanism audit): this field does NOT touch document
+   *  direction — <html dir=rtl> is locked once at App boot by main.tsx's
+   *  applyDocumentDirection (lib/direction.ts), never per-route here; the
+   *  old comment claimed "forces dir=rtl", which no revision of the
+   *  direct-DOM implementation ever did. */
   locale?: "ar" | "en";
   /** Optional robots directive override */
   robots?: string;
@@ -157,9 +163,26 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   const rawImage = input.image ?? DEFAULT_IMAGE;
   const image = rawImage.startsWith("http") ? rawImage : `${origin}${rawImage}`;
   const lang = input.locale ?? "ar";
+  // R-140-h (locale verdict): og:locale is ar_LY — the territory-specific
+  // language_COUNTRY form, NOT Facebook's generic Arabic pseudo-locale
+  // ar_AR. The storefront serves Libya only (Organization LD
+  // addressCountry: LY, LYD pricing, the ar-only sitemap discipline), so
+  // the precise territory claim is the honest one; scrapers that flatten
+  // territory granularity still read the "ar" language part.
   const ogLocale = lang === "ar" ? "ar_LY" : "en_US";
   const title = clamp(input.title.trim(), 60);
   const description = clamp(input.description.trim(), 160);
+  // R-140-h (noindex mechanism verdict): the noindex capability IS this
+  // free-form `robots` directive string — there is deliberately NO
+  // separate boolean flag. Private/robot-walled routes pass
+  // "noindex,follow" and it is upserted verbatim into
+  // meta[name="robots"] below: the runtime belt-and-braces on top of the
+  // robots.txt Disallow walls the backend serves (backend-owned). Routes
+  // that mount NO page-level SEO block get the same directive from the
+  // App-level fallback via app/route-shapes.ts robotsForPath(), which
+  // mirrors the robots.txt families — so every walled surface emits
+  // runtime noindex one way or the other. A boolean flag would fork the
+  // two callers' vocabularies for zero gain.
   const robots = input.robots ?? "index,follow";
   const ogType = input.type ?? "website";
   const isFallback = input.fallback === true;

@@ -21,7 +21,7 @@ import {
   type Topup,
 } from "@workspace/api-client-react";
 import { CheckCircle2, Clock, Loader2, Sparkles, Wallet, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 
 interface Props {
@@ -124,6 +124,25 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
         ? "rejected"
         : "waiting";
 
+  // R-140-j (keyboard/focus): focus retention across the decision flip.
+  // The waiting body's «إغلاق والمتابعة» button is the only focusable
+  // INSIDE the body — when the admin decision swaps waiting→approved /
+  // rejected that subtree unmounts and focus (if it rested there) dies
+  // to <body> INSIDE an open modal. If the flip killed focus, land it
+  // on the new state's primary action («متابعة الشراء» / «تم» / the
+  // /support link — the first button/anchor of the fresh body); when
+  // focus sat on the persistent header close button (Radix's mount
+  // target) it is left exactly where it is.
+  const bodyAnchorRef = useRef<HTMLDivElement>(null);
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+    if (prev === "waiting" && status !== "waiting" && document.activeElement === document.body) {
+      bodyAnchorRef.current?.querySelector<HTMLElement>("button, a")?.focus();
+    }
+  }, [status]);
+
   // R116-S2 (P2): dismiss agency — locked only for the first ~10 s of
   // the countdown (or until a decision lands). ESC / backdrop / the
   // header close are all gated on this via AppDialog's `dismissable`.
@@ -184,26 +203,30 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
       dismissable={canDismiss}
     >
       <AppDialogBody className="p-6">
-        {status === "waiting" && (
-          <WaitingBody
-            countdown={countdown}
-            timedOut={timedOut}
-            canDismiss={canDismiss}
-            amount={topup?.amount}
-            onClose={onClose}
-          />
-        )}
-        {status === "approved" && (
-          <ApprovedBody
-            amount={topup?.amount ?? 0}
-            balance={wallet?.balance ?? null}
-            onClose={onClose}
-            onContinue={onApprovedContinue}
-          />
-        )}
-        {status === "rejected" && (
-          <RejectedBody adminNote={topup?.admin_note ?? null} onClose={onClose} />
-        )}
+        {/* R-140-j: classless anchor for the decision-flip focus effect
+            above — no visual role (a plain block div around the bodies). */}
+        <div ref={bodyAnchorRef}>
+          {status === "waiting" && (
+            <WaitingBody
+              countdown={countdown}
+              timedOut={timedOut}
+              canDismiss={canDismiss}
+              amount={topup?.amount}
+              onClose={onClose}
+            />
+          )}
+          {status === "approved" && (
+            <ApprovedBody
+              amount={topup?.amount ?? 0}
+              balance={wallet?.balance ?? null}
+              onClose={onClose}
+              onContinue={onApprovedContinue}
+            />
+          )}
+          {status === "rejected" && (
+            <RejectedBody adminNote={topup?.admin_note ?? null} onClose={onClose} />
+          )}
+        </div>
       </AppDialogBody>
     </AppDialog>
   );

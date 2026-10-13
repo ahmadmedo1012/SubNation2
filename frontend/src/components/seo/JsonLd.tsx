@@ -15,9 +15,13 @@ interface JsonLdProps {
  *
  * Trusted Types note: schema.org JSON-LD is the one inline-script form
  * permitted by our CSP because `type="application/ld+json"` is treated as
- * data, not executable script. We still HTML-escape `<`, `>`, `&`, `"`
- * inside the JSON payload to defuse a malicious injection in case a CMS
- * later inserts user-provided fields into the LD object.
+ * data, not executable script. We still HTML-escape `<`, `>`, `&` and
+ * `'` (R-140-g: the docblock used to claim `"` — but a literal `"`
+ * inside a JSON string is ALREADY emitted as `\"` by JSON.stringify
+ * itself; the sequence the hand-escape actually covers is the
+ * single-quote one) inside the JSON payload to defuse a malicious
+ * injection in case a CMS later inserts user-provided fields into the
+ * LD object.
  */
 export function JsonLd({ blocks }: JsonLdProps): null {
   const serialized = JSON.stringify(blocks ?? []);

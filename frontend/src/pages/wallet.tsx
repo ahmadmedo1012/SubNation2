@@ -585,6 +585,26 @@ export default function WalletPage() {
     });
   };
 
+  // R-140-j (keyboard/focus): focus RETURN for the waiting modal. Radix's
+  // FocusScope restores focus to the element that held it when the dialog
+  // OPENED — but the submit trigger had already lost focus to <body> by
+  // then (the CTA's native `disabled` during the in-flight POST drops
+  // focus the moment the flight starts), so Radix's own restore is a
+  // body no-op. Re-land focus on the trigger AFTER Radix's restore pass
+  // (setTimeout(0) fires after the unmount commit) so a keyboard user
+  // closes the money modal exactly where the next topup starts. Scoped
+  // to #wallet-topup-card so BOTH method flows' submit CTAs qualify
+  // (the lypay twin's button lives in the same card); when the card is
+  // inert (MAX_PENDING freeze, see below) focus() is a no-op and the
+  // banner above — announced via role=status — explains why.
+  const restoreTopupTriggerFocus = () => {
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLButtonElement>("#wallet-topup-card button[type='submit']")
+        ?.focus();
+    }, 0);
+  };
+
   const presets =
     method === "mobile_transfer" ? (NETWORK_PRESETS[network] ?? []) : [25, 50, 100, 200];
   const senderPhoneErr = senderPhoneTouched ? libyanPhoneError(senderPhone) : null;
@@ -639,10 +659,21 @@ export default function WalletPage() {
 
           {/* Form card */}
           <div
+            id="wallet-topup-card"
             /* R139 (precision): /55 → /60 — the family resting edge
                (the balance hero above and the statement below ride the
                same value; one seam weight on the page). */
             className={`bg-card border border-border/60 rounded-2xl p-5 transition-all duration-300 ${pendingBlocked ? "opacity-50 pointer-events-none select-none" : ""}`}
+            /* R-140-j (keyboard/focus): the visual freeze now carries its
+               real semantic. pointer-events-none blocks the MOUSE only —
+               keyboard focus ignored it, so a keyboard user could Tab
+               INTO the visually-dead form and type into a frozen money
+               flow (submit was still reachable, answering with the
+               «لديك طلبات قيد المراجعة» error). React 19's inert removes
+               the subtree from the tab order + the a11y tree for AT
+               users too — completing what the opacity already said. The
+               PendingLimitBanner above (role=status) announces WHY. */
+            inert={pendingBlocked}
           >
             <div className="flex items-center gap-2.5 mb-5">
               <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/15 flex items-center justify-center">
@@ -760,7 +791,12 @@ export default function WalletPage() {
       <TopupWaitingModal
         topupId={waitingTopupId}
         token={token}
-        onClose={() => setWaitingTopupId(null)}
+        /* R-140-j: both dismiss paths re-land focus on the submit
+           trigger — see restoreTopupTriggerFocus above. */
+        onClose={() => {
+          setWaitingTopupId(null);
+          restoreTopupTriggerFocus();
+        }}
         onApprovedContinue={
           returnTo
             ? () => {

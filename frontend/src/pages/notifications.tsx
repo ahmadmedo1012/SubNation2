@@ -72,6 +72,14 @@ interface NotificationsPage {
 export default function NotificationsPage() {
   // User-private surface — never indexed (also in NOINDEX_ROUTES, which
   // stamps the fallback robots directive; this block owns the title).
+  // R-140-h (meta-quality sweep): verified conforming, no change needed —
+  // this page-level block WINS over the fallback (child-before-parent
+  // effect order) and itself stamps robots: "noindex,follow", so the
+  // runtime noindex is emitted directly, not only via the fallback; the
+  // title (22 chars) and description (67 chars, inside the 50–160 band)
+  // keep the tab and any pasted-link og unfurl coherent. locale omitted
+  // on purpose: MetaTags' "ar" default already emits og:locale=ar_LY.
+  // Pinned by meta-quality-r140.test.ts.
   const seoBlock = useSeo({
     title: "الإشعارات — SubNation",
     description: "كل تنبيهاتك — الطلبات، المحفظة، الدعم ونقاط الولاء — في مكان واحد.",

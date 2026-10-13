@@ -2,9 +2,20 @@
 
 > The token-level contract for every screen. Code truth: `frontend/src/index.css`
 > (Tailwind v4 CSS-first, single source) + `frontend/src/lib/chart-theme.ts`.
-> Status: CURRENT @ 2026-10-10 (R128) — type floor, z-index scale, icon
-> contract, and cross-surface conventions re-verified against code this round
-> (R128-A1/A6/B8); the debt ledger below reflects what actually remains.
+> Status: CURRENT @ 2026-10-13 (R140) — the r138/r139 visual family is closed
+> end-to-end; R140 added the maturity layers and froze them with pin suites:
+> WCAG contrast hardened (190 pairs computed — `text-primary` is a SURFACE
+> channel, `--primary-text` is the ink; small text never rides the raw token,
+> the six large-text money spans are the sanctioned 3:1 exceptions), ONE
+> hairline weight for section rules (/20 receipt-grade — chrome seams like the
+> filters bar's sticky /15 are a separate deliberate grade), exactly one h1
+> per rendered view (mutually-exclusive branches each own theirs), every real
+> admin table names itself in Arabic + scopes its columns, async money state
+> announces politely (cart/balance/points), money/auth routes ride segment
+> error boundaries, and the money-form focus contracts (re-entry guards,
+> flight-flag focus restoration, inert freezes) are test-pinned. See
+> CHANGELOG R140 for the full lane ledger; the contrast sweep data lives at
+> `.kiro/specs/observability-seo-cwv-maturity/inspection-data/contrast-sweep-r140.md`.
 
 ## 1. What "premium SubNation" means here
 

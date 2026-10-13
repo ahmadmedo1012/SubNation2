@@ -1121,6 +1121,22 @@ export default defineConfig({
         // re-eager — and if anything ever does, the eager-sum gate above
         // fails the build.
         experimentalMinChunkSize: 2048,
+        // R140-c audit (verify-only): the named-rule set was re-audited
+        // against the r140 dependency graph and a live production
+        // build — every rule below still matches real modules (vendor-
+        // router ~9 KB raw, vendor-query 36 KB, vendor-radix 36 KB,
+        // vendor-socket 43 KB, vendor-firebase 154 KB — all lazy-gated;
+        // vendor-utils 31 KB + vendor-react 186 KB on the eager path;
+        // vendor-sentry DSN-conditional exactly as documented above).
+        // qrcode (admin 2FA setup, 25.8 KB) already rides its OWN
+        // default-chunked dynamic boundary (browser-*.js, imported
+        // only from admin settings) — no new boundary deserved. The
+        // r140 build emits 139 JS chunks; the 71 sub-2 KB micro-chunks
+        // are the shared lucide-icon residue F6 CANNOT merge without
+        // re-eagering bytes into other routes; the only >400 KB chunk
+        // remains vendor-charts (admin-lazy ChartsLoader). The rule
+        // list is FROZEN by src/pages/__tests__/
+        // chunk-architecture-r140.test.ts.
         manualChunks(id) {
           // Ensure tiny shared utility libs stay with the eager critical
           // bundle so admin-only chart libs don't get pulled into the

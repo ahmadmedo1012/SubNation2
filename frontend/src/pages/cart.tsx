@@ -278,6 +278,15 @@ export default function CartPage() {
                             alt={it.name}
                             loading="lazy"
                             decoding="async"
+                            /* R-140-a (image discipline): width/height
+                               mirror the catalog art's measured 450×450
+                               intrinsic (all 45 /products/*.webp, the
+                               R132 L4-F9 census re-probed this round) —
+                               the fixed w-14 h-14 well already pins CLS
+                               at zero; the attrs keep the aspect-ratio
+                               reserve honest pre-CSS. */
+                            width={450}
+                            height={450}
                             className="w-full h-full object-contain p-1.5"
                           />
                         ) : (

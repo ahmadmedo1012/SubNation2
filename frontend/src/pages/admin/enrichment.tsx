@@ -162,7 +162,7 @@ export default function AdminEnrichmentPage() {
                       count — only rendered when drafts are actually
                       hidden behind the cursor. */}
                   {pending > drafts.length && (
-                    <span className="text-muted-foreground/80"> (تُعرض أول {drafts.length})</span>
+                    <span className="text-muted-foreground/90"> (تُعرض أول {drafts.length})</span>
                   )}
                 </>
               )}
@@ -325,7 +325,7 @@ function DraftCard({
             static-badge family (ProductCard variant badge, the
             InventoryUploadDialog «كود» badge); a borderless tinted
             pill is the one shape the r138 family retired. */}
-        <span className="text-2xs text-primary bg-primary/10 border border-primary/30 px-2 py-0.5 rounded-full">
+        <span className="text-2xs text-primary-text bg-primary/10 border border-primary/30 px-2 py-0.5 rounded-full">
           {FIELD_LABEL[draft.field_name]}
         </span>
         <span className="text-3xs text-muted-foreground" dir="ltr">

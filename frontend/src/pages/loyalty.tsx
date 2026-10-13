@@ -193,6 +193,16 @@ export default function LoyaltyPage() {
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
+    // R-140-o central (flag 1): the re-entry guard the other three money
+    // flows ride (checkout AUD103-2-F8, topup 97-F5, single-buy) — the
+    // CTA's disabled predicate blocks discrete clicks, but a same-frame
+    // Enter+click pair (or a slow keyboard double-fire) reached this
+    // handler twice: the idempotency key + same body made the backend
+    // replay-safe (409 in-flight), yet the SECOND rejection still armed
+    // the persistent destructive banner while the first attempt was
+    // succeeding — a spurious failure on a successful conversion. One
+    // line closes the hole the gate-chain audit found.
+    if (converting) return;
     const pts = parseInt(convertPoints);
     if (!pts || pts < pointsPerLyd) {
       toast({ title: `الحد الأدنى ${pointsPerLyd} نقطة`, variant: "destructive" });

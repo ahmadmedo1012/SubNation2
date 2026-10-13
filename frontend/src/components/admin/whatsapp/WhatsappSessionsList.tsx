@@ -219,7 +219,23 @@ export function WhatsappSessionsList({
                  was bg-background + the full-strength border-border. The
                  64×64 QR art + caption + alt byte-identical. */
               <div className="rounded-xl border border-border/40 bg-muted/60 p-4 flex flex-col items-center gap-2">
-                <img src={qrImage} alt={`رمز QR لجلسة ${session.name}`} className="w-64 h-64" />
+                {/* R-140-a (image discipline): EAGER-LCP exception —
+                    the pairing QR is a data: URL (no network fetch to
+                    defer) AND the actionable content of the pair form
+                    the operator just submitted, so loading="lazy"
+                    would only risk deferring the one image they are
+                    waiting to scan. decoding="async" keeps the large
+                    PNG's decode off the submit's critical path; the
+                    fixed w-64 h-64 box pins CLS at zero. No
+                    width/height attrs — the backend QR's data-URL
+                    intrinsic varies per session, so any fixed number
+                    would be a lie. */}
+                <img
+                  src={qrImage}
+                  alt={`رمز QR لجلسة ${session.name}`}
+                  className="w-64 h-64"
+                  decoding="async"
+                />
                 <span className="text-xs text-muted-foreground">
                   من واتساب: الأجهزة المرتبطة ← ربط جهاز
                 </span>

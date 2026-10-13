@@ -262,7 +262,7 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-2 border-t border-border/40">
           <div>
-            <span className="block text-foreground/50">المصادقة الثنائية</span>
+            <span className="block text-muted-foreground">المصادقة الثنائية</span>
             <span className="font-bold text-foreground">
               {/* R128-A6 (P4-4 — the product.tsx:1959 «رصيد كافٍ ✓»
                   pattern): the ✓ text glyph swapped for the lucide
@@ -280,7 +280,7 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
           </div>
           {session.created_at && (
             <div>
-              <span className="block text-foreground/50">تاريخ الإنشاء</span>
+              <span className="block text-muted-foreground">تاريخ الإنشاء</span>
               <span className="font-bold text-foreground">
                 {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
                     engines without ar-LY data fall back to the "ar" root

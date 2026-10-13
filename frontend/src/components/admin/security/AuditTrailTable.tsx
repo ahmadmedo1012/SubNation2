@@ -35,7 +35,12 @@ export function AuditTrailTable({
   return (
     <>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        {/* R-140-l (semantics): Arabic aria-label mirrors the tab's
+            visible h2 («سجل إجراءات المسؤولين») — the accountability
+            artifact announces its subject instead of a bare «جدول»;
+            scope="col" already rode every th. Read-only rows (no row
+            handlers, no sort, no selection) — nothing else to name. */}
+        <table aria-label="سجل إجراءات المسؤولين" className="w-full text-sm">
           <thead>
             <tr
               /* R139 (precision): the header band joins the table register

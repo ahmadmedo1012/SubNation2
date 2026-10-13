@@ -19,7 +19,14 @@ export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
                 no overflow handling (7 columns crushed at 375px). */}
       <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
+          {/* R-140-l (semantics): Arabic aria-label — the fraud queue
+              announces itself under the page's «مراقبة المخاطر» h1
+              instead of a bare «جدول» (7 columns of risk scores);
+              scope="col" already rode every th. Rows are whole-row
+              drill-in links (the R125-I4 contract) — not sortable,
+              not selectable: no aria-sort, no row checkboxes by
+              design. */}
+          <table aria-label="جدول أحداث المخاطر" className="w-full text-sm min-w-[720px]">
             <thead
               /* R128 (A3-F2): the fraud queue is the longest-scanned
                        table without the sticky-glass header — adopt the

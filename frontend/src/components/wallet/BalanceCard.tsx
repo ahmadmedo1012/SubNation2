@@ -126,6 +126,25 @@ export function BalanceCard({
           {tierLabel(tier)}
         </div>
       </div>
+
+      {/* R-140-k (money-adjacent async state — the balance announcer):
+          the visible balance is a plain text swap, so a blind user had
+          no confirmation the money ever landed — the mutation TOASTS
+          (topup-approved «X د.ل أُضيفت إلى رصيدك», loyalty convert
+          «تم التحويل …») announce the DELTA at event time via sonner's
+          polite live region, but the new TOTAL (this card's primary
+          datum) was silent until the user re-navigated to the card.
+          This sr-only polite region announces the total on every
+          post-mount CHANGE, through the SAME formatCurrency as the
+          visible number (no digit fabrication). Mount-silent by
+          construction: the region + its first value appear together
+          (loading skeleton → card), and live regions never announce
+          mount-time content — so first loads, retries and remounts
+          stay quiet, only real balance MOVEMENTS speak. Polite, never
+          assertive: a balance update is state, not an interrupt. */}
+      <div aria-live="polite" role="status" className="sr-only">
+        {`الرصيد المتاح الآن ${formatCurrency(wallet.balance ?? 0)}`}
+      </div>
     </div>
   ) : null;
 }

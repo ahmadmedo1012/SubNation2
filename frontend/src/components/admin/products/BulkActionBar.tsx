@@ -28,7 +28,7 @@ export function BulkActionBar({
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-150">
       <Zap className="w-4 h-4 text-primary shrink-0" />
-      <span className="text-sm font-bold text-primary">{selectedCount} منتج محدد</span>
+      <span className="text-sm font-bold text-primary-text">{selectedCount} منتج محدد</span>
       <div className="flex gap-2 mr-auto flex-wrap">
         <Button
           size="sm"

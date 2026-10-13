@@ -28,6 +28,12 @@ export function ReferralsTable({
   return (
     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
       {/* Table header */}
+      {/* R-140-l (semantics): VERIFIED — responsive DIV-GRID, not a
+          <table> (the CouponsTable twin: md header row + flex-col
+          stacked rows with in-cell labels below md; see that file's
+          register note for the full no-role=table rationale). The
+          REAL-table register owns scope+aria-label; the per-row credit
+          CTA carries its own accessible name in ReferralRowItem. */}
       {/* R139 (precision): the register — header band border-b
           border-border (full) → /60 and th font-bold → font-semibold
           (bg-muted/30 + 600, the OrdersTable header idiom; 700 stays on

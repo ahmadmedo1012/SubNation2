@@ -55,7 +55,7 @@ export const DesktopOrderRow = React.memo(function DesktopOrderRow({
             /* R120-B4 (A2-F13): p-2 -m-1 ≈ 28px hit area (the expand
                chevron's fix) — the ~14px icon-only target fed the bulk
                refund selection on touch devices. */
-            className="p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary transition-colors"
+            className="p-2 -m-1 rounded-lg text-muted-foreground hover:text-primary-text transition-colors"
           >
             {isSelected ? (
               <CheckSquare className="w-3.5 h-3.5 text-primary" />
@@ -68,6 +68,15 @@ export const DesktopOrderRow = React.memo(function DesktopOrderRow({
           className="px-4 py-2.5 font-mono text-xs text-muted-foreground"
           onClick={() => onToggleExpand(order.id)}
         >
+          {/* R-140-l (semantics): VERIFIED no dir="ltr" — order codes
+              are a pure-ASCII strong-LTR run ("SN" + hex,
+              backend crypto.ts generateOrderCode) with NO bidi-neutral
+              separators, so the run renders in logical order inside
+              the RTL cell and announces as one unit (the scope="col"
+              «رقم الطلب» header precedes it in the sweep). The
+              storefront chip isolates as belt-and-suspenders; the
+              neutral-bearing runs nearby (usernames / IPs in
+              AuditTrailTable) DO need dir="ltr" and carry it. */}
           {order.order_code}
         </td>
         <td

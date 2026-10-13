@@ -28,6 +28,21 @@ const ROUTE_CHUNK_WARMUP: Readonly<
 > = {
   // The storefront's most-traveled link families (A2 F4): product cards,
   // category rails, cart, checkout, wallet.
+  //
+  // R140-c audit: the five families re-verified against
+  // page-registry.ts — every specifier below is still a
+  // lazyWithRetry route, so the module-map dedupe contract (the warm
+  // import() and the lazy mount resolve against ONE module) holds.
+  // Deliberately NOT warmed — each pinned null by
+  // route-chunk-warmup.test.ts, the R124 anti-widening guard, so any
+  // widening here is a product decision that must update that suite:
+  // /flash-sales (Navbar + Footer + the per-page FlashSaleBanner —
+  // the strongest future candidate, flagged for triage), /orders and
+  // order detail (post-purchase receipts, RecentOrdersStrip links),
+  // /notifications (the bell's view-all), login/register/support/
+  // terms (non-money). New routes since R124 (notifications, status,
+  // the admin risk/enrichment/whatsapp trio) are all non-money or
+  // admin-guarded — none earned a family.
   product: [/^\/product\//, () => import("@/pages/product")],
   category: [/^\/category\//, () => import("@/pages/category")],
   cart: [/^\/cart/, () => import("@/pages/cart")],

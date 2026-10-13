@@ -385,6 +385,37 @@ export default function CheckoutPage() {
   // disabled button so the reason lives on the control itself.
   const stockBlocked = useMemo(() => cartHasBlockingStock(items), [items]);
 
+  // R-140-j (keyboard/focus): focus retention for the confirm flight's
+  // FAILURE landing. The CTA's native `disabled` (the honest submitting
+  // register — aria-busy + the «جارٍ المعالجة… N/M» label) drops focus
+  // to <body> the moment the per-unit loop starts; when the loop ended
+  // in failure (orderError mounted, the persistent role=alert banner)
+  // focus sat dead at the page top — a keyboard buyer had to Tab the
+  // whole page to reach the retry. The effect re-lands focus on the
+  // re-enabled CTA (the LAST button in the outcome block: the banner's
+  // optional dismiss precedes it) once the flight flag clears with an
+  // error mounted. Success paths navigate away — nothing to restore;
+  // a CTA that stays disabled (e.g. a post-partial-charge insufficient
+  // balance) simply ignores the focus() call and the announced banner
+  // carries the explanation.
+  const moneyOutcomeRef = useRef<HTMLDivElement>(null);
+  const confirmFlightRef = useRef(false);
+  useEffect(() => {
+    if (submitting) {
+      confirmFlightRef.current = true;
+      return;
+    }
+    if (!confirmFlightRef.current) return;
+    confirmFlightRef.current = false;
+    if (!orderError) return;
+    const outcomeButtons = moneyOutcomeRef.current?.querySelectorAll<HTMLButtonElement>("button");
+    const confirmCta =
+      outcomeButtons && outcomeButtons.length > 0
+        ? outcomeButtons[outcomeButtons.length - 1]
+        : null;
+    confirmCta?.focus();
+  }, [submitting, orderError]);
+
   const canSubmit = useMemo(() => {
     if (!token || isEmpty || submitting) return false;
     if (insufficient) return false;
@@ -841,22 +872,27 @@ export default function CheckoutPage() {
         >
           {/* Persistent money-failure banner: an error here must be
               actionable, not a 4-second toast. */}
-          <OrderErrorBanner
-            orderError={orderError}
-            partialCount={partialCount}
-            onDismiss={() => setOrderError(null)}
-          />
-          <CheckoutCta
-            canSubmit={canSubmit}
-            submitting={submitting}
-            submitProgress={submitProgress}
-            pricingRecheckInFlight={pricingRecheckInFlight}
-            stockBlocked={stockBlocked}
-            appliedCoupon={appliedCoupon}
-            totalLYD={totalLYD}
-            comparisonTotal={comparisonTotal}
-            onConfirm={handleConfirm}
-          />
+          {/* R-140-j: classless focus-scope anchor for the confirm-flight
+              effect above — no visual role (a plain block div around the
+              banner + CTA the page composes here). */}
+          <div ref={moneyOutcomeRef}>
+            <OrderErrorBanner
+              orderError={orderError}
+              partialCount={partialCount}
+              onDismiss={() => setOrderError(null)}
+            />
+            <CheckoutCta
+              canSubmit={canSubmit}
+              submitting={submitting}
+              submitProgress={submitProgress}
+              pricingRecheckInFlight={pricingRecheckInFlight}
+              stockBlocked={stockBlocked}
+              appliedCoupon={appliedCoupon}
+              totalLYD={totalLYD}
+              comparisonTotal={comparisonTotal}
+              onConfirm={handleConfirm}
+            />
+          </div>
         </CartSummaryAside>
       </div>
     </div>

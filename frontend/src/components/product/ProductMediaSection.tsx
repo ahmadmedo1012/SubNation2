@@ -72,6 +72,13 @@ export function ProductMediaSection({ product }: { product: Product }) {
             height={450}
             fetchPriority="high"
             decoding="async"
+            // R-140-a (image discipline): EAGER-LCP exception — this
+            // img IS the product page's LCP element (the R127-B4
+            // live trace), so it deliberately carries NO
+            // loading="lazy" (a lazy LCP costs ~400-800ms on mobile
+            // Lighthouse) and rides fetchPriority="high" above.
+            // Every below-fold content img elsewhere in the app
+            // carries loading="lazy" + decoding="async" instead.
             className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-lg"
             // B4 P1-6: mirror ProductCard's fallback — a dead enrichment
             // URL swaps to the initial-letter tile instead of painting the

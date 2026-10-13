@@ -253,7 +253,15 @@ export default function ReferralsPage() {
 
       {loadError ? (
         /* 93-C5 / F-05: distinct from "no referrals" — standard error-card
-           idiom (loyalty.tsx) with a retry that re-runs both queries. */
+           idiom (loyalty.tsx) with a retry that re-runs both queries.
+           R140 (r139 debt closure — verify-only): this page has NO
+           hand-rolled stale/error banner twin. The full-load error
+           surface IS the shared FetchErrorCard (role="alert" + the
+           canonical retry); a background-refresh failure with stale data
+           on screen is NOT an error screen (the derivation above), so no
+           stale-keep banner exists to hand-roll. The admin referrals
+           twin that DID hand-roll one (pages/admin/referrals.tsx) adopted
+           the shared StaleListErrorBanner register this round. */
         <FetchErrorCard
           size="page"
           className="reveal-up"

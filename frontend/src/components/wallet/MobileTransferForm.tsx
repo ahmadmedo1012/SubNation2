@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle } from "lucide-react";
-import type { ChangeEvent, FocusEvent, FormEvent } from "react";
+import { useEffect, useRef, type ChangeEvent, type FocusEvent, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InstructionsPanel, TransferCodePanel } from "@/components/wallet/TransferCodePanel";
@@ -66,6 +66,31 @@ export function MobileTransferForm({
   onSenderPhoneTouched: () => void;
   onRememberPhoneChange: (checked: boolean) => void;
 }) {
+  // R-140-j (keyboard/focus): focus retention across the submit flight.
+  // The CTA's native `disabled` (the honest PENDING register — aria-busy
+  // + the «جارٍ الإرسال…» label) drops focus to <body> the moment the
+  // POST /wallet/topups flight starts; when the flight ends in FAILURE
+  // the persistent #wallet-error banner mounts announced but focus sat
+  // dead at the page top — a keyboard user had to Tab the whole page to
+  // retry. The effect re-lands focus on the (re-enabled) trigger once
+  // the flight flag clears with an error mounted: an immediate Enter
+  // retries, and the 96-F6 idempotency-key contract makes that retry a
+  // safe replay. Validation errors never arm the flight flag (their CTA
+  // never disabled — focus never left the button). The SUCCESS path
+  // never lands here either: the waiting modal owns focus from its open
+  // (Radix) until its close (the page's restoreTopupTriggerFocus).
+  const submitRef = useRef<HTMLButtonElement>(null);
+  const flightRef = useRef(false);
+  useEffect(() => {
+    if (submitting || mutationPending) {
+      flightRef.current = true;
+      return;
+    }
+    if (!flightRef.current) return;
+    flightRef.current = false;
+    if (error) submitRef.current?.focus();
+  }, [submitting, mutationPending, error]);
+
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       {/* Step 1: Network */}
@@ -312,6 +337,7 @@ export function MobileTransferForm({
           </div>
         )}
         <Button
+          ref={submitRef}
           type="submit"
           /* R135 (FE-4): aria-busy mirrors the disabled predicate
              (submitting || topupMutation.isPending) — the POST

@@ -16,7 +16,16 @@ export function PendingLimitBanner({
   oldestPending: string | undefined;
 }) {
   return (
-    <div className="flex items-start gap-3 p-4 bg-status-warning/8 border border-status-warning/22 rounded-2xl float-in">
+    // R-140-j (keyboard/a11y): role=status — the banner mounts AFTER the
+    // topups list resolves (not on first paint), so the MAX_PENDING
+    // freeze it explains + the form card's inert below it were silent
+    // for screen-reader users until they happened to read down the page.
+    // A polite live region announces the queue state the moment it is
+    // derived — the states contract: PENDING shows WHAT is happening.
+    <div
+      role="status"
+      className="flex items-start gap-3 p-4 bg-status-warning/8 border border-status-warning/22 rounded-2xl float-in"
+    >
       <Lock className="w-4.5 h-4.5 text-status-warning shrink-0 mt-0.5" />
       <div>
         <p className="font-bold text-sm text-status-warning">

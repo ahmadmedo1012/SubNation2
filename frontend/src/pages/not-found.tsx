@@ -10,9 +10,20 @@ export default function NotFound() {
   // `follow` lets crawlers walk the in-page links back to legitimate
   // surfaces. We also set a canonical here so Search Console doesn't
   // file phantom paths against the homepage's canonical.
+  // R-140-h (meta-quality sweep): the description was 40 chars — under
+  // the 50–160 quality band. A 404 is noindex so the SERP never reads
+  // it, but WhatsApp unfurls DO (og:description mirrors it), and a
+  // mistyped-link share deserves a coherent card: the new copy mirrors
+  // the visible body text verbatim-family («لا وجود لها أو ربما تم
+  // نقلها …») at 93 chars. Canonical convention deliberately KEPT as
+  // path "/404" (NOT "/"): pointing every phantom URL at the homepage
+  // canonical would consolidate junk paths against it — the self-ish
+  // /404 path plus noindex keeps phantom URLs out of both the index and
+  // the homepage's canonical set. Pinned by meta-quality-r140.test.ts.
   const seoBlock = useSeo({
     title: "الصفحة غير موجودة — SubNation",
-    description: "الرابط الذي تحاول الوصول إليه غير موجود.",
+    description:
+      "يبدو أن هذه الصفحة غير موجودة أو تم نقلها — تأكد من الرابط أو عد إلى الرئيسية لتتصفح المتجر.",
     path: "/404",
     locale: "ar",
     robots: "noindex,follow",
@@ -88,7 +99,7 @@ export default function NotFound() {
         </div>
 
         {/* Quick links */}
-        <div className="pt-2 border-t border-border/40">
+        <div className="pt-2 border-t border-border/20">
           {/* 93-C8 (A11 §8): no letter-spacing/uppercase on Arabic. */}
           <p className="text-2xs font-bold text-muted-foreground mb-3">روابط سريعة</p>
           <div className="flex flex-wrap justify-center gap-2">

@@ -1,4 +1,5 @@
 import { AlertCircle } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { ChangeEvent, FocusEvent, FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
@@ -44,6 +45,28 @@ export function LyPayFlow({
   onReferenceChange: (v: string) => void;
   onSenderAccountChange: (v: string) => void;
 }) {
+  // R-140-j (keyboard/focus — the LyPay twin): focus retention across
+  // the submit flight, byte-consistent with MobileTransferForm's effect
+  // (140-j's flag): the bank flow's CTA disabled on flight drops focus to
+  // <body>; a failed POST left the keyboard user at the page top while
+  // the persistent #wallet-error-2 banner mounted announced. The effect
+  // re-lands focus on the re-enabled trigger when the flight clears with
+  // an error mounted — immediate Enter retries (the 96-F6 idempotency
+  // key makes the replay safe). Validation errors never arm the flag;
+  // the SUCCESS path hands focus to the waiting modal (page-owned
+  // restore covers this tab too).
+  const submitRef = useRef<HTMLButtonElement>(null);
+  const flightRef = useRef(false);
+  useEffect(() => {
+    if (submitting || mutationPending) {
+      flightRef.current = true;
+      return;
+    }
+    if (!flightRef.current) return;
+    flightRef.current = false;
+    if (error) submitRef.current?.focus();
+  }, [submitting, mutationPending, error]);
+
   return (
     <div className="space-y-5">
       {/* Step 1: Bank info */}
@@ -190,6 +213,7 @@ export function LyPayFlow({
             </div>
           )}
           <Button
+            ref={submitRef}
             type="submit"
             /* R135 (FE-4): the lypay twin of the mobile CTA's
                aria-busy above — same mutation, same predicate

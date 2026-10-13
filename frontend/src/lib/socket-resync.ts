@@ -1,5 +1,6 @@
 import {
   getGetMeQueryKey,
+  getGetWalletLedgerQueryKey,
   getGetWalletQueryKey,
   getListTopupsQueryKey,
 } from "@workspace/api-client-react";
@@ -37,12 +38,19 @@ import type { QueryClient } from "@tanstack/react-query";
  */
 
 /**
- * The STOREFRONT transactional families — exactly the set use-socket.ts
- * invalidates on live events (R96-M5 money-screen recovery contract):
+ * The STOREFRONT transactional families — the money-screen recovery set:
+ * the families use-socket.ts invalidates on live topup events (topups /
+ * wallet / me / ledger — R-140-o aligned the two halves on the same
+ * money surfaces), plus the orders sweep its order-updated handler owns:
  *   - orders list + every open order-detail (predicate sweep — the
  *     detail key is [`/api/orders/${orderCode}`]);
  *   - wallet balance ([ "/api/wallet" ]);
  *   - wallet topups ([ "/api/wallet/topups" ]);
+ *   - wallet statement ([ "/api/wallet/ledger" ]) — R-140-o: the §4
+ *     explainability surface ("every LYD movement") is rendered by
+ *     wallet.tsx from this family; a resync that refreshed the balance
+ *     but not the statement left the money screen contradicting its
+ *     own totals through the same blip the set exists for;
  *   - current user ([ "/api/auth/me" ]).
  *
  * Catalog/product queries are deliberately NOT part of this set (same
@@ -57,6 +65,7 @@ export function invalidateStorefrontTransactionalFamilies(queryClient: QueryClie
   });
   void queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
   void queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
+  void queryClient.invalidateQueries({ queryKey: getGetWalletLedgerQueryKey() });
   void queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
 }
 

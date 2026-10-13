@@ -125,6 +125,18 @@ export function CartSummaryAside({
                           src={it.imageUrl}
                           alt={it.name}
                           loading="lazy"
+                          decoding="async"
+                          /* R-140-a (image discipline): decoding async —
+                             the 36px line thumbs decode off the
+                             interaction path; width/height mirror the
+                             catalog art's measured 450×450 intrinsic
+                             (all 45 /products/*.webp, the R132 L4-F9
+                             census re-probed this round) so the
+                             aspect-ratio reserve is honest pre-CSS —
+                             the fixed w-9 h-9 well already pins CLS
+                             at zero. */
+                          width={450}
+                          height={450}
                           className="w-full h-full object-contain p-1"
                         />
                       ) : (

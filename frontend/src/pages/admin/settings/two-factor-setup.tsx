@@ -155,6 +155,18 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
                 src={setupData.qrCode}
                 alt="رمز الاستجابة السريعة للتحقق بخطوتين"
                 /* R134 (A3-F5): Arabic — the flow around it is Arabic */ className="w-32 h-32"
+                // R-140-a (image discipline): EAGER-LCP exception —
+                // a data: URL minted client-side (<100ms after the
+                // secret arrives): no network fetch to schedule, and
+                // it IS the step's actionable content (the tile the
+                // admin scans), so loading="lazy" would only risk
+                // deferring the one image the user is waiting for.
+                // decoding="async" keeps the PNG decode off the
+                // interaction path; the fixed w-32 h-32 box pins CLS
+                // at zero. No width/height attrs — the qrcode lib's
+                // data-URL intrinsic varies with the secret payload,
+                // so any fixed number would be a lie.
+                decoding="async"
               />
             ) : (
               // QR is generated client-side after the backend mints the
@@ -170,7 +182,16 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
               افتح تطبيق Google Authenticator أو Authy وامسح الرمز ضوئياً. إذا كنت لا تستطيع مسح
               الرمز، أدخل المفتاح التالي يدوياً:
             </p>
-            <code className="block bg-background px-3 py-2 rounded-lg border border-border/50 font-mono text-sm tracking-wider text-center">
+            {/* R140 (r139 debt closure — the flagged named-tracking no-op):
+                tracking-wider dies — the global Arabic letter-spacing
+                guard (index.css) zeroes the five NAMED tracking utilities,
+                so this class rendered untracked (139-i's flag: "the 2FA
+                secret display"). NOT converted to the arbitrary
+                tracking-[…] form: the 32-char base32 secret risks
+                wrap/overflow at any real letter-spacing (the r139-documented
+                risk), and removal is a ZERO-visual-delta dead-code kill —
+                the code block never rendered tracked. */}
+            <code className="block bg-background px-3 py-2 rounded-lg border border-border/50 font-mono text-sm text-center">
               {setupData.secret}
             </code>
           </div>

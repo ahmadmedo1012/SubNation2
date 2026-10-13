@@ -122,6 +122,13 @@ export default function StatusPage(): ReactElement {
   // the R123-A8 audit confirmed /status ships no per-page title.
   // noindex,follow mirrors robots.txt (which disallows /status) — same
   // pairing every other noindex surface uses.
+  // R-140-h (meta-quality sweep): verified conforming, no change needed —
+  // runtime meta robots noindex,follow is the belt-and-braces on top of
+  // the robots.txt /status wall; the title (24 chars) and description
+  // (57 chars, inside the 50–160 band) still serve the browser tab and
+  // any pasted-link unfurl (og:title/og:description mirror them). The
+  // /status canonical rides MetaTags' uniform per-route emission. Pinned
+  // by meta-quality-r140.test.ts.
   const seoBlock = useSeo({
     title: "حالة المنصة — SubNation",
     description: "حالة خدمات منصة SubNation المجمّعة، مع تحديث تلقائي دوري.",

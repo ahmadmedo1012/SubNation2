@@ -48,7 +48,48 @@
  *     per-unit purchases, the users wallet-adjust save) go further and
  *     keep a STABLE per-intent key across retries (localStorage or a
  *     ref) — a fresh key per attempt pierces the idempotency layer
- *     when the first attempt actually committed server-side.
+ *     exactly when the first attempt actually committed server-side.
+ *
+ * R-140-o (money race/retry audit — the canonical storefront map):
+ * ALL FOUR user-facing money mutations ride the SAME mint-replay-clear
+ * lifecycle; only the storage slot + fingerprint differ. The envelope is
+ * {k, t, f} — key, mint-time TTL stamp (10 min), intent fingerprint —
+ * and every access is try/catch-guarded so storage failures degrade to
+ * unstable keys instead of blocking the money path:
+ *
+ *   1. checkout confirm (per UNIT order) — components/checkout/
+ *      checkout-unit-key.ts, localStorage
+ *      `subnation_checkout_key:{pid}:{variant}:{unitIndex}`, fingerprint
+ *      productId|variantId|coupon|unitPrice. Minted lazily per unit,
+ *      persisted BEFORE the POST, replayed on retry; cleared ONLY at the
+ *      cart-sync (accounted success) or a definitive HTTP rejection —
+ *      409 IDEMPOTENCY_IN_FLIGHT keeps it (the sibling attempt is still
+ *      executing server-side).
+ *   2. PDP single-buy — components/product/buy-intent-key.ts, localStorage
+ *      `subnation_buykey:{productId}`, fingerprint productId|price|coupon|
+ *      variantId. Same lifecycle; the pre-buy re-quote aborts BEFORE any
+ *      key is minted (a drifted price is a new intent by construction).
+ *   3. wallet topup submit — components/wallet/topup-intent-key.ts,
+ *      sessionStorage `subnation_topupkey`, fingerprint amount|method|
+ *      phone. Key lives in a REF read at render time; rotations happen at
+ *      explicit reset points (payload-defining edit / success reset).
+ *   4. loyalty points convert — components/loyalty/loyalty-convert-key.ts,
+ *      localStorage `subnation_convert_key`, fingerprint `convert|{pts}`.
+ *      Mint-once-per-intent; IDEMPOTENCY_IN_FLIGHT keeps the key.
+ *
+ * THE ORVAL HEADER-TIMING CONTRACT (verified this round, page-level
+ * residual documented in the r140-o worklog): the generated useX hooks
+ * capture `request.headers` at RENDER time — TanStack's observer swaps
+ * options in a useEffect after each commit, so `mutate()` sends the key
+ * the LAST COMMITTED render saw. Field-change rotations are safe (each
+ * edit is its own event ⇒ re-render ⇒ effect ⇒ fresh headers before the
+ * submit click can fire). A rotation performed synchronously INSIDE the
+ * submit handler (wallet.tsx's submit-time amount normalization) sends
+ * the PREVIOUS key with the normalized body — harmless for a first
+ * attempt (the old key was never sent), but the durable slot then holds
+ * the NEW key, so a network-failure retry of that normalized intent
+ * replays a DIFFERENT key than the attempt that may have committed.
+ * The backend's payment_reference battery is the backstop there.
  */
 
 const HEX = "0123456789abcdef";

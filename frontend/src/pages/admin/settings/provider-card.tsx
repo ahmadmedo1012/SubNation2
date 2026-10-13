@@ -355,7 +355,7 @@ export function ProviderCard({
               href={provider.setup_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary-text transition-colors"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               دليل الإعداد

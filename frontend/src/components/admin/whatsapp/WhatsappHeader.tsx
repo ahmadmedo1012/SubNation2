@@ -14,9 +14,16 @@ export function WhatsappHeader() {
     <>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-primary mb-1">
+          <div className="flex items-center gap-2 text-primary-text mb-1">
             <Wifi className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-widest">WhatsApp OTP</span>
+            {/* R140 (r139 debt closure — the flagged named-tracking no-op):
+                tracking-widest dies — the global Arabic letter-spacing
+                guard zeroes the five NAMED tracking utilities, so the Latin
+                eyebrow rendered untracked (139-i's flag). Not converted to
+                the arbitrary tracking-[…] form: this is a chrome label,
+                not a code run — the tracked register is for OTP/code
+                displays; removal is a zero-visual-delta kill. */}
+            <span className="text-xs font-bold uppercase">WhatsApp OTP</span>
           </div>
           {/* R134 (A3-F5e): h1 joins the nav's exact label («جلسة
               واتساب» — every sibling page keeps h1 === nav: المنتجات/
@@ -32,7 +39,7 @@ export function WhatsappHeader() {
             href={OPENWA_DOCS_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors"
+            className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary-text transition-colors"
           >
             وثائق البوابة
             <ExternalLink className="w-3.5 h-3.5" />
