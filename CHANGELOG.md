@@ -10,6 +10,135 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R139 — the total-precision round: 13 agents, three waves, the design language closed end-to-end — 2026-10-13
+
+The operator ordered «ابدأ في التالية الاعمق الاشمل والادق وباكبر عدد
+ممكن من الوكلاء وبشكل مستمر» — deeper, broader, more precise, maximum
+agents, continuous. R138 was the storefront designer-lens; R139 closes the
+language across EVERY remaining surface: the r138 follow-ups, the whole
+admin console (the biggest unpolished surface), and the storefront long
+tail r138 never reached. **Method**: three waves of parallel agents on
+disjoint file sets (3 + 7 + 3), one orchestrator-owned index.css, every
+decision inside the FINAL_UX_SYSTEM contract, every lane re-verified with
+its own new source-scan pin suite. **Verified centrally**: typecheck
+green · lint 0 errors · **227 files / 1,906 tests green (+229 tests,
+six new visual pin suites)** · production build + PWA green. Commit
+`88cdb47`.
+
+### Wave 1 — follow-up closure
+- **Skeleton family** (139-a): ProductCardShell `/50→/60` + `bg-muted/60`
+  shelf marker; PDP title bar `h-7→h-9` (the fluid-3xl match); checkout
+  receipt rules `/25→/20`; AdminShell frame `/50→/60`; SkeletonCard edge
+  `100%→/60` (the r92-era last full-strength edge).
+- **Auth lane** (139-b): the provider-stack seam decision PINNED (10px
+  stays — the family extends across component boundaries; widening one
+  seam steps the rendered group 12/10); the WhatsApp OTP mechanism line
+  added — «سيصلك رمز التحقق عبر <span lang="en">WhatsApp</span>» at the
+  phone step (before commit, §8 bare-code isolation kept; 2 new pins).
+- **money-path-chrome-r139** (139-c): **28 source-scan pins** freezing
+  every r138 recipe — receipt rhythm (boundary-rule count guard, terminal
+  amount colorless), canonical CTAs (the `size="lg"` adoption + retired
+  hand-roll strings), the tinted pill trio, the sticky-bar chrome string
+  + `.hairline-glow` first-child proof, quiet danger.
+
+### Wave 2 — the admin designer-lens (complete)
+- **Shell + dashboard + shared primitives** (139-d): topbar glass retired
+  (`bg-card/93 blur-md` → solid `bg-card` + `border-border/60` +
+  `.hairline-glow`); drawer scrim/panel calmed; **active nav → the calm
+  pill** (both states boxed); dashboard's above-the-fold zone got its ONE
+  sanctioned `.ambient-wash`; MetricCard → two-layer calm elevation (the
+  R128 colored hover shadows retired — state stays in token borders);
+  ChartPickers → the calm trio; ChartErrorBanner → the calm-error
+  register; admin login → the storefront auth pair. **EmptyState /
+  TableSkeleton / AdminScopeGate aligned — six domains rhyme for free.**
+- **Orders + topups** (139-e): filter tabs → calm pills (dead count-span
+  ternaries collapsed); the table register (solid `bg-muted/30` thead
+  band — the lane's last glass; seams /60; hover /30; selected `/8`);
+  bulk bar = solid floating layer + family elevation; receipt footers
+  (`/20` + tabular-nums terminal double-rule); reject CTAs → quiet
+  danger (severity in the confirms); the topup cards' colored
+  glow-shadows retired (border-step hover only).
+- **Products + variants + enrichment** (139-f): toolbar tray retired →
+  boxed pills; selected card `bg-primary/5` (ring + glow retired);
+  image thumbs → the `bg-muted/60` shelf; the variant money preview → a
+  receipt slip (hairline /20 + weight, color dropped); InventoryUpload
+  + enrichment verified/aligned.
+- **Users + admins + security** (139-g): every chip bar → calm pills
+  (aria-pressed byte-identical); theads glass-retired; stat values
+  colorless (weight + size + tabular-nums — tint stays on icon stages);
+  6 raw `<input>`s → the shared Input; the wallet-mode control → the
+  trio; quiet danger on disable/admin-delete; failure ink → status-error.
+- **Tickets + alerts + coupons** (139-h): the thread pair treatment
+  (operator = brand voice, customer = paper well, `/20` terminal seam);
+  StaleQueueBanner + alerts + coupons load-error → the calm-error
+  register; coupon type chips → calm pills (solid dies); VALUE cell →
+  success ink + tabular-nums (discount-reads-positive); expired →
+  warning (one voice with «منتهي»).
+- **Settings + whatsapp + system** (139-i): SettingsTabBar → calm pills;
+  6 bare inputs + 2 hand-rolled saves → shared Input/Button; whatsapp
+  delete → quiet danger; the QR stage → `bg-muted/60` well; pair panel
+  calm; system's nine panels verified already-coherent (DetailsSection
+  `/60` shell); stale banners → calm-error.
+- **Pricing + promotions + referrals + risk + forecast + copilot**
+  (139-j): **34 files** — the LOSS risk tone migrated to tokens (the
+  last bare red; RISK_STATE reason-text contract pinned); the margin
+  waterfall + tier previews + terminal amounts → receipt rhythm
+  (colorless); the dry-run preview table → the table register; APPLY →
+  quiet danger; **the last glass retired** (risk sticky thead → solid
+  `bg-muted/30` band); copilot launcher → canonical Button (the glow
+  halo dies); composer → ONE ring (`focus-within:ring-ring`); the
+  user/assistant bubble pair treatment; folder-wide `destructive →
+  status-error` (7 sites).
+
+### Wave 3 — the storefront long tail
+- **Category + flash-sales** (139-k): category h1 → `text-fluid-3xl` +
+  the ambient-wash/hairline-glow hero pair; sibling-chip arms `/30` +
+  hover `/55`; the escape chip → the CatalogFiltersBar byte-twin;
+  FlashCard = the ProductCard byte-twin (two-layer elevation + shelf +
+  one primary-chip elevation); countdown glass retired + `dir="ltr"`
+  added (correctness); price → the colorless register; the hand-rolled
+  flash empty state → EmptyHero adoption (the lone fork of four).
+- **Account surfaces** (139-l): BalanceCard → solid + `.ambient-wash` +
+  `.hairline-glow` (blob-pause wiring intact); **THE STATEMENT → the
+  receipt rhythm** (`divide-y divide-border/20`, colorless amounts —
+  weight 700 + size step + tabular-nums; the refund semantic rides the
+  «استرداد» label + receipt, judgment call documented); method toggles →
+  the PDP tinted trio; TopupWaitingModal CTAs canonical; loyalty /
+  referrals / orders / order-detail full polish (the success ladder
+  kept); status verified.
+- **Engagement** (139-m): **8 canonical CTA conversions** (including the
+  138-h-flagged support EmptyState hand-roll); terms/support tabs →
+  calm pills; the support thread pair treatment; onboarding's welcome
+  card → the auth atmosphere pair; quiet danger on logout/unlink; the
+  notifications register.
+
+### Central fixes (orchestrator)
+- cart's empty-state browse CTA de-hand-rolled (139-c's flag) →
+  `size="lg"` + `w-full sm:w-auto`; its pin re-anchored (h-12, above the
+  44px floor).
+- StaleListErrorBanner (orders) → the calm-error register (139-h's
+  flag — the twin of the tickets banner 139-h already converted).
+- The one-channel error-ink decision: bare inline error TEXT →
+  `text-status-error` (5 admin sites); composed destructive BOXES keep
+  their themed family (`bg-destructive/10 + border + ink`) — the split
+  is now a documented rule, not drift.
+
+### The new visual pin suites (six)
+`money-path-chrome-r139` (28) · `admin-shell-dashboard-r139` (22) ·
+`admin-catalog-visual-r139` (10) · `admin-access-ops-visual-r139` (23) ·
+`admin-comms-promo-visual-r139` (17) · `admin-config-visual-r139` (15) ·
+`admin-financial-growth-visual-r139` (32) · `storefront-browsing-visual-r139`
+(18) · `engagement-surfaces-visual-r139` (27) · `account-surfaces-visual-r139`
+(29) — every lane's idioms are now frozen the way the r120/r126 suites
+froze theirs.
+
+### Follow-ups flagged (documented, outside lanes)
+the composed-destructive-box vs status-error channel (kept — documented
+rule) · the category hero eyebrow «فئة …» (copy authorization needed) ·
+FlashSaleBanner countdown `dir="ltr"` (isolated digit divs — safe today) ·
+the storefront non-money section-rule scatter (/25–/40) · the named-tracking
+no-op remnants · orders' StaleListErrorBanner's referrals twin.
+
 ## Round R138 — the deep visual round: atmosphere, premium resting states, the quiet receipt — 2026-10-13
 
 The operator ordered «ادخل في جولة تانية من مننظور مختلف بشكل كامل
