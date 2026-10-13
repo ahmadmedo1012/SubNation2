@@ -107,7 +107,12 @@ interface JsonBody {
   cookies: string[];
 }
 
-async function postJson(url: string, path: string, body: unknown, token?: string): Promise<JsonBody> {
+async function postJson(
+  url: string,
+  path: string,
+  body: unknown,
+  token?: string,
+): Promise<JsonBody> {
   const res = await fetch(`${url}${path}`, {
     method: "POST",
     headers: {
@@ -185,9 +190,35 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
 
       // Step 2: verify-setup with a REAL authenticator code — the route
       // must decrypt the stored blob to verify it.
-      const verifySetup = await postJson(url, "/api/admin/2fa/verify-setup", {
-        code: generateSync({ secret }),
-      }, admin.token);
+      // R142 (CI flake hardening): generateSync and the route's verifySync
+      // read the clock microseconds apart, but a code minted in the LAST
+      // milliseconds of a 30-second TOTP step is already stale when the
+      // HTTP roundtrip lands across the boundary — the CI runner hit
+      // exactly that once (401 on a genuinely valid code; the route,
+      // the encryption, and this test's logic were all correct). One
+      // regenerating retry absorbs the boundary race without weakening
+      // the contract; a PERSISTENT 401 (decrypt failure, wrong route
+      // wiring) still fails the test on the second attempt.
+      let verifySetup = await postJson(
+        url,
+        "/api/admin/2fa/verify-setup",
+        {
+          code: generateSync({ secret }),
+        },
+        admin.token,
+      );
+      if (verifySetup.status === 401) {
+        // Wait past the step boundary, then mint a fresh mid-window code.
+        await new Promise((r) => setTimeout(r, 1_100));
+        verifySetup = await postJson(
+          url,
+          "/api/admin/2fa/verify-setup",
+          {
+            code: generateSync({ secret }),
+          },
+          admin.token,
+        );
+      }
       expect(verifySetup.status).toBe(200);
       expect(verifySetup.body.success).toBe(true);
       expect((await fetchRow(admin.adminId)).totpEnabled).toBe(true);
@@ -203,17 +234,24 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
       expect(typeof tempToken).toBe("string");
 
       // Step 4: verify-2fa with a fresh code mints the full session.
-      const verify2fa = await postJson(url, "/api/admin/login/verify-2fa", {
+      // R142 (CI flake hardening): same TOTP step-boundary race as Step 2 —
+      // one regenerating retry; a persistent 401 still fails the test.
+      let verify2fa = await postJson(url, "/api/admin/login/verify-2fa", {
         temp_token: tempToken,
         code: generateSync({ secret }),
       });
+      if (verify2fa.status === 401) {
+        await new Promise((r) => setTimeout(r, 1_100));
+        verify2fa = await postJson(url, "/api/admin/login/verify-2fa", {
+          temp_token: tempToken,
+          code: generateSync({ secret }),
+        });
+      }
       expect(verify2fa.status).toBe(200);
       expect(verify2fa.body.display_name).toBe("Admin");
       // R97-02: the session rides an httpOnly cookie, no token in the body.
       expect(verify2fa.body.token).toBeUndefined();
-      expect(
-        verify2fa.cookies.some((c) => c.startsWith("admin_token=")),
-      ).toBe(true);
+      expect(verify2fa.cookies.some((c) => c.startsWith("admin_token="))).toBe(true);
 
       // A durable, revocable session row exists (A8-01 chain intact).
       const sessions = await db
@@ -289,9 +327,14 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
     try {
       const setup = await postJson(url, "/api/admin/2fa/setup", {}, admin.token);
       const secret = setup.body.secret as string;
-      const verifySetup = await postJson(url, "/api/admin/2fa/verify-setup", {
-        code: generateSync({ secret }),
-      }, admin.token);
+      const verifySetup = await postJson(
+        url,
+        "/api/admin/2fa/verify-setup",
+        {
+          code: generateSync({ secret }),
+        },
+        admin.token,
+      );
       expect(verifySetup.status).toBe(200);
 
       const login = await postJson(url, "/api/admin/login", {
@@ -317,7 +360,12 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
       const setup = await postJson(url, "/api/admin/2fa/setup", {}, admin.token);
       expect(setup.status).toBe(200);
 
-      const bad = await postJson(url, "/api/admin/2fa/verify-setup", { code: "000000" }, admin.token);
+      const bad = await postJson(
+        url,
+        "/api/admin/2fa/verify-setup",
+        { code: "000000" },
+        admin.token,
+      );
       expect(bad.status).toBe(401);
       expect((await fetchRow(admin.adminId)).totpEnabled).toBe(false);
     } finally {
@@ -330,7 +378,12 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
     const { url, close } = await listen(buildApp());
     try {
       // No setup yet → verify-setup 400 (unchanged).
-      const noSetup = await postJson(url, "/api/admin/2fa/verify-setup", { code: "123456" }, admin.token);
+      const noSetup = await postJson(
+        url,
+        "/api/admin/2fa/verify-setup",
+        { code: "123456" },
+        admin.token,
+      );
       expect(noSetup.status).toBe(400);
 
       // totpEnabled=false + NULL secret → plain login, no 2FA challenge.
