@@ -456,9 +456,23 @@ export function WhatsAppPhoneSignIn({
       ) : null}
       {/* 96-F2 (R96-A4 §1.3E): settling hint — mirrors the r95 honest
           hint pattern: the live probe says the channel was JUST linked
-          and is inside the settle window. Never blocks the attempt. */}
+          and is inside the settle window. Never blocks the attempt.
+          R138 (visual): the three pristine-state hints (settling /
+          failed / pairing below) ride text-xs now — the live-site VLM
+          audit read this "WhatsApp disclaimer" row as too dim, and 11px
+          was also the outlier size in this component's own info family
+          (the divider label, the settling banner and the error block
+          further down are all text-xs). text-muted-foreground STAYS:
+          it is the design-system floor register for helper text and the
+          failed-state's pinned muted-info style. The COPY is
+          deliberately unchanged — whatsapp-phone-sign-in.test.tsx pins
+          these strings («تُهيَّأ الآن…» / «قيد الربط مؤقتاً» /
+          «غير مرتبطة حاليًا») as the qr_ready/failed differentiators;
+          the audit's "cryptic — should explain that the OTP arrives on
+          WhatsApp" clarification is reported as the copy-owner
+          follow-up rather than silently reworded under a substring pin. */}
       {step === "pristine" && channelStatus === "settling" && (
-        <p className="text-2xs text-muted-foreground text-center leading-relaxed">
+        <p className="text-xs text-muted-foreground text-center leading-relaxed">
           قناة <span lang="en">WhatsApp</span> ربطت للتو — تُهيَّأ الآن وتصبح جاهزة خلال أقل من
           دقيقة
         </p>
@@ -472,7 +486,7 @@ export function WhatsAppPhoneSignIn({
           user working alternatives, keep the entry mounted (the
           operator can complete re-pairing at any moment). */}
       {step === "pristine" && channelStatus === "failed" && (
-        <p className="text-2xs text-muted-foreground text-center leading-relaxed">
+        <p className="text-xs text-muted-foreground text-center leading-relaxed">
           قناة <span lang="en">WhatsApp</span> غير مرتبطة حاليًا — جارٍ إصلاحها من فريق التشغيل؛
           {/* R111-F2 N4: Latin brand names wrapped like WhatsApp 2 words
               earlier in the same sentence (was bare «Google أو Telegram»). */}
@@ -488,7 +502,7 @@ export function WhatsAppPhoneSignIn({
         channelStatus !== "ready" &&
         channelStatus !== "settling" &&
         channelStatus !== "failed" && (
-          <p className="text-2xs text-muted-foreground text-center leading-relaxed">
+          <p className="text-xs text-muted-foreground text-center leading-relaxed">
             {/* R111-F2 N4: Google / Telegram wrapped in lang="en" like
                 WhatsApp two words earlier — same-sentence consistency. */}
             قناة <span lang="en">WhatsApp</span> قيد الربط مؤقتاً — يمكنك المحاولة، أو استخدم{" "}

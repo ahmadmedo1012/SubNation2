@@ -51,6 +51,19 @@ interface EmptyStateProps {
  *   • icon-less minimal variants (category) and composite multi-CTA
  *     recovery surfaces (home's filtered grid + R132 category-escape
  *     panel).
+ *
+ * R138 (visual) audit: the compact shape already carries the round's
+ * shelf language — the icon's bg-muted/60 well is the SAME family
+ * ProductCard's image plane adopted this round, and the card chrome
+ * rests at border-border/60 with the round's card family. Proportions
+ * verified internally consistent (mb-3 under the w-12 tile = mb-5
+ * under EmptyHero's w-20 — one 0.25 stage ratio across the family);
+ * the single re-tune is the action row's breathing room (mt-4 → mt-5).
+ * ambient-wash deliberately NOT applied: every consumer renders this
+ * inside a page layout (grep: orders/cart/notifications/support —
+ * in-card list empties), never full-bleed; atmosphere belongs to the
+ * surfaces that own the whole viewport (not-found does), not a small
+ * inline empty.
  */
 export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
@@ -64,8 +77,11 @@ export function EmptyState({ icon: Icon, title, description, action, className }
       role="status"
       className={`text-center py-12 text-muted-foreground bg-card border border-border/60 rounded-2xl ${className ?? ""}`}
     >
-      {/* Decorative tile — aria-hidden keeps the svg out of the live
-          region's announcement; the title below carries the meaning. */}
+      {/* R138 (visual): the bg-muted/60 well is the shelf family
+          ProductCard's image plane adopted this round — emptiness reads
+          as a deliberate stage, not an absence. Decorative tile —
+          aria-hidden keeps the svg out of the live region's
+          announcement; the title below carries the meaning. */}
       <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/35 mx-auto mb-3 flex items-center justify-center">
         <Icon className="w-5 h-5 opacity-35" aria-hidden="true" />
       </div>
@@ -75,7 +91,11 @@ export function EmptyState({ icon: Icon, title, description, action, className }
           {description}
         </p>
       )}
-      {action && <div className="mt-4">{action}</div>}
+      {/* R138 (visual): mt-4 → mt-5 — the exit CTA gets its own act
+          of breathing room below the description block (EmptyHero
+          gives its CTA mb-7 for the same reason); a caption-tight 16px
+          read as a continuation of the hint line, not the way forward. */}
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
@@ -127,19 +147,35 @@ interface EmptyHeroProps {
  * the RTL story is text-center + mx-auto (direction-agnostic). The
  * compact EmptyState stays the default for in-card empties; this is
  * ONLY the page-level "you have nothing yet" moment.
+ *
+ * R138 (visual): two alphas re-tuned onto the empty family's own
+ * values — the card edge /50 → /60 (the compact twin + the round's
+ * card chrome — ProductCard, FetchErrorCard — all rest at /60; the
+ * lone /50 was pre-R135 hand-rolled drift) and the tile fill
+ * bg-muted/70 → bg-muted/60 (ONE well family with the compact tile
+ * and ProductCard's image shelf). Geometry (py-20, the w-20 glow
+ * tile, w-9/opacity-25 icon, mb-7 rhythm) is untouched — pinned by
+ * skeleton-primitives.test.tsx. ambient-wash NOT applied: this is a
+ * page-level CARD, not a full-bleed surface — its atmosphere is the
+ * bg-primary/6 blur-xl glow behind the tile (the family's own).
  */
 export function EmptyHero({ icon: Icon, title, description, action, className }: EmptyHeroProps) {
   return (
     <div
       role="status"
-      className={`text-center py-20 text-muted-foreground bg-card border border-border/50 rounded-2xl reveal-up ${className ?? ""}`}
+      // R138 (visual): /50 → /60 — the empty family's card edge. The
+      // compact twin, ProductCard and the shared error card all rest
+      // at /60 this round; the hand-rolled /50 was the lone outlier.
+      className={`text-center py-20 text-muted-foreground bg-card border border-border/60 rounded-2xl reveal-up ${className ?? ""}`}
     >
       {Icon && (
         /* Decorative glow tile — aria-hidden on the svg keeps the live
            region's announcement to the title (the EmptyState decision). */
         <div className="relative w-20 h-20 mx-auto mb-5">
           <div className="absolute inset-0 rounded-2xl bg-primary/6 blur-xl" />
-          <div className="relative w-20 h-20 rounded-2xl bg-muted/70 border border-border/40 flex items-center justify-center">
+          {/* R138 (visual): /70 → /60 — one well family with the compact
+              twin's tile and ProductCard's image shelf. */}
+          <div className="relative w-20 h-20 rounded-2xl bg-muted/60 border border-border/40 flex items-center justify-center">
             <Icon className="w-9 h-9 opacity-25" aria-hidden="true" />
           </div>
         </div>

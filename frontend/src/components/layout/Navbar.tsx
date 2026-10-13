@@ -323,6 +323,11 @@ export function Navbar() {
            the visual (text-primary-text + underline bar) was already
            there; MobileNav.tsx has carried the same attribute since
            R120. */
+        /* R138 (visual audit — deliberate no-change): the active state
+           reads clear-but-calm at rest already (triple cue: primary-text
+           ink + font-bold + the bg-primary/80 underline bar, the same
+           /80 strength MobileNav's accent bar rides); no fourth cue
+           added. */
         aria-current={active ? "page" : undefined}
       >
         <div
@@ -356,12 +361,44 @@ export function Navbar() {
       className={`
       sticky top-0 z-50
       ${
+        /* R138 (visual — the nav glass refinement): this header was the
+           nav family's LAST glass surface (bg-card/80–95 + backdrop-blur-
+           xl/3xl). The R96 F-4 MobileNav removal rationale applies here
+           verbatim: an always-mounted bar over constantly scrolling
+           content pays per-frame GPU re-rasterization for a blur that
+           was barely visible behind the 80–95%-opaque background — and
+           the language contract (FINAL_UX_SYSTEM.md §1/§2, re-confirmed
+           this round) reads backdrop-blur on nav as the glassmorphism
+           the chrome deliberately dropped. Solid bg-card — the exact
+           MobileNav recipe — now carries the surface. Scrolled edge:
+           the raw `shadow-md shadow-black/20` forced black on light
+           mode (the R116-S1 direction) and is replaced by the
+           theme-toned shadow-sm token MobileNav rides; the firmer /70
+           border stays as the "content is passing under" cue. Resting
+           edge keeps /35 — the family value (Navbar border-b = MobileNav
+           border-t = the Footer's top edge after this round). */
         scrolled
-          ? "bg-card/95 backdrop-blur-3xl border-b border-border/70 shadow-md shadow-black/20"
-          : "bg-card/80 backdrop-blur-xl border-b border-border/35"
+          ? "bg-card border-b border-border/70 shadow-sm"
+          : "bg-card border-b border-border/35"
       }
     `}
     >
+      {/* R138 (visual): the .hairline-glow utility adoption — the
+          orchestrator-pinned top-edge brand hairline (transparent →
+          primary/30 → transparent; index.css is the single source this
+          round), the same vocabulary the MobileNav bottom bar carried
+          inline since 96-F5 and the hero cards adopted this round.
+          Audit note: the Navbar source never hand-rolled this gradient
+          (rg + `git log -S` verified — index.css's dedupe note
+          conflated the Footer's copy, whose own comment already claimed
+          "unifies … with the Navbar treatment"). The line is ADDED,
+          not replaced — closing the family gap that comment described.
+          Top edge = the page's topmost chrome row (a whisper brand
+          glint at the viewport edge); the content-facing bottom edge
+          keeps the border-b family treatment below. The utility bakes
+          absolute/top-0/inset-inline/pointer-events-none — no inline
+          positioning to drift. */}
+      <div className="hairline-glow" />
       {/* 96-F5 (R96-M01 P0): the mobile row needs ≈337–381px for an
           authed user (logo 123 + theme 44 + bell 44 + wallet chip ≥60 +
           cart 44 + gaps) but only 288px exists at 320px — the cart, as
@@ -416,7 +453,16 @@ export function Navbar() {
             {catMenuOpen && (
               <div
                 id="desktop-categories-menu"
-                className="absolute top-full mt-2 start-0 z-50 min-w-[190px] bg-card border border-border/60 rounded-xl shadow-xl shadow-black/20 py-2 float-in"
+                /* R138 (visual — chrome consistency): the menu's ghost-card
+                   pairing (near-invisible border/60 under shadow-xl
+                   shadow-black/20 — raw black forced on light mode) is the
+                   exact pairing R124-A3 #10 deleted from the bell panel in
+                   this same header row; it now rides the repo's defensible
+                   dropdown recipe (visible border/70 + theme-toned
+                   shadow-sm) so the two desktop popovers read as one
+                   family. Geometry (top-full/start-0/z-50/float-in) is
+                   untouched. */
+                className="absolute top-full mt-2 start-0 z-50 min-w-[190px] bg-card border border-border/70 rounded-xl shadow-sm py-2 float-in"
               >
                 {DRAWER_CATEGORIES.map((c) => {
                   const active = location === `/category/${c.slug}`;
@@ -668,7 +714,15 @@ export function Navbar() {
           (DRAWER_SCROLL_CAP) — it rides the same body scroll-lock as the
           authed twin below and has the same latent geometry, so both
           drawers share one cap instead of one of them silently
-          regressing on short viewports. */}
+          regressing on short viewports.
+          R138 (visual — the nav glass refinement): the panel drops its
+          bg-card/98 + backdrop-blur-3xl glass for solid bg-card — the
+          R96 F-4 recipe the header + MobileNav ride since this round.
+          At /98 the blur was literally invisible (2% of a scroll-LOCKED
+          page shows through it), while DRAWER_SCROLL_CAP's internal
+          scroller meant every row-wheel repaint re-rasterized a 64px
+          backdrop-filter across the full panel width. The border-t /50
+          edge + the float-in entrance are untouched. */}
       {!token && open && (
         <div
           id="guest-menu"
@@ -677,7 +731,7 @@ export function Navbar() {
           aria-modal="true"
           aria-label="القائمة"
           tabIndex={-1}
-          className={`md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
+          className={`md:hidden border-t border-border/50 bg-card px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
         >
           {/* R135 (FE-1): the category shortcuts + العروض + divider render
               from the shared DrawerCategoriesSection — one source for both
@@ -722,7 +776,10 @@ export function Navbar() {
           on a /10 tint (the العروض warning-row idiom) because it is the
           one irreversible action in the panel. The whole panel rides
           DRAWER_SCROLL_CAP: at ≈700px of rows it ALWAYS outgrows a
-          landscape viewport, and the body is scroll-locked while open. */}
+          landscape viewport, and the body is scroll-locked while open.
+          R138 (visual): solid bg-card — the same glass diet the guest
+          twin + the header took this round (see the guest drawer's
+          note above for the rationale). */}
       {token && open && (
         <div
           id="authed-menu"
@@ -731,7 +788,7 @@ export function Navbar() {
           aria-modal="true"
           aria-label="القائمة"
           tabIndex={-1}
-          className={`md:hidden border-t border-border/50 bg-card/98 backdrop-blur-3xl px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
+          className={`md:hidden border-t border-border/50 bg-card px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
         >
           {AUTHED_DRAWER_LINKS.map((l) => (
             <Link

@@ -166,6 +166,12 @@ describe("EmptyHero — the first-run hero empty (R136 UX-1)", () => {
     expect(status.className).toContain("reveal-up");
     expect(status.className).toContain("bg-card");
     expect(status.className).toContain("rounded-2xl");
+    // R138 (visual): the hero card rests at the empty family's /60 edge
+    // (was the hand-rolled /50 — the lone outlier vs the compact twin
+    // and the round's card chrome) and the tile well is bg-muted/60 —
+    // ONE well family with the compact tile + ProductCard's image shelf.
+    expect(status.className).toContain("border-border/60");
+    expect(container.querySelector(".bg-muted\\/60")).not.toBeNull();
     expect(status).toHaveTextContent("لا توجد طلبات بعد");
     // The hero tile family: w-20 shell + blur-xl glow, w-9 decorative
     // icon (aria-hidden — the title carries the live region's meaning).
@@ -178,7 +184,9 @@ describe("EmptyHero — the first-run hero empty (R136 UX-1)", () => {
   });
 
   it("renders the action slot bare and omits the tile when no icon is passed", () => {
-    const { container } = render(<EmptyHero title="سلتك فارغة" action={<a href="/">متابعة التسوق</a>} />);
+    const { container } = render(
+      <EmptyHero title="سلتك فارغة" action={<a href="/">متابعة التسوق</a>} />,
+    );
 
     // The action slot renders verbatim — a Link CTA keeps its href,
     // and no wrapper div sits between the card and the CTA (the bare

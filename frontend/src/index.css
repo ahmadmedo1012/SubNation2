@@ -834,6 +834,39 @@
     will-change: transform;
   }
 
+  /* ── R138 (visual round) — the atmosphere pair ────────────────────
+     The live-site audit (VLM critique, grounded on subnation.ly
+     screenshots) read the hero as "just a dark rectangle with text":
+     the blob vocabulary existed but its call-site alphas (8%/5%)
+     rendered sub-perceptual on the surface ladder. These two static
+     utilities give large surfaces a PINNED, language-compliant depth
+     vocabulary instead of per-callsite arbitrary gradients drifting
+     apart over time:
+     • .ambient-wash — TWO fixed-point radial washes at deliberately
+       faint alphas (primary at the reading corner, info-cool at the
+       opposite diagonal). Static, GPU-free, zero animation cost —
+       depth cue, NOT decoration; the quiet-premium bar in
+       FINAL_UX_SYSTEM.md §1 is kept (no sweep, no glow halo, no
+       animated blur — those craft-floor deletions stand).
+     • .hairline-glow — the top-edge gradient hairline that Navbar,
+       MobileNav and the hero each hand-rolled inline; extracting it
+       pins the exact color/opacity once (dedupe + consistency).
+     Both ride hsl vars → .light parity is automatic. Consumers this
+     round: GuestHero, AuthedHero, Navbar, MobileNav, login card. */
+  .ambient-wash {
+    background-image:
+      radial-gradient(42% 62% at 82% 8%, hsl(var(--primary) / 0.1), transparent 62%),
+      radial-gradient(38% 56% at 12% 92%, hsl(var(--status-info) / 0.06), transparent 58%);
+  }
+  .hairline-glow {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(to right, transparent, hsl(var(--primary) / 0.3), transparent);
+    pointer-events: none;
+  }
+
   .group:hover .shine-trigger {
     animation: shine 0.7s ease-out;
   }

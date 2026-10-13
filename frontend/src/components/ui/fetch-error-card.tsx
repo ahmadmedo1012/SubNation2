@@ -24,6 +24,26 @@ import { cn } from "@/lib/utils";
  * R125-I7 (A7 B-4) closed the ledger's home entry — home's grid error
  * converged on this card (the R128 sweep verified: no bespoke grid
  * error branch remains in home.tsx).
+ *
+ * R138 (visual — the calm-error re-tune): the outage card now reads
+ * "we know, here's the way out" instead of a red wall —
+ *   • the CARD frame drops its status-error/22 tint for the round's
+ *     calm resting border-border/60 (the EmptyState/ProductCard card
+ *     family); the error tone concentrates in the icon stage
+ *     (bg-status-error/8 + /22 border + full-ink glyph), the ONE red
+ *     accent on the card;
+ *   • the default retries retire their pre-R116-S1 hand-roll (flat
+ *     bg-primary + shadow-lg shadow-primary/20 + active:scale) and
+ *     ride the canonical Button default recipe + min-h-11 — the same
+ *     convergence orders/category/home/notifications had already
+ *     forced via retryClassName, now the default for every site that
+ *     never passed one (admin lists, loyalty, profile, wallet).
+ * The outage≠empty silhouette (§3) stays obvious: a w-16 error-tinted
+ * tile + full-red w-8 icon + role="alert" + a primary retry CTA vs
+ * EmptyState's w-12 muted ghost tile — no screen can read one as the
+ * other. ambient-wash deliberately NOT applied: a primary/info
+ * atmosphere on an error surface would introduce a SECOND accent
+ * family and blur exactly that state signal.
  */
 
 /** Visual scale of the card — the three drifted-identical families. */
@@ -49,33 +69,42 @@ const SIZE_STYLES: Record<
   // Full list/panel error — storefront page-level + every admin table
   // page (orders, topups, users, tickets, referrals, admins, alerts…).
   page: {
-    card: "text-center py-16 text-muted-foreground bg-card border border-status-error/22 rounded-2xl",
+    // R138 (visual): the frame rhymes with the card family's calm
+    // resting edge (border-border/60 — EmptyState/ProductCard); the
+    // state signal lives in the icon stage below, not in a red frame
+    // around the whole card.
+    card: "text-center py-16 text-muted-foreground bg-card border border-border/60 rounded-2xl",
     tile: "w-16 h-16 mx-auto mb-5 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center",
     icon: "w-8 h-8 text-status-error",
     title: "font-bold text-lg mb-1.5 text-foreground/80",
     description: "text-sm mb-7 max-w-xs mx-auto leading-relaxed",
-    retry: {
-      className:
-        "bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-[0.97] transition-all gap-2 font-bold",
-      size: "default",
-    },
+    // R138 (visual): the canonical Button default recipe + the 44px
+    // floor — the pre-R116-S1 hand-roll (flat bg-primary + shadow-lg
+    // shadow-primary/20 + active:scale) is retired; the gradient fill,
+    // shadow-md/25 elevation, press-spring and the global
+    // focus-visible ring all ride buttonVariants now.
+    retry: { className: "min-h-11 gap-2", size: "default" },
   },
   // Card-in-page error — a section whose siblings keep rendering
   // (profile identity card, wallet balance card, support ticket list).
   section: {
-    card: "text-center py-10 text-muted-foreground bg-card border border-status-error/22 rounded-2xl reveal-up",
+    // R138 (visual): the /60 calm frame (the page scale's decision);
+    // the retry picks up min-h-11 net-new — these in-card retries are
+    // the only recovery action on their surface (the R124-I1 A4 P2
+    // compact-scale call, applied to the family).
+    card: "text-center py-10 text-muted-foreground bg-card border border-border/60 rounded-2xl reveal-up",
     tile: "w-14 h-14 mx-auto mb-4 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center",
     icon: "w-6 h-6 text-status-error",
     title: "font-bold text-base mb-1.5 text-foreground/80",
     description: "text-xs text-muted-foreground mb-5 leading-relaxed max-w-xs mx-auto",
-    retry: {
-      className: "bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl",
-      size: "default",
-    },
+    retry: { className: "min-h-11 gap-2", size: "default" },
   },
   // Widget-in-card error — a list inside a panel whose header/stats
   // stay alive (wallet ledger, wallet topup history, loyalty ledger).
   compact: {
+    // R138 (visual): stays chrome-free by design (nesting inside a
+    // live parent panel would double-border) — the error tile alone
+    // carries the state, exactly like the empty ledgers beside it.
     card: "text-center py-10 text-muted-foreground",
     tile: "w-12 h-12 rounded-2xl bg-status-error/8 border border-status-error/22 flex items-center justify-center mx-auto mb-3.5",
     icon: "w-5 h-5 text-status-error",
@@ -83,11 +112,10 @@ const SIZE_STYLES: Record<
     description: "text-xs text-muted-foreground mb-4 leading-relaxed max-w-[240px] mx-auto",
     // min-h-11 (R124-I1 A4 P2): these retries are the only recovery
     // action on the money pages — the fixed h-9 (36px) sat under the
-    // app-wide 44px tap floor.
-    retry: {
-      className: "bg-primary hover:bg-primary/90 shadow-md shadow-primary/22 rounded-xl min-h-11",
-      size: "sm",
-    },
+    // app-wide 44px tap floor. R138 (visual): canonical recipe now;
+    // rounded-xl rides the append (twMerge over the sm size's
+    // rounded-lg) so the widget retry keeps the family's shape.
+    retry: { className: "min-h-11 gap-2 rounded-xl", size: "sm" },
   },
 };
 

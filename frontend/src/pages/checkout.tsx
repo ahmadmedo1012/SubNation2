@@ -11,7 +11,11 @@ import { RouteSkeleton } from "@/components/ui/route-skeleton";
 //   • PaymentMethodCard / CouponCard — the left-column cards
 //   • CartSummaryAside (composing OrderErrorBanner + CheckoutCta) —
 //     the summary aside
-import { apiErrorData, isCouponFailureMessage, isHttpApiError } from "@/components/checkout/checkout-errors";
+import {
+  apiErrorData,
+  isCouponFailureMessage,
+  isHttpApiError,
+} from "@/components/checkout/checkout-errors";
 import {
   checkoutUnitFingerprint,
   clearCheckoutUnitKey,
@@ -820,6 +824,12 @@ export default function CheckoutPage() {
         </div>
 
         {/* Cart summary (right on desktop) */}
+        {/* R138 (visual): the summary's receipt-metaphor polish (row
+            rhythm, /20 hairline rules, the weight ladder, the terminal
+            «الإجمالي» line, the family resting elevation) lives in
+            CartSummaryAside — the r136 decomposition moved every
+            presentational surface there; this page stays the
+            orchestration core and renders byte-identical props. */}
         <CartSummaryAside
           droppedLineNotices={droppedLineNotices}
           pricesUpdatedNotice={pricesUpdatedNotice}

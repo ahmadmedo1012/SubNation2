@@ -25,6 +25,16 @@ export function PriceStockPanel({
     //   mx (not px) so the gutter sits OUTSIDE the rounded border.
     <div className="order-6 max-lg:mx-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 bg-muted/20 border border-border/45 rounded-xl">
       <div className="flex-1">
+        {/* R138 (visual) — hierarchy verified, values untouched: the page's
+            #2 anchor after the h1 (now text-fluid-3xl, the GuestHero title
+            step — the PDP h1 used to sit UNDER this price at mobile fluid-2xl
+            ≈23.6px vs the fixed 30px here, inverting the anchor order on the
+            mobile-majority surface). 30px/700/tabular-nums = large text, so
+            the primary ink clears AA at the large-text 3:1 floor: 3.68:1
+            dark / 5.13:1 light on the muted/20 wash. text-3xl is
+            render-pinned by product-price-honesty (.text-3xl querySelector)
+            and the strike below carries the pinned selected-variant base
+            contract — money classes stay byte-identical this round. */}
         <div className="text-3xl font-bold text-primary leading-none tabular-nums">
           {formatCurrency(displayPrice)}
         </div>

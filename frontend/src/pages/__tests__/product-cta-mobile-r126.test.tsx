@@ -64,7 +64,11 @@ const VARIANT_PRODUCT = {
   variants: [
     {
       id: 1,
-      plan_label: null,
+      /* R138: widened to `string | null` so the plan-axis fixture below
+         (PLAN_VARIANT_PRODUCT, plan_label: "أساسي"/"بريميوم") assigns
+         cleanly — the literal-null inference made the variants array
+         invariant on the plan axis. */
+      plan_label: null as string | null,
       duration_label: "شهر واحد",
       label: "شهر واحد",
       price: 25,
@@ -74,7 +78,7 @@ const VARIANT_PRODUCT = {
     },
     {
       id: 2,
-      plan_label: null,
+      plan_label: null as string | null,
       duration_label: "3 أشهر",
       label: "3 أشهر",
       price: 100,
@@ -350,6 +354,104 @@ describe("R128-IMP-1 — RTL anchor + compact-bar craft on the PDP", () => {
     expect(icon!.getAttribute("aria-hidden")).toBe("true");
     // No ✓ text-glyph survives anywhere on the page.
     expect(screen.queryByText("✓", { exact: false })).not.toBeInTheDocument();
+  });
+});
+
+/** R138 (visual): a plan-axis product — the plan pill row renders only
+ *  when >1 plan_label exists (VARIANT_PRODUCT above has none). */
+const PLAN_VARIANT_PRODUCT = {
+  ...VARIANT_PRODUCT,
+  variants: [
+    {
+      id: 1,
+      plan_label: "أساسي",
+      duration_label: "شهر واحد",
+      label: "أساسي — شهر واحد",
+      price: 25,
+      sale_price: 20,
+      discount_percent: 20,
+      is_available: true,
+    },
+    {
+      id: 2,
+      plan_label: "بريميوم",
+      duration_label: "شهر واحد",
+      label: "بريميوم — شهر واحد",
+      price: 45,
+      sale_price: 40,
+      discount_percent: 11,
+      is_available: true,
+    },
+  ],
+};
+
+describe("R138 (visual) — the PDP's calm-surface contracts (the deep visual round)", () => {
+  it("the selected duration pill rides the site's tinted idiom: bg-primary/15 + border-primary/30, no colored shadow", () => {
+    renderPage();
+
+    const selectedPill = screen.getByRole("button", { name: "شهر واحد — 20.00 د.ل" });
+    expect(selectedPill).toHaveAttribute("aria-pressed", "true");
+    // The round's active-chip trio (the CatalogFiltersBar / MobileNav
+    // family) — the old state was a /12 tint + FULL-strength border +
+    // shadow-md shadow-primary/15 (a glow on a selection state).
+    expect(selectedPill.className).toContain("bg-primary/15");
+    expect(selectedPill.className).toContain("border-primary/30");
+    expect(selectedPill.className).not.toContain("shadow-md");
+  });
+
+  it("the selected PLAN pill speaks the same tinted dialect (was a SOLID bg-primary fill + shadow-md)", () => {
+    pageProduct.current = PLAN_VARIANT_PRODUCT;
+    renderPage();
+
+    const planPill = screen.getByRole("button", { name: "أساسي" });
+    expect(planPill).toHaveAttribute("aria-pressed", "true");
+    expect(planPill.className).toContain("bg-primary/15");
+    expect(planPill.className).toContain("text-primary-text");
+    expect(planPill.className).toContain("border-primary/30");
+    // The solid fill + primary-foreground ink + colored shadow are gone —
+    // one selected-state language across both rows (AA: 5.19:1 dark /
+    // 4.54:1 light at 14px bold, measured on the full composite stack).
+    expect(planPill.className).not.toContain("bg-primary ");
+    expect(planPill.className).not.toContain("text-primary-foreground");
+    expect(planPill.className).not.toContain("shadow-md");
+  });
+
+  it("the sticky buy bar wears the chrome family: solid bg-card, border/35 + the hairline-glow top rule, no glass", () => {
+    const { container } = renderPage();
+    const bar = stickyBar(container);
+
+    // ① The glass diet (the 96-F4 MobileNav recipe): bg-card/97 +
+    //    backdrop-blur-xl → SOLID bg-card.
+    expect(bar.className).toContain("bg-card");
+    expect(bar.className).not.toContain("backdrop-blur");
+    // ② The nav family's content-facing edge value + the pinned
+    //    .hairline-glow utility as the bar's first decorative child
+    //    (Navbar/MobileNav/Footer stack).
+    expect(bar.className).toContain("border-border/35");
+    expect(bar.querySelector("div.hairline-glow")).not.toBeNull();
+    // ③ The mirrored two-layer elevation replaced the 2xl halo.
+    expect(bar.className).toContain("shadow-[0_-1px_2px_rgb(0_0_0/0.3)");
+    expect(bar.className).not.toContain("shadow-2xl");
+  });
+
+  it("the h1 anchors the page at the fluid-3xl step — the price block's 30px is the #2 anchor, not #1", () => {
+    renderPage();
+
+    const h1 = screen.getByRole("heading", { level: 1 });
+    // At fluid-2xl the title measured ≈23.6px on a 390px viewport — UNDER
+    // the price's fixed 30px — inverting the anchor order on mobile.
+    expect(h1.className).toContain("text-fluid-3xl");
+    expect(h1.className).not.toContain("text-fluid-2xl");
+  });
+
+  it("the media plane carries the muted/60 shelf wash (the ProductCard well family)", () => {
+    const { container } = renderPage();
+
+    // The 16:9 art area — bg-color under the still-live category gradient
+    // (bg-muted/60 + bg-gradient-to-b compose: image over color).
+    const media = container.querySelector('[class*="aspect-[16/9]"]');
+    expect(media).toBeInstanceOf(HTMLElement);
+    expect(media!.className).toContain("bg-muted/60");
   });
 });
 

@@ -15,12 +15,26 @@ export function AuthedHero({ user }: { user: User }) {
     // Hero banner card
     <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg">
       {/* Background gradient layers */}
+      {/* R138 (visual): ambient-wash + hairline-glow mirror the guest
+          hero's atmosphere upgrade — the live-site audit (VLM critique
+          on subnation.ly) read the hero surface as a flat void; both
+          branches now share the same pinned depth vocabulary (the
+          utilities live in index.css — one definition, no drift).
+          The directional wash stays at /12: it was already at the
+          value the guest hero was raised TO this round — one family,
+          one value. */}
+      <div className="absolute inset-0 ambient-wash pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-l from-primary/12 via-transparent to-transparent pointer-events-none" />
+      <div className="hairline-glow" />
       {/* R125-I7 (A7 B-12 / R124-A3 #12): the hero accent stripe
           was w-[2px] — the craft-floor cap for colored side
           stripes is 1px. */}
       <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-primary/60 via-primary/20 to-transparent" />
-      <div className="absolute top-[-30px] right-[10%] w-48 h-48 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
+      {/* R138 (visual): the static accent blob raised 8→14 — the same
+          sub-perceptual alpha the audit flagged on the guest hero's
+          blobs; this one is smaller (w-48) and animation-free, so the
+          identical value keeps the two hero branches one family. */}
+      <div className="absolute top-[-30px] right-[10%] w-48 h-48 bg-primary/14 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative px-4 py-4 sm:px-6 sm:py-5 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -38,9 +52,7 @@ export function AuthedHero({ user }: { user: User }) {
               gradient type) — solid --primary-text (4.82:1 on the
               light card / 6.05:1 dark) + weight carry the
               emphasis. */}
-          <h2 className="text-fluid-2xl font-bold text-primary-text">
-            اشترِ اشتراكك المفضل اليوم
-          </h2>
+          <h2 className="text-fluid-2xl font-bold text-primary-text">اشترِ اشتراكك المفضل اليوم</h2>
         </div>
         <div className="flex gap-2">
           <Link href="/wallet">
@@ -67,9 +79,7 @@ export function AuthedHero({ user }: { user: User }) {
                 <div className="text-3xs text-muted-foreground leading-none mb-0.5 font-semibold">
                   النقاط
                 </div>
-                <div className="font-bold text-sm tabular-nums">
-                  {user.loyalty_points ?? 0}
-                </div>
+                <div className="font-bold text-sm tabular-nums">{user.loyalty_points ?? 0}</div>
               </div>
             </div>
           </Link>

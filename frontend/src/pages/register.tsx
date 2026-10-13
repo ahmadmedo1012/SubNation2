@@ -78,25 +78,40 @@ export default function RegisterPage() {
         {/* Tabs — clear login vs register */}
         {/* A3-F4 (R120-B2): both tabs min-h-11 (44px) — mirrors login.tsx
             (the strip measured 172×40 live on /login). */}
+        {/* R138 (visual): the active tab rides the site's calm-active
+            trio — bg-primary/15 + text-primary-text + border-primary/30
+            — mirroring login.tsx's tab strip exactly (one family, one
+            treatment; the rationale + AA math live there). BOTH states
+            carry the same 1px border box (inactive: border-transparent)
+            so the login↔register toggle can never jitter the label. */}
         <div className="grid grid-cols-2 gap-1 p-1 bg-muted/30 border border-border/40 rounded-2xl mb-5 reveal-up stagger-1">
           <Link
             href={
               redirectTarget ? `/login?redirect=${encodeURIComponent(redirectTarget)}` : "/login"
             }
-            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
+            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center border border-transparent"
           >
             تسجيل الدخول
           </Link>
           <button
             type="button"
-            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-bold bg-card text-foreground shadow-sm cursor-default"
+            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-bold bg-primary/15 text-primary-text border border-primary/30 cursor-default"
             aria-current="page"
           >
             حساب جديد
           </button>
         </div>
 
-        <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl shadow-black/20 reveal-up stagger-2">
+        {/* R138 (visual): register's card aligns to login's — the raw
+            shadow-black/20 override (the R116-S1 violation class login
+            already retired: black forced under the light-theme card)
+            goes with it for the bare shadow-2xl token, and the round's
+            pinned atmosphere pair (.ambient-wash + .hairline-glow — see
+            login.tsx for the full rationale) lands symmetric: the two
+            auth pages are one family, one surface treatment. */}
+        <div className="relative overflow-hidden bg-card border border-border/55 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
+          <div className="absolute inset-0 ambient-wash pointer-events-none" />
+          <div className="hairline-glow" />
           <AuthErrorBanner />
 
           {/* Referral context banner — emerald + check when applied,
@@ -214,7 +229,14 @@ export default function RegisterPage() {
         </div>
 
         {/* Footer link to login */}
-        <p className="mt-5 text-center text-sm text-muted-foreground reveal-up stagger-3">
+        {/* R138 (visual): mirrors login.tsx's footer row — the VLM audit
+            read the muted ink as too dim on the first screen a stranger
+            sees (text-muted-foreground → text-foreground, 8.45:1 →
+            18.7:1; navigation, not fine print) and the space below the
+            card as excessive (mt-5 → mt-4, the card's internal 16px
+            section rhythm — register's consent line above is the same
+            mt-4 family). */}
+        <p className="mt-4 text-center text-sm text-foreground reveal-up stagger-3">
           لديك حساب بالفعل؟{" "}
           <Link
             href={

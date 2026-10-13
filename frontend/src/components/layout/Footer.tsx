@@ -12,9 +12,15 @@ export function Footer() {
   // sticky buy bar pins above it), so the footer reserves the nav
   // clearance on EVERY storefront route for guests AND authed users
   // alike. One clearance contract, no per-route carve-outs.
+  // R138 (visual — chrome family alignment): the top edge rides the
+  // nav family's /35 border alpha now (Navbar resting border-b and
+  // MobileNav border-t both measure /35 — the footer's /30 was the
+  // lone outlier in the same content-facing edge role), with the
+  // hairline below overlaying it exactly like MobileNav's border-t +
+  // hairline stack.
   return (
     <footer
-      className={`relative border-t border-border/30 bg-gradient-to-b from-background via-background to-card/40 mt-12 ${
+      className={`relative border-t border-border/35 bg-gradient-to-b from-background via-background to-card/40 mt-12 ${
         /* Reserve the fixed MobileNav's height BELOW the legal row
            (mobile-nav-footer-pad = padding, defined at max-width 767.98px
            so desktop is untouched — no md: reset needed). Applied for
@@ -30,11 +36,16 @@ export function Footer() {
       }`}
     >
       {/* Hairline brand tint at the top — barely visible but unifies
-          the footer with the FlashSaleBanner / Navbar treatment. */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
-      />
+          the footer with the Navbar / MobileNav hairline family (the
+          old comment's "FlashSaleBanner / Navbar treatment" claim was
+          aspirational — R138 is what actually made it true: the Navbar
+          adopted the same line this round). R138 (visual): the inline
+          hand-roll (inset-x-0 top-0 h-px + the via-primary/30 gradient)
+          is replaced by the orchestrator-pinned .hairline-glow utility
+          — byte-equal stops (transparent → primary/30 → transparent),
+          the physical inset-x-0 upgraded to logical inset-inline, and
+          pointer-events-none baked in. aria-hidden stays as-is. */}
+      <div aria-hidden="true" className="hairline-glow" />
 
       <div className="max-w-6xl mx-auto px-4">
         {/* ── Compact link band (R120-B1 / A1-F13 + A7-F10) ─────────────

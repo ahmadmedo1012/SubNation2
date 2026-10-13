@@ -10,8 +10,12 @@
  *   • A1-F2: a persistent desktop quick-add icon button lives in the
  *     price row (the old desktop CTA was hover-reveal only); sold-out
  *     keeps a dimmed DISABLED affordance.
- *   • A1-F1: resting chrome (border-border/70 + shadow) reads as a
- *     container; A1-F4: a unified gradient pad sits behind every image.
+ *   • A1-F1: resting chrome reads as a container; A1-F4: a unified
+ *     gradient pad sits behind every image. (R138 re-tuned the resting
+ *     values — border 70→60, shadow-sm → the two-layer calm elevation,
+ *     the well bg-card → bg-muted/60 — see the R138-pinned tests below;
+ *     the A1-F1 mechanism itself, chrome carrying the container read,
+ *     is unchanged.)
  *   • A1-F10/A7-F13: h3 name with 2 clamp lines below sm; the 11px
  *     description row is hidden below sm.
  *
@@ -23,6 +27,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProductCard } from "@/components/ProductCard";
+import { formatCurrency } from "@/lib/utils";
 
 const addItemMock = vi.fn();
 vi.mock("@/lib/cart", () => ({
@@ -125,12 +130,44 @@ describe("ProductCard — persistent desktop quick-add (R120-B1 / A1-F2)", () =>
 });
 
 describe("ProductCard — chrome + imagery + type regressions (R120-B1)", () => {
-  it("resting chrome: border-border/70 + a resting shadow (A1-F1)", () => {
+  it("resting chrome: border-border/60 + the R138 two-layer calm elevation (A1-F1)", () => {
     const { container } = renderCard(AVAILABLE_PRODUCT);
     const card = container.firstElementChild as HTMLElement;
-    expect(card.className).toContain("border-border/70");
-    expect(card.className).toContain("shadow-sm");
-    expect(card.className).toContain("shadow-black/25");
+    // R138 (visual): resting border 70→60 + shadow-sm shadow-black/25 →
+    // a two-layer calm elevation — the live audit read resting cards as
+    // raw HTML containers; widening the resting→hover gap (border 60→
+    // 100%, sm→xl shadow) makes the affordance legible without adding
+    // motion. Rationale block: ProductCard.tsx R138 comment above the
+    // card root.
+    expect(card.className).toContain("border-border/60");
+    expect(card.className).toContain(
+      "shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
+    );
+    // The old flat resting (one 1-3px layer) never comes back.
+    expect(card.className).not.toContain("shadow-sm");
+    // A BASE shadow-black/25 would re-color BOTH arbitrary layers to a
+    // flat 25% (v4 color utilities ride --tw-shadow-color) — the color
+    // must only exist at hover scope. The hover: prefix must not match
+    // this guard, hence the leading boundary.
+    expect(card.className).not.toMatch(/(^|\s)shadow-black\/25(\s|$)/);
+    // Hover progression preserved verbatim (R120-B1): full-strength
+    // border + xl geometry, with the 25% black color carried at hover
+    // scope so the hover render is byte-identical to the pre-R138 one.
+    expect(card.className).toContain("hover:border-border");
+    expect(card.className).toContain("hover:shadow-xl");
+    expect(card.className).toContain("hover:shadow-black/25");
+  });
+
+  it("R138: the image well is a muted/60 shelf plane, not a bare bg-card tile", () => {
+    const { container } = renderCard(AVAILABLE_PRODUCT);
+    const well = container.querySelector(".aspect-square") as HTMLElement;
+    // R138 (visual): bg-card → bg-muted/60 — the well was the same tone
+    // as the card body (sub-perceptual on dark), so catalog imagery
+    // read as raw file previews on a bare background; the /60 muted
+    // wash (empty-state icon-tile vocabulary) gives the media plane its
+    // own shelf surface.
+    expect(well.className).toContain("bg-muted/60");
+    expect(well.className).not.toContain("bg-card");
   });
 
   it("unified image pad tile sits behind the image area (A1-F4)", () => {
@@ -207,5 +244,35 @@ describe("ProductCard — storefront badge copy (R123-E4b P3-a)", () => {
     // R134 (A2-F4): the pill carries the «كمية» noun now.
     expect(screen.getByText("كمية 99+")).toBeInTheDocument();
     expect(screen.queryByText("+99")).not.toBeInTheDocument();
+  });
+});
+
+describe("ProductCard — R138 resting-state premium (deep visual round)", () => {
+  it("the discount badge rides the unified primary-chip elevation (shadow-md shadow-primary/30)", () => {
+    renderCard({ ...AVAILABLE_PRODUCT, discount_percent: 35 } as typeof AVAILABLE_PRODUCT);
+    const badge = screen.getByText("35%");
+    // R138 (visual): shadow-primary/40 → /30 — one primary-chip elevation
+    // value shared with the desktop quick-add (shadow-md
+    // shadow-primary/30); a same-family 10% alpha spread is vocabulary
+    // drift. AA re-verified this round: white on bg-primary ≈4.9:1 dark
+    // / ≈5.3:1 light at 11px bold — the ink pair needs no change.
+    expect(badge.className).toContain("bg-primary");
+    expect(badge.className).toContain("text-primary-foreground");
+    expect(badge.className).toContain("shadow-md");
+    expect(badge.className).toContain("shadow-primary/30");
+    expect(badge.className).not.toContain("shadow-primary/40");
+  });
+
+  it("the price block keeps the money typography contract (verified, no drift)", () => {
+    renderCard(AVAILABLE_PRODUCT);
+    // R138 (visual audit): text-lg font-bold + tabular-nums leads the
+    // title's text-sm by a full step — money is the card's loudest
+    // element. The strike-through family is pinned by the touch suite's
+    // sale-price fixture; here the resting hierarchy is the contract.
+    const price = screen.getByText(formatCurrency(120));
+    expect(price.className).toContain("text-lg");
+    expect(price.className).toContain("font-bold");
+    expect(price.className).toContain("tabular-nums");
+    expect(price.className).toContain("text-foreground");
   });
 });

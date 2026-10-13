@@ -21,6 +21,13 @@ export function OrderErrorBanner({
   return (
     // Persistent money-failure banner: an error here must be
     // actionable, not a 4-second toast.
+    /* R138 (visual audit): NO change — the status-error wash + /25
+       edge + role=alert is the sanctioned inline money-error chrome;
+       restyling an error surface away from its semantics (the
+       money-path contract forbids it) is not this round's business,
+       and its /25 edge already sits one step firmer than the
+       receipt's /20 informational rules — exactly the right
+       distinction between "the math" and "the failure". */
     orderError && (
       <div
         role="alert"

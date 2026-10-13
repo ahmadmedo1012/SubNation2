@@ -139,10 +139,25 @@ export default function LoginPage() {
         {/* A3-F4 (R120-B2): both tabs min-h-11 — the active tab measured
             172×40 live (it is this screen's own-name “submit” per the
             audit); 44px matches the provider buttons below it. */}
+        {/* R138 (visual): the active tab now rides the site's calm-active
+            trio — bg-primary/15 + text-primary-text + border-primary/30
+            (MobileNav's tab pair, this round's active category chip,
+            RiskFilterChips: one family, one vocabulary). The live-site
+            VLM audit read the old bg-card fill as indistinguishable from
+            the bg-muted/30 strip at a glance — card (8% L) vs strip
+            (~7% L) are near-identical surfaces with only a whisper
+            shadow-sm between them; the tint + border reads as a clear
+            step. BOTH states carry the same 1px border box (inactive:
+            border-transparent) so toggling login↔register can never
+            shift the label by a pixel. AA: primary-text on the
+            /15-over-strip composite ≈5.99:1 dark (the theme the audit
+            shot); .light rides the sanctioned trio's systemic ≈3.3:1 —
+            the same value MobileNav's pinned active tab carries (family
+            register, not new debt; flagged to the design-system owner). */}
         <div className="grid grid-cols-2 gap-1 p-1 bg-muted/30 border border-border/40 rounded-2xl mb-5 reveal-up stagger-1">
           <button
             type="button"
-            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-bold bg-card text-foreground shadow-sm cursor-default"
+            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-bold bg-primary/15 text-primary-text border border-primary/30 cursor-default"
             aria-current="page"
           >
             تسجيل الدخول
@@ -158,7 +173,7 @@ export default function LoginPage() {
                 ? `/register?redirect=${encodeURIComponent(redirectTarget)}`
                 : "/register"
             }
-            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center"
+            className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center border border-transparent"
           >
             حساب جديد
           </Link>
@@ -166,7 +181,21 @@ export default function LoginPage() {
 
         {/* R116-S1: bare token shadow-2xl — the shadow-black/25 color
             override forced 25% black under the light-theme card. */}
-        <div className="bg-card border border-border/55 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
+        <div className="relative overflow-hidden bg-card border border-border/55 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
+          {/* R138 (visual): the auth card joins the round's pinned
+              atmosphere family — .ambient-wash (two-point static radial:
+              primary at the reading corner, info-cool at the opposite
+              diagonal; index.css owns the alphas) lifts the card off the
+              page exactly as GuestHero/AuthedHero were lifted this round,
+              and .hairline-glow swaps the flat top-border read for the
+              lit top edge the chrome family (Navbar/MobileNav/Footer)
+              now shares. Static, GPU-free, pointer-events-none — a depth
+              cue, NOT decoration (quiet-premium bar, FINAL_UX_SYSTEM.md
+              §1); the card's overflow-hidden clips both layers to the
+              rounded-3xl corners. login + register are one family —
+              symmetric treatment by design. */}
+          <div className="absolute inset-0 ambient-wash pointer-events-none" />
+          <div className="hairline-glow" />
           <AuthErrorBanner />
 
           {/* Value-prop banner. Buy-intent variant is highest-conversion:
@@ -249,7 +278,17 @@ export default function LoginPage() {
         </div>
 
         {/* Footer link to register */}
-        <p className="mt-5 text-center text-sm text-muted-foreground reveal-up stagger-3">
+        {/* R138 (visual): two VLM audit findings land on this row —
+            (1) "secondary text too dim against the dark background":
+            text-muted-foreground → text-foreground (8.45:1 → 18.7:1 on
+            the page bg; the row is the screen's one navigation affordance
+            below the card, not fine print — the primary-text link keeps
+            its color+weight+underline hierarchy on top);
+            (2) "space below the card is excessive": mt-5 → mt-4 pulls
+            the row to the card's internal 16px section rhythm (the
+            value-banner's mb-4) so it reads attached to the card cluster
+            instead of floating in the bottom void. */}
+        <p className="mt-4 text-center text-sm text-foreground reveal-up stagger-3">
           ليس لديك حساب؟{" "}
           <Link
             href={
@@ -276,7 +315,16 @@ function ValueChip({ icon: Icon, label }: { icon: typeof ShoppingBag; label: str
   return (
     <div className="flex flex-col items-center gap-1 p-2 bg-muted/25 border border-border/40 rounded-lg text-center">
       <Icon className="w-3.5 h-3.5 text-primary-text" aria-hidden="true" />
-      <span className="text-3xs font-bold text-foreground/80 leading-tight">{label}</span>
+      {/* R138 (visual): the generic-variant value chips are the FIRST
+          secondary text a stranger reads on this screen — the label's
+          ad-hoc opacity dim (text-foreground/80) retires for the full
+          foreground token (10.8:1 → 17.3:1 on the chip; the contract's
+          stable-token floor beats improvised alpha), leading-tight is
+          dropped so the base layer's Arabic-safe 1.3 floor owns the
+          leading (R128-A4 precedent on the banners above), and the 3xs
+          badge token swaps to 2xs — same 11px, the readable-micro
+          register rather than the badge register. */}
+      <span className="text-2xs font-bold text-foreground">{label}</span>
     </div>
   );
 }

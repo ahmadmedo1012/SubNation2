@@ -57,21 +57,44 @@ export function GuestHero({
       className="relative overflow-hidden rounded-2xl border border-border/40 mb-4 sm:mb-6 bg-card page-in shadow-xl"
     >
       {/* Background layers */}
+      {/* R138 (visual): ambient-wash full-bleed beneath the texture —
+          the live-site audit (VLM critique on subnation.ly) read this
+          hero as "just a dark rectangle with text — a void": the
+          atmosphere vocabulary existed but rendered sub-perceptual.
+          The orchestrator-pinned two-point radial (primary at the
+          reading corner + info-cool diagonal, static, GPU-free) adds
+          the missing depth cue at zero animation cost; index.css owns
+          the exact alphas so the two hero branches cannot drift. */}
+      <div className="absolute inset-0 ambient-wash pointer-events-none" />
       <div className="absolute inset-0 dot-grid pointer-events-none opacity-60" />
-      <div className="absolute inset-0 bg-gradient-to-l from-primary/10 via-transparent to-transparent pointer-events-none" />
+      {/* R138 (visual): directional wash deepened 10→12 — same audit:
+          /10 read as nothing on the card surface; /12 registers as
+          depth while staying under the quiet-premium bar (matches
+          the authed hero's existing /12 — one family, one value). */}
+      <div className="absolute inset-0 bg-gradient-to-l from-primary/12 via-transparent to-transparent pointer-events-none" />
+      {/* R138 (visual): hairline-glow at the card's top edge — the
+          extracted sanctioned hairline (transparent → primary/30 →
+          transparent) replaces the flat top-border reading with a
+          lit edge; position/inset/pointer-events are baked into the
+          utility. Distinct from the vertical side stripe below (a
+          different sanctioned pattern — kept). */}
+      <div className="hairline-glow" />
       {/* R125-I7 (A7 B-12 / R124-A3 #12): w-[2.5px] → 1px (same
           craft-floor stripe cap as the authed hero above). */}
       <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-primary/80 via-primary/30 to-transparent" />
 
       {/* Ambient glow blobs — 96-F5 (R96 F-4b): animation-play-state
           flips to paused when the hero leaves the viewport (IO above);
-          prefers-reduced-motion keeps winning via the global kill-switch. */}
+          prefers-reduced-motion keeps winning via the global kill-switch.
+          R138 (visual): alphas raised 8→14 / 5→9 — the audit's "void"
+          verdict traced to sub-perceptual fill; position/size/blur and
+          the pause logic are untouched (still quiet, now perceptible). */}
       <div
-        className="absolute top-[-50px] right-[8%] w-72 h-72 bg-primary/8 rounded-full blur-3xl pointer-events-none blob-drift"
+        className="absolute top-[-50px] right-[8%] w-72 h-72 bg-primary/14 rounded-full blur-3xl pointer-events-none blob-drift"
         style={{ animationPlayState: heroOnScreen ? "running" : "paused" }}
       />
       <div
-        className="absolute bottom-[-40px] left-[15%] w-56 h-56 bg-primary/5 rounded-full blur-3xl pointer-events-none blob-drift-slow"
+        className="absolute bottom-[-40px] left-[15%] w-56 h-56 bg-primary/9 rounded-full blur-3xl pointer-events-none blob-drift-slow"
         style={{ animationPlayState: heroOnScreen ? "running" : "paused" }}
       />
 
@@ -129,10 +152,10 @@ export function GuestHero({
               <strong lang="en" className="font-bold text-foreground">
                 SubNation
               </strong>{" "}
-              سوق إلكتروني متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة
-              اشتراكات البثّ المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي،
-              ومفاتيح البرامج مثل ويندوز، وشبكات VPN مثل إكسبرس، وأدوات الذكاء الاصطناعي مثل
-              شات جي بي تي — كلّها بالدينار الليبي مع تسليم فوري بعد الدفع.
+              سوق إلكتروني متخصّص في بيع الاشتراكات الرقمية للسوق الليبي. تجد على المنصّة اشتراكات
+              البثّ المباشر مثل نتفلكس وديزني+ وشاهد، وخدمات الموسيقى مثل سبوتيفاي، ومفاتيح البرامج
+              مثل ويندوز، وشبكات VPN مثل إكسبرس، وأدوات الذكاء الاصطناعي مثل شات جي بي تي — كلّها
+              بالدينار الليبي مع تسليم فوري بعد الدفع.
             </p>
             {/* R120-B1 (A1-F3): expand toggle for the collapsed prose
                 (mobile only — ≥sm shows the full paragraph).

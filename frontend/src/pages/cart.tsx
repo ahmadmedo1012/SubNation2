@@ -31,7 +31,12 @@ function CartSkeleton() {
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}
-          className="bg-card border border-border/60 rounded-xl p-4 flex items-center gap-3.5"
+          /* R138 (visual): the family resting elevation mirrors onto the
+             skeleton row — ProductCard moved to border-border/60 + this
+             two-layer calm shadow this round, and the cart's line rows
+             are that family; the hydration fill must not pop a shadow
+             in one frame, so the shell carries it too. */
+          className="bg-card border border-border/60 rounded-xl p-4 flex items-center gap-3.5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"
         >
           <div className="w-14 h-14 rounded-xl bg-muted skeleton-shimmer shrink-0" />
           <div className="flex-1 space-y-2">
@@ -188,7 +193,13 @@ export default function CartPage() {
             onClick={handleClear}
             /* 96-F4 (R96 A2 P1-2): 44px target (size="sm" shipped 32px on the
                most destructive control in the storefront). */
-            className="min-h-11 text-status-error hover:text-status-error hover:bg-status-error/10 font-bold"
+            /* R138 (visual): quiet danger at rest — the trigger rode full
+               status-error ink at REST, shouting red at the top of the
+               page while its per-line twin (the trash below) correctly
+               rests muted and tints error only on hover. One register for
+               the destructive family: muted ink + error hover; the 96-F4
+               confirm dialog (destructive tone) carries the severity. */
+            className="min-h-11 text-muted-foreground hover:text-status-error hover:bg-status-error/10 font-bold"
           >
             <Trash2 className="w-3.5 h-3.5 ms-1.5" />
             إفراغ السلة
@@ -230,7 +241,18 @@ export default function CartPage() {
               return (
                 <div
                   key={`${it.productId}:${it.variantId ?? 0}`}
-                  className={`float-in ${staggerClass} bg-card border border-border/60 rounded-xl p-3.5 hover:border-border transition-all duration-200 group`}
+                  /* R138 (visual): line-item resting chrome rhymes with the
+                     new card family (ProductCard this round: border/60 + a
+                     two-layer calm elevation — tight 1px/2px @30% contact
+                     line + contained 10px/28px/−14px @40% ambient). The
+                     ambient is fully contained horizontally (28px blur −
+                     14px spread) and reaches ~10px down — exactly the
+                     space-y-2.5 seam — so stacked rows shade each other's
+                     top edge like paper on paper instead of floating as
+                     bordered boxes. Hover stays border-only (60→100): a
+                     row is line data, not a clickable tile — no hover
+                     elevation invented. */
+                  className={`float-in ${staggerClass} bg-card border border-border/60 rounded-xl p-3.5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] hover:border-border transition-all duration-200 group`}
                 >
                   {/* 96-F4 (R96 A1 M13 + A2 P1-1): flex-wrap row — on wide
                       viewports it reads exactly like before (thumb |
@@ -293,7 +315,13 @@ export default function CartPage() {
                             ProductCard's h3 / the PDP h1. */}
                         <div
                           dir="auto"
-                          className="font-bold text-sm leading-snug truncate group-hover:text-primary-text transition-colors"
+                          /* R138 (visual): title 700→600 — the money line's
+                             weight hierarchy (title 600 / price 700): the
+                             price is the loudest element on the line, the
+                             title the identifier; the checkout summary's
+                             it.name twin takes the same demotion so both
+                             pages of the funnel speak one ladder. */
+                          className="font-semibold text-sm leading-snug truncate group-hover:text-primary-text transition-colors"
                         >
                           {it.name}
                         </div>
@@ -334,7 +362,15 @@ export default function CartPage() {
                           keeps the trio (price / strikethrough / discount) on
                           one clean row now that the column is wide enough. */}
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mt-0.5">
-                        <span className="font-bold text-sm tabular-nums text-primary-text">
+                        {/* R138 (visual): ink for money — the unit price
+                            drops the brand tint for plain foreground:
+                            ProductCard's price and this page's own summary
+                            total already ride plain ink at full weight, so
+                            the tinted unit price was the money path's lone
+                            colored amount; on a 5-line cart that is brand
+                            color shouting, and hierarchy now rides weight
+                            (600 title / 700 price). */}
+                        <span className="font-bold text-sm tabular-nums text-foreground">
                           {formatCurrency(price)}
                         </span>
                         {it.salePriceLYD != null && it.salePriceLYD < it.priceLYD && (
@@ -376,7 +412,16 @@ export default function CartPage() {
                         control in the app (variant pills, quick-add,
                         retry rows) rides the press vocabulary. */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex items-center gap-0 bg-muted/50 border border-border/40 rounded-lg overflow-hidden">
+                      {/* R138 (visual): bg-muted/50 → /60 — the stepper is a
+                          WELL (a container of buttons) like the 56px thumb
+                          tile beside it, and the wells ride one value: the
+                          thumb was already bg-muted/60 and ProductCard's
+                          image well joined it at /60 this round. /50 was
+                          neither the chip fill (/40) nor the well (/60).
+                          Resting border stays /40 — the thumb tile's twin
+                          — and the min-h-11 tap floor is test-pinned
+                          (cart-undo-clear). */}
+                      <div className="flex items-center gap-0 bg-muted/60 border border-border/40 rounded-lg overflow-hidden">
                         <button
                           type="button"
                           onClick={() => handleUpdate(it, it.quantity - 1)}
@@ -431,7 +476,12 @@ export default function CartPage() {
           </div>
 
           {/* Summary */}
-          <div className="bg-card border border-border/60 rounded-2xl p-5 slide-up">
+          {/* R138 (visual): the family resting elevation (ProductCard's
+              two-layer calm recipe, this round) — the totals card reads as
+              the receipt slip lying over the line rows; border/60 stays
+              the family edge and the terminal text-2xl total already
+              rides weight+size (not color) — verified, untouched. */}
+          <div className="bg-card border border-border/60 rounded-2xl p-5 slide-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
             <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
               <span className="text-sm text-muted-foreground font-bold">المجموع</span>
               <div className="flex items-center gap-2">
@@ -461,6 +511,17 @@ export default function CartPage() {
                 failure surfaces HERE, at the cart, not as a 409
                 mid-charge. Unknown-snapshot lines never block (the
                 server re-check answers at charge time). */}
+            {/* R138 (visual): the three money CTAs below (blocked /
+                authed / guest) drop the hand-rolled flat bg-primary +
+                shadow-lg + active:scale-[0.99] chrome for the canonical
+                recipe — size="lg" + the Button default variant own every
+                visual token (h-12, the text-base weight rhythm, the
+                to-primary/95 gradient + primary border + shadow-md→
+                hover:shadow-lg, press-spring). Quiet authority via
+                size/weight, not a loud flat shadow — the wallet submit
+                CTAs' R116-S2/R124-I1 precedent, one funnel one recipe.
+                w-full stays: the summary column owns the layout (the
+                checkout CTA's documented summary-card idiom). */}
             {cartHasBlockingStock(items) && (
               <p
                 id="cart-stock-block-reason"
@@ -478,15 +539,13 @@ export default function CartPage() {
                      cause. Linked now (checkout's label-in-button idiom
                      doesn't fit the summary column's banner shape). */
                   aria-describedby="cart-stock-block-reason"
-                  className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
+                  size="lg"
+                  className="w-full"
                 >
                   إتمام الطلب
                 </Button>
               ) : (
-                <Button
-                  asChild
-                  className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
-                >
+                <Button asChild size="lg" className="w-full">
                   <Link href="/checkout">
                     {/* R111-F2 N1: «إتمام الطلب» — the destination page's own
                         name (checkout.tsx h1), replacing «متابعة الشراء» which
@@ -497,10 +556,7 @@ export default function CartPage() {
                 </Button>
               )
             ) : (
-              <Button
-                asChild
-                className="w-full bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25 active:scale-[0.99] transition-all font-bold h-12"
-              >
+              <Button asChild size="lg" className="w-full">
                 <Link href="/login?redirect=/checkout">
                   {/* R111-F2 N6: shadda + pronoun — matches the app-standard
                       «سجّل» family (login.tsx, errors.ts). */}

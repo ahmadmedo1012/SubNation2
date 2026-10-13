@@ -64,6 +64,10 @@ describe("EmptyState — canonical storefront empty-state (R135 FE-2)", () => {
 
     const cta = screen.getByRole("link", { name: /تصفح الكتالوج/ });
     expect(cta).toHaveAttribute("href", "/");
+    // R138 (visual): the exit CTA's own act of breathing room — mt-5
+    // (was mt-4; a caption-tight gap read as a continuation of the
+    // hint line, not the way forward).
+    expect(cta.parentElement?.className).toContain("mt-5");
   });
 
   it("merges className onto the outer card without losing the shell", () => {

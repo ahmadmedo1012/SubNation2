@@ -25,9 +25,21 @@ export function ProductMediaSection({ product }: { product: Product }) {
     // ── START column (RTL first = right): media + description ──
     <section className="max-lg:contents lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
       {/* Image — max-lg:-mb-4 cancels the wrapper gap so the media stays
-            flush against the card body exactly like the pre-split layout. */}
+            flush against the card body exactly like the pre-split layout.
+            R138 (visual): bg-muted/60 — the media plane gets the SAME shelf
+            wash the ProductCard's image well moved to this round (the
+            empty-state icon-tile vocabulary, theme-aware via color-mix). The
+            plane used to be bare card with only the category gradient —
+            perceptible at the top where the tint peaks, sub-perceptual at
+            the transparent bottom, so the lower half read as raw card. The
+            /60 wash gives the whole 16:9 plane its own shelf surface under
+            the still-live category gradient (bg-color under bg-image — the
+            to-transparent stops now settle onto the shelf instead of bare
+            card), and the two product surfaces rhyme end-to-end. The img's
+            drop-shadow-2xl → drop-shadow-lg (below) grounds the asset with
+            the card well's ONE grounding recipe. */}
       <div
-        className={`order-1 max-lg:-mb-4 aspect-[16/9] bg-gradient-to-b ${gradientClass} flex items-center justify-center relative overflow-hidden group/img`}
+        className={`order-1 max-lg:-mb-4 aspect-[16/9] bg-muted/60 bg-gradient-to-b ${gradientClass} flex items-center justify-center relative overflow-hidden group/img`}
       >
         {/* Ambient inner glow */}
         <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-black/20 pointer-events-none" />
@@ -60,7 +72,7 @@ export function ProductMediaSection({ product }: { product: Product }) {
             height={450}
             fetchPriority="high"
             decoding="async"
-            className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-2xl"
+            className="w-full h-full object-contain p-6 sm:p-8 transition-transform duration-500 ease-out group-hover/img:scale-[1.04] drop-shadow-lg"
             // B4 P1-6: mirror ProductCard's fallback — a dead enrichment
             // URL swaps to the initial-letter tile instead of painting the
             // browser's broken-image glyph inside the page's largest
@@ -81,7 +93,14 @@ export function ProductMediaSection({ product }: { product: Product }) {
           style={{ display: product.image_url ? "none" : "flex" }}
           className="absolute inset-0 z-[2] items-center justify-center pointer-events-none"
         >
-          <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-lg">
+          {/* R138 (visual): the glass pair retired — backdrop-blur-sm (the
+              banned glass vocabulary; over the WASH, not over imagery, so
+              no scrim legibility was ever at stake) and shadow-lg → the
+              card-fallback tile's shadow-sm; the translucent white/5 +
+              white/10 chip character stays (reads on the tinted wash in
+              dark, neutral-quiet in light — the big cat-hued glyph carries
+              the identity either way). */}
+          <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 shadow-sm">
             <span
               className={`text-5xl sm:text-6xl font-bold select-none drop-shadow-lg ${initialColorClass}`}
             >
@@ -98,8 +117,13 @@ export function ProductMediaSection({ product }: { product: Product }) {
         {product.discount_percent && (
           /* R123-E4b (P3-h): text-primary-foreground — the shared token
              every other primary-surface badge rides; raw text-white
-             broke the theme-tinted primary of the R115 palette. */
-          <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full shadow-lg shadow-primary/40">
+             broke the theme-tinted primary of the R115 palette.
+             R138 (visual): shadow-lg shadow-primary/40 → shadow-md
+             shadow-primary/30 — ONE primary-chip elevation value shared
+             with the ProductCard's discount badge + desktop quick-add
+             (the r138-B unification; a same-family 10% alpha spread is
+             vocabulary drift). */
+          <div className="absolute top-3 left-3 z-[3] flex items-center gap-1 bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full shadow-md shadow-primary/30">
             <Tag className="w-3 h-3" />
             خصم {product.discount_percent}%
           </div>
@@ -124,8 +148,18 @@ export function ProductMediaSection({ product }: { product: Product }) {
                 the RTL reading edge — pure-Latin names resolve dir=auto
                 to ltr, so text-align:start computed LEFT and the h1
                 floated up to 41px off the right line the breadcrumb and
-                labels anchor to. Same fix as ProductCard's h3. */}
-          <h1 dir="auto" className="text-fluid-2xl font-bold mb-1.5 text-right">
+                labels anchor to. Same fix as ProductCard's h3.
+                R138 (visual): text-fluid-2xl → text-fluid-3xl — the
+                page's #1 anchor step (GuestHero's h1 rides the same
+                token; category.tsx keeps 2xl for the LIST header). At
+                fluid-2xl the PDP title measured ≈23.6px on a 390px
+                viewport — UNDER the price block's fixed 30px — so the
+                money read as the page's FIRST anchor on the
+                mobile-majority surface; 3xl (≈29.5px mobile → 46.4px
+                desktop) restores title → price → everything-else. mb-2
+                gives the bigger title one more breath before the muted
+                description (mb-1.5 rode the smaller step). */}
+          <h1 dir="auto" className="text-fluid-3xl font-bold mb-2 text-right">
             {product.name}
           </h1>
           {product.description && (

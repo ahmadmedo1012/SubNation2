@@ -13,6 +13,18 @@ import { ChevronDown, Clock, Package, Search, SlidersHorizontal } from "lucide-r
 // aria-expanded / aria-controls / aria-autocomplete / role="option" —
 // and the R94-A1 #16 blur guard are byte-identical (the
 // home-search-history-a11y render pin follows this markup).
+//
+// R138 (visual, the deep-visual round): the live-site audit read this
+// bar as "too heavy — high contrast/border weight — feeling like part
+// of the hero content rather than functional navigation". The
+// softening pass below touches LOOKS ONLY: resting fills drop to
+// translucent washes (card/60 fields, muted/30 chips), resting chip
+// borders drop one alpha step, the active category chip trades its
+// solid bg-primary + colored shadow for the site's tint+border pill
+// vocabulary, and the bar's own bottom margins grow so the products
+// below breathe. Every handler prop, the blur guard, the aria/
+// listbox markup and the URL-mirror lifecycle are untouched — quiet
+// premium: functional chrome recedes, content leads.
 
 export function CatalogFiltersBar({
   searchInput,
@@ -55,7 +67,15 @@ export function CatalogFiltersBar({
     // chrome height — 3.5rem (h-14) + the top safe-area inset the
     // header now grows by in installed-PWA mode, so the bar tucks
     // UNDER the taller header instead of sliding beneath it.
-    <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-2 bg-background/96 border-b border-border/15 mb-4 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0 sm:mb-6">
+    //
+    // R138 (visual): the bar's own bottom margin grows one notch on
+    // mobile (mb-4→mb-5, matching the hero's fold-notch rhythm) and
+    // one step on desktop (sm:mb-6→sm:mb-8) — the live audit read
+    // filter→grid as tight while hero→filter read roomy, so the
+    // products section now starts clearly clear of the chrome. ONLY
+    // this bar's margin moves; the page's section rhythm above it is
+    // page-owned (hero margins belong to the hero agent this round).
+    <div className="sticky top-[calc(3.5rem_+_env(safe-area-inset-top))] z-30 -mx-4 px-4 py-2 bg-background/96 border-b border-border/15 mb-5 sm:static sm:mx-0 sm:px-0 sm:py-0 sm:bg-transparent sm:border-0 sm:mb-8">
       {/* Search + Sort */}
       <div className="flex gap-2 mb-2.5">
         <div className="relative flex-1" ref={searchWrapRef}>
@@ -98,7 +118,17 @@ export function CatalogFiltersBar({
               }
               setTimeout(() => setShowSearchHistory(false), 200);
             }}
-            className="pr-9 h-10 bg-card border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
+            /* R138 (visual): resting fill softens solid bg-card → the
+               shared Input family's own card/60 wash (the field reads
+               as a quiet tool sitting on the page, not a boxed panel
+               competing with the hero) — the border stays at the
+               audited-quiet border/50; the form family's AA-tuned
+               muted-foreground/75 border is for money-path forms,
+               this is nav chrome receding so products lead. Presence
+               returns transiently, unchanged: the family's
+               hover:border-muted-foreground/90 step, this focus tint
+               and the one global focus-visible ring. */
+            className="pr-9 h-10 bg-card/60 border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
             /* 96-F5 (R96-M03): the `text-sm` override is GONE — twMerge
                let it beat the shared Input's iOS-zoom-safe
                text-base/md:text-sm baseline, so focusing the catalog
@@ -151,7 +181,13 @@ export function CatalogFiltersBar({
             onChange={(e) => setSort(e.target.value)}
             aria-label="ترتيب المنتجات"
             title="ترتيب المنتجات"
-            className="h-10 appearance-none bg-card border border-border/50 rounded-xl pr-8 pl-7 text-base md:text-sm font-semibold focus:border-primary/40 cursor-pointer transition-all hover:border-border/80"
+            /* R138 (visual): rhymed with the search field sibling —
+               same card/60 wash, same border-border/50 resting alpha;
+               the hover step calms one notch (/80→/70) and the focus
+               tint matches the field's primary/45. Visual siblings
+               share one border family so the row reads as a single
+               quiet tool, not two heavy boxes. */
+            className="h-10 appearance-none bg-card/60 border border-border/50 rounded-xl pr-8 pl-7 text-base md:text-sm font-semibold focus:border-primary/45 cursor-pointer transition-all hover:border-border/70"
             /* 96-F5 (R96-M03): same iOS focus-zoom fix as the search
                field — raw select rode text-sm at every breakpoint. */
           >
@@ -173,7 +209,12 @@ export function CatalogFiltersBar({
             redundant with the chip labels, so kept screen-reader
             only to avoid changing the design. */}
         <h2 className="sr-only">تصفّح حسب الفئة</h2>
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl">
+        {/* R138 (visual): gap-1.5→gap-2 — the live audit read the chip
+            row as "cramped horizontally"; 2px more air per seam. The
+            chips stay whitespace-nowrap + shrink-0 inside this
+            overflow-x-auto RTL scroll row, so 320px viewports keep
+            scrolling (never wrapping) exactly as before. */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5 scroll-fade-rtl">
           {CATEGORIES.map((c) => {
             const active = category === c.value;
             return (
@@ -181,10 +222,20 @@ export function CatalogFiltersBar({
                 key={c.value}
                 onClick={() => setCategory(c.value)}
                 aria-pressed={active}
+                /* R138 (visual): the active chip drops its solid
+                   bg-primary + shadow-primary/30 glow for the site's
+                   calm pill vocabulary — 15% tint + /30 border + bold
+                   primary-text ink (the متوفر فقط chip beside it, the
+                   MobileNav bg-primary/16 tab and RiskFilterChips all
+                   speak it). Both states now carry a 1px border, which
+                   also kills the 1px content jitter the borderless
+                   active state caused on toggle. The quiet resting
+                   chip keeps text-muted-foreground — the contract's AA
+                   floor — over a muted/30 wash with a /30 edge. */
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 shrink-0 ${
                   active
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/30 font-bold"
-                    : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-secondary/40"
+                    ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
+                    : "bg-muted/30 border border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
                 }`}
               >
                 <c.Icon className="w-3.5 h-3.5" />
@@ -195,10 +246,15 @@ export function CatalogFiltersBar({
           <button
             onClick={() => setAvailableOnly((v) => !v)}
             aria-pressed={availableOnly}
+            /* R138 (visual): the active state already rode the calm
+               tint+border vocabulary — left untouched (never amplify
+               an already-clear state); only the inactive branch joins
+               the category chips' softened resting treatment so the
+               whole row speaks one quiet language. */
             className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-11 shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring ${
               availableOnly
                 ? "bg-status-success/15 text-status-success border border-status-success/30 font-bold"
-                : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-border/80"
+                : "bg-muted/30 border border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
             }`}
           >
             <Package className="w-3.5 h-3.5" />

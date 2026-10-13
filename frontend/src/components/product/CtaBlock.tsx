@@ -116,7 +116,12 @@ export function CtaBlock({
         <Button
           disabled
           aria-label="نفد المخزون — غير متاح للشراء حالياً"
-          className="w-full h-12 text-base"
+          /* R138 (visual): size="lg" replaces the hand-rolled h-12 +
+             text-base — the R116-S1 canonical CTA recipe owns the primary
+             surface (the checkout CTA's exact skin); the disabled branch
+             keeps the base variant's own disabled:opacity-50 dim. */
+          size="lg"
+          className="w-full"
         >
           <Lock className="w-4 h-4 ms-2" /> نفد المخزون
         </Button>
@@ -151,7 +156,18 @@ export function CtaBlock({
         )}
         <Button
           onClick={onLogin}
-          className={`${compact ? "shrink-0 h-12 min-w-[8rem] px-5" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
+          /* R138 (visual): the flat bg-primary + hover:bg-primary/90 +
+             shadow-lg shadow-primary/25 + font-bold hand-roll retired —
+             size="lg" + the default Button variant own the canonical
+             R116-S1 CTA recipe ("pages must not hand-roll h-11/h-12 +
+             shadow + bg-primary overrides on top of it"): the same skin
+             the checkout confirm CTA rides, so the PDP's login gate and
+             the checkout bar read as ONE money-path family. The compact
+             twin keeps its row geometry (shrink-0 + min-w so the price
+             stack beside it keeps the B13 §7.1 truncation guard); w-full
+             applies to the desktop stack only. */
+          size="lg"
+          className={compact ? "shrink-0 min-w-[8rem] px-5" : "w-full"}
         >
           {/* R115-I1 (A7 P3-12): the app-standard «سجّل دخولك» form
               (cart.tsx:333 + login.tsx family) — the shadda-less
@@ -229,7 +245,12 @@ export function CtaBlock({
           disabled
           aria-busy="true"
           aria-label="جارٍ التحقق من رصيد المحفظة"
-          className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-5" : "w-full h-12 text-base"} bg-primary/70 font-bold`}
+          /* R138 (visual): size="lg" + the system's own disabled dim —
+             the hand-rolled bg-primary/70 fill is gone (disabled:
+             opacity-50 from the Button base renders the verifying
+             state; the spinner + aria-busy + label carry the rest). */
+          size="lg"
+          className={compact ? "shrink-0 min-w-[7.5rem] px-5" : "w-full"}
         >
           <Loader2 className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2 animate-spin`} />
           {compact ? "جارٍ التحقق…" : "جارٍ التحقق من رصيدك…"}
@@ -315,7 +336,14 @@ export function CtaBlock({
       <Button
         onClick={onBuy}
         disabled={isPending}
-        className={`${compact ? "shrink-0 h-12 min-w-[7.5rem] px-6" : "w-full h-12 text-base"} bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/25 press-spring`}
+        /* R138 (visual): same canonical-recipe retirement as the login
+           CTA above — size="lg" + the default variant (the checkout
+           confirm button's exact skin) replace the flat bg-primary +
+           shadow-lg/25 hand-roll; the compact twin keeps the sticky-bar
+           row geometry (shrink-0 + min-w + px-6, the 48px lg height
+           still clearing the 44px tap floor). */
+        size="lg"
+        className={compact ? "shrink-0 min-w-[7.5rem] px-6" : "w-full"}
       >
         <ShoppingCart className={`${compact ? "w-4 h-4" : "w-5 h-5"} ms-2`} />
         {isPending

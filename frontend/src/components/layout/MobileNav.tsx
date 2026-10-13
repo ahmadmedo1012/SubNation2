@@ -117,8 +117,19 @@ export function MobileNav() {
           theme instead of forcing black on light mode). */}
       <div className="absolute inset-0 bg-card border-t border-border/35 shadow-sm" />
 
-      {/* Gradient top rule */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+      {/* Gradient top rule — R138 (visual): the inline hand-roll
+          (absolute inset-x-0 top-0 h-px + the via-primary/30 gradient)
+          is replaced by the orchestrator-pinned .hairline-glow utility
+          (index.css — one definition for the whole chrome family this
+          round: Navbar/Footer/hero surfaces): byte-equal color stops
+          (transparent → primary/30 → transparent), and the utility
+          upgrades the physical inset-x-0 to the logical inset-inline +
+          bakes pointer-events-none so the 1px rule can never intercept
+          a tap. The bg layer above stays the nav's FIRST child — the
+          mobile-nav-clearance GPU-diet pin reads it. The active-tab
+          trio below (w-7 accent bar + primary-text + 2.5 stroke) is
+          test-pinned and rides byte-identical. */}
+      <div className="hairline-glow" />
 
       {/* R120-B1 (A3-F1): the grid span adapts to the tab count (5
           authed / 4 guest) — the height contract below is unchanged. */}

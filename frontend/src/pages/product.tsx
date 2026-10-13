@@ -690,7 +690,7 @@ export default function ProductPage() {
 
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
       <div
-        className={`sm:hidden z-[45] bg-card/97 backdrop-blur-xl border-t border-border/50 px-4 pt-3 shadow-2xl shadow-black/30 ${
+        className={`sm:hidden z-[45] bg-card border-t border-border/35 px-4 pt-3 shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)] ${
           stickyBarHiddenByKeyboard
             ? /* R117 (F-2): the iOS virtual keyboard was covering the fixed
                  buy bar — the hook value existed since R116 but was never
@@ -723,6 +723,25 @@ export default function ProductPage() {
               "sticky -mx-4 mobile-sticky-above-nav pb-3"
         }`}
       >
+        {/* R138 (visual): the premium-checkout-bar chrome —
+            ① bg-card/97 + backdrop-blur-xl → SOLID bg-card (the 96-F4
+            MobileNav glass diet: at 97% opacity the blur was sub-perceptual
+            while an always-mounted bar over scrolling content re-rastered
+            the filter every frame; "no glass" is the round's contract).
+            ② border-t /50 → /35 + the .hairline-glow utility as the
+            bar's FIRST child — the exact Navbar/MobileNav/Footer edge
+            stack (the 45-layer buys chrome now wears the chrome family's
+            top rule instead of hand-rolling a firmer border).
+            ③ shadow-2xl shadow-black/30 → the r138-B resting elevation
+            mirrored for the bottom-docked orientation
+            (0_-1px_2px@30% contact line + 0_-10px_28px_-14px@40%
+            contained ambient, cast UP onto the content the bar occludes)
+            — the 50px 2xl halo wrapped all four sides; one calm
+            two-layer edge reads as a checkout bar, not a floating chip.
+            The CTA twin inside rides the canonical size="lg" recipe
+            (CtaBlock's R138 note); z-[45]/keyboard/short-viewport/
+            clearance logic byte-identical. */}
+        <div className="hairline-glow" />
         <CtaBlock
           token={token}
           product={product}

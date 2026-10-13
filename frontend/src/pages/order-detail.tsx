@@ -101,6 +101,11 @@ function CopyField({
 function StatusSteps({ status }: { status: string }) {
   if (status === "failed" || status === "refunded") return null;
   const done = status === "completed";
+  // R138 (visual): the completed ladder reads success at every rung
+  // (/15 fill, /45 ring, /40 connector, full-ink glyphs at lucide
+  // stroke 2) — the sanctioned status-success vocabulary; verified,
+  // unchanged this round (the 700ms connector fill is the state-flip
+  // transition, existing motion under the reduced-motion kill-switch).
   return (
     <div className="flex items-center gap-0 my-4">
       {/* Step 1 */}
@@ -446,6 +451,17 @@ export default function OrderDetailPage() {
 
         {/* ── Delivery credentials ────────────────────────────────── */}
         {hasDelivery ? (
+          /* R138 (visual — the success-reading verification): this card
+             is the page's payoff moment and already speaks the round's
+             language — float-in stagger-1 is the sanctioned calm
+             entrance (header → credentials → actions, one stagger
+             ladder), and the ink is the status-success ladder at rest
+             (/22 card edge, /5 header wash, /12+/22 ShieldCheck tile
+             with the full-ink glyph). success-ring is deliberately NOT
+             imported here: OrderSuccessScreen (checkout) owns that
+             one-shot signature, and the animation-count rule says the
+             stagger entrance already carries the moment. Verified —
+             no chrome change needed. */
           <div className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in stagger-1">
             <div className="flex items-center gap-3 px-5 py-3.5 border-b border-status-success/15 bg-status-success/5">
               <div className="w-7 h-7 rounded-lg bg-status-success/12 border border-status-success/22 flex items-center justify-center shrink-0">
@@ -547,7 +563,10 @@ export default function OrderDetailPage() {
              back to the wallet (terminal-state guarded, credited once),
              so the figure is available on the order itself. The old
              error-red card said «تم إعادة المبلغ…» while showing NO
-             amount — an unreceipted money movement. */
+             amount — an unreceipted money movement.
+             R138 (visual): verified — refunds stay status-info per §4
+             (never restyled toward success/failure); untouched this
+             round, money rows byte-identical. */
           <div
             className={`bg-card border rounded-2xl p-6 text-center float-in stagger-1 ${
               order.status === "refunded" ? "border-status-info/22" : "border-status-error/22"

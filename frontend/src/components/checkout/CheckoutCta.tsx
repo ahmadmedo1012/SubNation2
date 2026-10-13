@@ -66,6 +66,16 @@ export function CheckoutCta({
          R116-S2 CTA recipe: size=lg owns the height/text/weight
          base; the remaining overrides are the functional wrap
          guards above + the w-full summary-card layout. */
+      /* R138 (visual audit): recipe verified canonical — nothing
+         hand-rolled to remove. size="lg" + the default variant own
+         every visual token (h-12, text-base, the to-primary/95
+         gradient + primary border + shadow-md→hover:shadow-lg,
+         press-spring); the className below carries ONLY the
+         documented functional guards above (whitespace-normal +
+         text-balance + min-h-12, the wrap pins
+         checkout-idempotency-keys reads) + the w-full
+         summary-column layout (the aside is never narrow-then-wide,
+         so sm:w-auto would mis-shrink it inside the 360px card). */
       size="lg"
       className="w-full min-h-12 whitespace-normal text-balance leading-snug"
     >

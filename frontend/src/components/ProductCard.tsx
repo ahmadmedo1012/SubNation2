@@ -358,11 +358,11 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
   return (
     <div
       className={`
-        group relative h-full bg-card border border-border/70 rounded-2xl overflow-hidden cursor-pointer flex flex-col
+        group relative h-full bg-card border border-border/60 rounded-2xl overflow-hidden cursor-pointer flex flex-col
         float-in ${staggerClass}
         transition-all duration-280 ease-out
-        shadow-sm shadow-black/25
-        card-spring hover:border-border hover:shadow-xl
+        shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]
+        card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
         ${unavailable ? "opacity-45 saturate-[0.3]" : ""}
       `}
     >
@@ -370,17 +370,44 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           vs the body's rgb(10,12,16) — a ~1.05:1 luminance ratio, so the
           surface alone can never delineate the container, and the old
           border-border/50 (≈rgb(36,41,50) at half alpha) measured
-          ~invisible. The chrome now carries the container read instead:
-          resting border-border/70 + shadow-sm shadow-black/25 (the
+          ~invisible. The chrome carries the container read instead (the
           --card token is deliberately untouched — another agent owns
-          input borders and the surface ladder). */}
+          input borders and the surface ladder).
+          R138 (visual — supersedes the /70 + shadow-sm resting choice):
+          the live-site audit read RESTING cards as "raw HTML containers"
+          — flat next to their own (good) hover state. Resting re-tune:
+          (1) border 70→60 — the container read now leans on elevation +
+          the muted image well below, and the wider 60→100% border gap
+          makes the hover affordance legible in a static screenshot
+          (hover:border-border unchanged). (2) shadow-sm
+          shadow-black/25 → ONE two-layer calm elevation, the
+          premium-toast recipe at resting scale: a tight contact line
+          (1px 2px @30%) + a contained ambient wash (10px 28px −14px
+          @40%) that reads as mass on a shelf — resting < hover-xl <
+          toast-ambient (14px 36px @55%) keeps the elevation ladder
+          ordered. Deliberately NEUTRAL black, not the primary-tinted
+          hair this round considered: a primary tint at 4–6% reads as
+          COLOR on .light and skirts the banned glow-halo language,
+          while black reads as pure depth on both themes. (3)
+          shadow-black/25 moved to the hover scope — v4 shadow-COLOR
+          utilities re-color every layer through --tw-shadow-color, so
+          keeping it at base would flatten both resting layers to 25%;
+          hover:shadow-black/25 keeps the hover render (xl @ 25% black)
+          byte-identical to the R120 progression. */}
       <Link
         href={`/product/${product.slug ?? product.id}`}
         aria-label={ariaLabel}
         className="flex flex-col flex-1"
       >
+        {/* R138 (visual): shadow-primary/40 → /30 — the badge joins the
+            desktop quick-add on ONE primary-chip elevation value
+            (shadow-md shadow-primary/30); a same-family 10% alpha
+            spread is vocabulary drift. AA re-verified this round: white
+            on bg-primary ≈4.9:1 dark / ≈5.3:1 light at 11px bold
+            (text-3xs floor) — ink untouched. px-1.5/py-0.5 +
+            rounded-full + font-bold match every pill sibling. */}
         {product.discount_percent && !unavailable && (
-          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-0.5 bg-primary text-primary-foreground text-3xs font-bold px-1.5 py-0.5 rounded-full shadow-md shadow-primary/40">
+          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-0.5 bg-primary text-primary-foreground text-3xs font-bold px-1.5 py-0.5 rounded-full shadow-md shadow-primary/30">
             <Tag className="w-2 h-2" />
             {product.discount_percent}%
           </div>
@@ -405,7 +432,16 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
             states نفد honestly); the aria-label above already announces
             «نفد المخزون» and the CTAs below stay gated off. */}
 
-        <div className="relative aspect-square bg-card overflow-hidden">
+        {/* R138 (visual): bg-card → bg-muted/60 — the media plane was the
+            SAME tone as the card body (composite ≈1.3:1 on dark,
+            sub-perceptual), so catalog imagery read as raw file previews
+            floating on a bare background (live-site audit). A /60 muted
+            wash — the empty-state icon-tile vocabulary — gives the well
+            its own shelf surface: a STATIC token wash (theme-aware via
+            color-mix), not decoration. The img's drop-shadow-lg grounds
+            the asset on the plane; the white/[0.06] top sheen below
+            (R120-B1 A1-F4) stays. */}
+        <div className="relative aspect-square bg-muted/60 overflow-hidden">
           <div
             className={`absolute top-0 inset-x-0 h-[2px] ${accent.accentLine} opacity-65 z-[1]`}
           />
@@ -583,6 +619,12 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
               4px gap (the stacked variant sorts after md:pe-12 in the
               utilities layer, so the override is cascade-safe). */}
           <div className="flex items-center justify-between pt-2.5 border-t border-border/20 mt-auto md:pe-12 md:[@media(hover:none)]:pe-15">
+            {/* R138 (visual audit): price block verified — no drift.
+                text-lg font-bold + tabular-nums leads the title's
+                text-sm by a full step (money is the card's loudest
+                element); the strike carries the muted + line-through +
+                tabular-nums family; «تبدأ من» stays the muted 3xs
+                qualifier. Values untouched. */}
             <div className="flex items-baseline gap-1.5 flex-wrap">
               {product.price_from && (
                 <span className="text-3xs font-semibold text-muted-foreground">تبدأ من</span>

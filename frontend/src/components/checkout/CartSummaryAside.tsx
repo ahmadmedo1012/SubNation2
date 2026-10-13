@@ -40,7 +40,14 @@ export function CartSummaryAside({
 }) {
   return (
     <aside className="md:sticky md:top-20 md:self-start">
-      <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
+      {/* R138 (visual): the receipt gets the family resting elevation
+          (ProductCard's two-layer calm recipe, this round) — the summary
+          reads as a paper slip lying on the page: the tight 1px/2px
+          contact line grounds it, the contained 10px/28px ambient gives
+          it mass. border/60 stays the family edge; the money path's
+          three cards (this, the coupon, the payment panel) rest as one
+          family. */}
+      <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
         <h2 className="font-bold text-base mb-4">ملخص الطلب</h2>
 
         {/* 98-F2 (R98-A3 F5 / P2): live-price reconciliation
@@ -91,7 +98,11 @@ export function CartSummaryAside({
           </div>
         ) : (
           <>
-            <ul className="space-y-2 mb-4 max-h-72 overflow-y-auto">
+            {/* R138 (visual): receipt rhythm — rows tighten 8→6px and the
+                pre-rule gap 16→12px; the thumbnails keep the rows
+                structured, so the rules live at SECTION boundaries only
+                (items | sums | terminal الإجمالي), never between rows. */}
+            <ul className="space-y-1.5 mb-3 max-h-72 overflow-y-auto">
               {items.map((it) => {
                 const price = it.salePriceLYD ?? it.priceLYD;
                 // 98-F2 (F1): with a coupon applied the backend charges
@@ -99,9 +110,7 @@ export function CartSummaryAside({
                 // line, not the pre-coupon price (the Σ row below then
                 // reads as the sum of exactly these lines).
                 const lineKey = `${it.productId}:${it.variantId ?? 0}`;
-                const unitFinal = appliedCoupon
-                  ? appliedCoupon.lineUnitFinals[lineKey]
-                  : undefined;
+                const unitFinal = appliedCoupon ? appliedCoupon.lineUnitFinals[lineKey] : undefined;
                 const displayUnit = unitFinal ?? price;
                 const displayTotal =
                   unitFinal != null ? unitFinal * it.quantity : price * it.quantity;
@@ -137,7 +146,12 @@ export function CartSummaryAside({
                           (the ellipsis eats the name's beginning).
                           Same isolation idiom as cart.tsx's it.name
                           twin + ProductCard's h3. */}
-                      <div dir="auto" className="font-bold truncate">
+                      {/* R138 (visual): title 600 — the cart line-item
+                          twin's demotion (title 600 / amount 700): the
+                          line total to the right stays the loudest money
+                          on the row, the name the identifier; both pages
+                          of the funnel speak one ladder. */}
+                      <div dir="auto" className="font-semibold truncate">
                         {it.name}
                       </div>
                       {it.variantLabel && (
@@ -156,24 +170,39 @@ export function CartSummaryAside({
                 );
               })}
             </ul>
-            <div className="border-t border-border/50 pt-3 space-y-1.5 mb-4">
+            {/* R138 (visual): receipt rhythm — the section rule softens
+                /50→/20 (the ProductCard internal-divider hairline value;
+                /50 read as a hard edge, not paper) and the sums tighten
+                6→4px. Below: the weight ladder — sums ride 600 so the
+                terminal «الإجمالي» row's 700 + text-base reads as the
+                weight+size step (NOT color), while the line rows above
+                keep 700 amounts: money data leads, derived sums sit one
+                step down, the terminal closes the slip. */}
+            <div className="border-t border-border/20 pt-3 space-y-1 mb-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">المجموع الفرعي</span>
-                <span className="font-bold tabular-nums">{formatCurrency(totalLYD)}</span>
+                <span className="font-semibold tabular-nums">{formatCurrency(totalLYD)}</span>
               </div>
               {appliedCoupon && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">خصم الكوبون</span>
-                  <span className="font-bold tabular-nums text-status-success">
+                  {/* The discount keeps its success ink (the
+                      discount-reads-positive register) — it is semantic
+                      status, not emphasis. */}
+                  <span className="font-semibold tabular-nums text-status-success">
                     −{formatCurrency(appliedCoupon.discount_amount)}
                   </span>
                 </div>
               )}
-              <div className="flex items-center justify-between text-base font-bold pt-1">
+              {/* R138 (visual): the terminal line — a /20 receipt rule
+                  above it + the weight 700 + text-base size step (the
+                  only 16px money on the slip) carry the emphasis; the
+                  amount drops the brand tint for plain foreground —
+                  weight+size, not color, the cart summary's own text-2xl
+                  terminal and ProductCard's price ride plain ink. */}
+              <div className="flex items-center justify-between text-base font-bold border-t border-border/20 pt-2">
                 <span>{appliedCoupon ? "الإجمالي بعد الكوبون" : "الإجمالي"}</span>
-                <span className="tabular-nums text-primary-text">
-                  {formatCurrency(comparisonTotal)}
-                </span>
+                <span className="tabular-nums">{formatCurrency(comparisonTotal)}</span>
               </div>
             </div>
 

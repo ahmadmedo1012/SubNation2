@@ -45,7 +45,15 @@ export function CouponCard({
 }) {
   return (
     // Coupon
-    <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
+    // R138 (visual): the family resting elevation (ProductCard's
+    //   two-layer calm recipe, this round) — the money path's three
+    //   cards (this, the payment panel, the summary receipt) rest as
+    //   one family: bg-card + border/60 + the calm contact line +
+    //   contained ambient. The input + apply/clear pair below were
+    //   audited and left untouched: the field rides the shared
+    //   Input's own bg-card/60 quiet fill and /75 resting edge, and
+    //   the h-11 pair is the R116-S2 44px floor.
+    <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
       <div className="flex items-center gap-2 mb-3">
         <Tag className="w-4 h-4 text-muted-foreground" />
         <h2 className="font-bold text-base">كوبون خصم</h2>
@@ -70,9 +78,7 @@ export function CouponCard({
              sender-phone pattern (wallet.tsx aria-invalid +
              aria-describedby → the id'd error <p> below). */
           aria-invalid={!!couponNotice && !appliedCoupon}
-          aria-describedby={
-            couponNotice && !appliedCoupon ? "checkout-coupon-error" : undefined
-          }
+          aria-describedby={couponNotice && !appliedCoupon ? "checkout-coupon-error" : undefined}
           /* 96-F4 (R96 A2 P3-1 / A1 M05): Safari/iOS happily autofills
              coupon inputs from saved emails, and the shared Input's
              text-base (16px < md) already prevents the iOS focus-zoom —

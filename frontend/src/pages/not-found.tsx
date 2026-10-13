@@ -19,14 +19,30 @@ export default function NotFound() {
   });
 
   return (
-    <div className="min-h-[calc(100dvh-4rem)] flex flex-col items-center justify-center px-4 text-center">
+    // R138 (visual): ambient-wash — the full-bleed 404 lifts off the
+    // page on the orchestrator's two-point static radial atmosphere
+    // (primary at the reading corner, info-cool at the opposite
+    // diagonal; the same vocabulary GuestHero adopted this round).
+    // Static and GPU-free — depth cue, not decoration.
+    <div className="ambient-wash min-h-[calc(100dvh-4rem)] flex flex-col items-center justify-center px-4 text-center">
       {seoBlock}
       <div className="space-y-8 max-w-sm w-full">
         {/* Illustration */}
         <div className="relative mx-auto w-40 h-40 flex items-center justify-center select-none">
-          <div className="absolute inset-0 rounded-full bg-primary/4 border border-primary/8 animate-pulse" />
-          <div className="absolute inset-4 rounded-full bg-primary/6 border border-primary/12" />
+          {/* R138 (visual): the compass-rose rings were the hero audit's
+              sub-perceptual class (/8–/12 edges rendered as a void) —
+              raised one quiet step (fills /5 + /8, edges /12 + /18) so
+              the motif is FELT, not read. Flat fills only, no blur/glow
+              (the craft floor holds). The outer ring's animate-pulse is
+              EXISTING motion (the FlashSaleBanner precedent: it dies
+              under the global reduced-motion kill-switch, index.css) —
+              kept, not re-invented. */}
+          <div className="absolute inset-0 rounded-full bg-primary/5 border border-primary/12 animate-pulse" />
+          <div className="absolute inset-4 rounded-full bg-primary/8 border border-primary/18" />
           <div className="relative flex flex-col items-center">
+            {/* R138 (visual): the Compass rides w-10 — the top of the
+                documented 7–10 empty-state/hero art tier; verified,
+                unchanged. */}
             <Compass className="w-10 h-10 text-primary/40 mb-1" />
             {/* R111-F2 C1: Latin digits — the site-wide numeral convention
                 (utils.ts -u-nu-latn pins, Arabic-Indic input conversion).
@@ -86,7 +102,12 @@ export default function NotFound() {
                 {/* R123-E4b (P3-f): inline-flex + min-h-11 — the old
                     px-3 py-1.5 chip measured ≈30px, well under the 44px
                     touch floor (WCAG 2.5.8 / the app's min-h-11 idiom). */}
-                <span className="inline-flex items-center min-h-11 text-xs text-muted-foreground hover:text-foreground px-3 rounded-lg border border-border/50 hover:border-border bg-secondary/30 hover:bg-secondary/60 transition-all cursor-pointer">
+                {/* R138 (visual): the quiet-chip vocabulary the filter
+                    bar converged on this round (138-D: bg-muted/30 +
+                    border/30 resting, hover /70 + muted/60, color-only
+                    transition) — ONE inactive-chip family site-wide; was
+                    the secondary-tinted R123 recipe. */}
+                <span className="inline-flex items-center min-h-11 text-xs text-muted-foreground hover:text-foreground px-3 rounded-lg border bg-muted/30 border-border/30 hover:border-border/70 hover:bg-muted/60 transition-colors cursor-pointer">
                   {l.label}
                 </span>
               </Link>

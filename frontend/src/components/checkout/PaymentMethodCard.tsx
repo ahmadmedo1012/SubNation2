@@ -29,11 +29,24 @@ export function PaymentMethodCard({
 }) {
   return (
     // Payment method — wallet only (see component docblock)
-    <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up">
+    // R138 (visual): the family resting elevation (ProductCard's
+    //   two-layer calm recipe, this round) — the money path's three
+    //   cards (this, the coupon, the summary receipt) rest as one
+    //   family: bg-card + border/60 + the calm contact line +
+    //   contained ambient.
+    <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
       <div className="flex items-center gap-2 mb-4">
         <Lock className="w-4 h-4 text-muted-foreground" />
         <h2 className="font-bold text-base">طريقة الدفع</h2>
       </div>
+      {/* R138 (visual audit): wallet-toggle chrome verified — NO
+          change. border-primary/50 + bg-primary/8 + shadow-sm is the
+          established money-surface SELECTION register (the wallet
+          transfer form's selected tile rides border-primary/50 on
+          bg-primary/15; this is the larger panel so the lighter /8
+          wash is the right scale), and shadow-sm is the inner-panel
+          elevation step under the card's new two-layer resting
+          shadow — no drift to fix. */}
       <div className="flex items-start gap-3 p-4 rounded-xl border border-primary/50 bg-primary/8 shadow-sm">
         <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-primary/15 text-primary">
           <Wallet className="w-5 h-5" />
@@ -70,9 +83,7 @@ export function PaymentMethodCard({
           className="mt-3 p-3 rounded-xl bg-status-warning/10 border border-status-warning/22 text-status-warning text-xs font-bold flex items-start gap-2"
         >
           <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-          <span>
-            تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند إتمام الطلب.
-          </span>
+          <span>تعذّر التحقق من رصيدك. يمكن المتابعة وسيتم التحقق من الرصيد عند إتمام الطلب.</span>
         </div>
       )}
 

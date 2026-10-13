@@ -7,9 +7,23 @@ import { formatCurrency } from "@/lib/utils";
 //      visible so the price comparison is inline (Libyan shoppers compare
 //      monthly-equivalent value per option, not just the total).
 //
-// Mobile-first: pills wrap, min-height 44px (thumb rule), the selected state
-// carries the accent ring + bold price, unavailable options dim out. The
-// label text uses the Arabic labels imported with the catalog.
+// Mobile-first: pills wrap, min-height 44px (thumb rule), the selected
+// state is the site's tinted pill (R138 below), unavailable options dim
+// out. The label text uses the Arabic labels imported with the catalog.
+//
+// R138 (visual): the two selected states converged on the round's
+// active-chip idiom — `bg-primary/15 text-primary-text
+// border-primary/30` + the existing font-bold (the CatalogFiltersBar
+// chip / MobileNav pill family). Both rows used to speak two dialects
+// (the plan pill a SOLID bg-primary fill + colored shadow, the duration
+// pill a /12 tint with a FULL-strength border + shadow) — one calm
+// language now: the 15% wash + /30 edge + bold primary-text ink reads
+// selected at a glance without shouting, and no pill carries a colored
+// shadow (glow-halo vocabulary). AA (computed, full composite stack —
+// card ⊕ muted/10 container ⊕ primary/15): primary-text 5.19:1 dark /
+// 4.54:1 light at 14px bold; the duration label keeps its own
+// text-foreground (16.06:1 / 13.66:1) and the price its AA status ink
+// (4.97:1 / 4.91:1 at 12px bold — A13-F12).
 //
 // R135 (FE-3 decomposition): extracted verbatim from pages/product.tsx —
 // the selector was already a stateless (props-only) component inside the
@@ -87,9 +101,15 @@ export function VariantSelector({
                     if (cheapest) onSelect(cheapest.id);
                   }}
                   className={`min-h-11 px-4 rounded-xl border text-sm font-bold transition-all press-spring ${
+                    /* R138 (visual): solid bg-primary + text-primary-foreground
+                       + shadow-md shadow-primary/25 → the tinted pill — the
+                       plan row's selected state now speaks the same language
+                       as the duration row below (one component, one dialect);
+                       ink AA in the header note. The colored shadow is gone
+                       (no glow vocabulary on a selection state). */
                     isPlanSelected
-                      ? "bg-primary text-primary-foreground border-primary shadow-md shadow-primary/25"
-                      : "bg-card text-foreground/80 border-border/50 hover:border-primary/45 hover:text-primary-text"
+                      ? "bg-primary/15 text-primary-text border-primary/30"
+                      : "bg-card text-foreground/80 border-border/50 hover:border-primary/40 hover:text-primary-text"
                   } ${!planAvailable ? "opacity-40 pointer-events-none" : ""}`}
                 >
                   {/* R130 (A2-F3): the page's own «متوفر (N)» badge sits right
@@ -122,8 +142,14 @@ export function VariantSelector({
                 disabled={!v.is_available}
                 onClick={() => onSelect(v.id)}
                 className={`min-h-11 flex flex-col items-start justify-center gap-0.5 px-3 py-2 rounded-xl border text-start transition-all press-spring ${
+                  /* R138 (visual): /12 tint + full-strength border-primary +
+                     shadow-md shadow-primary/15 → the round's chip trio
+                     (/15 wash + /30 edge + bold primary-text ink, matched
+                     to the plan row above). The price keeps the A13-F12
+                     both-theme-safe status ink — on the /15 composite it
+                     measures 4.97:1 dark / 4.91:1 light at 12px bold. */
                   isSelected
-                    ? "bg-primary/12 border-primary text-primary shadow-md shadow-primary/15"
+                    ? "bg-primary/15 border-primary/30 text-primary-text"
                     : "bg-card border-border/50 hover:border-primary/40"
                 } ${!v.is_available ? "opacity-40 pointer-events-none" : ""}`}
               >
