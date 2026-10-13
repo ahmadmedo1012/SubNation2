@@ -1,14 +1,18 @@
-import { Button } from "@/components/ui/button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
-// R135 (FE-3 decomposition): the page's self-contained subcomponents and
-// pure helpers moved to @/components/product/* (verbatim moves — the money
-// path, state atoms and every handler stay HERE; the extracts render the
-// byte-identical DOM they rendered inline yesterday). Import surface:
-//   • buy-intent-key / category-presentation — the page's pure modules
-//   • CopyField/CouponField/CtaBlock/VariantSelector/Recommendations —
-//     the page's own already-encapsulated subtrees
-//   • OrderSuccessScreen/ProductMediaSection/PriceStockPanel/
-//     TrustSignals/FaqAccordion — this round's section extractions
+// R135 (FE-3 decomposition) + R137 (closing decomposition): the page's
+// self-contained subcomponents and pure helpers moved to
+// @/components/product/* (verbatim moves — the money path, state atoms and
+// every handler stay HERE; the extracts render the byte-identical DOM they
+// rendered inline yesterday). Import surface:
+//   • buy-intent-key / product-seo — the page's pure modules
+//   • BuyPanelColumn — the R116-S2 END column (selector → price → usage →
+//     error → trust → FAQ → mobile coupon → desktop CTA ride inside it);
+//     the compact sticky-bar CtaBlock twin still mounts HERE
+//   • ProductBreadcrumbNav / ProductNotFoundCard / ProductOutageCard —
+//     the R137 closing section extractions
+//   • OrderSuccessScreen / ProductMediaSection / RecommendationsSection —
+//     the R135 section extractions
+//   • CouponField's CouponResult contract — the coupon quartet's type
 import {
   buyIntentFingerprint,
   clearBuyIntentKey,
@@ -16,27 +20,22 @@ import {
   persistBuyIntentKey,
   toCents,
 } from "@/components/product/buy-intent-key";
-import { KNOWN_CATEGORIES, categoryMetaFor } from "@/components/product/category-presentation";
-import { CouponField, type CouponResult } from "@/components/product/CouponField";
+import { BuyPanelColumn } from "@/components/product/BuyPanelColumn";
 import { CtaBlock } from "@/components/product/CtaBlock";
-import { FaqAccordion } from "@/components/product/FaqAccordion";
-import {
-  OrderSuccessScreen,
-  type PurchaseSummary,
-} from "@/components/product/OrderSuccessScreen";
-import { PriceStockPanel } from "@/components/product/PriceStockPanel";
+import type { CouponResult } from "@/components/product/CouponField";
+import { OrderSuccessScreen, type PurchaseSummary } from "@/components/product/OrderSuccessScreen";
+import { ProductBreadcrumbNav } from "@/components/product/ProductBreadcrumbNav";
+import { ProductNotFoundCard } from "@/components/product/ProductNotFoundCard";
+import { ProductOutageCard } from "@/components/product/ProductOutageCard";
 import { ProductMediaSection } from "@/components/product/ProductMediaSection";
+import { productSeoInput } from "@/components/product/product-seo";
 import { RecommendationsSection } from "@/components/product/RecommendationsSection";
-import { TrustSignals } from "@/components/product/TrustSignals";
-import { VariantSelector } from "@/components/product/VariantSelector";
 import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
-import { buildBreadcrumbLd, buildFaqLd, buildProductLd } from "@/lib/seo-builders";
-import { categoryLabel, formatCurrency } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
 import { quietNextScrollToTopReset } from "@/lib/navigation-quiet";
@@ -55,9 +54,8 @@ import {
   useGetMe,
   useGetProduct,
 } from "@workspace/api-client-react";
-import { AlertCircle, ArrowRight, ChevronLeft, Home, Info, Package } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "wouter";
+import { useLocation, useParams } from "wouter";
 
 export default function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -540,11 +538,11 @@ export default function ProductPage() {
   // Catalog-2026-09-20: operator-provided seo_title / seo_description
   // overrides (from the import) take precedence; the fallback stays
   // price-aware off the selected variant.
-  const seoPrice = selectedVariant
-    ? (selectedVariant.sale_price ?? selectedVariant.price)
-    : product
-      ? (product.sale_price ?? product.price)
-      : 0;
+  // R137 (closing): the three-branch input object (product / 404 /
+  // neutral) moved verbatim to @/components/product/product-seo.ts —
+  // the pure builder computes the exact same argument; productFaqs
+  // stays HERE because the FAQ accordion mount gates on the same array
+  // (one source).
   // Only emit FAQPage JSON-LD when there's a non-empty curated FAQ list
   // on the product. Empty arrays are treated by Google as a thin
   // structured-data block.
@@ -557,81 +555,7 @@ export default function ProductPage() {
   const productFaqs =
     Array.isArray(productAny?.faq) && productAny!.faq!.length > 0 ? productAny!.faq! : null;
   const seoBlock = useSeo(
-    product
-      ? {
-          title: productAny?.seo_title?.trim()
-            ? productAny.seo_title
-            : `${product.name} — ${formatCurrency(seoPrice)}`,
-          description: (
-            productAny?.seo_description?.trim() ||
-            product.description ||
-            `${product.name} متوفر بالدينار الليبي على SubNation. تسليم فوري بعد الدفع.`
-          ).slice(0, 160),
-          image: product.image_url ?? undefined,
-          type: "product",
-          path: `/product/${product.slug ?? product.id}`,
-          locale: "ar",
-          jsonLd: [
-            buildProductLd({
-              id: product.id,
-              slug: product.slug,
-              name: product.name,
-              description: product.description,
-              descriptionLong: productAny?.description_long ?? null,
-              imageUrl: product.image_url,
-              price: seoPrice,
-              category: product.category,
-              isActive: product.is_active ?? true,
-              // D2-F2 (R111): thread the REAL stock signal — the same
-              // is_available the buy button gates on — so the Offer LD
-              // asserts OutOfStock when the UI says «نفد المخزون».
-              isAvailable: product.is_available,
-            }),
-            buildBreadcrumbLd([
-              { name: "الرئيسية", href: "/" },
-              {
-                name: categoryLabel(product.category ?? "") || "المنتجات",
-                href:
-                  product.category && KNOWN_CATEGORIES.has(product.category)
-                    ? `/category/${product.category}`
-                    : "/",
-              },
-              { name: product.name, href: `/product/${product.slug ?? product.id}` },
-            ]),
-            ...(productFaqs ? [buildFaqLd(productFaqs)] : []),
-          ],
-        }
-      : isNotFoundError
-        ? {
-            /* R124 (A10-F1 P2): a 404 is definitive — the infinite
-               /product/<anything> URL space must never consolidate
-               against the homepage (Google flags homepage-canonicalized
-               soft-404s; category.tsx's unknown-slug branch is the
-               in-house pattern). noindex,follow + a SELF canonical: the
-               phantom URL consolidates nowhere, and MetaTags' upsert
-               keeps og:url honest for WhatsApp unfurls of dead product
-               links. The block is rendered by the !product early return
-               below (category.tsx A7-F1 pattern — an unrendered useSeo
-               element owns nothing and the App fallback would win);
-               the LOADING skeleton and the outage card deliberately
-               render NO block, keeping the App fallback's index,follow
-               + self canonical there (an outage on a REAL product URL
-               must not deindex or re-canonicalize it). The neutral
-               third branch below only covers the defensive null-data-
-               without-error edge. */
-            title: "المنتج غير موجود — SubNation",
-            description:
-              "المنتج المطلوب غير موجود أو لم يعد متوفراً. تصفّح باقي الاشتراكات الرقمية بالدينار الليبي من الصفحة الرئيسية.",
-            path: `/product/${param}`,
-            locale: "ar",
-            robots: "noindex,follow",
-          }
-        : {
-            title: "SubNation",
-            description: "اشتراكات رقمية بالدينار الليبي.",
-            path: "/",
-            locale: "ar",
-          },
+    productSeoInput({ product, selectedVariant, productFaqs, param, isNotFoundError }),
   );
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
@@ -650,102 +574,18 @@ export default function ProductPage() {
     /* Distinguish a network/server failure from a real 404 — both used to
        render "المنتج غير موجود", which hides outages from shoppers. */
     return (
-      <div className="max-w-xl mx-auto px-4 py-20 text-center text-muted-foreground">
-        <div className="w-16 h-16 rounded-2xl bg-status-error/8 border border-status-error/22 mx-auto mb-4 flex items-center justify-center">
-          <Package className="w-7 h-7 text-status-error" aria-hidden="true" />
-        </div>
-        <p className="font-bold mb-1 text-foreground/80">تعذّر تحميل المنتج</p>
-        <p className="text-sm mb-3">حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة</p>
-        <div className="flex items-center justify-center gap-2.5">
-          {/* R125-I7 (A7 B-4): both recovery buttons ride the 44px tap
-              floor (min-h-11) — the drifted px-5 py-2 measured ~37px.
-              The two-button row (retry + escape hatch) stays bespoke
-              per the R124-I8 extraction ledger. */}
-          <button
-            onClick={() => refetchProduct()}
-            className="min-h-11 text-sm font-bold text-primary-text border border-primary/25 px-5 rounded-xl hover:bg-primary/8 transition-colors press-spring"
-          >
-            إعادة المحاولة
-          </button>
-          <button
-            onClick={() => navigate("/")}
-            className="min-h-11 text-sm text-muted-foreground hover:text-foreground border border-border/50 px-5 rounded-xl transition-colors press-spring"
-          >
-            العودة للكتالوج
-          </button>
-        </div>
-      </div>
+      // R137 (closing): the outage card moved verbatim to
+      // ProductOutageCard (byte-identical markup; the two recovery
+      // callbacks flow down as props).
+      <ProductOutageCard onRetry={() => refetchProduct()} onNavigateHome={() => navigate("/")} />
     );
 
   if (!product)
-    return (
-      <div className="max-w-xl mx-auto px-4 py-20 text-center text-muted-foreground">
-        {/* A7-F1 (category.tsx pattern): the not-found SEO block renders
-            HERE too — this early return is the only place the 404 branch's
-            noindex,follow + self canonical can own the head. Without this
-            render the useSeo element never mounts, the App-level fallback
-            (index,follow) wins, and the R124 A10-F1 fix is inert. */}
-        {seoBlock}
-        {/* R128-A2 (F-2): converged on the generic 404's recipe
-            (not-found.tsx) — real h1, muted copy, size="lg" Button pair,
-            quick links. The retired branch (p.font-bold + a 14px
-            underline recovery link) shipped the HIGHER-traffic 404
-            (delisted products, dead share links) below the app's own
-            404 craft bar: no heading element, a sub-44px recovery CTA. */}
-        <div className="max-w-sm mx-auto space-y-8">
-          <div>
-            <div className="w-16 h-16 rounded-2xl bg-muted mx-auto mb-4 flex items-center justify-center">
-              <Package className="w-7 h-7 opacity-40" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground mb-3">المنتج غير موجود</h1>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              يبدو أن هذا المنتج لم يعد متوفراً أو أن الرابط غير صحيح.
-            </p>
-          </div>
-          {/* Actions — the R116-S1 CTA recipe (not-found.tsx): primary
-              rides the canonical Button (size lg, w-full sm:w-auto);
-              secondary rides the system secondary variant. */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Button asChild size="lg" className="w-full sm:w-auto">
-              {/* Home IS the catalog (App.tsx routing) — same destination
-                  the old recovery link carried. */}
-              <Link href="/">
-                <Home className="w-4 h-4" />
-                العودة للكتالوج
-              </Link>
-            </Button>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => window.history.back()}
-              className="w-full sm:w-auto"
-            >
-              {/* RTL: "back" points right (not-found.tsx idiom) */}
-              <ArrowRight className="w-4 h-4" />
-              رجوع
-            </Button>
-          </div>
-          {/* Quick links — the not-found.tsx band (min-h-11 chips). */}
-          <div className="pt-2 border-t border-border/40">
-            <p className="text-2xs font-bold text-muted-foreground mb-3">روابط سريعة</p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {[
-                { href: "/", label: "المتجر" },
-                { href: "/wallet", label: "المحفظة" },
-                { href: "/orders", label: "طلباتي" },
-                { href: "/support", label: "الدعم" },
-              ].map((l) => (
-                <Link key={l.href} href={l.href}>
-                  <span className="inline-flex items-center min-h-11 text-xs text-muted-foreground hover:text-foreground px-3 rounded-lg border border-border/50 hover:border-border bg-secondary/30 hover:bg-secondary/60 transition-all cursor-pointer">
-                    {l.label}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    // R137 (closing): the 404 card moved verbatim to ProductNotFoundCard
+    // (the A7-F1 seoBlock render rides inside it — the branch's
+    // noindex,follow + self canonical only own the head when the card
+    // actually renders).
+    return <ProductNotFoundCard seoBlock={seoBlock} />;
 
   // Variant-aware display price — the SELECTED option's price (or the
   // product-level price for variant-less products). This is the number
@@ -788,64 +628,11 @@ export default function ProductPage() {
   return (
     <div className={`max-w-xl lg:max-w-6xl mx-auto px-4 py-6 sm:py-8 sm:pb-8 ${mobileContentPad}`}>
       {seoBlock}
-      {/* ── Visible breadcrumb (R124 / A1-F5) ─────────────────────────────
-          Mirrors category.tsx's breadcrumb row (same nav label, classes,
-          chevron idiom). Before this, the breadcrumb existed only as
-          JSON-LD — invisible to shoppers — and the product's category
-          badge on the hero was not a link, so a shopper who arrived via
-          Home → /category/<x> → product had no way back to the category
-          they were browsing. The middle segment links to the category
-          landing page only when one exists (KNOWN_CATEGORIES). */}
-      <nav
-        aria-label="مسار التنقّل"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2 min-w-0"
-      >
-        <Link href="/" className="hover:text-foreground transition-colors press-spring shrink-0">
-          الرئيسية
-        </Link>
-        {categoryMetaFor(product.category) && (
-          <>
-            {/* R124 (A1-F6): the separator denotes traversal FORWARD
-                (parent → current), so in RTL it points LEFT — the app's
-                unified forward=left chevron rule. (category.tsx's own
-                separator had a stray rotate-180 making it the lone
-                backwards exception — fixed in the same round.) */}
-            <ChevronLeft className="w-3 h-3 opacity-50 shrink-0" aria-hidden="true" />
-            <Link
-              href={`/category/${product.category}`}
-              className="hover:text-foreground transition-colors press-spring shrink-0"
-            >
-              {categoryMetaFor(product.category)!.label}
-            </Link>
-          </>
-        )}
-        <ChevronLeft className="w-3 h-3 opacity-50 shrink-0" aria-hidden="true" />
-        <span className="text-foreground font-bold truncate" aria-current="page">
-          {product.name}
-        </span>
-      </nav>
-
-      {/* Back link */}
-      {/* A3-F4 (R120-B2): min-h-11 — the 20px-tall text link measured
-          112×20 live; the catalog escape hatch now clears the 44px touch
-          floor (flex items-center centers the label inside the taller
-          box).
-          R124 (A1-F5): the escape hatch returns to the product's own
-          CATEGORY when one exists (where the shopper most likely came
-          from — previously it always dumped them on home); home stays one
-          breadcrumb hop away, and unknown/retired categories keep the
-          home fallback. The label names its destination honestly. */}
-      <button
-        onClick={() =>
-          navigate(categoryMetaFor(product.category) ? `/category/${product.category}` : "/")
-        }
-        className="min-h-11 flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm mb-4 transition-colors press-spring group"
-      >
-        <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform duration-150" />
-        {categoryMetaFor(product.category)
-          ? `العودة إلى ${categoryMetaFor(product.category)!.label}`
-          : "العودة للكتالوج"}
-      </button>
+      {/* R137 (closing): the visible breadcrumb row (R124 / A1-F5) + the
+          catalog back link moved verbatim to ProductBreadcrumbNav (the
+          categoryMetaFor lookups ride inside it; navigation flows down
+          as one onNavigate callback). */}
+      <ProductBreadcrumbNav product={product} onNavigate={navigate} />
 
       {/* R116-S2 (P2) — desktop split layout. Below lg this is the SAME
           single card as before: the wrapper carries the card chrome
@@ -866,120 +653,34 @@ export default function ProductPage() {
             category gradient/initial lookups computed inside it). */}
         <ProductMediaSection product={product} />
 
-        {/* R116-S2: END column — at lg this is the sticky buy panel
-          (selector → price → usage → error → trust → FAQ → coupon → CTA —
-          the FAQ joined this column in R117 F-3 so mobile DOM order matches
-          the visual order); below lg it dissolves (max-lg:contents) so the
-          blocks keep their exact pre-split mobile order via flex
-          order-5..order-12. */}
-        <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
-          <div className="max-lg:contents lg:p-5 lg:space-y-4">
-            {/* ── Variant selector (catalog 2026-09-20) ─────────────────────
-              Plan × Duration matrix rendered as grouped pills. Shown only
-              when the product carries >1 active option — single-option
-              products skip the selector entirely (their price block IS the
-              variant). Touch targets ≥ 44px, high-contrast selected state. */}
-            {sortedVariants.length > 1 && (
-              <div className="order-5 max-lg:px-5">
-                <VariantSelector
-                  variants={sortedVariants}
-                  selectedId={selectedVariant?.id ?? null}
-                  onSelect={setSelectedVariantId}
-                />
-              </div>
-            )}
-
-            {/* Price + stock — R135 (FE-3): the box moved verbatim to
-                PriceStockPanel (its R117 F-1 gutter + R115-I1 strike
-                comments moved with it). displayPrice and the effective
-                selection stay owned by the page — one source. */}
-            <PriceStockPanel
-              product={product}
-              selectedVariant={selectedVariant}
-              displayPrice={displayPrice}
-            />
-
-            {/* Usage terms */}
-            {product.usage_terms && (
-              <div className="order-7 max-lg:mx-5 flex gap-2.5 text-sm text-status-warning bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <span className="leading-relaxed">{product.usage_terms}</span>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div
-                role="alert"
-                className="order-8 max-lg:mx-5 flex items-center gap-2 text-destructive text-sm bg-destructive/8 border border-destructive/20 px-4 py-3 rounded-xl shake"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Trust signals — R135 (FE-3): the static grid moved verbatim to
-                TrustSignals (the order-9 wrapper rides its root, preserving
-                the R117 F-1 gutter contract). */}
-            <TrustSignals />
-
-            {/* FAQ — R135 (FE-3): the accordion moved verbatim to FaqAccordion;
-                the R117 (F-3) DOM-order comment moved with it. Rendered only
-                when the curated list is non-empty (the same page-level guard
-                gates the FAQPage JSON-LD against thin structured data). */}
-            {productFaqs && <FaqAccordion faqs={productFaqs} />}
-
-            {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
-            {token && (
-              <div className="order-11 max-lg:mx-5 sm:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
-                <CouponField
-                  token={token}
-                  couponInput={couponInput}
-                  couponResult={couponResult}
-                  couponError={couponError}
-                  couponValidating={couponValidating}
-                  onCouponChange={setCouponInput}
-                  onCouponValidate={validateCoupon}
-                  onCouponClear={clearCoupon}
-                />
-              </div>
-            )}
-
-            {/* CTA — desktop only (mobile uses sticky bar) */}
-            <div className="order-12 max-lg:px-5 hidden sm:block">
-              <CtaBlock
-                token={token}
-                product={product}
-                user={user}
-                userLoading={userLoading}
-                displayPrice={couponResult ? couponResult.final_amount : displayPrice}
-                canAfford={
-                  !!(
-                    user &&
-                    (user.wallet_balance ?? 0) >=
-                      (couponResult ? couponResult.final_amount : displayPrice)
-                  )
-                }
-                shortfall={
-                  (couponResult ? couponResult.final_amount : displayPrice) -
-                  (user?.wallet_balance ?? 0)
-                }
-                isPending={buyPending}
-                onBuy={handleBuyIntent}
-                onAddToCart={handleAddToCart}
-                onLogin={loginWithIntent}
-                onWallet={walletWithReturn}
-                couponInput={couponInput}
-                couponResult={couponResult}
-                couponError={couponError}
-                couponValidating={couponValidating}
-                onCouponChange={setCouponInput}
-                onCouponValidate={validateCoupon}
-                onCouponClear={clearCoupon}
-              />
-            </div>
-          </div>
-        </section>
+        {/* R137 (closing): the END column moved verbatim to BuyPanelColumn
+            (selector → price → usage → error → trust → FAQ → coupon →
+            desktop CTA — every value + callback flows down as props with
+            their page-side names; zero hooks inside). */}
+        <BuyPanelColumn
+          product={product}
+          sortedVariants={sortedVariants}
+          selectedVariant={selectedVariant}
+          setSelectedVariantId={setSelectedVariantId}
+          displayPrice={displayPrice}
+          token={token}
+          user={user}
+          userLoading={userLoading}
+          couponInput={couponInput}
+          couponResult={couponResult}
+          couponError={couponError}
+          couponValidating={couponValidating}
+          setCouponInput={setCouponInput}
+          validateCoupon={validateCoupon}
+          clearCoupon={clearCoupon}
+          error={error}
+          buyPending={buyPending}
+          handleBuyIntent={handleBuyIntent}
+          handleAddToCart={handleAddToCart}
+          loginWithIntent={loginWithIntent}
+          walletWithReturn={walletWithReturn}
+          productFaqs={productFaqs}
+        />
       </div>
 
       {/* Recommendations Section. Pass the resolved product id from
