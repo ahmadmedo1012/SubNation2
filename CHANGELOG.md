@@ -67,10 +67,28 @@ typecheck+suite verified before its commit):
   skips; inventory floors ≥150 files / ≥23 buttons so the pass can't go
   vacuous; 12 spot-pins).
 
+### Wave 4 — the closing invariant (commit `87c2487`)
+- **product.tsx 1,058 → 765** — the r135 page had crept back above
+  four digits; the SEO input builder (pure `product-seo.ts`), the
+  outage/404 cards, the breadcrumb row and the buy-panel END column
+  (`BuyPanelColumn`) extracted verbatim; the r135 contract's ceiling
+  re-tightened 1,200 → 1,000 with union deletion guards.
+- **ProductVariantsDialog 795 → 310** (the wave-1 deliberate skip,
+  closed) — toolbar/form-panel/rows extracts + React-free
+  `variants-meta.ts`; the three mutations, the confirm-gated delete and
+  the form atoms stay in the dialog (GlobalSearch feature precedent);
+  8-test decomposition contract.
+- **The invariant: after r137, NO frontend source file exceeds 1,000
+  lines.** Final gates: FE suite 215 files / **1,661 tests green**
+  (+241 vs the 1,420 baseline), lint 0 errors, CI green on `f0d847c`
+  (the pushed three-wave set — secret scan, lint, typecheck, OpenAPI
+  parity, drift gates, both unit suites incl. the 2,305-test backend,
+  production build).
+
 ### The round's ledger
-- **22 monoliths split: 25,855 → 11,252 orchestration lines (−56%)**,
-  202 new extract/module files, 15 new decomposition contract suites +
-  the a11y guard + the strengthened sweeps (23 new test files).
+- **22 monoliths split: 25,855 → 10,585 orchestration lines (−59%)**,
+  210 new extract/module files, 17 new decomposition contract suites +
+  the a11y guard + the strengthened sweeps (25 new test files).
 - **Every decomposition rides the R136 idiom**: verbatim extracts
   (byte-identical JSX modulo prop re-binds), page-owned money paths +
   coordinating atoms, React-free `.ts` helpers, a source-scan contract
