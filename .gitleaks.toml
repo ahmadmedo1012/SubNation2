@@ -309,3 +309,20 @@ commits = [
   "a719f7bf4acfcc6f90f6b33841496fcd1317ffc0",
   "6bbd40c2f108f6eda95146b2fdbb71f5c90dba90",
 ]
+
+# R144 (F15): the HISTORY-ONLY patch that quotes the RFC 6455 §1.3 sample
+# WebSocket nonce (dGhlIHNhbXBsZSBub25jZQ== — the spec's own documented
+# example value, a non-secret) in the exposure runbook's WS-probe
+# verification snippet. Same mechanism and rationale as R130 above: the
+# pushed-commits-only scan on `push` events never sees it, but the weekly
+# `schedule`/`workflow_dispatch` FULL-HISTORY scan surfaces it. The
+# working-tree copy was fixed in a1efe84 to generate a fresh nonce
+# (/dev/urandom | base64), so the literal is gone from HEAD; history is
+# immovable without a destructive rewrite. Scope is exactly one historical
+# SHA — a NEW secret in ANY commit still fails the gate loudly:
+#   4e4f2c310e4e2e2252d5f9be89465b8c82f0b820  EXPOSURE_REMEDIATION_R144.md:182 quoted the RFC 6455 sample nonce (snippet since fixed at HEAD)
+[[allowlists]]
+description = "History-only commit quoting the RFC 6455 sample WebSocket nonce in the R144 exposure runbook probe snippet (fixed at HEAD in a1efe84; commit-only global entry — same shape as the R130 precedent)"
+commits = [
+  "4e4f2c310e4e2e2252d5f9be89465b8c82f0b820",
+]
