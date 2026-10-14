@@ -50,7 +50,7 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.1.14
   tsx: ^4.21.0
-  vite: ^7.3.2
+  vite: ^7.3.7
   wouter: ^3.3.5
   zod: ^3.25.76
 
@@ -74,6 +74,13 @@ overrides:
   #
   # ── Security floors (CI CVE gate blocks on critical --prod findings) ──
   #
+  # postcss — R144-A2: 4 advisories (GHSA-class: 2× high file-read/info
+  #   disclosure via source-map autoload + XSS stringify, 2× moderate) ride
+  #   the vite chain (backend>vite>postcss, frontend paths). vite 7.3.7's
+  #   own range is ^8.5.6, but the lockfile-first install kept the stale
+  #   8.5.8 resolution; this floor forces >=8.5.23 (all four patched
+  #   floors: 8.5.10/8.5.12/8.5.18/8.5.23), fully in-range for vite.
+  "postcss": ">=8.5.23"
   # proxy-addr — GHSA-jqcg-44mw-7w3h (CRITICAL, R119-A4 F-1): crafted Fo:X
   #   forwarded-for chains poison req.ip when `trust proxy` is set (it is —
   #   app.ts), which keys every rate limiter → spoofing = limiter evasion.
@@ -137,9 +144,11 @@ overrides:
   # /musl, @tailwindcss/oxide-linux-arm64-*, lightningcss-linux-arm64-*, and
   # the x64-musl variants are all present).
   # drizzle-kit uses esbuild internally on an older version that's
-  # vulnerable, this overrides it
+  # vulnerable, this overrides it (R144-A2: exact pin raised 0.27.3 →
+  # 0.27.7 alongside the backend direct dep — tsx ~0.27.0 and vite
+  # ^0.27.0 || ^0.28.0 both accept it)
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"
+  esbuild: "0.27.7"
   # websocket-driver — GHSA-xv26-6w52-cph6 (critical): message corruption
   #   via protocol length headers. Transitive via firebase → @firebase/
   #   database → faye-websocket; currently resolves 0.7.5 naturally — this
