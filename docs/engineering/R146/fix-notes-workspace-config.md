@@ -53,3 +53,17 @@ shell output display **eats the two bytes `[m` of any literal `main]`** — `pri
 
 9 findings: 8 fixed (F1-F8), 1 verified-no-op (F9, false positive with byte-level proof).
 Lane diff: 9 files, **+15 / -22 (net -7 lines)**. Both edited shell scripts pass `bash -n`; all YAML/JSON edits parse. `pnpm install` not run (see finding 4 note); no commit/push/deploy/backup performed.
+
+---
+
+## Post-release addendum — finding 8 follow-up (the first CI run taught us)
+
+Run 38615982541 on f860d2f: the audit job's CVE scans themselves passed
+("No known vulnerabilities found" at both high and critical), but the job
+failed in the POST step — `actions/setup-node@v5.0.0` defaults
+`package-manager-cache: true` when pnpm is on PATH, so with the install
+step now removed, the post-job cache save pointed at a store path that
+does not exist → "Path Validation Error" → job failure. The v4-era mental
+model ("no `cache:` input → caching off") no longer holds in v5. Fix:
+`package-manager-cache: false` explicitly on the audit job's Setup Node.js
+step. One line + this note.

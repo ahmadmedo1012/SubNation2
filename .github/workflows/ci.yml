@@ -224,6 +224,10 @@ jobs:
           node-version: 22
           # No pnpm cache: audit resolves from pnpm-lock.yaml, not the store
           # (verified R146-F8 in a no-node_modules workspace clone).
+          # v5 defaults package-manager-cache to TRUE when pnpm is on PATH —
+          # with no install step the post-job save then fails hard
+          # ("Path Validation Error"); disable it explicitly.
+          package-manager-cache: false
 
       - name: CVE summary (informational — all severities)
         # Always succeeds — gives the audit job a one-line summary in
