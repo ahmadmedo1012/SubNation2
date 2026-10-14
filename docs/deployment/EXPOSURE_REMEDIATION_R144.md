@@ -180,10 +180,10 @@ curl -sS -o /dev/null -w '%{http_code}\n' -m 10 https://subnation.ly/        # 2
 curl -sS -o /dev/null -w '%{http_code}\n' -m 10 https://subnation.ly/login   # 200 (SPA route through the edge)
 curl -s -m 10 https://subnation.ly/api/healthz                                # {"status":"ok"}
 curl -sI -m 10 https://www.subnation.ly/ | head -1                            # 301/308 → apex (§13 contract)
-# the app's own realtime — Socket.IO same-origin on 443 (must stay 101):
+# the app's own realtime — Socket.IO same-origin on 443 (must stay 101; the handshake key is generated fresh per run):
 curl -s -i -m 10 -N \
   -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
-  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  -H 'Sec-WebSocket-Version: 13' -H "Sec-WebSocket-Key: $(head -c16 /dev/urandom | base64)" \
   'https://subnation.ly/socket.io/?EIO=4&transport=websocket' | head -1      # HTTP/2 101 (or 400 w/ a session error — but NOT a connect failure)
 ```
 
