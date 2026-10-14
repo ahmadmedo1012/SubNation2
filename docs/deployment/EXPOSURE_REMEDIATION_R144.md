@@ -94,7 +94,11 @@ Reverb/Pusher consumer.** Evidence — a repo-wide search for
 `reverb|pusher|6001|VITE_PUSHER|PUSHER_APP|ws://|wss://` over
 `frontend/src`, `backend/src`, `frontend/.env.example`, `config/env.example`:
 
-- **zero hits** — no client, no env var, no URL, no dependency reference.
+- **one literal hit only** — `backend/src/lib/helmet-config.ts:109`, a
+  `wss://*.firebaseio.com` CSP `connectSrc` allowlist entry (Firebase RTDB
+  over websockets — unrelated to Reverb/Pusher and to :6001); beyond it, no
+  client, no env var, no app URL, no dependency reference. Conclusion
+  unchanged: the application has zero realtime-service consumers.
 - The app's realtime is **Socket.IO over the SAME ORIGIN on 443**
   (`frontend/src/lib/socket.ts:121` — `io(socketUrl || undefined)` where
   `socketUrl` derives from `VITE_SOCKET_URL || getApiBaseUrl()`,

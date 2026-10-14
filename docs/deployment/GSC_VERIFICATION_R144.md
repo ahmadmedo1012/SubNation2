@@ -87,7 +87,8 @@ pick one.
   (`content=""` was always harmless — `frontend/index.html:19-23`).
 - To change/revoke the token: unset or replace `VITE_GSC_VERIFICATION` in
   the build args + redeploy — same flow as step 3–4, no repo commit.
-- The weekly uptime watchdog (`.github/workflows/uptime-monitor.yml`,
-  `OPERATIONS_RUNBOOK.md` §16) keeps sampling the homepage every 5 minutes
-  — if the redeploy breaks the shell, the watchdog pages before GSC's own
-  crawler ever notices.
+- The external uptime watchdog (`.github/workflows/uptime-monitor.yml`,
+  `OPERATIONS_RUNBOOK.md` §16) probes the homepage, `/api/healthz`, and TLS
+  expiry every 5 minutes from GitHub-hosted runners — if the redeploy breaks
+  the shell, it pages long before GSC's own crawler ever notices. (The weekly
+  cadence belongs to the separate CI e2e heartbeat, not the watchdog.)

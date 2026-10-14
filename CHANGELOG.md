@@ -10,6 +10,93 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R144 — the reconciliation round: the migrate.ts monolith decomposed, the storefront fetch family consolidated, the external watchdog shipped — every R143 open item closed or honestly handed off — 2026-10-14
+
+**Commits:** seven on top of R143's `ee5c5cf` — deps `7b21bcc` ·
+migrate.ts decomposition `d75e446` · storefront fetch consolidation
+`0cfcbef` · ops (watchdog + operator runbooks) `4e4f2c3` · RBAC page
+mutation pins `387ffe0` · eager-budget decision `e5a0977` · progress log
+`5293b9e` (head). Local round — not yet pushed; every gate below ran
+locally at `5293b9e`.
+
+**Scope:** R143's own deferred list executed to final status. Every open
+item from the R143 ledger was either closed with evidence, shipped as an
+operator runbook with its live status stated honestly, or independently
+re-verified — nothing silently dropped (the full reconciliation table:
+`docs/engineering/R144/findings-ledger.md`). The E1 lane re-audited the
+two ex-false-claims and the complete financial-invariant checklist
+(mission §E) against real test runs.
+
+**Implemented this round (by commit):**
+- `7b21bcc` **deps:** firebase-admin 13.10.0→14.5.0 — a drop-in for this
+  repo's app+auth-only usage; firestore 9.3.1 / storage 8.4.0 arrive as
+  optionalDependencies; uuid GHSA-w5hq-g745-h8pq ERASED from the
+  api-server graph via google-gax 6.12.1 (closes the L10-1 residual);
+  express-rate-limit 8.4.1→8.7.1 resolving the rate-limit-redis 5.0.0
+  peer; vite 7.3.2→7.3.7 clearing GHSA-fx2h-pf6j-xcff HIGH + a backend
+  catalog dep; vitest 4.1.6→4.1.11; esbuild 0.27.7 with the documented
+  tsx-blocked LOW exception; postcss floor ≥8.5.23→8.5.30; audits
+  43→32 — PROD TREE CLEAN.
+- `d75e446` **migrate.ts decomposition** (L16-2, the danger-flagged
+  split, executed alone as required): 4,378 lines → a 2,049-line
+  gate-exempt orchestrator + the 8-module `migrate/` family;
+  `runMigrations` byte-identical at 1,925 lines; 41/41 functions
+  verbatim; 35/35 façade symbols; `build.mjs` fast-path hash extended
+  over the migrate/ tree; battery 27 files / 201 tests incl. the PGlite
+  fresh-install replay; size gate 4/4.
+- `0cfcbef` **storefront fetch consolidation** (the L16-3 residual +
+  the storefront half of L16-5): 20 sites onto `customFetch` incl. the
+  3 deferred ApiError-`.data` restructurings; the raw-fetch adoption
+  gate pinning the 13 deliberate occurrences across 7 files; the
+  custom-fetch-network battery — 20 tests: timeout / abort / network /
+  4xx / 5xx / malformed-JSON / 401 / concurrency; storefront error-copy
+  unified.
+- `4e4f2c3` **ops:** the external uptime watchdog (L17-5 repo-side) —
+  `uptime-monitor.yml`: 5-min cron + `workflow_dispatch` test_alert
+  drill, home + healthz + TLS-14-day probes, Telegram alert/recovery
+  mirroring `alerting.service.ts` format, zero third-party actions,
+  env-only secret hygiene; the two operator runbooks
+  (`EXPOSURE_REMEDIATION_R144.md` + `GSC_VERIFICATION_R144.md`);
+  OPERATIONS_RUNBOOK §16.
+- `387ffe0` **RBAC page mutation pins** (L13-4): 6/6 — zero-scope gate,
+  exact-scope wire bodies, super-admin `permissions: ["all"]` preserve,
+  session-kill disclosure before the POST.
+- `e5a0977` **eager-budget decision** (L11-2): warn line 145→150 KiB
+  WITH a basis — measured 146,850 B gz (98.9% of the old line; R120 set
+  145 with no documented rationale); the hard 160 KiB fail untouched;
+  105/105 gates.
+- `5293b9e` progress log.
+
+**Gates:** lint 0 errors (62 pre-existing warnings — the documented
+baseline) · typecheck clean · full build + PWA green (Vite 8.78 s; eager
+146,138 B silent ≤ 153,600; PWA v1.3.0 generateSW precache 10 entries /
+343.36 KiB; the migrate/ family's cyclic import graph bundles clean) ·
+backend 270 files / 2,510 tests (shards 910 + 791 + 809) · frontend 256
+files / 2,433 tests (shards 772 + 805 + 856).
+
+**E1 verification (independent, evidence-anchored):** L18-1's
+opportunistic suite is REAL — 7/7, two legs mutation-grade · L18-2's
+support conversion is REAL — 5 generated-client sites, 17/17 · the
+financial-invariant map (mission §E): all 8 checklist items covered by
+real tests (spot batches 45/45 + 61/61) · zero production defects ·
+zero log leaks.
+
+**Operator reports (not code — external, honest):** the 8080/6001
+exposure is STILL LIVE at the 2026-10-14 external probes —
+`EXPOSURE_REMEDIATION_R144.md` ships the remediation order +
+verification protocol (reported, not claimed closed); the watchdog's
+activation is blocked on the two repo secrets (`TELEGRAM_BOT_TOKEN` /
+`TELEGRAM_CHAT_ID`) + the one-click test_alert drill — alert delivery
+NOT yet verified; GSC verification blocked on the owner's Google-account
+token → the `VITE_GSC_VERIFICATION` build arg
+(`GSC_VERIFICATION_R144.md`).
+
+**Deferred with decisions (accepted exceptions):** esbuild LOW
+(tsx-range-blocked, serve-mode unreachable) · the @lhci/cli dev-only
+chain (latest 0.x — documented policy) · the unpatchables
+(braces/extract-zip/sprintf-js) · the admin-side L16-5 copy residual
+(documented deferral — the storefront half landed in `0cfcbef`).
+
 ## R142 — Full-repository engineering assurance round (2026-10-14)
 
 **Commits:** fixes `2df0a62` · TOTP CI-race hardening `528ef39` (head, CI run #482 green; deployed = 528ef39 verified via SENTRY_RELEASE id in served chunks). *(R143 note: this entry sat at the file tail in breach of the newest-first contract — moved to the top in R143.)*
