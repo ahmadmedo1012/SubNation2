@@ -57,7 +57,13 @@ vi.mock("@/lib/auth", () => ({
 const fetchMock = vi.fn();
 
 function jsonResponse(status: number, body: unknown) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body };
+  // R144-C2 (L16-3): real Response objects — the component rides
+  // customFetch, which reads .text()/.headers; the minimal ok/json-only
+  // stub predated the wrapper.
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 /** 503 shape the backend (F1) emits right after a fresh pairing. */
@@ -420,7 +426,10 @@ describe("settling state — 503 whatsapp_settling (96-F2 §1.3E)", () => {
   });
 
   it("stops after 2 auto-retries and hands control back (manual button)", async () => {
-    fetchMock.mockResolvedValue(settlingResponse(3));
+    // R144-C2: a fresh Response per call — real Response bodies are
+    // single-use (.text() consumes them), and this settle loop re-reads
+    // across auto-retries.
+    fetchMock.mockImplementation(async () => settlingResponse(3));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
     fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));
@@ -443,7 +452,10 @@ describe("settling state — 503 whatsapp_settling (96-F2 §1.3E)", () => {
   });
 
   it("never fires a ghost auto-retry after the user escapes the flow", async () => {
-    fetchMock.mockResolvedValue(settlingResponse(3));
+    // R144-C2: a fresh Response per call — real Response bodies are
+    // single-use (.text() consumes them), and this settle loop re-reads
+    // across auto-retries.
+    fetchMock.mockImplementation(async () => settlingResponse(3));
     renderSignIn();
     typePhone(openPhoneStep(), PHONE);
     fireEvent.click(screen.getByRole("button", { name: "إرسال الرمز" }));

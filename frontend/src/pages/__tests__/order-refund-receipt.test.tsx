@@ -45,6 +45,14 @@ vi.mock("@workspace/api-client-react", () => ({
   // page-scoped socket identity.
   useGetMe: vi.fn(() => ({ data: { id: 7 } })),
   getGetMeQueryKey: () => ["/api/auth/me"],
+  // R144-C1 (L16-3): orders.tsx's query fetch rides customFetch now —
+  // the factory must cover it (vitest throws on missing mock exports)
+  // and honor the wrapper contract against the stubbed global fetch.
+  customFetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await globalThis.fetch(input, init);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -92,8 +100,17 @@ afterEach(() => {
 
 /** R120-B7: orders.tsx fetches /api/orders?page=N directly — the
  * orders-load-more.test.tsx fetch-mock idiom. */
-const jsonRes = (body: unknown, ok = true, status = 200) =>
-  ({ ok, status, json: async () => body }) as Response;
+// R144-C1 (L16-3): real Response objects — orders.tsx's query rides
+// customFetch (mocked above to delegate here), which reads
+// .text()/.headers; the minimal ok/json-only stub predated the wrapper.
+// `ok` is always consistent with `status` at this suite's call sites.
+const jsonRes = (body: unknown, ok = true, status = 200) => {
+  void ok;
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+};
 const fetchMock = vi.fn<typeof fetch>();
 
 describe("OrdersPage — a refunded row is calm info, not failure (R115-I1 / A8 P2-3)", () => {

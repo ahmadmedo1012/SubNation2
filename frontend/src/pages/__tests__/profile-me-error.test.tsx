@@ -36,6 +36,15 @@ vi.mock("@workspace/api-client-react", () => ({
     isError: false,
     refetch: vi.fn(),
   })),
+  // R144-C1 (L16-3): profile.tsx now imports customFetch too — the
+  // factory must cover it (vitest throws on missing mock exports) and
+  // honor the WRAPPER contract (parse the body, throw on non-2xx), so
+  // the component's `data.providers` read sees the parsed payload.
+  customFetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await globalThis.fetch(input, init);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -70,11 +79,13 @@ const ME_FIXTURE = {
 };
 
 function resLike(body: unknown) {
-  return {
-    ok: true,
+  // R144-C1 (L16-3): real Response objects — profile.tsx rides
+  // customFetch, which reads .text()/.headers; the minimal ok/json-only
+  // stub predated the wrapper.
+  return new Response(JSON.stringify(body), {
     status: 200,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function renderPage() {
@@ -182,16 +193,11 @@ describe("ProfilePage — /auth/me failure no longer silently vanishes the ident
     );
 
     renderPage();
-    // Settle the mount-time probe (the R118-B2 A5 W-4 idiom above).
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    // The row rendered off the camelCase keys: display name, the email
-    // datum line, and the unlink control named after the provider.
-    expect(screen.getByText("Google")).toBeInTheDocument();
+    // R144-C1 (L16-3): the linked-providers fetch rides customFetch —
+    // one more async hop (fetch → .text() → parse) than the old raw
+    // .json(), so the settle uses waitFor instead of the fixed
+    // microtask count.
+    await waitFor(() => expect(screen.getByText("Google")).toBeInTheDocument());
     expect(screen.getByText("user@gmail.com")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "فصل Google" })).toBeInTheDocument();
     // The advice card is correctly absent — one provider IS linked.

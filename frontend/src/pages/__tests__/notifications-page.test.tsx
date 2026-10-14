@@ -54,10 +54,18 @@ function envelope(rows: ReturnType<typeof NOTIF>[], total: number, hasMore: bool
   return { notifications: rows, total, page: 1, limit: 20, hasMore };
 }
 
-/** Minimal Response-like object — avoids depending on a global Response
- * (the orders-load-more.test.tsx idiom). */
-const jsonRes = (body: unknown, ok = true, status = 200) =>
-  ({ ok, status, json: async () => body }) as Response;
+/** R144-C1 (L16-3): real Response objects — the page's queryFn now rides
+ *  customFetch, which reads .text()/.headers; the minimal ok/json-only
+ *  stub predates the wrapper. `ok` stays an explicit param so the legacy
+ *  call sites read unchanged (it is always consistent with `status`
+ *  here, so the real Response's derived .ok matches). */
+const jsonRes = (body: unknown, ok = true, status = 200) => {
+  void ok;
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+};
 
 const fetchMock = vi.fn<typeof fetch>();
 let pageOne: ReturnType<typeof envelope> | null = null;

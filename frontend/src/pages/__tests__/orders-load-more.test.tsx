@@ -57,8 +57,16 @@ const ORDER = (i: number) => ({
 
 /** Minimal Response-like object — avoids depending on a global Response
  * (the alerts-load-more.test.tsx idiom). */
-const jsonRes = (body: unknown, ok = true, status = 200) =>
-  ({ ok, status, json: async () => body }) as Response;
+// R144-C1 (L16-3): real Response objects — the query rides customFetch,
+// which reads .text()/.headers; the minimal ok/json-only stub predated
+// the wrapper. `ok` is always consistent with `status` here.
+const jsonRes = (body: unknown, ok = true, status = 200) => {
+  void ok;
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+};
 
 const fetchMock = vi.fn<typeof fetch>();
 let pageOne: unknown[] = [];

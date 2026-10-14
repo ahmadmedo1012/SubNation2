@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useAuth } from "@/lib/auth";
-import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
+import { getGetMeQueryKey, useGetMe, customFetch } from "@workspace/api-client-react";
 import { ShieldCheck, ShoppingBag, Sparkles, Truck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -62,7 +62,11 @@ export function OnboardingPage() {
     if (completing) return;
     setCompleting(true);
     try {
-      await fetch("/api/auth/onboarding/complete", {
+      // R144-C1 (L16-3): rides customFetch — same method/auth; a non-2xx
+      // now throws into the catch (the old code resolved silently on
+      // !ok — the gate re-shows this page either way), and the previously
+      // UNBOUNDED POST gains the 20 s budget.
+      await customFetch("/api/auth/onboarding/complete", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

@@ -20,10 +20,10 @@
  *      the same client re-renders with the deducted balance WITHOUT a
  *      page reload (the ≤60 s staleness bug).
  *
- * Harness: loyalty's queryFn is raw global fetch (stubbed per-test with a
- * URL router); referrals' is customFetch — mocked at the module boundary
- * to DELEGATE to the same stubbed fetch so both pages share one network
- * counter (their production fetchers differ, the endpoint does not).
+ * Harness: both pages ride customFetch since R144-C1 — mocked at the
+ * module boundary to delegate to one stubbed global fetch router so
+ * both pages share one network counter (their production fetcher is
+ * now one and the same wrapper; the endpoint never differed).
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -33,9 +33,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LoyaltyPage from "@/pages/loyalty";
 import ReferralsPage from "@/pages/referrals";
 
-// Referrals consumes customFetch; loyalty consumes raw global fetch.
-// One router behind both so the shared-entry assertion counts network
-// identity, not transport mechanism.
+// R144-C1 (L16-3): BOTH pages now consume customFetch (loyalty's twin
+// raw fetches were threaded onto the wrapper) — mocked at the module
+// boundary to DELEGATE to the same stubbed fetch so both pages share one
+// network counter, honoring the wrapper contract (parse the body, throw
+// on non-2xx) exactly like the real client.
 const convertCalls: Array<{ points: number }> = [];
 const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input.toString();
@@ -52,7 +54,13 @@ const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
 vi.mock("@workspace/api-client-react", () => ({
   getGetMeQueryKey: () => ["/api/auth/me"],
   getGetWalletQueryKey: () => ["/api/wallet"],
-  customFetch: (input: string | URL, init?: RequestInit) => fetchMock(input, init),
+  // R144-C1: the mock mirrors customFetch's contract now that loyalty's
+  // queryFns ride it too — resolve the parsed body, throw on non-2xx.
+  customFetch: async (input: string | URL, init?: RequestInit) => {
+    const res = await fetchMock(input, init);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
   // G-1 (R142): loyalty's convert POST now rides the generated client —
   // route it through the same fetchMock so the conversion journey (and
   // its Idempotency-Key header) stays observable.

@@ -48,8 +48,15 @@ vi.mock("@/components/LinkConsentModal", () => ({
 }));
 
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return { ok, status, json: () => Promise.resolve(body) } as unknown as Response;
+  // R144-C1/C2 (L16-3): real Response objects — AuthProviders' probe
+  // rides customFetch (via use-public-auth-providers), which reads
+  // .text()/.headers; the minimal ok/json-only stub predated the
+  // wrapper. `ok` is always consistent with `status` here.
+  const { status = 200, body = {} } = over;
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const fetchMock = vi.fn();

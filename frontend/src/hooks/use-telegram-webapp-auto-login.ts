@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/auth";
+import { customFetch } from "@workspace/api-client-react";
 import { useEffect, useRef } from "react";
 
 /**
@@ -71,15 +72,18 @@ export function useTelegramWebAppAutoLogin() {
           }
         })();
 
-        const res = await fetch("/api/auth/telegram/webapp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ initData, referralCode }),
-        });
-        if (!res.ok) return;
-        const data = (await res.json().catch(() => null)) as { token?: string } | null;
-        if (!data?.token) return;
-        setToken(data.token);
+        const res =
+          (await customFetch<{ token?: string } | null>("/api/auth/telegram/webapp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initData, referralCode }),
+          })) ?? null;
+        // R144-C1 (L16-3): customFetch — non-2xx throws into the catch
+        // arm (the old `if (!res.ok) return`), a malformed-JSON 200
+        // becomes ResponseParseError (the old `.catch(() => null)`), and
+        // the previously UNBOUNDED mint gains the 20 s budget.
+        if (!res?.token) return;
+        setToken(res.token);
       } catch {
         // Network/parse error — public-web TelegramLoginButton still works.
       }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { customFetch } from "@workspace/api-client-react";
 
 /** Raw shape of GET /api/auth/providers (public, credential-free). */
 export interface PublicAuthProvidersResponse {
@@ -36,10 +37,14 @@ export function fetchPublicAuthProviders(): Promise<PublicAuthProvidersResponse 
     return Promise.resolve(providersCache.data);
   }
   if (providersInflight) return providersInflight;
-  providersInflight = fetch("/api/auth/providers")
-    .then(async (res) => {
-      if (!res.ok) return null;
-      const data = (await res.json().catch(() => null)) as PublicAuthProvidersResponse | null;
+  // R144-C1 (L16-3): rides customFetch — the single-flight + TTL +
+  // resolve-null-on-any-failure contract stays verbatim: non-2xx throws
+  // ApiError (the old `if (!res.ok) return null`), a malformed-JSON 200
+  // becomes ResponseParseError (the old guarded `.json().catch(() =>
+  // null)`), neither is cached, and the previously UNBOUNDED probe gains
+  // the 20 s budget.
+  providersInflight = customFetch<PublicAuthProvidersResponse>("/api/auth/providers")
+    .then((data) => {
       if (data) providersCache = { at: Date.now(), data };
       return data;
     })

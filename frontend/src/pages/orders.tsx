@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
-import { type Order } from "@workspace/api-client-react";
+import { customFetch, type Order } from "@workspace/api-client-react";
 import {
   CheckCircle,
   ChevronLeft,
@@ -220,19 +220,24 @@ export default function OrdersPage() {
   } = useInfiniteQuery<Order[], Error>({
     queryKey: ["/api/orders", "load-more"],
     queryFn: async ({ pageParam, signal }) => {
-      const r = await fetch(`/api/orders?page=${pageParam as number}`, {
-        headers: { Authorization: token ? `Bearer ${token}` : "" },
-        signal,
-      });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `تعذّر تحميل الطلبات (HTTP ${r.status})`);
+      // R144-C1 (L16-3): rides customFetch — same URL/auth/signal; the
+      // inline ok-guard + envelope parse collapses into the ApiError
+      // path (getErrorMessage reads .data.error/.code exactly like the
+      // hand-rolled body parse did; a body-less error falls to the
+      // generic Arabic copy instead of the old `(HTTP ${status})`
+      // suffix — that string was never rendered, FetchErrorCard copy is
+      // generic). 20 s budget + boot-gate retry arrive by construction.
+      try {
+        const d = await customFetch<unknown>(`/api/orders?page=${pageParam as number}`, {
+          headers: { Authorization: token ? `Bearer ${token}` : "" },
+          signal,
+        });
+        return Array.isArray(d) ? (d as Order[]) : [];
+      } catch (err) {
+        // preserve-caught-error: the original ApiError/network error rides
+        // as `cause` for Sentry/console diagnostics.
+        throw new Error(getErrorMessage(err) || "تعذّر تحميل الطلبات", { cause: err });
       }
-      const d = await r.json();
-      return Array.isArray(d) ? (d as Order[]) : [];
     },
     initialPageParam: 1,
     // Frozen contract (A6-F2, the admin twins' honesty rule): the body

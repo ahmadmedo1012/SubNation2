@@ -28,6 +28,15 @@ import { formatDate } from "@/lib/utils";
 vi.mock("@workspace/api-client-react", () => ({
   getGetMeQueryKey: () => ["/api/auth/me"],
   getGetWalletQueryKey: () => ["/api/wallet"],
+  // R144-C1 (L16-3): loyalty.tsx's twin query fetches ride customFetch
+  // now — the factory must cover it (vitest throws on missing mock
+  // exports) and honor the wrapper contract (parse the body, throw on
+  // non-2xx) against this suite's stubbed global fetch.
+  customFetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await globalThis.fetch(input, init);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -90,12 +99,16 @@ function ledgerRow(over: Partial<PointsRow>): PointsRow {
 }
 
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+  // R144-C1 (L16-3): real Response objects — the page's queries ride
+  // customFetch (mocked above to delegate here), which reads
+  // .text()/.headers; the minimal ok/json-only stub predated the
+  // wrapper. `ok` is always consistent with `status` at this suite's
+  // call sites.
+  const { status = 200, body = {} } = over;
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const fetchMock = vi.fn(async (input: string | URL) => {

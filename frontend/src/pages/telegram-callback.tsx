@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/auth";
+import { customFetch } from "@workspace/api-client-react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -148,7 +149,19 @@ export default function TelegramCallbackPage() {
 
     void (async () => {
       try {
-        const res = await fetch("/api/auth/telegram", {
+        // R144-C2 (L16-3): rides customFetch — same URL/method/body; the
+        // wrapper's ApiError carries the parsed envelope on .data (the
+        // old inline `res.json().catch(() => ({}))` read it on BOTH the
+        // ok and !ok paths), and the previously UNBOUNDED mint gains the
+        // 20 s budget + transparent boot-gate retry.
+        const json = await customFetch<{
+          token?: string;
+          error?: string;
+          reason?: string;
+          // L1-1 (R143): the Telegram session mint returns is_new_user
+          // (auth.ts:618) — consumed by the navigation below.
+          is_new_user?: boolean;
+        }>("/api/auth/telegram", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -156,16 +169,8 @@ export default function TelegramCallbackPage() {
             referralCode: payload.referralCode,
           }),
         });
-        const json = (await res.json().catch(() => ({}))) as {
-          token?: string;
-          error?: string;
-          reason?: string;
-          // L1-1 (R143): the Telegram session mint returns is_new_user
-          // (auth.ts:618) — consumed by the navigation below.
-          is_new_user?: boolean;
-        };
 
-        if (!res.ok || !json.token) {
+        if (!json.token) {
           const reason = json.reason || "server_error";
           navigate(`/login?error=${encodeURIComponent(reason)}`, { replace: true });
           return;
@@ -196,7 +201,26 @@ export default function TelegramCallbackPage() {
         navigate(redirectTarget ?? (json.is_new_user === true ? "/onboarding" : "/"), {
           replace: true,
         });
-      } catch {
+      } catch (err) {
+        // R144-C2: non-2xx → ApiError, whose .data IS the parsed envelope
+        // the old `!res.ok` branch read — `reason` rides the redirect
+        // exactly as before. A ResponseParseError (garbage 200 body)
+        // takes the same navigate-only arm the old `.catch(() => ({}))`
+        // shape produced; only genuine network-level failures keep the
+        // old catch arm (setError + redirect). Duck-typed per the
+        // checkout-errors.ts isHttpApiError idiom (the class itself is a
+        // type-only package export).
+        if (
+          err instanceof Error &&
+          (err.name === "ApiError" || err.name === "ResponseParseError")
+        ) {
+          const body = (err as { data?: unknown }).data;
+          const reason =
+            (body && typeof body === "object" ? (body as { reason?: string }).reason : undefined) ||
+            "server_error";
+          navigate(`/login?error=${encodeURIComponent(reason)}`, { replace: true });
+          return;
+        }
         setError("server_error");
         navigate("/login?error=server_error", { replace: true });
       }

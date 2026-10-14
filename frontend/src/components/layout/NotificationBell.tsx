@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { customFetch } from "@workspace/api-client-react";
 import {
   ArrowLeft,
   Bell,
@@ -200,15 +201,13 @@ export function NotificationBell() {
     if (!token) return;
     const seq = ++fetchSeqRef.current;
     try {
-      const r = await fetch("/api/notifications", {
+      // R144-C1 (L16-3): rides customFetch — non-2xx throws into the
+      // catch arm (the old `if (!r.ok) return`), a malformed-JSON 200
+      // becomes ResponseParseError (the old guarded `.catch(() => null)`
+      // + Array guard), and the 20 s bound replaces the unbounded poll.
+      const data = (await customFetch<unknown>("/api/notifications", {
         headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!r.ok) return;
-      // 98-F7 (r97 F-11 raw-fetch hardening): guard the parse AND the
-      // shape — a 200 with a non-JSON body (proxy error page) used to
-      // throw an uncaught rejection out of the .then chain; a 200 with
-      // a non-array body would have called setNotifs(garbage).
-      const data = (await r.json().catch(() => null)) as Notif[] | null;
+      })) as Notif[] | null;
       // 98-F7 (r97 F-10): late stale response (older poll racing a
       // socket-triggered refetch) must not overwrite the newer list —
       // only the latest request owns the state.
@@ -255,11 +254,12 @@ export function NotificationBell() {
     const snapshot = notifsRef.current;
     setNotifs(snapshot.map((n) => ({ ...n, is_read: true })));
     try {
-      const r = await fetch("/api/notifications/read-all", {
+      // R144-C1 (L16-3): customFetch — non-2xx throws into the catch
+      // (rollback) arm; the 20 s bound replaces the unbounded POST.
+      await customFetch("/api/notifications/read-all", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
     } catch {
       // Roll the bell state back to the pre-click truth. Deliberately no
       // toast: the next 60 s poll / socket event reconciles silently —
@@ -278,11 +278,12 @@ export function NotificationBell() {
       const wasRead = notifsRef.current.find((n) => n.id === id)?.is_read ?? false;
       setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
       try {
-        const r = await fetch(`/api/notifications/${id}/read`, {
+        // R144-C1 (L16-3): customFetch — non-2xx throws into the catch
+        // (rollback) arm; the 20 s bound replaces the unbounded POST.
+        await customFetch(`/api/notifications/${id}/read`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } catch {
         setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: wasRead } : n)));
       }

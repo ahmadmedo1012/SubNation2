@@ -41,7 +41,14 @@ const ORDER = (i: number, status: string) => ({
   created_at: "2026-09-08T10:00:00.000Z",
 });
 
-const jsonRes = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response;
+// R144-C1 (L16-3): real Response objects — the page rides customFetch,
+// which reads .text()/.headers; the minimal ok/json-only stub predated
+// the wrapper.
+const jsonRes = (body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 
 const fetchMock = vi.fn<typeof fetch>();
 

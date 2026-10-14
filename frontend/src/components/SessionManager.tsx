@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatDateShort } from "@/lib/utils";
+import { customFetch } from "@workspace/api-client-react";
 import { LogOut, Smartphone, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -55,24 +56,19 @@ export function SessionManager() {
     setLoadError(null);
     (async () => {
       try {
-        const response = await fetch("/api/auth/sessions", {
+        // R144-C1 (L16-3): rides customFetch — same URL/auth; non-2xx
+        // throws ApiError (whose .data IS the parsed envelope
+        // getErrorMessage read inline before), a malformed-JSON body
+        // becomes ResponseParseError instead of the `.catch(() => ({}))`
+        // shape, and the previously UNBOUNDED request gains the 20 s
+        // budget. The honest error line + retry contract stays verbatim.
+        const data = await customFetch<{ sessions?: Session[] }>("/api/auth/sessions", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = await response.json().catch(() => ({}));
         if (cancelled) return;
-        // B15-2: no r.ok guard here meant a 401/500/502 envelope parsed
-        // to `{}` → sessions=[] → the FALSE «لا توجد جلسات نشطة» —
-        // the exact false-empty class the admin console systematically
-        // killed. The honest Arabic line (server wording via
-        // getErrorMessage, generic Arabic fallback otherwise) + retry
-        // instead; the card itself stays.
-        if (!response.ok) {
-          setLoadError(getErrorMessage(data));
-          return;
-        }
         setSessions(data.sessions ?? []);
       } catch (e) {
-        // Network-level failure — same honest state, not the empty list.
+        // Network/HTTP-level failure — same honest state, not the empty list.
         if (!cancelled) setLoadError(getErrorMessage(e));
       } finally {
         if (!cancelled) setLoading(false);
@@ -97,31 +93,27 @@ export function SessionManager() {
     });
     if (!ok) return;
     try {
-      const response = await fetch("/api/auth/logout-all-devices", {
+      // R144-C1 (L16-3): rides customFetch — same method/auth; non-2xx
+      // throws ApiError (the envelope the inline parse fed
+      // getErrorMessage below) and the previously UNBOUNDED POST gains
+      // the 20 s budget. The redirect-on-success / destructive-toast-on
+      // -failure contract stays verbatim.
+      await customFetch("/api/auth/logout-all-devices", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
-      if (response.ok) {
-        window.location.href = "/login";
-        return;
-      }
+      window.location.href = "/login";
+      return;
+    } catch (e) {
       // B15-2: a FAILED logout-all used to be a silent no-op — the
       // button clicks, nothing happens, and the user still believes
       // all devices were revoked. The failure is now surfaced as a
       // destructive toast (getErrorMessage, the console idiom); the
       // button itself remains the retry affordance and the session
       // list above is untouched (still rendered, still true).
-      const body = await response.json().catch(() => null);
-      toast({
-        title: "فشل تسجيل الخروج من جميع الأجهزة",
-        description: getErrorMessage(body),
-        variant: "destructive",
-      });
-    } catch (e) {
-      // Network-level failure — same honesty (no silent swallow).
       toast({
         title: "فشل تسجيل الخروج من جميع الأجهزة",
         description: getErrorMessage(e),

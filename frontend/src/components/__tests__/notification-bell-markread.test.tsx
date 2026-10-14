@@ -45,8 +45,15 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return { ok, status, json: () => Promise.resolve(body) } as unknown as Response;
+  // R144-C1 (L16-3): real Response objects — the bell rides customFetch,
+  // which reads .text()/.headers; the minimal ok/json-only stub
+  // predated the wrapper. `ok` is always consistent with `status` at
+  // this suite's call sites, so the derived .ok matches.
+  const { status = 200, body = {} } = over;
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function notif(id: number, title: string, isRead: boolean) {

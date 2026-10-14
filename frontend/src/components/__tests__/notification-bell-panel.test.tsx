@@ -26,10 +26,19 @@ vi.mock("@/hooks/use-toast", () => ({
   toast: vi.fn(),
 }));
 
+/** R144-C1 (L16-3): real Response objects — the bell rides customFetch,
+ *  which reads .text()/.headers; the minimal ok/json-only stubs below
+ *  predated the wrapper. */
+const jsonResponse = (body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
 beforeEach(() => {
   // Mobile branch: vw state initializes from window.innerWidth at mount.
   window.innerWidth = 375;
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as Response));
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([])));
 });
 
 afterEach(() => {
@@ -101,19 +110,15 @@ const notifRow = (i: number) => ({
 describe("NotificationPanel footer — honest count at the 40-row cap (A9-2, R126-L6)", () => {
   afterEach(() => {
     // Restore the file-level default stub ([]) for the sibling describes.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as Response),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([])));
   });
 
   it("at the backend's 40-row cap the footer reads «آخر 40 …» — the loaded slice, not a lifetime total", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => Array.from({ length: 40 }, (_, i) => notifRow(i + 1)),
-      } as Response),
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse(Array.from({ length: 40 }, (_, i) => notifRow(i + 1)))),
     );
     await openPanel();
 
@@ -125,10 +130,7 @@ describe("NotificationPanel footer — honest count at the 40-row cap (A9-2, R12
   it("below the cap the plain count stays (it IS the total — every row the user has is loaded)", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => Array.from({ length: 3 }, (_, i) => notifRow(i + 1)),
-      } as Response),
+      vi.fn().mockResolvedValue(jsonResponse(Array.from({ length: 3 }, (_, i) => notifRow(i + 1)))),
     );
     await openPanel();
 
@@ -151,17 +153,11 @@ describe("NotificationPanel dialog contract — focus return + Tab trap (A4-F7, 
   });
 
   afterEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => [] } as Response),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([])));
   });
 
   it("aria-modal is set and focus moves into the panel on open", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => [unreadRow(1)] } as Response),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([unreadRow(1)])));
     render(
       <Router>
         <NotificationBell />
@@ -182,10 +178,7 @@ describe("NotificationPanel dialog contract — focus return + Tab trap (A4-F7, 
   });
 
   it("closing via X returns focus to the bell button (not <body>)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => [unreadRow(1)] } as Response),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([unreadRow(1)])));
     render(
       <Router>
         <NotificationBell />
@@ -205,13 +198,7 @@ describe("NotificationPanel dialog contract — focus return + Tab trap (A4-F7, 
   });
 
   it("Tab from the LAST focusable wraps to the FIRST (the trap — not the page behind)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => [unreadRow(1), unreadRow(2)],
-      } as Response),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([unreadRow(1), unreadRow(2)])));
     render(
       <Router>
         <NotificationBell />

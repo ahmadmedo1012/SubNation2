@@ -415,3 +415,166 @@ describe("customFetch — 401 observer dispatch: additive registry + single slot
     unsubscribe();
   });
 });
+
+// ── R144-C1 (L16-3): the storefront-consolidation mission-D pins ────────────
+//
+// R144 threaded the remaining user-side raw-fetch sites onto customFetch;
+// these extend the suite with the family's full error taxonomy so the
+// adoption is pinned at the WRAPPER level, not per call site:
+//   · network errors propagate unchanged (the browser TypeError shape
+//     lib/errors.ts' Arabic branch matches),
+//   · unsuccessful HTTP responses (4xx AND 5xx, beyond the 401 observer
+//     tests above and the boot-gate 503s in cold-start) throw ApiError
+//     carrying status + the parsed envelope on .data,
+//   · a malformed-JSON 200 throws ResponseParseError (never silently
+//     resolves garbage into a caller's cache),
+//   · two parallel wrapper calls sharing ONE AbortController abort
+//     together — the shared-controller idiom the storefront query
+//     family (loyalty/orders/notifications) rides via react-query.
+describe("customFetch — unsuccessful responses, malformed payloads, network errors (R144-C1)", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    savedTimeout = (AbortSignal as Statics).timeout;
+    savedAny = (AbortSignal as Statics).any;
+    timeoutCalls = [];
+    anyCalls = [];
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    restoreAbortStatics();
+    setUnauthorizedHandler(null);
+  });
+
+  it("a network-level rejection propagates UNCHANGED (no wrapping, no retry)", async () => {
+    const networkFailure = new TypeError("Failed to fetch");
+    fetchMock.mockRejectedValueOnce(networkFailure);
+
+    await expect(customFetch("/api/loyalty")).rejects.toBe(networkFailure);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a 4xx (404) throws ApiError with the parsed envelope on .data and the status", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { error: "الطلب غير موجود", code: "NOT_FOUND" },
+        { status: 404, statusText: "Not Found" },
+      ),
+    );
+
+    const rejection = customFetch<{ error: string }>("/api/orders/999");
+    await expect(rejection).rejects.toMatchObject({
+      name: "ApiError",
+      status: 404,
+    });
+    try {
+      await rejection;
+    } catch (error) {
+      // The envelope the storefront catch arms feed getErrorMessage().
+      expect((error as { data?: unknown }).data).toEqual({
+        error: "الطلب غير موجود",
+        code: "NOT_FOUND",
+      });
+    }
+  });
+
+  it("a 5xx (502 HTML proxy page) throws ApiError without throwing on the non-JSON body", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse("<html>Bad Gateway</html>", { status: 502, statusText: "Bad Gateway" }),
+    );
+
+    const rejection = customFetch("/api/notifications");
+    await expect(rejection).rejects.toMatchObject({ name: "ApiError", status: 502 });
+    try {
+      await rejection;
+    } catch (error) {
+      // The HTML body is parsed as a STRING (parseErrorBody's text
+      // fallback) — never a SyntaxError out of the wrapper.
+      expect(typeof (error as { data?: unknown }).data).toBe("string");
+    }
+  });
+
+  it("a malformed-JSON 200 throws ResponseParseError (garbage never resolves into a cache)", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse("{not json"));
+
+    await expect(customFetch("/api/loyalty")).rejects.toMatchObject({
+      name: "ResponseParseError",
+      status: 200,
+    });
+  });
+
+  it("an empty-string 200 body resolves null (the guarded-parse empty contract)", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(""));
+
+    await expect(customFetch("/api/auth/providers")).resolves.toBeNull();
+  });
+});
+
+describe("customFetch — concurrency: two parallel calls sharing one AbortController (R144-C1)", () => {
+  beforeEach(() => {
+    savedTimeout = (AbortSignal as Statics).timeout;
+    savedAny = (AbortSignal as Statics).any;
+    timeoutCalls = [];
+    anyCalls = [];
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    restoreAbortStatics();
+    setUnauthorizedHandler(null);
+  });
+
+  it("one shared caller signal aborts BOTH in-flight calls; the rejection is the caller's own abort reason", async () => {
+    installTimeoutStub();
+    installAnyStub();
+    const fetchMock = hangingSignalAwareFetch();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const shared = new AbortController();
+    const first = customFetch("/api/loyalty", { signal: shared.signal });
+    const second = customFetch("/api/loyalty/ledger", { signal: shared.signal });
+
+    // Both rides merged the SAME caller signal with their own timeout.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Handlers attach BEFORE the abort fires — otherwise the rider that
+    // rejects while only its sibling is awaited registers as unhandled.
+    const reason = new DOMException("The user aborted a request.", "AbortError");
+    const firstExpectation = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    const secondExpectation = expect(second).rejects.toMatchObject({ name: "AbortError" });
+    shared.abort(reason);
+
+    await firstExpectation;
+    await secondExpectation;
+    try {
+      await first;
+    } catch (error) {
+      expect((error as DOMException).message).toBe("The user aborted a request.");
+    }
+    // Caller cancellation is NOT remapped onto the network-error shape
+    // (that mapping is reserved for OUR timeout) — React Query's unmount
+    // semantics stay intact for every rider of the shared controller.
+  });
+
+  it("both riders of a shared controller resolve when neither aborts", async () => {
+    installTimeoutStub();
+    installAnyStub();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ points: 10 }))
+      .mockResolvedValueOnce(jsonResponse([{ id: 1 }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const shared = new AbortController();
+    const [overview, ledger] = await Promise.all([
+      customFetch<{ points: number }>("/api/loyalty", { signal: shared.signal }),
+      customFetch<{ id: number }[]>("/api/loyalty/ledger", { signal: shared.signal }),
+    ]);
+
+    expect(overview).toEqual({ points: 10 });
+    expect(ledger).toEqual([{ id: 1 }]);
+  });
+});

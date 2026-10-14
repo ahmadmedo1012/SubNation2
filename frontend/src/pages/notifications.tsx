@@ -11,6 +11,7 @@ import { TYPE_CONFIG } from "@/components/layout/NotificationBell";
 import { CheckCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { customFetch } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
 
@@ -101,27 +102,31 @@ export default function NotificationsPage() {
   } = useInfiniteQuery<NotificationsPage, Error>({
     queryKey: ["/api/notifications", "paged"],
     queryFn: async ({ pageParam, signal }) => {
-      const r = await fetch(
-        `/api/notifications?page=${pageParam as number}&limit=${NOTIFICATIONS_PAGE_SIZE}`,
-        {
-          headers: { Authorization: token ? `Bearer ${token}` : "" },
-          signal,
-        },
-      );
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as {
-          error?: string;
-          code?: string;
-        } | null;
-        throw new Error(getErrorMessage(body) || `تعذّر تحميل الإشعارات (HTTP ${r.status})`);
+      // R144-C1 (L16-3): rides customFetch — same URL/auth/signal; the
+      // inline ok-guard + envelope parse collapses into the ApiError
+      // path (getErrorMessage reads .data.error/.code exactly like the
+      // hand-rolled body parse did; the never-rendered `(HTTP ${status})`
+      // suffix falls to the generic Arabic copy — FetchErrorCard copy is
+      // generic). 20 s budget + boot-gate retry arrive by construction.
+      try {
+        const d = await customFetch<unknown>(
+          `/api/notifications?page=${pageParam as number}&limit=${NOTIFICATIONS_PAGE_SIZE}`,
+          {
+            headers: { Authorization: token ? `Bearer ${token}` : "" },
+            signal,
+          },
+        );
+        // Shape guard (the raw-fetch hardening idiom): only a well-formed
+        // envelope reaches the cache.
+        if (!d || !Array.isArray((d as NotificationsPage).notifications)) {
+          throw new Error("تعذّر تحميل الإشعارات");
+        }
+        return d as NotificationsPage;
+      } catch (err) {
+        // preserve-caught-error: the original ApiError/network error rides
+        // as `cause` for Sentry/console diagnostics.
+        throw new Error(getErrorMessage(err) || "تعذّر تحميل الإشعارات", { cause: err });
       }
-      const d = await r.json();
-      // Shape guard (the raw-fetch hardening idiom): only a well-formed
-      // envelope reaches the cache.
-      if (!d || !Array.isArray((d as NotificationsPage).notifications)) {
-        throw new Error("تعذّر تحميل الإشعارات");
-      }
-      return d as NotificationsPage;
     },
     initialPageParam: 1,
     // The envelope's honest flag (unlike the orders plain-array contract,
@@ -164,11 +169,12 @@ export default function NotificationsPage() {
       if (!token || readOverlay.has(id)) return;
       setReadOverlay((prev) => new Set(prev).add(id));
       try {
-        const r = await fetch(`/api/notifications/${id}/read`, {
+        // R144-C1 (L16-3): customFetch — non-2xx throws into the catch
+        // (rollback) arm; the 20 s bound replaces the unbounded POST.
+        await customFetch(`/api/notifications/${id}/read`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } catch {
         // Rollback — the bell's silent-reconcile contract (no toast; the
         // next poll / refetch carries the server truth).
@@ -187,11 +193,12 @@ export default function NotificationsPage() {
     const snapshot = readOverlay;
     setReadOverlay(new Set(rows.filter((n) => !n.is_read).map((n) => n.id)));
     try {
-      const r = await fetch("/api/notifications/read-all", {
+      // R144-C1 (L16-3): customFetch — non-2xx throws into the catch
+      // (rollback) arm; the 20 s bound replaces the unbounded POST.
+      await customFetch("/api/notifications/read-all", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
     } catch {
       setReadOverlay(snapshot);
     }

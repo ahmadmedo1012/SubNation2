@@ -1,5 +1,6 @@
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { customFetch } from "@workspace/api-client-react";
 import { ClipboardPaste, Loader2, MessageCircle, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -218,6 +219,26 @@ export function WhatsAppPhoneSignIn({
     settlingRetriesRef.current = 0;
   }
 
+  // R144-C2 (L16-3): the parsed error envelope customFetch's ApiError
+  // carries on `.data` — the SAME shape the old inline
+  // `res.json().catch(() => ({}))` fed every !res.ok branch below.
+  // Duck-typed per checkout-errors.ts' isHttpApiError idiom (the class
+  // itself is a type-only package export). Null for network-level and
+  // parse-level failures, which belong to the shared network-copy arm.
+  function apiErrorEnvelope(err: unknown): {
+    success?: boolean;
+    error?: string;
+    expires_at?: string;
+    details?: { reason?: string; retry_after_sec?: number };
+    token?: string;
+    is_new_user?: boolean;
+  } | null {
+    if (!(err instanceof Error) || err.name !== "ApiError") return null;
+    const data = (err as { data?: unknown }).data;
+    if (!data || typeof data !== "object") return null;
+    return data as NonNullable<ReturnType<typeof apiErrorEnvelope>>;
+  }
+
   async function sendCode() {
     setError("");
     if (!phone || phone.length < 9) {
@@ -226,67 +247,28 @@ export function WhatsAppPhoneSignIn({
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/whatsapp/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
+      // R144-C2 (L16-3): rides customFetch — same URL/method/body; non-2xx
+      // throws ApiError whose `.data` IS the parsed envelope the old
+      // inline parse fed every !res.ok branch, so the settling /
+      // gateway_waking 503 detail arms and the single error funnel read
+      // the SAME shape; the previously UNBOUNDED OTP POST gains the 20 s
+      // budget (a business 503 whatsapp_settling never matches the
+      // boot-gate marker, so it is never retried transparently).
+      const data = await customFetch<{
         success?: boolean;
         error?: string;
         expires_at?: string;
         details?: { reason?: string; retry_after_sec?: number };
-      };
-      if (!res.ok) {
-        // 96-F2 (R96-A4 §1.3E): the channel was JUST linked and is
-        // still settling (sender-key / app-state propagation — the
-        // production "Waiting for this message" window). Informational,
-        // NEVER error-styled: honest copy, auto-retry after
-        // retry_after_sec, max 2 auto-retries, then a manual button.
-        // This 503 is NOT a rate limit — no cooldown is burned.
-        // R102 (cold-wake, R102-B F3): gateway_waking (the Render-Free
-        // gateway booting after idle sleep) rides the SAME auto-retry
-        // path — the first OTP after a sleep period used to hard-fail
-        // 502 and force a manual re-tap.
-        if (
-          data.details?.reason === "whatsapp_settling" ||
-          data.details?.reason === "gateway_waking"
-        ) {
-          setError("");
-          const raw = Number(data.details.retry_after_sec);
-          const waitSec =
-            Number.isFinite(raw) && raw > 0
-              ? Math.min(60, Math.max(3, Math.ceil(raw)))
-              : SETTLING_FALLBACK_WAIT_SEC;
-          if (settlingRetriesRef.current < SETTLING_MAX_AUTO_RETRIES) {
-            settlingRetriesRef.current += 1;
-            setSettling({
-              autoPending: true,
-              wake: data.details?.reason === "gateway_waking",
-            });
-            cancelSettlingTimer(settlingTimerRef);
-            settlingTimerRef.current = window.setTimeout(() => {
-              settlingTimerRef.current = null;
-              void sendCode();
-            }, waitSec * 1000);
-          } else {
-            // Auto-retry budget spent — keep the honest banner, hand
-            // control back to the user (send button re-enabled).
-            setSettling({
-              autoPending: false,
-              wake: data.details?.reason === "gateway_waking",
-            });
-          }
-          return;
-        }
-        clearSettling();
-        // 96-F2 (R96-A4 §4.1): single error funnel — no raw data.error.
-        setError(otpErrorMessage(data, "تعذّر إرسال الرمز"));
-        if (data.details?.retry_after_sec) {
-          setCooldown(data.details.retry_after_sec);
-        }
-        return;
-      }
+      }>("/api/auth/whatsapp/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      // Judgment call (disclosed): a 200 whose body is NOT valid JSON
+      // used to fall through the `.catch(() => ({}))` as {} — treated as
+      // SUCCESS (step "code"). The wrapper now throws ResponseParseError
+      // into the network-copy arm — a proxy error page can no longer
+      // advance the OTP step. Strictly safer, copy-level change only.
       clearSettling();
       setStep("code");
       setCooldown(COOLDOWN_DEFAULT);
@@ -300,6 +282,58 @@ export function WhatsAppPhoneSignIn({
       autoSubmittedFor.current = null;
       if (step === "code") codeInputRef.current?.focus();
     } catch (err) {
+      // R144-C2: ApiError branch = the old !res.ok arm, verbatim.
+      const body = apiErrorEnvelope(err);
+      if (body) {
+        // 96-F2 (R96-A4 §1.3E): the channel was JUST linked and is
+        // still settling (sender-key / app-state propagation — the
+        // production "Waiting for this message" window). Informational,
+        // NEVER error-styled: honest copy, auto-retry after
+        // retry_after_sec, max 2 auto-retries, then a manual button.
+        // This 503 is NOT a rate limit — no cooldown is burned.
+        // R102 (cold-wake, R102-B F3): gateway_waking (the Render-Free
+        // gateway booting after idle sleep) rides the SAME auto-retry
+        // path — the first OTP after a sleep period used to hard-fail
+        // 502 and force a manual re-tap.
+        if (
+          body.details?.reason === "whatsapp_settling" ||
+          body.details?.reason === "gateway_waking"
+        ) {
+          setError("");
+          const raw = Number(body.details.retry_after_sec);
+          const waitSec =
+            Number.isFinite(raw) && raw > 0
+              ? Math.min(60, Math.max(3, Math.ceil(raw)))
+              : SETTLING_FALLBACK_WAIT_SEC;
+          if (settlingRetriesRef.current < SETTLING_MAX_AUTO_RETRIES) {
+            settlingRetriesRef.current += 1;
+            setSettling({
+              autoPending: true,
+              wake: body.details?.reason === "gateway_waking",
+            });
+            cancelSettlingTimer(settlingTimerRef);
+            settlingTimerRef.current = window.setTimeout(() => {
+              settlingTimerRef.current = null;
+              void sendCode();
+            }, waitSec * 1000);
+          } else {
+            // Auto-retry budget spent — keep the honest banner, hand
+            // control back to the user (send button re-enabled).
+            setSettling({
+              autoPending: false,
+              wake: body.details?.reason === "gateway_waking",
+            });
+          }
+          return;
+        }
+        clearSettling();
+        // 96-F2 (R96-A4 §4.1): single error funnel — no raw data.error.
+        setError(otpErrorMessage(body, "تعذّر إرسال الرمز"));
+        if (body.details?.retry_after_sec) {
+          setCooldown(body.details.retry_after_sec);
+        }
+        return;
+      }
       clearSettling();
       // 96-F2 (R96-A4 §4.1): network failures get the shared Arabic network copy.
       setError(getErrorMessage(err));
@@ -316,12 +350,12 @@ export function WhatsAppPhoneSignIn({
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/whatsapp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, code, referralCode: getReferralCode() }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
+      // R144-C2 (L16-3): rides customFetch — same URL/method/body; a
+      // missing-token 200 keeps the old `!data.token` arm verbatim,
+      // non-2xx arrives as ApiError whose `.data` IS the parsed envelope
+      // the old `!res.ok` arm fed otpErrorMessage, and the previously
+      // UNBOUNDED verify POST gains the 20 s budget.
+      const data = await customFetch<{
         token?: string;
         error?: string;
         // L1-1 (R143): the verify mint returns is_new_user (the same
@@ -329,8 +363,12 @@ export function WhatsAppPhoneSignIn({
         // so the default navigation can route a brand-new user to the
         // onboarding welcome instead of /.
         is_new_user?: boolean;
-      };
-      if (!res.ok || !data.token) {
+      }>("/api/auth/whatsapp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code, referralCode: getReferralCode() }),
+      });
+      if (!data.token) {
         // 96-F2 (R96-A4 §4.1): single error funnel — no raw data.error.
         setError(otpErrorMessage(data, "فشل التحقق من الرمز"));
         return;
@@ -345,6 +383,14 @@ export function WhatsAppPhoneSignIn({
       if (onSuccess) onSuccess();
       else navigate(data.is_new_user === true ? "/onboarding" : "/");
     } catch (err) {
+      // R144-C2: ApiError branch = the old !res.ok arm (envelope →
+      // otpErrorMessage); everything else keeps the old catch arm's
+      // shared Arabic network copy verbatim.
+      const body = apiErrorEnvelope(err);
+      if (body) {
+        setError(otpErrorMessage(body, "فشل التحقق من الرمز"));
+        return;
+      }
       // 96-F2 (R96-A4 §4.1): shared Arabic network copy.
       setError(getErrorMessage(err));
     } finally {

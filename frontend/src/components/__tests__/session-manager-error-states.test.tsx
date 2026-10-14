@@ -39,14 +39,16 @@ vi.mock("@/hooks/use-toast", () => ({
 
 const fetchMock = vi.fn();
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** R144-C1 (L16-3): real Response objects — SessionManager rides
+ *  customFetch, which reads .text()/.headers; the minimal ok/json-only
+ *  stub predates the wrapper. `ok` is always consistent with `status`
+ *  at this suite's call sites, so the derived .ok matches. */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+  const { status = 200, body = {} } = over;
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const SESSION = {
@@ -86,8 +88,15 @@ describe("SessionManager — honest load state (B15-2)", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toBeInTheDocument();
-    // getErrorMessage({}) — the generic Arabic fallback.
-    expect(screen.getByText("حدث خطأ. حاول مرة أخرى")).toBeInTheDocument();
+    // R144-C1 (L16-3): the load rides customFetch now — a message-less
+    // 503 arrives as ApiError("HTTP 503 …"), which getErrorMessage's
+    // HTTP-prefix branch maps to the NETWORK-generic Arabic copy (the
+    // old inline path called getErrorMessage({}) → «حدث خطأ. حاول
+    // مرة أخرى». Both are Arabic fallbacks; the wrapper's is the
+    // unified one). Disclosed copy change in the R144-C1 worklog.
+    expect(
+      screen.getByText("تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى."),
+    ).toBeInTheDocument();
     // The false-empty line is gone on failure.
     expect(screen.queryByText("لا توجد جلسات نشطة لعرضها.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();

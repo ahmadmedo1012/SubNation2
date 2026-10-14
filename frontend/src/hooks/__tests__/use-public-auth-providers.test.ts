@@ -20,7 +20,13 @@ import {
 const fetchMock = vi.fn();
 
 function providersResponse(body: unknown) {
-  return { ok: true, status: 200, json: async () => body };
+  // R144-C1 (L16-3): real Response objects — the single-flight probe
+  // rides customFetch, which reads .text()/.headers; the minimal
+  // ok/json-only stub predated the wrapper.
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 beforeEach(() => {

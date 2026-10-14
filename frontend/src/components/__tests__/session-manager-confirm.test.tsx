@@ -33,14 +33,19 @@ vi.mock("@/hooks/use-toast", () => ({
 const fetchMock = vi.fn();
 
 function mockFetchResponses(responses: Array<{ ok: boolean; body: unknown }>) {
+  // R144-C1 (L16-3): real Response objects — SessionManager rides
+  // customFetch, which reads .text()/.headers; the minimal ok/json-only
+  // stub predated the wrapper. The factory mock below never sets a
+  // status, so ok=false maps to 500 (the suite only asserts the endpoint
+  // URL + auth header, not a status-specific branch).
   const queue = [...responses];
   fetchMock.mockImplementation(async () => {
     const next = queue.shift();
     if (!next) throw new Error("unexpected fetch call");
-    return {
-      ok: next.ok,
-      json: async () => next.body,
-    };
+    return new Response(JSON.stringify(next.body), {
+      status: next.ok ? 200 : 500,
+      headers: { "content-type": "application/json" },
+    });
   });
 }
 
@@ -134,7 +139,9 @@ describe("SessionManager — destructive confirm via useConfirm (B6-P1-3)", () =
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe("/api/auth/logout-all-devices");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+    // R144-C1 (L16-3): customFetch normalizes headers into a Headers
+    // INSTANCE (mergeHeaders) — the raw record cast no longer holds.
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer test-token");
   });
 
   it("cancel button closes the dialog without firing the request", async () => {

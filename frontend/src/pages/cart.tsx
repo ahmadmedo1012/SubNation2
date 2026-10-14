@@ -19,7 +19,12 @@ import { toast as sonnerToast } from "sonner";
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
-import { getGetWalletQueryKey, useGetWallet, type WalletInfo } from "@workspace/api-client-react";
+import {
+  customFetch,
+  getGetWalletQueryKey,
+  useGetWallet,
+  type WalletInfo,
+} from "@workspace/api-client-react";
 
 function effectivePrice(item: LocalCartItem): number {
   return item.salePriceLYD ?? item.priceLYD;
@@ -137,7 +142,13 @@ export default function CartPage() {
     clear();
     toast({ title: "تم إفراغ السلة" });
     if (token) {
-      fetch("/api/cart", { method: "DELETE", credentials: "include" }).catch(() => {
+      // R144-C1 (L16-3): rides customFetch — still best-effort
+      // fire-and-forget (the .catch swallows everything), but the
+      // previously UNBOUNDED DELETE now carries the 20 s budget.
+      void customFetch("/api/cart", {
+        method: "DELETE",
+        credentials: "include",
+      }).catch(() => {
         // Best-effort only — the UI renders the local cart; the server
         // copy (when the endpoint is alive) follows along eventually.
       });

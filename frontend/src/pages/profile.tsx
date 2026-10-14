@@ -9,9 +9,15 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetMeQueryKey, type User as MeUser, useGetMe } from "@workspace/api-client-react";
+import {
+  customFetch,
+  getGetMeQueryKey,
+  type User as MeUser,
+  useGetMe,
+} from "@workspace/api-client-react";
 import {
   AlertCircle,
   ChevronLeft,
@@ -159,23 +165,22 @@ export default function ProfilePage() {
       setLoadingProviders(true);
       setProvidersError(false);
       try {
-        const res = await fetch("/api/auth/providers/linked", {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-        // R135 (FE-4): the boundary cast for the untyped res.json() — the
-        // response contract is LinkedProviderRow[] (see the interface
-        // docblock; the `|| []` defensive fallback stays verbatim).
-        const data = (await res.json()) as { providers?: LinkedProviderRow[] };
+        // R144-C1 (L16-3): rides customFetch — same URL/auth/abort
+        // signal; non-2xx throws ApiError into the catch arm (the old
+        // `else setProvidersError(true)`), the unguarded res.json() is
+        // replaced by the wrapper's guarded parse, and the previously
+        // UNBOUNDED request gains the 20 s budget. The AbortError filter
+        // stays: a caller cancellation propagates unchanged (name
+        // "AbortError"), so unmount stays silent as before.
+        const data = await customFetch<{ providers?: LinkedProviderRow[] }>(
+          "/api/auth/providers/linked",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          },
+        );
         if (cancelled) return;
-        if (res.ok) {
-          setLinkedProviders(data.providers || []);
-        } else {
-          // 401/5xx — the list stays untouched (stale-but-real beats
-          // fake-empty) and the explicit error card replaces the
-          // link-your-account advice.
-          setProvidersError(true);
-        }
+        setLinkedProviders(data.providers || []);
       } catch (err) {
         if ((err as { name?: string })?.name !== "AbortError") {
           console.error("Failed to fetch linked providers:", err);
@@ -209,15 +214,14 @@ export default function ProfilePage() {
 
     setUnlinkingProvider(providerUid);
     try {
-      const res = await fetch("/api/auth/providers/unlink", {
+      // R144-C1 (L16-3): rides customFetch — same method/headers/body;
+      // non-2xx throws ApiError (the envelope the old inline parse read)
+      // and the unguarded res.json() is replaced by the guarded parse.
+      await customFetch("/api/auth/providers/unlink", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ provider, provider_uid: providerUid }),
       });
-      // R135 (FE-4): same boundary typing as the linked fetch — only the
-      // error envelope's sentence is read on the !ok branch.
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? "فشل فصل مزود المصادقة");
 
       toast({ title: "تم فصل الحساب", description: `تم فصل ${displayName} بنجاح.` });
       await refetchProviders();
@@ -227,8 +231,14 @@ export default function ProfilePage() {
         title: "خطأ",
         /* R124-I4 (A10 #7): the vague «فشلت العملية» fallback is below
            the app's error-copy bar — names the failed action + recovery,
-           matching the R111-F2 family (loyalty.tsx / support.tsx). */
-        description: err instanceof Error ? err.message : "تعذّر فصل الحساب — حاول مرة أخرى",
+           matching the R111-F2 family (loyalty.tsx / support.tsx).
+           R144-C1 (L16-5): the raw `err instanceof Error ? err.message`
+           extractor leaked English (SyntaxError from the unguarded
+           json(), "Failed to fetch") into this Arabic toast — routed
+           through getErrorMessage's 96-F7 Arabic-collapse guard now
+           (server wording passes, technical strings collapse to the
+           Arabic generic copy, the old Arabic fallback stays). */
+        description: getErrorMessage(err) || "تعذّر فصل الحساب — حاول مرة أخرى",
         variant: "destructive",
       });
     } finally {

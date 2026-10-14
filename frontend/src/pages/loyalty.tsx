@@ -9,6 +9,7 @@ import { generateIdempotencyKey } from "@/lib/idempotency";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   convertPoints as convertPointsApi,
+  customFetch,
   getGetMeQueryKey,
   getGetWalletQueryKey,
 } from "@workspace/api-client-react";
@@ -84,18 +85,18 @@ export default function LoyaltyPage() {
   // stale data still on screen is NOT an error screen.
   const overviewQ = useQuery<LoyaltyData>({
     queryKey: LOYALTY_OVERVIEW_QUERY_KEY,
+    // R144-C1 (L16-3): the twin raw fetches ride customFetch now (the
+    // wrapper referrals.tsx already uses for this exact key) — same URL,
+    // same auth header, same react-query signal; the 20 s budget +
+    // boot-gate retry arrive by construction. Non-2xx throws ApiError
+    // into the query error state (the old `HTTP ${r.status}` message was
+    // never rendered — FetchErrorCard copy is generic), the payload
+    // shape guard below stays verbatim.
     queryFn: async ({ signal }) => {
-      const r = await fetch("/api/loyalty", {
+      const d = (await customFetch<unknown>("/api/loyalty", {
         headers: { Authorization: token ? `Bearer ${token}` : "" },
-        // React Query's signal aborts on unmount/cancel — the raw fetch
-        // below used to run to completion even after the page died.
         signal,
-      });
-      // res.ok check: a 5xx arrives as an {error} envelope, and the
-      // render path dereferences d.points/d.tier directly — without
-      // this gate the old code fed the envelope into the UI (B4 P1-3).
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = (await r.json()) as unknown;
+      })) as unknown;
       // Payload shape guard: don't let a malformed 200 reach
       // `data.points.toLocaleString()` — render the error state
       // instead of crashing into the ErrorBoundary.
@@ -122,16 +123,14 @@ export default function LoyaltyPage() {
   const ledgerQ = useQuery<PointsLedgerEntry[]>({
     queryKey: LOYALTY_LEDGER_QUERY_KEY,
     queryFn: async ({ signal }) => {
-      const r = await fetch("/api/loyalty/ledger", {
+      const d = (await customFetch<unknown>("/api/loyalty/ledger", {
         headers: { Authorization: token ? `Bearer ${token}` : "" },
         signal,
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = (await r.json()) as unknown;
+      })) as unknown;
       // Array shape guard → distinct error state, never a fake
       // "no history yet".
       if (!Array.isArray(d)) throw new Error("bad payload");
-      return d;
+      return d as PointsLedgerEntry[];
     },
     enabled: !!token,
     staleTime: 60_000,
