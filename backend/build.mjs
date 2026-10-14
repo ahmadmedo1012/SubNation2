@@ -25,7 +25,10 @@ async function buildAll() {
   //
   // r110 (109-e P2-2): the marker is now a VERSIONED COMPOSITE —
   // `v2:<codeHash>:<schemaHash>`:
-  //   - <codeHash>   = sha256 of src/migrate.ts (the migration engine);
+  //   - <codeHash>   = sha256 of src/migrate.ts + src/migrate/** (the
+  //                    migration engine tree — R144-B2: the engine was
+  //                    decomposed into the migrate/ module family, and the
+  //                    hash was extended to keep covering every engine line);
   //   - <schemaHash> = sha256 of shared/db/src/schema/*.ts + the ENTIRE
   //     emitted drizzle chain (shared/db/drizzle/*.sql + meta/*, i.e.
   //     journal + snapshots), so out-of-band SQL/schema edits — a schema
@@ -58,6 +61,22 @@ async function buildAll() {
 
   const codeHash = createHash("sha256");
   codeHash.update(await readFile(path.resolve(artifactDir, "src/migrate.ts"), "utf8"));
+  // R144-B2: the engine corpus is src/migrate.ts (the runMigrations
+  // orchestrator) PLUS the src/migrate/ module family. Hash the whole tree —
+  // sorted, NUL-path-prefixed exactly like the schema corpus below, so a
+  // module rename/move moves the hash too — or the marker would silently
+  // stop covering the ~2,200 engine lines that moved out of migrate.ts (an
+  // RT-6 drift-detection regression). The changed hash value itself just
+  // means exactly one full reconcile on the first boot of a post-split
+  // build, then the new composite marker is persisted — the designed v2
+  // upgrade path; nothing ever parses the old marker.
+  const migrateFiles = (await listFilesSorted(path.resolve(artifactDir, "src/migrate"))).filter(
+    (f) => f.endsWith(".ts"),
+  );
+  for (const rel of migrateFiles) {
+    codeHash.update(`migrate/${rel}\0`);
+    codeHash.update(await readFile(path.join(artifactDir, "src/migrate", rel), "utf8"));
+  }
   const schemaHash = createHash("sha256");
   // NUL-separated path prefixes keep the concatenation unambiguous and make
   // corpus RENAMES (a moved/renamed file) move the hash too, not just edits.
@@ -75,7 +94,8 @@ async function buildAll() {
   console.log(
     `[build] migrations fingerprint: v2:${codeHashHex.slice(0, 12)}…` +
       ` (code ${codeHashHex.slice(0, 8)} / schema ${schemaHashHex.slice(0, 8)}, ` +
-      `${schemaFiles.length} schema + ${chainFiles.length} chain files)`,
+      `${schemaFiles.length} schema + ${chainFiles.length} chain + ` +
+      `${migrateFiles.length + 1} engine files)`,
   );
 
   await esbuild({
