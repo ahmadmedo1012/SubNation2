@@ -59,3 +59,34 @@ formatCurrency + tabular-nums + «د.ل»), money invariants untouched,
 admin dialect (density, ≥24px edge targets), PERFORMANCE.md budgets,
 .hermes.md gates. Arabic copy changes only where explicitly authorized
 by the recomposition (hero sub-line stays keyword-honest for SEO).
+
+---
+
+## FINAL DISPOSITIONS (close of round — every item resolved with evidence)
+
+| # | Defect | Disposition | Evidence |
+|---|--------|-------------|----------|
+| D1 | Hero chaos / black hole / orphaned stats | **CLOSED** — the lit shelf recomposition (h1 + value line + CTA + shelf + stats caption); before/after VLM: desktop hero 9/10 "massive improvement", mobile 8-9/10 | download/r145/{baseline,after}/ + live/ screenshots |
+| D2 | Wall of cards / no section identity | **CLOSED** — CategoryRail + visible catalog section header + rhythm gaps + the close (how-it-works + trust); VLM comparative: dedicated discovery section confirmed | live VLM check item 3 |
+| D3 | PDP terms-between-price-and-CTA; sticky bar ghost | **CLOSED** — terms → quiet disclosure below CTA (order-13); sticky bar verified solid/separated/solid-CTA against an in-stock product (sold-out branch stays honest-outline by design) | product-instock-mobile-sticky.png + VLM 4-point pass |
+| D4 | Card hierarchy inversion | **CLOSED** — title full-ink, price text-base; pin suite updated with rationale | product-card-r120-regressions 16/16 |
+| D5 | Mobile fold waste | **CLOSED** — shelf (product imagery) at 405px on live 390×844 (was ~915px before any product) | fold-geometry.json + live smoke |
+| D6 | Flash-sales empty reads as error | **CLOSED** — editorial honest state; lane 145-D; flash-sales tests re-pinned | VLM: "editorial, not error" |
+| D7 | Login input weight / dead providers | **CLOSED** — bg-input surface + renderableProviders gate (dead Google row hidden); truth-table pins | auth-providers-hardening + VLM 3/3 |
+| D8 | Empty cart dead end | **CLOSED** — 7 honest category shortcuts at 44px; pins added | cart-undo-clear 21/21 + VLM 2/2 |
+| D9 | PDP readability | **CLOSED** — 16px reading column, breadcrumb contrast step | lane 145-C |
+| D10 | Admin login family break | **CLOSED** — emblem glow retired, tint pair aligned; 130/130 admin suites | lane 145-E |
+
+## Release evidence
+
+- Base `a109357` → final `bb7bd52` (one commit: feat(visual,r145))
+- CI push run `38581513116` success; dispatched run `38582764033` **8/8
+  success incl. e2e** (live guest suite against the deployed release)
+- Live release identity: `index-B-XOmDEf.js` embeds `"bb7bd52"`
+- Live smoke: 14/14 routes, 0 page errors, no horizontal overflow
+  (contain:layout verified in production), shelf at 405px
+- Eager path: **146,702 B gz (−148 vs the 146,850 baseline)** under the
+  150 KiB warn / 160 KiB hard gate; vendor-motion 30.49 KB gz
+  lazy-gated, fetched on first route load
+- Motion 14.2.0 (LazyMotion + m + domAnimation, reducedMotion="user");
+  no other animation library; tw-animate-css untouched
