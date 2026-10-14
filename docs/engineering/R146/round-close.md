@@ -83,3 +83,29 @@ account titles, legacy-slug seed, ref forwarding).
   estimate) because Tailwind's content scanner requires the class
   literals in source — the honest constraint, documented in the
   registry docblock.
+
+## Release chain (verified end-to-end)
+
+- Commits: `4dca48c` (R145 base) → `ae531a7` (audit docs + ruleset) →
+  `f860d2f` (the implementation) → `b0fa941` (CI follow-up:
+  `package-manager-cache: false` on the audit job — setup-node v5
+  defaults it to true and the post-job save failed hard on the now-absent
+  store path; the first run's CVE scans themselves passed).
+- CI push run 38617200416 on `b0fa941`: **success** (gitleaks, backend
+  units, frontend units, lint/typecheck/drift, build; CVE + e2e correctly
+  path-filtered off a CI-only diff).
+- Coolify push-to-deploy: production serves `index-Bde77MWH.js` which
+  embeds the release identity **`f860d2f`**.
+- Live smoke (production): 14 public routes HTTP 200 (/, login, register,
+  category/streaming, flash-sales, cart, wallet, orders, loyalty,
+  referrals, profile, support, status, terms) + `/api/healthz` 200 +
+  `/api/auth/providers` returning the live Telegram provider shape.
+  Browser-verified: homepage boots with ZERO page errors (15 category
+  links, Arabic RTL rendering); `/wallet` guest-redirects to login whose
+  `document.title` is properly set («تسجيل الدخول — SubNation») — the
+  R146 account-titles fix working live. Desktop + 390px mobile
+  screenshots archived at `/home/z/my-project/download/r146/`.
+- Dispatched full CI run 38619076866 on `b0fa941`: **8/8 success
+  INCLUDING e2e** — the live guest e2e suite ran green against the
+  deployed R146 release, and the CVE job proved its cache fix (success,
+  "No known vulnerabilities found" at high and critical).
