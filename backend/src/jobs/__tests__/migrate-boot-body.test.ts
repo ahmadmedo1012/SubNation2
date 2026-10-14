@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
-import type { SQL } from "drizzle-orm";
+import { getTableColumns, is, type SQL } from "drizzle-orm";
+import { getTableConfig, PgDialect, PgTable } from "drizzle-orm/pg-core";
+import * as schema from "@workspace/db/schema";
+import { decrypt, isEncrypted } from "../../lib/encryption";
 
 /**
  * R143 (L9-2 / F-1 proper) — the full `runMigrations()` body boot test.
@@ -170,4 +173,115 @@ describe("R143 (L9-2): the full runMigrations() body boots a fresh database", ()
     // Keyset pagination composite (R142-era money-read shape).
     expect(await indexDef("idx_orders_user_created")).toContain("ON public.orders");
   });
+});
+
+describe("R146 (audit-shared-migrate): parity + encryption-at-rest gates on the same boot", () => {
+  it("F2: every schema-TS column exists in the boot-built database, and vice versa (column census)", async () => {
+    const tables = Object.entries(schema).filter(([, value]) => is(value, PgTable));
+    // Guards the census against a silent is() regression making the loop
+    // vacuous — the schema exports exactly the 41 boot tables, 1:1.
+    expect(tables.length).toBe(41);
+    for (const [exportName, value] of tables) {
+      const table = value as PgTable;
+      const tableName = getTableConfig(table).name;
+      // getTableColumns is keyed by TS property name — map to SQL names.
+      const schemaColumns = Object.values(getTableColumns(table))
+        .map((column) => column.name)
+        .sort();
+      const res = await bootDb.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = $1`,
+        [tableName],
+      );
+      // Either direction is drift: a schema-only column 42703s in
+      // production (migrate.ts never creates it); a boot-only column is
+      // invisible to the schema/chain and every drizzle query.
+      expect(
+        res.rows.map((r) => r.column_name).sort(),
+        `${exportName} (${tableName}) column census mismatch`,
+      ).toEqual(schemaColumns);
+    }
+  });
+
+  it(
+    "F1: a plaintext credential containing two colons is encrypted on boot",
+    { timeout: 120_000 },
+    async () => {
+      // The exact legacy shape the old `NOT LIKE '%:%:%'` pre-filter
+      // silently skipped: operator-pasted `user:pass:2fa` plaintext never
+      // reached the authoritative isEncrypted() gate.
+      await bootDb.query(`INSERT INTO users (phone) VALUES ('09146000001')`);
+      await bootDb.query(
+        `INSERT INTO inventory (product_id, account_email, account_password)
+         VALUES ((SELECT id FROM products ORDER BY id LIMIT 1), 'r146-f1@subnation.ly', $1)`,
+        ["user:pass:2fa"],
+      );
+      await bootDb.query(
+        `INSERT INTO orders (order_code, user_id, product_id, amount, status, delivered_password)
+         VALUES ('R146-F1-ORD',
+                 (SELECT id FROM users WHERE phone = '09146000001'),
+                 (SELECT id FROM products ORDER BY id LIMIT 1),
+                 10.00, 'completed', $1)`,
+        ["mail:secret:otp"],
+      );
+
+      await expect(runMigrations()).resolves.toBeUndefined();
+
+      const inv = await bootDb.query<{ account_password: string }>(
+        `SELECT account_password FROM inventory WHERE account_email = 'r146-f1@subnation.ly'`,
+      );
+      expect(isEncrypted(inv.rows[0]!.account_password)).toBe(true);
+      expect(decrypt(inv.rows[0]!.account_password)).toBe("user:pass:2fa");
+
+      const ord = await bootDb.query<{ delivered_password: string }>(
+        `SELECT delivered_password FROM orders WHERE order_code = 'R146-F1-ORD'`,
+      );
+      expect(isEncrypted(ord.rows[0]!.delivered_password)).toBe(true);
+      expect(decrypt(ord.rows[0]!.delivered_password)).toBe("mail:secret:otp");
+    },
+  );
+
+  it(
+    "F3: the admin seed INSERT loses a concurrent cold-boot race without aborting",
+    { timeout: 120_000 },
+    async () => {
+      // Fresh-database shape: the COUNT gate sees zero admins, then the
+      // peer container's INSERT lands between our COUNT and ours (the PG
+      // advisory lock fails OPEN after 90s) — simulated at the exact
+      // statement boundary the race window really sits on.
+      await bootDb.query(`DELETE FROM admin_users`);
+      const racedUsername = process.env.ADMIN_USERNAME || "admin";
+
+      const mockDbObject = testDb.db as unknown as {
+        execute: (query: SQL) => Promise<unknown>;
+      };
+      const originalExecute = mockDbObject.execute.bind(mockDbObject);
+      const dialect = new PgDialect();
+      let raced = false;
+      mockDbObject.execute = async (query: SQL) => {
+        if (!raced && dialect.sqlToQuery(query).sql.includes("INSERT INTO admin_users")) {
+          raced = true;
+          await bootDb.query(
+            `INSERT INTO admin_users (username, password_hash, display_name, role, permissions)
+             VALUES ($1, 'raced-leader-hash', 'raced leader', 'superadmin', '["all"]'::jsonb)`,
+            [racedUsername],
+          );
+        }
+        return originalExecute(query);
+      };
+      try {
+        // Without ON CONFLICT this rejects with 23505 → classified
+        // "critical" → process.exit(1) on a blue-green cold start.
+        await expect(runMigrations()).resolves.toBeUndefined();
+      } finally {
+        mockDbObject.execute = originalExecute;
+      }
+
+      const admins = await bootDb.query<{ c: string | number }>(
+        `SELECT count(*) AS c FROM admin_users WHERE username = $1`,
+        [racedUsername],
+      );
+      expect(Number(admins.rows[0]!.c)).toBe(1); // the leader's row only
+    },
+  );
 });

@@ -290,10 +290,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       .select()
       .from(productVariantsTable)
       .where(
-        and(
-          eq(productVariantsTable.productId, productId),
-          eq(productVariantsTable.isActive, true),
-        ),
+        and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.isActive, true)),
       )
       .orderBy(productVariantsTable.priceLyd)
       .limit(500),
@@ -361,11 +358,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       listPrice: variant ? toNumber(variant.priceLyd) : toNumber(product.price),
       couponCode,
     }),
-    db
-      .select({ id: inventoryTable.id })
-      .from(inventoryTable)
-      .where(inventoryScope)
-      .limit(1),
+    db.select({ id: inventoryTable.id }).from(inventoryTable).where(inventoryScope).limit(1),
   ]);
 
   // ── Discount stack (flash sale → coupon → final) — single source: lib/pricing.ts
@@ -599,7 +592,12 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
       if (!updatedUser) throw new Error("CONCURRENCY_ERROR");
 
       if (appliedCoupon) {
-        const newUsedCount = appliedCoupon.usedCount + 1;
+        // R146 audit F2: the maxed signal reads the guarded UPDATE's
+        // RETURNing row (the true post-increment value), not a count
+        // computed from the PRE-transaction read — two buyers draining
+        // the last slots concurrently both computed 0+1 and neither
+        // fired the operator alert. Money is safe either way (the
+        // guarded UPDATE is the authority); only the signal was lost.
         // F-006 (security audit 004) — atomic-with-check increment.
         //
         // Previously: validate-outside-transaction then unconditional
@@ -638,7 +636,7 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           .where(couponWhere)
           .returning();
         if (!updatedCoupon) throw new Error("COUPON_EXHAUSTED");
-        if (appliedCoupon.maxUses !== null && newUsedCount >= appliedCoupon.maxUses) {
+        if (appliedCoupon.maxUses !== null && updatedCoupon.usedCount >= appliedCoupon.maxUses) {
           // F8: signal only — see the declaration above. notifyCouponMaxedOut
           // + logAdminAlert fire AFTER the commit (below), so a rollback
           // can never leave a false "coupon exhausted" alert + a 24h

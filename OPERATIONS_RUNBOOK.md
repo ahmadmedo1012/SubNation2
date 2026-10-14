@@ -217,7 +217,7 @@ on every push (R119+). Rollback paths on this stack, in order of preference:
 1. **Deploy the previous commit (no code change):** Coolify → SubNation
    resource → point the deployment at the last-known-good SHA + set the
    matching `GIT_SHA` build arg → Deploy (panels are named by function —
-   commit / redeploy-an-older-deploy; `COOLIFY_FINAL_SETUP.md` §7).
+   commit / redeploy-an-older-deploy; `docs/deployment/COOLIFY_FINAL_SETUP.md` §7).
    RTO ≈ one build (2–4 min).
 2. **`git revert` + push:** revert the bad commit(s) on `main` and push —
    the webhook deploys the revert like any other commit. Preferred when
@@ -351,7 +351,10 @@ the pre-R108 embedded-election shape and are gone: while the process is
 up, the complete recurring inventory is — **daily retention crons
 00:00-05:00 UTC (~25 min/day) running unconditionally in the web
 process** (NOT under a leader lock); the **60 s alerting evaluator**
-(in-process counters only — no DB, no outbound); the **Redis worker
+(in-process counters only — no DB, no outbound; rides the WEB process in
+every topology per the R146 note in docs/operations/FINAL_MONITORING.md —
+the worker never starts it, and `DISABLE_WEB_SCHEDULERS=true` does not
+stop it); the **Redis worker
 heartbeat** (only when a Redis client exists — skipped entirely when
 `REDIS_URL` is unset); and the **boot one-shot chain** once per process
 start (+7 s deferral). NOTHING sub-hourly touches the database. The

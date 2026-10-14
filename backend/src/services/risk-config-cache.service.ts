@@ -118,7 +118,12 @@ export async function getRiskConfig(): Promise<RiskConfigSnapshot> {
       try {
         const redis = getRedisClient();
         if (redis) {
-          await redis.set(CACHE_KEY, JSON.stringify(row), { EX: CACHE_TTL_SECONDS });
+          // Same R2/F3 bound as the get above — an unbounded set queued
+          // on a black-holed socket hung getRiskConfig after the db read
+          // had already succeeded (R146 audit F1).
+          await withRedisCommandTimeout("risk_config_set", () =>
+            redis.set(CACHE_KEY, JSON.stringify(row), { EX: CACHE_TTL_SECONDS }),
+          );
         }
       } catch {
         // best-effort cache populate
@@ -147,8 +152,12 @@ export async function invalidateRiskConfig(): Promise<void> {
   try {
     const redis = getRedisClient();
     if (redis) {
-      await redis.del(CACHE_KEY);
-      await redis.publish(INVALIDATION_CHANNEL, "1");
+      // R146 audit F1: bounded per the repo-wide R2 rule — the admin
+      // PUT hung forever on these when the socket black-holed.
+      await withRedisCommandTimeout("risk_config_del", () => redis.del(CACHE_KEY));
+      await withRedisCommandTimeout("risk_config_publish", () =>
+        redis.publish(INVALIDATION_CHANNEL, "1"),
+      );
     }
   } catch (err) {
     logger.warn({ err, category: "risk-config" }, "[risk-config] redis invalidate publish failed");
@@ -163,7 +172,27 @@ async function ensureInvalidationSubscription(): Promise<void> {
     // node-redis v4: duplicate then connect; SUBSCRIBE requires
     // a dedicated connection (the main one cannot mix commands).
     const sub = redis.duplicate();
-    await sub.connect();
+    // R146 review F1: duplicates do not inherit the main client's error
+    // listener (redis-client.ts attaches one) — an un-listened client
+    // turns the first socket error into an uncaughtException (process
+    // exit). Attach BEFORE connect so no window exists.
+    sub.on("error", (err) => {
+      logger.warn({ err, category: "risk-config" }, "[risk-config] redis pub/sub client error");
+    });
+    // R146 audit F1: connect() is a Redis op like any other — unbounded,
+    // it queued forever and stalled every getRiskConfig behind it.
+    try {
+      await withRedisCommandTimeout("risk_config_sub_connect", () => sub.connect());
+    } catch (err) {
+      // R146 review F1: retire the loser so a sustained outage (connect
+      // times out every 60 s cache expiry) leaks zero orphan duplicates.
+      try {
+        sub.disconnect();
+      } catch {
+        /* already gone */
+      }
+      throw err;
+    }
     await sub.subscribe(INVALIDATION_CHANNEL, () => {
       inMemoryCache = null;
       inMemoryCacheExpiresAt = 0;

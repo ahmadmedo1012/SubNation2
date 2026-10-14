@@ -91,7 +91,7 @@ OPENWA_CREDENTIALS_KEY=$OPENWA_CREDENTIALS_KEY
 EOF
 
 if [[ "${OTP_HMAC_KEY_EXPLICIT:-0}" == "1" ]]; then
-  echo "# only set OTP_HMAC_KEY if you intentionally override the ENCRYPTION_KEY-derived default:"
+  echo "# only set OTP_HMAC_KEY if you intentionally override the SESSION_SECRET-derived default:"
   echo "OTP_HMAC_KEY=$(hex64)"
 fi
 if [[ "${DASHBOARD_ENABLED:-0}" == "1" ]]; then

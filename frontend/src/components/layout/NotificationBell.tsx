@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { trapTabKey } from "@/lib/a11y/trap-tab-key";
 import { formatCount, formatRelativeTime } from "@/lib/utils";
 import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
 import { useLocation } from "wouter";
@@ -32,36 +33,12 @@ interface Notif {
 }
 
 /**
- * R133 (A4-F7): the Tab half of the aria-modal promise — the third
- * local copy of the trapTabKey idiom (admin/layout.tsx palette,
- * Navbar drawer, now the bell panel), deliberately kept local per the
- * Navbar.tsx:47 convention. role="dialog" now pairs with
- * aria-modal="true", so Tab must cycle inside the panel instead of
- * walking into the page behind it (WCAG 2.1.2).
+ * R133 (A4-F7): the Tab half of the aria-modal promise — the shared
+ * React-free helper (lib/a11y/trap-tab-key; R146 components-audit F1
+ * folded the local copy onto it, the body was byte-identical).
+ * role="dialog" pairs with aria-modal="true", so Tab must cycle inside
+ * the panel instead of walking into the page behind it (WCAG 2.1.2).
  */
-function trapTabKey(
-  container: HTMLElement,
-  e: { key: string; shiftKey: boolean; preventDefault(): void },
-): void {
-  if (e.key !== "Tab") return;
-  const focusables = Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    ),
-  );
-  if (focusables.length === 0) return;
-  const current = document.activeElement as HTMLElement | null;
-  const idx = current ? focusables.indexOf(current) : -1;
-  e.preventDefault();
-  const next = e.shiftKey
-    ? idx <= 0
-      ? focusables.length - 1
-      : idx - 1
-    : idx === -1 || idx === focusables.length - 1
-      ? 0
-      : idx + 1;
-  focusables[next].focus();
-}
 
 /**
  * A9-2 (R126-L6): the history endpoint's hard cap — backend
@@ -562,7 +539,7 @@ function NotificationPanel({
       role="dialog"
       /* R133 (A4-F7): aria-modal completes the role="dialog" contract
          (the outside-click + Esc closes already behave modally); the
-         onKeyDown trap keeps Tab inside — see trapTabKey above. */
+         onKeyDown trap keeps Tab inside — see the shared trapTabKey helper. */
       aria-modal="true"
       aria-label="الإشعارات"
       onKeyDown={(e) => {

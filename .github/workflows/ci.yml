@@ -19,9 +19,11 @@ on:
     - cron: "17 4 * * 1"
 
 # Cancel in-progress runs for the same ref when a newer push lands.
+# event_name in the group keeps the weekly scheduled sweep uncancellable
+# by a push (the e2e heartbeat must never be silently dropped).
 # Saves runner time and prevents stale results from racing.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 # Default to read-only. Each job opts-in to anything stronger.
@@ -220,13 +222,8 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install workspace dependencies
-        # Audit needs the resolved tree; --frozen-lockfile keeps install
-        # honest about the lockfile we're scanning.
-        run: pnpm install --frozen-lockfile
+          # No pnpm cache: audit resolves from pnpm-lock.yaml, not the store
+          # (verified R146-F8 in a no-node_modules workspace clone).
 
       - name: CVE summary (informational — all severities)
         # Always succeeds — gives the audit job a one-line summary in

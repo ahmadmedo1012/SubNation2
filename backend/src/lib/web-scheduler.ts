@@ -5,9 +5,14 @@
  * to start inside the web process when no dedicated worker service is
  * provisioned. Gated by:
  *
- *   1. `DISABLE_WEB_SCHEDULERS=true` env override → schedulers skipped
- *      entirely (the explicit migration switch — set this once a real
- *      worker service exists).
+ *   1. `DISABLE_WEB_SCHEDULERS=true` env override → heartbeat / cron /
+ *      boot one-shots skipped (the explicit migration switch — set this
+ *      once a real worker service exists). EXCEPTION (R146 audit F4):
+ *      the alerting evaluator still starts — its HTTP/auth signals
+ *      (http_requests_total, http_request_duration_seconds,
+ *      auth_outcomes_total) increment only in THIS process's
+ *      per-process prom-client registry, so a worker-process evaluator
+ *      would never see them (absent metric → rule silently never fires).
  *   2. Redis-backed `scheduler:leader` lock via
  *      `acquireSchedulerLeadership()` → only the lock-holder runs the
  *      schedulers. Protects against accidental horizontal scale today,
@@ -63,9 +68,12 @@
  *      to add later (not from this blueprint).
  *   2. Render MCP `update_environment_variables` to set
  *      `DISABLE_WEB_SCHEDULERS=true` on the web service.
- *   3. Web tier stops running these. The worker tier owns them by
- *      default (workerEntry calls `alertingService.start` / `startHeartbeat`
- *      directly, no leader gate — it's the only node running them).
+ *   3. Web tier stops running heartbeat / cron / boot one-shots. The
+ *      worker tier owns those by default (workerEntry calls
+ *      `startHeartbeat` directly, no leader gate — it's the only node
+ *      running them). The alerting evaluator STAYS on the web tier in
+ *      every topology (R146 audit F4 — see the DISABLE_WEB_SCHEDULERS
+ *      exception above).
  *
  * 2026-09-20 (free-infrastructure round): NO interval timers start here
  * anymore. The coupon / stock / flash-sale watchers became
@@ -133,9 +141,19 @@ export async function startWebSchedulers(
   const singleInstance = (process.env.SINGLE_INSTANCE_MODE ?? "").toLowerCase() === "true";
 
   if (disabled) {
+    // R146 audit F4: the alerting evaluator starts even under
+    // DISABLE_WEB_SCHEDULERS — it is the ONLY evaluator left (worker.ts
+    // no longer starts one), and its five HTTP/auth rules read THIS
+    // process's per-process prom-client registry, which no other process
+    // can see. Heartbeat / cron / boot one-shots remain the worker's.
+    // shortcut: per-process metrics — worker-side redis_errors_total /
+    // neon_pool_errors_total deltas and multi-web duplicate dispatches
+    // (deduped via Redis when present) are the cost; move the signals to
+    // Redis counters when a dedicated worker must own alerting.
+    alertingService.start();
     logger.info(
       { category: "monitoring" },
-      "[scheduler] DISABLE_WEB_SCHEDULERS=true — web process will not run heartbeat / alerting / cron. A dedicated worker service is expected to own them.",
+      "[scheduler] DISABLE_WEB_SCHEDULERS=true — web process will not run heartbeat / cron / boot one-shots (dedicated worker expected), but the alerting evaluator STAYS here: its HTTP/auth signals are per-process (R146).",
     );
     setSchedulerState({
       mode: "dedicated",
@@ -145,7 +163,13 @@ export async function startWebSchedulers(
       reason: "disabled_by_env",
       startedAt: null,
     });
-    return { active: false, reason: "disabled_by_env", stop: async () => {} };
+    return {
+      active: false,
+      reason: "disabled_by_env",
+      stop: async () => {
+        alertingService.stop();
+      },
+    };
   }
 
   let started = false;

@@ -283,7 +283,6 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
       .then((d) => {
         if (cancelled) return;
         if (!d || !Array.isArray(d.providers)) throw new Error("PROVIDERS_BAD_SHAPE");
-        if (!Array.isArray(d?.providers)) throw new Error("PROVIDERS_BAD_SHAPE");
         // R145 (D7 honesty): renderableProviders() (see its block comment)
         // drops the rows this client cannot honestly present as available —
         // the API's client_side Google row is dead without the Firebase env.

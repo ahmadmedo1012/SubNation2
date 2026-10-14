@@ -77,6 +77,10 @@
  *      localStorage `subnation_convert_key`, fingerprint `convert|{pts}`.
  *      Mint-once-per-intent; IDEMPOTENCY_IN_FLIGHT keeps the key.
  *
+ * R146 (components audit F3): the shared envelope mechanics for all
+ * four live in lib/intent-envelope.ts (load/persist/clear over the
+ * {k,t,f} shape) — each module keeps only its slot, TTL and fingerprint.
+ *
  * THE ORVAL HEADER-TIMING CONTRACT (verified this round, page-level
  * residual documented in the r140-o worklog): the generated useX hooks
  * capture `request.headers` at RENDER time — TanStack's observer swaps

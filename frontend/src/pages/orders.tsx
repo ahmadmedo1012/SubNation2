@@ -24,6 +24,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { useSeo } from "@/hooks/useSeo";
 
 type OrderFilter = "all" | "pending" | "completed" | "failed";
 
@@ -172,6 +173,18 @@ function FilterChip({
 // role="status" + sr-only pair the hand-rolled card lacked.
 
 export default function OrdersPage() {
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so
+  // wallet/orders/loyalty hops stayed silent for screen-reader users.
+  // notifications.tsx's shape (the fallback's noindex rides the page
+  // block itself now).
+  const seoBlock = useSeo({
+    title: "طلباتي — SubNation",
+    description:
+      "سجل مشترياتك في SubNation — تابع حالة كل طلب وبيانات التسليم والمبالغ من مكان واحد.",
+    path: "/orders",
+    robots: "noindex,follow",
+  });
   const { token } = useAuth();
   const [, navigate] = useLocation();
   // A9-3 (R126-L6): seeds from ?filter= at mount (whitelisted) so a
@@ -286,9 +299,18 @@ export default function OrdersPage() {
   // Round-3 (react-hooks/rules-of-hooks): this memo previously sat after
   // `if (!token) return null;` — a conditional hook. The guard moved to
   // render-time below; hooks always run in the same order now.
-  const pending = orders.filter((o) => o.status === "pending");
-  const completed = orders.filter((o) => o.status === "completed");
-  const failed = orders.filter((o) => o.status === "failed" || o.status === "refunded");
+  // R146 (audit-frontend-pages F5): the buckets are memoized on [orders]
+  // (the admin/topups.tsx R125-I2 idiom) — plain .filter() calls minted
+  // fresh array identities every render, so the visibleOrders memo below
+  // never actually memoized.
+  const [pending, completed, failed] = useMemo(
+    () => [
+      orders.filter((o) => o.status === "pending"),
+      orders.filter((o) => o.status === "completed"),
+      orders.filter((o) => o.status === "failed" || o.status === "refunded"),
+    ],
+    [orders],
+  );
 
   // Apply the active filter chip. The "all" chip preserves the
   // existing default behaviour (every order, sorted by the API).
@@ -307,6 +329,7 @@ export default function OrdersPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
+      {seoBlock}
       {/* Header */}
       <div className="flex items-center justify-between gap-3 mb-7 page-in flex-wrap">
         <div className="flex items-center gap-3">

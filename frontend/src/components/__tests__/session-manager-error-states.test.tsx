@@ -54,7 +54,6 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 const SESSION = {
   id: "s1",
   device: "Chrome · Windows",
-  lastActive: "2026-10-01T10:00:00.000Z",
   current: true,
 };
 

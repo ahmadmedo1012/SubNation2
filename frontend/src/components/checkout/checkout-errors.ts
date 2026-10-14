@@ -20,6 +20,32 @@ export function formatBalance(value: number | null | undefined): string {
 }
 
 /**
+ * R146 (components audit F4): THE ApiError reader — the single
+ * classification point for "the server definitively answered (HTTP
+ * ApiError, parsed envelope on `.data`)" vs "server state unknown
+ * (network failure / unparseable body)". customFetch throws ApiError
+ * (an Error subclass with `name: "ApiError"`) for EVERY non-2xx HTTP
+ * response, a browser TypeError for network-level failures and
+ * ResponseParseError for a garbage 200 body — only the first reads as
+ * non-null here. Grew out of the isHttpApiError/apiData pair below
+ * (which now delegate to it) and replaces the former per-site
+ * duck-typed copies (coupon-quote, WhatsAppPhoneSignIn, product.tsx,
+ * telegram-callback.tsx). `status` is undefined only for a non-ApiError;
+ * `data` is undefined when the error body was empty or not an object.
+ */
+export function readApiError(
+  error: unknown,
+): { status?: number; data?: Record<string, unknown> } | null {
+  if (!(error instanceof Error) || error.name !== "ApiError") return null;
+  const status = (error as { status?: unknown }).status;
+  const data = (error as { data?: unknown }).data;
+  return {
+    status: typeof status === "number" ? status : undefined,
+    data: data && typeof data === "object" ? (data as Record<string, unknown>) : undefined,
+  };
+}
+
+/**
  * customFetch throws `ApiError` (an Error subclass with `name: "ApiError"`)
  * for EVERY non-2xx HTTP response, and a browser `TypeError` for network-level
  * failures (DNS/offline/request never delivered). The distinction matters for
@@ -29,7 +55,7 @@ export function formatBalance(value: number | null | undefined): string {
  * have landed and charged the wallet) — the cart must be left untouched.
  */
 export function isHttpApiError(error: unknown): boolean {
-  return error instanceof Error && error.name === "ApiError";
+  return readApiError(error) !== null;
 }
 
 /**
@@ -40,10 +66,7 @@ export function isHttpApiError(error: unknown): boolean {
  * backend's specific Arabic sentence on this path.
  */
 export function apiErrorData(error: unknown): { error?: string; code?: string } | null {
-  if (!isHttpApiError(error)) return null;
-  const data = (error as { data?: unknown }).data;
-  if (!data || typeof data !== "object") return null;
-  return data as { error?: string; code?: string };
+  return (readApiError(error)?.data as { error?: string; code?: string } | undefined) ?? null;
 }
 
 /**

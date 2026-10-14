@@ -33,11 +33,19 @@ import { createPreview } from "../../../services/copilot/preview-store";
 import { getCopilotProvider } from "../../../services/copilot/provider-config";
 import { buildSystemPrompt } from "../../../services/copilot/system-prompt";
 import {
+  DRAFT_TOOLS,
   draftToolsForScopes,
   runDraftTool,
   type DraftPlan,
 } from "../../../services/copilot/tools/draft";
 import { readToolsForScopes, runReadTool } from "../../../services/copilot/tools/read";
+
+// R146 review F3: the refusal string's scope vocabulary derives from the
+// live draft catalog so it grows with new tools instead of drifting as a
+// frozen literal.
+const REFUSAL_SCOPES = [...new Set(DRAFT_TOOLS.map((t) => t.requiredScope))]
+  .filter((s): s is string => s !== null)
+  .join("|");
 
 interface DraftBody {
   intent_text: string;
@@ -69,9 +77,12 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const correlationId =
+  // R146 (audit finding 3): the header is unbounded client input and feeds
+  // varchar(64) correlation_id columns — bound at extraction.
+  const correlationId = (
     (req.headers["x-correlation-id"] as string | undefined) ??
-    `cp-${Date.now()}-${adminReq.adminId}`;
+    `cp-${Date.now()}-${adminReq.adminId}`
+  ).slice(0, 64);
   const scopes = adminReq.adminPermissions ?? [];
   const provider = getCopilotProvider();
 
@@ -81,6 +92,18 @@ async function handleDraft(req: Request, res: Response): Promise<void> {
   const reads = readToolsForScopes(scopes);
   const drafts = draftToolsForScopes(scopes);
   if (drafts.length === 0) {
+    // R146 (audit finding 2): the refusal-forensics contract (010 T146) —
+    // an out-of-scope probe must leave a copilot_actions row BEFORE the
+    // 403. The never-mounted requireCopilotPermission factory never fired.
+    await recordNonExecute({
+      adminId: adminReq.adminId,
+      intentText,
+      actionClass: "refusal",
+      riskTier: "low",
+      outcome: "refused",
+      failureReason: `out_of_scope: missing scope ${REFUSAL_SCOPES}`,
+      correlationId,
+    });
     res
       .status(403)
       .json(createErrorResponse("ليس لديك صلاحية لطرح تعديلات", ErrorCode.COPILOT_OUT_OF_SCOPE));

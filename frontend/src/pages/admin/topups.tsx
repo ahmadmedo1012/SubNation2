@@ -133,7 +133,6 @@ export default function AdminTopupsPage() {
           setBulkAction(null);
         }
       },
-      description: "إغلاق النافذة",
     },
   ]);
 

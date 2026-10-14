@@ -942,10 +942,15 @@ export async function runMigrations() {
       // `iv:tag:ct` GCM shape are pulled into memory. The JS isEncrypted()
       // check below remains the authoritative gate (format-exact); this
       // predicate merely stops the full-ciphertext scan every boot.
+      // R146-F1: excludes only the exact ciphertext shapes now — the old
+      // colon-count guess (`NOT LIKE '%:%:%'`) also matched legacy
+      // plaintext containing two colons (`user:pass:2fa`), hiding it from
+      // the authoritative JS gate and leaving it unencrypted at rest.
       const result = await db.execute(
         sql`SELECT id, account_password FROM inventory
             WHERE account_password IS NOT NULL
-              AND account_password NOT LIKE '%:%:%'`,
+              AND account_password NOT LIKE 'v2:%'
+              AND account_password !~ '^[0-9a-f]{24}:[0-9a-f]{32}:'`,
       );
       const rows: Array<{ id: number; account_password: string }> = Array.isArray(result)
         ? (result as Array<{ id: number; account_password: string }>)
@@ -1003,9 +1008,13 @@ export async function runMigrations() {
           "Refusing to seed default-password admin in production: set ADMIN_PASSWORD env",
         );
       } else {
+        // R146-F3: a concurrent cold boot can win the count-then-INSERT
+        // race (the advisory lock fails OPEN after 90s) — losing it must
+        // no-op like the three sibling seeds, not abort boot as critical.
         await db.execute(sql`
           INSERT INTO admin_users (username, password_hash, display_name, role, permissions)
           VALUES (${adminUsername}, ${await hashPassword(adminPassword || "SubNation@2026")}, 'مدير النظام', 'superadmin', '["all"]'::jsonb)
+          ON CONFLICT (username) DO NOTHING
         `);
         logger.info({ username: adminUsername }, "Default admin user created");
       }
@@ -1239,8 +1248,6 @@ export async function runMigrations() {
         END IF;
       END $$;
     `);
-
-    logger.info("Migrations completed");
 
     // ── Data Migration: Legacy providers to user_auth_identities ───────────
     // 2026-09-20 final audit fix: this loop used to reference github_id /
@@ -1769,11 +1776,16 @@ export async function runMigrations() {
     // `iv:authTag:ciphertext` (three hex segments). Values without two
     // ':' separators with exact segment lengths (24/32 hex) are legacy
     // plaintext. The same predicate is isEncrypted() in lib/encryption.
+    // R146-F1: the SQL pre-filter excludes only the exact ciphertext
+    // shapes (v2 prefix / 24-hex-IV:32-hex-tag v1 body) — the old
+    // colon-count guess also matched plaintext containing two colons
+    // (`user:pass:2fa`), hiding it from the isEncrypted() gate.
     {
       const legacyRows = (await db.execute(sql`
         SELECT id, delivered_password FROM orders
         WHERE delivered_password IS NOT NULL
-          AND delivered_password NOT LIKE '%:%:%'
+          AND delivered_password NOT LIKE 'v2:%'
+          AND delivered_password !~ '^[0-9a-f]{24}:[0-9a-f]{32}:'
       `)) as { rows?: Array<{ id: number; delivered_password: string }> };
       const rows =
         legacyRows.rows ??
@@ -1986,6 +1998,11 @@ export async function runMigrations() {
     // (user_id, created_at DESC, id DESC), probe-gated V1-M24 form —
     // zero DDL on steady-state boots). See applyR135IndexWaveStage docs.
     await applyR135IndexWaveStage();
+
+    // R146-F5: moved from after the seed blocks — V1-M9..M34 (money
+    // constraints, points ledger, index waves) still executed below it,
+    // so an operator tailing a slow deploy read "completed" mid-run.
+    logger.info("Migrations completed");
 
     // ── R104: persist the build fingerprint AFTER a successful full ──
     // reconcile so the next cold start can take the fast-path above.

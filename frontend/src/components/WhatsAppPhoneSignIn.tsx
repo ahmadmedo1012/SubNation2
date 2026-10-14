@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/auth";
+import { readApiError } from "@/components/checkout/checkout-errors";
 import { getErrorMessage } from "@/lib/errors";
 import { customFetch } from "@workspace/api-client-react";
 import { ClipboardPaste, Loader2, MessageCircle, RotateCcw } from "lucide-react";
@@ -222,9 +223,10 @@ export function WhatsAppPhoneSignIn({
   // R144-C2 (L16-3): the parsed error envelope customFetch's ApiError
   // carries on `.data` — the SAME shape the old inline
   // `res.json().catch(() => ({}))` fed every !res.ok branch below.
-  // Duck-typed per checkout-errors.ts' isHttpApiError idiom (the class
-  // itself is a type-only package export). Null for network-level and
-  // parse-level failures, which belong to the shared network-copy arm.
+  // Null for network-level and parse-level failures, which belong to the
+  // shared network-copy arm. R146 (components audit F4): the duck-type +
+  // `.data` cast now delegates to the shared readApiError reader
+  // (checkout-errors.ts) — this was its third local copy.
   function apiErrorEnvelope(err: unknown): {
     success?: boolean;
     error?: string;
@@ -233,10 +235,10 @@ export function WhatsAppPhoneSignIn({
     token?: string;
     is_new_user?: boolean;
   } | null {
-    if (!(err instanceof Error) || err.name !== "ApiError") return null;
-    const data = (err as { data?: unknown }).data;
-    if (!data || typeof data !== "object") return null;
-    return data as NonNullable<ReturnType<typeof apiErrorEnvelope>>;
+    return (
+      (readApiError(err)?.data as NonNullable<ReturnType<typeof apiErrorEnvelope>> | undefined) ??
+      null
+    );
   }
 
   async function sendCode() {

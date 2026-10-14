@@ -6,23 +6,15 @@ import { useCartCommands, LOW_STOCK_THRESHOLD } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
-  AppWindow,
-  Briefcase,
-  Gamepad2,
-  GraduationCap,
   Lock,
-  Music2,
   Package,
-  ShieldCheck,
   ShoppingCart,
-  Sparkles,
   Star,
   Tag,
-  TrendingUp,
-  Tv2,
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { categoryLookup } from "@/lib/category-registry";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 interface Product {
@@ -59,89 +51,16 @@ export interface CatalogVariant {
   is_available: boolean;
 }
 
-// Category accent palette. Each entry rides the shared --cat-*
-// CSS variables (defined in index.css and exposed to Tailwind via
-// @theme as `cat-streaming`, `cat-music`, etc.). The variables
-// re-tone themselves on the light theme — no hard-coded hex/Tailwind
-// shade references here, so a Netflix card on the light theme uses a
-// darker, AA-readable violet automatically.
-//
-// R116-S1: exported so the flash-sales page renders the SAME accent +
-// category-icon fallback idiom on its cards (single source of truth).
-//
-// Tailwind needs the full class strings present in source for its
-// content scan to keep them in the bundle, which is why each variant
-// is spelled out instead of computed.
+// R146 (components audit F2): CATEGORY_ACCENT + CATEGORY_ICON derive from
+// lib/category-registry — the ONE category table (labels/icons/accent
+// atoms live there, spelled out literally for Tailwind's content scan;
+// retired gaming/productivity rows included). R116-S1: both stay exported
+// so the flash-sales page renders the SAME accent + category-icon
+// fallback idiom on its cards (single source of truth).
 export const CATEGORY_ACCENT: Record<
   string,
   { bg: string; text: string; border: string; gradient: string; accentLine: string }
-> = {
-  streaming: {
-    bg: "bg-cat-streaming/10",
-    text: "text-cat-streaming",
-    border: "border-cat-streaming/22",
-    gradient: "from-cat-streaming/12 via-cat-streaming/4 to-transparent",
-    accentLine: "bg-cat-streaming/55",
-  },
-  music: {
-    bg: "bg-cat-music/10",
-    text: "text-cat-music",
-    border: "border-cat-music/22",
-    gradient: "from-cat-music/12 via-cat-music/4 to-transparent",
-    accentLine: "bg-cat-music/55",
-  },
-  software: {
-    bg: "bg-cat-software/10",
-    text: "text-cat-software",
-    border: "border-cat-software/22",
-    gradient: "from-cat-software/12 via-cat-software/4 to-transparent",
-    accentLine: "bg-cat-software/55",
-  },
-  vpn: {
-    bg: "bg-cat-vpn/10",
-    text: "text-cat-vpn",
-    border: "border-cat-vpn/22",
-    gradient: "from-cat-vpn/12 via-cat-vpn/4 to-transparent",
-    accentLine: "bg-cat-vpn/55",
-  },
-  "ai-tools": {
-    bg: "bg-cat-ai-tools/10",
-    text: "text-cat-ai-tools",
-    border: "border-cat-ai-tools/22",
-    gradient: "from-cat-ai-tools/12 via-cat-ai-tools/4 to-transparent",
-    accentLine: "bg-cat-ai-tools/55",
-  },
-  "seo-tools": {
-    bg: "bg-cat-seo-tools/10",
-    text: "text-cat-seo-tools",
-    border: "border-cat-seo-tools/22",
-    gradient: "from-cat-seo-tools/12 via-cat-seo-tools/4 to-transparent",
-    accentLine: "bg-cat-seo-tools/55",
-  },
-  education: {
-    bg: "bg-cat-education/10",
-    text: "text-cat-education",
-    border: "border-cat-education/22",
-    gradient: "from-cat-education/12 via-cat-education/4 to-transparent",
-    accentLine: "bg-cat-education/55",
-  },
-  // Retired categories — kept so archived products still render a
-  // themed accent if surfaced from admin previews (r100).
-  gaming: {
-    bg: "bg-cat-gaming/10",
-    text: "text-cat-gaming",
-    border: "border-cat-gaming/22",
-    gradient: "from-cat-gaming/12 via-cat-gaming/4 to-transparent",
-    accentLine: "bg-cat-gaming/55",
-  },
-  productivity: {
-    bg: "bg-cat-productivity/10",
-    text: "text-cat-productivity",
-    border: "border-cat-productivity/22",
-    gradient: "from-cat-productivity/12 via-cat-productivity/4 to-transparent",
-    accentLine: "bg-cat-productivity/55",
-  },
-};
+> = categoryLookup((row) => row.accent);
 
 export const DEFAULT_ACCENT = {
   bg: "bg-primary/10",
@@ -156,18 +75,7 @@ export const DEFAULT_ACCENT = {
 // category placeholder rather than a giant first-letter glyph that
 // doesn't carry visual identity. Exported alongside CATEGORY_ACCENT
 // (R116-S1 flash-sales convergence).
-export const CATEGORY_ICON: Record<string, LucideIcon> = {
-  streaming: Tv2,
-  music: Music2,
-  software: AppWindow,
-  vpn: ShieldCheck,
-  "ai-tools": Sparkles,
-  "seo-tools": TrendingUp,
-  education: GraduationCap,
-  // Retired — same rationale as CATEGORY_ACCENT above.
-  gaming: Gamepad2,
-  productivity: Briefcase,
-};
+export const CATEGORY_ICON: Record<string, LucideIcon> = categoryLookup((row) => row.Icon);
 
 const STAGGER = [
   "",

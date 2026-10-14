@@ -54,12 +54,13 @@ export async function insertLedgerEntry(
   }
 }
 
-// Historical note (R118-A1 F-6): the `referral_credit` wallet-ledger type
-// above has had NO writer since R115 retired the instant 5.00 LYD signup
-// credit (policy B moved the welcome bonus to the first approved topup —
-// those grants write their ledger rows directly in topup.service.ts with
-// reference_type='welcome_bonus'). The pre-R115 referral_signup rows
+// Historical note (R118-A1 F-6; reworded R146 — the previous text claimed
+// this type "has NO writer", which was false): the dead
+// `insertReferralSignupLedger` helper that used to own this shape was
+// deleted after a repo-wide caller hunt found zero production AND zero
+// test callers — but the `referral_credit` type literal STAYS, because
+// the welcome-bonus grant in topup.service.ts (first approved topup,
+// R115 policy B) still writes rows with this type and
+// reference_type='welcome_bonus'. The pre-R115 referral_signup rows
 // remain meaningful historical evidence (the V1-M21 backfill used them to
-// mark users.welcome_bonus_granted); the dead `insertReferralSignupLedger`
-// helper that used to own this shape was deleted in R118-A1 F-6 after a
-// repo-wide caller hunt found zero production AND zero test callers.
+// mark users.welcome_bonus_granted).

@@ -1,8 +1,15 @@
+import { loadIntentKey, persistIntentKey } from "@/lib/intent-envelope";
+
 // R136 (FE-1 decomposition): extracted verbatim from pages/wallet.tsx —
 // the money-page's durable topup intent-key helpers moved to their own
 // module so the page file shrinks to orchestration. Pure functions over
 // sessionStorage; ZERO React, zero behavior change (the page imports them
 // by name — every call site, TTL and fingerprint stays byte-identical).
+// R146 (components audit F3): the {k,t,f} envelope mechanics moved to
+// lib/intent-envelope.ts — this module keeps the slot, TTL and
+// fingerprint builder. NO clear exists here on purpose (rotation-only,
+// the 96-F6 reset points in the page own every rotation) — the shared
+// envelope's clear is simply not imported.
 
 // ── 98-F2 (R98-09 / r98 frontend-deep §2 — P3): durable topup intent key ─────
 //
@@ -15,7 +22,8 @@
 // so this is defense-in-depth parity with the buy-key/checkout-key
 // patterns from 96-F4 / 97-F5).
 //
-// Storage contract (mirrors product.tsx's subnation_buykey, 97-F5):
+// Storage contract (mirrors product.tsx's subnation_buykey, 97-F5 — the
+// envelope guards live in lib/intent-envelope.ts):
 //   • slot:   sessionStorage "subnation_topupkey" — per-tab retry token,
 //     never durable state; every access try/catch-guarded (quota/
 //     private-mode degrades to the in-memory 96-F6 behavior);
@@ -37,40 +45,14 @@ const TOPUP_KEY_SLOT = "subnation_topupkey";
 /** 98-F2 (R98-09): retry-token TTL — mirrors the buy-key guidance. */
 const TOPUP_KEY_TTL_MS = 10 * 60 * 1000;
 
-interface StoredTopupIntent {
-  /** The Idempotency-Key header value. */
-  k: string;
-  /** Date.now() at mint time — the TTL stamp. */
-  t: number;
-  /** Intent fingerprint — amount | method | phone. */
-  f: string;
-}
-
 export function topupIntentFingerprint(amount: string, method: string, phone: string): string {
   return `${amount}|${method}|${phone.trim()}`;
 }
 
 export function loadTopupIntentKey(fingerprint: string): string | null {
-  try {
-    const raw = sessionStorage.getItem(TOPUP_KEY_SLOT);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredTopupIntent>;
-    if (typeof parsed.k !== "string" || !parsed.k) return null;
-    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
-    if (Date.now() - parsed.t > TOPUP_KEY_TTL_MS) return null;
-    if (parsed.f !== fingerprint) return null;
-    return parsed.k;
-  } catch {
-    // corrupt entry / storage unavailable — degrade to a fresh key
-    return null;
-  }
+  return loadIntentKey(sessionStorage, TOPUP_KEY_SLOT, TOPUP_KEY_TTL_MS, fingerprint);
 }
 
 export function persistTopupIntentKey(fingerprint: string, key: string): void {
-  try {
-    const entry: StoredTopupIntent = { k: key, t: Date.now(), f: fingerprint };
-    sessionStorage.setItem(TOPUP_KEY_SLOT, JSON.stringify(entry));
-  } catch {
-    // degraded: in-memory-only key (96-F6 behavior) — never throw on the money path
-  }
+  persistIntentKey(sessionStorage, TOPUP_KEY_SLOT, fingerprint, key);
 }

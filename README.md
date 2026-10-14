@@ -123,7 +123,7 @@ A **pnpm monorepo** — pnpm is enforced (installs via npm/yarn fail fast):
 backend/    Express 5 API — routes, services, jobs, middlewares, idempotent boot migrations (src/migrate.ts)
 frontend/   Vite + React 19 SPA (Arabic RTL) — pages, components, hooks; vitest suites + Playwright e2e
 shared/     db (Drizzle schema + SQL mirror) · api-spec (OpenAPI) · api-zod + api-client-react (orval-generated) · error-codes
-docs/       docs index (README.md) + 4-bucket tree (CURRENT/HISTORY/DEPRECATED/PENDING) + inspection-r###/ round reports (r124, r125, …)
+docs/       docs index (README.md) + 4-bucket tree (CURRENT/HISTORY/DEPRECATED/PENDING) + engineering/R###/ round reports, executed rounds archived to history/inspection-r###/ (pre-R141)
 deploy/     env.compose.example — full-stack Docker Compose contract (app + WhatsApp gateway)
 scripts/    local orchestration (dev, seed, backup), cutover preflight, docker-verify
 config/     env.example — the fully annotated environment reference

@@ -51,7 +51,6 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { createHash } from "node:crypto";
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { logger } from "../lib/logger";
 // R134 (A7-F4): the canonical serializer + hasher moved to
@@ -125,24 +124,6 @@ interface SubjectAttachedRequest extends Request {
 // preserved there. The local aliases keep this file's call sites
 // byte-identical.
 const bodyHash = canonicalBodyHash;
-
-/**
- * R122 (A3-P2-4) transition window: claims cached by a pre-R122 deploy
- * store the OLD order-sensitive hash. A byte-identical retry after the
- * deploy would otherwise false-409 against those claims for up to one
- * 24 h TTL cycle. On a canonical-hash mismatch we therefore ALSO compare
- * the legacy hash of the incoming body — if either matches, the cached
- * claim was written for this exact intent and the replay proceeds. This
- * never widens equivalence beyond what either algorithm alone allowed
- * (legacy equality ⇒ identical JSON.stringify), and it ages out with the
- * claims themselves; every claim written after this deploy stores the
- * canonical hash and matches on the first comparison.
- */
-function legacyBodyHash(body: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(body ?? null))
-    .digest("hex");
-}
 
 /**
  * Build the Redis cache key. Scoping to (subject, route, userKey)
@@ -286,9 +267,10 @@ export function idempotency(opts: IdempotencyOptions) {
     }
 
     if (cached) {
-      if (cached.hash !== reqHash && cached.hash !== legacyBodyHash(req.body)) {
-        // R122 (A3-P2-4): the second comparison is the transition window —
-        // see legacyBodyHash. Both mismatch ⇒ a genuinely different intent.
+      // R146 (audit finding 5): the R122 legacy-hash comparison arm was
+      // deleted — the 24 h Redis TTL expired the last pre-R122 claim ~24
+      // rounds ago, so it could never match again.
+      if (cached.hash !== reqHash) {
         // R134 (A7-F4): the message constant is the SHARED one — the durable
         // layer's 409 answers with the identical envelope.
         res.status(409).json({

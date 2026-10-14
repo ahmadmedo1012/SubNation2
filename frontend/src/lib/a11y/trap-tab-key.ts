@@ -1,13 +1,14 @@
 /**
  * R134 (A3-F2): the shared Tab-trap helper — the exact NotificationBell
  * (R133 A4-F7) idiom, extracted so new dialog surfaces stop
- * hand-rolling their fourth local copy. aria-modal="true" means Tab
+ * hand-rolling a fourth local copy. aria-modal="true" means Tab
  * must cycle inside the container instead of walking into the occluded
  * page behind the scrim (WCAG 2.1.2).
  *
- * The sibling local copies (NotificationBell.tsx, Navbar.tsx drawer,
- * layout.tsx palette) remain as-is — each is test-pinned; folding them
- * onto this helper is a mechanical pass for a later round.
+ * R146 (components audit F1): the three surviving local copies
+ * (Navbar drawer, NotificationBell panel, admin layout/focus-trap)
+ * folded onto this helper — it is React-free, so importing it drags
+ * no admin shell into the storefront chunk.
  */
 export function trapTabKey(
   container: HTMLElement,

@@ -1,4 +1,5 @@
 import type { LocalCartItem } from "@/lib/cart";
+import { clearIntentKey, loadIntentKey, persistIntentKey } from "@/lib/intent-envelope";
 
 // R136 (FE-2 decomposition): extracted verbatim from pages/checkout.tsx —
 // the money-page's per-unit Idempotency-Key lifecycle (the 96-F4
@@ -6,6 +7,10 @@ import type { LocalCartItem } from "@/lib/cart";
 // to orchestration. Pure functions over localStorage; ZERO React, zero
 // behavior change (handleConfirm imports them by name — every call
 // site, TTL and fingerprint stays byte-identical).
+// R146 (components audit F3): the {k,t,f} envelope mechanics (parse +
+// TTL + fingerprint validation, guarded persist/clear) moved to
+// lib/intent-envelope.ts — this module keeps the slot scheme, TTL and
+// fingerprint builder.
 
 /**
  * 96-F4 (R96 A4 §2.2 — money P1): stable per-unit Idempotency-Key storage.
@@ -47,35 +52,18 @@ import type { LocalCartItem } from "@/lib/cart";
  * after a lost response still mints a fresh key (the stored one is
  * treated as a stale intent); that residual window is the documented
  * 98-F2 trade-off — a longer TTL would let ancient keys swallow
- * genuinely new purchases via the 24 h server replay window. Every
- * access is try/catch-guarded: a private-mode / quota failure just
- * degrades to the old unstable-key behavior, it never blocks the money
- * path.
+ * genuinely new purchases via the 24 h server replay window.
  *
  * 98-F2 (r97 F-07, deferred queue): the raw key gained the 97-F5 buy-key's
- * TWO staleness guards, which the checkout keys never had — a stored key
- * lived until its terminal resolution, so a key minted hours/days earlier
- * in a long-lived tab could swallow a genuinely NEW purchase via the
- * server's 24 h replay window:
- *   • TTL: a key older than 10 minutes no longer represents the user's
- *     live intent and is ignored (minted fresh instead);
- *   • fingerprint: the line's product / variant / coupon / unit price —
- *     the exact body fields the backend's same-key-different-body 409
- *     branch compares, plus the price context (a post-reconcile price
- *     change is a NEW intent, never a replay of the old charge).
+ * TWO staleness guards (TTL + fingerprint) — see lib/intent-envelope.ts;
+ * the fingerprint below binds the line's product / variant / coupon /
+ * unit price, the exact body fields the backend's same-key-different-body
+ * 409 branch compares, plus the price context (a post-reconcile price
+ * change is a NEW intent, never a replay of the old charge).
  */
 const CHECKOUT_KEY_PREFIX = "subnation_checkout_key:";
 /** 98-F2 (r97 F-07): retry-token TTL — mirrors the 97-F5 buy-key guidance. */
 const CHECKOUT_KEY_TTL_MS = 10 * 60 * 1000;
-
-interface StoredCheckoutUnitKey {
-  /** The Idempotency-Key header value. */
-  k: string;
-  /** Date.now() at mint time — the TTL stamp. */
-  t: number;
-  /** Intent fingerprint — productId | variantId | coupon | unit price. */
-  f: string;
-}
 
 function checkoutUnitKeyId(productId: number, variantId: number | null, unitIndex: number): string {
   // AUD103-2-F1 (r103): the slot is LINE-scoped (productId + variantId).
@@ -126,26 +114,14 @@ export function loadCheckoutUnitKey(
   unitIndex: number,
   fingerprint: string,
 ): string | null {
-  try {
-    const raw = localStorage.getItem(checkoutUnitKeyId(productId, variantId, unitIndex));
-    if (!raw) return null;
-    // Pre-98-F2 entries were raw uuid strings — JSON.parse throws → the
-    // entry is treated as absent and a fresh key is minted (the old
-    // un-stamped keys carry no TTL/fingerprint contract to honor).
-    const parsed = JSON.parse(raw) as Partial<StoredCheckoutUnitKey>;
-    if (typeof parsed.k !== "string" || !parsed.k) return null;
-    // TTL — a key minted >10 min ago is a stale intent, not this retry.
-    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
-    if (Date.now() - parsed.t > CHECKOUT_KEY_TTL_MS) return null;
-    // Intent binding — the unit body (product/variant/coupon) or the
-    // line's effective price changed since the key was minted: replaying
-    // it onto the new data would either swallow a genuinely new purchase
-    // or trip the backend's same-key-different-body 409.
-    if (parsed.f !== fingerprint) return null;
-    return parsed.k;
-  } catch {
-    return null;
-  }
+  // Pre-98-F2 entries were raw uuid strings — the envelope's parse
+  // failure treats them as absent and a fresh key is minted.
+  return loadIntentKey(
+    localStorage,
+    checkoutUnitKeyId(productId, variantId, unitIndex),
+    CHECKOUT_KEY_TTL_MS,
+    fingerprint,
+  );
 }
 
 export function persistCheckoutUnitKey(
@@ -155,12 +131,12 @@ export function persistCheckoutUnitKey(
   fingerprint: string,
   key: string,
 ): void {
-  try {
-    const entry: StoredCheckoutUnitKey = { k: key, t: Date.now(), f: fingerprint };
-    localStorage.setItem(checkoutUnitKeyId(productId, variantId, unitIndex), JSON.stringify(entry));
-  } catch {
-    // degraded: unstable keys (pre-fix behavior) — never throw on money path
-  }
+  persistIntentKey(
+    localStorage,
+    checkoutUnitKeyId(productId, variantId, unitIndex),
+    fingerprint,
+    key,
+  );
 }
 
 export function clearCheckoutUnitKey(
@@ -168,9 +144,5 @@ export function clearCheckoutUnitKey(
   variantId: number | null,
   unitIndex: number,
 ): void {
-  try {
-    localStorage.removeItem(checkoutUnitKeyId(productId, variantId, unitIndex));
-  } catch {
-    // ignore
-  }
+  clearIntentKey(localStorage, checkoutUnitKeyId(productId, variantId, unitIndex));
 }

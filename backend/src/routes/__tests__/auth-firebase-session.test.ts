@@ -76,6 +76,7 @@ vi.mock("../../telegram", () => ({
 }));
 
 import {
+  authActivityTable,
   db,
   initTestDb,
   referralEventsTable,
@@ -179,6 +180,10 @@ async function countRows(
   return rows.length;
 }
 
+async function authActivityRows() {
+  return db.select().from(authActivityTable).orderBy(authActivityTable.id);
+}
+
 beforeAll(async () => {
   await initTestDb();
   // user_auth_identities is not part of the shared test DDL — this file
@@ -214,6 +219,23 @@ beforeAll(async () => {
   expires_at timestamptz NOT NULL
 )`),
   );
+  // R146 (finding 1): auth_activity — same block as
+  // auth-firebase-refresh.test.ts; every session-mint outcome (register /
+  // login / FirebaseAuthError failure) now writes an audit row here.
+  await db.execute(
+    sql.raw(`CREATE TABLE IF NOT EXISTS auth_activity (
+  id serial PRIMARY KEY,
+  user_id integer,
+  identifier varchar(255) NOT NULL,
+  action varchar(50) NOT NULL,
+  provider varchar(50),
+  success boolean NOT NULL,
+  ip_address varchar(45),
+  user_agent text,
+  failure_reason varchar(255),
+  created_at timestamptz NOT NULL DEFAULT now()
+)`),
+  );
   process.env.FIREBASE_PROJECT_ID = "test-project";
 });
 
@@ -223,9 +245,12 @@ afterAll(() => {
 
 beforeEach(async () => {
   await resetTestDb();
-  // user_auth_identities / account_link_consents are not in the shared
-  // TRUNCATE list — clear them here (consent rows are one-shot anyway).
-  await db.execute(sql.raw("TRUNCATE user_auth_identities, account_link_consents CASCADE;"));
+  // user_auth_identities / account_link_consents / auth_activity are not
+  // in the shared TRUNCATE list — clear them here (consent rows are
+  // one-shot anyway).
+  await db.execute(
+    sql.raw("TRUNCATE user_auth_identities, account_link_consents, auth_activity CASCADE;"),
+  );
   fb.decoded = googleDecodedToken();
   fb.rejectWith = null;
   fb.verifyCalls.length = 0;
@@ -283,6 +308,18 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
         email: "newbie@example.com",
         emailVerified: true,
       });
+
+      // R146 (finding 1): the register row — the admin security surfaces +
+      // auth_outcomes_total{method="firebase"} finally see Google sign-ups.
+      const activity = await authActivityRows();
+      expect(activity).toHaveLength(1);
+      expect(activity[0]).toMatchObject({
+        userId,
+        identifier: user.phone, // the f_… placeholder phone → identifier
+        action: "register",
+        provider: "firebase",
+        success: true,
+      });
     } finally {
       close();
     }
@@ -308,6 +345,17 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
       expect(
         await countRows(userAuthIdentitiesTable, eq(userAuthIdentitiesTable.userId, firstUserId)),
       ).toBe(1);
+
+      // R146 (finding 1): first mint = register, second = login.
+      const activity = await authActivityRows();
+      expect(activity).toHaveLength(2);
+      expect(activity[0]).toMatchObject({ action: "register", success: true });
+      expect(activity[1]).toMatchObject({
+        userId: firstUserId,
+        action: "login",
+        provider: "firebase",
+        success: true,
+      });
     } finally {
       close();
     }
@@ -448,6 +496,18 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
       expect(await countRows(sessionsTable)).toBe(0);
       expect(await countRows(userAuthIdentitiesTable)).toBe(0);
       expect(await countRows(referralEventsTable)).toBe(0);
+
+      // R146 (finding 1): the FirebaseAuthError arm leaves the failure row
+      // (the /firebase/refresh twin's shape, session-scoped identifier).
+      const activity = await authActivityRows();
+      expect(activity).toHaveLength(1);
+      expect(activity[0]).toMatchObject({
+        identifier: "firebase_session_error",
+        action: "login",
+        provider: "firebase",
+        success: false,
+        failureReason: "firebase_error",
+      });
     } finally {
       close();
     }

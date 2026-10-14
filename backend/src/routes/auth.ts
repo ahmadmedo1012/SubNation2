@@ -527,6 +527,7 @@ router.post("/firebase/session", async (req, res) => {
      */
     link_consent_token?: string;
   };
+  const clientInfo = getClientInfo(req);
   if (!id_token || typeof id_token !== "string") {
     return res.status(400).json(createErrorResponse("رمز Firebase مطلوب", ErrorCode.INVALID_DATA));
   }
@@ -577,6 +578,19 @@ router.post("/firebase/session", async (req, res) => {
         provider: derivePrimaryProvider(result.user),
       });
     }
+
+    // R146 (audit finding 1): the primary Google login/register path was
+    // the only provider mint that never wrote an auth_activity row — the
+    // admin security surfaces and auth_outcomes_total{method="firebase"}
+    // were blind to it (the silent /firebase/refresh rotation does log).
+    await logAuthActivity({
+      userId: result.user.id,
+      identifier: result.user.phone || `firebase_${decoded.uid}`,
+      action: result.isNewUser ? "register" : "login",
+      success: true,
+      provider: "firebase",
+      ...clientInfo,
+    });
 
     const uaHeader = req.headers["user-agent"];
     const ua = Array.isArray(uaHeader) ? uaHeader[0] : uaHeader;
@@ -652,6 +666,16 @@ router.post("/firebase/session", async (req, res) => {
     }
     logger.error({ err, id_token_length: id_token?.length }, "Firebase session creation failed");
     if (err instanceof FirebaseAuthError) {
+      // R146 (audit finding 1): mirror the /firebase/refresh twin — the
+      // expected user-facing failure still leaves an audit trail.
+      await logAuthActivity({
+        identifier: `firebase_session_error`,
+        action: "login",
+        success: false,
+        failureReason: "firebase_error",
+        provider: "firebase",
+        ...clientInfo,
+      });
       const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
       return res
         .status(err.statusCode)
@@ -827,7 +851,9 @@ router.get("/sessions", requireUser, async (req, res) => {
       ip: r.ipAddress ?? null,
       created_at: r.createdAt?.toISOString() ?? null,
       expires_at: r.expiresAt?.toISOString() ?? null,
-      lastActive: r.createdAt?.toISOString() ?? new Date().toISOString(),
+      // R146 (audit finding 4): lastActive was always createdAt — the
+      // sessions table tracks no activity. Field dropped; the name promised
+      // data the system does not have.
       current: authReq.sessionId ? r.id === authReq.sessionId : false,
     })),
   });

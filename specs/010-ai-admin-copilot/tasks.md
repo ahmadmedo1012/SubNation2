@@ -77,7 +77,7 @@ description: "Task list for AI Admin Copilot implementation"
 - [ ] T024 [P] `backend/src/lib/copilot/secret-scan.ts` — outbound regex pack (Postgres URLs, AWS keys, Bearer tokens, password fields) with a single `scan(payload): { hasMatch, matches }` API; used by both response and storage paths
 - [ ] T025 `backend/src/lib/copilot/rate-limit.ts` — Redis sliding-window middleware: keys `copilot:rl:1m:<adminId>` (60s, 30 max) and `copilot:rl:1h:<adminId>` (3600s, 200 max), implemented via Lua for atomicity (research §R-6); returns 429 with `Retry-After` and increments `copilot_rate_limit_denials_total`
 - [ ] T026 [P] `backend/src/middlewares/requirePhase.ts` — uses `phase-flags.ts` (T142) to read `phase{1,2,3}_enabled` and `phase3_high_risk_enabled`; gates routes per phase; returns 503 `COPILOT_PHASE_DISABLED` when the relevant phase is off.
-- [ ] T027 [P] `backend/src/middlewares/requireCopilotPermission.ts` — maps `action_class` to required admin permission scope; on missing scope, calls the audit-write helper from T146 then rejects with `403 COPILOT_OUT_OF_SCOPE`.
+- [x] T027 [P] `backend/src/middlewares/requireCopilotPermission.ts` — maps `action_class` to required admin permission scope; on missing scope, calls the audit-write helper from T146 then rejects with `403 COPILOT_OUT_OF_SCOPE`. (R146: implemented INLINE in `routes/admin/copilot/ask.ts` + `draft.ts` — the standalone middleware file was dead code, never mounted, and was deleted; the in-handler 403s now write the refusal row themselves.)
 
 ### Copilot service skeletons
 
@@ -105,7 +105,7 @@ description: "Task list for AI Admin Copilot implementation"
 
 ### Authorization-denial audit (added by /speckit-analyze remediation, 2026-06-03)
 
-- [ ] T146 Update `backend/src/middlewares/requireCopilotPermission.ts` (T027) so that when a request is denied for missing scope, BEFORE returning 403, it writes a `copilot_actions` row with `admin_id=<requesting admin>`, `intent_text=<request body intent_text or "">`, `action_class="refusal"`, `risk_tier="low"`, `outcome="refused"`, `failure_reason="out_of_scope: missing scope <scope_name>"`. No `audit_logs` row is written for refusals (per data-model.md §R-8).
+- [x] T146 Update `backend/src/middlewares/requireCopilotPermission.ts` (T027) so that when a request is denied for missing scope, BEFORE returning 403, it writes a `copilot_actions` row with `admin_id=<requesting admin>`, `intent_text=<request body intent_text or "">`, `action_class="refusal"`, `risk_tier="low"`, `outcome="refused"`, `failure_reason="out_of_scope: missing scope <scope_name>"`. No `audit_logs` row is written for refusals (per data-model.md §R-8). (R146: honored by the inline refusal writes in ask.ts/draft.ts — see T027's note; pinned by `copilot-refusal-audit.test.ts`.)
 - [ ] T147 [P] Test in `backend/src/test/copilot/audit.refusal.test.ts` — admin without `inventory` scope calls `/draft` with a price-change intent → 403 `COPILOT_OUT_OF_SCOPE`; verify exactly one `copilot_actions` row exists with `outcome="refused"` and the correct `failure_reason`. Same admin retry → second row added (refusals are not deduped).
 - [ ] T148 [P] Extend the daily reconciliation worker (T119) with one more invariant: any 403 returned by copilot routes within the report window has a matching `copilot_actions` row with `outcome="refused"`. Mismatches alert via the existing webhook.
 

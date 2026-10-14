@@ -80,7 +80,6 @@ export const ListSessionsResponse = zod.object({
         ip: zod.string().nullish(),
         created_at: zod.string().nullish(),
         expires_at: zod.string().nullish(),
-        lastActive: zod.string().optional(),
         current: zod.boolean().optional(),
       }),
     )

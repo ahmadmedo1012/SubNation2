@@ -230,6 +230,10 @@ describe("R137 (FE) — the extracts are self-contained units (verbatim moves)",
     expect(layoutNav).toContain("export function computeActiveHref(location: string): string");
     expect(layoutNav).toContain("export const STOREFRONT_DEFAULT_TITLE");
     expect(layoutNav).toContain("export const CONTEXT_ACTIONS");
-    expect(focusTrap).toContain("export function trapTabKey(");
+    // R146 (components audit F1): focus-trap is now a verbatim re-export
+    // of the shared lib/a11y helper (the local body was byte-identical) —
+    // the pin follows the re-export form; the React-free guarantee above
+    // still holds for the module itself.
+    expect(focusTrap).toContain('export { trapTabKey } from "@/lib/a11y/trap-tab-key";');
   });
 });

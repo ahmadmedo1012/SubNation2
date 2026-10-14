@@ -16,6 +16,7 @@ import {
 import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { useSeo } from "@/hooks/useSeo";
 import {
   clearStoredConvertKey,
   loadStoredConvertKey,
@@ -72,6 +73,17 @@ const LOYALTY_OVERVIEW_QUERY_KEY = ["loyalty", "overview"] as const;
 const LOYALTY_LEDGER_QUERY_KEY = ["loyalty", "ledger"] as const;
 
 export default function LoyaltyPage() {
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so
+  // wallet/orders/loyalty hops stayed silent for screen-reader users.
+  // notifications.tsx's shape.
+  const seoBlock = useSeo({
+    title: "الولاء والإحالة — SubNation",
+    description:
+      "نقاط ولاء SubNation — اكسب النقاط مع كل عملية شراء، حوّلها إلى رصيد، وادعُ أصدقاءك للمكافآت.",
+    path: "/loyalty",
+    robots: "noindex,follow",
+  });
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -319,6 +331,7 @@ export default function LoyaltyPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-7 page-in">
+      {seoBlock}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-9 h-9 rounded-xl bg-status-warning/10 border border-status-warning/20 flex items-center justify-center">
           <Star className="w-4.5 h-4.5 text-status-warning" />

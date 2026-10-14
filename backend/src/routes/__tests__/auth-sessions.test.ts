@@ -264,6 +264,9 @@ describe("GET /api/auth/sessions (R118-A5 #7)", () => {
       expect(flagged).toHaveLength(1);
       expect(flagged[0].id).toBe(current.sessionId);
       // …and the response shape is the device-list contract.
+      // R146 (audit finding 4): lastActive dropped — it was always the
+      // login time (the sessions table tracks no activity column); the
+      // field name promised data the system does not have.
       expect(sessions[0]).toMatchObject({
         id: current.sessionId,
         device: expect.any(String),
@@ -271,8 +274,8 @@ describe("GET /api/auth/sessions (R118-A5 #7)", () => {
         ip: "127.0.0.1",
         created_at: expect.any(String),
         expires_at: expect.any(String),
-        lastActive: expect.any(String),
       });
+      expect(sessions[0]).not.toHaveProperty("lastActive");
     } finally {
       close();
     }

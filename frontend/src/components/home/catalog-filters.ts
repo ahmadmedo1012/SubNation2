@@ -1,15 +1,6 @@
 import type { CategoryMeta } from "@/lib/categories";
-import { categoryLabel } from "@/lib/utils";
-import {
-  AppWindow,
-  GraduationCap,
-  LayoutGrid,
-  Music2,
-  ShieldCheck,
-  Sparkles,
-  TrendingUp,
-  Tv2,
-} from "lucide-react";
+import { LIVE_CATEGORY_ROWS } from "@/lib/category-registry";
+import { LayoutGrid } from "lucide-react";
 
 // R136 (FE-3 decomposition): extracted verbatim from pages/home.tsx —
 // the catalog filter option tables + the mount-time querystring reader.
@@ -26,20 +17,13 @@ import {
 // a chip that filters to an empty grid misleads shoppers.
 // R134 (A2-F1): the labels DERIVE from categoryLabel() (lib/utils — the
 // canonical chip-brevity map that already feeds the results h2 below,
-// ProductCard badges, Product-LD and breadcrumbs). The previous
-// hand-rolled table was a third parallel source: «برامج»/«VPN
-// وشبكات»/«تعليم» chips sat a viewport away from the «برامج وتراخيص»/
-// «شبكات VPN»/«تعليم ومكتبات» their own filter results rendered —
-// one source, three consumers, zero drift (Navbar derives too).
+// ProductCard badges, Product-LD and breadcrumbs; the registry rows carry
+// the derived labels). One source, three consumers, zero drift (Navbar
+// derives too). R146 (components audit F2): the slug/label/icon rows
+// themselves now come from lib/category-registry — THE category table.
 export const CATEGORIES = [
   { value: "", label: "الكل", Icon: LayoutGrid },
-  { value: "streaming", label: categoryLabel("streaming"), Icon: Tv2 },
-  { value: "music", label: categoryLabel("music"), Icon: Music2 },
-  { value: "software", label: categoryLabel("software"), Icon: AppWindow },
-  { value: "vpn", label: categoryLabel("vpn"), Icon: ShieldCheck },
-  { value: "ai-tools", label: categoryLabel("ai-tools"), Icon: Sparkles },
-  { value: "seo-tools", label: categoryLabel("seo-tools"), Icon: TrendingUp },
-  { value: "education", label: categoryLabel("education"), Icon: GraduationCap },
+  ...LIVE_CATEGORY_ROWS.map((row) => ({ value: row.slug, label: row.label, Icon: row.Icon })),
 ];
 
 export const SORTS = [

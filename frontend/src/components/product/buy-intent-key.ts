@@ -1,8 +1,14 @@
+import { loadIntentKey, persistIntentKey, clearIntentKey } from "@/lib/intent-envelope";
+
 // R135 (FE-3 decomposition): extracted verbatim from pages/product.tsx —
 // the money-page's single-purchase intent-key helpers moved to their own
 // module so the page file shrinks to orchestration. Pure functions over
 // localStorage; ZERO React, zero behavior change (the page imports them
 // by name — every call site, TTL and fingerprint stays byte-identical).
+// R146 (components audit F3): the {k,t,f} envelope mechanics (parse +
+// TTL + fingerprint validation, guarded persist/clear) moved to
+// lib/intent-envelope.ts — this module keeps the slot scheme, TTL and
+// fingerprint builder.
 
 // ── 97-F5 (R97-A4 §2 / F-02 — money P2): stable single-purchase intent key ──
 //
@@ -27,7 +33,8 @@
 //         forever by the cached rejection).
 //     A network-level failure (server state unknown) deliberately KEEPS
 //     the stored key — the retry must replay, not re-charge.
-//   • staleness guards (F-07's lesson, applied here at birth):
+//   • staleness guards (F-07's lesson, applied here at birth — the
+//     envelope's TTL + fingerprint checks, see lib/intent-envelope.ts):
 //       - TTL: a key older than 10 minutes no longer represents the
 //         user's live intent and is ignored (minted fresh instead) — a
 //         stale key must not swallow a NEW purchase hours later via the
@@ -42,21 +49,10 @@
 // level loss (server committed, response lost) followed by tab death
 // used to mint a FRESH key on the next visit and charge twice. The
 // TTL + fingerprint guards minted at birth (97-F5) already make stale
-// keys inert, so durability costs nothing. Every access is
-// try/catch-guarded: a private-mode / quota failure degrades to the old
-// unstable-key behavior and never blocks the money path.
+// keys inert, so durability costs nothing.
 const BUY_KEY_PREFIX = "subnation_buykey:";
 /** 97-F5 (F-02): retry-token TTL — mirrors the inspection's 10 min guidance. */
 const BUY_KEY_TTL_MS = 10 * 60 * 1000;
-
-interface StoredBuyIntent {
-  /** The Idempotency-Key header value. */
-  k: string;
-  /** Date.now() at mint time — the TTL stamp. */
-  t: number;
-  /** Intent fingerprint — productId | effective price | coupon code. */
-  f: string;
-}
 
 function buyIntentKeyId(productId: number): string {
   return `${BUY_KEY_PREFIX}${productId}`;
@@ -81,38 +77,13 @@ export function toCents(value: number): number {
 }
 
 export function loadBuyIntentKey(productId: number, fingerprint: string): string | null {
-  try {
-    const raw = localStorage.getItem(buyIntentKeyId(productId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredBuyIntent>;
-    if (typeof parsed.k !== "string" || !parsed.k) return null;
-    // TTL — a key minted >10 min ago is a stale intent, not this retry.
-    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
-    if (Date.now() - parsed.t > BUY_KEY_TTL_MS) return null;
-    // Intent binding — the product's price (or the coupon) changed since
-    // the key was minted: replaying it onto the new data would either
-    // swallow a genuinely new purchase or trip the 409 body-mismatch.
-    if (parsed.f !== fingerprint) return null;
-    return parsed.k;
-  } catch {
-    // Corrupted entry / storage failure — degrade to a fresh key.
-    return null;
-  }
+  return loadIntentKey(localStorage, buyIntentKeyId(productId), BUY_KEY_TTL_MS, fingerprint);
 }
 
 export function persistBuyIntentKey(productId: number, fingerprint: string, key: string): void {
-  try {
-    const entry: StoredBuyIntent = { k: key, t: Date.now(), f: fingerprint };
-    localStorage.setItem(buyIntentKeyId(productId), JSON.stringify(entry));
-  } catch {
-    // degraded: unstable keys (pre-fix behavior) — never throw on money path
-  }
+  persistIntentKey(localStorage, buyIntentKeyId(productId), fingerprint, key);
 }
 
 export function clearBuyIntentKey(productId: number): void {
-  try {
-    localStorage.removeItem(buyIntentKeyId(productId));
-  } catch {
-    // ignore
-  }
+  clearIntentKey(localStorage, buyIntentKeyId(productId));
 }

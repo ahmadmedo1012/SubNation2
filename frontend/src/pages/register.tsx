@@ -4,6 +4,7 @@ import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { useOnScreen } from "@/hooks/use-on-screen";
+import { useSeo } from "@/hooks/useSeo";
 import { formatCurrency, sanitizeInternalPath } from "@/lib/utils";
 import { CheckCircle, Gift } from "lucide-react";
 import { useCallback, useMemo } from "react";
@@ -30,6 +31,17 @@ function readReferralFromUrl(): string {
 }
 
 export default function RegisterPage() {
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so the
+  // generic fallback title owned the tab and auth navigations stayed
+  // silent for screen-reader users. notifications.tsx's shape.
+  const seoBlock = useSeo({
+    title: "إنشاء حساب جديد — SubNation",
+    description:
+      "أنشئ حسابك في SubNation بلا كلمة مرور — ابدأ شراء الاشتراكات الرقمية واحصل على مكافأة الإحالة.",
+    path: "/register",
+    robots: "noindex,follow",
+  });
   const referral = useMemo(() => readReferralFromUrl(), []);
   /* R123-E4a (P2 — the register half of the funnel return path): the
      login page forwards its SANITIZED ?redirect= here when a guest on
@@ -42,6 +54,18 @@ export default function RegisterPage() {
     () => sanitizeInternalPath(new URLSearchParams(window.location.search).get("redirect")),
     [],
   );
+  // R146 (audit-frontend-pages F3): the referral code rides the login
+  // links the same way R123-E4a threaded ?redirect= — a referred visitor
+  // toggling back to «تسجيل الدخول» (or tapping the footer link) used to
+  // drop ?ref= and sign up unattributed; the referrer's 50-point credit
+  // never landed. Forwarded raw: the auth surfaces read ?ref= from the
+  // live URL at click time.
+  const refCode = useMemo(() => new URLSearchParams(window.location.search).get("ref"), []);
+  const loginHref = redirectTarget
+    ? `/login?redirect=${encodeURIComponent(redirectTarget)}${refCode ? `&ref=${encodeURIComponent(refCode)}` : ""}`
+    : refCode
+      ? `/login?ref=${encodeURIComponent(refCode)}`
+      : "/login";
   const [, navigate] = useLocation();
   const handleRegisterSuccess = useCallback(
     // L1-1 (R143): the orphaned onboarding journey — register.tsx used to
@@ -72,6 +96,7 @@ export default function RegisterPage() {
       ref={glow.ref}
       className="min-h-[100dvh] flex items-center justify-center px-4 py-8 relative overflow-hidden bg-background"
     >
+      {seoBlock}
       {/* Ambient background glows */}
       <div
         className="absolute top-[-10%] left-[15%] w-80 h-80 bg-primary/5 rounded-full blur-[80px] pointer-events-none blob-drift"
@@ -103,9 +128,7 @@ export default function RegisterPage() {
             so the login↔register toggle can never jitter the label. */}
         <div className="grid grid-cols-2 gap-1 p-1 bg-muted/30 border border-border/40 rounded-2xl mb-5 reveal-up stagger-1">
           <Link
-            href={
-              redirectTarget ? `/login?redirect=${encodeURIComponent(redirectTarget)}` : "/login"
-            }
+            href={loginHref}
             className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center border border-transparent"
           >
             تسجيل الدخول
@@ -268,9 +291,7 @@ export default function RegisterPage() {
         <p className="mt-4 text-center text-sm text-foreground reveal-up stagger-3">
           لديك حساب بالفعل؟{" "}
           <Link
-            href={
-              redirectTarget ? `/login?redirect=${encodeURIComponent(redirectTarget)}` : "/login"
-            }
+            href={loginHref}
             /* R124-I4 (A5 #1/#10): text-primary is the surface token
                (~3.9:1 dark) — the text-safe twin is text-primary-text
                (the Button link variant's own convention, button.tsx).

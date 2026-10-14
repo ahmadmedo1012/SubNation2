@@ -258,11 +258,14 @@ function decideAction(input: DecideActionInput): NewRiskEvent["actionTaken"] {
 
 async function markPipelineDegraded(): Promise<void> {
   try {
-    const { getRedisClient } = await import("../lib/redis-client");
+    const { getRedisClient, withRedisCommandTimeout } = await import("../lib/redis-client");
     const redis = getRedisClient();
     if (redis) {
       // 5-min TTL — if degradation clears, the flag self-resets.
-      await redis.set(PIPELINE_DEGRADED_KEY, "1", { EX: 300 });
+      // R146 audit F1: bounded like every other Redis op (R2 rule).
+      await withRedisCommandTimeout("risk_pipeline_degraded_set", () =>
+        redis.set(PIPELINE_DEGRADED_KEY, "1", { EX: 300 }),
+      );
     }
   } catch {
     // best-effort

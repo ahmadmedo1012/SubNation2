@@ -24,6 +24,7 @@ import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useSeo } from "@/hooks/useSeo";
 
 interface LoyaltyOverview {
   points: number;
@@ -59,6 +60,17 @@ function SkeletonRow() {
 }
 
 export default function ReferralsPage() {
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so
+  // loyalty↔referrals hops stayed silent for screen-reader users.
+  // notifications.tsx's shape.
+  const seoBlock = useSeo({
+    title: "برنامج الإحالة — SubNation",
+    description:
+      "ادعُ أصدقاءك إلى SubNation برمز الإحالة الخاص بك واكسب 50 نقطة عند اعتماد أول شحن لكل صديق.",
+    path: "/referrals",
+    robots: "noindex,follow",
+  });
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -224,6 +236,7 @@ export default function ReferralsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
+      {seoBlock}
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         {/* R122 (A1-P1): the back control is ONE anchor wearing the

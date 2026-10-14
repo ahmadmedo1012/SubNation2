@@ -276,7 +276,7 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
     expect(checkExpiringCoupons).not.toHaveBeenCalled();
   });
 
-  it("DISABLE_WEB_SCHEDULERS=true skips everything (unchanged migration switch)", async () => {
+  it("DISABLE_WEB_SCHEDULERS=true skips heartbeat/cron but KEEPS the alerting evaluator (R146 F4)", async () => {
     process.env.DISABLE_WEB_SCHEDULERS = "true";
     const handle = await startWebSchedulers(fakeRedis as never);
     trackHandle(handle);
@@ -284,6 +284,14 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
     expect(handle.active).toBe(false);
     expect(handle.reason).toBe("disabled_by_env");
     expect(acquireSchedulerLeadership).not.toHaveBeenCalled();
-    expect(alertingService.start).not.toHaveBeenCalled();
+    // Pin updated (R146 audit F4): the evaluator must keep running in the
+    // web process even in the dedicated-worker topology — worker.ts no
+    // longer starts one, and the five HTTP/auth rules read this
+    // process's per-process prom-client registry.
+    expect(alertingService.start).toHaveBeenCalledTimes(1);
+
+    // The dedicated-mode handle still owns the evaluator's lifecycle.
+    await handle.stop();
+    expect(alertingService.stop).toHaveBeenCalledTimes(1);
   });
 });

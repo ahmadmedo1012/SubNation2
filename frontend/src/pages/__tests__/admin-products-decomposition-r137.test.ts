@@ -214,7 +214,12 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
     // The 98-F7/R123 SEO-caps form seed + the R120-B4 honest-count cap.
     expect(meta).toContain("export const EMPTY_FORM = {");
     expect(meta).toContain("export const PRODUCTS_SERVER_CAP = 200;");
-    expect(meta).toContain("export const CATEGORY_INITIAL_COLOR: Record<string, string> = {");
+    // R146 (components audit F2): the category tables derive from
+    // lib/category-registry's rows — INITIAL_COLOR composes the registry's
+    // accent atoms (bg/10 + text); the two option lists map its rows.
+    expect(meta).toContain(
+      "export const CATEGORY_INITIAL_COLOR: Record<string, string> = categoryLookup(",
+    );
     expect(meta).toContain("export const CATEGORY_OPTIONS = [");
     expect(meta).toContain("export const CATEGORY_FILTERS = [");
     expect(meta).toContain("export const PRODUCT_COUNT_FORMS = {");

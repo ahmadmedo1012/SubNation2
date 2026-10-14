@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 
+// R146 (components audit F11): trimmed to the surface the single caller
+// (admin/topups' Escape-only shortcut) actually uses — description was
+// read nowhere and no caller ever set a modifier flag (the unspecified-
+// modifier matcher quirk died with them). Re-grow a field only when a
+// second consumer needs it.
 export interface KeyboardShortcut {
   key: string;
-  ctrlKey?: boolean;
-  shiftKey?: boolean;
-  altKey?: boolean;
-  metaKey?: boolean;
   handler: () => void;
-  description?: string;
 }
 
 export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[], enabled = true) {
@@ -16,13 +16,7 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[], enabled = tr
 
     const handleKeyDown = (e: KeyboardEvent) => {
       for (const shortcut of shortcuts) {
-        const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase();
-        const ctrlMatch = shortcut.ctrlKey === undefined || e.ctrlKey === shortcut.ctrlKey;
-        const shiftMatch = shortcut.shiftKey === undefined || e.shiftKey === shortcut.shiftKey;
-        const altMatch = shortcut.altKey === undefined || e.altKey === shortcut.altKey;
-        const metaMatch = shortcut.metaKey === undefined || e.metaKey === shortcut.metaKey;
-
-        if (keyMatch && ctrlMatch && shiftMatch && altMatch && metaMatch) {
+        if (e.key.toLowerCase() === shortcut.key.toLowerCase()) {
           e.preventDefault();
           shortcut.handler();
           break;

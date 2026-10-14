@@ -2,8 +2,9 @@
  * 94-C3 — the unified CopyButton (A3 #12 / P2-4 / P3-9 / P3-10 / P1-3).
  *
  * CopyButton is now the single copy lifecycle implementation (idle →
- * copied → failed) — the behavior CopilotPanel's AskAnswer button
- * implements locally. These tests pin:
+ * copied → failed) — the behavior CopilotPanel's AskAnswer button used
+ * to implement locally (folded onto it in R146 components audit F9,
+ * via the icon-only rendering). These tests pin:
  *
  *   1. Success and FAILURE feedback via the shared copyToClipboard
  *      helper (the old button silently kept "نسخ" when the clipboard
@@ -144,5 +145,44 @@ describe("CopyButton — form-safety + touch/token hygiene (A3 P3-9 / P1-3 / P2-
     const cls = getButton().className;
     expect(cls).toContain("text-primary-text");
     expect(cls).not.toMatch(/text-primary(?![-\w])/);
+  });
+});
+
+describe("CopyButton — icon-only rendering (R146 components audit F9)", () => {
+  // The copilot AskAnswer overlay shape: no visible label, the surface's
+  // own positioning classes, and the full-sentence accessible names the
+  // copilot-copy suite pins at the rendered level.
+  it("carries the caller's classes + the full-sentence aria-names through copied and failed", async () => {
+    vi.mocked(copyToClipboard).mockResolvedValue(true);
+    const first = render(<CopyButton text={TEXT} iconOnly className="absolute top-1.5 p-2" />);
+
+    const idle = screen.getByRole("button", { name: "نسخ" });
+    expect(idle.className).toBe("absolute top-1.5 p-2");
+    expect(idle).toHaveAttribute("type", "button");
+    // No visible label — the icon is the only child.
+    expect(idle).not.toHaveTextContent(/نسخ|تم/);
+
+    fireEvent.click(idle);
+    expect(await screen.findByRole("button", { name: "تم النسخ" })).toBeInTheDocument();
+    first.unmount();
+
+    // A fresh instance for the failure arm (state is per-instance).
+    vi.mocked(copyToClipboard).mockResolvedValue(false);
+    render(<CopyButton text={TEXT} iconOnly className="absolute top-1.5 p-2" />);
+    fireEvent.click(screen.getByRole("button", { name: "نسخ" }));
+    expect(await screen.findByRole("button", { name: "تعذّر النسخ" })).toBeInTheDocument();
+  });
+
+  it("unmounts without leaving a pending reset timer (P3-10 reaches the icon-only surface)", async () => {
+    vi.useFakeTimers();
+    vi.mocked(copyToClipboard).mockResolvedValue(true);
+
+    const { unmount } = render(<CopyButton text={TEXT} iconOnly />);
+    fireEvent.click(screen.getByRole("button", { name: "نسخ" }));
+    await act(async () => {});
+    expect(vi.getTimerCount()).toBe(1);
+
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

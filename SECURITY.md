@@ -50,8 +50,8 @@ before public disclosure.
   dependency tree changes and on a weekly schedule
   (`.github/workflows/ci.yml`).
 - Security-focused audit rounds with published reports under
-  `docs/inspection-r###/` (executed rounds' reports archived under
-  `docs/history/inspection-r###/`).
+  `docs/engineering/R###/` (executed rounds' reports archived under
+  `docs/history/inspection-r###/`, the pre-R141 legacy name).
 
 ## Decisions on file
 

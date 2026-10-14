@@ -131,14 +131,20 @@ describe("admin palette discipline — flagship migration pins (R128 A1-F1)", ()
     // components/admin/products/products-meta.ts — the pin follows the
     // surface and reads the page ∪ extracts union (the r136
     // checkout-surface idiom, same as the topups A1-F2 pin above).
+    // R146 (components audit F2): the map now composes lib/category-registry's
+    // accent atoms (bg-cat-*/10 + text-cat-*) — the registry joins the union
+    // so the atom literals stay pinned where they live.
     const productsSurface = [
       read("src/pages/admin/products.tsx"),
       ...readdirSync(resolve(process.cwd(), "src/components/admin/products")).map((f) =>
         read(`src/components/admin/products/${f}`),
       ),
+      read("src/lib/category-registry.ts"),
     ].join("\n");
-    expect(productsSurface).toContain('"bg-cat-streaming/10 text-cat-streaming"');
-    expect(productsSurface).toContain('"bg-cat-gaming/10 text-cat-gaming"');
+    expect(productsSurface).toContain('bg: "bg-cat-streaming/10"');
+    expect(productsSurface).toContain('text: "text-cat-streaming"');
+    expect(productsSurface).toContain('bg: "bg-cat-gaming/10"');
+    expect(productsSurface).toContain('text: "text-cat-gaming"');
   });
 
   it("referrals medals ride the NEW --tier-* family (A1-D10/F3)", () => {

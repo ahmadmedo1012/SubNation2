@@ -6051,8 +6051,6 @@ components:
           type: ["string", "null"]
         expires_at:
           type: ["string", "null"]
-        lastActive:
-          type: string
         current:
           type: boolean
 

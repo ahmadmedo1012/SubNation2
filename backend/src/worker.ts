@@ -6,7 +6,6 @@ import { initCronJobs } from "./jobs/cron";
 import { runBootOneShots } from "./jobs/boot-one-shots";
 import { logger } from "./lib/logger";
 import { getRedisClient, initRedisClient } from "./lib/redis-client";
-import { alertingService } from "./services/alerting.service";
 import { startHeartbeat } from "./worker/heartbeat";
 
 // B7-P1-6: hard ceiling for graceful drain — a hung close must not wedge
@@ -95,7 +94,7 @@ async function startWorker() {
     );
   }
 
-  // Connect Redis singleton (heartbeat + alerting both depend on it).
+  // Connect Redis singleton (heartbeat depends on it).
   await initRedisClient();
   const redis = getRedisClient();
 
@@ -109,14 +108,13 @@ async function startWorker() {
     // crash-looping the worker on Render (each restart hits the same dead
     // Redis) and contradicting the web tier's H12 policy
     // (redis-client.ts: stay up, degrade loudly, reconnect/restart later).
-    // Boot into DEGRADED mode instead: alerting rule evals fail safe
-    // (no-Redis → no alerts fired), cron + watchers run normally, and the
+    // Boot into DEGRADED mode instead: cron + watchers run normally, and the
     // heartbeat stays dark until the poll below notices the singleton
     // recovered (R1: the client object survives the degraded boot and
     // auto-reconnects — no restart needed to restore the heartbeat).
     logger.error(
       { category: "monitoring", redis: { mode: "degraded_boot" } },
-      "[worker] Redis unavailable at boot — starting in DEGRADED mode (no heartbeat; alerting/cron/watchers continue). The heartbeat attaches automatically once Redis recovers.",
+      "[worker] Redis unavailable at boot — starting in DEGRADED mode (no heartbeat; cron/watchers continue). The heartbeat attaches automatically once Redis recovers.",
     );
     const recoveryPoll = setInterval(() => {
       const recovered = getRedisClient();
@@ -132,9 +130,13 @@ async function startWorker() {
     recoveryPoll.unref?.();
   }
 
-  // Phase 4: alerting evaluator runs in the worker process so a horizontally-
-  // scaled web tier never produces duplicate alerts.
-  alertingService.start();
+  // R146 audit F4: the alerting evaluator does NOT run here. Its signals
+  // (http_requests_total, http_request_duration_seconds, auth_outcomes_total)
+  // increment only in the WEB process's per-process prom-client registry —
+  // starting the evaluator in this process made the documented
+  // DISABLE_WEB_SCHEDULERS + dedicated-worker topology silently kill the
+  // five HTTP/auth rules (absent metric → false → never fires). The
+  // evaluator now always runs on the web process (lib/web-scheduler.ts).
 
   // 2026-09-20 (free-infrastructure round): the coupon / stock /
   // flash-sale watcher INTERVALS are gone everywhere (worker included —
@@ -161,7 +163,6 @@ async function startWorker() {
   installWorkerSignalHandlers({
     stopSchedulers: () => {
       for (const stop of stopFns) stop();
-      alertingService.stop();
       cronJobs.stop();
     },
     drain: async () => {

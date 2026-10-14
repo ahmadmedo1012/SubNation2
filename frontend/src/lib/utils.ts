@@ -150,6 +150,23 @@ export function tierColor(tier: string): string {
   return colors[tier] ?? "text-muted-foreground";
 }
 
+/** The seven live catalog categories in storefront editorial order —
+ *  the eager-safe slug source the Navbar drawer derives from (R146,
+ *  components audit F2). lib/category-registry (THE category table)
+ *  owns the same order in its LIVE rows and carries the icons/accent
+ *  atoms; it must stay OFF the eager entry chunk, so eager surfaces
+ *  read this tuple instead (sync pinned by category-registry.test.ts).
+ */
+export const LIVE_CATEGORY_SLUGS = [
+  "streaming",
+  "music",
+  "software",
+  "vpn",
+  "ai-tools",
+  "seo-tools",
+  "education",
+] as const;
+
 export function categoryLabel(cat: string | null | undefined): string {
   // Live categories first (mirror products.category in production),
   // then the retired gaming/productivity kept for archived products

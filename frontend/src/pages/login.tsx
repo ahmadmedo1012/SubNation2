@@ -4,6 +4,7 @@ import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { useOnScreen } from "@/hooks/use-on-screen";
+import { useSeo } from "@/hooks/useSeo";
 import { sanitizeInternalPath } from "@/lib/utils";
 import { Gift, Package, ShieldCheck, ShoppingBag, Users, Wallet } from "lucide-react";
 import { useCallback, useMemo } from "react";
@@ -105,12 +106,35 @@ function readLoginIntent(): LoginIntent {
  */
 
 export default function LoginPage() {
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so the
+  // generic fallback title owned the tab and account-surface navigations
+  // stayed silent for screen-reader users. notifications.tsx's shape.
+  const seoBlock = useSeo({
+    title: "تسجيل الدخول — SubNation",
+    description:
+      "سجّل دخولك إلى SubNation بلا كلمة مرور — عبر Google أو تيليجرام أو واتساب في ثوانٍ معدودة.",
+    path: "/login",
+    robots: "noindex,follow",
+  });
   const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
   const intent = useMemo(() => readLoginIntent(), []);
   const redirectTarget = useMemo(
     () => sanitizeInternalPath(new URLSearchParams(window.location.search).get("redirect")),
     [],
   );
+  // R146 (audit-frontend-pages F3): the referral code rides the register
+  // links the same way R123-E4a threaded ?redirect= — a referred visitor
+  // landing on /login?ref=CODE who switches to «حساب جديد» used to lose
+  // the attribution (the referrer's 50-point credit lands on the signup,
+  // not on the tab choice). Forwarded raw: register's own reader (and
+  // every auth surface) reads ?ref= from the live URL.
+  const refCode = useMemo(() => new URLSearchParams(window.location.search).get("ref"), []);
+  const registerHref = redirectTarget
+    ? `/register?redirect=${encodeURIComponent(redirectTarget)}${refCode ? `&ref=${encodeURIComponent(refCode)}` : ""}`
+    : refCode
+      ? `/register?ref=${encodeURIComponent(refCode)}`
+      : "/register";
   const [, navigate] = useLocation();
   // R115-A10: pause the ambient blobs when the auth card scrolls away.
   const glow = useOnScreen<HTMLDivElement>();
@@ -122,6 +146,7 @@ export default function LoginPage() {
       ref={glow.ref}
       className="min-h-[100dvh] flex items-center justify-center px-4 relative overflow-hidden bg-background"
     >
+      {seoBlock}
       {/* Ambient background glows */}
       <div
         className="absolute top-[-10%] right-[15%] w-96 h-96 bg-primary/5 rounded-full blur-[90px] pointer-events-none blob-drift"
@@ -176,12 +201,9 @@ export default function LoginPage() {
                 redirect — a guest on /login?redirect=/checkout (or a
                 product buy-intent link) who switches to «حساب جديد»
                 used to lose the return path; register.tsx now reads
-                the same param and threads it to its auth surfaces. */
-            href={
-              redirectTarget
-                ? `/register?redirect=${encodeURIComponent(redirectTarget)}`
-                : "/register"
-            }
+                the same param and threads it to its auth surfaces.
+                R146 (F3): the ?ref= code rides along (registerHref). */
+            href={registerHref}
             className="min-h-11 flex items-center justify-center py-2.5 rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors text-center border border-transparent"
           >
             حساب جديد
@@ -300,11 +322,7 @@ export default function LoginPage() {
         <p className="mt-4 text-center text-sm text-foreground reveal-up stagger-3">
           ليس لديك حساب؟{" "}
           <Link
-            href={
-              redirectTarget
-                ? `/register?redirect=${encodeURIComponent(redirectTarget)}`
-                : "/register"
-            }
+            href={registerHref}
             /* R124-I4 (A5 #1/#10): text-primary is the surface token
                (~3.9:1 dark) — the text-safe twin is text-primary-text
                (the Button link variant's own convention, button.tsx).

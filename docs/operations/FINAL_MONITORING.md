@@ -72,6 +72,13 @@ breakdown), `/healthz/neon`, `/healthz/redis`, `/healthz/worker`,
   discord, webhook** (`alerting.service.ts:635`) — as wired via
   `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`, `DISCORD_WEBHOOK_URL`,
   `GENERIC_ALERT_WEBHOOK_URL`.
+  The evaluator lives in the **web process in every topology** (R146: the
+  worker process no longer starts it — its signals, `http_requests_total` /
+  `http_request_duration_seconds` / `auth_outcomes_total`, are per-process
+  prom-client counters that only the web tier increments; the web scheduler
+  starts the evaluator even under `DISABLE_WEB_SCHEDULERS=true`). Moving the
+  signals to Redis counters is the documented upgrade path if a dedicated
+  worker must own alerting.
 
 ## 3. What is NORMAL
 

@@ -13,6 +13,7 @@ import {
   maskPhone,
 } from "../lib/account-link-consent";
 import { logger } from "../lib/logger";
+import { isUniqueViolation } from "../lib/pg-errors";
 
 export class FirebaseAuthError extends Error {
   constructor(
@@ -512,32 +513,51 @@ export async function resolveFirebaseSession(
   }
 
   const phoneValue = phone ?? firebasePhonePlaceholder(uid);
-  const [created] = await db.transaction(async (tx) => {
-    const [u] = await tx
-      .insert(usersTable)
-      .values({
-        phone: phoneValue,
-        firebaseUid: uid,
-        googleId: provider === "google.com" ? providerUid : undefined,
-        email,
-        emailVerified,
-        phoneVerified,
-        displayName,
-        photoUrl,
-        authProvider: provider === "google.com" ? "firebase_google" : "firebase",
-        lastAuthAt: now,
-        referralCode: generateReferralCode(),
-        referredBy: referredById,
-        // R115 (welcome-bonus policy B): NO instant credit at signup — the
-        // referred user's welcome bonus lands on their FIRST APPROVED
-        // TOPUP (topup.service.ts, guarded by users.welcome_bonus_granted).
-        // Uniform across Google / WhatsApp / Telegram.
-        walletBalance: "0.00",
-      })
-      .returning();
+  let created: typeof usersTable.$inferSelect;
+  try {
+    const [u] = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(usersTable)
+        .values({
+          phone: phoneValue,
+          firebaseUid: uid,
+          googleId: provider === "google.com" ? providerUid : undefined,
+          email,
+          emailVerified,
+          phoneVerified,
+          displayName,
+          photoUrl,
+          authProvider: provider === "google.com" ? "firebase_google" : "firebase",
+          lastAuthAt: now,
+          referralCode: generateReferralCode(),
+          referredBy: referredById,
+          // R115 (welcome-bonus policy B): NO instant credit at signup — the
+          // referred user's welcome bonus lands on their FIRST APPROVED
+          // TOPUP (topup.service.ts, guarded by users.welcome_bonus_granted).
+          // Uniform across Google / WhatsApp / Telegram.
+          walletBalance: "0.00",
+        })
+        .returning();
 
-    return [u];
-  });
+      return [row];
+    });
+    created = u;
+  } catch (err) {
+    // R146 audit F3 (WhatsApp F6 parity): a double-tap on the sign-in
+    // button races two session requests with the same idToken — both miss
+    // step 1/3, both INSERT, and the loser's 23505 surfaced as a raw 500
+    // for a registration that actually succeeded. Re-read the winner's
+    // row and return it as a normal login; the winner performs the
+    // identity upsert + referral event right after its own commit.
+    if (!isUniqueViolation(err)) throw err;
+    const [winner] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.firebaseUid, uid))
+      .limit(1);
+    if (!winner) throw err;
+    return { user: winner, isNewUser: false, provider };
+  }
 
   if (referredById && referredById !== created.id) {
     await db

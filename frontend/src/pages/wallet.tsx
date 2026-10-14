@@ -64,8 +64,20 @@ import {
 import { Plus, ShoppingBag, Wallet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { useSeo } from "@/hooks/useSeo";
 
 export default function WalletPage() {
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so
+  // wallet↔orders↔loyalty hops stayed silent for screen-reader users
+  // and the money tab showed the generic title. notifications.tsx's
+  // shape.
+  const seoBlock = useSeo({
+    title: "المحفظة — SubNation",
+    description: "شحن رصيد محفظة SubNation عبر التحويل أو ليباي، ومتابعة سجل العمليات والمبالغ.",
+    path: "/wallet",
+    robots: "noindex,follow",
+  });
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
@@ -645,6 +657,7 @@ export default function WalletPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-7 page-in">
+      {seoBlock}
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">

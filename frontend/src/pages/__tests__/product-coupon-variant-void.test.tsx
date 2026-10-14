@@ -27,7 +27,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Route, Router } from "wouter";
+import { Route, Router, useLocation } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ProductPage from "@/pages/product";
 
@@ -75,6 +75,34 @@ const PRODUCT = {
   ],
 };
 
+/** R146-F2: two VARIANT-LESS products for the PDP→PDP hop — the
+ * recommendations rail links are same-route wouter links, so the mounted
+ * ProductPage survives the navigation with its component state. */
+const VARIANT_LESS_A = {
+  id: 50,
+  slug: null,
+  name: "Netflix شهر",
+  description: "اشتراك شهري",
+  category: "streaming",
+  price: 50,
+  price_from: true,
+  sale_price: null,
+  image_url: null,
+  is_active: true,
+  is_available: true,
+  stock_count: 12,
+  discount_percent: null,
+  usage_terms: null,
+  order_count: 0,
+  variants: [],
+};
+const VARIANT_LESS_B = {
+  ...VARIANT_LESS_A,
+  id: 60,
+  name: "YouTube شهر",
+  price: 100,
+};
+
 vi.mock("@workspace/api-client-react", () => ({
   createOrder: (...args: unknown[]) => createOrderMock(...(args as [])),
   getMe: () => getMeMock(),
@@ -84,7 +112,18 @@ vi.mock("@workspace/api-client-react", () => ({
   getGetProductQueryKey: (id: number) => [`/api/products/${id}`],
   getGetProductRecommendationsQueryKey: (id: number) => [`/api/products/${id}/recommendations`],
   useGetMe: () => ({ data: { id: 7, wallet_balance: 1_000_000 }, isLoading: false }),
-  useGetProduct: () => ({ data: PRODUCT, isLoading: false }),
+  // R146-F2: id-aware — the PDP→PDP hop test renders the two variant-less
+  // fixtures by URL id; every other test's PRODUCT (id 5) stays the
+  // default arm.
+  useGetProduct: (id: number) => ({
+    data:
+      Number(id) === VARIANT_LESS_B.id
+        ? VARIANT_LESS_B
+        : Number(id) === VARIANT_LESS_A.id
+          ? VARIANT_LESS_A
+          : PRODUCT,
+    isLoading: false,
+  }),
   useGetProductRecommendations: () => ({ data: [], isLoading: false }),
   // C-1 (R142): the page's coupon validation rides the generated client
   // now — route it through the SAME validateFetchMock (init.body stays
@@ -134,13 +173,16 @@ const validateFetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
   };
 });
 
-function renderPage() {
+function renderPage(path = `/product/${PRODUCT.id}`) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  window.history.pushState({}, "", `/product/${PRODUCT.id}`);
+  window.history.pushState({}, "", path);
   return render(
     <QueryClientProvider client={client}>
       <Router>
         <Route path="/product/:slug" component={ProductPage} />
+        {/* R146-F2: drives the same-route PDP→PDP hop (the
+            recommendations rail's wouter Link does exactly this). */}
+        <NavButton to={`/product/${VARIANT_LESS_B.id}`} />
       </Router>
     </QueryClientProvider>,
   );
@@ -164,6 +206,17 @@ const switchVariant = async (label: RegExp) => {
 async function buyCtaLabel(): Promise<string> {
   const btn = await screen.findByRole("button", { name: /اشترِ الآن/ });
   return btn.textContent ?? "";
+}
+
+/** Wouter navigation button — drives the PDP→PDP hop (admin-document-
+ * title.test.tsx's idiom). */
+function NavButton({ to }: { to: string }) {
+  const [, navigate] = useLocation();
+  return (
+    <button type="button" onClick={() => navigate(to)}>
+      {`اذهب إلى ${to}`}
+    </button>
+  );
 }
 
 beforeEach(() => {
@@ -281,5 +334,40 @@ describe("ProductPage — coupon × variant desync (R98-01 / P1)", () => {
     await waitFor(() => expect(desktopValidateButton()).toBeEnabled());
     expect(await buyCtaLabel()).toContain("100.00 د.ل");
     expect(screen.queryByText(/−10\.00 د\.ل/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ProductPage — coupon × product navigation, variant-less PDP→PDP (R146-F2)", () => {
+  it("hopping to another variant-less product voids the validated coupon", async () => {
+    // The defect: the void effect was keyed ONLY on [selectedVariant?.id]
+    // — on a variant-less → variant-less hop the dep never changes
+    // (null → null), so product A's validated coupon survived onto
+    // product B's CTA (A's final_amount) and order body (A's code).
+    renderPage(`/product/${VARIANT_LESS_A.id}`);
+
+    // Product A's plain price (50, no variants → product-level price).
+    expect(await buyCtaLabel()).toContain("50.00 د.ل");
+
+    // Validate SAVE10 against A's price → the CTA shows 40.00.
+    fireEvent.change(desktopCouponInput(), { target: { value: "save10" } });
+    await act(async () => {
+      fireEvent.click(desktopValidateButton());
+    });
+    expect(await buyCtaLabel()).toContain("40.00 د.ل");
+
+    // Hop to product B (variant-less too): the coupon MUST void and the
+    // CTA must show B's PLAIN price — never A's post-coupon 40.00.
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: `اذهب إلى /product/${VARIANT_LESS_B.id}` }),
+      );
+    });
+    expect(await buyCtaLabel()).toContain("100.00 د.ل");
+    expect(screen.queryByText(/−10\.00 د\.ل/)).not.toBeInTheDocument();
+    // The typed code is kept (re-validating on B is one tap) and the
+    // input is re-enabled (it is disabled while a coupon is applied).
+    const input = desktopCouponInput() as HTMLInputElement;
+    expect(input.value).toBe("SAVE10");
+    expect(input).toBeEnabled();
   });
 });

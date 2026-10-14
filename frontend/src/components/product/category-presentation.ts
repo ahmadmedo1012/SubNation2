@@ -3,27 +3,22 @@
 // KNOWN_CATEGORIES routing guard moved to their own module (pure data +
 // one pure lookup; zero React). The page, its media section and the CTA
 // block all import from here — one source, unchanged values.
+// R146 (components audit F2): the two tint maps derive from
+// lib/category-registry (THE category table — the gradient/initial-color
+// literals live in its rows, retired gaming/productivity included, so
+// Tailwind's content scan still sees every class string).
 import { CATEGORY_META } from "@/lib/categories";
+import { categoryLookup } from "@/lib/category-registry";
 
 // Category-tinted hero gradients on the product page. Ride the shared
 // --cat-* tokens (defined in index.css, exposed to Tailwind via @theme)
 // so the hero re-tones correctly on the light theme — the previous
 // `from-violet-950 via-violet-900/60 to-violet-800/20` style produced
 // a near-black slab on light backgrounds because the 800/900/950
-// palette is dark-only by design.
-export const CATEGORY_GRADIENTS: Record<string, string> = {
-  streaming: "from-cat-streaming/30 via-cat-streaming/15 to-transparent",
-  music: "from-cat-music/30 via-cat-music/15 to-transparent",
-  software: "from-cat-software/30 via-cat-software/15 to-transparent",
-  vpn: "from-cat-vpn/30 via-cat-vpn/15 to-transparent",
-  "ai-tools": "from-cat-ai-tools/30 via-cat-ai-tools/15 to-transparent",
-  "seo-tools": "from-cat-seo-tools/30 via-cat-seo-tools/15 to-transparent",
-  education: "from-cat-education/30 via-cat-education/15 to-transparent",
-  // Retired categories — kept so archived products still render a
-  // themed gradient if the operator previews them from admin.
-  gaming: "from-cat-gaming/30 via-cat-gaming/15 to-transparent",
-  productivity: "from-cat-productivity/30 via-cat-productivity/15 to-transparent",
-};
+// palette is dark-only by design. Retired categories keep their themed
+// gradient so archived products still render one if the operator
+// previews them from admin.
+export const CATEGORY_GRADIENTS: Record<string, string> = categoryLookup((row) => row.pdpGradient);
 
 /**
  * Categories that have a dedicated landing page at /category/<slug>.
@@ -44,15 +39,7 @@ export const categoryMetaFor = (cat: string | null | undefined) =>
 // Empty-image fallback foreground tint per category. Mirrors the
 // gradient palette above so the giant first-letter glyph reads as
 // "this is a [category] product" without needing the actual image.
-export const CATEGORY_INITIAL_COLOR: Record<string, string> = {
-  streaming: "text-cat-streaming",
-  music: "text-cat-music",
-  software: "text-cat-software",
-  vpn: "text-cat-vpn",
-  "ai-tools": "text-cat-ai-tools",
-  "seo-tools": "text-cat-seo-tools",
-  education: "text-cat-education",
-  // Retired — same rationale as CATEGORY_GRADIENTS above.
-  gaming: "text-cat-gaming",
-  productivity: "text-cat-productivity",
-};
+// Retired — same rationale as CATEGORY_GRADIENTS above.
+export const CATEGORY_INITIAL_COLOR: Record<string, string> = categoryLookup(
+  (row) => row.accent.text,
+);

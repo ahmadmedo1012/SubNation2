@@ -7,10 +7,15 @@ import { CopyButton } from "@/components/CopyButton";
 // component inside the page file; the move only changes its address (the
 // order-success screen imports it now). DOM, classes and the reveal
 // toggle's local state are byte-identical.
+// R146 (audit-frontend-pages F6): order-detail's near-duplicate page-local
+// twin was deleted — it mounts THIS component with its receipt-card row
+// chrome via rowClassName (byte-identical DOM to the deleted copy; the
+// shared default stays the buy-receipt's own row classes).
 export function CopyField({
   label,
   value,
   secret = false,
+  rowClassName,
 }: {
   label: string;
   value: string;
@@ -20,10 +25,14 @@ export function CopyField({
    * screen too. Previously rendered in cleartext here while order-detail
    * masked the exact same credential. */
   secret?: boolean;
+  /** R146 (F6): replaces the row's classes wholesale when a caller's
+   * card chrome differs (order-detail's receipt rows) — a replacement,
+   * not a merge, so both surfaces keep their exact former DOM. */
+  rowClassName?: string;
 }) {
   const [revealed, setRevealed] = useState(!secret);
   return (
-    <div className="flex items-start justify-between gap-3 px-4 py-3">
+    <div className={rowClassName ?? "flex items-start justify-between gap-3 px-4 py-3"}>
       <div className="min-w-0 flex-1">
         {/* 96-F4 (R96 A6 #1): no uppercase/tracking-wider on Arabic labels —
             letter-spacing tears the cursive joins (ج/ح/خ disconnect). */}

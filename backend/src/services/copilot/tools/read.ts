@@ -657,7 +657,9 @@ export const READ_TOOLS: CopilotTool[] = [
 /**
  * Filter the read-tool catalog by an admin's permission scopes. The model
  * only sees tools the admin has scope for — defense in depth, since the
- * route also enforces requireCopilotPermission at the gate.
+ * copilot routes also enforce scope in-handler and record the refusal
+ * audit row inline (R146: the standalone requireCopilotPermission gate
+ * was dead code and was deleted; ask.ts/draft.ts own the 403 + refusal row).
  */
 export function readToolsForScopes(scopes: string[]): CopilotTool[] {
   if (scopes.includes("all")) return READ_TOOLS;

@@ -8,8 +8,12 @@
  * Retired categories (gaming / productivity — all products archived
  * 2026-09-19) intentionally have no entry: their `/category/*` URLs fall
  * through to the noindex not-found surface until the operator restocks
- * them, at which point re-adding an entry here (plus a cat-* token in
- * index.css and a theme row in category.tsx) is all it takes.
+ * them, at which point re-adding an entry here, a row in
+ * lib/category-registry (plus the eager-safe pair in lib/utils:
+ * LIVE_CATEGORY_SLUGS + categoryLabel), a cat-* token in index.css and
+ * a theme row in category.tsx is all it takes — R146 (components audit
+ * F2) folded the ~10 per-surface category tables onto the registry, so
+ * this is again the honest edit list.
  *
  * Each entry is intentionally unique:
  *   - distinct h1 + intro paragraph targeting the category's intent cluster

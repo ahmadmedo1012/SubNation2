@@ -1,6 +1,7 @@
 import express from "express";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { initTestDb } from "../../test/db";
+import { sql } from "drizzle-orm";
+import { db, initTestDb } from "../../test/db";
 import {
   FirebaseVerifyTimeoutError,
   verifyFirebaseIdToken,
@@ -105,4 +106,20 @@ describe("R143 (L6-3): a stalled verifyIdToken rejects within the budget", () =>
 
 beforeAll(async () => {
   await initTestDb();
+  // R146 (finding 1): the session-mint FirebaseAuthError arm now writes an
+  // auth_activity failure row — the route leg would 500 on a missing table.
+  await db.execute(
+    sql.raw(`CREATE TABLE IF NOT EXISTS auth_activity (
+  id serial PRIMARY KEY,
+  user_id integer,
+  identifier varchar(255) NOT NULL,
+  action varchar(50) NOT NULL,
+  provider varchar(50),
+  success boolean NOT NULL,
+  ip_address varchar(45),
+  user_agent text,
+  failure_reason varchar(255),
+  created_at timestamptz NOT NULL DEFAULT now()
+)`),
+  );
 });

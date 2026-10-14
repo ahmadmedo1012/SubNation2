@@ -197,3 +197,54 @@ describe("F8: coupon_maxed side effects live on the post-commit side", () => {
     expect(await couponMaxedAlerts()).toHaveLength(1);
   });
 });
+
+describe("R146 F2 — concurrent exhaustion of the last slots fires the operator signal", () => {
+  it("maxUses=2 read as usedCount=0, row reaches 2 through the guarded update → coupon_maxed alert fires", async () => {
+    const user = await seedUser("50.00");
+    const product = await seedProductWithStock(2);
+    await seedMaxedOutCoupon(2);
+
+    // The concurrent-exhaustion window: resolveCoupon reads usedCount=0
+    // PRE-transaction; buyer A's redemption commits the 0→1 increment
+    // between that read and our guarded UPDATE (simulated on the product
+    // freshness select — the first tx read — same interleave technique as
+    // the rollback case above). Our UPDATE then takes the row to 2. The
+    // pre-R146 signal computed `appliedCoupon.usedCount + 1 = 1 < 2` and
+    // never fired; the fix reads the UPDATE's RETURNing row (2 ≥ 2).
+    const restore = interleaveWriterAfterSelect(db, {
+      matchSelectFields: (fields) =>
+        !!fields &&
+        typeof fields === "object" &&
+        Object.keys(fields as object).length === 3 &&
+        "price" in (fields as object) &&
+        "isActive" in (fields as object) &&
+        "isArchived" in (fields as object),
+      writer: async (realTx) => {
+        await realTx.execute(
+          sql`UPDATE coupons SET used_count = used_count + 1 WHERE code = ${"LASTSLOT"}`,
+        );
+      },
+    });
+
+    let result: Awaited<ReturnType<typeof CheckoutService.purchase>>;
+    try {
+      result = await CheckoutService.purchase({
+        userId: user.id,
+        productId: product.id,
+        couponCode: "LASTSLOT",
+      });
+    } finally {
+      restore();
+    }
+
+    expect(result.ok).toBe(true);
+
+    // The row truly reached maxUses: the concurrent increment + our own.
+    const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, "LASTSLOT"));
+    expect(coupon.usedCount).toBe(2);
+
+    // THE R146 F2 assertion — the operator was warned (this is the alert
+    // the stale-computed count used to swallow).
+    expect(await couponMaxedAlerts()).toHaveLength(1);
+  });
+});

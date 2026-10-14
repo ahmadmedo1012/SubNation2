@@ -202,7 +202,7 @@ describe("R108 — SINGLE_INSTANCE_MODE=true: ungated in-process schedulers", ()
     expect(alertingService.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("DISABLE_WEB_SCHEDULERS=true WINS over SINGLE_INSTANCE_MODE=true (hard off-switch)", async () => {
+  it("DISABLE_WEB_SCHEDULERS=true WINS over SINGLE_INSTANCE_MODE=true (hard off-switch) — except the alerting evaluator", async () => {
     process.env.SINGLE_INSTANCE_MODE = "true";
     process.env.DISABLE_WEB_SCHEDULERS = "true";
     const handle = await startWebSchedulers(fakeRedis as never);
@@ -211,7 +211,12 @@ describe("R108 — SINGLE_INSTANCE_MODE=true: ungated in-process schedulers", ()
     expect(handle.active).toBe(false);
     expect(handle.reason).toBe("disabled_by_env");
     expect(acquireSchedulerLeadership).not.toHaveBeenCalled();
-    expect(alertingService.start).not.toHaveBeenCalled();
+    // Pin updated (R146 audit F4): the alerting evaluator starts even
+    // under DISABLE_WEB_SCHEDULERS — worker.ts no longer starts one, and
+    // its HTTP/auth signals increment only in THIS process's
+    // per-process prom-client registry (a worker evaluator never sees
+    // them → the five rules silently never fire).
+    expect(alertingService.start).toHaveBeenCalledTimes(1);
     expect(initCronJobs).not.toHaveBeenCalled();
     expect(startHeartbeat).not.toHaveBeenCalled();
     expect(getSchedulerState()).toMatchObject({
@@ -220,6 +225,10 @@ describe("R108 — SINGLE_INSTANCE_MODE=true: ungated in-process schedulers", ()
       isLeader: false,
       reason: "disabled_by_env",
     });
+
+    // The dedicated-mode handle still owns the evaluator's lifecycle.
+    await handle.stop();
+    expect(alertingService.stop).toHaveBeenCalledTimes(1);
   });
 
   it('the flag is exact-match "true" (case-insensitive) — "TRUE" also engages single mode', async () => {

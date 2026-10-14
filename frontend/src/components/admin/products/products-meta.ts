@@ -7,6 +7,17 @@
 // toolbar and the card all import from here — one source for the admin
 // products vocabulary; the move only changes its address, zero behavior
 // change.
+// R146 (components audit F2): the three category tables derive from
+// lib/category-registry (THE category table). Its lucide icon references
+// are data, not JSX (the r136 catalog-filters precedent) and every admin
+// surface importing this vocabulary already loads lucide — the module
+// still imports no React itself.
+import {
+  CATEGORY_REGISTRY,
+  LIVE_CATEGORY_ROWS,
+  RETIRED_CATEGORY_ROWS,
+  categoryLookup,
+} from "@/lib/category-registry";
 
 export const EMPTY_FORM = {
   name: "",
@@ -39,47 +50,30 @@ export type ProductForm = typeof EMPTY_FORM;
  * 10% surface + the full cat hue ink — AA-tuned in both themes by the
  * R124 sweep). NOTE: keep any literal class mention out of this
  * comment — a `bg-cat-STAR-SLASH-10` string would close this block
- * comment early. */
-export const CATEGORY_INITIAL_COLOR: Record<string, string> = {
-  streaming: "bg-cat-streaming/10 text-cat-streaming",
-  music: "bg-cat-music/10 text-cat-music",
-  software: "bg-cat-software/10 text-cat-software",
-  vpn: "bg-cat-vpn/10 text-cat-vpn",
-  "ai-tools": "bg-cat-ai-tools/10 text-cat-ai-tools",
-  "seo-tools": "bg-cat-seo-tools/10 text-cat-seo-tools",
-  education: "bg-cat-education/10 text-cat-education",
-  gaming: "bg-cat-gaming/10 text-cat-gaming",
-  productivity: "bg-cat-productivity/10 text-cat-productivity",
-};
+ * comment early. R146 (F2): the composite derives from the registry's
+ * accent atoms (bg/10 + text) — byte-identical values, retired rows
+ * included. */
+export const CATEGORY_INITIAL_COLOR: Record<string, string> = categoryLookup(
+  (row) => `${row.accent.bg} ${row.accent.text}`,
+);
 
 // Seven live categories first (mirror products.category in production);
 // gaming/productivity kept at the end so the operator can still manage
 // their archived products (PS Plus, Xbox, Canva, MS 365 …) and re-list
-// them the moment stock returns.
+// them the moment stock returns. R146 (F2): both lists map the
+// registry's rows (adminLabel — the admin selects' label form); the
+// only per-surface deltas left are the head entry and the «(مؤرشفة)»
+// suffixes on the retired pair (OPTIONS only — the filter chips stay
+// suffix-free so they read as filters, not warnings).
 export const CATEGORY_OPTIONS = [
   { value: "", label: "اختر الفئة" },
-  { value: "streaming", label: "بث مباشر" },
-  { value: "music", label: "موسيقى" },
-  { value: "software", label: "برامج وتراخيص" },
-  { value: "vpn", label: "شبكات VPN" },
-  { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },
-  { value: "seo-tools", label: "أدوات SEO" },
-  { value: "education", label: "تعليم ومكتبات" },
-  { value: "gaming", label: "ألعاب (مؤرشفة)" },
-  { value: "productivity", label: "إنتاجية (مؤرشفة)" },
+  ...LIVE_CATEGORY_ROWS.map((row) => ({ value: row.slug, label: row.adminLabel })),
+  ...RETIRED_CATEGORY_ROWS.map((row) => ({ value: row.slug, label: `${row.adminLabel} (مؤرشفة)` })),
 ];
 
 export const CATEGORY_FILTERS = [
   { value: "", label: "الكل" },
-  { value: "streaming", label: "بث مباشر" },
-  { value: "music", label: "موسيقى" },
-  { value: "software", label: "برامج وتراخيص" },
-  { value: "vpn", label: "شبكات VPN" },
-  { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },
-  { value: "seo-tools", label: "أدوات SEO" },
-  { value: "education", label: "تعليم ومكتبات" },
-  { value: "gaming", label: "ألعاب" },
-  { value: "productivity", label: "إنتاجية" },
+  ...CATEGORY_REGISTRY.map((row) => ({ value: row.slug, label: row.adminLabel })),
 ];
 
 /** R120-B4 (A2-F2): the backend list (routes/admin/products.ts) clamps

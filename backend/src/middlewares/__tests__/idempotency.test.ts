@@ -1,5 +1,4 @@
 import express, { type Express, type Request, type RequestHandler } from "express";
-import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getRedisClient } from "../../lib/redis-client";
 import { idempotency } from "../idempotency";
@@ -930,77 +929,10 @@ describe("idempotency middleware — R122 (A3-P2-4): canonical body hash", () =>
     }
   });
 
-  it("transition window: a claim cached with the OLD order-sensitive hash still replays a byte-identical retry (no false 409 across the deploy)", async () => {
-    const double = installTtlRedis();
-    const handler = vi.fn((_req, res) => {
-      res.status(201).json({ ok: true, n: 7 });
-    });
-    const { url, close } = await listen(buildApp(handler));
-    try {
-      const key = "legacy hash one";
-      const headers = { "Idempotency-Key": key };
-      const body = { amount: 50, coupon_code: "SAVE10" };
-
-      // Seed the double EXACTLY as a pre-R122 deploy would have: the cached
-      // payload's hash is the legacy JSON.stringify-based digest.
-      const legacyHash = createHash("sha256").update(JSON.stringify(body)).digest("hex");
-      const cacheKey = cacheKeyFor(key);
-      await double.client.set(
-        cacheKey,
-        JSON.stringify({
-          hash: legacyHash,
-          status: 201,
-          body: { ok: true, n: 7 },
-          completedAt: new Date().toISOString(),
-        }),
-        { EX: 24 * 60 * 60 },
-      );
-
-      // The new code computes the CANONICAL hash — a strict comparison
-      // would 409 here. The transition window also accepts the legacy
-      // digest of the incoming body, so the retry still replays.
-      const retry = await post(url, body, headers);
-      expect(retry.status).toBe(201);
-      expect(retry.headers.get("Idempotent-Replayed")).toBe("true");
-      expect(retry.body).toEqual({ ok: true, n: 7 });
-      expect(handler).toHaveBeenCalledTimes(0); // served from the claim
-    } finally {
-      close();
-    }
-  });
-
-  it("transition window is not a bypass: a legacy-hash claim still 409s a DIFFERENT body", async () => {
-    const double = installTtlRedis();
-    const handler = vi.fn((_req, res) => {
-      res.status(201).json({ ok: true });
-    });
-    const { url, close } = await listen(buildApp(handler));
-    try {
-      const key = "legacy hash diff";
-      const headers = { "Idempotency-Key": key };
-
-      const legacyHash = createHash("sha256")
-        .update(JSON.stringify({ amount: 50 }))
-        .digest("hex");
-      await double.client.set(
-        cacheKeyFor(key),
-        JSON.stringify({
-          hash: legacyHash,
-          status: 201,
-          body: { ok: true },
-          completedAt: new Date().toISOString(),
-        }),
-        { EX: 24 * 60 * 60 },
-      );
-
-      const conflict = await post(url, { amount: 900 }, headers);
-      expect(conflict.status).toBe(409);
-      expect(conflict.body).toMatchObject({ code: "IDEMPOTENCY_KEY_REUSE" });
-      expect(handler).toHaveBeenCalledTimes(0);
-    } finally {
-      close();
-    }
-  });
+  // R146 (audit finding 5): the two R122 transition-window cases (legacy
+  // order-sensitive hash replay + its different-body 409 twin) were deleted
+  // with the legacyBodyHash comparison arm — the 24 h Redis TTL expired the
+  // last pre-R122 claim ~24 rounds ago, so the arm could never match again.
 });
 
 describe("idempotency middleware — R134 (A7-F4): lib import-parity", () => {

@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useSeo } from "@/hooks/useSeo";
 
 // R128 (A1-F3): tier gradients ride the theme-aware --tier-* tokens.
 const TIER_GRADIENTS: Record<string, string> = {
@@ -88,6 +89,17 @@ interface LinkedProviderRow {
 }
 
 export default function ProfilePage() {
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so
+  // account-surface hops stayed silent for screen-reader users.
+  // notifications.tsx's shape.
+  const seoBlock = useSeo({
+    title: "حسابي — SubNation",
+    description:
+      "إدارة حسابك في SubNation — بياناتك ورصيدك ونقاطك والحسابات المرتبطة والأجهزة النشطة.",
+    path: "/profile",
+    robots: "noindex,follow",
+  });
   const { token, logout } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -257,6 +269,7 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
+      {seoBlock}
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">

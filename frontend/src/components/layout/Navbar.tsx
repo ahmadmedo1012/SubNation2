@@ -3,7 +3,7 @@ import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { cartChangeAnnouncement, useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
-import { categoryLabel, cn, formatCount, formatCurrency } from "@/lib/utils";
+import { categoryLabel, cn, formatCount, formatCurrency, LIVE_CATEGORY_SLUGS } from "@/lib/utils";
 import {
   Wallet,
   LogOut,
@@ -29,6 +29,9 @@ import { useState, useEffect, useRef } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Suspense } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
+// R146 (components audit F1): the drawer’s Tab trap rides the shared
+// React-free helper (lib/a11y) — importing it drags no admin shell.
+import { trapTabKey } from "@/lib/a11y/trap-tab-key";
 import { Logo } from "./Logo";
 
 const NotificationBell = lazyWithRetry(() =>
@@ -43,15 +46,16 @@ const NotificationBell = lazyWithRetry(() =>
 // vs the canonical «أدوات ذكاء اصطناعي», «VPN وشبكات» vs «شبكات
 // VPN», …). No bundle cost: Navbar already imports lib/utils (cn/
 // formatCount), and CATEGORY_META itself stays out of the eager chunk.
-const DRAWER_CATEGORIES = [
-  { slug: "streaming", label: categoryLabel("streaming") },
-  { slug: "music", label: categoryLabel("music") },
-  { slug: "software", label: categoryLabel("software") },
-  { slug: "vpn", label: categoryLabel("vpn") },
-  { slug: "ai-tools", label: categoryLabel("ai-tools") },
-  { slug: "seo-tools", label: categoryLabel("seo-tools") },
-  { slug: "education", label: categoryLabel("education") },
-] as const;
+// R146 (components audit F2): the slug ORDER now rides utils'
+// LIVE_CATEGORY_SLUGS — the eager-safe twin of lib/category-registry's
+// live rows (sync pinned by category-registry.test.ts). Importing the
+// registry itself here would hoist its lucide icon set into the eager
+// entry chunk (the R120-B5 eager-sum budget) for icons this surface
+// never renders — the drawer's rows are text links.
+const DRAWER_CATEGORIES = LIVE_CATEGORY_SLUGS.map((slug) => ({
+  slug,
+  label: categoryLabel(slug),
+}));
 
 // R135 (FE-1 / R124-A4 #5): the authed drawer's account rows — the escape
 // hatch an authed phone needs once the bottom nav hides (landscape
@@ -123,38 +127,15 @@ function DrawerCategoriesSection() {
 }
 
 /**
- * R126 (A13-F2): minimal Tab-cycle focus trap for the guest drawer —
- * the exact helper (and comment) the admin console's drawer + ⌘K
- * palette share (layout.tsx trapTabKey, R125 A6 B-9/B-15), kept local
- * because importing the admin layout into the storefront bundle would
- * drag the whole admin shell into the eager chunk. The drawer claims
- * role="dialog" aria-modal="true", so Tab must cycle inside it instead
- * of walking into the page behind (WCAG 2.1.2). Only Tab/Shift+Tab are
- * intercepted; every other key is left to the drawer's own handlers.
+ * R126 (A13-F2): the Tab half of the drawer's aria-modal promise — the
+ * shared React-free helper (lib/a11y/trap-tab-key; R146 components-audit
+ * F1 folded the former local copy onto it — the body was byte-identical,
+ * and importing the helper drags no admin shell into the storefront
+ * chunk). The drawer claims role="dialog" aria-modal="true", so Tab must
+ * cycle inside it instead of walking into the page behind (WCAG 2.1.2).
+ * Only Tab/Shift+Tab are intercepted; every other key is left to the
+ * drawer's own handlers.
  */
-function trapTabKey(
-  container: HTMLElement,
-  e: { key: string; shiftKey: boolean; preventDefault(): void },
-): void {
-  if (e.key !== "Tab") return;
-  const focusables = Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    ),
-  );
-  if (focusables.length === 0) return;
-  const current = document.activeElement as HTMLElement | null;
-  const idx = current ? focusables.indexOf(current) : -1;
-  e.preventDefault();
-  const next = e.shiftKey
-    ? idx <= 0
-      ? focusables.length - 1
-      : idx - 1
-    : idx === -1 || idx === focusables.length - 1
-      ? 0
-      : idx + 1;
-  focusables[next].focus();
-}
 
 export function Navbar() {
   const { token, logout } = useAuth();

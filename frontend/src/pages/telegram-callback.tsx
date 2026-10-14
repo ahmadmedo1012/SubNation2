@@ -3,6 +3,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { readApiError } from "@/components/checkout/checkout-errors";
 import { Button } from "@/components/ui/button";
 
 const HANG_TIMEOUT_MS = 12_000;
@@ -207,17 +208,14 @@ export default function TelegramCallbackPage() {
         // exactly as before. A ResponseParseError (garbage 200 body)
         // takes the same navigate-only arm the old `.catch(() => ({}))`
         // shape produced; only genuine network-level failures keep the
-        // old catch arm (setError + redirect). Duck-typed per the
-        // checkout-errors.ts isHttpApiError idiom (the class itself is a
-        // type-only package export).
-        if (
-          err instanceof Error &&
-          (err.name === "ApiError" || err.name === "ResponseParseError")
-        ) {
-          const body = (err as { data?: unknown }).data;
-          const reason =
-            (body && typeof body === "object" ? (body as { reason?: string }).reason : undefined) ||
-            "server_error";
+        // old catch arm (setError + redirect). R146 (components audit
+        // F4): the ApiError half reads the envelope through the shared
+        // readApiError reader (checkout-errors.ts) instead of a local
+        // duck-typed cast; ResponseParseError keeps its own name check
+        // (it carries no envelope — reason falls to "server_error").
+        const api = readApiError(err);
+        if (api !== null || (err instanceof Error && err.name === "ResponseParseError")) {
+          const reason = (api?.data?.reason as string | undefined) || "server_error";
           navigate(`/login?error=${encodeURIComponent(reason)}`, { replace: true });
           return;
         }

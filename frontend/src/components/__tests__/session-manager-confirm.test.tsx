@@ -76,7 +76,6 @@ describe("SessionManager — destructive confirm via useConfirm (B6-P1-3)", () =
             {
               id: "s1",
               device: "Chrome · Windows",
-              lastActive: new Date().toISOString(),
               current: true,
             },
           ],

@@ -2,16 +2,17 @@
 // assistant answer card (markdown-lite body + the copy affordance + the
 // tool-trace «مصدر البيانات» details + the direct-execution badges). A
 // self-contained FEATURE component in the GlobalSearch (R137 1-f) /
-// CopilotPanel-left-layout (R124-I5) precedent: its state is card-LOCAL
-// transient copy feedback (copied/copyFailed — nothing outside the card
-// reads it), so it moves as a unit with its own hooks; the panel owns the
-// conversation truth and passes values only. CopilotPanel re-exports it so
-// the clipboard-bypass regression test's import path resolves unchanged.
-// ZERO behavior, zero markup change.
+// CopilotPanel-left-layout (R124-I5) precedent: its only state was the
+// card-LOCAL transient copy feedback (copied/copyFailed — nothing outside
+// the card read it). R146 (components audit F9): that lifecycle folded
+// onto THE shared CopyButton's icon-only rendering — the card is now
+// values-only, its reset timers are tracked/cleared like every other
+// copy surface, and the markup is byte-identical. CopilotPanel
+// re-exports it so the clipboard-bypass regression test's import path
+// resolves unchanged.
 
-import { useState } from "react";
-import { Check, Copy, Sparkles, X } from "lucide-react";
-import { copyToClipboard } from "@/lib/utils";
+import { Sparkles } from "lucide-react";
+import { CopyButton } from "@/components/CopyButton";
 import type { DirectExecution, ToolUseTracePreview } from "./copilot-types";
 import { DirectExecutionBadge } from "./DirectExecutionBadge";
 import { MarkdownLite } from "./MarkdownLite";
@@ -31,24 +32,6 @@ export function AskAnswer({
   toolUses: ToolUseTracePreview[];
   directExecutions: DirectExecution[];
 }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
-  async function handleCopy() {
-    // Shared helper (secure-context check + execCommand fallback +
-    // boolean result), mirroring wallet.tsx's CopyBtn (B4 P1-2).
-    // The previous raw navigator.clipboard.writeText had `// ignore` as
-    // its failure handler: on insecure contexts / strict Firefox the
-    // copy died silently AND left an unhandled promise rejection
-    // (B6-P2-2 — the only component-scope clipboard bypass).
-    const ok = await copyToClipboard(answer);
-    if (!ok) {
-      setCopyFailed(true);
-      setTimeout(() => setCopyFailed(false), 2000);
-      return;
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
   return (
     <div className="space-y-2">
       {directExecutions.length > 0 && (
@@ -64,19 +47,15 @@ export function AskAnswer({
           side); shadow-sm retires (thread content rests flat paper). */}
       <div className="group relative bg-muted/60 border border-border/50 rounded-2xl rounded-tr-md px-3.5 py-2.5 text-sm">
         <MarkdownLite text={answer} />
-        <button
-          onClick={() => void handleCopy()}
+        {/* R146 (components audit F9): THE shared copy affordance, icon-only
+            — the overlay classes are this surface's own; the lifecycle
+            (helper routing + failure feedback + tracked reset timers) is
+            CopyButton's, pinned by copilot-copy + copy-button suites. */}
+        <CopyButton
+          text={answer}
+          iconOnly
           className="absolute top-1.5 left-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-2 rounded-md hover:bg-secondary transition-all"
-          aria-label={copyFailed ? "تعذّر النسخ" : copied ? "تم النسخ" : "نسخ"}
-        >
-          {copyFailed ? (
-            <X className="w-3 h-3 text-status-error" />
-          ) : copied ? (
-            <Check className="w-3 h-3 text-status-success" />
-          ) : (
-            <Copy className="w-3 h-3" />
-          )}
-        </button>
+        />
       </div>
       {toolUses.length > 0 && (
         <details className="text-2xs text-muted-foreground">

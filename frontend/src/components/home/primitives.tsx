@@ -1,16 +1,13 @@
 import { CheckCircle, Clock, XCircle } from "lucide-react";
-import { ProductCardShell } from "@/components/ui/route-skeleton";
 
 // R136 (FE-3 decomposition): extracted verbatim from pages/home.tsx —
-// the page's two shared presentation primitives. ProductSkeleton feeds
-// the products-grid loading state; OrderStatusIcon feeds the recent-
-// orders strip rows. Zero props, zero state — the move only changes
-// their address (the sibling extracts import them; DOM and classes are
-// byte-identical).
-
-export function ProductSkeleton() {
-  return <ProductCardShell />;
-}
+// the page's shared presentation primitives. OrderStatusIcon feeds the
+// recent-orders strip rows; zero props, zero state — the move only
+// changes its address (the sibling extracts import it; DOM and classes
+// are byte-identical).
+// R146 (components audit F8): the ProductSkeleton pass-through alias
+// was deleted — ProductsGrid imports ProductCardShell directly from
+// @/components/ui/route-skeleton (route-skeleton's own shells' idiom).
 
 export function OrderStatusIcon({ status }: { status: string }) {
   // R94-A1 #5 (P2, WCAG AA): raw -400 shades measured 1.53–2.54:1 on

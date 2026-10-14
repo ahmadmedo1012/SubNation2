@@ -1,4 +1,5 @@
 import { BRANDS, CATEGORIES } from "@/components/home/catalog-filters";
+import { categoryLookup } from "@/lib/category-registry";
 import { Reveal, RevealGroup, RevealItem } from "@/lib/motion-primitives";
 import { formatCount } from "@/lib/utils";
 import { Link } from "wouter";
@@ -32,16 +33,10 @@ import { Link } from "wouter";
 
 /** The per-category accent families (index.css cat-* tokens — the
  *  products-carry-the-color principle: the tile's icon tint is the
- *  category's own hue, not chrome decoration). */
-const CATEGORY_ACCENT: Record<string, string> = {
-  streaming: "bg-cat-streaming/12 text-cat-streaming",
-  music: "bg-cat-music/12 text-cat-music",
-  software: "bg-cat-software/12 text-cat-software",
-  vpn: "bg-cat-vpn/12 text-cat-vpn",
-  "ai-tools": "bg-cat-ai-tools/12 text-cat-ai-tools",
-  "seo-tools": "bg-cat-seo-tools/12 text-cat-seo-tools",
-  education: "bg-cat-education/12 text-cat-education",
-};
+ *  category's own hue, not chrome decoration). R146 (components audit
+ *  F2): the local table folded onto lib/category-registry's tile atoms
+ *  (the same bg/12 + text strings, now spelled out there once). */
+const CATEGORY_ACCENT: Record<string, string> = categoryLookup((row) => row.tile);
 
 /** Brand examples per category — the first three BRANDS rows whose
  *  category matches, Latin label visible (brand recognition) + the

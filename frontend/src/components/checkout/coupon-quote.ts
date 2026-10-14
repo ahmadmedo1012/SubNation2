@@ -1,5 +1,6 @@
 import { roundToCents, type LocalCartItem } from "@/lib/cart";
 import { validateCoupon as validateCouponApi } from "@workspace/api-client-react";
+import { readApiError } from "@/components/checkout/checkout-errors";
 
 // R136 (FE-2 decomposition): extracted verbatim from pages/checkout.tsx —
 // the 98-F2 per-line coupon pre-flight (validation inputs + the
@@ -128,10 +129,12 @@ export async function validateCouponForLines(
           return { price, ok: true, body: data as unknown as Record<string, unknown> };
         } catch (err: unknown) {
           // L5-2 (R143): classify the HTTP verdict honestly instead of
-          // treating every non-2xx as «الكوبون غير صالح».
-          if (err instanceof Error && err.name === "ApiError") {
-            const status = (err as { status?: unknown }).status;
-            const envelope = (err as { data?: unknown }).data as Record<string, unknown> | null;
+          // treating every non-2xx as «الكوبون غير صالح» — via the shared
+          // ApiError reader (R146 components audit F4; the former inline
+          // duck-type + status/data casts were its second copy).
+          const api = readApiError(err);
+          if (api !== null) {
+            const envelope = api.data;
             const message = envelope && typeof envelope.error === "string" ? envelope.error : null;
             // ONLY a 4xx (rate-limit excepted) carrying a parsed Arabic
             // {error} envelope is a definitive verdict ABOUT THE COUPON
@@ -140,10 +143,10 @@ export async function validateCouponForLines(
             // body (proxy HTML) says nothing either — both are transient,
             // i.e. the fail-open "network" arm.
             if (
-              typeof status === "number" &&
-              status >= 400 &&
-              status < 500 &&
-              status !== 429 &&
+              api.status !== undefined &&
+              api.status >= 400 &&
+              api.status < 500 &&
+              api.status !== 429 &&
               message !== null
             ) {
               return { price, ok: false, body: { valid: false, error: message } };

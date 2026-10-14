@@ -29,6 +29,10 @@ import { OrderSuccessScreen, type PurchaseSummary } from "@/components/product/O
 import { ProductBreadcrumbNav } from "@/components/product/ProductBreadcrumbNav";
 import { ProductNotFoundCard } from "@/components/product/ProductNotFoundCard";
 import { ProductOutageCard } from "@/components/product/ProductOutageCard";
+// R146 (components audit F4): the 404 re-quote arm + the definitive-clear
+// classification below read the ApiError envelope through the shared
+// reader (checkout-errors.ts) instead of local duck-typed casts.
+import { readApiError } from "@/components/checkout/checkout-errors";
 import { ProductMediaSection } from "@/components/product/ProductMediaSection";
 import { productSeoInput } from "@/components/product/product-seo";
 import { RecommendationsSection } from "@/components/product/RecommendationsSection";
@@ -161,10 +165,19 @@ export default function ProductPage() {
       // flag would wrongly swallow the next real navigation's reset.
       if (window.location.pathname !== next) {
         quietNextScrollToTopReset();
+        // R146 (audit-frontend-pages F1): seed the slug key BEFORE the
+        // rewrite — wouter 3.9 turns replaceState into a location change,
+        // isLegacyNumeric flips false and the page switches to
+        // bySlugQuery, whose key would be EMPTY without this: the
+        // `if (isLoading)` route skeleton replaced the PDP the visitor
+        // was already reading and the same product was fetched twice (the
+        // by-id response is byte-identical to the by-slug DTO, per the
+        // comment above).
+        queryClient.setQueryData(["product-by-slug", productSlug], byIdQuery.data);
         window.history.replaceState(null, "", next);
       }
     }
-  }, [isLegacyNumeric, byIdQuery.data]);
+  }, [isLegacyNumeric, byIdQuery.data, queryClient]);
 
   const { data: user, isLoading: userLoading } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
@@ -241,13 +254,17 @@ export default function ProductPage() {
   // server re-computes the coupon against the NEW variant's price and
   // charges 90). Keyed on selectedVariant?.id (not the raw state) so a
   // FALLBACK selection change (cheapest option removed/added on
-  // refetch, product navigation) voids too. couponInput is kept so
-  // re-validating on the new variant is one tap on «تحقق».
+  // refetch, product navigation) voids too. R146 (audit-frontend-pages
+  // F2): the product id rides the deps as well — a PDP→PDP hop between
+  // two VARIANT-LESS products (the recommendations rail) never changed
+  // selectedVariant?.id (null → null), so product A's validated coupon
+  // survived onto product B's CTA and order body. couponInput is kept
+  // so re-validating on the new product is one tap on «تحقق».
   useEffect(() => {
     couponGenerationRef.current += 1;
     setCouponResult(null);
     setCouponError("");
-  }, [selectedVariant?.id]);
+  }, [selectedVariant?.id, product?.id]);
 
   const handleBuyIntent = async () => {
     if (!product || buyPending) return;
@@ -315,11 +332,7 @@ export default function ProductPage() {
         // «المنتج غير موجود» branch (the cart path's twin of dropping
         // 404/410-archived lines with a notice). Network/5xx failures
         // keep the fail-open contract above.
-        if (
-          err instanceof Error &&
-          err.name === "ApiError" &&
-          (err as { status?: number }).status === 404
-        ) {
+        if (readApiError(err)?.status === 404) {
           try {
             void refetchProduct();
           } catch {
@@ -412,11 +425,9 @@ export default function ProductPage() {
       // DOUBLE-CHARGE once the in-flight request commits. The backend's
       // Arabic message explicitly tells the user to retry — this guard
       // makes that retry safe.
-      const httpCode =
-        err instanceof Error && err.name === "ApiError"
-          ? ((err as { data?: { code?: string } }).data?.code ?? null)
-          : null;
-      if (err instanceof Error && err.name === "ApiError" && httpCode !== "IDEMPOTENCY_IN_FLIGHT") {
+      const api = readApiError(err);
+      const httpCode = (api?.data?.code as string | undefined) ?? null;
+      if (api !== null && httpCode !== "IDEMPOTENCY_IN_FLIGHT") {
         clearBuyIntentKey(product.id);
       }
       setError(getErrorMessage(err));

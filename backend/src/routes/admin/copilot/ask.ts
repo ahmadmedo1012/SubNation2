@@ -38,8 +38,9 @@ import {
   type ToolUseTrace,
 } from "../../../services/copilot/llm-client";
 import { getCopilotProvider } from "../../../services/copilot/provider-config";
+import { recordNonExecute } from "../../../services/copilot/audit";
 import { buildSystemPrompt } from "../../../services/copilot/system-prompt";
-import { readToolsForScopes, runReadTool } from "../../../services/copilot/tools/read";
+import { READ_TOOLS, readToolsForScopes, runReadTool } from "../../../services/copilot/tools/read";
 import {
   directToolsForScopes,
   executeUpdateProduct,
@@ -59,6 +60,13 @@ import {
   systemOverview,
   walletLedgerSummary,
 } from "../../../services/copilot/tools/operational";
+
+// R146 review F3: the refusal string's scope vocabulary derives from the
+// live read catalog (first-appearance order) so it grows with new tools
+// instead of drifting as a frozen literal.
+const REFUSAL_SCOPES = [...new Set(READ_TOOLS.map((t) => t.requiredScope))]
+  .filter((s): s is string => s !== null)
+  .join("|");
 
 const COMMAND_COUNTER_NAME = "copilot_command_total";
 const SAFETY_COUNTER_NAME = "copilot_safety_refusal_total";
@@ -154,9 +162,12 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const correlationId =
+  // R146 (audit finding 3): the header is unbounded client input and feeds
+  // varchar(64) correlation_id columns — bound at extraction.
+  const correlationId = (
     (req.headers["x-correlation-id"] as string | undefined) ??
-    `cp-${Date.now()}-${adminReq.adminId}`;
+    `cp-${Date.now()}-${adminReq.adminId}`
+  ).slice(0, 64);
   const scopes = adminReq.adminPermissions ?? [];
   const isSuperAdmin = scopes.includes("all");
 
@@ -172,6 +183,18 @@ async function handleAsk(req: Request, res: Response): Promise<void> {
   ];
 
   if (tools.length === 0) {
+    // R146 (audit finding 2): the refusal-forensics contract (010 T146) —
+    // an out-of-scope probe must leave a copilot_actions row BEFORE the
+    // 403. The never-mounted requireCopilotPermission factory never fired.
+    await recordNonExecute({
+      adminId: adminReq.adminId,
+      intentText,
+      actionClass: "refusal",
+      riskTier: "low",
+      outcome: "refused",
+      failureReason: `out_of_scope: missing scope ${REFUSAL_SCOPES}`,
+      correlationId,
+    });
     res
       .status(403)
       .json(

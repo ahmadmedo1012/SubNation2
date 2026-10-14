@@ -14,7 +14,7 @@ rm -rf \
   shared/db/dist \
   shared/api-zod/dist \
   shared/api-client-react/dist \
-  scripts/dist \
+  shared/error-codes/dist \
   coverage \
   .turbo
 

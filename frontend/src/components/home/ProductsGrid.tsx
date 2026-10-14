@@ -1,5 +1,8 @@
 import { ProductCard } from "@/components/ProductCard";
-import { ProductSkeleton } from "@/components/home/primitives";
+// R146 (components audit F8): the grid's loading shell rides
+// route-skeleton's ProductCardShell directly — the pure pass-through
+// ProductSkeleton alias (home/primitives) was deleted.
+import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { CATEGORIES, SORTS } from "@/components/home/catalog-filters";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Reveal } from "@/lib/motion-primitives";
@@ -123,7 +126,7 @@ export function ProductsGrid({
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <ProductSkeleton key={i} />
+            <ProductCardShell key={i} />
           ))}
         </div>
       ) : productsError ? (

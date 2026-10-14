@@ -514,7 +514,6 @@ export interface UserSession {
   created_at?: string | null;
   /** @nullable */
   expires_at?: string | null;
-  lastActive?: string;
   current?: boolean;
 }
 

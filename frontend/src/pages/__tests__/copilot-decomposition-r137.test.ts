@@ -258,19 +258,25 @@ describe("R137 (FE) — the extracts are self-contained units (verbatim moves)",
     }
   });
 
-  it("AskAnswer owns ONLY its card-local copy feedback (the GlobalSearch feature-extract precedent)", () => {
+  it("AskAnswer is values-only — the copy affordance is THE shared CopyButton (the GlobalSearch feature-extract precedent)", () => {
     // The answer card is a self-contained feature component (the R137
-    // 1-f GlobalSearch / R124-I5 idiom): copied/copyFailed are transient
-    // card feedback NOBODY outside the card reads. Everything else —
-    // the answer text, tool traces, direct executions — arrives as
-    // values from the panel-owned conversation truth.
+    // 1-f GlobalSearch / R124-I5 idiom): its copy feedback is transient
+    // card state NOBODY outside the card reads. Everything else — the
+    // answer text, tool traces, direct executions — arrives as values
+    // from the panel-owned conversation truth.
+    // R146 (components audit F9): the card-local copied/copyFailed
+    // lifecycle (two untracked setTimeouts — the exact hygiene A3 P3-10
+    // fixed in CopyButton) folded onto THE shared CopyButton via its
+    // icon-only rendering; the pin follows the fold. Behavior stays
+    // pinned where it lives: helper routing + failure feedback in
+    // copilot-copy.test.tsx, the lifecycle/timer hygiene in
+    // copy-button.test.tsx.
     const askAnswer = read("src/components/admin/copilot/AskAnswer.tsx");
-    expect(askAnswer).toContain("const [copied, setCopied] = useState(false);");
-    expect(askAnswer).toContain("const [copyFailed, setCopyFailed] = useState(false);");
-    // B6-P2-2: the copy path routes through the shared helper and
-    // surfaces failures (the pin copilot-copy.test.tsx renders).
-    expect(askAnswer).toContain("const ok = await copyToClipboard(answer);");
-    expect(askAnswer).not.toMatch(/useRef\(|useEffect\(|useMemo\(/);
+    expect(askAnswer).toContain('from "@/components/CopyButton"');
+    expect(askAnswer).toContain("<CopyButton");
+    expect(askAnswer).toContain("iconOnly");
+    // The fold must not reintroduce a local state island.
+    expect(askAnswer).not.toMatch(/useState\(|useRef\(|useEffect\(|useMemo\(/);
   });
 
   it("PreviewCard owns ONLY its card-local cooldown countdown (the GlobalSearch feature-extract precedent)", () => {

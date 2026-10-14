@@ -1,5 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/CopyButton";
+// R146 (audit-frontend-pages F6): the near-duplicate page-local CopyField
+// is deleted — the shared product/CopyField renders these rows with this
+// page's receipt chrome via rowClassName (byte-identical DOM; the shared
+// component's own docblock notes it was ported FROM order-detail V2-H10).
+import { CopyField } from "@/components/product/CopyField";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -20,13 +24,12 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/hooks/use-socket";
+import { useSeo } from "@/hooks/useSeo";
 import {
   ArrowRight,
   CheckCircle,
   Clock,
   Copy,
-  Eye,
-  EyeOff,
   ExternalLink,
   Info,
   Package,
@@ -38,69 +41,16 @@ import {
   Undo2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Link, useLocation, useParams } from "wouter";
 
-function CopyField({
-  label,
-  value,
-  secret = false,
-}: {
-  label: string;
-  value: string;
-  /** Mask the value until explicitly revealed (passwords). */
-  secret?: boolean;
-}) {
-  const [revealed, setRevealed] = useState(!secret);
-  return (
-    <div className="group flex items-start justify-between gap-3 px-5 py-3.5 hover:bg-muted/30 transition-colors">
-      {/* R139 (precision): the row hover joins the family /30 wash
-          (the rows carry the interactive CopyButton/reveal controls —
-          the wash is earned); the /20 hairlines between rows come from
-          the parent's divide-y below. */}
-      <div className="min-w-0 flex-1">
-        {/* 96-F4 (R96 A6 #1): uppercase/tracking-wider removed from the
-            Arabic credential labels («البريد الإلكتروني»/«كلمة المرور») —
-            letter-spacing tears the cursive joins (ج/ح/خ disconnect). */}
-        <div className="text-3xs text-muted-foreground font-bold mb-0.5">{label}</div>
-        {/* dir="ltr": credentials are LTR runs — without it the bidi
-            algorithm visually scrambles values ending in digits/symbols
-            even though the copied text is correct.
-            96-F4 (R96 A2 P1-4/P1-5): the value stays in a NON-button
-            selectable element (select-text + break-all) — the paid data
-            remains long-press-selectable as the fallback when copy fails. */}
-        <div
-          dir="ltr"
-          className="font-mono font-bold text-sm break-all leading-snug text-left select-text"
-        >
-          {revealed ? value : "•".repeat(Math.min(value.length, 12))}
-        </div>
-        {secret && (
-          /* 96-F4 (R96 A2 P1-4): reveal is its own 44px control on the
-              LABEL side — visually separated from the copy affordance on
-              the opposite side (they used to be twin ~28px pills and a
-              mis-tap hit the neighbor's identical pill). */
-          <button
-            type="button"
-            onClick={() => setRevealed((r) => !r)}
-            aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-            /* R124-I4 (A3 #8): hover:text-primary on 12px bold text is
-                3.76:1 (AA fail on the hover state) — the text-safe
-                twin (the Button link variant's own convention). */
-            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary-text hover:border-primary/22"
-          >
-            {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            {revealed ? "إخفاء" : "إظهار"}
-          </button>
-        )}
-      </div>
-      {/* 96-F4 (R96 A2 P1-3): the shared CopyButton (size="md", min-h-11)
-          replaces the local reimplementation — copy failure now announces
-          itself («تعذّر النسخ») instead of silently keeping the «نسخ» label. */}
-      <CopyButton text={value} size="md" />
-    </div>
-  );
-}
+/** The receipt-card row chrome for the shared CopyField — verbatim the
+ * row classes the deleted page-local CopyField carried. R139
+ * (precision): the /30 hover wash is earned (the rows carry the
+ * interactive CopyButton/reveal controls); the /20 hairlines between
+ * rows come from the parent's divide-y below. */
+const RECEIPT_ROW =
+  "group flex items-start justify-between gap-3 px-5 py-3.5 hover:bg-muted/30 transition-colors";
 
 function StatusSteps({ status }: { status: string }) {
   if (status === "failed" || status === "refunded") return null;
@@ -150,6 +100,18 @@ function StatusSteps({ status }: { status: string }) {
 
 export default function OrderDetailPage() {
   const { orderCode } = useParams<{ orderCode: string }>();
+  // R146 (audit-frontend-pages F4): RouteAnnouncer announces SPA
+  // navigations by reading document.title — this page set none, so a
+  // orders→detail hop was silent for screen-reader users (the announcer
+  // skips same-title navigations). notifications.tsx's shape; the
+  // canonical rides the live order URL.
+  const seoBlock = useSeo({
+    title: "تفاصيل الطلب — SubNation",
+    description:
+      "تفاصيل طلبك في SubNation — الحالة، المبلغ، وبيانات الحساب المسلّمة بعد اكتمال الشراء.",
+    path: `/orders/${orderCode ?? ""}`,
+    robots: "noindex,follow",
+  });
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -322,6 +284,7 @@ export default function OrderDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-7 page-in">
+      {seoBlock}
       {/* Back */}
       <button
         onClick={() => navigate("/orders")}
@@ -530,10 +493,19 @@ export default function OrderDetailPage() {
             </div>
             <div className="divide-y divide-border/20">
               {order.delivered_email && (
-                <CopyField label="البريد الإلكتروني" value={order.delivered_email} />
+                <CopyField
+                  label="البريد الإلكتروني"
+                  value={order.delivered_email}
+                  rowClassName={RECEIPT_ROW}
+                />
               )}
               {order.delivered_password && (
-                <CopyField label="كلمة المرور" value={order.delivered_password} secret />
+                <CopyField
+                  label="كلمة المرور"
+                  value={order.delivered_password}
+                  secret
+                  rowClassName={RECEIPT_ROW}
+                />
               )}
               {order.delivered_extra_details && (
                 /* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-

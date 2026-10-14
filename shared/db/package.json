@@ -13,8 +13,7 @@
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
-    "pg": "^8.20.0",
-    "zod": "catalog:"
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",

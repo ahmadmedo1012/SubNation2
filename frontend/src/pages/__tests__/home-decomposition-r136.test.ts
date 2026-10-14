@@ -59,14 +59,16 @@ describe("R136 (FE-3) — home.tsx decomposition: page stays an orchestration co
   });
 
   it("the primitives leaf stays imported by its consumers (no page call site — the R135 CopyField precedent)", () => {
-    // ProductSkeleton renders the grid's loading state and
-    // OrderStatusIcon the orders strip's rows — the page itself has no
-    // call site for either, so the deletion guard rides the sibling
-    // extracts that import them.
-    for (const consumer of ["ProductsGrid", "RecentOrdersStrip"]) {
-      const src = read(`src/components/home/${consumer}.tsx`);
-      expect(src, consumer).toContain('from "@/components/home/primitives"');
-    }
+    // OrderStatusIcon renders the orders strip's rows — the page itself
+    // has no call site for it, so the deletion guard rides the sibling
+    // extract that imports it.
+    // R146 (components audit F8): the ProductSkeleton pass-through alias
+    // was deleted — ProductsGrid's loading shells import ProductCardShell
+    // directly from route-skeleton (the pin follows the new address).
+    const recentOrdersStrip = read("src/components/home/RecentOrdersStrip.tsx");
+    expect(recentOrdersStrip).toContain('from "@/components/home/primitives"');
+    const productsGrid = read("src/components/home/ProductsGrid.tsx");
+    expect(productsGrid).toContain('from "@/components/ui/route-skeleton"');
   });
 
   it("the filter quartet + its setters stay IN the page (values + callbacks flow down)", () => {

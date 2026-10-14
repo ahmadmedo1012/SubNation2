@@ -1,3 +1,5 @@
+import { clearIntentKey, loadIntentKey, persistIntentKey } from "@/lib/intent-envelope";
+
 // R137 (FE decomposition): extracted verbatim from pages/loyalty.tsx —
 // the durable conversion-intent key (the checkout unit-key module's
 // loyalty twin). Pure storage lifecycle: no React, no lucide, no
@@ -6,6 +8,9 @@
 // persists and revalidates the envelope. The slot name and TTL are the
 // values loyalty-convert-journey.test.tsx pins at the localStorage
 // level ("subnation_convert_key"); the move changes neither.
+// R146 (components audit F3): the {k,t,f} envelope mechanics moved to
+// lib/intent-envelope.ts — this module keeps the slot, TTL and the
+// page-owned fingerprint convention.
 
 // ── AUD103-2-F3 (r103): durable conversion-intent key ──────────────────────
 //
@@ -18,43 +23,14 @@
 const CONVERT_KEY = "subnation_convert_key";
 const CONVERT_KEY_TTL_MS = 10 * 60 * 1000;
 
-interface StoredConvertKey {
-  /** The Idempotency-Key header value. */
-  k: string;
-  /** Date.now() at mint time — the TTL stamp. */
-  t: number;
-  /** Intent fingerprint — `convert|<points>`. */
-  f: string;
-}
-
 export function loadStoredConvertKey(fingerprint: string): string | null {
-  try {
-    const raw = localStorage.getItem(CONVERT_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredConvertKey>;
-    if (typeof parsed.k !== "string" || !parsed.k) return null;
-    if (typeof parsed.t !== "number" || Number.isNaN(parsed.t)) return null;
-    if (Date.now() - parsed.t > CONVERT_KEY_TTL_MS) return null;
-    if (parsed.f !== fingerprint) return null;
-    return parsed.k;
-  } catch {
-    return null;
-  }
+  return loadIntentKey(localStorage, CONVERT_KEY, CONVERT_KEY_TTL_MS, fingerprint);
 }
 
 export function persistStoredConvertKey(fingerprint: string, key: string): void {
-  try {
-    const entry: StoredConvertKey = { k: key, t: Date.now(), f: fingerprint };
-    localStorage.setItem(CONVERT_KEY, JSON.stringify(entry));
-  } catch {
-    // degraded: unstable keys (pre-fix behavior) — never throw on money path
-  }
+  persistIntentKey(localStorage, CONVERT_KEY, fingerprint, key);
 }
 
 export function clearStoredConvertKey(): void {
-  try {
-    localStorage.removeItem(CONVERT_KEY);
-  } catch {
-    // ignore
-  }
+  clearIntentKey(localStorage, CONVERT_KEY);
 }

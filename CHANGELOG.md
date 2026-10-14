@@ -10,6 +10,127 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R146 — the ponytail round: the whole repo audited by the lazy-senior-dev method, 23 should-fix defects closed, five duplication families consolidated to one copy each — 2026-10-14
+
+**Scope:** the R146 mission — use the ponytail methodology
+(DietrichGebert/ponytail v5.2.0, MIT — installed as the repo's standing
+ruleset at the repo root `AGENTS.md`) with full parallel agents to
+simplify and organize the codebase into a provably complete, coherent
+state. Method: six READ-ONLY audit lanes (backend API surface, backend
+services/money, frontend pages, frontend components, shared+migrations,
+workspace/CI/deploy) each following `ponytail-audit` exactly — map
+first, findings only with concrete cases, ranked 4-part format; then
+six fix lanes under the ponytail core rules (smallest complete change;
+never cut validation, error handling, security, accessibility); then a
+`ponytail-review` pass over the whole diff. Reports:
+`docs/engineering/R146/` (6 audits, 7 fix-notes, 1 review).
+
+**Audit result:** 0 must-fix / 23 should-fix / 18 nice-to-have across
+the six lanes — after ten hardening rounds the money spine held (no
+double-charge/double-credit/lost-update case constructible); what
+remained was blind spots, race windows, and duplication debt.
+
+**Implemented — correctness & security (backend):**
+- Google logins now write `auth_activity` rows (the primary Firebase
+  session mint was invisible to the admin security tab, auth-stats, and
+  the `auth_outcomes_total{method="firebase"}` counter); failure rows
+  in the `FirebaseAuthError` catch. Pinned by extended session tests.
+- Copilot refusal forensics honored inline: the dead never-mounted
+  `requireCopilotPermission` factory (−44 lines) deleted; the
+  ask/draft out-of-scope 403s now write the `copilot_actions`
+  `outcome="refused"` row BEFORE responding (spec 010 T027/T146
+  closed); the refusal string's scope vocabulary derives from the live
+  tool catalogs. `x-correlation-id` bounded to the varchar(64) columns
+  (was a post-LLM 500 on >64-char headers).
+- Concurrent exhaustion of a coupon's last slots now fires the
+  operator alert — the signal reads the guarded UPDATE's RETURNing row
+  (`updatedCoupon.usedCount`) instead of the stale pre-transaction
+  computation. Money authority untouched; interleave test added.
+- Telegram/Firebase first-login double-submit races return the
+  winner's row as a normal login (23505 catch-and-reread, the WhatsApp
+  F6 parity) instead of a raw 500; shared `isUniqueViolation` in
+  `lib/pg-errors.ts`.
+- The five unbounded Redis writes in the risk pipeline wrapped in
+  `withRedisCommandTimeout` (the one module that escaped the repo-wide
+  rule); the pub/sub duplicate now carries an error listener (an
+  un-listened node-redis duplicate turned the first socket error into
+  process exit) and gets retired on connect timeout.
+- The alerting evaluator rides the WEB process in every topology
+  (worker.ts no longer starts it; `DISABLE_WEB_SCHEDULERS` no longer
+  stops it) — the dedicated-worker migration path no longer silently
+  kills the five HTTP/auth alert rules. Docs updated
+  (FINAL_MONITORING + runbook).
+- migrate.ts: the legacy-credential encryption pre-filter now matches
+  the exact ciphertext shapes (plaintext passwords containing two
+  colons were silently never encrypted); the admin-seed INSERT gained
+  `ON CONFLICT (username) DO NOTHING` (a lost concurrent cold-boot
+  race aborted the container as "critical"); "Migrations completed"
+  moved after the last stage; a NEW column-census gate compares every
+  Drizzle schema table's columns against the boot-built database both
+  directions — green-CI schema drift now fails CI instead of 42703ing
+  in production.
+- The sessions API's standing lie removed: `lastActive` dropped
+  end-to-end (route, OpenAPI spec, both generated clients, UI) — it
+  always echoed `created_at`.
+
+**Implemented — storefront honesty & a11y (frontend):**
+- Legacy numeric product URLs no longer double-fetch and flash a
+  full-page skeleton (the by-slug key is seeded from the by-id
+  response before the wouter-triggered location change).
+- The PDP coupon no longer survives a variant-less PDP→PDP hop (void
+  effect keyed on the product identity too — the money CTA can no
+  longer show product A's validated amount for product B).
+- The login↔register tab links forward `?ref=` (a referred visitor who
+  toggled tabs signed up unattributed — the referrer's 50-point
+  credit never landed).
+- The eight account routes set their `document.title` via `useSeo`
+  (the RouteAnnouncer was silent across the whole account surface).
+
+**Implemented — the consolidation wave (lean, byte-identical output):**
+- `lib/intent-envelope.ts` — the four money-path `{k,t,f}` double-charge
+  guards (checkout/buy/topup/loyalty) delegate to one envelope; slot,
+  TTL and fingerprint constants stay per-flow; topup keeps
+  rotation-only. Page-level pins pass UNCHANGED.
+- `lib/category-registry.ts` — the ~10 hand-rolled category tables
+  (ProductCard, CategoryRail, catalog-filters, Navbar,
+  category-presentation, both admin option lists) derive from ONE
+  registry; the eager entry chunk stays clean via the
+  `LIVE_CATEGORY_SLUGS` tuple (eager path measured **146,690 B —
+  −12 B vs R145**); a byte-identity pin hardcodes the pre-R146 tables.
+- `readApiError` — the three-plus ApiError duck-type/envelope reads
+  (checkout-errors, coupon-quote, WhatsApp sign-in, product,
+  telegram-callback) classify through one reader.
+- `lib/a11y/trap-tab-key.ts` — the four byte-identical focus-trap
+  copies folded to one (Navbar, NotificationBell, admin focus-trap).
+- CopyField merged into the shared component (order-detail's
+  near-copy deleted); ProductSkeleton pass-through, the unreachable
+  AuthProviders throw, the expired R122 legacy-hash idempotency arm,
+  and the dead `zod` dependency of `@workspace/db` all deleted.
+
+**Implemented — the skeleton (CI/deploy/docs):** the CI concurrency
+group gains the event name (a push could silently cancel the weekly
+e2e heartbeat + CVE sweep); the CVE audit job's pointless full install
+removed (verified `pnpm audit` reads the lockfile only); the OTP-HMAC
+doc word fixed (SESSION_SECRET-derived, not ENCRYPTION_KEY); three
+docs' dead `docs/inspection-r###/` path updated to the live
+convention; `onlyBuiltDependencies` dead entries, lint-staged's dead
+`md` token, and the clean script's stale target fixed; the runbook's
+bare COOLIFY filename got its path.
+
+**Gates:** lint 0 errors / 62 baseline warnings; typecheck clean;
+backend **2,518 tests / 275 files green**; frontend **2,475 tests /
+262 files green**; OpenAPI route/error-code/header-param contract
+gates 3/3; production build green (PWA regenerated; eager budget
+146,690 B). `ponytail-review` verdict "fix 1 and 2 first" — both
+fixed in-round (the Redis duplicate's error listener; the shared
+`isUniqueViolation`) plus the nice-to-have (derived refusal scopes);
+re-verified green.
+
+**Lean:** ~−300 duplicated production lines deleted across the five
+consolidation families and the dead-code deletions, at byte-identical
+rendered output (pinned); +~1,000 lines of new tests and gates
+inherited instead. The diff: 109 files, +4,642/−1,008 including docs.
+
 ## Round R145 — the visual transformation round: the homepage recomposed around the lit shelf, Motion shipped lazy-gated, the full customer journey re-art-directed — 2026-10-14
 
 **Scope:** the R145 mission — a measurable, production-ready redesign of

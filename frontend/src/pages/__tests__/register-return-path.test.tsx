@@ -141,3 +141,59 @@ describe("RegisterPage — onSuccess threads the return path (R123-E4a P2)", () 
     }
   });
 });
+
+describe("R146 (audit-frontend-pages F3) — the auth tab links forward ?ref= (referred signups keep attribution)", () => {
+  it("login's «حساب جديد» tab + footer link carry ?ref= when it is the only param", () => {
+    renderAt("/login?ref=FRIEND12", <LoginPage />);
+
+    expect(screen.getByRole("link", { name: "حساب جديد" })).toHaveAttribute(
+      "href",
+      "/register?ref=FRIEND12",
+    );
+    expect(screen.getByRole("link", { name: "إنشاء حساب جديد" })).toHaveAttribute(
+      "href",
+      "/register?ref=FRIEND12",
+    );
+  });
+
+  it("login's register links carry redirect AND ref together", () => {
+    renderAt("/login?redirect=/checkout&ref=FRIEND12", <LoginPage />);
+
+    expect(screen.getByRole("link", { name: "حساب جديد" })).toHaveAttribute(
+      "href",
+      "/register?redirect=%2Fcheckout&ref=FRIEND12",
+    );
+    expect(screen.getByRole("link", { name: "إنشاء حساب جديد" })).toHaveAttribute(
+      "href",
+      "/register?redirect=%2Fcheckout&ref=FRIEND12",
+    );
+  });
+
+  it("register's back-links (tab + footer) carry ?ref= back to /login", () => {
+    renderAt("/register?ref=FRIEND12", <RegisterPage />);
+
+    const backLinks = screen.getAllByRole("link", { name: "تسجيل الدخول" });
+    expect(backLinks).toHaveLength(2);
+    for (const link of backLinks) {
+      expect(link).toHaveAttribute("href", "/login?ref=FRIEND12");
+    }
+  });
+
+  it("register's back-links carry redirect AND ref together", () => {
+    renderAt("/register?redirect=/checkout&ref=FRIEND12", <RegisterPage />);
+
+    const backLinks = screen.getAllByRole("link", { name: "تسجيل الدخول" });
+    for (const link of backLinks) {
+      expect(link).toHaveAttribute("href", "/login?redirect=%2Fcheckout&ref=FRIEND12");
+    }
+  });
+
+  it("no ref → the links stay exactly as R123-E4a built them (no phantom param)", () => {
+    renderAt("/login?redirect=/checkout", <LoginPage />);
+
+    expect(screen.getByRole("link", { name: "حساب جديد" })).toHaveAttribute(
+      "href",
+      "/register?redirect=%2Fcheckout",
+    );
+  });
+});

@@ -19,6 +19,7 @@ import { generateReferralCode } from "../lib/crypto";
 import { createUserSession } from "../lib/session";
 import { logAuthActivity } from "../lib/auth-activity";
 import { logger } from "../lib/logger";
+import { isUniqueViolation } from "../lib/pg-errors";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
 // 93-A1 S3 (round-93): replay-hash claim + per-flow TTLs moved to
 // lib/telegram-replay.ts (TTL ≥ freshness + bounded no-Redis fallback).
@@ -64,6 +65,32 @@ import { getSetting } from "./auth-settings-store";
 
 // R127-B2 (§B.3): the R126-L9 split left `export` on this module-private
 // helper — keyword dropped; zero behavior change.
+
+/**
+ * Mirror/refresh the telegram.org identity row — shared by the
+ * existing-user login path and the double-submit race loser below.
+ */
+async function refreshTelegramIdentity(
+  user: typeof usersTable.$inferSelect,
+  tgId: string,
+  now: Date,
+): Promise<void> {
+  await db
+    .insert(userAuthIdentitiesTable)
+    .values({
+      userId: user.id,
+      provider: "telegram.org",
+      providerUid: tgId,
+      phone: user.phone,
+      email: user.email,
+      lastSeenAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [userAuthIdentitiesTable.provider, userAuthIdentitiesTable.providerUid],
+      set: { userId: user.id, lastSeenAt: now },
+    });
+}
+
 async function findOrCreateTelegramUser(
   fields: TelegramAuthFields,
   referralCode: string | undefined,
@@ -79,20 +106,7 @@ async function findOrCreateTelegramUser(
     // Refresh the identity row's last_seen_at so admins see recent
     // Telegram activity in /admin/security and the profile page's
     // linked-accounts list reflects it.
-    await db
-      .insert(userAuthIdentitiesTable)
-      .values({
-        userId: existing.id,
-        provider: "telegram.org",
-        providerUid: tgId,
-        phone: existing.phone,
-        email: existing.email,
-        lastSeenAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [userAuthIdentitiesTable.provider, userAuthIdentitiesTable.providerUid],
-        set: { userId: existing.id, lastSeenAt: now },
-      });
+    await refreshTelegramIdentity(existing, tgId, now);
     return { user: existing, isNewUser: false };
   }
 
@@ -113,26 +127,46 @@ async function findOrCreateTelegramUser(
   // relationship is recorded here; the welcome credit + referrer points
   // both land on the first approved topup (topup.service.ts).
 
-  const [created] = await db.transaction(async (tx) => {
-    const [u] = await tx
-      .insert(usersTable)
-      .values({
-        // Placeholder phone — Telegram doesn't expose phone via the widget.
-        // Profile flow can later let the user add a real phone & link OTP.
-        phone: `tg_${tgId}`,
-        telegramId: tgId,
-        displayName: displayName || undefined,
-        photoUrl: fields.photo_url ?? undefined,
-        authProvider: "telegram",
-        referralCode: generateReferralCode(),
-        referredBy: referredById,
-        walletBalance: "0.00",
-        lastAuthAt: now,
-      })
-      .returning();
+  let created: typeof usersTable.$inferSelect;
+  try {
+    const [u] = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(usersTable)
+        .values({
+          // Placeholder phone — Telegram doesn't expose phone via the widget.
+          // Profile flow can later let the user add a real phone & link OTP.
+          phone: `tg_${tgId}`,
+          telegramId: tgId,
+          displayName: displayName || undefined,
+          photoUrl: fields.photo_url ?? undefined,
+          authProvider: "telegram",
+          referralCode: generateReferralCode(),
+          referredBy: referredById,
+          walletBalance: "0.00",
+          lastAuthAt: now,
+        })
+        .returning();
 
-    return [u];
-  });
+      return [row];
+    });
+    created = u;
+  } catch (err) {
+    // R146 audit F3 (WhatsApp F6 parity): two different-but-valid payloads
+    // (two devices) racing the FIRST login for one Telegram id both miss
+    // the select and both INSERT — the loser's 23505 used to surface as a
+    // raw 500 for a registration that succeeded, and left its pre-claimed
+    // replay hash stranded. Return the winner's row as a normal login
+    // (own session minted by the caller): no throw, no stranded claim.
+    if (!isUniqueViolation(err)) throw err;
+    const [winner] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.telegramId, tgId))
+      .limit(1);
+    if (!winner) throw err;
+    await refreshTelegramIdentity(winner, tgId, now);
+    return { user: winner, isNewUser: false };
+  }
 
   // Mirror the user into user_auth_identities so /api/auth/providers/linked
   // surfaces Telegram alongside Google and Phone OTP. Provider string

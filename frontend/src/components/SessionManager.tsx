@@ -3,7 +3,6 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatDateShort } from "@/lib/utils";
 import { customFetch } from "@workspace/api-client-react";
 import { LogOut, Smartphone, WifiOff } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,7 +10,6 @@ import { useEffect, useState } from "react";
 interface Session {
   id: string;
   device: string;
-  lastActive: string;
   current: boolean;
 }
 
@@ -174,15 +172,11 @@ export function SessionManager() {
                   (bg-muted/20 + /40) — byte-identical. */}
               <div className="min-w-0">
                 <p className="font-bold text-sm truncate">{session.device}</p>
-                <p className="text-3xs text-muted-foreground">
-                  {/* R122 (A1 P2-3): the bare toLocaleDateString("ar-LY") was
-                      the 96-F7 Latin-digit-pin class (engines without ar-LY
-                      data render Arabic-Indic ٠١٢ digits). formatDateShort
-                      is pinned to ar-LY-u-nu-latn AND reads better for a
-                      "last activity" stamp (relative «قبل 5 دقائق» under
-                      48h, calendar date beyond). */}
-                  آخر نشاط: {formatDateShort(session.lastActive)}
-                </p>
+                {/* R146 (backend carry-over): the «آخر نشاط» stamp is gone
+                    — the backend dropped lastActive from GET /api/auth/sessions
+                    (it was always the session's createdAt, a lie as a
+                    "last activity" label); the row now shows the device +
+                    current chip only, exactly what the API honestly knows. */}
               </div>
               {session.current && (
                 <span className="text-3xs bg-primary/15 text-primary-text border border-primary/30 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">

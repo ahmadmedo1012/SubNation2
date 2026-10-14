@@ -307,7 +307,12 @@ describe("R-140-l — bidi isolations on codes/phones/countdowns", () => {
     expect(ORDERS_PAGE).toContain('<span dir="ltr">');
   });
   it("order-detail.tsx: the copyable order code, the coupon token and the credential values isolate; free text rides dir=auto", () => {
-    expect(count(ORDER_DETAIL, /dir="ltr"/g)).toBeGreaterThanOrEqual(3);
+    // R146 (F6 pin update): the credential values' dir="ltr" rides the
+    // shared components/product/CopyField now — the pin follows the
+    // page ∪ extract surface (product-decomposition-r135's idiom) after
+    // the near-duplicate merge; the count and intent are unchanged.
+    const surface = ORDER_DETAIL + stripComments(read("src/components/product/CopyField.tsx"));
+    expect(count(surface, /dir="ltr"/g)).toBeGreaterThanOrEqual(3);
     expect(count(ORDER_DETAIL, /dir="auto"/g)).toBeGreaterThanOrEqual(1);
   });
   it("profile.tsx: phone run, Latin brand token and the mono referral code isolate", () => {
