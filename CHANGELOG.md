@@ -46,6 +46,65 @@ body-execution test (F-1), BuildKit secret mount (H-2), upstream CVEs
 mode) + Ponytail v5 rules injected into every lane; ledger in
 /home/z/my-project/r142-tools/TOOLING-LEDGER.md.
 
+## Round R143 — the evidence-driven hardening round: 18 lanes, the mirror-chain SQL fix, the deep-link head-start, two false claims closed — 2026-10-14
+
+**Commits:** implementation `29f5cea` (CI run #483 green; deployed + verified live —
+data-route-chunks/latin-700/honest flash-meta markers probed on subnation.ly;
+52/52 guest e2e green against the live release on both projects).
+
+**Scope:** mission-driven 18-lane investigation + implementation. Phase 0
+reconstructed git truth (local was r139-head with mode-bit noise; fast-forwarded
+to `528ef39`, no work lost) and production truth (healthy; deployed identity
+verified via the SENTRY_RELEASE id baked in served chunks — the public healthz
+carries no version by design).
+
+**Findings:** 0×P0 / 0×P1 across all lanes. Highest-value: the drizzle chain's
+0003 singleton index was invalid SQL on real Postgres (fresh-install replay
+died at file 3/24 — the bytes-only drift gate was blind to it); the weekly e2e
+heartbeat (the ONLY runtime boot guard) was 0-for-3 red on a selector bug; two
+R142 false completion claims (the "opportunistic suite" test never existed;
+C-1's support-page conversion never landed); the two-layer calm elevation was
+a 21-site copy-pasted theme-blind literal; PDP deep links (the dominant
+WhatsApp traffic) got no chunk head-start (LCP 4892 ms); firebase-admin's HIGH
+CVE now has an upstream fix.
+
+**Implemented (highlights):** the mirror-chain SQL fix + the deferred F-1
+chain-apply/body tests (PGlite journal replay); lypay sender-account dedup
+guard; born-dead-session fix (fail-closed mint); firebase verifyIdToken
+timeout; 3 TOTP mint sites armored; the missing opportunistic regression test;
+admin set-count trim guarded in-tx; checkout coupon honest transient-vs-invalid
+classification; support.tsx raw-fetch conversion; 10 admin sites threaded
+through adminFetch + behavioral timeout pin; the Copilot SSE read-idle
+watchdog; onboarding wired into all four auth paths; flash-sales meta truth
+gating (FE + shell); the deep-link route-chunk head-start (data-route-chunks
+gate — a PDP boot warms the product chunk, not home); the shadow-calm token
+(tree-wide sweep + ban pins); admin field focus rings ≥3:1; the e2e heartbeat
+fix (verified green live) + mobile-390 money-route specs; firebase-admin
+13.10.0 (0 HIGH remaining); the backend size gate (caught a 1,021-line
+crossing mid-round — extracted); latin-700 preload; docs truth pass
+(IMPL-wave-report corrections, CHANGELOG newest-first, .hermes restamp,
+rollback runbook's null-version gate → the working SENTRY_RELEASE probe).
+
+**Gates:** lint 0 errors · typecheck green · backend 270 files / 2,510 tests ·
+frontend 254 files / 2,418 tests · build + PWA green · OpenAPI parity 84 ops ·
+header params 7/7 · migration + orval drift clean · boot smoke green · live
+e2e 52/52.
+
+**Operator reports (not code):** Traefik dashboard/API publicly exposed on
+`169.58.100.161:8080` + soketi on `:6001` — close at the Contabo firewall
+(public contract: 22/80/443 only); no external uptime watchdog (dead-container
+MTTD ≤ 7 days — the weekly heartbeat is the only out-of-band check); GSC
+verification token empty in production; BuildKit secret mount (H-2) still
+deferred; the 2 remaining MODERATE uuid advisories need firebase-admin 14.x
+(major bump — evaluate behind the firebase battery).
+
+**Deferred with decisions:** migrate.ts split (danger-flagged; now unblocked
+by F-1's landed tests, but never batched — L16-2); eager-budget headroom
+(146,130/148,480 B gz — trim-or-raise decision recorded for next round);
+spec-documentation churn (N-2/N-3/N-5 unchanged); per-job observability
+(L14-4); coverage thresholds (A-2/M-3 — first measured baseline delivered by
+lane L15: admin/topups 26.8% branch is the weakest money surface).
+
 ## Round R141 — the hotfix round: the r140 boot-order decoy (live no-JS outage) closed — 2026-10-13
 
 The operator reported the site dead — «يتطلب الموقع تشغيل JavaScript»
