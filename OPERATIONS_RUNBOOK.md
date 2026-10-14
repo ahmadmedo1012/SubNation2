@@ -712,6 +712,8 @@ accounts can press them.
   `Dockerfile` ARG exists at the build). Paste-and-go: operator pastes the
   Google Search Console HTML-tag token into the Coolify build args →
   redeploy. Nothing else needed (the build bakes the meta tag).
+  **R144:** full step-by-step + the DNS-TXT alternative now live at
+  `docs/deployment/GSC_VERIFICATION_R144.md` (§16).
 - **Sentry token de-scoping** — swap the full-scope `SENTRY_AUTH_TOKEN`
   build arg for an `org:ci`-scoped token (§11 recommendation).
 - **Stock + TOTP** (unverified since R118): the open items in
@@ -781,3 +783,60 @@ PASS drills on record (2026-09-25 R112; 2026-10-01 R115 — the R115
 pre-cutover drill, with the verified artifact
 `subnation_preR115_20261001T024634Z.sql.gz`). Re-run a drill after any
 backup-script change.
+
+## 16. External uptime watchdog and the R144 remediation docs
+
+**The watchdog (LIVE on merge — `.github/workflows/uptime-monitor.yml`,
+R144-D1).** Closes R143 L17-5: every in-process watcher dies with the
+container, so a dead/hung container used to produce silence for up to a
+week. GitHub Actions now probes production **from outside the VM** every
+~5 minutes (`schedule: */5` + manual `workflow_dispatch`):
+
+- Probes: `https://subnation.ly/` (200 after redirects — DNS + TLS +
+  Traefik + container), `/api/healthz` (200 + `"ok"` — the zero-DB
+  readiness handler, FINAL_MONITORING §5-compliant; a boot 503 correctly
+  reads as DOWN), and TLS cert expiry (**< 14 days = failure** — Traefik's
+  ACME renewal normally keeps ~60+).
+- Any probe failure → the run goes **red** (the Actions history is the
+  outage record, one sample per 5 minutes) and pages Telegram; a
+  success right after a failed **scheduled** run pages one
+  **🟢 RECOVERY** notice (manual dispatch runs never enter that
+  comparison — no false recoveries from drills).
+- Alert copy mirrors `backend/src/services/alerting.service.ts`
+  `formatTelegramMessage` (severity emoji + rule + summary + "Fired at:" +
+  "Runbook:" footer) with the Arabic ops phrasing of
+  `backend/src/telegram.ts`; delivery follows the same contract (HTTP 200
+  **and** `body.ok` — 200-with-`ok:false` is a failed page).
+
+**Setup (one time):** repo Settings → Secrets and variables → Actions →
+add `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` — the SAME values as the
+Coolify env of record (§12). Then run the delivery drill: Actions →
+"Uptime Monitor (external watchdog)" → **Run workflow** → tick
+**test_alert** → expect a 🔧 test message in the ops chat within a minute
+and a green run (this mirrors §8's synthetic alert test for the external
+lane). Without the secrets the watchdog still runs and still goes red on
+outages — each failing run logs one clear "ALERTING NOT CONFIGURED" line;
+only the Telegram page is missing.
+
+**When it pages:** the probe failure lines name the dead layer (000 = no
+answer at all → VM/edge; healthz 503 = boot/migrations in progress → watch,
+don't panic for ~150 s; healthz dead + home 200 = container-gone-but-edge-
+up). Triage: §4 (deploy/rollback) + `docs/operations/FINAL_MONITORING.md`
+§3 (the symptom table). Cadence honesty: GitHub cron is UTC and may delay
+runs a few minutes; scheduled workflows auto-disable after 60 days of repo
+inactivity — after any long quiet stretch, check the Actions tab.
+
+**The two R144 remediation runbooks** (operator/panel work — the repo ships
+no Traefik or firewall config, so these are VM-side by definition):
+
+- `docs/deployment/EXPOSURE_REMEDIATION_R144.md` — close Traefik **:8080**
+  (unauthenticated dashboard + API, L17-1) and Reverb **:6001** (Coolify's
+  realtime, no app consumer) on the Contabo host; includes the
+  verification protocol (both ports must fail from outside while 80/443
+  keep answering) and the never-lock-out-management warnings for the
+  22/80/443 firewall backstop.
+- `docs/deployment/GSC_VERIFICATION_R144.md` — the one owner action that
+  finishes Google Search Console (§14's oldest pending item): paste the
+  GSC HTML-tag token into the `VITE_GSC_VERIFICATION` build arg, redeploy,
+  verify externally, click Verify. No repo change needed.
+

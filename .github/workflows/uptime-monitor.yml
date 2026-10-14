@@ -1,0 +1,357 @@
+# R144-D1 (Task 144-D1) — the EXTERNAL uptime watchdog for https://subnation.ly.
+#
+# WHY THIS EXISTS (R143 L17-5, P3): every in-process watcher — the alerting
+# evaluator, the Sentry transport, the Telegram dispatch — dies with the
+# container. A dead/hung production container produced silence for up to a
+# week (the weekly CI e2e heartbeat + the human checklist were the only
+# out-of-band checks; Cloudflare is DNS-only, so no CF health checks exist
+# in the live path — findings-L17.md L17-5). This workflow is the missing
+# independent vantage: GitHub-hosted runners probe production from OUTSIDE
+# the VM — if the VPS, Traefik, or the container is gone, these probes
+# still run and still page. Closes the operator-facing half of L17-5
+# (MTTD for a full outage drops from ≤7 days to ≤5 minutes + alert lag).
+#
+# PROBE TARGETS (Neon-economics compliant — FINAL_MONITORING.md §5):
+#   - https://subnation.ly/            → the SPA through the real edge
+#     (DNS → Traefik → container). HTTP 200 after following redirects.
+#   - https://subnation.ly/api/healthz → the zero-DB readiness handler
+#     ({"status":"ok"}; a 503 "starting" during boot correctly reads as
+#     DOWN for an uptime monitor). The base healthz handler is zero-DB by
+#     design, so a 5-minute external probe can never keep the autosuspended
+#     Neon compute awake. NEVER retarget this at /api/healthz/summary — it
+#     runs the Neon readiness aggregate (the keepalive ban, FINAL_MONITORING
+#     §5; L17-5 named /api/healthz/live as the zero-IO alternative).
+#   - TLS certificate expiry (< 14 days = failure — Traefik's ACME renewal
+#     normally keeps this at ~60+; a low number means renewal broke).
+#
+# ALERTING: reuses the production Telegram ops channel (OPERATIONS_RUNBOOK
+# §12) — set REPOSITORY secrets TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (the
+# same values as the Coolify env of record). Message copy mirrors
+# backend/src/services/alerting.service.ts formatTelegramMessage
+# (severity emoji + rule + summary + "Fired at:" + "Runbook:" footer) with
+# the Arabic ops phrasing of backend/src/telegram.ts. Delivery follows the
+# backend contract: success = HTTP 200 AND body.ok === true (HTTP 200 with
+# ok:false — "message is too long", blocked bot — is a FAILURE; the 98-F5 /
+# round-98 contract documented in both telegram modules).
+#
+# SECRET HYGIENE: secrets enter the shell ONLY through the job-level env:
+# mapping — never interpolated into command strings. The Telegram call URL
+# carries the token but is never echoed; curl stderr is suppressed on that
+# call; the parsed response prints only {ok, error_code, description} and
+# the token is additionally scrubbed from anything echoed (the runner's
+# own secret masking is the backstop, never the mechanism). Temp payloads
+# are removed at the end — nothing sensitive persists on the (ephemeral)
+# runner. When the secrets are ABSENT the workflow degrades gracefully:
+# one clear log line, no page — and the run still goes red on outage (the
+# Actions history itself is the evidence).
+#
+# RECOVERY STATE MACHINE (deliberately simple + robust):
+#   current run FAILED  → alert (EVERY failing run pages — a false-quiet
+#                         alert channel is the worse failure; OPERATIONS_
+#                         RUNBOOK §12 records the same posture for the
+#                         in-process evaluator).
+#   current run PASSED  → query this workflow's own recent runs via the
+#                         Actions API; if the most recent COMPLETED run
+#                         with event == "schedule" (current run excluded)
+#                         concluded "failure" → send ONE "service
+#                         recovered" notice. Manual dispatch runs are
+#                         EXCLUDED from the comparison baseline, so a test
+#                         dispatch can never fabricate a recovery page.
+#                         Other conclusions (cancelled / startup_failure)
+#                         do not count as "failure" — documented
+#                         simplification.
+#
+# TRIGGER NOTE: GitHub runs cron in UTC and may delay scheduled runs by a
+# few minutes under platform load; scheduled workflows also auto-disable
+# after 60 days of repository inactivity (this repo pushes at least
+# weekly — revisit if a long quiet stretch ever happens). Treat "*/5" as
+# "≈5 minutes", which is what L17-5 asked for.
+#
+# NO ACTIONS ARE USED (no checkout, no build, nothing to pin): the whole
+# workflow is curl + openssl + jq + bash on the runner image — the
+# supply-chain surface is zero by construction.
+
+name: Uptime Monitor (external watchdog)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Send a Telegram test message (delivery drill — mirrors OPERATIONS_RUNBOOK §8 synthetic alert test)"
+        required: false
+        default: false
+        type: boolean
+
+# One probe cycle at a time; never cancel mid-probe. A cancelled run gets
+# conclusion "cancelled", which the recovery comparison deliberately
+# ignores — cancelling must not fake or mask state transitions.
+concurrency:
+  group: uptime-monitor
+  cancel-in-progress: false
+
+# Least privilege: nothing is read from the repo; actions:read is the one
+# extra grant the recovery comparison needs (list this workflow's own runs).
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  uptime:
+    name: Probe subnation.ly (home + healthz + TLS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SITE: https://subnation.ly
+      # Secrets reach bash ONLY through env — never inside a command string
+      # that could be echoed back.
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      # Read-only job token (scoped by the permissions block above) for the
+      # previous-run query in the recovery state machine.
+      GITHUB_API_TOKEN: ${{ github.token }}
+      # Boolean dispatch input ("true" only on a manual test drill; empty on
+      # schedule runs — bash treats anything != "true" as false).
+      TEST_ALERT: ${{ inputs.test_alert }}
+    steps:
+      # ── Probe 1: the SPA through the real edge ───────────────────────────
+      # -L follows redirects (http→https / www→apex hops); the FINAL code is
+      # what counts. 000 = no answer at all (DNS / TLS / TCP / timeout).
+      - name: Probe homepage (expect HTTP 200)
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -L "$SITE/" 2>/dev/null || true)
+          if [ -z "$code" ]; then code="000"; fi
+          echo "home_http_code=$code" >> "$GITHUB_ENV"
+          if [ "$code" = "200" ]; then
+            echo "✓ homepage: HTTP $code (DNS + TLS + Traefik + container all answering)"
+          else
+            echo "✗ homepage: HTTP $code (expected 200; 000 = no answer / DNS / TLS / timeout)"
+          fi
+
+      # ── Probe 2: the zero-DB readiness handler ───────────────────────────
+      - name: Probe /api/healthz (expect 200 + "ok")
+        run: |
+          hz_code=$(curl -sS -o /tmp/healthz.json -w '%{http_code}' --max-time 30 "$SITE/api/healthz" 2>/dev/null || true)
+          if [ -z "$hz_code" ]; then hz_code="000"; fi
+          body_ok=false
+          if grep -q '"ok"' /tmp/healthz.json 2>/dev/null; then body_ok=true; fi
+          echo "healthz_http_code=$hz_code" >> "$GITHUB_ENV"
+          echo "healthz_body_ok=$body_ok" >> "$GITHUB_ENV"
+          if [ "$hz_code" = "200" ] && [ "$body_ok" = "true" ]; then
+            echo "✓ healthz: HTTP $hz_code body=$(head -c 120 /tmp/healthz.json 2>/dev/null)"
+          else
+            echo "✗ healthz: HTTP $hz_code body_ok=$body_ok (expected 200 + \"ok\" — 503 starting during boot is correctly treated as DOWN)"
+          fi
+
+      # ── Probe 3: TLS certificate expiry (alert < 14 days) ────────────────
+      - name: TLS certificate expiry check (threshold 14 days)
+        run: |
+          # SNI-correct cert fetch, each stage time-bounded (a blackholed
+          # connect must not eat the job).
+          not_after=$(
+            echo | timeout 20 openssl s_client -connect subnation.ly:443 -servername subnation.ly 2>/dev/null \
+              | timeout 10 openssl x509 -noout -enddate 2>/dev/null \
+              | sed -n 's/^notAfter=//p' || true
+          )
+          days="ERR"
+          if [ -n "$not_after" ]; then
+            expiry=$(date -u -d "$not_after" +%s 2>/dev/null || echo 0)
+            if [ "$expiry" -gt 0 ]; then
+              days=$(( (expiry - $(date -u +%s)) / 86400 ))
+            fi
+          fi
+          echo "tls_days=$days" >> "$GITHUB_ENV"
+          echo "tls_not_after=${not_after:-unknown}" >> "$GITHUB_ENV"
+          if [ "$days" = "ERR" ]; then
+            echo "✗ TLS: certificate unreadable from outside (handshake or chain failed)"
+          elif [ "$days" -lt 14 ]; then
+            echo "✗ TLS: $days days remaining (notAfter=$not_after) — inside the 14-day threshold; Traefik ACME renewal should fix this on its own, repeated failures mean renewal broke"
+          else
+            echo "✓ TLS: $days days remaining (notAfter=$not_after)"
+          fi
+
+      # ── Alert / recovery dispatch ─────────────────────────────────────────
+      # Runs even when a probe step above failed (!cancelled()), so the page
+      # is never skipped by the outage it is reporting. errexit is OFF here:
+      # this step never decides the run conclusion (the outcome step below
+      # does, from the raw probe markers) — a bug in one branch must not
+      # silently skip the page in another.
+      - name: Dispatch Telegram alert / recovery notice
+        if: ${{ !cancelled() }}
+        run: |
+          set +e -u
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          runbook_url="https://github.com/ahmadmedo1012/SubNation2/blob/main/OPERATIONS_RUNBOOK.md#16-external-uptime-watchdog-and-the-r144-remediation-docs"
+          runs_api="https://api.github.com/repos/ahmadmedo1012/SubNation2/actions/workflows/uptime-monitor.yml/runs?per_page=20"
+
+          # Missing markers (a probe step crashed before recording) default
+          # to the failure side — the watchdog fails loud, never quiet.
+          home="${home_http_code:-000}"
+          hz_code="${healthz_http_code:-000}"
+          hz_ok="${healthz_body_ok:-false}"
+          tls_days="${tls_days:-ERR}"
+          tls_na="${tls_not_after:-unknown}"
+
+          site_fail=0
+          if [ "$home" != "200" ]; then site_fail=1; fi
+          if [ "$hz_code" != "200" ] || [ "$hz_ok" != "true" ]; then site_fail=1; fi
+
+          tls_fail=0
+          if [[ ! "$tls_days" =~ ^-?[0-9]+$ ]]; then
+            tls_fail=1
+          elif [ "$tls_days" -lt 14 ]; then
+            tls_fail=1
+          fi
+          failures=$((site_fail + tls_fail))
+
+          # ── Telegram sender (mirrors the backend delivery contract) ──
+          send_telegram() {
+            # $1 = message file
+            if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+              echo "::warning::ALERTING NOT CONFIGURED — add repository secrets TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (repo Settings → Secrets and variables → Actions; same values as the Coolify env of record). No Telegram message was sent; the run conclusion below is the outage evidence."
+              return 1
+            fi
+            jq -n --rawfile text "$1" '{chat_id: env.TELEGRAM_CHAT_ID, text: $text, disable_web_page_preview: true}' \
+              > /tmp/tg_payload.json
+            code=$(curl -sS -o /tmp/tg_response.json -w '%{http_code}' --max-time 30 \
+              -X POST --url "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/tg_payload.json 2>/dev/null || echo "000")
+            # Print ONLY the safe fields; scrub the token defensively (the
+            # runner masks secrets too — never rely on that).
+            body_out=$(jq -c '{ok, error_code, description}' /tmp/tg_response.json 2>/dev/null \
+              || echo '{"ok":false,"description":"unparseable response"}')
+            body_out="${body_out//$TELEGRAM_BOT_TOKEN/[REDACTED]}"
+            ok_flag=$(jq -r '.ok // false' /tmp/tg_response.json 2>/dev/null)
+            echo "telegram dispatch → HTTP ${code} ${body_out}"
+            # Backend contract (telegram.ts / alerting.service.ts): success
+            # = HTTP 200 AND body.ok true. Anything else is a failed page.
+            if [ "$code" = "200" ] && [ "$ok_flag" = "true" ]; then
+              return 0
+            fi
+            return 1
+          }
+
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::Outage detection — $failures probe check(s) red (site=$site_fail tls=$tls_fail)."
+            {
+              if [ "$site_fail" = "1" ]; then
+                echo "🔴 CRITICAL — external_uptime_probe"
+                echo ""
+                echo "🚨 الموقع لا يستجيب من خارج الخادم — فشل الفحص الخارجي (المراقب يعمل كل 5 دقائق من GitHub Actions)."
+                echo "External watchdog: subnation.ly failed its probe from OUTSIDE the VM."
+                echo ""
+                echo "Home page: HTTP $home (expected 200)"
+                echo "Healthz (/api/healthz): HTTP $hz_code, body_ok=$hz_ok (expected 200 + \"ok\")"
+              else
+                echo "🟡 WARNING — external_uptime_probe"
+                echo ""
+                echo "⚠️ شهادة TLS للموقع تنتهي قريباً — تجديد Let's Encrypt عبر Traefik لم يكتمل."
+                echo "TLS certificate for subnation.ly is inside the 14-day expiry threshold."
+                echo ""
+              fi
+              if [ "$tls_fail" = "1" ]; then
+                echo "TLS certificate: ${tls_days} days remaining (notAfter=${tls_na}; threshold: 14 days)"
+                echo "Traefik's ACME renewal normally keeps this at ~60+ days — repeated failures mean the resolver or the dynamic config broke (OPERATIONS_RUNBOOK §13)."
+              fi
+              echo ""
+              echo "Triage: Coolify UI / docker ps on the VM → OPERATIONS_RUNBOOK §4 (deploy & rollback) + docs/operations/FINAL_MONITORING.md §3."
+              echo ""
+              echo "Fired at: $now"
+              echo "Runbook: $runbook_url"
+            } > /tmp/telegram_message.txt
+            send_telegram /tmp/telegram_message.txt
+            if [ $? -ne 0 ]; then
+              echo "::error::Telegram dispatch FAILED — the outage alert did not reach the ops chat (check the secrets / the bot / Telegram-side blocks)."
+            fi
+          else
+            echo "✓ all probes green: home=200 healthz=ok tls=${tls_days}d"
+
+            # ── Recovery state machine ──
+            prev="none"
+            if [ -n "${GITHUB_API_TOKEN:-}" ]; then
+              runs_json=$(curl -sS --max-time 30 \
+                -H "Authorization: Bearer ${GITHUB_API_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$runs_api" 2>/dev/null || echo '{}')
+              prev=$(printf '%s' "$runs_json" | jq -r \
+                --argjson run_id "$GITHUB_RUN_ID" \
+                '[.workflow_runs[]? | select(.id != $run_id) | select(.event == "schedule") | select(.status == "completed")][0].conclusion // "none"' \
+                2>/dev/null || echo "none")
+            fi
+            echo "previous completed scheduled run conclusion: ${prev:-none}"
+
+            if [ "$prev" = "failure" ]; then
+              {
+                echo "🟢 RECOVERY — external_uptime_probe"
+                echo ""
+                echo "✅ عاد الموقع للعمل — نجحت جميع الفحوصات بعد فشل سابق."
+                echo "Service recovered: all probes green after a previously failed run."
+                echo ""
+                echo "Home page: HTTP 200 · Healthz: ok · TLS: ${tls_days} days remaining"
+                echo ""
+                echo "Fired at: $now"
+                echo "Runbook: $runbook_url"
+              } > /tmp/telegram_message.txt
+              send_telegram /tmp/telegram_message.txt
+              if [ $? -ne 0 ]; then
+                echo "::error::Telegram dispatch FAILED — the recovery notice did not reach the ops chat."
+              fi
+            fi
+          fi
+
+          # ── Delivery drill (manual dispatch with test_alert=true) ──
+          # Mirrors the §8 synthetic alert test: a one-click proof that the
+          # bot → chat path works, without waiting for a real outage.
+          if [ "$TEST_ALERT" = "true" ]; then
+            {
+              echo "🔧 اختبار المراقب الخارجي — external uptime monitor test"
+              echo ""
+              echo "هذه رسالة اختبار من GitHub Actions لتأكيد وصول التنبيهات إلى هذه المحادثة."
+              echo "Delivery drill for .github/workflows/uptime-monitor.yml (workflow_dispatch)."
+              echo ""
+              echo "Current probe state: home=${home} healthz=${hz_code} tls=${tls_days}d"
+              echo ""
+              echo "Fired at: $now"
+              echo "Runbook: $runbook_url"
+            } > /tmp/telegram_test_message.txt
+            send_telegram /tmp/telegram_test_message.txt
+            if [ $? -ne 0 ]; then
+              echo "::error::Telegram TEST dispatch FAILED — the drill message did not reach the ops chat."
+            fi
+          fi
+
+          # Persist nothing sensitive (the payload carried the chat id).
+          rm -f /tmp/tg_payload.json /tmp/tg_response.json \
+                /tmp/telegram_message.txt /tmp/telegram_test_message.txt
+
+      # ── Outcome: the run's red/green IS the uptime record ────────────────
+      # Recomputed from the raw probe markers (independent of the alert
+      # step) so a bug above can never paint an outage green.
+      - name: Outcome (fail the run on any probe failure)
+        if: ${{ !cancelled() }}
+        run: |
+          home="${home_http_code:-000}"
+          hz_code="${healthz_http_code:-000}"
+          hz_ok="${healthz_body_ok:-false}"
+          tls_days="${tls_days:-ERR}"
+
+          site_fail=0
+          if [ "$home" != "200" ]; then site_fail=1; fi
+          if [ "$hz_code" != "200" ] || [ "$hz_ok" != "true" ]; then site_fail=1; fi
+
+          tls_fail=0
+          if [[ ! "$tls_days" =~ ^-?[0-9]+$ ]]; then
+            tls_fail=1
+          elif [ "$tls_days" -lt 14 ]; then
+            tls_fail=1
+          fi
+
+          total=$((site_fail + tls_fail))
+          if [ "$total" -gt 0 ]; then
+            echo "::error::Uptime probe FAILED ($total check(s) red): home=$home healthz=$hz_code/$hz_ok tls=${tls_days}d — run marked failed so the Actions history records the outage (each red run = one 5-minute sample)."
+            exit 1
+          fi
+          echo "✓ uptime probe green: home=200, healthz=ok, tls=${tls_days} days remaining"

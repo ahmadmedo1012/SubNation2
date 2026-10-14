@@ -289,6 +289,8 @@ ledger; `docs/API.md` owns the API surface.
 | `deployment/SECRET_HANDLING_FINAL.md` | Secret map for the two Coolify resources | CURRENT |
 | `deployment/NEON_IDLE_ECONOMICS.md` | Neon free-tier CU math, suspend policy | CURRENT |
 | `deployment/ENVIRONMENT_MATRIX.md` | r108-era env matrix | CURRENT (rows verified) |
+| `deployment/EXPOSURE_REMEDIATION_R144.md` | Closing the exposed Traefik :8080 dashboard/API + Reverb :6001 (R143 L17-1) — remediation order + verification protocol | CURRENT @ 2026-10-14 (R144; OPERATIONS_RUNBOOK §16 cross-ref) |
+| `deployment/GSC_VERIFICATION_R144.md` | The one owner action that finishes Google Search Console (token → build arg → redeploy → verify) | CURRENT @ 2026-10-14 (R144; runbook §14's oldest pending item) |
 
 ### docs/ root + topic dirs
 
