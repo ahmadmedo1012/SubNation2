@@ -16,8 +16,9 @@ executed R122, extended R135).
 migrate.ts decomposition `d75e446` · storefront fetch consolidation
 `0cfcbef` · ops (watchdog + operator runbooks) `4e4f2c3` · RBAC page
 mutation pins `387ffe0` · eager-budget decision `e5a0977` · progress log
-`5293b9e` (head). Local round — not yet pushed; every gate below ran
-locally at `5293b9e`.
+`5293b9e` — then the close: round record `77b91e4` · gitleaks FP fix
+`a1efe84` · full-history allowlist `defd303` (final head, pushed — 10
+commits over `ee5c5cf`). The local gates below ran at `5293b9e`.
 
 **Scope:** R143's own deferred list executed to final status. Every open
 item from the R143 ledger was either closed with evidence, shipped as an
@@ -74,6 +75,12 @@ baseline) · typecheck clean · full build + PWA green (Vite 8.78 s; eager
 backend 270 files / 2,510 tests (shards 910 + 791 + 809) · frontend 256
 files / 2,433 tests (shards 772 + 805 + 856).
 
+**Final gates (pushed `defd303`):** CI 8/8 green (run `38551492499` —
+gitleaks, e2e, CVE scan, units, lint/typecheck/drift, build) ·
+production live-verified = `defd303` (SENTRY_RELEASE probe, healthz ok,
+52/52 live guest e2e) · watchdog drill `38552828482`: probes green;
+alert delivery confirmed blocked on the 2 repo secrets.
+
 **E1 verification (independent, evidence-anchored):** L18-1's
 opportunistic suite is REAL — 7/7, two legs mutation-grade · L18-2's
 support conversion is REAL — 5 generated-client sites, 17/17 · the
@@ -86,8 +93,9 @@ exposure is STILL LIVE at the 2026-10-14 external probes —
 `EXPOSURE_REMEDIATION_R144.md` ships the remediation order +
 verification protocol (reported, not claimed closed); the watchdog's
 activation is blocked on the two repo secrets (`TELEGRAM_BOT_TOKEN` /
-`TELEGRAM_CHAT_ID`) + the one-click test_alert drill — alert delivery
-NOT yet verified; GSC verification blocked on the owner's Google-account
+`TELEGRAM_CHAT_ID`) — the test_alert drill ran (run `38552828482`):
+probes green, alert delivery confirmed blocked (guard fired as designed,
+no message sent); GSC verification blocked on the owner's Google-account
 token → the `VITE_GSC_VERIFICATION` build arg
 (`GSC_VERIFICATION_R144.md`).
 

@@ -1,10 +1,12 @@
 # R144 Findings Ledger — consolidated & reconciled
 
-Base: `ee5c5cf` (R143 head) → `5293b9e` (R144 head — 7 commits:
+Base: `ee5c5cf` (R143 head) → `defd303` (final head — 10 commits:
 `7b21bcc` deps · `d75e446` migrate decomposition · `0cfcbef` storefront
 fetch consolidation · `4e4f2c3` ops watchdog + operator runbooks ·
 `387ffe0` RBAC page pins · `e5a0977` eager-budget decision · `5293b9e`
-progress log). Sources: the R143 findings-ledger's open/deferred items +
+progress log · `77b91e4` round record · `a1efe84` gitleaks FP fix ·
+`defd303` full-history allowlist). Sources: the R143 findings-ledger's
+open/deferred items +
 the R144 lane reports (`/home/z/my-project/worklog.md` Task 144-C / -D /
 -E1 / -E2 entries) + the round docs-fix lane. R144 was an **execution
 round, not a fresh audit**: every R143 open item carries its FINAL status
@@ -13,8 +15,9 @@ below. Disposition: CLOSED-R144 (landed, commit cited) · OPERATOR
 
 ## FINAL STATUS
 
-All CLOSED-R144 dispositions landed in `7b21bcc..5293b9e` (local round —
-not yet pushed). Full local gates at `5293b9e`: lint 0 errors (62
+All CLOSED-R144 dispositions landed in `7b21bcc..5293b9e` (the local
+round — pushed and CI-green at close; see Verification evidence). Full
+local gates at `5293b9e`: lint 0 errors (62
 pre-existing warnings — the documented baseline) · typecheck clean ·
 build + PWA green (Vite 8.78 s; eager 146,138 B silent ≤ 153,600; PWA
 v1.3.0 generateSW precache 10 entries / 343.36 KiB; the migrate/
@@ -33,12 +36,12 @@ tests (shards 910 + 791 + 809) · frontend 256 files / 2,433 tests
 | L13-4 | RBAC page mutation test (deferred from R143's partial) | **CLOSED — `387ffe0`**: 6/6 pins — zero-scope destructive gate, exact-scope wire bodies, super-admin `permissions: ["all"]` preserve (the demotion regression class), session-kill disclosure before the POST. |
 | L11-2 | eager-budget trim-or-raise decision | **CLOSED — `e5a0977`**: measured 146,850 B gz = 98.9% of the old warn line (R120 set 145 KiB with no documented rationale) → warn raised 145→150 KiB WITH the basis recorded (constant + PERFORMANCE.md/README lockstep); hard 160 KiB fail untouched (10.4% room); 105/105 gates. |
 | L17-1 | Traefik :8080 dashboard/API + Reverb :6001 publicly exposed | **OPERATOR — honestly open**: remediation runbook + verification protocol SHIPPED (`docs/deployment/EXPOSURE_REMEDIATION_R144.md`, §3 preference order + §4 external verification incl. the Traefik `/api/version` probe going dark); **still live at the 2026-10-14 external probes** — reported, not claimed closed. |
-| L17-5 | no external uptime watchdog (dead-container MTTD ≤ 7 days) | **IMPLEMENTED repo-side — `4e4f2c3`**: `uptime-monitor.yml` (5-min cron + `workflow_dispatch` test_alert drill; home + healthz + TLS-14-day probes; Telegram alert/recovery mirroring `alerting.service.ts` format; zero third-party actions; env-only secret hygiene). Activation **blocked on the 2 repo secrets** (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`); the test_alert drill is documented; **alert delivery NOT yet verified** — honest. |
+| L17-5 | no external uptime watchdog (dead-container MTTD ≤ 7 days) | **IMPLEMENTED repo-side — `4e4f2c3` · DRILLED — run `38552828482`**: `uptime-monitor.yml` (5-min cron + `workflow_dispatch` test_alert drill; home + healthz + TLS-14-day probes; Telegram alert/recovery mirroring `alerting.service.ts` format; zero third-party actions; env-only secret hygiene). Drill verdict (2026-10-14, dispatch `test_alert=true`, run SUCCESS): probe layer **VERIFIED green** from the GitHub-runner vantage — home=200, healthz=ok, TLS 77d remaining; the 5-min cron is live on main. Alert delivery **CONFIRMED BLOCKED** on exactly the 2 repo secrets (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`) — the guard fired as designed ("ALERTING NOT CONFIGURED"; no sendMessage issued). Probe layer closed with evidence; alert delivery honestly open on the operator. |
 | L12-5 / GSC | GSC verification token empty in production | **OPERATOR — honestly open**: runbook SHIPPED (`docs/deployment/GSC_VERIFICATION_R144.md`: token → `VITE_GSC_VERIFICATION` build arg → redeploy → verify, + the DNS-TXT alternative); **blocked on the owner's Google-account token** — never invented. |
 | L18-1 / L18-2 | the two R142 ex-false-claims (fixed in R143 — verify they're real) | **RE-VERIFIED REAL (E1, independent)**: L18-1 opportunistic suite — 7/7 pass, two legs mutation-grade (hung-run floor re-arm; stale-finally vs the new entry's flag); L18-2 support conversion — 5 generated-client sites in `support.tsx`, 17/17 pass. |
 | Mission §E | financial-invariant coverage (8 checklist items) | **Coverage map COMPLETE (E1)**: all 8 items covered by REAL existing tests — spot batches 45/45 + 61/61 green; no redundant tests manufactured (none needed); **zero production defects found · zero log leaks** (money-path loggers carry counters/messages only; redaction suite pins the property). |
 
-## Implementation summary (7 commits, worklog lanes 144-B..F8)
+## Implementation summary (the 7 implementation commits + the 3-commit docs/CI close; worklog lanes 144-B..F17)
 
 - **Deps (`7b21bcc`)** — the firebase-admin 14.x major behind the firebase
   battery (app+auth-only usage verified; uuid advisory erased via
@@ -66,7 +69,7 @@ tests (shards 910 + 791 + 809) · frontend 256 files / 2,433 tests
 | # | Handoff | Artifact | Honest status |
 |---|---------|----------|---------------|
 | 1 | Close 8080/6001 (Coolify proxy stop first, then the Contabo 22/80/443 firewall backstop) + run the §4 verification | `docs/deployment/EXPOSURE_REMEDIATION_R144.md` | STILL LIVE at the 2026-10-14 external probes |
-| 2 | Add `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` repo secrets (the §12 Coolify values of record), then dispatch the "Uptime Monitor" workflow with `test_alert` | `OPERATIONS_RUNBOOK.md` §16 · `.github/workflows/uptime-monitor.yml` | watchdog live repo-side; alert delivery NOT yet verified |
+| 2 | Add `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` repo secrets (the §12 Coolify values of record), then dispatch the "Uptime Monitor" workflow with `test_alert` | `OPERATIONS_RUNBOOK.md` §16 · `.github/workflows/uptime-monitor.yml` | watchdog live + drilled (run `38552828482`): probes green, cron live; alert delivery CONFIRMED BLOCKED on the absent secrets — guard fired as designed, no message sent |
 | 3 | GSC: URL-prefix property → HTML-tag token → `VITE_GSC_VERIFICATION` build arg (Coolify §2.2) → redeploy → verify | `docs/deployment/GSC_VERIFICATION_R144.md` | blocked on the owner's Google-account token |
 
 ## Remaining accepted exceptions (documented, not debt-in-hiding)
@@ -83,6 +86,26 @@ tests (shards 910 + 791 + 809) · frontend 256 files / 2,433 tests
 
 - Local full gates at `5293b9e` (numbers in FINAL STATUS above; commands +
   shard outputs in the round worklog entries).
+- **CI 8/8 on `defd303`** — run `38551492499` (workflow_dispatch on the
+  pushed head): gitleaks · e2e · CVE scan · backend units · frontend
+  units · lint/typecheck/drift · production build — all green. Supersedes
+  #485 (`77b91e4`, gitleaks FP) and #487 (`a1efe84`, full-history FP +
+  a mid-deploy e2e flake) — both triaged as false positives/flakes,
+  closed by `a1efe84` (the WS probe snippet's nonce generated, not the
+  RFC 6455 sample literal) + `defd303` (the R130-precedent commit
+  allowlist for the historical nonce literal).
+- **Live release identity = `defd303`** — production serving the
+  `index-BFSrIFfj.js` entry with the embedded SENTRY_RELEASE
+  `{id:"defd303"}`; healthz ok; guest smoke 200s. Push → CI → Coolify
+  deploy pipeline confirmed live twice.
+- **52/52 live guest e2e** green against `a1efe84` — code-identical to
+  `defd303` (the delta is `.gitleaks.toml` + docs + the embedded
+  SENTRY_RELEASE).
+- **Watchdog drill — run `38552828482`** (dispatch, `test_alert=true`):
+  run SUCCESS; probes all green from the GitHub-runner vantage (home=200,
+  healthz=ok, TLS 77d remaining); the 5-min cron is live on main;
+  Telegram secrets CONFIRMED ABSENT — the guard fired as designed
+  ("ALERTING NOT CONFIGURED"; no sendMessage issued).
 - E1 independent re-verification runs: opportunistic 7/7 · support family
   4 files/17/17 · money spot batches 45/45 + 61/61 · checkout-coupon
   perline 9/9.
