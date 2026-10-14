@@ -76,6 +76,11 @@ export default function AdminPromotionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  // R147 (2-c D3): per-row busy guard for the store-repricing
+  // activate/stop PATCH and the permanent DELETE — a double-click fired
+  // two requests; the coupons.tsx `toggling`/`archiving` idiom (armed
+  // only AFTER the confirm accepts, reset on every exit path).
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   // 98-F7 (R98-05): dirty-state guard — an edited flash-sale draft is
   // un-submitted work; a refresh/tab-close mid-edit now prompts instead
@@ -211,6 +216,7 @@ export default function AdminPromotionsPage() {
       });
       if (!ok) return;
     }
+    setBusyId(sale.id);
     try {
       // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
       // action that reprices the WHOLE store used to ride a raw fetch
@@ -249,6 +255,10 @@ export default function AdminPromotionsPage() {
         description: err instanceof Error ? err.message : "خطأ غير معروف",
         variant: "destructive",
       });
+    } finally {
+      // R147 (2-c D3): reset on EVERY exit path (the session-expiry
+      // return included) — a stranded busy id would freeze the row.
+      setBusyId(null);
     }
   }
 
@@ -267,6 +277,7 @@ export default function AdminPromotionsPage() {
       destructive: true,
     });
     if (!ok) return;
+    setBusyId(sale.id);
     try {
       // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse
       // — the failure toast keeps its Arabic envelope mapping via the
@@ -283,6 +294,9 @@ export default function AdminPromotionsPage() {
         description: err instanceof Error ? err.message : "خطأ غير معروف",
         variant: "destructive",
       });
+    } finally {
+      // R147 (2-c D3): reset on EVERY exit path — see toggleActive.
+      setBusyId(null);
     }
   }
 
@@ -329,6 +343,7 @@ export default function AdminPromotionsPage() {
           loading={loading}
           loadError={loadError}
           onRetry={load}
+          busyId={busyId}
           onToggleActive={toggleActive}
           onDelete={handleDelete}
         />

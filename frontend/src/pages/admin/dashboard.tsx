@@ -407,7 +407,21 @@ export default function AdminDashboardPage() {
           )}
 
           {/* KPI cards */}
-          {statsLoading ? (
+          {/* R147 (2-c D1): the R126 `enabled` arm means a non-finance
+              operator's stats observer never fires at all — stats stays
+              undefined + statsLoading settles false, so the grid below
+              renders ZERO tiles (EVERY tile rides the finance-gated
+              endpoint; the R122 non-money filter has nothing left to
+              keep) and the fold was an unexplained void above the
+              recent-orders stream. The honest state is the
+              AdminScopeGate banner idiom (same sentence shape + warning
+              token pair): the tiles are hidden for the account's scope,
+              not missing. */}
+          {!canSeeMoney && !stats && !statsLoading ? (
+            <p className="text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
+              بطاقات المؤشرات تتطلب صلاحية المعاملات المالية — تواصل مع مسؤول النظام
+            </p>
+          ) : statsLoading ? (
             /* R136 (UX-1): SkeletonText — the 6-card KPI grid becomes one
                announcing wrapper with the grid classes + card geometry
                (bg-card border rounded-2xl h-28) verbatim.

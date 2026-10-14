@@ -55,6 +55,7 @@ export function UsersToolbar({
           <Input
             type="search"
             placeholder="بحث برقم الهاتف..."
+            aria-label="بحث برقم الهاتف"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pr-9 h-9 w-full sm:w-56 text-sm"

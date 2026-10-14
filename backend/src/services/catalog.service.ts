@@ -20,7 +20,7 @@ import {
 import { applyFlashSale, computeFlashSalePrice } from "../lib/pricing";
 // R122 (A11-F2): Arabic-brand alias expansion for the public search below.
 import { expandArabicSearch } from "../lib/arabic-search";
-import { and, asc, count, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { escapeLikeTerm } from "../lib/http";
 
 // ── Variant projection (public DTO contract) ─────────────────────────────
@@ -757,6 +757,22 @@ export async function loadProductRecommendations(id: number) {
     return { found: true as const, items: [] };
   }
 
+  // R147 (P0 recommendations honesty): availability is inventory-derived
+  // (there is no products.is_available column) — the same deliverable-stock
+  // subquery join the list loader uses, scoped here to ≤4 peers. Stock-first
+  // ordering + an honest is_available flag keep the rail from burying the
+  // only buyable peer behind sold-out cards on a 44/45-sold-out catalog.
+  const recStockSub = db
+    .select({
+      productId: inventoryTable.productId,
+      stockCount: sql<number>`COUNT(*)::int`.as("stock_count"),
+    })
+    .from(inventoryTable)
+    .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition()))
+    .groupBy(inventoryTable.productId)
+    .as("rec_stock_sub");
+  const recStockExpr = sql<number>`COALESCE(${recStockSub.stockCount}, 0)`;
+
   const recommendations = await db
     .select({
       id: productsTable.id,
@@ -769,8 +785,12 @@ export async function loadProductRecommendations(id: number) {
       name: productsTable.name,
       imageUrl: productsTable.imageUrl,
       price: productsTable.price,
+      // R147: the list DTO's exact is_available semantics — deliverable
+      // stock > 0 — so the rec card can mark نفد honestly.
+      isAvailable: sql<boolean>`${recStockExpr} > 0`,
     })
     .from(productsTable)
+    .leftJoin(recStockSub, eq(recStockSub.productId, productsTable.id))
     .where(
       and(
         eq(productsTable.category, product.category),
@@ -779,6 +799,9 @@ export async function loadProductRecommendations(id: number) {
         sql`${productsTable.id} != ${id}`,
       ),
     )
+    // R147: in-stock peers lead; id ASC tiebreak keeps each stock group in
+    // the insertion order the rail showed before (stable within groups).
+    .orderBy(desc(recStockExpr), asc(productsTable.id))
     .limit(4);
 
   return {
@@ -789,6 +812,7 @@ export async function loadProductRecommendations(id: number) {
       name: r.name,
       image_url: r.imageUrl,
       price: parseFloat(String(r.price)),
+      is_available: r.isAvailable,
     })),
   };
 }

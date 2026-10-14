@@ -50,9 +50,7 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -415,6 +413,10 @@ describe("AdminProductsPage — server-side search + honest catalog count (R120-
   it("the clear-search control carries an accessible name and a padded hit area (A2-F12)", async () => {
     renderPage();
     const input = await screen.findByPlaceholderText("بحث في المنتجات…");
+    // R147 (2-c D4): the box's accessible name persists after typing
+    // (the storefront CatalogFiltersBar aria-label idiom — the
+    // placeholder alone vanishes once the box is filled).
+    expect(input).toHaveAccessibleName("البحث في المنتجات");
     fireEvent.change(input, { target: { value: "net" } });
 
     const clear = screen.getByRole("button", { name: "مسح البحث" });

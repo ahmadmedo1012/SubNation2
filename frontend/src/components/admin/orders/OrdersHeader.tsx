@@ -82,6 +82,7 @@ export function OrdersHeader({
           <Input
             id="orders-search"
             placeholder="بحث... ( / )"
+            aria-label="البحث في الطلبات"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pr-9 h-9 w-full sm:w-56 text-sm"

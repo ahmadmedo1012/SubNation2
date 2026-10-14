@@ -46,9 +46,7 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -159,6 +157,11 @@ describe("AdminTopupsPage — the money-queue search (R124-I5 A6 F14a)", () => {
 
   it("debounced client-side filter matches by phone AND payment reference, with an honest result count", async () => {
     await renderLoaded();
+    // R147 (2-c D4): the box's accessible name survives typing (the
+    // placeholder alone vanishes once the operator types).
+    expect(screen.getByPlaceholderText("بحث برقم التحويل أو الهاتف…")).toHaveAccessibleName(
+      "بحث برقم التحويل أو الهاتف",
+    );
     expect(screen.getByText("0911111111")).toBeInTheDocument();
     expect(screen.getByText("0912222222")).toBeInTheDocument();
 

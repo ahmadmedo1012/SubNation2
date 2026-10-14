@@ -373,6 +373,10 @@ export interface ProductListItem {
  * peers). R122 (A1-P2): `slug` rides the DTO so the rail links
  * /product/<slug ?? id> directly — same nullable contract as every
  * other product surface (present post-backfill).
+ * R147: `is_available` (deliverable stock > 0, the list DTO's
+ * semantics) rides the DTO and peers order stocked-first, so the
+ * rail never buries the only buyable product behind sold-out
+ * cards and each card can mark نفد honestly.
  */
 export interface ProductRecommendation {
   id: number;
@@ -382,6 +386,7 @@ export interface ProductRecommendation {
   /** @nullable */
   image_url?: string | null;
   price: number;
+  is_available: boolean;
 }
 
 export interface CatalogStats {

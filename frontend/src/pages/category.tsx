@@ -206,6 +206,13 @@ export default function CategoryPage() {
     [products],
   );
 
+  // R147 (2-b): the availability truth line — the live catalog ran 44/45
+  // sold out and a Google landing on /category/streaming met a wall of نفد
+  // cards with zero orientation. Presentation-only count off the UNFILTERED
+  // array (home.tsx's categoryHasStock truth rule) — the grid sorts, this
+  // number must not.
+  const inStockCount = useMemo(() => products.filter((p) => p.is_available).length, [products]);
+
   // R120-B3 (A7-F1 P1): CAPTURE the useSeo return — the block was called
   // without rendering it, so all 7 category landing pages shipped the
   // DEFAULT title/description and zero JSON-LD (Breadcrumb/FAQ/ItemList)
@@ -357,6 +364,21 @@ export default function CategoryPage() {
             <span className="text-xs font-bold text-muted-foreground">({products.length})</span>
           )}
         </h2>
+        {/* R147 (2-b): the honest availability line — success-dot idiom
+            copied from CategoryRail; all-sold-out branch states the store's
+            ongoing restock reality, never a dated promise. */}
+        {!isLoading &&
+          products.length > 0 &&
+          (inStockCount > 0 ? (
+            <p className="text-xs mb-3 flex items-center gap-1.5 text-status-success">
+              <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-status-success" />
+              متاح الآن للشراء الفوري: <span className="tabular-nums">{inStockCount}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground mb-3">
+              كل منتجات هذه الفئة نفدت مؤقتاً — يتجدّد المخزون باستمرار
+            </p>
+          ))}
         {isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {Array.from({ length: 8 }).map((_, i) => (

@@ -279,6 +279,10 @@ describe("AdminOrdersPage — server-side search (A2 P2-2)", () => {
     renderPage();
 
     const input = screen.getByPlaceholderText("بحث... ( / )");
+    // R147 (2-c D4): the accessible name persists after typing (the
+    // placeholder alone vanishes — the storefront CatalogFiltersBar
+    // aria-label idiom).
+    expect(input).toHaveAccessibleName("البحث في الطلبات");
     fireEvent.change(input, { target: { value: "SN-10" } });
 
     // 300ms debounce — one request per typing pause.

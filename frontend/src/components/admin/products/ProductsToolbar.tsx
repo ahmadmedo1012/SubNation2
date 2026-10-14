@@ -62,6 +62,7 @@ export function ProductsToolbar({
         <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         <Input
           placeholder="بحث في المنتجات…"
+          aria-label="البحث في المنتجات"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           className="pr-9 h-9 w-52 text-sm"

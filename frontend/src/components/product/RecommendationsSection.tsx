@@ -1,9 +1,9 @@
 import { Link } from "wouter";
+import { Lock } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import {
   getGetProductRecommendationsQueryKey,
   useGetProductRecommendations,
-  type ProductRecommendation,
 } from "@workspace/api-client-react";
 
 // R135 (FE-3 decomposition): extracted verbatim from pages/product.tsx —
@@ -61,21 +61,31 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
                  the anchor did a FULL page reload (SPA state lost: cart
                  context, auth boot, scroll restoration) while every
                  other product surface navigates client-side.
-                 R122 (A1 P2-8): the href is now SLUG-canonical — the
-                 backend adds `slug` to the recommendations DTO in the
-                 same push, but the generated type regen may land apart
-                 from this edit, so the local widening reads it with the
-                 `slug ?? id` fallback (the exact idiom cart.tsx and
-                 ProductCard already use). Crawlers stop seeing
-                 non-canonical /product/<id> internal links and the URL
-                 bar stays clean on first paint. */
+                 R122 (A1 P2-8): the href is SLUG-canonical — the backend
+                 adds `slug` to the recommendations DTO; the R147 regen
+                 landed it in the generated type, so `r` is used directly
+                 (the `slug ?? id` fallback stays — the cart.tsx /
+                 ProductCard idiom for pre-backfill null slugs). */
               <Link
                 key={r.id}
-                href={`/product/${(r as ProductRecommendation & { slug?: string | null }).slug ?? r.id}`}
+                href={`/product/${r.slug ?? r.id}`}
                 onClick={() => window.scrollTo(0, 0)}
                 className="block bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 cursor-pointer hover:border-primary/40 transition-all group"
               >
                 <div className="aspect-[4/3] bg-muted/30 rounded-xl overflow-hidden relative">
+                  {/* R147 (recommendations honesty): ProductCard's exact
+                      sold-out overlay idiom (bg-black/75 + Lock + نفد) —
+                      the DTO now carries is_available (stocked-first,
+                      backend-ordered), so a sold-out rec card must SAY so
+                      instead of looking buyable. NOT aria-hidden: this
+                      card has no aria-label, so the visible text IS the
+                      accessible name's نفد carrier. In-stock = default,
+                      no badge. */}
+                  {!r.is_available && (
+                    <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white/70 text-3xs font-bold px-2 py-0.5 rounded-full">
+                      <Lock className="w-2.5 h-2.5" aria-hidden="true" /> نفد المخزون
+                    </div>
+                  )}
                   {r.image_url ? (
                     <img
                       src={r.image_url}
@@ -83,7 +93,8 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
                       /* R-140-a (image discipline): alt — the
                          recommendations DTO carries no category
                          (ProductRecommendation: id/slug/name/
-                         image_url/price), so the name IS the full
+                         image_url/price/is_available), so the name IS
+                         the full
                          descriptive context available; the ||
                          fallback mirrors the letter-tile's (r.name
                          || "؟") guard so a blank enrichment name
@@ -140,7 +151,7 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
                   <h3 dir="auto" className="text-sm font-bold truncate mb-1 text-right">
                     {r.name}
                   </h3>
-                  <div className="text-primary-text font-bold tabular-nums">
+                  <div className="text-foreground font-bold tabular-nums">
                     {formatCurrency(r.price)}
                   </div>
                 </div>

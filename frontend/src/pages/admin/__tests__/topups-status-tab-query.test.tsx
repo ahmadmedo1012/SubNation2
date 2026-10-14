@@ -45,9 +45,7 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -229,5 +227,55 @@ describe("AdminTopupsPage — the status tab rides the server-side ?status= (A1-
     });
     expect(statusTab("قيد الانتظار").textContent).toContain("1");
     expect(statusTab("الكل").textContent?.trim()).toBe("الكل");
+  });
+
+  it("a SAME-PATH ?status= navigation (the sidebar's «قيد الانتظار فقط» context action) flips the tab without a remount (R147 2-c D2)", async () => {
+    (customFetch as unknown as Mock).mockResolvedValue([PENDING_ROW]);
+
+    renderPage();
+
+    // The «الكل» default loads first (no param on mount).
+    await waitFor(() => {
+      expect(screen.getByText(PENDING_ROW.user_phone)).toBeInTheDocument();
+    });
+    expect(statusTab("الكل").getAttribute("aria-pressed")).toBe("true");
+
+    // The sidebar context action's navigation: SAME pathname, new
+    // search. wouter matches routes by pathname alone, so the page
+    // never remounts — this used to be a dead link (URL flips, tab
+    // stays). wouter v3's useSearch re-renders on pushState.
+    window.history.pushState(null, "", "/admin/topups?status=pending");
+
+    // The URL→state effect flips the active tab + fires the
+    // server-filtered fetch (the per-tab query key restarts at page 1).
+    await waitFor(() => {
+      expect(listUrls().some((url) => url.includes("status=pending"))).toBe(true);
+    });
+    expect(statusTab("قيد الانتظار").getAttribute("aria-pressed")).toBe("true");
+    expect(statusTab("الكل").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("a tab flip writes ?status= back to the URL — and «الكل» drops the param (R147 2-c D2)", async () => {
+    (customFetch as unknown as Mock).mockResolvedValue([PENDING_ROW]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(PENDING_ROW.user_phone)).toBeInTheDocument();
+    });
+
+    // StatusFilterTabs' onClick write-back (replaceState — flips don't
+    // spam the history stack): a copy-pasted URL pins the view.
+    fireEvent.click(statusTab("مرفوض"));
+    await waitFor(() => {
+      expect(window.location.search).toContain("status=rejected");
+    });
+
+    // Back to «الكل» — the param drops, so a refresh cannot resurrect a
+    // filter the operator removed (the users «مسح الفلاتر» class).
+    fireEvent.click(statusTab("الكل"));
+    await waitFor(() => {
+      expect(window.location.search).toBe("");
+    });
   });
 });

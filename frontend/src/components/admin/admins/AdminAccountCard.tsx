@@ -15,6 +15,7 @@ export function AdminAccountCard({
   admin,
   isMe,
   scopes,
+  toggling,
   onEdit,
   onToggleActive,
 }: {
@@ -22,6 +23,10 @@ export function AdminAccountCard({
   /** admin.id === currentAdminId — the page's session identity. */
   isMe: boolean;
   scopes: ScopeOption[];
+  /** R147 (2-c D3): the page's `toggling === admin.id` — the in-flight
+   *  enable/disable POST disables + relabels this row's button (the
+   *  TopupCard «جارٍ...» idiom). */
+  toggling: boolean;
   onEdit: (admin: AdminAccount) => void;
   onToggleActive: (admin: AdminAccount) => void;
 }) {
@@ -88,6 +93,10 @@ export function AdminAccountCard({
             </button>
             <button
               onClick={() => onToggleActive(admin)}
+              /* R147 (2-c D3): disabled while the POST is in flight —
+                 the double-click race the coupons.tsx `toggling` idiom
+                 kills (the label swap is the TopupCard «جارٍ...» idiom). */
+              disabled={toggling}
               /* R139 (precision): quiet danger at rest — the DISABLE
                  trigger (session-killing, confirm-gated as destructive in
                  the page) drops its resting low-stock ink/border for the
@@ -103,7 +112,7 @@ export function AdminAccountCard({
                   : "border-status-success/40 text-status-success hover:bg-status-success/10"
               }`}
             >
-              {admin.is_active ? "تعطيل" : "تفعيل"}
+              {toggling ? "جارٍ..." : admin.is_active ? "تعطيل" : "تفعيل"}
             </button>
           </div>
         )}

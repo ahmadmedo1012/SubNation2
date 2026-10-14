@@ -20,6 +20,7 @@ export function PromotionsList({
   loading,
   loadError,
   onRetry,
+  busyId,
   onToggleActive,
   onDelete,
 }: {
@@ -27,6 +28,10 @@ export function PromotionsList({
   loading: boolean;
   loadError: string | null;
   onRetry: () => void;
+  /** R147 (2-c D3): the page's per-row busy id — the in-flight row's
+   *  activate/stop/delete buttons disable + spin (the CouponsTable
+   *  toggling/archiving idiom). */
+  busyId: number | null;
   onToggleActive: (sale: FlashSale, next: boolean) => void;
   /** R125-I3 (A2-6): the permanent DELETE — confirm-gated in the page. */
   onDelete: (sale: FlashSale) => void;
@@ -141,14 +146,24 @@ export function PromotionsList({
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {/* R147 (2-c D3): the in-flight row's buttons disable +
+                      swap to the RefreshCw spinner (the CouponsTable
+                      per-row busy idiom) — a double-click cannot re-fire
+                      the store-repricing PATCH / permanent DELETE. */}
                   {s.is_active ? (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => onToggleActive(s, false)}
+                      disabled={busyId === s.id}
                       className="gap-1.5"
                     >
-                      <Pause className="w-3.5 h-3.5" /> إيقاف
+                      {busyId === s.id ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Pause className="w-3.5 h-3.5" />
+                      )}{" "}
+                      إيقاف
                     </Button>
                   ) : (
                     !expired && (
@@ -156,9 +171,15 @@ export function PromotionsList({
                         variant="ghost"
                         size="sm"
                         onClick={() => onToggleActive(s, true)}
+                        disabled={busyId === s.id}
                         className="gap-1.5"
                       >
-                        <Play className="w-3.5 h-3.5" /> تفعيل
+                        {busyId === s.id ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5" />
+                        )}{" "}
+                        تفعيل
                       </Button>
                     )
                   )}
@@ -166,6 +187,7 @@ export function PromotionsList({
                     variant="ghost"
                     size="sm"
                     onClick={() => onDelete(s)}
+                    disabled={busyId === s.id}
                     /* R125-I3 (A2-6): the row action names the DESTRUCTIVE
                            verb — it sat beside a reversible «إيقاف» button
                            while being labeled the same. */
@@ -179,7 +201,11 @@ export function PromotionsList({
                     title="حذف نهائي"
                     className="gap-1.5 text-muted-foreground hover:text-status-error hover:bg-status-error/10"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    {busyId === s.id ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
                   </Button>
                 </div>
               </div>

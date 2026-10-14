@@ -54,8 +54,14 @@ export function StatsRow({
           {data.points.toLocaleString("en-US")}
         </div>
         <div className="text-sm text-muted-foreground flex items-center gap-1">
-          <span className="font-bold text-foreground tabular-nums">{data.points_value_lyd}</span>
-          <span>د.ل</span>
+          {/* R147 (2-d): the caption's LYD figure rides formatCurrency —
+              the raw backend toFixed(2) string lost the 8-e §1.1
+              thousands grouping ("1250.00" for a 125,000-point balance)
+              the points tile above and the tier remainder beside it both
+              carry; «د.ل» rides the formatter's own suffix now. */}
+          <span className="font-bold text-foreground tabular-nums">
+            {formatCurrency(Number(data.points_value_lyd))}
+          </span>
         </div>
         {/* R-140-k (money-adjacent async state — the points announcer):
             the visible points total is a plain text swap — after a

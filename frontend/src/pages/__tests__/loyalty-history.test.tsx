@@ -213,6 +213,17 @@ describe("LoyaltyPage — the POINTS HISTORY (R115, A8 P2)", () => {
     expect(screen.queryByText("لا توجد حركات نقاط بعد")).not.toBeInTheDocument();
   });
 
+  it("the points-value caption rides formatCurrency — grouped thousands, never the raw backend string (8-e §1.1)", async () => {
+    state.loyalty = loyaltyPayload({ points: 125000, points_value_lyd: "1250.00" });
+    renderPage();
+
+    // StatsRow's caption unwraps the API's string datum through the shared
+    // money formatter: "1,250.00 د.ل" — grouped like the points tile above
+    // ("125,000") and the tier remainder beside it, never "1250.00".
+    expect(await screen.findByText("1,250.00 د.ل")).toBeInTheDocument();
+    expect(screen.queryByText("1250.00")).not.toBeInTheDocument();
+  });
+
   it("the delta noun agrees with its magnitude (R134 A2-F2: 2 → نقطتان, 7 → نقاط)", async () => {
     state.ledger = [
       ledgerRow({ id: 2, points_delta: 7, points_after: 7 }),

@@ -97,6 +97,12 @@ describe("AdminUsersPage — «مسح الفلاتر» writes the clear back to 
   it("clearing the tier filter drops ?tier=&?sort= from the address bar and returns the rows", async () => {
     renderPage();
 
+    // R147 (2-c D4): the deep-link box's accessible name persists after
+    // typing (the placeholder alone vanishes).
+    expect(screen.getByPlaceholderText("بحث برقم الهاتف...")).toHaveAccessibleName(
+      "بحث برقم الهاتف",
+    );
+
     // The tier filter (initialized from ?tier=gold) empties the view.
     await waitFor(() => {
       expect(screen.getByText("لا مستخدمين بمستوى ذهبي")).toBeInTheDocument();

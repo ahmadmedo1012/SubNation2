@@ -25,9 +25,7 @@ import { type ReactNode } from "react";
 import AdminPromotionsPage from "@/pages/admin/promotions";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -152,5 +150,45 @@ describe("AdminPromotionsPage — activating a store-wide discount requires conf
       expect(patch?.[0]).toBe("/api/admin/flash-sales/7");
       expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({ is_active: true });
     });
+  });
+
+  it("while the activation PATCH is in flight, the row's actions disable — a double-click cannot re-fire it (R147 2-c D3)", async () => {
+    // Park the PATCH on a gate the test releases — the store-repricing
+    // request is exactly the double-click race the coupons.tsx per-row
+    // busy idiom exists for; the row's activate + delete buttons must
+    // disable for that window.
+    let release!: () => void;
+    const gate = new Promise<void>((res) => {
+      release = res;
+    });
+    fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+      (init?.method ?? "GET") === "PATCH"
+        ? gate.then(() => resLike({ body: {} }))
+        : Promise.resolve(resLike({ body: { flash_sales: [STOPPED_SALE] } })),
+    );
+
+    renderPage();
+    const dialog = await openActivateConfirm();
+    fireEvent.click(within(dialog).getByRole("button", { name: "تفعيل" }));
+
+    // In-flight: the confirm dialog is gone and the ROW's «تفعيل» (the
+    // only one left) is disabled…
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "تفعيل" })).toBeDisabled();
+    });
+    // …alongside its destructive sibling.
+    expect(screen.getByRole("button", { name: "حذف العرض «عرض الجمعة» نهائياً" })).toBeDisabled();
+
+    // Release the PATCH — exactly ONE fired, then the success toast.
+    release();
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "تم التفعيل", variant: "success" }),
+      );
+    });
+    const patches = fetchMock.mock.calls.filter(
+      (c) => (c[1] as RequestInit | undefined)?.method === "PATCH",
+    );
+    expect(patches).toHaveLength(1);
   });
 });

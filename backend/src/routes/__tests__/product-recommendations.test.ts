@@ -1,7 +1,7 @@
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { db, initTestDb, productsTable, resetTestDb } from "../../test/db";
+import { db, initTestDb, inventoryTable, productsTable, resetTestDb } from "../../test/db";
 import { productsRouter } from "../products";
 
 /**
@@ -134,6 +134,86 @@ describe("GET /api/products/:id/recommendations — null-category guard (R120-B6
         name: "Same Cat Peer",
         image_url: "https://cdn.example.com/rec-same-cat-peer.webp",
         price: 19.5,
+        // R147: is_available rides the DTO — this fixture seeds no
+        // inventory, so the peer is honestly sold out.
+        is_available: false,
+      },
+    ]);
+  });
+
+  it("R147 (P0): mixed stock — stocked peers LEAD (stock-first ordering) + honest is_available flags", async () => {
+    // The live-catalog defect: 44/45 products sold out and the rail's
+    // ONLY in-stock peer rendered LAST with no نفد mark. Pin the two
+    // halves of the fix: (a) stocked-first ordering with the id-ASC
+    // tiebreak inside each group, (b) is_available derived from
+    // DELIVERABLE inventory (R102) — sold is_sold=true units and
+    // credential-less units both count as zero stock.
+    //
+    // Cache discipline (file header): eight fillers put this case's
+    // target on id 9 (no prior case requested 9; 2/3/4/7 are resident).
+    const ids = await seed([
+      { name: "Filler F1", slug: "rec-filler-f1", category: "tools" },
+      { name: "Filler F2", slug: "rec-filler-f2", category: "tools" },
+      { name: "Filler F3", slug: "rec-filler-f3", category: "tools" },
+      { name: "Filler F4", slug: "rec-filler-f4", category: "tools" },
+      { name: "Filler F5", slug: "rec-filler-f5", category: "tools" },
+      { name: "Filler F6", slug: "rec-filler-f6", category: "tools" },
+      { name: "Filler F7", slug: "rec-filler-f7", category: "tools" },
+      { name: "Filler F8", slug: "rec-filler-f8", category: "tools" },
+      { name: "Mixed Target", slug: "rec-mixed-target", category: "streaming" },
+      // Sold-out peer BEFORE the stocked ones by insertion (id 10).
+      { name: "Sold Out Peer A", slug: "rec-sold-a", category: "streaming", price: "15.00" },
+      // Stocked peers (ids 11, 12) — deliverable inventory below.
+      { name: "Stocked Peer B", slug: "rec-stocked-b", category: "streaming", price: "25.00" },
+      { name: "Stocked Peer C", slug: "rec-stocked-c", category: "streaming", price: "35.00" },
+      // Sold-out peer D: carries an unsold but CREDENTIAL-LESS unit —
+      // R102: not deliverable, counts as zero stock.
+      { name: "Undeliverable Peer D", slug: "rec-sold-d", category: "streaming", price: "45.00" },
+    ]);
+    const [, , , , , , , , , soldA, stockedB, stockedC, soldD] = ids;
+
+    // Deliverable stock for B and C (generic pool — variant_id NULL).
+    await db.insert(inventoryTable).values([
+      { productId: stockedB, accountEmail: "b@rec.local", accountPassword: "pw" },
+      { productId: stockedC, accountEmail: "c@rec.local", accountPassword: "pw" },
+      // D's unit: unsold but zero credential fields → not deliverable.
+      { productId: soldD },
+    ]);
+
+    const { status, body } = await call(buildApp(), `/api/products/${ids[8]}/recommendations`);
+    expect(status).toBe(200);
+    expect(body).toEqual([
+      {
+        id: stockedB,
+        slug: "rec-stocked-b",
+        name: "Stocked Peer B",
+        image_url: "https://cdn.example.com/rec-stocked-b.webp",
+        price: 25,
+        is_available: true,
+      },
+      {
+        id: stockedC,
+        slug: "rec-stocked-c",
+        name: "Stocked Peer C",
+        image_url: "https://cdn.example.com/rec-stocked-c.webp",
+        price: 35,
+        is_available: true,
+      },
+      {
+        id: soldA,
+        slug: "rec-sold-a",
+        name: "Sold Out Peer A",
+        image_url: "https://cdn.example.com/rec-sold-a.webp",
+        price: 15,
+        is_available: false,
+      },
+      {
+        id: soldD,
+        slug: "rec-sold-d",
+        name: "Undeliverable Peer D",
+        image_url: "https://cdn.example.com/rec-sold-d.webp",
+        price: 45,
+        is_available: false,
       },
     ]);
   });

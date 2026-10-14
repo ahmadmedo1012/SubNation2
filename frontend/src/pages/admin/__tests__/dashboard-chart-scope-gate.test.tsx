@@ -247,4 +247,34 @@ describe("AdminDashboardPage — the chart payload is finance-scoped at the FETC
       false,
     );
   });
+
+  it("a non-finance admin's fold explains the hidden KPI tiles — the honest scope notice, not a bare void (R147 2-c D1)", async () => {
+    // The production state the R126 `enabled` arm creates for a scoped
+    // session: stats stays undefined + not loading (the disabled query),
+    // so EVERY tile — money or not — is gone (they all ride the
+    // finance-gated endpoint; the R122 non-money filter had nothing
+    // left to keep). The fold used to render ONLY the recent-orders
+    // card with no explanation; it now speaks the AdminScopeGate banner
+    // dialect (same sentence shape + warning token pair).
+    (useGetAdminStats as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+    authState.finance = false;
+    renderPage();
+
+    // The notice renders exactly where the KPI grid sits…
+    const notice = await screen.findByText(
+      "بطاقات المؤشرات تتطلب صلاحية المعاملات المالية — تواصل مع مسؤول النظام",
+    );
+    // …in the AdminScopeGate banner register (warning ink pair).
+    expect(notice.className).toContain("text-status-warning");
+    // …no KPI tile renders (the grid is empty — the notice IS the fold)…
+    expect(screen.queryByText("المستخدمون")).not.toBeInTheDocument();
+    expect(screen.queryByText("المخزون المتاح")).not.toBeInTheDocument();
+    // …and the scope-safe recent-orders stream stays (the page is
+    // alive for the operator's own scope, not a dead shell).
+    expect(screen.getByText("آخر الطلبات")).toBeInTheDocument();
+  });
 });

@@ -133,10 +133,13 @@ const fetchMock = vi.fn();
 
 /** Route the stubbed global fetch by `${method} ${url}` — the page's
  *  post-mutation reload() re-fires the three GETs, so ordered
- *  mockResolvedValueOnce chains would desync. */
-function routeFetch() {
-  (fetchMock as unknown as Mock).mockImplementation((url: string, init?: RequestInit) => {
+ *  mockResolvedValueOnce chains would desync. `stalls` parks chosen
+ *  routes on a promise the test releases (the R147 2-c D3 in-flight
+ *  busy legs). */
+function routeFetch(stalls: Record<string, Promise<Response>> = {}) {
+  return (url: string, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${String(url)}`;
+    if (key in stalls) return stalls[key];
     switch (key) {
       case "GET /api/admin/admins":
         return Promise.resolve(resLike({ body: ADMINS }));
@@ -153,7 +156,7 @@ function routeFetch() {
       default:
         return Promise.resolve(resLike({ ok: false, status: 404, body: {} }));
     }
-  });
+  };
 }
 
 function renderPage() {
@@ -198,7 +201,7 @@ describe("AdminAdminsPage — RBAC mutation pins (L13-4 #1, R143 deferred)", () 
   beforeEach(() => {
     vi.clearAllMocks();
     fetchMock.mockReset();
-    routeFetch();
+    fetchMock.mockImplementation(routeFetch());
     vi.stubGlobal("fetch", fetchMock);
     renderPage();
   });
@@ -301,6 +304,44 @@ describe("AdminAdminsPage — RBAC mutation pins (L13-4 #1, R143 deferred)", () 
     ) as HTMLElement;
     fireEvent.click(within(dialog2).getByRole("button", { name: "تعطيل" }));
 
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "تم تعطيل المسؤول @mod1", variant: "success" }),
+      );
+    });
+    const disables = mutationCalls().filter((m) => m.key === "POST /api/admin/admins/3/disable");
+    expect(disables).toHaveLength(1);
+  });
+
+  it("while the disable POST is in flight, the row's toggle is busy — a double-click cannot re-fire it (R147 2-c D3)", async () => {
+    // Park the disable POST on a gate the test releases — the row's
+    // button must disable + read «جارٍ...» for exactly that window
+    // (the coupons.tsx `toggling` idiom, first pinned here for admins:
+    // the POST kills live sessions, so a double-fire was never
+    // cosmetic).
+    let release!: () => void;
+    const gate = new Promise<void>((res) => {
+      release = res;
+    });
+    (fetchMock as unknown as Mock).mockImplementation(
+      routeFetch({ "POST /api/admin/admins/3/disable": gate.then(() => resLike({ body: {} })) }),
+    );
+
+    const card = await cardOf("mod1");
+    fireEvent.click(within(card).getByText("تعطيل"));
+    const dialog = (await screen.findByText("تعطيل المسؤول؟")).closest(
+      '[role="alertdialog"]',
+    ) as HTMLElement;
+    fireEvent.click(within(dialog).getByRole("button", { name: "تعطيل" }));
+
+    // In-flight: the row's toggle flips to the busy label AND disables
+    // (the TopupCard «جارٍ...» idiom).
+    const busy = await within(card).findByText("جارٍ...");
+    expect(busy.closest("button")).toBeDisabled();
+
+    // Release the POST — exactly ONE disable fired, then the success
+    // toast + reload ride the normal path.
+    release();
     await waitFor(() => {
       expect(toastMock).toHaveBeenCalledWith(
         expect.objectContaining({ title: "تم تعطيل المسؤول @mod1", variant: "success" }),

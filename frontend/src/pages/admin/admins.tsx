@@ -64,6 +64,11 @@ export default function AdminAdminsPage() {
   const [editing, setEditing] = useState<AdminAccount | null>(null);
   const [creating, setCreating] = useState(false);
   const [currentAdminId, setCurrentAdminId] = useState<number | null>(null);
+  // R147 (2-c D3): per-row busy guard for the confirm-gated
+  // enable/disable POST (it kills live sessions) — a double-click fired
+  // two POSTs; the coupons.tsx `toggling` idiom, armed only AFTER the
+  // confirm accepts.
+  const [toggling, setToggling] = useState<number | null>(null);
 
   // R137 (FE decomposition): the create/edit dialog form atoms hoisted
   // from the dialog components (the users.tsx UserEditDialog idiom) —
@@ -233,6 +238,7 @@ export default function AdminAdminsPage() {
       destructive: admin.is_active,
     });
     if (!ok) return;
+    setToggling(admin.id);
     try {
       await adminFetchJson(`/api/admin/admins/${admin.id}/${action}`, {
         method: "POST",
@@ -249,6 +255,10 @@ export default function AdminAdminsPage() {
         title: err instanceof Error ? err.message : "فشل العملية",
         variant: "destructive",
       });
+    } finally {
+      // R147 (2-c D3): reset on EVERY exit path (the session-expiry
+      // return included) — a stranded busy id would freeze the row.
+      setToggling(null);
     }
   };
 
@@ -378,6 +388,7 @@ export default function AdminAdminsPage() {
                   admin={admin}
                   isMe={isMe}
                   scopes={scopes}
+                  toggling={toggling === admin.id}
                   onEdit={openEdit}
                   onToggleActive={handleToggleActive}
                 />

@@ -10,6 +10,63 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R147 — the honest-availability round: the sold-out catalog made navigable end to end, four admin interaction defects closed — 2026-10-15
+
+**Scope:** the R147 mission — verify the live baseline, benchmark the
+Libyan storefront competitors, then fix the highest-impact remaining
+UX defects under the repo's standing Ponytail ruleset with parallel
+specialist lanes. Full report: `docs/engineering/R147/round-close.md`.
+
+**The live finding that picked the lanes:** production runs **44/45
+products sold out** (API `available_only=true` → 1). On that inventory
+the worst defects are availability-honesty defects: the PDP
+«قد يعجبك أيضاً» rail had no availability in its DTO and no
+stock-first ordering (on live `/product/cpanel` the only in-stock peer
+rendered LAST, behind three نفد cards that looked buyable), and the
+category landings gave a Google landing zero availability orientation.
+
+**Shipped:**
+
+- **Recommendations honesty (backend + spec + frontend):**
+  `loadProductRecommendations` now joins the list loader's
+  deliverable-stock subquery (`is_available` in the DTO, stocked-first
+  `orderBy`, stable id tiebreak) — spec + both generated clients
+  regenerated; the rail renders ProductCard's exact نفد overlay
+  (bg-black/75 + Lock) and the R145/D4 neutral price ink. Ordered pin:
+  stocked peers lead, `is_available` true/true/false/false.
+- **Category availability truth:** one honest line under
+  «منتجات {label} (n)» — the in-stock count (CategoryRail success-dot
+  idiom) or «كل منتجات هذه الفئة نفدت مؤقتاً — يتجدّد المخزون
+  باستمرار» when the category is drained; computed off the unfiltered
+  array (the home `categoryHasStock` truth rule); nothing while
+  loading.
+- **Admin (4 defects, file:line verified):** the non-finance dashboard
+  renders the honest scope notice instead of an empty KPI grid; the
+  topups sidebar «قيد الانتظار فقط» action actually flips the tab
+  (`useSearch` + URL→state sync, the orders.tsx idiom — the write-back
+  half already existed and is now pinned); per-row busy states on
+  admins enable/disable and promotions activate/stop/delete (the
+  double-click race on session-kill/store-reprice actions); aria-labels
+  on the four primary list search inputs.
+- **Account lane:** `loyalty/StatsRow` points-value rides
+  `formatCurrency` (was the raw `toFixed(2)` string — the one money
+  figure bypassing grouping); every other account surface
+  verified-clean byte-identical.
+
+**Competitor benchmark (streamcode/mdcard/ramaida/spinor/eneba;
+likecard Cloudflare-blocked):** from-price + availability badges
+already in place; inline card variant pickers SKIPPED (ProductCard
+quick-add already adds the cheapest AVAILABLE variant — full pickers
+would duplicate the PDP); payment-method matrix SKIPPED (checkout is
+wallet-only by documented design); bottom-sheet drill-down SKIPPED
+(45-product catalog). The accepted finding — availability truth at
+discovery time — is what the first two lanes implement.
+
+**Gates:** lint 0/62 (= baseline) · typecheck clean · backend
+**2,523/275** (net +5) · frontend **2,488/263** (net +13/+1) ·
+contracts 3/3 · build green, eager path **146,690 B gz byte-identical
+to R146** (every changed component lives in a lazy route chunk).
+
 ## Round R146 — the ponytail round: the whole repo audited by the lazy-senior-dev method, 23 should-fix defects closed, five duplication families consolidated to one copy each — 2026-10-14
 
 **Scope:** the R146 mission — use the ponytail methodology

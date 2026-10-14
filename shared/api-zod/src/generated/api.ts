@@ -607,9 +607,10 @@ export const GetProductRecommendationsResponseItem = zod
     name: zod.string(),
     image_url: zod.string().nullish(),
     price: zod.number(),
+    is_available: zod.boolean(),
   })
   .describe(
-    "Same-category recommendation rail (max 4, active + unarchived\npeers). R122 (A1-P2): `slug` rides the DTO so the rail links\n/product/<slug ?? id> directly — same nullable contract as every\nother product surface (present post-backfill).\n",
+    "Same-category recommendation rail (max 4, active + unarchived\npeers). R122 (A1-P2): `slug` rides the DTO so the rail links\n/product/<slug ?? id> directly — same nullable contract as every\nother product surface (present post-backfill).\nR147: `is_available` (deliverable stock > 0, the list DTO's\nsemantics) rides the DTO and peers order stocked-first, so the\nrail never buries the only buyable product behind sold-out\ncards and each card can mark نفد honestly.\n",
   );
 export const GetProductRecommendationsResponse = zod.array(GetProductRecommendationsResponseItem);
 

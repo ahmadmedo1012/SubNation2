@@ -17,7 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { RefreshCw, WifiOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 // R137 (FE decomposition): the page's self-contained subcomponents and
@@ -72,10 +72,28 @@ export default function AdminTopupsPage() {
   // /admin/topups?status=pending — the initial filter now consumes the
   // param (validated against the real filter values; anything else falls
   // back to the queue's default "pending" view).
+  // R147 (2-c D2): wouter matches routes by PATHNAME alone, so that
+  // same-path query navigation never remounted the page — the
+  // initializer above only covered the cold mount and the context
+  // action was a dead link (URL flips, tab stays). useSearch + the
+  // sync effect below complete the orders.tsx:500-511 two-way idiom
+  // (the tab's own state→URL write-back already rides
+  // StatusFilterTabs' onClick).
+  const searchParam = useSearch();
   const [statusFilter, setStatusFilter] = useState(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("status") ?? "";
     return STATUS_FILTERS.some((s) => s.value === fromUrl) ? fromUrl : "pending";
   });
+  // R123 (E3 P3a) sync arm (orders.tsx): URL → state whenever the param
+  // changes (mount + same-path navigation), validated against the real
+  // filter values — without clobbering a tab the operator already
+  // picked locally.
+  useEffect(() => {
+    const st = new URLSearchParams(searchParam).get("status") ?? "";
+    if (STATUS_FILTERS.some((s) => s.value === st)) {
+      setStatusFilter((prev) => (prev === st ? prev : st));
+    }
+  }, [searchParam]);
   // R124-I5 (A6 F14a): the money queue's search. The frozen list route
   // (routes/admin/topups.ts) supports ?status=&page=&limit= but NO
   // ?search= — so the filter runs client-side over the ACCUMULATED

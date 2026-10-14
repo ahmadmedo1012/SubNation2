@@ -64,6 +64,7 @@ export function TopupsToolbar({
         <Input
           type="search"
           placeholder="بحث برقم التحويل أو الهاتف…"
+          aria-label="بحث برقم التحويل أو الهاتف"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pr-9 h-9 w-full sm:w-52 text-sm"
