@@ -1,6 +1,6 @@
 # SubNation — Performance Record
 
-> Status: CURRENT @ 2026-10-10 (R128). Extracted from the README in R126 so
+> Status: CURRENT @ 2026-10-14 (R144). Extracted from the README in R126 so
 > the front page stays a product pitch, not an audit report. Every number
 > below is round-measured and evidence-stamped; re-measure before citing in
 > a new decision. Front-page summary: the README's *Performance* section.
@@ -11,7 +11,7 @@ Enforced by the production build (`frontend/vite.config.ts`):
 
 | Gate | Value | Source |
 |---|---|---|
-| Eager path gzip — warn | **145 KiB** (148,480 B) | `vite.config.ts` `EAGER_GZIP_LIMIT_WARN` |
+| Eager path gzip — warn | **150 KiB** (153,600 B) — raised from 145 KiB at R144-E2 (basis: `vite.config.ts` decision note at `EAGER_GZIP_LIMIT_WARN`) | `vite.config.ts` `EAGER_GZIP_LIMIT_WARN` |
 | Eager path gzip — hard fail | **160 KiB** (163,840 B) | `vite.config.ts` `EAGER_GZIP_LIMIT_ERROR` |
 
 "Eager path" = HTML shell + entry + vendor chunks + CSS loaded before any
@@ -22,6 +22,7 @@ CI's build job), printing the per-file breakdown on failure.
 
 | Round | Measurement | Value |
 |---|---|---|
+| R144-E2 | Eager path at HEAD, CI-parity DSN shape (the gate basis) — the R143-L11-2 trim-or-raise decision | **146,850 B gz** (entry 34,898 + vendor-react 58,630 + vendor-utils 9,744 + vendor-query 10,727 + vendor-router 2,421 + CSS 30,430) — 1,630 B (1.1%) under the old 145 KiB warn; **warn line raised 145 → 150 KiB** (6,750 B / 4.4% headroom; 160 KiB hard fail untouched, 10.4% room) |
 | R128-B2 | Mobile LCP re-measure after R127's boot fixes (Lighthouse, 3-run medians, 5 routes): every route out of the POOR band | `/` **4,307 → 3,111 ms (−28%)** · `/product` 4,323 → 3,310 ms · `/login` 4,260 → 3,444 ms + TBT 621 → 89 ms · `/flash-sales` 2,518 ms |
 | R127 | Boot: vendor-sentry (111 KB br, 70% unused, a 221 ms LCP-phase long task) deferred to first interaction; budget gate rebuilt to measure a DSN-shaped build (no-DSN under-reported by ~2.3 KB) | eager path **146.7 KB no-DSN / 147.4 KB DSN-shaped** vs the 148.5 KB warn line |
 | R126-A5 | Eager path re-measured at HEAD | **145,717 B gz** (no-DSN mode) — still under the 145 KiB warn line |
@@ -53,10 +54,11 @@ CI's build job), printing the per-file breakdown on failure.
    pre-imports likely-next-route chunks before the click lands
    (−150–400 ms perceived nav on 3G/4G), saveData-respecting; pinned by
    `route-chunk-warmup.test.ts`.
-5. **Eager-path budget (standing)** — the eager path holds ≈ 143 KiB gz
-   (145,717 B no-DSN at R126-A5; 147.4 KB DSN-shaped at R127 — the gate
-   now measures the deployed shape) under the 145 KiB warn / 160 KiB
-   hard-fail gate; regressions fail the production build in CI before they
+5. **Eager-path budget (standing)** — the eager path holds ≈ 143.4 KiB gz
+   (146,850 B DSN-shaped at R144-E2 — the gate measures the deployed
+   shape) under the 150 KiB warn / 160 KiB hard-fail gate (warn raised
+   145 → 150 KiB at R144-E2 on the measured basis recorded in
+   `vite.config.ts`); regressions fail the production build in CI before they
    ship.
 6. **Boot defers (R127)** — `vendor-sentry` loads at the later of
    `load`/first pointerdown (`frontend/src/lib/boot-sentry.ts`, early-crash

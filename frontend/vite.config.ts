@@ -21,7 +21,9 @@ import { indexOfOutsideComments, injectGoogleSiteVerification } from "./src/lib/
  * FULL eager set resolved from dist/public/index.html — every
  * `rel="modulepreload"` JS chunk, the module-entry script, and the
  * stylesheet(s) — summing their gzip sizes: hard-fail > 160 KiB, warn
- * > 145 KiB. (At R120 the entry chunk is ~27 KiB gz of a ~149 KiB gz
+ * > 150 KiB (145 KiB until R144-E2 — the trim-or-raise decision note
+ * sits at the EAGER_GZIP_LIMIT_WARN constant below). (At R120 the entry
+ * chunk is ~27 KiB gz of a ~149 KiB gz
  * eager path — the old gate watched 18% of the bytes a cold visitor
  * downloads before first paint.)
  */
@@ -168,7 +170,7 @@ function bundleBudgetPlugin(): Plugin {
       // imports, the module-entry script itself, and the entry
       // stylesheet(s). Resolve the set from the HTML (the same ground
       // truth as the entry lookup), sum their gzip sizes, and gate the
-      // SUM: hard-fail above 160 KiB, warn above 145 KiB.
+      // SUM: hard-fail above 160 KiB, warn above 150 KiB (R144-E2).
       const eagerFiles = collectEagerFiles(html, indexFile);
 
       // A2 F7 (R124): the deliberately modulepreload-linked HOME route
@@ -206,8 +208,38 @@ function bundleBudgetPlugin(): Plugin {
         eagerGzipSum += fileGzip;
       }
 
-      const EAGER_GZIP_LIMIT_ERROR = 160 * 1024; // 160 KiB hard fail
-      const EAGER_GZIP_LIMIT_WARN = 145 * 1024; // 145 KiB warning threshold
+      const EAGER_GZIP_LIMIT_ERROR = 160 * 1024; // 160 KiB hard fail — UNCHANGED
+      // R144-E2 (closing R143 L11-2, the deferred trim-or-raise
+      // decision): the warn line was RAISED 145 → 150 KiB on a measured
+      // basis — the one place the decision is recorded.
+      //   - Measured at HEAD 387ffe0 with the CI-parity placeholder-DSN
+      //     build (the exact shape this gate enforces in CI since
+      //     R127-L10): 146,850 B gz (entry 34,898 + vendor-react 58,630
+      //     + vendor-utils 9,744 + vendor-query 10,727 + vendor-router
+      //     2,421 + CSS 30,430) = 98.9% of the old 148,480 B line —
+      //     1,630 B (1.1%) headroom, after R143's live 148,065 B (415 B;
+      //     the R144 fetch-consolidation round trimmed −1,215 B).
+      //   - Origin, no principled basis to preserve: R120 (4ae5de5) set
+      //     145 KiB while the path measured 152,460 B — already ABOVE
+      //     the new warn line; no byte→ms/CWV basis is documented
+      //     anywhere for the 145 (the CWV authority is the Lighthouse
+      //     POOR band, not this line). It was a round-number aspiration
+      //     the R122 icons fix briefly met (144,430 B), then ~22 rounds
+      //     of creep (~+110 B/round) ate it back.
+      //   - Why not the alternatives: TRIM — R143's candidates
+      //     (seo-builders string tables; the minChunkSize-inlined
+      //     category map shared with 5 lazy chunks) are build-graph
+      //     changes, not a safe in-window trim. HOLD — 1.1% is one
+      //     React/TanStack minor bump from a permanently-tripped warn
+      //     (the R143 warn-fatigue risk: an always-on warn is an ignored
+      //     warn).
+      //   - The raise: per R143-L11-2's own pre-decision. The enforced
+      //     bar stays the 160 KiB hard fail (16,990 B / 10.4% room at
+      //     HEAD); the warn line regains a meaningful 10 KiB band below
+      //     it and 6,750 B (4.4%) measured headroom ≈ 5.6× the observed
+      //     per-round creep. Living docs updated in lockstep:
+      //     docs/PERFORMANCE.md + README.md.
+      const EAGER_GZIP_LIMIT_WARN = 150 * 1024; // 150 KiB warning threshold (R144-E2; was 145 KiB)
 
       console.log(
         `[bundle-budget] eager path (${eagerFiles.size} files: ${breakdown.join(" + ")}): ` +

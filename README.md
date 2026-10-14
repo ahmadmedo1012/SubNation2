@@ -299,8 +299,10 @@ in [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md):
   variant tree + usage terms: −62.6% of the catalog wire bytes.
 - **Route-chunk warm-up** — pointerenter/focusin delegation pre-imports the
   likely-next route (−150–400 ms perceived nav on 3G/4G), saveData-respecting.
-- **Eager path ≈ 143 KiB gz** (entry + vendor + CSS) under a CI budget gate —
-  145 KiB warn / 160 KiB hard-fail, enforced by the production build.
+- **Eager path ≈ 143.4 KiB gz** (entry + vendor + CSS) under a CI budget gate —
+  150 KiB warn (raised from 145 KiB at R144-E2, basis in
+  `frontend/vite.config.ts`) / 160 KiB hard-fail, enforced by the production
+  build.
 
 ---
 
