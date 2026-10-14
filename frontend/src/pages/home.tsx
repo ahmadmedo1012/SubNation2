@@ -295,10 +295,20 @@ export default function HomePage() {
   // re-order only applies when the user has NOT picked an explicit sort
   // (their ordering intent wins); Array#sort is stable, so within each
   // group the backend's default order (الأحدث) is preserved.
+  // L4-3 (R143): the re-sort is now gated on SEARCH results too — it
+  // used to key on `sort` alone, so the client-side available-first
+  // pass silently overrode the backend's relevance tiers (tier 0
+  // compound → tier 1 prefix → tier 2) for every no-explicit-sort
+  // SEARCH view: a loosely-matching stocked product (e.g. via the
+  // variant-label EXISTS arm) jumped above exact brand matches. The
+  // نفد-first UX concern is a BROWSING problem; a searcher's intent
+  // ordering is the relevance tiers — sold-out exact matches lead
+  // their own queries again (they match the intent; the نفد badge +
+  // this re-sort on browse still front stock).
   const displayProducts = useMemo(() => {
-    if (sort) return products;
+    if (sort || search) return products;
     return [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available));
-  }, [products, sort]);
+  }, [products, sort, search]);
 
   // R122 (A11 P0-adjacent): per-category stock map for the hero brand
   // chips, computed from the ALREADY-LOADED products array (presentation

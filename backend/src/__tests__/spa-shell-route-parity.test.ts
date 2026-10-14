@@ -101,23 +101,51 @@ describe("SHELL_HOME_META parity with home.tsx useSeo (B12-F1)", () => {
 // ── B12-F2 + drift guard: the static routes vs their pages ──────────────────
 
 describe("SHELL_STATIC_ROUTE_META parity with the pages' useSeo blocks (B12-F2)", () => {
+  // R143 (L12-1): /flash-sales' description became RUNTIME-GATED (a
+  // ternary feeding a `seoDescription` variable, not a useSeo literal) —
+  // it gets its own extractor below; title parity still rides the
+  // generic path.
   it.each([
     ["/flash-sales", "flash-sales.tsx"],
     ["/support", "support.tsx"],
     ["/terms", "terms.tsx"],
-  ])("%s shell title + description are VERBATIM the runtime copy", (route, page) => {
+  ])("%s shell title is VERBATIM the runtime copy", (route, page) => {
     const meta = SHELL_STATIC_ROUTE_META[route];
     expect(meta, `no SHELL_STATIC_ROUTE_META entry for ${route}`).toBeDefined();
     expect(meta.title).toBe(useSeoCopy(page, "title"));
+  });
+
+  it.each([
+    ["/support", "support.tsx"],
+    ["/terms", "terms.tsx"],
+  ])("%s shell description is VERBATIM the runtime copy", (route, page) => {
+    const meta = SHELL_STATIC_ROUTE_META[route];
     expect(meta.description).toBe(useSeoCopy(page, "description"));
   });
 
-  it("the pinned /flash-sales description is the 140-char A10-F3 copy (extraction-sanity guard)", () => {
-    // The shell shipped the pre-R124 53-char copy until B12-F2 — pin
-    // the length + a differentiator so a truncated paste fails loudly.
-    expect(SHELL_STATIC_ROUTE_META["/flash-sales"].description.length).toBe(140);
-    expect(SHELL_STATIC_ROUTE_META["/flash-sales"].description).toContain(
-      "تسليم فوري بعد الدفع في كامل ليبيا",
-    );
+  it("the /flash-sales shell description is the HONEST no-sale arm of the runtime gate (R143 L12-1)", () => {
+    // The page's seoDescription ternary: active sale → the A10-F3
+    // discount copy; no sale → the seasonal copy. The static shell
+    // cannot know sale state, so it must pin the NO-SALE arm — never
+    // promise live discounts the page may itself deny («لا عرض نشط
+    // حالياً» — the J-3/F1 truthfulness class).
+    const pageSrc = readFileSync(path.join(PAGES_DIR, "flash-sales.tsx"), "utf8");
+    const decl = pageSrc.match(/const seoDescription =[\s\S]*?;/)?.[0] ?? "";
+    const literals = [...decl.matchAll(/"([^"\\]*)"/g)].map((m) => m[1] as string);
+    expect(literals.length, "the seoDescription gate ternary vanished").toBeGreaterThanOrEqual(2);
+    const noSaleArm = literals.at(-1)!; // the `:` branch
+    expect(SHELL_STATIC_ROUTE_META["/flash-sales"].description).toBe(noSaleArm);
+  });
+
+  it("the pinned /flash-sales description is the honest seasonal copy (extraction-sanity guard)", () => {
+    // R143 (L12-1) re-pinned: the shell now carries the no-sale arm —
+    // keyword-forward, locale + currency + delivery promise intact.
+    const description = SHELL_STATIC_ROUTE_META["/flash-sales"].description;
+    expect(description.length).toBeGreaterThan(80);
+    expect(description).toContain("العروض الموسمية");
+    expect(description).toContain("تسليم فوري في كامل ليبيا");
+    // And it no longer carries the LIVE-DISCOUNT promise (the active-sale
+    // arm's differentiator — reserved for the runtime gate alone).
+    expect(description).not.toContain("بخصومات حقيقية");
   });
 });

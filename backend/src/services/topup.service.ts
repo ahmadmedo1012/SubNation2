@@ -169,7 +169,10 @@ export class TopupService {
             balanceAfter: String(newBalance),
             referenceId: t.id,
             referenceType: "wallet_topup",
-            description: `Automated topup (${provider}): ${creditAmount.toFixed(2)} د.ل`,
+            // R143 (L7-2): formatLyd — the one backend display canon
+            // (R128 B8-D3); a bare toFixed loses en-US grouping at ≥1,000
+            // («1380.00 د.ل» instead of «1,380.00 د.ل").
+            description: `Automated topup (${provider}): ${formatLyd(creditAmount)}`,
           },
           tx as unknown as typeof db,
         );
@@ -196,7 +199,8 @@ export class TopupService {
     await createNotification(
       user.id,
       "wallet",
-      `تم شحن ${creditAmount.toFixed(2)} د.ل تلقائياً`,
+      // R143 (L7-2): formatLyd — display canon, en-US grouping at ≥1,000.
+      `تم شحن ${formatLyd(creditAmount)} تلقائياً`,
       `تمت إضافة الرصيد عبر ${provider} بنجاح`,
       "/wallet",
     );
@@ -374,6 +378,50 @@ export class TopupService {
           }
         }
 
+        // R143 (L7-1): the lypay reference-optional zero-dedup window.
+        // lypay keeps payment_reference OPTIONAL by design (gateway
+        // receipts are not consistently exposed to users —
+        // routes/wallet.ts), so every guard above (advisory lock, in-tx
+        // exact check, V1-M9 partial unique, F-03 composite) is inert for
+        // ref-less lypay pendings: two deliberate submissions (or any
+        // keyless client — the Idempotency-Key header is optional) could
+        // both be approved → one real transfer credited twice. The
+        // identity dimension lypay DOES always collect is sender_account
+        // (required at creation), so this is the F-03 mirror on that axis:
+        // while approving a lypay topup that carries a sender_account, 409
+        // when an already-approved lypay sibling from the same user matches
+        // (amount, payment_network, sender_account) within 24h. Same
+        // conservative engagement as F-03 — all dimensions present, legacy
+        // account-less rows exempt, sibling ids ride the message for the
+        // operator to compare before retry/reject.
+        if (topup.paymentMethod === "lypay" && topup.senderAccount) {
+          const lypayConds = [
+            eq(walletTopupsTable.userId, topup.userId),
+            eq(walletTopupsTable.amount, topup.amount),
+            eq(walletTopupsTable.status, "approved"),
+            ne(walletTopupsTable.id, topupId),
+            eq(walletTopupsTable.paymentMethod, "lypay"),
+            eq(walletTopupsTable.senderAccount, topup.senderAccount),
+            gte(walletTopupsTable.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          ];
+          if (topup.paymentNetwork) {
+            lypayConds.push(eq(walletTopupsTable.paymentNetwork, topup.paymentNetwork));
+          }
+          const lypaySiblings = await tx
+            .select({ id: walletTopupsTable.id })
+            .from(walletTopupsTable)
+            .where(and(...lypayConds))
+            .limit(3);
+          if (lypaySiblings.length > 0) {
+            const siblingIds = lypaySiblings.map((s) => `#${s.id}`).join("، ");
+            throw new ServiceError(
+              409,
+              `تحويل مكرر: يوجد طلب شحن lypay معتمد مطابق لنفس المبلغ والشبكة وحساب المُرسل خلال 24 ساعة — تحقق من التحويل قبل أن تحاول مجدداً (الطلبات: ${siblingIds})`,
+              "DUPLICATE_LYPAY_TRANSFER",
+            );
+          }
+        }
+
         // The status flip is also guarded at the UPDATE level. The
         // SELECT above is the fast-fail check; this WHERE clause is
         // the actual race protection — two concurrent approves both
@@ -451,7 +499,8 @@ export class TopupService {
               balanceAfter: String(newBalance),
               referenceId: topup.id,
               referenceType: "wallet_topup",
-              description: `Topup approved: ${topupAmount.toFixed(2)} د.ل`,
+              // R143 (L7-2): formatLyd — display canon, en-US grouping at ≥1,000.
+              description: `Topup approved: ${formatLyd(topupAmount)}`,
             },
             tx as unknown as typeof db,
           );

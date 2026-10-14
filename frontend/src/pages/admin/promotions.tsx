@@ -4,7 +4,8 @@ import { useDirtyGuard } from "@/hooks/use-dirty-guard";
 import { useToast } from "@/hooks/use-toast";
 // R123 (E3 item 1): load/create/delete ride the session-aware wrappers
 // (a 401 mid-work gets the global «انتهت الجلسة» toast + redirect);
-// toggleActive keeps its R122 isAdminUnauthorized shape.
+// toggleActive keeps its R122 isAdminUnauthorized shape — plus the
+// L13-1 (R143) 20 s timeout via adminFetch.
 import {
   AdminSessionExpiredError,
   adminFetch,
@@ -211,7 +212,12 @@ export default function AdminPromotionsPage() {
       if (!ok) return;
     }
     try {
-      const r = await fetch(`/api/admin/flash-sales/${sale.id}`, {
+      // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
+      // action that reprices the WHOLE store used to ride a raw fetch
+      // with no busy state at all (L13-7): on a stalled link nothing
+      // happened until the browser's ~300 s timeout fed this catch.
+      // Bodies/headers/401 handling identical.
+      const r = await adminFetch(`/api/admin/flash-sales/${sale.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ is_active: next }),
@@ -235,6 +241,9 @@ export default function AdminPromotionsPage() {
       toast({ title: next ? "تم التفعيل" : "تم الإيقاف", variant: "success" });
       void load();
     } catch (err) {
+      // L13-1 (R143): the expired-session sentinel — the global handler
+      // already toasted + redirected; stay quiet.
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّر التحديث",
         description: err instanceof Error ? err.message : "خطأ غير معروف",

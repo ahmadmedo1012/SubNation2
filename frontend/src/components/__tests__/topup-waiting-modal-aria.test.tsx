@@ -26,7 +26,7 @@
  * status is driven by the mocked topups list.
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
@@ -46,6 +46,10 @@ const listTopupsMock = vi.fn();
 vi.mock("@workspace/api-client-react", () => ({
   getListTopupsQueryKey: () => ["/api/wallet/topups"],
   getGetWalletQueryKey: () => ["/api/wallet"],
+  // R143 (G-4): the decision-flip now also invalidates the Navbar's me
+  // chip + the statement ledger — the mock grows the two key factories.
+  getGetMeQueryKey: () => ["/api/me"],
+  getGetWalletLedgerQueryKey: () => ["/api/wallet/ledger"],
   useListTopups: () => listTopupsMock(),
   useGetWallet: () => ({
     data: { balance: 150, loyalty_points: 0, loyalty_tier: "bronze" },
@@ -226,5 +230,34 @@ describe("TopupWaitingModal — AppDialog mobile geometry (R116-S2, folded from 
     const stay = screen.getByRole("button", { name: "البقاء في المحفظة" });
     expect(stay.className).toContain("min-h-11");
     expect(screen.getAllByRole("button", { name: "إغلاق" })).toHaveLength(1);
+  });
+});
+
+describe("TopupWaitingModal — the decision flip refreshes every receiving surface (R143 G-4 / L5-5)", () => {
+  beforeEach(() => {
+    listTopupsMock.mockReset();
+  });
+
+  it("an approved flip invalidates wallet + me + ledger (the Navbar chip and statement stop contradicting the modal)", async () => {
+    listTopupsMock.mockReturnValue({ data: [{ ...BASE, status: "approved" }] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(client, "invalidateQueries");
+
+    render(
+      <QueryClientProvider client={client}>
+        <TopupWaitingModal topupId={1} token="test-token" onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    // The poll resolves approved on the first tick → the effect fires.
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "تمت إضافة الرصيد" })).toBeInTheDocument();
+    });
+    const keys = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
+    expect(keys.some((k) => k.includes("/api/wallet"))).toBe(true);
+    // The G-4 gap: these two used to stay stale until their own 60 s
+    // window lapsed (poll-only path — socket down).
+    expect(keys.some((k) => k.includes("/api/me"))).toBe(true);
+    expect(keys.some((k) => k.includes("/api/wallet/ledger"))).toBe(true);
   });
 });

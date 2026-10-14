@@ -3,7 +3,7 @@ import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
-import { isAdminUnauthorized } from "@/lib/admin-session";
+import { AdminSessionExpiredError, adminFetch, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
@@ -131,7 +131,12 @@ export default function AdminOrdersPage() {
       }
       credentialsInFlight.current.add(orderId);
       try {
-        const r = await fetch(`/api/admin/orders/${orderId}/credentials`, { headers });
+        // L13-1 (R143): adminFetch threads the shared 20 s timeout — a
+        // stalled link used to leave the row on «جارٍ تحميل بيانات
+        // التسليم…» for the browser's ~300 s TCP timeout (the PII read
+        // is not money, but the failed-credential state it feeds is the
+        // D-2 retry surface). Bodies/headers/401 handling identical.
+        const r = await adminFetch(`/api/admin/orders/${orderId}/credentials`, { headers });
         if (isAdminUnauthorized(r, `/api/admin/orders/${orderId}/credentials`)) return;
         if (!r.ok) {
           throw new Error(`HTTP ${r.status}`);
@@ -139,7 +144,11 @@ export default function AdminOrdersPage() {
         const body = (await r.json().catch(() => null)) as OrderCredentials | null;
         if (!body) throw new Error("bad credentials payload");
         setCredentialsCache((prev) => new Map(prev).set(orderId, body));
-      } catch {
+      } catch (err) {
+        // L13-1 (R143): the expired-session sentinel — the global handler
+        // already toasted + redirected; stay quiet (a session expiry is
+        // not a per-row credential failure).
+        if (err instanceof AdminSessionExpiredError) return;
         setFailedCredentialIds((prev) => new Set(prev).add(orderId));
         toast({
           title: "تعذّر تحميل بيانات التسليم",
@@ -374,7 +383,12 @@ export default function AdminOrdersPage() {
       // RefundService's per-order status-machine guard refuses any order
       // not in a refundable state, so a same-click network replay or an
       // accidental double-click cannot refund twice.
-      const r = await fetch("/api/admin/orders/bulk-status", {
+      // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
+      // bulk refund/status PATCH is a money mutation whose `bulkUpdating`
+      // state armed the BulkActionBar until the browser's ~300 s TCP
+      // timeout on a stalled link. Bodies/headers/401 handling identical;
+      // the 207 partial branch below parses by hand, untouched.
+      const r = await adminFetch("/api/admin/orders/bulk-status", {
         method: "PATCH",
         headers: withIdempotencyKey(jsonHeaders, generateIdempotencyKey()),
         body: JSON.stringify({ ids: Array.from(selectedIds), status }),
@@ -442,6 +456,10 @@ export default function AdminOrdersPage() {
       // not just the current page's exact key.
       qc.invalidateQueries({ queryKey: getListAdminOrdersQueryKey() });
     } catch (err) {
+      // L13-1 (R143): the expired-session sentinel — the global handler
+      // already toasted + redirected; stay quiet (finally still re-arms
+      // the BulkActionBar).
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         description:

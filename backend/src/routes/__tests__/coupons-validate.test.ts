@@ -208,6 +208,28 @@ describe("POST /api/coupons/validate — the rejection matrix (all INVALID_DATA 
     }
   });
 
+  it("R143 (L7-2): a min_order_amount ≥1,000 renders GROUPED (formatLyd canon, not bare toFixed)", async () => {
+    await seedCoupon({
+      code: "MIN1380",
+      type: "percentage",
+      value: "10",
+      isActive: true,
+      minOrderAmount: "1380.00",
+    });
+    const { url, close } = await listen(app);
+    try {
+      const res = await validate(url, await userToken(), { code: "MIN1380", order_amount: 25 });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      // M17 display canon (R128 B8-D3): en-US grouping like the web's
+      // formatCurrency. A reverted toFixed(2) answers «1380.00 د.ل».
+      expect(String(res.body.error)).toContain("1,380.00 د.ل");
+      expect(String(res.body.error)).not.toContain("1380.00 د.ل");
+    } finally {
+      close();
+    }
+  });
+
   it("a full-coverage fixed coupon (final would be 0) → 400 INVALID_DATA, never valid:true final 0", async () => {
     await seedCoupon({ code: "FULL50", type: "fixed", value: "50", isActive: true });
     const { url, close } = await listen(app);

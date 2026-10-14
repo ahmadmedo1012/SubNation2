@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { adminFetch } from "@/lib/admin-session";
 import { COOKIE_AUTH_SENTINEL, useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { useAdminLogin } from "@workspace/api-client-react";
@@ -62,7 +63,13 @@ export default function AdminLoginPage() {
    */
   async function establishAdminSession(): Promise<boolean> {
     try {
-      const res = await fetch("/api/admin/probe", {
+      // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
+      // session bootstrap probe is AUTH_EXEMPT (401s are the login
+      // form's business), so this is a pure timeout add: a stalled link
+      // used to leave the submit button's success path hanging until
+      // the browser's ~300 s TCP timeout before surfacing the honest
+      // retry copy below.
+      const res = await adminFetch("/api/admin/probe", {
         credentials: "include",
         headers: { Accept: "application/json" },
       });
@@ -148,7 +155,11 @@ export default function AdminLoginPage() {
     // the keyboard on mobile.
     setError("");
     try {
-      const res = await fetch("/api/admin/login/verify-2fa", {
+      // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
+      // verify-2fa POST is AUTH_EXEMPT (a wrong code is the form's own
+      // 401 business), so this is a pure timeout add for the
+      // `isVerifying` spinner on the submit button.
+      const res = await adminFetch("/api/admin/login/verify-2fa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ temp_token: tempToken, code: otpCode }),
@@ -229,7 +240,7 @@ export default function AdminLoginPage() {
             screen's ONE prominent surface, so it takes the prominent-card
             recipe instead of a raw shadow token. Static, GPU-free,
             pointer-events-none — depth cue, not decoration. */}
-        <div className="relative overflow-hidden bg-card border border-border/60 rounded-2xl p-6 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+        <div className="relative overflow-hidden bg-card border border-border/60 rounded-2xl p-6 shadow-calm">
           <div className="absolute inset-0 ambient-wash pointer-events-none" />
           <div className="hairline-glow" />
           <form onSubmit={handleSubmit} className="space-y-4">

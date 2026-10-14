@@ -24,6 +24,54 @@ export class FirebaseAuthError extends Error {
   }
 }
 
+// ── R143 (L6-3): bounded Firebase verification ──────────────────────────────
+//
+// The hang-class hardening rounds (R93 R1/R2 Redis 500ms, R93 R4 DB
+// statement_timeout, telegram 5s/10s, openwa 8s, alerting 10s, copilot
+// 60s/90s) never reached firebase-admin — `auth.verifyIdToken` was the
+// LAST unbounded external call in the request path. A network partition
+// that black-holes googleapis.com while Postgres/Redis stay healthy
+// leaves both credential-minting endpoints (POST /api/auth/firebase/
+// session + /refresh) pending on the SDK's internal retry budget; the
+// storefront login button spins, and each stalled attempt also burns an
+// authLimiter slot (10/15min) for minutes. The race converts the stall
+// into the honest 503 outage signal the login UI already renders.
+const DEFAULT_FIREBASE_VERIFY_TIMEOUT_MS = 10_000;
+
+function firebaseVerifyTimeoutMs(): number {
+  const raw = Number(process.env.FIREBASE_VERIFY_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_FIREBASE_VERIFY_TIMEOUT_MS;
+}
+
+/** R143 (L6-3): verifyIdToken exceeded FIREBASE_VERIFY_TIMEOUT_MS. */
+export class FirebaseVerifyTimeoutError extends FirebaseAuthError {
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number) {
+    super(
+      503,
+      "تعذّر التحقق من الرمز: انتهت مهلة الاتصال بخدمة Firebase. تحقق من اتصال الشبكة وحاول مجدداً.",
+    );
+    this.name = "FirebaseVerifyTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/** Race the SDK verification against the deadline (withRedisCommandTimeout idiom). */
+async function raceFirebaseVerifyTimeout<T>(promise: Promise<T>): Promise<T> {
+  const timeoutMs = firebaseVerifyTimeoutMs();
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new FirebaseVerifyTimeoutError(timeoutMs)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * F-003 (security audit 004) — explicit consent required to link a
  * fresh Firebase identity to an existing SubNation user. Thrown by
@@ -186,26 +234,34 @@ export async function verifyFirebaseIdToken(idToken: string, checkRevoked = fals
     );
   }
 
+  // F-002 (security audit 004) — forward the caller's `checkRevoked`
+  // intent to the SDK. Previously this was hardcoded to `false`, which
+  // silently dropped the parameter even when callers (`routes/auth.ts`
+  // login + admin path) passed `true` expecting Firebase to enforce
+  // revocation. With the SDK call honoring the parameter, callers that
+  // explicitly want revocation enforcement get it; callers that omit
+  // the second arg default to `false` and incur no extra round-trip.
+  //
+  // The original "compatibility" concern (extra round-trip causing 401s
+  // when the service account has permission issues) is mitigated by:
+  // (a) the SDK's verifyIdToken already requires the same service-
+  //     account permissions for the basic verification call, so a
+  //     revocation check that fails for permission reasons would be
+  //     symptomatic of a broken service-account config we'd want to
+  //     surface, not hide;
+  // (b) callers default to `checkRevoked=false` and only opt in for
+  //     security-sensitive entry points (initial login, admin auth).
+  //
+  // R143 (L6-3): the SDK call is raced against
+  // FIREBASE_VERIFY_TIMEOUT_MS (default 10s) — the last unbounded
+  // external call in the request path (see the block comment at the
+  // FirebaseVerifyTimeoutError declaration).
   try {
-    // F-002 (security audit 004) — forward the caller's `checkRevoked`
-    // intent to the SDK. Previously this was hardcoded to `false`, which
-    // silently dropped the parameter even when callers (`routes/auth.ts`
-    // login + admin path) passed `true` expecting Firebase to enforce
-    // revocation. With the SDK call honoring the parameter, callers that
-    // explicitly want revocation enforcement get it; callers that omit
-    // the second arg default to `false` and incur no extra round-trip.
-    //
-    // The original "compatibility" concern (extra round-trip causing 401s
-    // when the service account has permission issues) is mitigated by:
-    // (a) the SDK's verifyIdToken already requires the same service-
-    //     account permissions for the basic verification call, so a
-    //     revocation check that fails for permission reasons would be
-    //     symptomatic of a broken service-account config we'd want to
-    //     surface, not hide;
-    // (b) callers default to `checkRevoked=false` and only opt in for
-    //     security-sensitive entry points (initial login, admin auth).
-    return await auth.verifyIdToken(idToken, checkRevoked);
+    return await raceFirebaseVerifyTimeout(auth.verifyIdToken(idToken, checkRevoked));
   } catch (err: unknown) {
+    // The timeout is an honest 503 outage signal, NOT a token failure —
+    // never fold it into the generic 401 mapping below.
+    if (err instanceof FirebaseVerifyTimeoutError) throw err;
     const error = err as { code?: string; message?: string; errorInfo?: { code?: string } };
     const errorCode = error.code || error.errorInfo?.code;
     logger.error(

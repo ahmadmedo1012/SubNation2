@@ -12,8 +12,10 @@
  *    "no tickets" (the exact error-as-empty class round-92 claimed
  *    closed for tickets). Now: distinct error card with retry.
  *
- * `fetch` is stubbed per-test (support.tsx uses raw fetch, not the
- * orval client); `@/lib/auth` and `@/hooks/use-toast` are mocked at the
+ * `fetch` is stubbed per-test with REAL Response objects (L6-1/R143:
+ * the page rides the generated orval client, whose customFetch reads
+ * .headers + .text() — the old ok/json-only stubs lacked both);
+ * `@/lib/auth` and `@/hooks/use-toast` are mocked at the
  * module boundary.
  */
 
@@ -31,14 +33,15 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** Real Response objects — customFetch (behind the generated client)
+ * reads .headers + .text(), which the old ok/json-only stubs lacked
+ * (L6-1/R143). */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+  const { ok = true, status = ok ? 200 : 500, body = {} } = over;
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const fetchMock = vi.fn();
@@ -157,5 +160,89 @@ describe("SupportPage — failures are errors, never crashes or fake empties (93
 
     expect(await screen.findByText("لا توجد تذاكر دعم")).toBeInTheDocument();
     expect(screen.queryByText("تعذّر تحميل التذاكر")).not.toBeInTheDocument();
+  });
+});
+
+// ── L6-1 (R143): non-JSON failure bodies never leak English ────────────────
+// The two WRITERS rode a raw fetch with an UNGUARDED r.json() — a proxy
+// 502 answering HTML threw SyntaxError("Unexpected token '<'…") BEFORE
+// the !res.ok check, and the catch rendered err.message: English stack
+// text inside the Arabic-only destructive toast. The generated client
+// (customFetch + getErrorMessage's 96-F7 leak guard) collapses every
+// non-Arabic body to the Arabic network fallback.
+describe("SupportPage — a proxy 502 answering HTML never leaks English into the Arabic toast (L6-1)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    toastSpy.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function html502() {
+    return new Response("<html><body><h1>502 Bad Gateway</h1></body></html>", {
+      status: 502,
+      headers: { "content-type": "text/html" },
+    });
+  }
+
+  it("handleCreate: the create POST's 502 HTML body surfaces the Arabic network fallback and the submit state clears", async () => {
+    fetchMock.mockResolvedValueOnce(resLike({ body: TICKET_LIST })).mockImplementationOnce(html502);
+
+    renderPage();
+    fireEvent.click(await screen.findByText("تذكرة جديدة"));
+    fireEvent.change(await screen.findByLabelText("عنوان المشكلة *"), {
+      target: { value: "عنوان تجريبي" },
+    });
+    fireEvent.change(await screen.findByLabelText("تفاصيل المشكلة *"), {
+      target: { value: "نص تجريبي" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "إرسال التذكرة" }));
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "خطأ", variant: "destructive" }),
+      );
+    });
+    // Arabic-only copy: no English SyntaxError text, no HTML fragment,
+    // no status-line leak.
+    const description = String(toastSpy.mock.calls.at(-1)?.[0]?.description ?? "");
+    expect(description).toContain("تعذّر");
+    expect(description).not.toMatch(/[A-Za-z<]/);
+    // The in-flight state cleared — the button re-enables (the old raw
+    // fetch could hang the spinner for the browser's ~300 s TCP budget).
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "إرسال التذكرة" })).toBeEnabled(),
+    );
+  });
+
+  it("handleReply: the reply POST's 502 HTML body surfaces the Arabic network fallback and the draft survives", async () => {
+    fetchMock
+      .mockResolvedValueOnce(resLike({ body: TICKET_LIST }))
+      .mockResolvedValueOnce(resLike({ body: TICKET_DETAIL }))
+      .mockImplementationOnce(html502);
+
+    renderPage();
+    fireEvent.click(await screen.findByText("مشكلة في الطلب"));
+    const input = await screen.findByLabelText("نص الرد على التذكرة");
+    fireEvent.change(input, { target: { value: "رد تجريبي" } });
+    fireEvent.click(screen.getByRole("button", { name: "إرسال الرد" }));
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "خطأ", variant: "destructive" }),
+      );
+    });
+    const description = String(toastSpy.mock.calls.at(-1)?.[0]?.description ?? "");
+    expect(description).toContain("تعذّر");
+    expect(description).not.toMatch(/[A-Za-z<]/);
+    // The draft SURVIVES the failed send — the retry affordance stays
+    // armed with the user's words.
+    expect((screen.getByLabelText("نص الرد على التذكرة") as HTMLInputElement).value).toBe(
+      "رد تجريبي",
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "إرسال الرد" })).toBeEnabled());
   });
 });

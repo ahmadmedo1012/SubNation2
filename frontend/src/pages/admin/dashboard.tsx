@@ -418,7 +418,7 @@ export default function AdminDashboardPage() {
             <SkeletonText
               count={6}
               wrapperClassName="grid grid-cols-2 lg:grid-cols-3 gap-3"
-              className="bg-card border border-border/60 rounded-2xl h-28 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"
+              className="bg-card border border-border/60 rounded-2xl h-28 shadow-calm"
               lastShorter={false}
             />
           ) : (

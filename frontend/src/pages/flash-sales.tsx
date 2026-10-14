@@ -109,7 +109,7 @@ function FlashCard({
         className={`float-in ${stagger}
           bg-card border border-border/60 rounded-2xl overflow-hidden
           transition-all duration-280 ease-out
-          shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]
+          shadow-calm
           card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
           cursor-pointer group`}
       >
@@ -201,7 +201,15 @@ function FlashCard({
                 maps it through categoryLabel(). */}
             {product.category ? categoryLabel(product.category) : "عروض"}
           </div>
-          <div className="font-bold text-sm leading-snug mb-2.5 truncate group-hover:text-primary-text transition-colors">
+          <div
+            dir="auto"
+            className="font-bold text-sm leading-snug mb-2.5 truncate text-right group-hover:text-primary-text transition-colors"
+          >
+            {/* R143 (L3-2): dir="auto" + text-right — the ProductCard F-1
+                recipe; product names are English by design, and a pure-Latin
+                name truncates from the wrong end in an RTL block (the
+                ellipsis eats the brand head — the uniquely identifying
+                token). Arabic names resolve rtl and render identically. */}
             {product.name}
           </div>
           <div className="flex items-baseline gap-2">
@@ -276,15 +284,31 @@ export default function FlashSalesPage() {
   // title/description and zero JSON-LD. The ItemList LD names the
   // on-sale products (home.tsx pattern: emitted only once the list is
   // loaded — an empty ItemList reads as thin structured data).
+  //
+  // L12-1 (R143): the description is now data-aware exactly like
+  // product-seo's J-3 gate — the R124 copy promised «خصومات حقيقية…»
+  // unconditionally while the page honestly rendered «لا عرض نشط حالياً»
+  // whenever the singleton is null (live: flash_sale=null since
+  // 2026-10-14), the exact J-3/F1 truthfulness class on a
+  // sitemap-advertised money page (priority 0.8, changefreq daily).
+  // Neutral hub copy when no sale is live (or the window just closed —
+  // the page shows «انتهى هذا العرض» there); the discount copy only
+  // while a real sale runs. The backend SHELL twin
+  // (spa-shell.ts SHELL_STATIC_ROUTE_META) is a static route family and
+  // cannot be data-aware — backend lane owns that mirror; the
+  // recommendation on record is neutral hub copy there too.
+  const seoDescription =
+    activeSale && !saleEnded
+      ? "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا."
+      : "صفحة عروض SubNation — تابع العروض الموسمية على الاشتراكات الرقمية بالدينار الليبي مع تسليم فوري في كامل ليبيا.";
   const seoBlock = useSeo({
     title: "عروض فلاش — SubNation",
     // R124 (A10-F3): 53 → 140 chars — /flash-sales is an indexable money
     // page (sitemap priority 0.8, changefreq daily); the old half-length
     // description wasted the SERP snippet. Same register as home/category:
     // names what's discounted, the currency, the delivery promise, the
-    // locale.
-    description:
-      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
+    // locale. (The L12-1 gate above owns WHICH register renders.)
+    description: seoDescription,
     type: "website",
     path: "/flash-sales",
     locale: "ar",

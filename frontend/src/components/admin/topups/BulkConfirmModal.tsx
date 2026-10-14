@@ -66,19 +66,32 @@ export function BulkConfirmModal({
       size="sm"
       footer={
         <>
+          {/* R143 (L2-3): the bulk money-confirm pair joins the 44px
+              floor the useConfirm twin enforces — h-9 (36px) sat under
+              the money-path tap target, and RejectModal's J-1 note
+              claiming "BulkConfirmModal already enforce" was false at
+              HEAD. active:scale dropped (the Button base's
+              press-spring owns the press); labels/handlers/disabled
+              wiring byte-identical. */}
           <Button
             variant="outline"
-            className="flex-1 h-9 active:scale-[0.97]"
+            className="flex-1 min-h-11"
             onClick={onCancel}
             disabled={loading}
           >
             إلغاء
           </Button>
+          {/* R143 (L2-3): the reject branch rides variant="destructive"
+              (the J-1 AA --destructive-surface pair — ONE register with
+              RejectModal's confirm; the hand-rolled fill + /20 shadow
+              retire); the approve branch keeps the success-surface
+              composition (button.tsx ships no success variant). */}
           <Button
-            className={`flex-1 h-9 active:scale-[0.97] shadow-sm ${
+            variant={action === "reject" ? "destructive" : "default"}
+            className={`flex-1 min-h-11 ${
               action === "approve"
-                ? "bg-status-success-surface hover:bg-status-success-surface/90 text-white shadow-status-success-surface/20"
-                : "bg-destructive-surface hover:bg-destructive-surface/90 text-destructive-foreground shadow-destructive/20"
+                ? "bg-status-success-surface hover:bg-status-success-surface/90 text-white shadow-sm shadow-status-success-surface/20"
+                : ""
             }`}
             onClick={() => onConfirm(note)}
             disabled={loading}
@@ -113,7 +126,13 @@ export function BulkConfirmModal({
                 ? "مثال: مطابقة كشوف الحسابات المسائية..."
                 : "مثال: مراجع غير صحيح، إشعارات مكررة..."
             }
-            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            /* R143 (L2-5): the money-path note field joins the input.tsx
+               focus idiom — focus:ring-1 focus:ring-primary was a 1px
+               full-opacity ring compositing under the 3:1 indicator
+               floor the shared Input's 2px ring-ring carries (F3-01).
+               focus-visible: (not focus:) matches the primitive; the
+               field-local ⌘/Ctrl+Enter wiring below is untouched. */
             dir="rtl"
             disabled={loading}
             onKeyDown={(e) => {

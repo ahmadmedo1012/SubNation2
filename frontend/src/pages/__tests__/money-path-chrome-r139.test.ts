@@ -196,9 +196,13 @@ describe("R138 recipe — CartSummaryAside receipt rhythm (hairlines + weight, t
     // contact line + contained 10px/28px ambient). A shadow-sm comeback
     // or a primary-tinted shadow breaks the exact string; border/60 is
     // the family edge the money path's three cards share.
+    // R143 (L2-1): the recipe tokenized — shadow-calm (index.css,
+    // theme-aware: dark byte-identical, .light inside the 6–14%
+    // ceiling); the arbitrary literal must not come back.
     expect(SUMMARY_CODE).toContain(
-      "bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
+      "bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-calm",
     );
+    expect(SUMMARY_CODE).not.toContain("0_10px_28px");
   });
 });
 
@@ -386,10 +390,10 @@ describe("R138 recipe — cart line-item hierarchy (the inversion fix: money lea
     // the exact strings; hover stays border-only (a row is line data, not
     // a clickable tile — no hover elevation may be invented either).
     expect(CART_CODE).toContain(
-      "bg-card border border-border/60 rounded-xl p-3.5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] hover:border-border transition-all duration-200 group",
+      "bg-card border border-border/60 rounded-xl p-3.5 shadow-calm hover:border-border transition-all duration-200 group",
     );
     expect(CART_CODE).toContain(
-      "bg-card border border-border/60 rounded-2xl p-5 slide-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
+      "bg-card border border-border/60 rounded-2xl p-5 slide-up shadow-calm",
     );
   });
 });
@@ -517,9 +521,7 @@ describe("R138 recipe — the PDP sticky buy bar (premium-checkout-bar chrome, t
     expect(PRODUCT_CODE).toContain(
       "shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)]",
     );
-    expect(PRODUCT_CODE).not.toContain(
-      "shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
-    );
+    expect(PRODUCT_CODE).not.toContain("shadow-calm");
   });
 });
 

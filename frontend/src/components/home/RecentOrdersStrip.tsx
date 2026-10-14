@@ -120,7 +120,15 @@ export function RecentOrdersStrip({
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold truncate group-hover:text-primary-text transition-colors duration-150">
+                  {/* R143 (L3-2): dir="auto" + text-right — the ProductCard
+                      F-1 recipe: pure-Latin product names truncate from
+                      the wrong end in an RTL block (the ellipsis eats the
+                      brand head); text-right re-anchors the visual edge.
+                      Arabic names resolve rtl — zero change. */}
+                  <div
+                    dir="auto"
+                    className="text-xs font-bold truncate text-right group-hover:text-primary-text transition-colors duration-150"
+                  >
                     {order.product_name}
                   </div>
                   <div className="flex items-center gap-1 mt-0.5">

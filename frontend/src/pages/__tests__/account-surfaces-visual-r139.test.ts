@@ -63,9 +63,14 @@ const ORDER_DETAIL = stripComments(read("src/pages/order-detail.tsx"));
 
 describe("R139-l — wallet: the balance hero is the page's ONE atmosphere moment", () => {
   it("rides the solid /60 card + the two-layer calm elevation + the ambient-wash/hairline-glow pair", () => {
+    // R143 (L2-1): the calm elevation tokenized — shadow-calm
+    // (index.css, theme-aware: dark byte-identical to the r138 literal,
+    // .light re-tuned inside DESIGN.md's 6–14% ceiling); the arbitrary
+    // literal must not come back.
     expect(BALANCE).toContain(
-      'className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"',
+      'className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-calm"',
     );
+    expect(BALANCE).not.toContain("0_10px_28px");
     expect(BALANCE).toContain(
       '<div className="absolute inset-0 ambient-wash pointer-events-none" />',
     );
@@ -269,9 +274,7 @@ describe("R139-l — orders: the calm filter-pill dialect + the family card hove
 
 describe("R139-l — order-detail: the receipt terminal + de-hand-rolled CTAs", () => {
   it("the header card rides the two-layer calm elevation on the /60 edge", () => {
-    expect(ORDER_DETAIL).toContain(
-      "border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
-    );
+    expect(ORDER_DETAIL).toContain("border-border/60 rounded-2xl overflow-hidden shadow-calm");
     expect(ORDER_DETAIL).not.toContain("shadow-lg shadow-black/10");
   });
 

@@ -143,3 +143,36 @@ describe("LinkConsentModal — guarded dismiss (single-flight loading)", () => {
     expect(screen.getByText("جارٍ الربط…")).toBeInTheDocument();
   });
 });
+
+describe("LinkConsentModal — canonical Button chrome (R143 L2-4)", () => {
+  it("the confirm rides the shared Button default variant — the pre-r138 raw stack stays retired", () => {
+    renderModal();
+    const confirm = screen.getByRole("button", { name: "تأكيد الربط" });
+    // R143 (L2-4): the raw hand-roll (flat bg-primary +
+    // hover:bg-primary/90 + shadow-md shadow-primary/22 — below the
+    // documented /25–40 interactive-glow band) is gone; the shared
+    // primitive owns the gradient/glow/press. min-h-11 = the
+    // money-adjacent 44px floor the topups dialogs ride.
+    expect(confirm.className).toContain("from-primary");
+    expect(confirm.className).toContain("to-primary/95");
+    expect(confirm.className).toContain("shadow-primary/25");
+    expect(confirm.className).toContain("min-h-11");
+    expect(confirm.className).not.toContain("shadow-primary/22");
+    // The bare flat fill must not return alongside the gradient.
+    expect(confirm.className).not.toMatch(/(^|\s)bg-primary(\s|$)/);
+    // The shared focus recipe came along with the primitive.
+    expect(confirm.className).toContain("focus-visible:ring-2");
+    expect(confirm.className).toContain("focus-visible:ring-ring");
+  });
+
+  it("the cancel rides the family outline variant at the same 44px floor", () => {
+    renderModal();
+    const cancel = screen.getByRole("button", { name: "إلغاء" });
+    // The topups dialogs' cancel register (variant="outline" +
+    // min-h-11) — footer symmetry inside the modal family.
+    expect(cancel.className).toContain("bg-transparent");
+    expect(cancel.className).toContain("min-h-11");
+    expect(cancel.className).not.toContain("bg-card");
+    expect(cancel.className).not.toMatch(/(^|\s)h-10(\s|$)/);
+  });
+});

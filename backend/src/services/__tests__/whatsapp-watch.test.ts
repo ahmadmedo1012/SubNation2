@@ -184,6 +184,15 @@ describe("WhatsApp channel watch — observation-driven state machine (97-F3 + 2
     expect(logAdminAlertMock).toHaveBeenCalledTimes(1);
     expect(dedupeKeyOf(0)).toBe("whatsapp:channel:unreachable");
     expect(String(logAdminAlertMock.mock.calls[0]![1])).toContain("قابلة للوصول");
+    // R143 (L14-3): the operator guidance must point at the LIVE platform.
+    // Render was fully retired 2026-10-05 (.hermes.md) — a retire-platform
+    // reference wastes outage minutes on a dead dashboard. The production
+    // path is the Coolify `openwa` service (WHATSAPP_OPERATIONS.md).
+    const unreachableMessage = String(logAdminAlertMock.mock.calls[0]![2]);
+    expect(unreachableMessage).toContain("Coolify");
+    expect(unreachableMessage).toContain("openwa");
+    expect(unreachableMessage).toContain("http://openwa:2785/healthz");
+    expect(unreachableMessage).not.toContain("Render");
   });
 
   it("mid-episode degradation (qr_ready → failed) — the NEW status gets its own alert", async () => {

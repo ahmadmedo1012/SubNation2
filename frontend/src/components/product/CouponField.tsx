@@ -61,10 +61,15 @@ export function CouponField({
                the shared Input's iOS-zoom-safe text-base → a 14px coupon
                field on the money path zoomed the whole page on focus.
                text-base under md restores 16px; autoComplete/enterKeyHint
-               mirror checkout's coupon field (Enter already validates). */
+               mirror checkout's coupon field (Enter already validates).
+               R143 (L3-4): the md:text-sm half of that fix re-applied
+               the A13-F7 bug it was fixing — a bare md: override beats
+               the shared Input's pointer:fine guard on coarse-pointer
+               ≥768px viewports (iPad-class Safari re-zooms on focus);
+               the guard form below restores the input.tsx:43 contract. */
             autoComplete="off"
             enterKeyHint="send"
-            className="pr-9 h-11 text-base md:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
+            className="pr-9 h-11 text-base [@media(min-width:48rem)_and_(pointer:fine)]:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
             disabled={!!couponResult}
           />
         </div>

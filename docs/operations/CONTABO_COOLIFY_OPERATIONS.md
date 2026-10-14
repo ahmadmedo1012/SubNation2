@@ -76,8 +76,11 @@ Deploy flow (SubNation resource):
    with the new `GIT_SHA`.
 3. Watch the deploy log; on success verify:
    - `curl -s https://subnation.ly/api/healthz` → 200,
-   - the deployed-SHA gate: `/api/healthz` `.version` equals the `GIT_SHA`
-     you deployed (COOLIFY_FINAL_SETUP §8; `MIGRATION_RUNBOOK.md` Ph. 4),
+   - the deployed-SHA gate: the SENTRY_RELEASE id baked in the served
+     `/assets/instrument-*.js` chunk (or the admin-gated
+     `/api/healthz/ready` `.version`) equals the `GIT_SHA` you deployed
+     (R143 truth fix: the PUBLIC healthz carries no `.version` — the old
+     jq gate printed `null`; COOLIFY_FINAL_SETUP §8),
    - `docker ps` shows the container `Up (healthy)`.
 4. OpenWA deploys independently (image resource): switch the tag to the new
    `sha-<short>` and redeploy — order is free, SubNation's OTP path is

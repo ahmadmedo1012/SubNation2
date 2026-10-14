@@ -21,6 +21,14 @@ import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
 import { fireThrottledMaintenance } from "../../lib/opportunistic";
 import { runStockSweep } from "../../jobs/stockWatcher";
+// R143 (L16-1): the pure field-bound validators moved to
+// products-field-limits.ts (the route crossed the 1,000-line ceiling
+// mid-round — see that module for the contracts).
+import {
+  ACCOUNT_PASSWORD_PLAINTEXT_MAX,
+  PRODUCT_FIELD_LIMITS,
+  productFieldError,
+} from "./products-field-limits";
 
 const router = Router();
 
@@ -31,49 +39,6 @@ router.use((_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
 });
-
-/**
- * B2-F3 (R111, round-111 B2 audit): the generated Create/UpdateProductBody
- * schemas carry no string bounds, but products.name / category / image_url
- * are varchar(255/100/1000) — an over-long value 500'd (22001) instead of
- * answering 400. Handler-enforced bounds (the wallet.ts payment_reference
- * pattern): the generated zod stays the looser outer perimeter, the
- * handler enforces the COLUMN-aligned semantic bound with a clear Arabic
- * message. product-variants.ts already bounds its labels/sku the same
- * way — this closes the inconsistency the audit flagged.
- */
-const PRODUCT_FIELD_LIMITS = {
-  name: { max: 255, label: "اسم المنتج" },
-  category: { max: 100, label: "الفئة" },
-  image_url: { max: 1000, label: "رابط الصورة" },
-} as const;
-
-/** Returns an Arabic field error for the first over-limit string, else null. */
-function productFieldError(
-  fields: Partial<Record<keyof typeof PRODUCT_FIELD_LIMITS, string | null | undefined>>,
-): string | null {
-  for (const key of Object.keys(PRODUCT_FIELD_LIMITS) as Array<keyof typeof PRODUCT_FIELD_LIMITS>) {
-    const value = fields[key];
-    const { max, label } = PRODUCT_FIELD_LIMITS[key];
-    if (typeof value === "string" && value.length > max) {
-      return `${label} طويل جداً (الحد الأقصى ${max} حرف)`;
-    }
-  }
-  return null;
-}
-
-/**
- * R119-B1 (A1 F-4): the R118 crypto v2 format ("v2:iv:tag:ct") is 3 chars
- * longer than v1 at the same plaintext length. Its fixed overhead is 61
- * chars ("v2:" 3 + hex IV 24 + ":" + hex auth tag 32 + ":"), so a
- * varchar(512) inventory.account_password column fits 61 + 2L ≤ 512 →
- * L ≤ 225 plaintext chars (v1 fit 227). Fresh ingest had NO length cap —
- * a 226/227-char password encrypted fine, then 500'd (22001) at the
- * INSERT. Handler-enforced bound, the same B2-F3 discipline as
- * PRODUCT_FIELD_LIMITS above; the v1→v2 re-encrypt job length-guards the
- * legacy rows separately (jobs/reencrypt-v1-credentials.ts).
- */
-const ACCOUNT_PASSWORD_PLAINTEXT_MAX = 225;
 
 router.get("/products", requireAdmin, async (req, res) => {
   // V4: the admin command palette sends ?search= — previously ignored
@@ -600,27 +565,55 @@ router.post("/products/:id/inventory/set-count", requireAdmin, async (req, res) 
   }
 
   const surplus = unsold - target;
+  let removed = 0;
   if (surplus > 0) {
     // Oldest-first (lowest id) — the units that have sat the longest are
     // the least valuable to keep.
-    const oldest = await db
-      .select({ id: inventoryTable.id })
-      .from(inventoryTable)
-      .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
-      .orderBy(asc(inventoryTable.id))
-      .limit(surplus);
-    await db.delete(inventoryTable).where(
-      inArray(
-        inventoryTable.id,
-        oldest.map((r) => r.id),
-      ),
-    );
+    //
+    // R143 (L9-3): the trim is now a TRANSACTION and the DELETE re-asserts
+    // `is_sold = false`. The checkout claim takes the SAME oldest-first
+    // rows (manual.provider.ts's two ordered FOR UPDATE SKIP LOCKED pools),
+    // so the old check-then-act DELETE could swallow a unit a buyer
+    // claimed between the two statements — `orders.inventory_id` flipped
+    // to NULL via ON DELETE SET NULL and the sold-at history row vanished.
+    // The guarded predicate converges the race to the honest outcome: the
+    // claimed unit survives, fewer rows are trimmed than requested, and
+    // the audit log below records the ACTUAL removed count.
+    removed = await db.transaction(async (tx) => {
+      const oldest = await tx
+        .select({ id: inventoryTable.id })
+        .from(inventoryTable)
+        .where(and(eq(inventoryTable.productId, productId), eq(inventoryTable.isSold, false)))
+        .orderBy(asc(inventoryTable.id))
+        .limit(surplus);
+      const deleted = await tx
+        .delete(inventoryTable)
+        .where(
+          and(
+            inArray(
+              inventoryTable.id,
+              oldest.map((r) => r.id),
+            ),
+            // Re-assert the SELECT's condition at DELETE time — the
+            // conditional-claim idiom (E-1 / manual.provider.ts).
+            eq(inventoryTable.isSold, false),
+          ),
+        )
+        .returning({ id: inventoryTable.id });
+      return deleted.length;
+    });
+    if (removed < surplus) {
+      logger.warn(
+        { productId, requested: surplus, removed },
+        "set-count trim: units were sold while trimming — trimmed the unsold remainder only",
+      );
+    }
   }
 
   void writeAuditLog(req, "product.inventory.set-count", "product", productId, {
     before: unsold,
     after: target,
-    removed: surplus,
+    removed,
   });
 
   // R126-L4 (A4-B2): ONLY when surplus > 0 — a set-count that matched the

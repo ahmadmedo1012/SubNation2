@@ -44,8 +44,11 @@ export function ProductEditorCard({
        the resting border-border/60 family + the two-layer calm elevation
        (neutral black, the prominent-card recipe): this is the page's
        one prominent card, and the form's activity is carried by its
-       contents, not a colored edge. */
-    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+       contents, not a colored edge.
+       R143 (L2-1): the calm elevation is now the theme-aware
+       `shadow-calm` token in index.css (dark byte-identical; .light
+       re-tuned inside the documented 6–14% ceiling). */
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-calm">
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-muted/15">
         <div>
           <h2 className="font-bold text-sm">{editingId ? "تعديل المنتج" : "إضافة منتج جديد"}</h2>
@@ -251,7 +254,11 @@ export function ProductEditorCard({
             id="product-editor-category"
             value={form.category}
             onChange={(e) => onFormChange((f) => ({ ...f, category: e.target.value }))}
-            className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+            /* R143 (L2-5): joins the input.tsx focus idiom — the old
+               focus:ring-1 focus:ring-primary was a 1px ring compositing
+               under the 3:1 indicator floor; 2px ring-ring +
+               ring-offset-background matches the shared Input (F3-01). */
+            className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm h-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
           >
             {CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -332,7 +339,11 @@ export function ProductEditorCard({
             rows={3}
             dir="rtl"
             placeholder="وصف مخصص يظهر تحت عنوان الصفحة في نتائج البحث…"
-            className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+            /* R143 (L2-5): joins the input.tsx focus idiom — the old
+               focus:ring-1 focus:ring-primary was a 1px ring compositing
+               under the 3:1 indicator floor; 2px ring-ring +
+               ring-offset-background matches the shared Input (F3-01). */
+            className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm resize-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
           />
           <p className="text-3xs mt-1 text-muted-foreground">
             يظهر كوصف صفحة المنتج في محركات البحث — فارغ يعني الوصف الافتراضي ({" "}

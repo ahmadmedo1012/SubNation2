@@ -15,6 +15,8 @@
  */
 
 import { render } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ProductCardShell, RouteSkeleton } from "@/components/ui/route-skeleton";
 
@@ -105,8 +107,9 @@ describe("RouteSkeleton — r138 register parity (R139)", () => {
     expect(sections[0].querySelector(".space-y-4 > .h-7")).toBeNull();
     // The 16:9 media plane carries the real page's bg-muted/60 shelf
     // marker (render-neutral riding tint — see ProductCardShell above);
-    // the section chrome (lg:border-border/55 + lg:shadow-xl) is
-    // verified parity with ProductMediaSection.
+    // the section chrome (lg:border-border/60 + lg:shadow-xl) is
+    // verified parity with ProductMediaSection (R143 L2-2: /55 → /60 on
+    // both sides of the mirror — the r139 resting card-frame value).
     const media = sections[0].querySelector('[class*="aspect-[16/9]"]');
     expect(media).toBeInstanceOf(HTMLElement);
     expect((media as HTMLElement).className).toContain("bg-muted/60");
@@ -239,5 +242,44 @@ describe("RouteSkeleton hero bands — rounded-2xl parity (B13 F-3 / R127-L6)", 
     // auth-card REFUSE tail is a separate batch (B-12) — flipping this
     // skeleton before its real page would CREATE the drift F-3 fixes.
     expect(container.querySelector(".max-w-md .rounded-3xl")).toBeInstanceOf(HTMLElement);
+  });
+});
+
+/**
+ * R143 (L2-2): the route-skeleton joins the /55 → /60 resting-edge ban.
+ * The r139 sweep landed border-border/60 everywhere except auth + the
+ * PDP trio + this shared loading primitive (which had mirrored the PDP's
+ * /55 as "verified parity"). The existing r139 visual suites already
+ * assert `not.toContain("border-border/55")` for FAQ/PROFILE/SESSIONS/
+ * admin-catalog/access-ops — this extends the ban to the skeleton family
+ * so the shared primitive can never re-inherit the drift.
+ */
+describe("RouteSkeleton — the /55 resting edge is banned (R143 L2-2)", () => {
+  // Comments stripped (the r139 suite idiom) — rationale prose may NAME
+  // the retired /55 value without tripping the ban.
+  const strip = (s: string): string =>
+    s
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\*.*$/gm, "");
+  const src = strip(
+    readFileSync(resolve(process.cwd(), "src/components/ui/route-skeleton.tsx"), "utf8"),
+  );
+
+  it("no border-border/55 anywhere in the skeleton family source", () => {
+    // Source-scan (the r139 suite idiom): the three former sites were
+    // the PDP section pair (lg:border-border/55 ×2) + FormShell's auth
+    // card (border-border/55) — all now the family /60.
+    expect(src).not.toContain("border-border/55");
+    expect(src.match(/border-border\/60/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it("the PDP section pair still mirrors ProductMediaSection/BuyPanelColumn exactly", () => {
+    // Verified parity cuts both ways: the mirror must ride the SAME
+    // classes the real sections ride post-R143.
+    expect(src).toContain("lg:bg-card lg:border lg:border-border/60 lg:rounded-2xl");
+    expect(src).toContain(
+      "lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/60",
+    );
   });
 });

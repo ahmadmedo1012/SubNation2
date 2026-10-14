@@ -662,7 +662,11 @@ export default function ProductPage() {
           lg so their children flow straight into the wrapper's flex
           column, which is what preserves the mobile sequence. */}
       <div
-        className={`flex flex-col max-lg:gap-4 max-lg:bg-card max-lg:border max-lg:border-border/55 max-lg:rounded-2xl max-lg:overflow-hidden float-in max-lg:shadow-xl lg:grid lg:grid-cols-2 lg:items-start lg:gap-6`}
+        /* R143 (L2-2): max-lg:border-border/55 → /60 — the PDP's mobile
+            card-frame joins the r139 resting-edge sweep (the pages-side
+            twin of BuyPanelColumn/ProductMediaSection's lg: borders the
+            components lane converted the same round). */
+        className={`flex flex-col max-lg:gap-4 max-lg:bg-card max-lg:border max-lg:border-border/60 max-lg:rounded-2xl max-lg:overflow-hidden float-in max-lg:shadow-xl lg:grid lg:grid-cols-2 lg:items-start lg:gap-6`}
       >
         {/* R135 (FE-3): the START column moved verbatim to ProductMediaSection
             (media + badges + title + description + long-form description +

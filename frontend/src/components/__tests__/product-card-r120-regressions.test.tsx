@@ -142,10 +142,13 @@ describe("ProductCard — chrome + imagery + type regressions (R120-B1)", () => 
     // 100%, sm→xl shadow) makes the affordance legible without adding
     // motion. Rationale block: ProductCard.tsx R138 comment above the
     // card root.
+    // R143 (L2-1): the calm recipe is now the theme-aware `shadow-calm`
+    // token (index.css) — dark rendering byte-identical to the r138
+    // literal, .light re-tuned inside DESIGN.md's 6–14% ceiling. The
+    // literal itself must not come back.
     expect(card.className).toContain("border-border/60");
-    expect(card.className).toContain(
-      "shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
-    );
+    expect(card.className).toContain("shadow-calm");
+    expect(card.className).not.toContain("0_10px_28px");
     // The old flat resting (one 1-3px layer) never comes back.
     expect(card.className).not.toContain("shadow-sm");
     // A BASE shadow-black/25 would re-color BOTH arbitrary layers to a

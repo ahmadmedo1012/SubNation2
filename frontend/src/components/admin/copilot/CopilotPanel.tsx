@@ -96,6 +96,39 @@ export {
   stripTransientLoading,
 } from "@/components/admin/copilot/copilot-persistence";
 
+// ── R143 (L13-3): the SSE read-idle watchdog ────────────────────────────
+// D-3 (R142) made the ask stream the ONE deliberately unbounded adminFetch
+// (timeoutMs 0 — a live stream legitimately outlives the 20 s budget and a
+// signal would abort the body read mid-answer). But "unbounded" had a
+// second reading: a STALLED stream (connection up, zero bytes — proxy
+// wedge, server hang between rounds) left the turn spinning forever with
+// no cancel affordance. Stream-END is already honest (the R123 E3 P3e
+// no-final-event error); this watchdog makes stream-STALL honest too: any
+// read that yields no bytes for SSE_READ_IDLE_MS rejects with the same
+// retryable-Arabic idiom, and the reader is released. The budget is
+// deliberately generous — the server emits progress frames at every tool
+// round, so a healthy stream never approaches it.
+export const SSE_READ_IDLE_MS = 120_000;
+
+export const SSE_STALL_MESSAGE = "توقف بث المساعد — لم تصل بيانات لفترة طويلة، حاول مجدداً.";
+
+/** Races a single read() against the idle clock. On timeout the pending
+ * read is abandoned (the caller cancels the reader) — never resolved as
+ * data. Timer always cleared so a fast read can't leak a stale reject. */
+export function readWithIdleWatchdog(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    reader.read(),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(SSE_STALL_MESSAGE)), SSE_READ_IDLE_MS);
+    }),
+  ]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Component
 // ──────────────────────────────────────────────────────────────────────
@@ -491,28 +524,41 @@ export function CopilotPanel() {
       }
     }
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() ?? "";
-      for (const frame of frames) {
-        if (!frame.trim()) continue;
-        let event = "message";
-        let dataLine = "";
-        for (const line of frame.split("\n")) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) dataLine += line.slice(5).trim();
-        }
-        if (!dataLine) continue;
-        try {
-          const data = JSON.parse(dataLine) as unknown;
-          handleEvent(event, data);
-        } catch {
-          // ignore malformed frame
+    // R143 (L13-3): the read loop rides the idle watchdog — a stalled
+    // stream (bytes stop, connection stays up) now rejects instead of
+    // parking the turn on the spinner forever. try/catch around the
+    // WHOLE loop also releases the reader on the existing error-event
+    // throw path (a `data: error` frame used to abandon an open stream).
+    try {
+      while (true) {
+        const { value, done } = await readWithIdleWatchdog(reader);
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          if (!frame.trim()) continue;
+          let event = "message";
+          let dataLine = "";
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("event:")) event = line.slice(6).trim();
+            else if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+          }
+          if (!dataLine) continue;
+          try {
+            const data = JSON.parse(dataLine) as unknown;
+            handleEvent(event, data);
+          } catch {
+            // ignore malformed frame
+          }
         }
       }
+    } catch (err) {
+      // Release the stream on ANY loop exit path that isn't `done` —
+      // the watchdog's abandoned pending read and the error-event
+      // throw both leave an open body otherwise.
+      void reader.cancel().catch(() => {});
+      throw err;
     }
 
     if (finalPayload) {

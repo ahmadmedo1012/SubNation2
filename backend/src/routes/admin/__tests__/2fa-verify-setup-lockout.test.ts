@@ -186,6 +186,18 @@ describe("R122 (A5-P2) — POST /api/admin/2fa/verify-setup attempt lockout", ()
         expect((await postVerifySetup(url, admin.token, wrongCode())).status).toBe(401);
       }
       // …then the correct code completes the enrollment and resets.
+      // R143 (L8-2): mint DETERMINISTICALLY at mid-window, not the
+      // 528ef39 regenerating-retry idiom — this test deliberately primed
+      // the lockout counter to 4/5, so a boundary-stale correct code
+      // would record the 5th attempt, engage the lock, and the retry
+      // would answer 429 (the lockout is checked before verification).
+      // Sleeping into the window's middle (~3s in, bounded wait) before
+      // minting removes the race class entirely for this site.
+      const pos = Date.now() % 30_000;
+      if (pos < 3_000 || pos > 27_000) {
+        const wait = pos <= 15_000 ? 3_000 - pos : 30_000 - pos + 3_000;
+        await new Promise((r) => setTimeout(r, wait));
+      }
       const ok = await postVerifySetup(url, admin.token, generateSync({ secret: admin.secret }));
       expect(ok.status).toBe(200);
       expect(ok.body.success).toBe(true);

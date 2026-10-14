@@ -83,9 +83,13 @@ export function RejectModal({
       size="sm"
       footer={
         <>
+          {/* R143 (L2-3): footer symmetry — the cancel joins the confirm's
+              44px floor (h-9 → min-h-11; a 36px cancel beside a 44px
+              confirm was the asymmetry J-1 left behind). active:scale
+              dropped — the Button base's press-spring owns the press. */}
           <Button
             variant="outline"
-            className="flex-1 h-9 active:scale-[0.97]"
+            className="flex-1 min-h-11"
             onClick={onCancel}
             disabled={loading}
           >
@@ -95,10 +99,13 @@ export function RejectModal({
             /* J-1 (R142): variant="destructive" rides the AA
                --destructive-surface token (the raw hand-rolled
                bg-destructive fill computed 4.00:1) + min-h-11 replaces
-               h-9 — the 44px money-path floor the useConfirm twin and
-               BulkConfirmModal already enforce. */
+               h-9 — the 44px money-path floor the useConfirm twin
+               enforces. (R143 L2-3 correction: this comment previously
+               claimed "BulkConfirmModal already enforce" — false at
+               HEAD; the bulk twin still rode h-9 until the R143 L2-3
+               fix landed in its own file.) */
             variant="destructive"
-            className="flex-1 min-h-11 active:scale-[0.97]"
+            className="flex-1 min-h-11"
             onClick={() => onConfirm(note)}
             disabled={loading}
           >
@@ -121,7 +128,13 @@ export function RejectModal({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="مثال: رمز التحويل غير صحيح، المبلغ غير مطابق..."
-            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-destructive resize-none"
+            className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            /* R143 (L2-5): the exact site J-2 called out — the 1px
+               focus:ring-1 focus:ring-destructive composite under the
+               3:1 indicator floor. Joins the input.tsx idiom (2px
+               ring-ring + ring-offset-background, focus-visible:);
+               ring-ring replaces ring-destructive so the whole form
+               family reads as ONE focus system (F3-01's token). */
             dir="rtl"
             autoFocus
             onKeyDown={(e) => {

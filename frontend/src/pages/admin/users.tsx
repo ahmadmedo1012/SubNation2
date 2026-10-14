@@ -37,7 +37,7 @@ import { UsersDesktopTable } from "@/components/admin/users/UsersDesktopTable";
 import { MobileUserCard } from "@/components/admin/users/MobileUserCard";
 import { useConfirm } from "@/hooks/use-confirm";
 import { useToast } from "@/hooks/use-toast";
-import { isAdminUnauthorized } from "@/lib/admin-session";
+import { AdminSessionExpiredError, adminFetch, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 // R128 (B3-F2): the shared guarded CSV escaper (was the local csvCell).
 import { csvCell } from "@/lib/csv";
@@ -424,7 +424,16 @@ export default function AdminUsersPage() {
     // any tier edit (tiers derive from net spend, Part 11); a 400's
     // own Arabic message is surfaced below via describeSaveError.
     try {
-      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+      // L13-1 (R143): adminFetch threads the shared 20 s timeout
+      // (D-3's site-level residual — a dead NAT link used to keep the
+      // money modal's `saving` + `dismissable={!saving}` armed until the
+      // browser's ~300 s TCP timeout; the intent key keeps the MONEY
+      // safe, the retry UX was the casualty). Bodies/headers/401
+      // handling are byte-identical; an expired-session 401 now throws
+      // the AdminSessionExpiredError sentinel after the global toast +
+      // redirect — the catch stays quiet on it (the old inline
+      // isAdminUnauthorized check returned before any toast).
+      const res = await adminFetch(`/api/admin/users/${editingUser.id}`, {
         method: "PATCH",
         // F-008 (security audit 004): one Idempotency-Key per SAVE INTENT
         // (99-M3) — stable across retries so the middleware replays the
@@ -480,6 +489,10 @@ export default function AdminUsersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
       setEditingUser(null);
     } catch (err: unknown) {
+      // L13-1 (R143): the expired-session sentinel — the global handler
+      // already toasted + redirected; stay quiet (finally still clears
+      // `saving` so the modal regains its dismiss affordance).
+      if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
         // 93-C6 / F-07 (SIM P1): route through getErrorMessage so the

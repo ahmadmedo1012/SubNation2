@@ -79,8 +79,11 @@ export function PricingConfigCard({
        elevation at rest (the ProductEditorCard / MetricCard recipe,
        neutral black — a primary-tinted shadow reads as color on .light).
        The read-only calculator cards below stay flat: one elevated
-       register per page. */
-    <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+       register per page.
+       R143 (L2-1): the calm elevation is now the theme-aware
+       `shadow-calm` token in index.css (dark byte-identical; .light
+       re-tuned inside the documented 6–14% ceiling). */
+    <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4 shadow-calm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">

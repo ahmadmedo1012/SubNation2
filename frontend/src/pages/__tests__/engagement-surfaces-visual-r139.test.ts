@@ -245,12 +245,16 @@ describe("R139 recipe — the thread pair + the support chrome register", () => 
   it("the thread shell + create card ride the /60 edge + the two-layer calm elevation", () => {
     // R139 (precision): the prominent-card register (CartSummaryAside
     // family) — brand borders and brand-tinted shadows retired.
+    // R143 (L2-1): the calm elevation tokenized — shadow-calm
+    // (index.css, theme-aware: dark byte-identical to the r138 literal,
+    // .light re-tuned inside DESIGN.md's 6–14% ceiling); the arbitrary
+    // literal must not come back on either component.
     expect(THREAD).toContain("border border-border/60");
-    expect(THREAD).toContain("shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]");
+    expect(THREAD).toContain("shadow-calm");
     expect(CREATE_FORM).toContain("border border-border/60");
-    expect(CREATE_FORM).toContain(
-      "shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
-    );
+    expect(CREATE_FORM).toContain("shadow-calm");
+    expect(THREAD).not.toContain("0_10px_28px");
+    expect(CREATE_FORM).not.toContain("0_10px_28px");
     expect(CREATE_FORM).not.toContain("border-primary/22");
     // The quiet band register on both banded headers.
     expect(THREAD).toContain("border-b border-border/60 bg-muted/30");
@@ -351,7 +355,7 @@ describe("R139 recipe — profile: /60 section cards, the avatar calm well, the 
   });
 
   it("the identity card carries the two-layer calm elevation (the page's one prominent card)", () => {
-    expect(PROFILE).toContain("shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]");
+    expect(PROFILE).toContain("shadow-calm");
     expect(PROFILE).not.toContain("shadow-lg shadow-black/8");
   });
 

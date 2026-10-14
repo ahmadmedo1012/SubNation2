@@ -28,11 +28,13 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 function resLike(body: unknown) {
-  return {
-    ok: true,
+  // L6-1 (R143): REAL Response objects — customFetch (behind the
+  // generated client) reads .headers + .text(), which the old
+  // ok/json-only stubs lacked.
+  return new Response(JSON.stringify(body), {
     status: 200,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 beforeEach(() => {

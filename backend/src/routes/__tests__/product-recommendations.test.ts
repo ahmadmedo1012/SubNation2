@@ -143,4 +143,66 @@ describe("GET /api/products/:id/recommendations — null-category guard (R120-B6
     expect(status).toBe(404);
     expect(body).toMatchObject({ code: "NOT_FOUND" });
   });
+
+  it("R143 (L4-5): an ARCHIVED anchor product → 404 — the lookup mirrors the 110-F visibility rule", async () => {
+    // The anchor (lookup-stage) product is archived while same-category
+    // LIVE peers exist — the peers query filters, but the lookup used to
+    // answer found:true for hidden ids (the one public product surface
+    // without the mirror the detail routes carry).
+    //
+    // Cache discipline (file header): withCatalogCache persists across
+    // `it`s and resetTestDb restarts ids at 1 — three fillers put this
+    // case's target on id 4 (no prior test requested 4).
+    const [f1, f2, f3, target, peer] = await seed([
+      { name: "Filler D1", slug: "rec-filler-d1", category: "tools" },
+      { name: "Filler D2", slug: "rec-filler-d2", category: "tools" },
+      { name: "Filler D3", slug: "rec-filler-d3", category: "tools" },
+      {
+        name: "Archived Anchor",
+        slug: "rec-archived-anchor",
+        category: "streaming",
+        isArchived: true,
+      },
+      { name: "Live Same Cat Peer", slug: "rec-live-peer", category: "streaming" },
+    ]);
+    expect(peer).toBeDefined();
+    void f1;
+    void f2;
+    void f3;
+
+    const { status, body } = await call(buildApp(), `/api/products/${target}/recommendations`);
+    expect(status).toBe(404);
+    expect(body).toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("R143 (L4-5): a DEACTIVATED anchor product → 404 (is_active arm of the same mirror)", async () => {
+    // Six fillers → target id 7 (ids 2 and 6 are already cache-resident
+    // from the earlier cases; 4 from the archived leg above).
+    const [f1, f2, f3, f4, f5, f6, target, peer] = await seed([
+      { name: "Filler E1", slug: "rec-filler-e1", category: "tools" },
+      { name: "Filler E2", slug: "rec-filler-e2", category: "tools" },
+      { name: "Filler E3", slug: "rec-filler-e3", category: "tools" },
+      { name: "Filler E4", slug: "rec-filler-e4", category: "tools" },
+      { name: "Filler E5", slug: "rec-filler-e5", category: "tools" },
+      { name: "Filler E6", slug: "rec-filler-e6", category: "tools" },
+      {
+        name: "Inactive Anchor",
+        slug: "rec-inactive-anchor",
+        category: "streaming",
+        isActive: false,
+      },
+      { name: "Another Live Peer", slug: "rec-live-peer-2", category: "streaming" },
+    ]);
+    expect(peer).toBeDefined();
+    void f1;
+    void f2;
+    void f3;
+    void f4;
+    void f5;
+    void f6;
+
+    const { status, body } = await call(buildApp(), `/api/products/${target}/recommendations`);
+    expect(status).toBe(404);
+    expect(body).toMatchObject({ code: "NOT_FOUND" });
+  });
 });

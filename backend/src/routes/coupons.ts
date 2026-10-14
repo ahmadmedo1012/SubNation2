@@ -14,7 +14,7 @@ import {
   type AppliedFlashSale,
 } from "../lib/pricing";
 import { getPricingConfig } from "../lib/pricing-config";
-import { roundLyd } from "../lib/money";
+import { roundLyd, formatLyd } from "../lib/money";
 import { requireUser } from "../middlewares/requireUser";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { requirePermission } from "../lib/permissions";
@@ -198,14 +198,13 @@ router.post("/validate", requireUser, async (req, res) => {
 
   const minOrder = parseFloat(String(coupon.minOrderAmount));
   if (order_amount < minOrder) {
-    return res
-      .status(400)
-      .json(
-        createErrorResponse(
-          `هذا الكوبون يتطلب حد أدنى للطلب ${minOrder.toFixed(2)} د.ل`,
-          ErrorCode.INVALID_DATA,
-        ),
-      );
+    return res.status(400).json(
+      createErrorResponse(
+        // R143 (L7-2): formatLyd — display canon, en-US grouping at ≥1,000.
+        `هذا الكوبون يتطلب حد أدنى للطلب ${formatLyd(minOrder)}`,
+        ErrorCode.INVALID_DATA,
+      ),
+    );
   }
 
   let discountAmount: number;

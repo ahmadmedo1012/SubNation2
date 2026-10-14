@@ -110,7 +110,10 @@ function ProviderButton({
   className,
 }: {
   provider: Provider;
-  onSuccess: (token: string) => void;
+  // L1-1 (R143): the second arg is the session mint's is_new_user —
+  // threaded so the default no-onSuccess navigation can route a
+  // brand-new user to /onboarding instead of /.
+  onSuccess: (token: string, isNewUser?: boolean) => void;
   // R111-F2 N4: ReactNode (not string) so the message can carry
   // <span lang="en"> brand wrapping — see the Firebase-Google fallback
   // below. `string` remains fully assignable at every other call-site.
@@ -157,7 +160,7 @@ function ProviderButton({
         const referralCode = getReferralCodeFromUrl();
         try {
           const session = await exchangeFirebaseIdToken(idToken, referralCode);
-          onSuccess(session.token);
+          onSuccess(session.token, session.is_new_user === true);
         } catch (err) {
           // F-003 — escalate to the parent so the modal can render.
           // The idToken stays in the closure; parent calls back with
@@ -202,7 +205,10 @@ function ProviderButton({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 interface AuthProvidersProps {
-  onSuccess?: (token: string) => void;
+  // L1-1 (R143): the second arg is the session mint's is_new_user —
+  // a page-level onSuccess can route brand-new users to /onboarding
+  // (an explicit redirect target keeps precedence on the page side).
+  onSuccess?: (token: string, isNewUser?: boolean) => void;
   buttonClassName?: string;
   dividerLabel?: string;
 }
@@ -270,10 +276,20 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
   }, []);
 
   const handleSuccess = useCallback(
-    (token: string) => {
+    (token: string, isNewUser?: boolean) => {
       setToken(token);
-      if (onSuccess) onSuccess(token);
-      else navigate("/");
+      // L1-1 (R143): the orphaned onboarding journey — the backend has
+      // returned is_new_user from every session mint since the page was
+      // built, but no success path consumed it, so /onboarding (route +
+      // complete endpoint + gates all shipped) was unreachable and the
+      // welcome/value-prop surface never met a new user. The default
+      // navigation now routes a brand-new user there; a page-level
+      // onSuccess (an explicit ?redirect= target) keeps full precedence
+      // — onboarding only when the user asked for no specific page. The
+      // page itself bounces already-onboarded users home, so re-entry is
+      // safe on every path.
+      if (onSuccess) onSuccess(token, isNewUser);
+      else navigate(isNewUser ? "/onboarding" : "/");
     },
     [setToken, onSuccess, navigate],
   );
@@ -290,7 +306,10 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
       );
       // Drop modal state BEFORE handleSuccess navigates away.
       setPendingLink(null);
-      handleSuccess(session.token);
+      // L1-1 (R143): thread is_new_user — the link-consent commit links
+      // an EXISTING account, so this is normally false; the honest value
+      // rides either way.
+      handleSuccess(session.token, session.is_new_user === true);
     } catch (err: unknown) {
       // The consent-token path can fail with EXPIRED / CANDIDATE_MISMATCH /
       // FIREBASE_UID_MISMATCH. Either way we close the modal and surface

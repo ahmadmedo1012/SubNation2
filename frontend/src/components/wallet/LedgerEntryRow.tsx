@@ -98,7 +98,12 @@ export const LedgerEntryRow = memo(function LedgerEntryRow({
         </div>
       </div>
       {/* dir="ltr": the sign must lead the number inside the RTL
-          layout; tabular-nums aligns the column of amounts. */}
+          layout. R143 (L3-1): tabular-nums is INERT on Readex Pro (the
+          shipped woff2 subsets carry no tnum feature; the digit
+          advances are proportional — see the index.css body note) — it
+          stays as future-proofing for a tnum-capable font swap, NOT for
+          alignment: this column aligns via the flex edge, and
+          digit-on-digit columns do not align today. */}
       <span
         dir="ltr"
         className={`text-sm font-bold tabular-nums shrink-0 ${

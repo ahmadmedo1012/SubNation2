@@ -281,7 +281,13 @@ export function notifyCouponMaxedOut(code: string, maxUses: number): void {
 
 export function notifyCouponExpiringSoon(code: string, expiresAt: Date, hoursLeft: number): void {
   const timeLabel = hoursLeft <= 1 ? "أقل من ساعة" : `${Math.floor(hoursLeft)} ساعة`;
+  // R143 (L14-5): timeZone pinned to match timestampLine() below and the
+  // admin drawer card for the SAME expiry (couponWatcher formats it in
+  // Africa/Tripoli). Without the option the card rendered the server's
+  // process TZ (UTC — Dockerfile pins TZ=UTC), 2 hours off the operator's
+  // wall clock and contradicting the relative label right next to it.
   const dateStr = expiresAt.toLocaleDateString("ar-LY", {
+    timeZone: "Africa/Tripoli",
     day: "numeric",
     month: "short",
     hour: "2-digit",

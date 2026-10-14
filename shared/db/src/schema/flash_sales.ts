@@ -25,8 +25,12 @@ export const flashSalesTable = pgTable(
     // At-most-one-ACTIVE-flash-sale invariant — mirrors the live boot
     // SQL. Previously live-only, so a drizzle push dropped it and
     // concurrent active sales became possible (pricing ambiguity).
+    // R143 (L9-1): the expression must carry its own parens — a bare
+    // `sql`true`` renders as `USING btree (true)`, a 42601 syntax error
+    // on real Postgres (index_elem constants must be parenthesized).
+    // migrate.ts spells it `((true))`; this form renders identically.
     activeSingleton: uniqueIndex("uniq_flash_sales_active_singleton")
-      .on(sql`true`)
+      .on(sql`(true)`)
       .where(sql`is_active = true`),
   }),
 );

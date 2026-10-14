@@ -61,6 +61,8 @@ interface SeedTopup {
   senderPhone?: string | null;
   paymentNetwork?: string | null;
   createdAt?: Date;
+  paymentMethod?: string;
+  senderAccount?: string | null;
 }
 
 async function seedPendingTopup(seed: SeedTopup) {
@@ -69,9 +71,10 @@ async function seedPendingTopup(seed: SeedTopup) {
     .values({
       userId: seed.userId,
       amount: seed.amount,
-      paymentMethod: "mobile_transfer",
+      paymentMethod: seed.paymentMethod ?? "mobile_transfer",
       paymentNetwork: seed.paymentNetwork ?? "madar",
       senderPhone: seed.senderPhone ?? null,
+      senderAccount: seed.senderAccount ?? null,
       paymentReference: seed.paymentReference,
       status: "pending",
       // The composite window is 24h on created_at — tests that need an
@@ -261,6 +264,176 @@ describe("F-03: composite soft-dedup on approve (different refs, same transfer p
     await expect(TopupService.approve(t2.id, null)).rejects.toMatchObject({
       statusCode: 409,
     });
+
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(100);
+  });
+});
+
+describe("R143 (L7-1): lypay reference-optional soft-dedup on approve (sender_account axis)", () => {
+  /**
+   * lypay keeps payment_reference optional (gateway receipts are not
+   * consistently exposed to users), so the entire reference-keyed battery
+   * — advisory lock, in-tx exact check, V1-M9 partial unique, F-03
+   * composite — was inert for ref-less lypay pendings: two deliberate
+   * submissions (or any keyless client — the Idempotency-Key header is
+   * optional) could BOTH be approved, crediting one real transfer twice.
+   * The guard under test mirrors F-03 on the sender_account axis (the
+   * dimension lypay always collects — required at creation).
+   */
+
+  it("two ref-less lypay pendings, same (amount, network, sender_account) → second approve 409 DUPLICATE_LYPAY_TRANSFER, money credited once", async () => {
+    const user = await makeUser("0.00");
+    const t1 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: "LY-ACC-777",
+      paymentNetwork: "lypay",
+    });
+    const t2 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null, // keyless duplicate — the L7-1 window
+      senderAccount: "LY-ACC-777",
+      paymentNetwork: "lypay",
+    });
+
+    await TopupService.approve(t1.id, null);
+
+    let err: unknown;
+    try {
+      await TopupService.approve(t2.id, null);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ServiceError);
+    const se = err as ServiceError;
+    expect(se.statusCode).toBe(409);
+    expect(se.message).toContain("تحويل مكرر");
+    expect(se.message).toContain(`#${t1.id}`);
+    expect(se.code).toBe("DUPLICATE_LYPAY_TRANSFER");
+
+    // Credited exactly once; the duplicate stays pending for the operator.
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(50);
+    const ledger = await db
+      .select()
+      .from(walletLedgerTable)
+      .where(eq(walletLedgerTable.userId, user.id));
+    expect(ledger.filter((l) => l.type === "topup")).toHaveLength(1);
+    const [t2row] = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.id, t2.id));
+    expect(t2row.status).toBe("pending");
+  });
+
+  it("different amounts → both approve (legitimate same-day repeat class stays legal)", async () => {
+    const user = await makeUser("0.00");
+    const t1 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: "LY-ACC-888",
+      paymentNetwork: "lypay",
+    });
+    const t2 = await seedPendingTopup({
+      userId: user.id,
+      amount: "75.00", // genuinely different transfer
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: "LY-ACC-888",
+      paymentNetwork: "lypay",
+    });
+
+    await TopupService.approve(t1.id, null);
+    await TopupService.approve(t2.id, null);
+
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(125);
+  });
+
+  it("conservative scope: legacy account-less lypay rows stay exempt", async () => {
+    const user = await makeUser("0.00");
+    const t1 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: null, // pre-L7-1 legacy shape — no dedup signal
+      paymentNetwork: "lypay",
+    });
+    const t2 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: null,
+      paymentNetwork: "lypay",
+    });
+
+    await TopupService.approve(t1.id, null);
+    await TopupService.approve(t2.id, null);
+
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(100);
+  });
+
+  it("the sibling window is 24h — an out-of-window approved sibling does not block", async () => {
+    const user = await makeUser("0.00");
+    const t1 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: "LY-ACC-999",
+      paymentNetwork: "lypay",
+      createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+    });
+    const t2 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: "LY-ACC-999",
+      paymentNetwork: "lypay",
+    });
+
+    await TopupService.approve(t1.id, null);
+    await TopupService.approve(t2.id, null); // out of window → allowed
+
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
+    expect(parseFloat(String(u.walletBalance))).toBe(100);
+  });
+
+  it("cross-method isolation: a matching mobile_transfer sibling never trips the lypay guard", async () => {
+    const user = await makeUser("0.00");
+    // Same amount/sender-account STRING, but a mobile_transfer row — the
+    // lypay guard only matches lypay siblings (sender_account is a
+    // different field from the bank channel's sender_phone identity).
+    const t1 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "mobile_transfer",
+      paymentReference: "TRX-LY-X",
+      senderAccount: "LY-ACC-111",
+      paymentNetwork: "madar",
+    });
+    const t2 = await seedPendingTopup({
+      userId: user.id,
+      amount: "50.00",
+      paymentMethod: "lypay",
+      paymentReference: null,
+      senderAccount: "LY-ACC-111",
+      paymentNetwork: "lypay",
+    });
+
+    await TopupService.approve(t1.id, null);
+    await TopupService.approve(t2.id, null);
 
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(u.walletBalance))).toBe(100);

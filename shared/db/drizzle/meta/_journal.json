@@ -169,6 +169,13 @@
       "when": 1791820767873,
       "tag": "0023_conscious_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791939507643,
+      "tag": "0024_yellow_thor",
+      "breakpoints": true
     }
   ]
 }

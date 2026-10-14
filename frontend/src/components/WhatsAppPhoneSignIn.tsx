@@ -324,6 +324,11 @@ export function WhatsAppPhoneSignIn({
       const data = (await res.json().catch(() => ({}))) as {
         token?: string;
         error?: string;
+        // L1-1 (R143): the verify mint returns is_new_user (the same
+        // contract the Firebase + Telegram session mints carry) — read
+        // so the default navigation can route a brand-new user to the
+        // onboarding welcome instead of /.
+        is_new_user?: boolean;
       };
       if (!res.ok || !data.token) {
         // 96-F2 (R96-A4 §4.1): single error funnel — no raw data.error.
@@ -333,8 +338,12 @@ export function WhatsAppPhoneSignIn({
       setToken(data.token);
       // 93-C5 / F-15: redirect target (guarded checkout, cart, …) instead
       // of the hardcoded home — same contract as AuthProviders' onSuccess.
+      // L1-1 (R143): the orphaned onboarding journey — with no page-level
+      // onSuccess (no explicit ?redirect= target), a brand-new user now
+      // lands on /onboarding instead of /; the page's own gate bounces
+      // already-onboarded users home so re-entry is safe.
       if (onSuccess) onSuccess();
-      else navigate("/");
+      else navigate(data.is_new_user === true ? "/onboarding" : "/");
     } catch (err) {
       // 96-F2 (R96-A4 §4.1): shared Arabic network copy.
       setError(getErrorMessage(err));

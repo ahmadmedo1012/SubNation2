@@ -123,12 +123,19 @@ describe("R137 (FE) — CopilotPanel.tsx decomposition: the panel stays an orche
     expect(panel).toContain(
       "export {\n  sanitizeRestoredConversations,\n  stripTransientLoading,\n} from",
     );
-    // The exact export surface: four statements, no default export, no
-    // sixth symbol sneaking onto the module boundary mid-wave.
+    // R143 (L13-3): the SSE read-idle watchdog seams joined the public
+    // surface — module-level pure exports (constant, message, race
+    // helper) pinned by copilot-sse-watchdog-r143. Deliberate, test-
+    // seam additions: the count moved 4 → 7.
+    expect(panel).toContain("export const SSE_READ_IDLE_MS = 120_000;");
+    expect(panel).toContain("export const SSE_STALL_MESSAGE =");
+    expect(panel).toContain("export function readWithIdleWatchdog(");
+    // The exact export surface: seven statements, no default export, no
+    // eighth symbol sneaking onto the module boundary mid-wave.
     const exportStatements = [
       ...panel.matchAll(/^export (?:function|const|let|var|class|type|interface|default|\{)/gm),
     ];
-    expect(exportStatements.length).toBe(4);
+    expect(exportStatements.length).toBe(7);
     expect(panel).not.toContain("export default");
     // And the re-exported implementations are the real ones (verbatim
     // moves — never duplicated inline in the panel).

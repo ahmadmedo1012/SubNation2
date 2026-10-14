@@ -186,10 +186,13 @@ describe("R139 (139-j) — pricing: the §6 destructive contract (dry-run previe
   it("the writable rule card is the page's one elevated register, on the resting /60 edge", () => {
     // R139: border-primary/25 shell → border-border/60 + the r138
     // two-layer calm elevation (neutral black).
+    // R143 (L2-1): the calm elevation tokenized — shadow-calm (index.css,
+    // theme-aware: dark byte-identical, .light inside the 6–14% ceiling).
     expect(configCard).toContain(
-      '"bg-card border border-border/60 rounded-2xl p-5 space-y-4 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"',
+      '"bg-card border border-border/60 rounded-2xl p-5 space-y-4 shadow-calm"',
     );
     expect(stripComments(configCard)).not.toContain("border-primary/25");
+    expect(stripComments(configCard)).not.toContain("0_10px_28px");
   });
 
   it("the three toolbar CTAs are canonical — save rides buttonVariants, APPLY rests quiet-danger", () => {
@@ -288,13 +291,14 @@ describe("R139 (139-j) — referrals: calm pill + elevated stat strip + the regi
   it("the four-stat strip is the page's KPI moment — elevated, values colorless + tabular", () => {
     // R139: MetricCard's two-layer calm elevation at rest; the state
     // identity stays in the icon stage, the number is data.
-    expect(refStats).toContain(
-      '"bg-card border border-border/60 rounded-2xl p-4 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"',
-    );
+    // R143 (L2-1): the calm elevation tokenized — shadow-calm (index.css,
+    // theme-aware: dark byte-identical, .light inside the 6–14% ceiling).
+    expect(refStats).toContain('"bg-card border border-border/60 rounded-2xl p-4 shadow-calm"');
     expect(refStats).toContain(
       '<div className="text-2xl font-bold tabular-nums mb-0.5">{value}</div>',
     );
     expect(refStats).not.toContain("text-2xl font-bold tabular-nums mb-0.5 ${color}");
+    expect(stripComments(refStats)).not.toContain("0_10px_28px");
   });
 
   it("the table rides the register: /30 band header, /60 seams, /20 receipt footer", () => {

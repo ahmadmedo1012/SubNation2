@@ -20,8 +20,9 @@
  *     the link stays armed and a successful retry still opens the
  *     thread.
  *
- * Harness: support-open-ticket.test.tsx — raw fetch stubbed per-test
- * (support.tsx uses plain fetch, not the orval client).
+ * Harness: support-open-ticket.test.tsx — fetch stubbed per-test with
+ * REAL Response objects (L6-1/R143: the page rides the generated orval
+ * client, whose customFetch reads .headers + .text()).
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -39,12 +40,14 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+  const { ok = true, status = ok ? 200 : 500, body = {} } = over;
+  // L6-1 (R143): REAL Response objects — customFetch (behind the
+  // generated client) reads .headers + .text(), which the old
+  // ok/json-only stubs lacked.
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const fetchMock = vi.fn();
@@ -110,12 +113,13 @@ describe("SupportPage — ?ticket= deep link auto-opens the thread (A9-1, R126-L
     // The detail fetch fired WITHOUT any click (the continuation the
     // notification link promises)…
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/support/tickets/1",
-        expect.objectContaining({
-          headers: { Authorization: "Bearer test-token" },
-        }),
+      const detailCall = fetchMock.mock.calls.find(
+        ([url]) => String(url) === "/api/support/tickets/1",
       );
+      expect(detailCall).toBeTruthy();
+      // L6-1 (R143): customFetch hands fetch a Headers INSTANCE — read it
+      // as one (the page still threads the explicit bearer header).
+      expect(new Headers(detailCall?.[1]?.headers).get("authorization")).toBe("Bearer test-token");
     });
     // …and the thread renders the admin reply the notification was about.
     await waitFor(() => {
@@ -180,12 +184,13 @@ describe("SupportPage — ?ticket= deep link auto-opens the thread (A9-1, R126-L
     await waitFor(() => {
       expect(screen.getByText("رد الدعم وصل هنا")).toBeInTheDocument();
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/support/tickets/1",
-      expect.objectContaining({
-        headers: { Authorization: "Bearer test-token" },
-      }),
+    const detailCall = fetchMock.mock.calls.find(
+      ([url]) => String(url) === "/api/support/tickets/1",
     );
+    expect(detailCall).toBeTruthy();
+    // L6-1 (R143): customFetch hands fetch a Headers INSTANCE — read it
+    // as one (the page still threads the explicit bearer header).
+    expect(new Headers(detailCall?.[1]?.headers).get("authorization")).toBe("Bearer test-token");
     expect(toastSpy).not.toHaveBeenCalled();
   });
 });

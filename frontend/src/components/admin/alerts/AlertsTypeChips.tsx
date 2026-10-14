@@ -67,8 +67,14 @@ export function AlertsTypeChips({
             >
               <m.icon className="w-3 h-3" />
               {m.label}
+              {/* R143 (L2-7): the ACTIVE count badge's bg-white/10 was a
+                  dark-default hand-roll — under .light, white/10 over the
+                  severity /10 tint ≈ an invisible pill. bg-foreground/10
+                  is theme-aware (white-ish on dark, black-ish on light)
+                  and stays distinct from the INACTIVE twin's bg-muted/60
+                  — the chip body carries the state either way. */}
               <span
-                className={`text-3xs px-1 rounded-full font-bold ${filter === s.key ? "bg-white/10" : "bg-muted/60"}`}
+                className={`text-3xs px-1 rounded-full font-bold ${filter === s.key ? "bg-foreground/10" : "bg-muted/60"}`}
               >
                 {s.count}
               </span>

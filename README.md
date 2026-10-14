@@ -157,13 +157,13 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (approximate at R142 — the suites grow every round; each
+Current suite (approximate at R143 — the suites grow every round; each
 round's CHANGELOG entry carries the exact centrally-verified counts;
-CI runs both unit suites on every code push): **frontend ≈244
-test files / ≈2,310 tests** · **backend ≈872 suites / ≈2,390 tests**
-(255 test files; 3 backend tests are the
+CI runs both unit suites on every code push): **frontend ≈254
+test files / ≈2,400 tests** · **backend ≈880 suites / ≈2,470 tests**
+(266 test files; 3 backend tests are the
 documented load-flaky timing class — all pass in isolation) ·
-guest-only e2e **44 tests / 10 spec files** (desktop + mobile-390
+guest-only e2e **21+ tests / 10 spec files** (desktop + mobile-390
 projects; dispatch + weekly heartbeat only — not per-push).
 
 > **Schema note:** schema changes flow exclusively through the idempotent

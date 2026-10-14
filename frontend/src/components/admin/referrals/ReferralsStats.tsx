@@ -30,8 +30,11 @@ function StatCard({
        VALUE drops its per-tile hue for plain foreground ink + weight +
        size + tabular-nums (receipt register: the state identity stays
        in the icon stage, the number is data — the MetricCard value +
-       OrdersStatsPanel revenue-tile rule). */
-    <div className="bg-card border border-border/60 rounded-2xl p-4 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+       OrdersStatsPanel revenue-tile rule).
+       R143 (L2-1): the calm elevation is now the theme-aware
+       `shadow-calm` token in index.css (dark byte-identical; .light
+       re-tuned inside the documented 6–14% ceiling). */
+    <div className="bg-card border border-border/60 rounded-2xl p-4 shadow-calm">
       <div className={`w-8 h-8 rounded-xl border flex items-center justify-center mb-3 ${bg}`}>
         <Icon className={`w-4 h-4 ${color}`} />
       </div>

@@ -2,7 +2,7 @@
  * R128-A2 (F-4) — the login page's account intent.
  *
  * The guarded account surfaces (wallet/orders/loyalty/referrals — plus
- * order-detail's /order/<id> gate) bounce guests to
+ * order-detail's /orders/:orderCode gate) bounce guests to
  * /login?redirect=<path> with NO context: login's intent system modeled
  * only buy|generic, so a gated wallet visitor got the generic
  * value-chip banner («تسوّق فوري / محفظة آمنة / +50 نقطة») with no line
@@ -14,7 +14,9 @@
  * to learn). Pinned here:
  *   1. each account surface renders its contextual headline (and NOT
  *      the generic chips);
- *   2. a deep-linked order (/order/<id>) reads the orders headline;
+ *   2. a deep-linked order (/orders/:orderCode) reads the orders
+ *      headline (L1-4/R143: the prefix matched the dead singular
+ *      "/order/" — the real route is /orders/:orderCode);
  *   3. non-account redirects keep the generic chips (the regression
  *      guard — /support's login CTA must not sprout an account banner);
  *   4. an open-redirect value never reaches the banner logic (the
@@ -24,7 +26,7 @@
  * + heavy auth children mocked at the module boundary).
  */
 
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LoginPage from "@/pages/login";
@@ -66,8 +68,9 @@ describe("LoginPage — the account intent banner (R128-A2 F-4)", () => {
     ["/login?redirect=%2Forders", "سجّل دخولك لمتابعة طلباتك"],
     ["/login?redirect=%2Floyalty", "سجّل دخولك للوصول إلى نقاطك"],
     ["/login?redirect=%2Freferrals", "سجّل دخولك للوصول إلى برنامج الإحالات"],
-    // A deep-linked order is the orders surface's detail page.
-    ["/login?redirect=%2Forder%2F1042", "سجّل دخولك لمتابعة طلباتك"],
+    // A deep-linked order is the orders surface's detail page — the
+    // REAL route (L1-4/R143: was the dead singular /order/<id>).
+    ["/login?redirect=%2Forders%2FSNDB1042", "سجّل دخولك لمتابعة طلباتك"],
   ])("%s renders the contextual headline", (path, headline) => {
     renderAt(path);
     expect(screen.getByText(headline)).toBeInTheDocument();
@@ -75,6 +78,22 @@ describe("LoginPage — the account intent banner (R128-A2 F-4)", () => {
     expect(screen.queryByText("تسوّق فوري")).not.toBeInTheDocument();
     // The banner keeps the buy variant's passwordless sub-line.
     expect(screen.getByText("ثوانٍ معدودة بدون كلمة مرور")).toBeInTheDocument();
+  });
+
+  it("L1-4 (R143): the deep-linked-order branch keys off the REAL route — /orders/:orderCode maps, the dead singular /order/ does not", () => {
+    // order-detail's guest gate bounces to
+    // /login?redirect=/orders/<orderCode> — the account banner must
+    // render for the real prefix. (The singular /order/ form matched no
+    // registered route and no gate ever produced it — L1-4's dead
+    // branch.)
+    renderAt("/login?redirect=" + encodeURIComponent("/orders/W-7F3K"));
+    expect(screen.getByText("سجّل دخولك لمتابعة طلباتك")).toBeInTheDocument();
+
+    // The old singular form is no longer mapped (it is not a route) —
+    // the generic chips are the honest variant for it.
+    cleanup();
+    renderAt("/login?redirect=" + encodeURIComponent("/order/W-7F3K"));
+    expect(screen.getByText("تسوّق فوري")).toBeInTheDocument();
   });
 
   it("a redirect carrying its own query still maps (/wallet?return=… is the wallet surface)", () => {

@@ -36,7 +36,7 @@ function CartSkeleton() {
              two-layer calm shadow this round, and the cart's line rows
              are that family; the hydration fill must not pop a shadow
              in one frame, so the shell carries it too. */
-          className="bg-card border border-border/60 rounded-xl p-4 flex items-center gap-3.5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"
+          className="bg-card border border-border/60 rounded-xl p-4 flex items-center gap-3.5 shadow-calm"
         >
           <div className="w-14 h-14 rounded-xl bg-muted skeleton-shimmer shrink-0" />
           <div className="flex-1 space-y-2">
@@ -254,7 +254,7 @@ export default function CartPage() {
                      bordered boxes. Hover stays border-only (60→100): a
                      row is line data, not a clickable tile — no hover
                      elevation invented. */
-                  className={`float-in ${staggerClass} bg-card border border-border/60 rounded-xl p-3.5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] hover:border-border transition-all duration-200 group`}
+                  className={`float-in ${staggerClass} bg-card border border-border/60 rounded-xl p-3.5 shadow-calm hover:border-border transition-all duration-200 group`}
                 >
                   {/* 96-F4 (R96 A1 M13 + A2 P1-1): flex-wrap row — on wide
                       viewports it reads exactly like before (thumb |
@@ -492,7 +492,7 @@ export default function CartPage() {
               the receipt slip lying over the line rows; border/60 stays
               the family edge and the terminal text-2xl total already
               rides weight+size (not color) — verified, untouched. */}
-          <div className="bg-card border border-border/60 rounded-2xl p-5 slide-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+          <div className="bg-card border border-border/60 rounded-2xl p-5 slide-up shadow-calm">
             <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
               <span className="text-sm text-muted-foreground font-bold">المجموع</span>
               <div className="flex items-center gap-2">

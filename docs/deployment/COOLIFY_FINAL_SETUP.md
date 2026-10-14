@@ -67,7 +67,9 @@ through build args)
 ```
 # required for release identity:
 GIT_SHA=6f14bc3              # the EXACT short SHA being deployed — lands in
-                             # /api/healthz .version, logs, Sentry release tag
+                             # logs, the Sentry release tag, + the admin-gated
+                             # /api/healthz/ready .version (R143: the PUBLIC
+                             # healthz carries no version — status-only)
 VITE_APP_ORIGIN=https://subnation.ly
 
 # optional, public-only (empty default = feature cleanly off):
@@ -260,5 +262,7 @@ both up — run it before attaching traffic (`MIGRATION_RUNBOOK.md` Ph. 5).
 - [ ] build args entered (SubNation — exact `GIT_SHA`; API/socket `VITE_*` EMPTY)
 - [ ] healthchecks green (both resources)
 - [ ] domain attached + HTTPS green (SubNation — LE production)
-- [ ] `/api/healthz` 200 through the domain — and `.version` equals the
-      GIT_SHA you deployed (deployed-SHA gate, `MIGRATION_RUNBOOK.md` Ph. 4)
+- [ ] `/api/healthz` 200 through the domain — and the served Sentry chunk's
+      SENTRY_RELEASE id (or admin-gated `/api/healthz/ready` `.version`)
+      equals the GIT_SHA you deployed (deployed-SHA gate — R143: the public
+      healthz has no `.version`; see FINAL_ROLLBACK_RUNBOOK §1)

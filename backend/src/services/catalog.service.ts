@@ -359,7 +359,12 @@ export async function loadProductList(params: ProductListParams) {
   // (ta-marbuta twin included — see arabic-search variantTerms).
   const variantLabelExists = (token: string) => {
     const pattern = `%${escapeLikeTerm(token)}%`;
-    return sql`EXISTS (SELECT 1 FROM ${productVariantsTable} pv WHERE pv.product_id = ${productsTable.id} AND (pv.duration_label ILIKE ${pattern} OR pv.plan_label ILIKE ${pattern}))`;
+    // R143 (L4-2): pv.is_active — the label axis alone let DEACTIVATED
+    // variants surface in search (`search=شهر` promised a duration the
+    // PDP selector never offers — variant deactivation is a live admin
+    // write path). Parity with the display path's active-only pool
+    // (fetchVariantPoolData's eq(isActive, true)).
+    return sql`EXISTS (SELECT 1 FROM ${productVariantsTable} pv WHERE pv.product_id = ${productsTable.id} AND pv.is_active = true AND (pv.duration_label ILIKE ${pattern} OR pv.plan_label ILIKE ${pattern}))`;
   };
 
   // Build SQL filter conditions — pushdown to the database.
@@ -471,9 +476,18 @@ export async function loadProductList(params: ProductListParams) {
     .limit(500)
     .$dynamic();
 
-  if (sort === "price_asc") query = query.orderBy(productsTable.price);
-  else if (sort === "price_desc") query = query.orderBy(sql`${productsTable.price} DESC`);
-  else if (sort === "popular") query = query.orderBy(sql`${orderExpr} DESC`);
+  // R143 (L4-4): explicit sorts carry a deterministic id tiebreaker —
+  // price_asc/price_desc/popular were single-key ORDER BYs, so every tie
+  // group (essentially the whole catalog for `popular`, where most
+  // products have 0 completed orders) came back in planner order. The
+  // default and relevance paths already carried id DESC (R132); the
+  // tiebreaker is ordering-only, result sets unchanged.
+  if (sort === "price_asc")
+    query = query.orderBy(productsTable.price, sql`${productsTable.id} DESC`);
+  else if (sort === "price_desc")
+    query = query.orderBy(sql`${productsTable.price} DESC`, sql`${productsTable.id} DESC`);
+  else if (sort === "popular")
+    query = query.orderBy(sql`${orderExpr} DESC`, sql`${productsTable.id} DESC`);
   else if (hasSearch && expansion) {
     // R132 (exact-match-first ranking): with a search active and no
     // explicit sort, relevance — not insertion order — leads. Two
@@ -717,7 +731,18 @@ export async function loadProductRecommendations(id: number) {
   const [product] = await db
     .select({ category: productsTable.category })
     .from(productsTable)
-    .where(eq(productsTable.id, id))
+    .where(
+      and(
+        eq(productsTable.id, id),
+        // R143 (L4-5): the 110-F visibility mirror — the lookup stage is
+        // the one public product surface without it: archived/deactivated
+        // ids answered 200 + live peers while every sibling detail route
+        // 404s (catalog-security pins those). The peers query below
+        // already filters; the anchor product must obey the same rule.
+        eq(productsTable.isActive, true),
+        eq(productsTable.isArchived, false),
+      ),
+    )
     .limit(1);
 
   if (!product) return { found: false as const };

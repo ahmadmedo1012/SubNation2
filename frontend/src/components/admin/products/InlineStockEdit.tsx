@@ -87,8 +87,12 @@ export function InlineStockEdit({
         aria-label="العدد الكلي للوحدات (تعيين مطلق)"
         placeholder="الكل"
         /* 96-F7 (R96 M8): h-9 input (was w-16 h-6 — a 24px touch target
-           for a money-adjacent field). */
-        className="w-20 h-9 bg-secondary border border-primary/40 rounded px-1.5 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-primary"
+           for a money-adjacent field).
+           R143 (L2-5): joins the input.tsx focus idiom — the old
+           focus:ring-1 focus:ring-primary was a 1px ring compositing
+           under the 3:1 indicator floor; 2px ring-ring +
+           ring-offset-background matches the shared Input (F3-01). */
+        className="w-20 h-9 bg-secondary border border-primary/40 rounded px-1.5 text-xs font-mono text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
       />
       {/* 96-F7 (R96 M8): the save/cancel controls are now ≥36px tall
          with Arabic TEXT labels («حفظ»/«إلغاء») + gap-2 — the old p-0.5

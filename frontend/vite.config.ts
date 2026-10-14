@@ -382,6 +382,20 @@ function seoHeadInject(): Plugin {
  * — a static link cannot be removed reliably because the preload
  * scanner starts its fetch from the raw bytes before any script runs).
  *
+ * R143 (L11-1) — the deep-link head-start: the gate warmed HOME on
+ * every non-admin boot, but the dominant WhatsApp traffic deep-links
+ * straight into /product/:slug — a PDP boot warmed a chunk it would
+ * never mount while its real target chunk waited on the full
+ * entry→probe→chunk serial chain (live trace: product chunk discovered
+ * at 2668 ms vs home warm at 1071 ms, LCP 4892 ms). The tag now also
+ * carries data-route-chunks (family=/url tokens for the five
+ * route-chunk-warmup families — prefixes mirror route-chunk-warmup.ts
+ * exactly); a boot whose pathname names a family preloads THAT chunk
+ * INSTEAD of home (a deep link's actual target wins; home boots are
+ * byte-identical to before). The links are still created at runtime —
+ * the HTML source stays free of static modulepreloads, so the eager
+ * budget measurement is untouched.
+ *
  * Exported (+ buildPreloadGateTag / injectPreloadGate) for the unit
  * tests that pin the tag shape, the injection anchor and the runtime
  * gating (src/lib/__tests__/preload-gate.test.ts — the seo-head-inject
@@ -391,14 +405,43 @@ export const PRELOAD_GATE_SOURCE = `(function () {
   try {
     if (location.pathname.startsWith("/admin")) return;
     var el = document.querySelector("script[data-home-chunk]");
-    var urls = (el && el.getAttribute("data-home-chunk")) || "";
+    if (!el) return;
+    // R143 (L11-1): deep-link head-start — family prefixes mirror
+    // route-chunk-warmup.ts exactly (product/category carry the
+    // trailing slash; cart/checkout/wallet are plain prefixes).
+    var p = location.pathname;
+    var families = {
+      product: "/product/",
+      category: "/category/",
+      cart: "/cart",
+      checkout: "/checkout",
+      wallet: "/wallet",
+    };
+    var warmed = false;
+    var routes = (el.getAttribute("data-route-chunks") || "").split(/\\s+/);
+    for (var i = 0; i < routes.length; i++) {
+      if (!routes[i]) continue;
+      var eq = routes[i].indexOf("=");
+      if (eq <= 0) continue;
+      var family = routes[i].slice(0, eq);
+      var href = routes[i].slice(eq + 1);
+      if (families[family] && p.indexOf(families[family]) === 0) {
+        var link = document.createElement("link");
+        link.rel = "modulepreload";
+        link.href = href;
+        document.head.appendChild(link);
+        warmed = true;
+      }
+    }
+    if (warmed) return;
+    var urls = el.getAttribute("data-home-chunk") || "";
     var parts = urls.split(/\\s+/);
-    for (var i = 0; i < parts.length; i++) {
-      if (!parts[i]) continue;
-      var link = document.createElement("link");
-      link.rel = "modulepreload";
-      link.href = parts[i];
-      document.head.appendChild(link);
+    for (var j = 0; j < parts.length; j++) {
+      if (!parts[j]) continue;
+      var homeLink = document.createElement("link");
+      homeLink.rel = "modulepreload";
+      homeLink.href = parts[j];
+      document.head.appendChild(homeLink);
     }
   } catch (e) {
     /* a preload hint must never break (or console-noise) the boot */
@@ -421,10 +464,21 @@ export const PRELOAD_GATE_ASSET_FILE = `assets/preload-gate-${createHash("sha256
  * keys ("assets/home-*.js") — plural-proof like the R125 loop, joined
  * space-separated in the single data attribute (chunk hashes are
  * [A-Za-z0-9_-], so no escaping concerns).
+ *
+ * R143 (L11-1): `routeChunks` (optional, backward-compatible) carries
+ * the deep-link families — [family, bundleKey] pairs — emitted as
+ * `family=/assets/<chunk>.js` tokens in data-route-chunks. Same charset
+ * safety; a family may appear multiple times (plural chunks, e.g.
+ * checkout + checkout-errors).
  */
-export function buildPreloadGateTag(homeChunks: string[]): string {
+export function buildPreloadGateTag(
+  homeChunks: string[],
+  routeChunks: Array<[string, string]> = [],
+): string {
   const hrefs = homeChunks.map((name) => `/${name}`).join(" ");
-  return `<script src="/${PRELOAD_GATE_ASSET_FILE}" data-home-chunk="${hrefs}"></script>`;
+  const routeTokens = routeChunks.map(([family, name]) => `${family}=/${name}`).join(" ");
+  const routeAttr = routeChunks.length > 0 ? ` data-route-chunks="${routeTokens}"` : "";
+  return `<script src="/${PRELOAD_GATE_ASSET_FILE}" data-home-chunk="${hrefs}"${routeAttr}></script>`;
 }
 
 /**
@@ -448,9 +502,13 @@ export function buildPreloadGateTag(homeChunks: string[]): string {
  * entirely (the tag is interpolated as literal bytes, never as a
  * replacement pattern).
  */
-export function injectPreloadGate(html: string, homeChunks: string[]): string {
+export function injectPreloadGate(
+  html: string,
+  homeChunks: string[],
+  routeChunks: Array<[string, string]> = [],
+): string {
   if (homeChunks.length === 0) return html;
-  const tag = buildPreloadGateTag(homeChunks);
+  const tag = buildPreloadGateTag(homeChunks, routeChunks);
   const headOpenAt = indexOfOutsideComments(html, "<head");
   if (headOpenAt === -1) return html;
   const openTag = /<head[^>]*>/.exec(html.slice(headOpenAt));
@@ -514,9 +572,15 @@ export function injectCriticalFontPreloads(html: string, tags: string[]): string
  * network-bound visits (−150-350 ms expected LCP when network-bound).
  * font-display stays `swap` (set by every @fontsource face CSS) — the
  * preload only removes the fetch discovery latency, never the swap
- * semantics. Latin-700 is deliberately NOT preloaded: no Latin text
- * above the fold renders heavier than 400 on the guest hero, and
- * every extra preload competes for the same first-paint bandwidth.
+ * semantics. R143 (L3-3) CORRECTION: Latin-700 is now IN the set. The
+ * old "no above-fold Latin text renders heavier than 400" claim was
+ * guest-hero-scoped and wrong for the one element present on EVERY
+ * route above the fold: the Navbar wordmark (Logo.tsx renders
+ * "SubNation" at font-bold). Every cold visit paid the CSS-parse →
+ * @font-face → fetch RTT (or a fallback-then-swap reflow) for the
+ * header's own identity mark. The latin-700 subset is ~15 KB woff2 —
+ * fonts are NOT part of the eager JS/CSS budget the bundle gate
+ * measures, so this rides free of that ceiling.
  *
  * A5-10 (R116): Arabic 600 joined the set — Navbar renders its
  * above-the-fold labels (nav links, balance chip, section headers)
@@ -525,8 +589,8 @@ export function injectCriticalFontPreloads(html: string, tags: string[]): string
  * 400/700 faces were already in flight. The arabic-600 woff2 ships in
  * the bundle already (@fontsource/readex-pro/arabic-600.css is
  * imported by index.css); this only moves its fetch earlier. Latin
- * weights beyond 400 stay unpreloaded (no above-fold Latin text uses
- * them).
+ * weights beyond 400: the 700 joined in R143 (see F4-F4 correction
+ * above); no other Latin weight renders above the fold.
  *
  * Why per-build: @fontsource's woff2 files are emitted with content
  * hashes (`readex-pro-arabic-400-normal-De1vYjJZ.woff2`). The hash
@@ -561,9 +625,11 @@ function criticalPreloadInject(): Plugin {
         // Find the LCP-text woff2 files by name pattern: Arabic 400
         // (body text), Latin 400 (Latin glyphs), Arabic 700 (the
         // font-black hero headline's actual face — F4-F4), Arabic 600
-        // (Navbar's above-the-fold semibold labels — A5-10).
+        // (Navbar's above-the-fold semibold labels — A5-10), Latin 700
+        // (the Navbar wordmark's font-bold face on every route — R143
+        // L3-3).
         const woff2 = Object.keys(bundle).filter((name) =>
-          /readex-pro-arabic-(400|600|700)-normal-[A-Za-z0-9_-]+\.woff2$|readex-pro-latin-400-normal-[A-Za-z0-9_-]+\.woff2$/.test(
+          /readex-pro-arabic-(400|600|700)-normal-[A-Za-z0-9_-]+\.woff2$|readex-pro-latin-(400|700)-normal-[A-Za-z0-9_-]+\.woff2$/.test(
             name,
           ),
         );
@@ -622,6 +688,22 @@ function criticalPreloadInject(): Plugin {
         const homeChunks = Object.keys(bundle).filter((name) =>
           /^assets\/home-[A-Za-z0-9_-]+\.js$/.test(name),
         );
+        // R143 (L11-1): the deep-link families — the same five
+        // route-chunk-warmup families (product/category/cart/checkout/
+        // wallet), collected from the bundle by chunk-name pattern.
+        // NOTE the anchors: `products-*.js` (the ADMIN products page
+        // chunk) and `checkout-errors-*.js` are both legitimately
+        // matched by their family prefixes — the admin leg never boots
+        // through this gate (early return) and checkout-errors rides
+        // the checkout route's own import graph, so warming it with the
+        // family is correct, not waste.
+        const ROUTE_FAMILY_RE =
+          /^assets\/(product|category|cart|checkout|wallet)-[A-Za-z0-9_-]+\.js$/;
+        const routeChunks: Array<[string, string]> = [];
+        for (const name of Object.keys(bundle)) {
+          const family = name.match(ROUTE_FAMILY_RE)?.[1];
+          if (family) routeChunks.push([family, name]);
+        }
         if (homeChunks.length > 0) {
           // Belt & suspenders: the shell must never reference a script
           // the build did not emit (a 404 script = a console error on
@@ -633,7 +715,7 @@ function criticalPreloadInject(): Plugin {
           }
           // Inject the EXTERNAL gate (R126-L1) — see the
           // PRELOAD_GATE_SOURCE block above for the CSP/defer story.
-          html = injectPreloadGate(html, homeChunks);
+          html = injectPreloadGate(html, homeChunks, routeChunks);
         }
 
         if (tags.length === 0) return html;

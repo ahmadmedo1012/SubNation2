@@ -337,7 +337,7 @@ export default function OrderDetailPage() {
             two-layer calm elevation (the neutral black recipe — the old
             shadow-lg shadow-black/10 single drop read as a floating
             panel) + the /60 family resting edge. */}
-        <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] float-in">
+        <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-calm float-in">
           {/* Top color bar — R115-I1 (A8 P2-3): refunded carries the
               status-info accent (matching the pill + the orders-list
               treatment): the money came back, not a failure. */}

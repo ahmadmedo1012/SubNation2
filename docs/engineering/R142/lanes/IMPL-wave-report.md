@@ -15,8 +15,8 @@ shell (entry + CSS + registerSW outside comments; exactly 4 src'd scripts).
 | J-1/D-5 P2 | destructive confirms → variant="destructive" + min-h-11 | hooks/use-confirm.tsx, admin/topups/RejectModal.tsx | existing pins survive |
 | N-1 P2 | CI header-param survival gate + ledger | scripts/check-openapi-header-params.ts, ci.yml, scripts/package.json | gate runs in CI drift job |
 | N-4/D-1 P3 | settings integrations rows: real 4-field contract + shape gate + adminFetch | pages/admin/settings.tsx, settings-page-meta.ts, TelegramStatusRows.tsx | settings-telegram-rows.test.tsx (NEW) |
-| D-3 P3 | adminFetch/adminFetchJson 20 s timeout (SSE opt-out timeoutMs:0) | lib/admin-session.ts, CopilotPanel.tsx | partial-mock-proof SHARED_ADMIN_TIMEOUT_MS guard |
-| C-1 P3 | PDP coupon + support → generated client + guarded parse | pages/product.tsx, support pages | product-coupon-variant-void (mock re-anchored) |
+| D-3 P3 | adminFetch/adminFetchJson 20 s timeout (SSE opt-out timeoutMs:0) | lib/admin-session.ts, CopilotPanel.tsx — **R143 note: the WRAPPER landed; the ~10 site-level threading D-3 itself enumerated did not** (incl. 2 admin money mutations). Threading + the behavioral pin landed in R143 (L13-1/L13-2) | partial-mock-proof SHARED_ADMIN_TIMEOUT_MS guard |
+| C-1 P3 | PDP coupon + support → generated client + guarded parse | pages/product.tsx, support pages — **R143 CORRECTION: the support half never landed** (support.tsx kept 5 raw-fetch sites; the product.tsx half is real — discovered by lanes L6/L18 during R143). The conversion completed in R143 | product-coupon-variant-void (mock re-anchored) |
 | G-2 P3 | wallet per-intent key: STABLE request object read at FETCH time; sync at every rotation + pre-mutate | pages/wallet.tsx | money-races-r140 pin re-anchored to the new contract |
 | G-3 P3 | checkout late-remove: removeIfStillSameIntent guard (live-cart quantity identity) | pages/checkout.tsx | checkout-pricing-reconcile G-3 regression (NEW) |
 | F1/I-4/J-3 P3 | truthful availability: hero aria, streaming copy (FE+BE parity), product-seo gate | GuestHero.tsx, categories.ts, spa-shell.ts, product-seo.ts | product-seo-availability.test.tsx (NEW), category parity suite |
@@ -31,7 +31,7 @@ shell (entry + CSS + registerSW outside comments; exactly 4 src'd scripts).
 | B-2/M-1 P3 | budget gates scan comment-stripped HTML | vite.config.ts | bundle-budget-gate.test.ts (NEW) |
 | M-2 P3 | push-time boot smoke in CI (proven: fails on sabotaged shell) | ci.yml | sabotage demonstration recorded |
 | L-1 P3 | telegram dispatch retry tests | NEW telegram-dispatch-retry.test.ts | 7 tests, 3× mutation-verified |
-| L-2 P3 | hung-run floor (10 min) + visible skip log | lib/opportunistic.ts | opportunistic suite |
+| L-2 P3 | hung-run floor (10 min) + visible skip log | lib/opportunistic.ts | opportunistic suite — **R143 CORRECTION: this suite never existed** (no test file imports HUNG_RUN_FLOOR_MS; discovered by lanes L14/L18 during R143). The CODE fix is real; the test claim was false. The test landed in R143 as backend/src/lib/__tests__/opportunistic.test.ts |
 | L-3 P3 | captureSchedulerFailure on 2 recurring triggers | copilot-reaper.ts, whatsapp-otp.service.ts | daily-cap mock completed |
 | H-1 P3 | 4 cross-user money-read regression tests | NEW money-reads-horizontal-authz.test.ts | mutation-verified (dropped eq(userId) → RED) |
 | F-2 P3 | harness prod-parity ×6 + copilot tables | test/db.ts | full suite green after 3 test-file de-duplications |

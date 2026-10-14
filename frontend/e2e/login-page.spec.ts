@@ -8,7 +8,12 @@ test.describe("login page — provider surface renders (never submits)", () => {
     await expect(page.locator("h1").first()).toBeVisible();
     // The passwordless trio: Google + Telegram + WhatsApp OTP surfaces
     // (any enabled subset renders; the page never asks for a password).
-    const buttons = page.locator("button, a[role='button']");
+    // R143 (L15-1): scoped to main — the old document-order `buttons.first()`
+    // resolved to the Navbar's desktop-categories toggle, hidden at the
+    // mobile-390 project viewport. The weekly heartbeat (the ONLY runtime
+    // boot guard) had failed 3-for-3 on exactly this selector, leaving the
+    // alarm permanently red while R141-class outages rode green CI.
+    const buttons = page.locator("main button, main a[role='button']");
     await expect(buttons.first()).toBeVisible();
     const body = await page.textContent("main");
     expect(body).toBeTruthy();

@@ -50,13 +50,18 @@ const ACCOUNT_SURFACES: Record<string, { headline: string; icon: typeof Shopping
 };
 
 /** Map a sanitized ?redirect= to its account surface. A deep-linked
- * order (/order/<id> — order-detail's gate) is the orders surface's
- * detail page, so it reads the orders headline. */
+ * order (/orders/:orderCode — order-detail's gate) is the orders
+ * surface's detail page, so it reads the orders headline.
+ * L1-4 (R143): the prefix matched "/order/" (singular) — the real route
+ * is /orders/:orderCode (routes.tsx) and order-detail's guest gate
+ * bounces to /login?redirect=/orders/SNDB…, so the branch was dead and a
+ * deep-linked order got the generic chips. */
 function accountSurfaceFor(redirect: string | null): (typeof ACCOUNT_SURFACES)[string] | undefined {
   if (!redirect) return undefined;
   const path = redirect.split("?")[0]!;
   return (
-    ACCOUNT_SURFACES[path] ?? (path.startsWith("/order/") ? ACCOUNT_SURFACES["/orders"] : undefined)
+    ACCOUNT_SURFACES[path] ??
+    (path.startsWith("/orders/") ? ACCOUNT_SURFACES["/orders"] : undefined)
   );
 }
 
@@ -181,7 +186,7 @@ export default function LoginPage() {
 
         {/* R116-S1: bare token shadow-2xl — the shadow-black/25 color
             override forced 25% black under the light-theme card. */}
-        <div className="relative overflow-hidden bg-card border border-border/55 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
+        <div className="relative overflow-hidden bg-card border border-border/60 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
           {/* R138 (visual): the auth card joins the round's pinned
               atmosphere family — .ambient-wash (two-point static radial:
               primary at the reading corner, info-cool at the opposite

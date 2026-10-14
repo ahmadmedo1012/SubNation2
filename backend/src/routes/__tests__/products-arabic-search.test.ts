@@ -1,6 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { and, eq } from "drizzle-orm";
 import { db, initTestDb, productVariantsTable, productsTable, resetTestDb } from "../../test/db";
 import { productsRouter } from "../products";
 
@@ -468,6 +469,57 @@ describe("R132 — duration/tier compounds + exact-match-first ranking", () => {
   });
 });
 
+describe("R143 (L4-4) — deterministic tiebreaker on the explicit sorts", () => {
+  /**
+   * price_asc / price_desc / popular were single-key ORDER BYs — every tie
+   * group (essentially the whole catalog for `popular`, where most products
+   * have 0 completed orders) came back in planner order. The fix appends
+   * `id DESC` to each, matching the default/relevance paths (R132).
+   *
+   * The tie group here is six SAME-PRICE, SAME-ZERO-ORDER products sharing
+   * the token «Alpha» — and the requests ride `search=Alpha&sort=…` so
+   * they are UNCACHEABLE (B6-02: search ⇒ no-store, no LRU entry): each
+   * call re-executes the SQL, so a missing/removed tiebreaker shows up as
+   * an unstable or non-id-DESC order, not a cached replay.
+   */
+
+  async function seedTieGroup(): Promise<string[]> {
+    const seeded: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const name = `Alpha ${i} Tie`;
+      await db
+        .insert(productsTable)
+        .values({ name, slug: `alpha-tie-${i}`, price: "50.00", category: "software" });
+      seeded.push(name); // ids ascend with insertion order
+    }
+    return seeded;
+  }
+
+  async function sortedNames(app: express.Express, sort: string): Promise<string[]> {
+    const { status, body } = await call<ProductRow[]>(
+      app,
+      `/api/products?search=${encodeURIComponent("Alpha")}&sort=${sort}`,
+    );
+    expect(status).toBe(200);
+    return (body as Array<{ name: string }>).map((r) => r.name);
+  }
+
+  for (const sort of ["price_asc", "price_desc", "popular"] as const) {
+    it(`sort=${sort} over the tie group is stable and documented (id DESC) across uncached calls`, async () => {
+      const seeded = await seedTieGroup();
+      const app = buildApp();
+
+      const expected = [...seeded].reverse(); // id DESC within the tie group
+      const first = await sortedNames(app, sort);
+      expect(first).toEqual(expected);
+
+      // Second, UNCACHED execution of the same SQL — same documented order.
+      const second = await sortedNames(app, sort);
+      expect(second).toEqual(first);
+    });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // R142 — I-1 (multi-word phrases with rider tokens), I-2 (durations in
 // ARABIC variant labels on brand-level names — the LIVE catalog shape,
@@ -596,6 +648,65 @@ describe("R142 I-2 — durations live in ARABIC variant labels (the live catalog
     const app = buildApp();
     const names = await searchNames(app, "شهر");
     expect(names).not.toContain("Archived Monthly");
+    expect(names).toHaveLength(3);
+  });
+
+  it("R143 (L4-2): a DEACTIVATED month variant drops out of search=شهر — the EXISTS arm honors pv.is_active", async () => {
+    await seedLiveVariantCatalog();
+    // The live admin write path: PATCH /products/:id/variants/:variantId
+    // accepts is_active:false. Retire Spotify's ONLY month variant.
+    const [spotify] = await db
+      .select({ id: productsTable.id })
+      .from(productsTable)
+      .where(eq(productsTable.slug, "spotify"));
+    await db
+      .update(productVariantsTable)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(productVariantsTable.productId, spotify.id),
+          eq(productVariantsTable.durationLabel, "شهر واحد"),
+        ),
+      );
+
+    const app = buildApp();
+    const names = await searchNames(app, "شهر");
+    // The PDP selector would never offer the retired duration — the
+    // search must not promise it either (strictly narrows recall to
+    // sellable-from-the-selector durations).
+    expect(names).not.toContain("Spotify");
+    expect(names).toEqual(expect.arrayContaining(["Netflix", "ChatGPT Plus"]));
+    expect(names).toHaveLength(2);
+  });
+
+  it("R143 (L4-2): a product with BOTH a retired and an ACTIVE month variant stays visible", async () => {
+    await seedLiveVariantCatalog();
+    // Retire ChatGPT's plain month variant but keep a differently-planned
+    // ACTIVE month variant — the product is still sellable for a month.
+    const [chatgpt] = await db
+      .select({ id: productsTable.id })
+      .from(productsTable)
+      .where(eq(productsTable.slug, "chatgpt-plus"));
+    await db
+      .update(productVariantsTable)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(productVariantsTable.productId, chatgpt.id),
+          eq(productVariantsTable.durationLabel, "شهر واحد"),
+        ),
+      );
+    await db.insert(productVariantsTable).values({
+      productId: chatgpt.id,
+      planLabel: "Pro",
+      durationLabel: "شهر واحد",
+      costPrice: "60.00",
+      priceLyd: "119.00",
+    });
+
+    const app = buildApp();
+    const names = await searchNames(app, "شهر");
+    expect(names).toContain("ChatGPT Plus");
     expect(names).toHaveLength(3);
   });
 });

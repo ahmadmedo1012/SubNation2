@@ -223,3 +223,71 @@ describe("PRELOAD_GATE_SOURCE — runtime gating (executed in JSDOM)", () => {
     expect(PRELOAD_GATE_SOURCE).not.toMatch(/\b(import|export)\b/);
   });
 });
+
+// ── R143 (L11-1): the deep-link head-start ──────────────────────────────────
+
+describe("R143 (L11-1) — deep-link route-chunk head-start", () => {
+  const ROUTES: Array<[string, string]> = [
+    ["product", "assets/product-DxVH6XIz.js"],
+    ["category", "assets/category-BtuA3I8J.js"],
+    ["cart", "assets/cart-qTgVFCIs.js"],
+    ["checkout", "assets/checkout-DYkWT7ai.js"],
+    ["checkout", "assets/checkout-errors-K8jEPDh9.js"],
+    ["wallet", "assets/wallet-tZJB2GBs.js"],
+  ];
+
+  it("a PDP deep link preloads the PRODUCT chunk — not home (the dominant WhatsApp path's head-start)", () => {
+    const tag = buildPreloadGateTag([HOME], ROUTES);
+    expect(runGate("https://subnation.ly/product/netflix-premium", tag)).toEqual([
+      "/assets/product-DxVH6XIz.js",
+    ]);
+  });
+
+  it.each([
+    ["https://subnation.ly/category/streaming", ["/assets/category-BtuA3I8J.js"]],
+    ["https://subnation.ly/cart", ["/assets/cart-qTgVFCIs.js"]],
+    [
+      "https://subnation.ly/checkout",
+      ["/assets/checkout-DYkWT7ai.js", "/assets/checkout-errors-K8jEPDh9.js"],
+    ],
+    ["https://subnation.ly/wallet?return=/checkout", ["/assets/wallet-tZJB2GBs.js"]],
+  ])("%s warms its family (plural families preload every token)", (url, expected) => {
+    expect(runGate(url, buildPreloadGateTag([HOME], ROUTES))).toEqual(expected);
+  });
+
+  it("home boots stay byte-identical: no family match → home, exactly one link", () => {
+    expect(runGate("https://subnation.ly/", buildPreloadGateTag([HOME], ROUTES))).toEqual([
+      `/${HOME}`,
+    ]);
+    // Unknown non-family routes keep the legacy home fallback too.
+    expect(runGate("https://subnation.ly/orders", buildPreloadGateTag([HOME], ROUTES))).toEqual([
+      `/${HOME}`,
+    ]);
+  });
+
+  it("admin boots still see NOTHING even with route tokens present", () => {
+    expect(
+      runGate("https://subnation.ly/admin/products", buildPreloadGateTag([HOME], ROUTES)),
+    ).toEqual([]);
+  });
+
+  it("the family prefixes mirror route-chunk-warmup.ts exactly (product/category carry the trailing slash)", () => {
+    // /products (no such route) must NOT warm the product family's
+    // chunk; /product alone (no slug) doesn't either — the warmup
+    // module's exact /^\/product\// semantics.
+    expect(runGate("https://subnation.ly/products", buildPreloadGateTag([HOME], ROUTES))).toEqual([
+      `/${HOME}`,
+    ]);
+    expect(runGate("https://subnation.ly/product", buildPreloadGateTag([HOME], ROUTES))).toEqual([
+      `/${HOME}`,
+    ]);
+  });
+
+  it("the tag carries data-route-chunks as family=/url tokens (omitted when none)", () => {
+    const tag = buildPreloadGateTag([HOME], ROUTES);
+    expect(tag).toContain('data-route-chunks="product=/assets/product-DxVH6XIz.js');
+    expect(tag).toContain("checkout=/assets/checkout-errors-K8jEPDh9.js");
+    // Backward-compatible emission: no route chunks → no attribute.
+    expect(buildPreloadGateTag([HOME])).not.toContain("data-route-chunks");
+  });
+});

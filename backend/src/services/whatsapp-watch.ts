@@ -129,7 +129,14 @@ async function emitChannelAlert(status: string | null, sinceMs: number): Promise
   // checkout.service.ts:674) now speak the layout.tsx NAV's admin-panel
   // name — the Arabizi admin spelling is gone from the repo.
   const message = isUnreachable
-    ? `تعذّر الوصول إلى بوابة WhatsApp (probe فشل) منذ ~${minutes} دقيقة — لا يمكن تحديد حالة الجلسة. افحص خدمة البوابة على Render ثم لوحة الإدارة (قسم WhatsApp).`
+    ? // R143 (L14-3): the operator guidance pointed at Render — the
+      // platform retired 2026-10-05 (.hermes.md; WHATSAPP_OPERATIONS.md:
+      // the old Render gateway is permanently suspended, "never try to
+      // resume it"). During an unreachable-gateway outage the operator
+      // was directed to a dead platform's dashboard; the production path
+      // is the Coolify `openwa` service (healthcheck / logs, internal
+      // http://openwa:2785/healthz).
+      `تعذّر الوصول إلى بوابة WhatsApp (probe فشل) منذ ~${minutes} دقيقة — لا يمكن تحديد حالة الجلسة. افحص خدمة openwa في لوحة Coolify (Healthcheck/السجلات — http://openwa:2785/healthz داخليًا) ثم لوحة الإدارة (قسم WhatsApp).`
     : `حالة القناة "${token}" مستمرة منذ ~${minutes} دقيقة (ليست ready/settling). ${token === "qr_ready" ? "لم يُكمَل الاقتران — لم يُدخَل رمز QR/رمز الربط خلال هذه المدة." : "الاقتران الحالي غير صالح — القناة تحتاج إعادة ربط من لوحة الإدارة (قسم WhatsApp)."} مستخدمو الدخول عبر WhatsApp يحصلون على فشل إرسال الرمز.`;
   const outcome = await logAdminAlert(
     // A9-4 (R116): "whatsapp_channel" is a declared member of the

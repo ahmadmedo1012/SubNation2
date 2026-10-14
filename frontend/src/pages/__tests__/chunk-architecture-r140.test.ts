@@ -155,10 +155,12 @@ describe("R140-c — manualChunks (vite.config.ts): the named-rule list is froze
     // chunk from the eager sum (byte-neutral hint, A2 F7).
     expect(viteConfig).toContain("eagerFiles.delete(file)");
     expect(viteConfig).toContain('rel === "modulepreload"');
-    // F4-F4 + A5-10: Arabic 400/600/700 + Latin 400 are the preloaded
-    // LCP-text faces (no Latin 600/700 — nothing above fold uses them).
+    // F4-F4 + A5-10 + R143 L3-3: Arabic 400/600/700 + Latin 400/700 are
+    // the preloaded LCP-text faces (latin-700 = the Navbar wordmark).
     expect(viteConfig).toContain("readex-pro-arabic-(400|600|700)");
-    expect(viteConfig).toContain("readex-pro-latin-400");
+    // R143 (L3-3): the Latin family grew to (400|700) — the Navbar
+    // wordmark's font-bold face rides every route above the fold.
+    expect(viteConfig).toContain("readex-pro-latin-(400|700)");
   });
 });
 

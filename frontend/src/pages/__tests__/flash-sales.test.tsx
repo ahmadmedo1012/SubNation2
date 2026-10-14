@@ -152,3 +152,64 @@ describe("FlashSalesPage — countdown driven by the real /api/flash-sale window
     expect(clearIntervalSpy).toHaveBeenCalledWith(intervalId);
   });
 });
+
+// ── L12-1 (R143): the meta/OG description is data-aware (the J-3 gate) ─────
+// The R124 copy promised «عروض فلاش بخصومات حقيقية…» unconditionally while
+// the page honestly rendered «لا عرض نشط حالياً» (live: flash_sale=null) —
+// the J-3/F1 truthfulness class on a sitemap-advertised money page. The
+// description (and the og:description it feeds) must carry the neutral hub
+// copy whenever no sale is live, and the discount copy only while a real
+// sale runs.
+describe("FlashSalesPage — availability-gated description (L12-1)", () => {
+  function metaContent(selector: string): string | null {
+    return document.head.querySelector<HTMLMetaElement>(selector)?.content ?? null;
+  }
+
+  it("no active sale ⇒ the hub copy: no «خصومات» promise, no brand enumeration (matching «لا عرض نشط حالياً»)", () => {
+    mockProducts({ data: [] });
+    mockFlashSale(null);
+
+    renderPage();
+
+    expect(screen.getByText("لا عرض نشط حالياً")).toBeInTheDocument();
+    const desc = metaContent('meta[name="description"]');
+    expect(desc).toBeTruthy();
+    expect(desc).toContain("صفحة عروض SubNation");
+    expect(desc).toContain("تابع العروض الموسمية");
+    expect(desc).not.toContain("خصومات");
+    // No brand enumeration in the no-sale arm (the sale copy names four
+    // brand families — none is promised here).
+    expect(desc).not.toContain("نتفلكس");
+    expect(desc).not.toContain("سبوتيفاي");
+    // og:description rides the SAME gated value (MetaTags derives it).
+    expect(metaContent('meta[property="og:description"]')).toBe(desc);
+  });
+
+  it("an ACTIVE sale ⇒ the discount copy is allowed (the page really is discounting)", () => {
+    vi.useFakeTimers();
+    const ends_at = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+    mockProducts({ data: [saleProduct] });
+    mockFlashSale({ id: 9, title: "عرض نهاية الأسبوع", discount_percent: 25, ends_at });
+
+    renderPage();
+
+    const desc = metaContent('meta[name="description"]');
+    expect(desc).toContain("خصومات حقيقية");
+    expect(desc).toContain("لفترة محدودة");
+  });
+
+  it("a sale whose window CLOSED ⇒ the hub copy again (the page says «انتهى هذا العرض» — the meta must not out-promise it)", () => {
+    vi.useFakeTimers();
+    const ends_at = new Date(Date.now() - 1000).toISOString();
+    mockProducts({ data: [saleProduct] });
+    mockFlashSale({ id: 9, title: "عرض منتهي", discount_percent: 25, ends_at });
+
+    renderPage();
+
+    expect(screen.getByText("انتهى هذا العرض")).toBeInTheDocument();
+    const desc = metaContent('meta[name="description"]');
+    expect(desc).toBeTruthy();
+    expect(desc).not.toContain("خصومات");
+    expect(desc).toContain("تابع العروض الموسمية");
+  });
+});

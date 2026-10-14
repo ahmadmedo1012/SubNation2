@@ -101,9 +101,11 @@ describe("R139 — dashboard: one atmosphere moment + one elevated register", ()
   });
 
   it("the KPI tiles ride the two-layer calm elevation with the neutral hover ladder", () => {
-    expect(tile).toContain(
-      "shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] hover:shadow-xl hover:shadow-black/25",
-    );
+    // R143 (L2-1): the calm elevation tokenized — shadow-calm (index.css,
+    // theme-aware: dark byte-identical to the r138 literal, .light inside
+    // DESIGN.md's 6–14% ceiling); the literal must not come back.
+    expect(tile).toContain("shadow-calm hover:shadow-xl hover:shadow-black/25");
+    expect(tile).not.toContain("0_10px_28px");
     // The R128 colored hover-shadow tints are retired — the token BORDER
     // carries the state signal.
     expect(tile).not.toContain("hover:shadow-status-");
@@ -112,7 +114,7 @@ describe("R139 — dashboard: one atmosphere moment + one elevated register", ()
 
   it("the loading skeleton mirrors the loaded tile's resting chrome (no frame swap)", () => {
     expect(page).toContain(
-      'className="bg-card border border-border/60 rounded-2xl h-28 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"',
+      'className="bg-card border border-border/60 rounded-2xl h-28 shadow-calm"',
     );
   });
 
@@ -196,7 +198,7 @@ describe("R139 — admin login: the r138-g mirror", () => {
 
   it("the card carries the ambient-wash + hairline-glow lift inside an overflow-hidden frame", () => {
     expect(login).toContain(
-      'className="relative overflow-hidden bg-card border border-border/60 rounded-2xl p-6 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"',
+      'className="relative overflow-hidden bg-card border border-border/60 rounded-2xl p-6 shadow-calm"',
     );
     expect(login).toContain(
       '<div className="absolute inset-0 ambient-wash pointer-events-none" />',

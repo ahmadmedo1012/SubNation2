@@ -1,4 +1,5 @@
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
+import { Button } from "@/components/ui/button";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
 // R136 (FE-1 decomposition): the page's self-contained subcomponents and
 // pure helpers moved to @/components/wallet/* (verbatim moves — the
@@ -60,7 +61,7 @@ import {
   useGetWalletLedger,
   useListTopups,
 } from "@workspace/api-client-react";
-import { Plus, Wallet } from "lucide-react";
+import { Plus, ShoppingBag, Wallet } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -654,6 +655,57 @@ export default function WalletPage() {
           <p className="text-xs text-muted-foreground">شحن الرصيد وعرض السجل</p>
         </div>
       </div>
+
+      {/* L1-2 (R143): the checkout-return affordance. The ONLY path from a
+          failed checkout to topup stashes `/wallet?return=/checkout` here
+          (PaymentMethodCard's «اشحن المحفظة ثم عُد لإتمام الطلب» link), but
+          the sole consumer was TopupWaitingModal's onApprovedContinue — an
+          approval landing after dismissal / navigation / tab-death dead-ended
+          the journey: the buyer had to manually re-find /cart → /checkout,
+          while the un-consumed intent sat in sessionStorage until some
+          FUTURE topup's modal fired it (possibly onto a stale basket). This
+          banner surfaces the way back while the intent is armed and the
+          latest topup is approved (checkout re-validates everything on
+          arrival — the link is an affordance, never a promise the cart is
+          still buyable). Both actions CONSUME the entry, so it can never
+          fire on a stale intent later. */}
+      {returnTo && waitingTopupId === null && latestTopup?.status === "approved" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-5 p-3.5 bg-status-success/10 border border-status-success/25 rounded-xl flex flex-wrap items-center gap-3 reveal-up"
+        >
+          <div className="w-9 h-9 rounded-lg bg-status-success/12 border border-status-success/25 flex items-center justify-center shrink-0">
+            <ShoppingBag className="w-4 h-4 text-status-success" aria-hidden="true" />
+          </div>
+          <p className="flex-1 min-w-0 text-sm font-bold">
+            تم اعتماد طلب الشحن — يمكنك متابعة عملية الشراء التي بدأتها.
+          </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              className="min-h-11"
+              onClick={() => {
+                sessionStorage.removeItem("subnation_topup_return");
+                setReturnTo(null);
+                navigate(returnTo);
+              }}
+            >
+              متابعة الشراء
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.removeItem("subnation_topup_return");
+                setReturnTo(null);
+              }}
+              className="min-h-11 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+            >
+              إخفاء
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         {/* ── LEFT: Balance + Form ────────────────────────────────── */}

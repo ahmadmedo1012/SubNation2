@@ -36,7 +36,12 @@ async function seedUser(phone = "91100001") {
 }
 
 async function seedProduct(
-  overrides: Partial<{ name: string; price: string; isActive: boolean }> = {},
+  overrides: Partial<{
+    name: string;
+    price: string;
+    isActive: boolean;
+    isArchived: boolean;
+  }> = {},
 ) {
   const [p] = await db
     .insert(productsTable)
@@ -44,6 +49,7 @@ async function seedProduct(
       name: overrides.name ?? "Test Product",
       price: overrides.price ?? "25.00",
       isActive: overrides.isActive ?? true,
+      isArchived: overrides.isArchived ?? false,
     })
     .returning();
   return p;
@@ -235,6 +241,28 @@ describe("POST /api/cart/items", () => {
       body: { product_id: inactive.id, quantity: 1 },
     });
     expect(res.status).toBe(404);
+  });
+
+  it("R143 (L4-6): returns 404 when the product is ARCHIVED — the visibility mirror the catalog surfaces carry", async () => {
+    // Archived ≠ inactive on a distinct flag: the cart add guard used to
+    // check is_active only, so an archived product was addable and its
+    // name/slug/price rode the 201 body while every catalog surface
+    // (list/search/detail/sitemap) hid it. Checkout fails closed
+    // (PRODUCT_STALE); this pins the boundary consistency.
+    const archived = await seedProduct({ name: "Retired", isArchived: true });
+    const token = signUserToken({ userId: userA.id });
+    const res = await call(app, "POST", "/api/cart/items", {
+      token,
+      body: { product_id: archived.id, quantity: 1 },
+    });
+    expect(res.status).toBe(404);
+    // And nothing landed in the cart.
+    const list = await call<{ items: unknown[] }>(app, "GET", "/api/cart", { token });
+    expect(
+      (list.body?.items ?? []).some(
+        (i) => (i as { product_id?: number }).product_id === archived.id,
+      ),
+    ).toBe(false);
   });
 });
 

@@ -92,10 +92,12 @@ describe("R139 (139-f) — the catalog card: calm selected tint + the shelf rhym
   it("the editor shell rides the resting border family + the two-layer calm elevation", () => {
     // R139: border-primary/20 + shadow-lg shadow-primary/5 (brand
     // border AND brand glow) → border-border/60 + neutral two-layer.
-    expect(editor).toContain(
-      "border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]",
-    );
+    // R143 (L2-1): the calm elevation tokenized — shadow-calm (index.css,
+    // theme-aware: dark byte-identical, .light inside the 6–14% ceiling);
+    // the arbitrary literal must not come back.
+    expect(editor).toContain("border border-border/60 rounded-2xl overflow-hidden shadow-calm");
     expect(editor).not.toContain("shadow-primary");
+    expect(editor).not.toContain("0_10px_28px");
     // The image-preview well rhymes with the catalog thumb shelf.
     expect(editor).toContain("border border-border/40 bg-muted/60 overflow-hidden");
   });

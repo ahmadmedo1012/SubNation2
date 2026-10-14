@@ -34,9 +34,14 @@ export function CreateTicketForm({
   onCancel: () => void;
 }) {
   return (
+    // R143 (L2-1): the create card rides the two-layer calm elevation
+    //   as the theme-aware `shadow-calm` token in index.css (the r138
+    //   recipe — dark byte-identical; .light re-tuned inside the
+    //   documented 6–14% ceiling). See the R139 comment below for the
+    //   register's lineage.
     <div
       id="support-create-ticket"
-      className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] mb-5 float-in"
+      className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-calm mb-5 float-in"
     >
       {/* R139 (precision): the create card is the page's prominent ACTIVE
           card — the brand border (border-primary/22) + brand-tinted shadow
@@ -156,8 +161,12 @@ export function CreateTicketForm({
                (focus-visible ring-ring, the Input's own pair). No
                shared Textarea primitive exists to adopt — the token
                family is the unification lane here (the 139-i OTP-field
-               precedent). Geometry/padding/cap byte-identical. */
-            className="w-full bg-card border border-muted-foreground/75 rounded-xl px-3.5 py-3 text-base md:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none leading-relaxed transition-all hover:border-muted-foreground/90 placeholder:text-muted-foreground"
+               precedent). Geometry/padding/cap byte-identical.
+               R143 (L3-4): md:text-sm → the A13-F7 pointer:fine guard
+               (input.tsx:43 idiom) — the bare md: re-defeated the
+               zoom fix on iPad-class (≥768px coarse-pointer) viewports;
+               desktop fine-pointer rendering is unchanged. */
+            className="w-full bg-card border border-muted-foreground/75 rounded-xl px-3.5 py-3 text-base [@media(min-width:48rem)_and_(pointer:fine)]:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none leading-relaxed transition-all hover:border-muted-foreground/90 placeholder:text-muted-foreground"
             dir="rtl"
           />
         </div>

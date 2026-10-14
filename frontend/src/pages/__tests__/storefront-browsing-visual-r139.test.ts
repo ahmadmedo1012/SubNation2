@@ -117,7 +117,7 @@ describe("R139 — category landing: the page-title anchor + hero-card family", 
 describe("R139 — flash-sales: urgency loud-but-compliant + the ProductCard rhyme", () => {
   it("the FlashCard shell rhymes with ProductCard byte-for-byte (/60 + two-layer calm elevation + the 60→100 hover step)", () => {
     expect(flash).toContain("bg-card border border-border/60 rounded-2xl overflow-hidden");
-    expect(flash).toContain("shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]");
+    expect(flash).toContain("shadow-calm");
     expect(flash).toContain(
       "card-spring hover:border-border hover:shadow-xl hover:shadow-black/25",
     );

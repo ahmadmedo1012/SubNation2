@@ -367,8 +367,18 @@ export const SHELL_STATIC_ROUTE_META: Record<string, { title: string; descriptio
     // but shipped frontend-only — B12-F2 (R127-L9): the shell kept
     // serving the pre-R124 copy to every non-rendering engine. Now
     // the runtime builder's copy verbatim.
+    // R143 (L12-1, backend half): the page's description became
+    // RUNTIME-GATED (active sale → the A10-F3 discount copy; no sale →
+    // the honest seasonal copy — the live probe found the page saying
+    // «لا عرض نشط حالياً» under a meta promising «عروض فلاش بخصومات
+    // حقيقية…», the J-3/F1 truthfulness class). The shell is static and
+    // cannot know sale state, so it serves the HONEST no-sale arm: a
+    // non-rendering engine must never be promised live discounts the
+    // page itself denies; the hydrated page upgrades the meta to the
+    // active-sale copy when one is actually running. Parity with the
+    // no-sale arm is pinned by spa-shell-route-parity.test.ts.
     description:
-      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
+      "صفحة عروض SubNation — تابع العروض الموسمية على الاشتراكات الرقمية بالدينار الليبي مع تسليم فوري في كامل ليبيا.",
   },
   "/support": {
     title: "الدعم والأسئلة الشائعة — SubNation",

@@ -1,6 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { isAdminUnauthorized } from "@/lib/admin-session";
+import { AdminSessionExpiredError, adminFetch, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { useChartColors } from "@/lib/chart-theme";
 import { useQuery } from "@tanstack/react-query";
@@ -88,7 +88,12 @@ export default function AdminSystemPage(): ReactElement | null {
   // state, panels fall back honestly), 401 → global session handler.
   function fetchAdminJson<T>(url: string): () => Promise<T> {
     return async () => {
-      const res = await fetch(url, { headers });
+      // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
+      // observability polls (15–90 s cadence) used to freeze a panel's
+      // slot silently on a stalled link (the quietest failure class in
+      // the console); the abort now lands in the query error state
+      // where the FetchErrorCard discloses it.
+      const res = await adminFetch(url, { headers });
       if (isAdminUnauthorized(res, url)) {
         // Handled globally (toast + redirect); the query error state
         // below just keeps the panel out of "live" rendering.
@@ -113,9 +118,15 @@ export default function AdminSystemPage(): ReactElement | null {
   async function fetchAdminHealthReady(): Promise<HealthzReadyResponse> {
     let res: Response;
     try {
-      res = await fetch("/api/healthz/ready", { headers });
-    } catch {
-      throw new Error("HEALTHZ_READY_NETWORK");
+      // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
+      // 60 s health poll used to freeze the tile without an error
+      // surface on a stalled link.
+      res = await adminFetch("/api/healthz/ready", { headers });
+    } catch (err) {
+      // The expired-session sentinel is NOT a network failure — let it
+      // propagate (the query error state renders either way).
+      if (err instanceof AdminSessionExpiredError) throw err;
+      throw new Error("HEALTHZ_READY_NETWORK", { cause: err });
     }
     if (isAdminUnauthorized(res, "/api/healthz/ready")) {
       // Handled globally (toast + redirect); the query error state

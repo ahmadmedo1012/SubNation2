@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getGetMeQueryKey,
+  getGetWalletLedgerQueryKey,
   getGetWalletQueryKey,
   getListTopupsQueryKey,
   useGetWallet,
@@ -171,11 +173,19 @@ export function TopupWaitingModal({ topupId, token, onClose, onApprovedContinue 
     return () => window.clearInterval(id);
   }, [open, status, topupId]);
 
-  // When status flips (approved/rejected), make sure the wallet card
-  // on the page behind the modal also refreshes immediately.
+  // When status flips (approved/rejected), make sure the money
+  // surfaces on/behind the modal also refresh immediately.
+  // R143 (G-4, L5-5): the flip used to invalidate ONLY the wallet
+  // card. The Navbar's balance chip (me) and the statement ledger
+  // kept serving the pre-approval snapshot until their own 60 s
+  // staleTime lapsed — with the socket down (poll-only path), an
+  // approved topup left the "receiving" surfaces contradicting the
+  // modal's «تمت إضافة الرصيد» for up to a minute.
   useEffect(() => {
     if (status === "approved" || status === "rejected") {
       queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetWalletLedgerQueryKey() });
     }
   }, [status, queryClient]);
 

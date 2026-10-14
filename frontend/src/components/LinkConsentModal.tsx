@@ -27,6 +27,7 @@
 
 import { Loader2, Link2, ShieldAlert } from "lucide-react";
 import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
+import { Button } from "@/components/ui/button";
 import type { LinkConsentCandidateHint } from "@/lib/firebase-auth";
 
 interface LinkConsentModalProps {
@@ -59,21 +60,27 @@ export function LinkConsentModal({ hint, loading, onConfirm, onCancel }: LinkCon
       footer={
         // Full-width pair exactly like the pre-migration layout
         // (flex-1 buttons side by side), inside AppDialog's footer row.
+        // R143 (L2-4): the pair canonicalizes onto the shared Button —
+        // the confirm's raw stack (flat bg-primary + hover:bg-primary/90
+        // + shadow-md shadow-primary/22 — an off-range brand-tinted
+        // shadow below the documented /25–40 interactive-glow band) was
+        // the last pre-r138 CTA hand-roll in the storefront modal
+        // family (the r139 sweep retired its siblings: CtaBlock,
+        // ConvertPointsCard, TransferCodePanel, TopupWaitingModal).
+        // Default variant + min-h-11 (the money-adjacent 44px floor the
+        // topups dialogs ride); cancel rides the family's outline
+        // variant. Labels, handlers and disabled wiring are
+        // byte-identical.
         <div className="flex w-full gap-2.5">
-          <button
-            type="button"
-            className="flex-1 h-10 rounded-xl border border-border bg-card hover:bg-muted/50 text-sm font-bold press-spring active:scale-[0.97] disabled:opacity-60"
+          <Button
+            variant="outline"
+            className="flex-1 min-h-11"
             onClick={onCancel}
             disabled={loading}
           >
             إلغاء
-          </button>
-          <button
-            type="button"
-            className="flex-1 h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold inline-flex items-center justify-center gap-2 press-spring active:scale-[0.97] shadow-md shadow-primary/22 disabled:opacity-60"
-            onClick={onConfirm}
-            disabled={loading}
-          >
+          </Button>
+          <Button className="flex-1 min-h-11" onClick={onConfirm} disabled={loading}>
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
             ) : (
@@ -81,7 +88,7 @@ export function LinkConsentModal({ hint, loading, onConfirm, onCancel }: LinkCon
             )}
             {/* R123-E4b (P3-k): single-glyph ellipsis «…» (was ASCII "..."). */}
             {loading ? "جارٍ الربط…" : "تأكيد الربط"}
-          </button>
+          </Button>
         </div>
       }
     >

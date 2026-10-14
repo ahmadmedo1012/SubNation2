@@ -48,8 +48,11 @@ export function BulkActionBar({
        primary-text count, not the surface. Quiet danger verified: no
        destructive ink at rest anywhere on the bar — the refund
        severity lives in the useConfirm dialog (B5-05), and the refund
-       menu entry itself reads info-blue (refunds-as-refunds, §4). */
-    <div className="flex items-center gap-3 px-4 py-2.5 bg-card border border-border/60 rounded-2xl shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] animate-in fade-in slide-in-from-top-1 duration-150 flex-wrap">
+       menu entry itself reads info-blue (refunds-as-refunds, §4).
+       R143 (L2-1): the calm elevation is now the theme-aware
+       `shadow-calm` token in index.css (dark byte-identical; .light
+       re-tuned inside the documented 6–14% ceiling). */
+    <div className="flex items-center gap-3 px-4 py-2.5 bg-card border border-border/60 rounded-2xl shadow-calm animate-in fade-in slide-in-from-top-1 duration-150 flex-wrap">
       <Zap className="w-4 h-4 text-primary shrink-0" />
       {/* R125-I2 (A6-B6): --primary-text (raw --primary is 3.76:1
           on dark — the text floor is 4.5:1; the Zap icon keeps

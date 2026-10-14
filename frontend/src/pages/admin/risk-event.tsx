@@ -332,7 +332,12 @@ export default function AdminRiskEventPage() {
                  visible label (the enrichment.tsx edit-draft twin). */
               aria-label="ملاحظات التصنيف (اختيارية)"
               placeholder="ملاحظات اختيارية (1000 حرف كحد أقصى)"
-              className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="w-full bg-background border border-border/50 rounded-xl px-3 py-2 text-xs resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              /* R143 (L2-5, pages side): the risk-note textarea joins the
+                 input.tsx focus idiom — focus:ring-2 focus:ring-primary/30
+                 composited under the 3:1 indicator floor (30% alpha over
+                 the page, thinner stroke). Same class swap the admin
+                 topup modals got on the components side. */
             />
             <div className="flex flex-wrap gap-2">
               <Button

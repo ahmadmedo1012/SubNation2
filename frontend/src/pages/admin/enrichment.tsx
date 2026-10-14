@@ -355,7 +355,9 @@ function DraftCard({
                name — no label, no id, no placeholder even (the finding's
                admin textarea tail). */
             aria-label="تعديل نص المسودة"
-            className="w-full bg-background border border-primary/40 rounded-xl px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="w-full bg-background border border-primary/40 rounded-xl px-3 py-2 text-sm resize-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            /* R143 (L2-5, pages side): the draft-edit textarea joins the
+               input.tsx focus idiom (see risk-event.tsx). */
           />
         )}
 
@@ -478,7 +480,10 @@ function DraftCard({
               maxLength={1000}
               dir="rtl"
               placeholder="مثال: الوصف غير دقيق — اذكر الخطأ ليُحسَّن التوليد لاحقاً"
-              className="w-full bg-background border border-border/60 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-destructive/25"
+              className="w-full bg-background border border-border/60 rounded-xl px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+              /* R143 (L2-5, pages side): the rejection-reason textarea
+                 joins the input.tsx focus idiom — focus:ring-destructive/25
+                 was a 25%-alpha ring under the 3:1 floor. */
             />
             <p className="text-2xs text-muted-foreground">
               يُحفظ السبب مع سجل المسودة لتتبّع جودة التوليد.

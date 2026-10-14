@@ -248,14 +248,18 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     const flash = await get("/flash-sales");
     expect(titleOf(flash.body)).toBe("عروض فلاش — SubNation");
     expect(canonicalHref(flash.body)).toBe("https://subnation.ly/flash-sales");
-    // B12-F2 (R127-L9): the 140-char A10-F3 runtime copy — the shell
-    // kept the pre-R124 53-char description after the fix shipped
-    // frontend-only. Pinned verbatim by spa-shell-route-parity.test.ts.
+    // R143 (L12-1): the shell now serves the HONEST no-sale arm of the
+    // runtime-gated description — the static shell cannot know sale
+    // state, so it must never promise «عروض فلاش بخصومات حقيقية…»
+    // while the page itself may render «لا عرض نشط حالياً» (the
+    // J-3/F1 truthfulness class). The hydrated page upgrades the meta
+    // client-side when a sale is actually live. Pinned verbatim by
+    // spa-shell-route-parity.test.ts (the no-sale-arm extractor).
     expect(metaContent(flash.body, "name", "description")).toBe(
-      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
+      "صفحة عروض SubNation — تابع العروض الموسمية على الاشتراكات الرقمية بالدينار الليبي مع تسليم فوري في كامل ليبيا.",
     );
     expect(metaContent(flash.body, "property", "og:description")).toBe(
-      "عروض فلاش بخصومات حقيقية لفترة محدودة على اشتراكات نتفلكس وسبوتيفاي و ChatGPT و VPN — بالدينار الليبي مع تسليم فوري بعد الدفع في كامل ليبيا.",
+      "صفحة عروض SubNation — تابع العروض الموسمية على الاشتراكات الرقمية بالدينار الليبي مع تسليم فوري في كامل ليبيا.",
     );
 
     const support = await get("/support");

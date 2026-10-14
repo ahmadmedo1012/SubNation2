@@ -284,6 +284,39 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     expect(localStorage.getItem(KEY_SLOT(5, 101, 0))).toBeNull();
   });
 
+  // ── G-5 / L5-4 (R143): the post-charge cart-sync reads the LIVE line ─────
+  it("G-5/L5-4: a mid-flight quantity RAISE in another tab survives the cart-sync (live read, not the stale snapshot)", async () => {
+    // The sync used to compute the remainder from the `items` snapshot the
+    // loop STARTED from while updateQuantity is an absolute SET: a 2→3
+    // raise landing between the unit POSTs (another tab) was silently
+    // discarded once the loop bought the snapshot's 2 units (the sync
+    // removed the line / set it to 0). Charges stay exactly-what-was-
+    // charged either way — only the un-purchased raise was lost.
+    seedCart(2);
+    renderPage();
+
+    let raised = false;
+    createOrderMock.mockImplementation(async () => {
+      // The raise lands between unit POST 0 and unit POST 1 — the exact
+      // window the multi-tab guard re-reads the live cart inside.
+      if (!raised) {
+        raised = true;
+        const line = readCart()[0]!;
+        localStorage.setItem("subnation_cart_v2", JSON.stringify([{ ...line, quantity: 3 }]));
+      }
+      return { order_code: "SNDBKEYRAISE" };
+    });
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+
+    // Both snapshot units charged and accounted… (their keys cleared)
+    expect(localStorage.getItem(KEY_SLOT(5, 101, 0))).toBeNull();
+    expect(localStorage.getItem(KEY_SLOT(5, 101, 1))).toBeNull();
+    // …and the LIVE line keeps the un-purchased raise: 3 − 2 = 1 survives
+    // (the pre-fix sync removed the line outright — the raise was lost).
+    await waitFor(() => expect(readCart()[0]?.quantity).toBe(1));
+  });
+
   it("keeps the partial-success accounting intact: qty 2, 1 ordered + 1 rejected → cart shrinks to 1", async () => {
     seedCart(2);
     renderPage();

@@ -290,7 +290,7 @@ export default function ProfilePage() {
         ) : user ? (
           <div
             ref={tierGlow.ref}
-            className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}
+            className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-calm ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}
           >
             {/* R139 (precision): the identity card is the page's ONE
                 prominent card — shadow-lg shadow-black/8 retires for the
@@ -346,9 +346,14 @@ export default function ProfilePage() {
                   </span>
                 </div>
 
-                {/* Identity — display name OR phone OR provider label */}
+                {/* Identity — display name OR phone OR provider label.
+                    R143 (L3-2): dir="auto" + text-right — the ProductCard
+                    F-1 recipe; Telegram/Google display names are frequently
+                    Latin and truncated from the wrong end in an RTL block. */}
                 {user.display_name && (
-                  <div className="text-sm font-bold mb-1.5 truncate">{user.display_name}</div>
+                  <div dir="auto" className="text-sm font-bold mb-1.5 truncate text-right">
+                    {user.display_name}
+                  </div>
                 )}
                 {/* R122 (A1-P3): the row used to carry dir="ltr" — correct
                     for the 09XXXXXXXX phone run, but it leaked onto the

@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import { db, sessionsTable } from "@workspace/db";
 import { signUserToken } from "./jwt";
-import { logger } from "./logger";
 
 /** 30 days — matches the JWT expiry in signUserToken + the auth_token cookie maxAge. */
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -27,9 +26,14 @@ interface CreateSessionInput {
  * and WhatsApp signed `{ userId }` only, so their sessions were invisible
  * to the store. This unifies them.
  *
- * The DB insert is best-effort: an audit/telemetry row must never block a
- * successful login. On insert failure we still return a valid token (the
- * sessionId is embedded either way), and log for triage.
+ * R143 (L8-1): the DB insert failure is NO LONGER swallowed. Since H1
+ * (2026-09-06)/93-A1 the row IS the session — requireUser and the
+ * /api/auth/probe reject any sid-bearing token whose row is missing —
+ * so the old best-effort posture minted a BORN-DEAD session: 200 +
+ * Set-Cookie for a session that 401s on the very next request (login
+ * loop) while the log called it non-fatal. This now matches
+ * createAdminSession semantics exactly: the insert error propagates and
+ * the mint route answers an honest 500. Fail closed, fail loudly.
  */
 export async function createUserSession(input: CreateSessionInput): Promise<{
   token: string;
@@ -37,24 +41,13 @@ export async function createUserSession(input: CreateSessionInput): Promise<{
 }> {
   const sessionId = crypto.randomUUID();
 
-  try {
-    await db.insert(sessionsTable).values({
-      id: sessionId,
-      userId: input.userId,
-      userAgent: input.userAgent?.substring(0, 255),
-      ipAddress: input.ipAddress?.substring(0, 45),
-      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
-    });
-  } catch (err) {
-    logger.warn(
-      {
-        category: "auth.session",
-        err: err instanceof Error ? err.message : String(err),
-        userId: input.userId,
-      },
-      "[session] row insert failed (non-fatal — token still issued)",
-    );
-  }
+  await db.insert(sessionsTable).values({
+    id: sessionId,
+    userId: input.userId,
+    userAgent: input.userAgent?.substring(0, 255),
+    ipAddress: input.ipAddress?.substring(0, 45),
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+  });
 
   const token = signUserToken({ userId: input.userId, sessionId });
   return { token, sessionId };

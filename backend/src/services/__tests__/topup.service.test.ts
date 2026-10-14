@@ -6,6 +6,7 @@ import {
   usersTable,
   walletLedgerTable,
   walletTopupsTable,
+  notificationsTable,
 } from "../../test/db";
 import { eq } from "drizzle-orm";
 import { TopupService } from "../topup.service";
@@ -111,7 +112,12 @@ describe("TopupService.approve/reject — state machine (round-3 regression, 8-d
     const user = await makeUser("0.00");
     const [topup] = await db
       .insert(walletTopupsTable)
-      .values({ userId: user.id, amount: "50.00", paymentMethod: "mobile_transfer", status: "pending" })
+      .values({
+        userId: user.id,
+        amount: "50.00",
+        paymentMethod: "mobile_transfer",
+        status: "pending",
+      })
       .returning();
 
     await TopupService.approve(topup.id, null);
@@ -140,7 +146,12 @@ describe("TopupService.approve/reject — state machine (round-3 regression, 8-d
     const user = await makeUser("0.00");
     const [topup] = await db
       .insert(walletTopupsTable)
-      .values({ userId: user.id, amount: "75.00", paymentMethod: "mobile_transfer", status: "pending" })
+      .values({
+        userId: user.id,
+        amount: "75.00",
+        paymentMethod: "mobile_transfer",
+        status: "pending",
+      })
       .returning();
 
     await TopupService.approve(topup.id, null);
@@ -156,12 +167,20 @@ describe("TopupService.approve/reject — state machine (round-3 regression, 8-d
     const user = await makeUser("0.00");
     const [topup] = await db
       .insert(walletTopupsTable)
-      .values({ userId: user.id, amount: "75.00", paymentMethod: "mobile_transfer", status: "pending" })
+      .values({
+        userId: user.id,
+        amount: "75.00",
+        paymentMethod: "mobile_transfer",
+        status: "pending",
+      })
       .returning();
 
     await TopupService.reject(topup.id, "bad reference");
 
-    const [row] = await db.select().from(walletTopupsTable).where(eq(walletTopupsTable.id, topup.id));
+    const [row] = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.id, topup.id));
     expect(row.status).toBe("rejected");
     const [after] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
     expect(parseFloat(String(after.walletBalance))).toBe(0);
@@ -170,5 +189,57 @@ describe("TopupService.approve/reject — state machine (round-3 regression, 8-d
       .from(walletLedgerTable)
       .where(eq(walletLedgerTable.userId, user.id));
     expect(ledger).toHaveLength(0);
+  });
+});
+
+describe("R143 (L7-2): topup display strings ride the formatLyd canon (grouping at ≥1,000)", () => {
+  // M17 polish: the money math is untouched (every writer rides roundLyd) —
+  // these pins guard the DISPLAY strings only. A reverted toFixed(2) loses
+  // en-US grouping at ≥1,000 LYD («1380.00 د.ل» instead of «1,380.00 د.ل»),
+  // diverging from the web's formatCurrency canon (R128 B8-D3).
+
+  it("createApprovedTopup: ledger description + notification title render 1,380.00 د.ل grouped", async () => {
+    const user = await makeUser("0.00");
+
+    await TopupService.createApprovedTopup(user.id, 1380, "test-gw", "ref-grouped");
+
+    const ledger = await db
+      .select()
+      .from(walletLedgerTable)
+      .where(eq(walletLedgerTable.userId, user.id));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].description).toBe("Automated topup (test-gw): 1,380.00 د.ل");
+    // The ungrouped toFixed shape is exactly what must NOT come back.
+    expect(ledger[0].description).not.toContain("1380.00");
+
+    const notes = await db
+      .select()
+      .from(notificationsTable)
+      .where(eq(notificationsTable.userId, user.id));
+    expect(notes.some((n) => n.title === "تم شحن 1,380.00 د.ل تلقائياً")).toBe(true);
+    expect(notes.some((n) => n.title === "تم شحن 1380.00 د.ل تلقائياً")).toBe(false);
+  });
+
+  it("approve(): the ledger description renders 1,380.00 د.ل grouped", async () => {
+    const user = await makeUser("0.00");
+    const [topup] = await db
+      .insert(walletTopupsTable)
+      .values({
+        userId: user.id,
+        amount: "1380.00",
+        paymentMethod: "mobile_transfer",
+        status: "pending",
+      })
+      .returning();
+
+    await TopupService.approve(topup.id, null);
+
+    const ledger = await db
+      .select()
+      .from(walletLedgerTable)
+      .where(eq(walletLedgerTable.userId, user.id));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].description).toBe("Topup approved: 1,380.00 د.ل");
+    expect(ledger[0].description).not.toContain("1380.00");
   });
 });

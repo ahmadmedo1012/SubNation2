@@ -207,7 +207,19 @@ router.post("/items", requireUser, async (req, res) => {
   const [product] = await db
     .select()
     .from(productsTable)
-    .where(and(eq(productsTable.id, product_id), eq(productsTable.isActive, true)))
+    .where(
+      and(
+        eq(productsTable.id, product_id),
+        eq(productsTable.isActive, true),
+        // R143 (L4-6): the archived mirror — every catalog surface (list/
+        // search/detail/sitemap) excludes archived products, but the cart
+        // add guard was written against the single-flag model: an ARCHIVED
+        // product was addable and its name/slug/price rode the 201 body.
+        // Checkout already fails closed (PRODUCT_STALE re-read) — this is
+        // the consistency belt at the boundary. Same 404 as inactive.
+        eq(productsTable.isArchived, false),
+      ),
+    )
     .limit(1);
 
   if (!product)

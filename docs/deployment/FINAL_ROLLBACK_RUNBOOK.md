@@ -27,9 +27,19 @@ legacy `openwa-gateway` service must be suspended before the VM-hosted one pairs
 ## 1. Application rollback — SubNation (Coolify Git resource)
 
 The release identity of SubNation is the **commit** it builds from: Coolify
-supplies `GIT_SHA` as a build arg; it lands in `/api/healthz` `.version`, logs,
-and the Sentry release tag. Rollback = point the resource at an older commit
-and deploy — there is no magic, only the Git history.
+supplies `GIT_SHA` as a build arg; it lands in logs, the Sentry release tag,
+and the admin-gated `/api/healthz/ready` `version` field. Rollback = point
+the resource at an older commit and deploy — there is no magic, only the
+Git history.
+
+*(R143 truth fix, lane L17-2: the public `/api/healthz` carries NO
+`.version` — it is status-only by design (`routes/health.ts`), so the old
+`curl …/healthz | jq -r .version` gate always printed `null`. The two
+WORKING release probes are (a) the SENTRY_RELEASE id baked into the served
+`/assets/instrument-*.js` chunk — `curl -s https://subnation.ly/assets/$(curl -s
+https://subnation.ly/ | grep -oE 'instrument-[A-Za-z0-9_-]+\.js' | head -1) | grep -oE
+'528ef39|[0-9a-f]{7}' | head -1` style — and (b) the admin-gated
+`/api/healthz/ready` `version` field from an operator session.)*
 
 Pre-rollback gates (all three, in order):
 
@@ -44,14 +54,17 @@ Pre-rollback gates (all three, in order):
    migration state as what is live (§4). `git diff <live-sha> <target-sha> --
    backend/src/migrate.ts shared/db/src/schema/` — empty diff = inside the
    safe window; any migration-stage change = STOP and read §4.
-3. **You know the previous-good SHA** — `curl -s https://subnation.ly/api/healthz
-   | jq -r .version` (the live one) vs the target. Record both.
+3. **You know the previous-good SHA** — probe the live release identity via
+   the served Sentry chunk (see the R143 note above) or the admin-gated
+   `/api/healthz/ready` `version` (operator session). Record the live SHA and
+   the target.
 
 Then: Coolify → SubNation resource → set the deployment commit to the target
 SHA (panels are named by function — commit / redeploy-an-older-deploy; see
 `COOLIFY_FINAL_SETUP.md` §7) → set the matching `GIT_SHA` build arg → Deploy.
-Verify the deployed-SHA gate: healthz `.version` == the SHA you rolled back
-to, then one login + one catalog page. RTO ≈ one build (2–4 min).
+Verify the deployed-SHA gate: the served Sentry chunk's SENTRY_RELEASE id
+(or the admin-gated `/api/healthz/ready` `version`) == the SHA you rolled
+back to, then one login + one catalog page. RTO ≈ one build (2–4 min).
 
 ## 2. Image rollback (emergency — both services)
 
@@ -173,6 +186,19 @@ boot-abort P0 fixed in `6f14bc3`):
   only stops an old binary from running its corpus. Use it solely to boot
   a known-compatible binary while fixing forward.
 
+> **R143 floor extension (lane L17-3): the R115 entry above is NOT the last
+> destructive-stage boundary.** The corpus has since grown to V1-M34, and
+> later stages are DESTRUCTIVE to roll back across: V1-M30 (R123) drops
+> `users.organization_id` + the `organizations` table — any binary older
+> than R123 that references the dropped column breaks at runtime. The
+> belt-and-braces rule: treat EVERY stage boundary since R115 the same way
+> as the R115 floor (never roll a binary back across a stage it doesn't
+> know). The mechanical protection is pre-rollback gate 2 above (the
+> `git diff <live> <target> -- backend/src/migrate.ts shared/db/src/schema/`
+> empty-diff check) — it subsumes this list; this note exists so an
+> operator skimming the floor section doesn't conclude "R115 is the only
+> hard floor".
+
 Emergency hatch: `DISABLE_BOOT_MIGRATIONS=true` skips `runMigrations()` at
 boot — it stops an old binary from running its corpus, but does NOT make that
 binary compatible with a newer schema. Use only to boot a known-compatible
@@ -222,7 +248,7 @@ QR re-pair.
 
 ## 8. After ANY rollback
 
-- [ ] healthz 200 + `.version` == the intended SHA (subnation); `/healthz` green (openwa)
+- [ ] healthz 200 + the served Sentry chunk's release id == the intended SHA (subnation); `/healthz` green (openwa)
 - [ ] one login, one catalog page, one E2E OTP send
 - [ ] admin → observability: scheduler mode `single`, active=true
 - [ ] logs watched 30 min; incident note recorded (what rolled back, why, SHA pair)

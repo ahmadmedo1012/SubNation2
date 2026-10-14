@@ -236,14 +236,15 @@ function ProductShell() {
           as the grid columns — same wrapper classes as the real page. */}
       <div className="flex flex-col max-lg:gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
         {/* START column — media + title/description/features */}
-        <section className="max-lg:contents lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
+        <section className="max-lg:contents lg:bg-card lg:border lg:border-border/60 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
           {/* R139 (precision, r138-f parity): the media plane carries the
               real page's bg-muted/60 shelf class (the same wash the
               ProductCard well adopted) — a register marker riding along
               render-neutral: .skeleton-shimmer owns the fill and wins the
               utilities-layer source order (R136 riding-tint idiom). The
-              section chrome is verified parity — lg:border-border/55 +
-              lg:shadow-xl are the exact classes ProductMediaSection rides. */}
+              section chrome is verified parity — lg:border-border/60 +
+              lg:shadow-xl are the exact classes ProductMediaSection rides
+              (R143 L2-2: /55 → /60 on both sides of the mirror). */}
           <div className="aspect-[16/9] bg-muted/60 skeleton-shimmer" />
           <div className="max-lg:px-5 max-lg:pt-5 lg:p-5 space-y-4">
             {/* R139 (precision, r138-f): the real h1 moved text-fluid-2xl →
@@ -269,7 +270,7 @@ function ProductShell() {
 
         {/* END column — the sticky buy panel (variant pills → price box
             → trust grid → FAQ row → desktop CTA) */}
-        <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
+        <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/60 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
           <div className="max-lg:px-5 lg:p-5 space-y-4">
             <div className="flex gap-2">
               <div className="min-h-11 w-24 rounded-xl skeleton-shimmer" />
@@ -375,7 +376,10 @@ function FormShell() {
   return (
     <div className="max-w-md mx-auto px-4 py-10">
       <div className="h-8 w-32 skeleton-shimmer rounded-lg mx-auto mb-6" />
-      <div className="bg-card border border-border/55 rounded-3xl p-6 space-y-4">
+      {/* R143 (L2-2): border-border/55 → /60 — the resting card-frame value
+          of the r139 sweep; mirrors the auth cards' family edge (and the
+          PDP section pair above). */}
+      <div className="bg-card border border-border/60 rounded-3xl p-6 space-y-4">
         <div className="h-10 skeleton-shimmer rounded-xl" />
         <div className="h-10 skeleton-shimmer rounded-xl" />
         <div className="h-10 skeleton-shimmer rounded-xl mt-2" />

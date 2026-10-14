@@ -23,7 +23,10 @@ export function ProductMediaSection({ product }: { product: Product }) {
 
   return (
     // ── START column (RTL first = right): media + description ──
-    <section className="max-lg:contents lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
+    // R143 (L2-2): lg:border-border/55 → /60 — the resting card-frame
+    //   value of the r139 sweep (the PDP trio's straggler; route-skeleton
+    //   mirrors this class below).
+    <section className="max-lg:contents lg:bg-card lg:border lg:border-border/60 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
       {/* Image — max-lg:-mb-4 cancels the wrapper gap so the media stays
             flush against the card body exactly like the pre-split layout.
             R138 (visual): bg-muted/60 — the media plane gets the SAME shelf

@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 // instead of a per-row failure toast); the two bulk loops keep their
 // mid-loop isAdminUnauthorized shape but now break + try/finally (P3h)
 // so the bulk-processing flag always resets.
-import { isAdminUnauthorized } from "@/lib/admin-session";
+import { AdminSessionExpiredError, adminFetch, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { useQueryClient } from "@tanstack/react-query";
@@ -527,7 +527,12 @@ export default function AdminProductsPage() {
       for (const id of selectedIds) {
         const url = `/api/admin/products/${id}`;
         try {
-          const r = await fetch(url, { method: "DELETE", headers });
+          // L13-1 (R143): adminFetch threads the shared 20 s timeout — a
+          // stalled link used to keep `bulkProcessing` (and the bulk
+          // buttons' disabled state) armed until the browser's ~300 s
+          // TCP timeout, one dead row at a time. Bodies/headers/401
+          // handling identical.
+          const r = await adminFetch(url, { method: "DELETE", headers });
           // 94-C2 (A2 P2-14): 401 mid-loop = session expiry — stop the
           // loop; the global handler has toasted + redirected.
           if (isAdminUnauthorized(r, url)) {
@@ -551,6 +556,13 @@ export default function AdminProductsPage() {
             continue;
           }
         } catch (e) {
+          // L13-1 (R143): adminFetch throws the sentinel AFTER the global
+          // toast + redirect — preserve the old mid-loop break (the row
+          // is NOT counted as a per-row failure; the loop stops).
+          if (e instanceof AdminSessionExpiredError) {
+            sessionExpired = true;
+            break;
+          }
           // R126-L3 (A2/A8): same guard for network-level failures —
           // "Failed to fetch" used to land raw in the summary toast.
           failures.push({ id, reason: getErrorMessage(e) });
@@ -582,7 +594,9 @@ export default function AdminProductsPage() {
         // failures — never silently in neither.
         const url = `/api/admin/products/${id}`;
         try {
-          const r = await fetch(url, {
+          // L13-1 (R143): adminFetch threads the shared 20 s timeout —
+          // same stall bound as bulkDelete above.
+          const r = await adminFetch(url, {
             method: "PATCH",
             headers: { ...headers, "Content-Type": "application/json" },
             body: JSON.stringify({ is_active: active }),
@@ -605,6 +619,13 @@ export default function AdminProductsPage() {
             });
           }
         } catch (e) {
+          // L13-1 (R143): adminFetch throws the sentinel AFTER the global
+          // toast + redirect — preserve the old mid-loop break (the row
+          // is NOT counted as a per-row failure; the loop stops).
+          if (e instanceof AdminSessionExpiredError) {
+            sessionExpired = true;
+            break;
+          }
           // R126-L3 (A2/A8): network-level failures speak Arabic too.
           failures.push({ id, reason: getErrorMessage(e) });
         }

@@ -276,7 +276,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
           modal). */}
       <div className="bg-card border border-border rounded-2xl shadow-sm w-full max-w-lg max-h-[84vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Input */}
-        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border">
+        {/* R143 (L2-6): the combobox input row carries the palette's
+            focus treatment — the bare outline-none below suppressed the
+            global focus outline with no replacement, and Tab is
+            trapped inside the palette (trapTabKey), so keyboard focus
+            landed on ring-less tabbables. The focus-within idiom mirrors
+            CopilotComposer's composite field (ring-ring — the ONE
+            focus system's token, 2px + ring-offset-background). */}
+        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-background">
           {loading ? (
             <Loader2 className="w-4 h-4 text-muted-foreground shrink-0 animate-spin" />
           ) : (
@@ -370,7 +377,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                       role="option"
                       aria-selected={safeActive === i}
                       onClick={goToOrders}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                      /* R143 (L2-6): visible focus for DIRECT keyboard
+                         focus (Tab lands on these buttons — the trap
+                         keeps focus inside the palette); the arrow-key
+                         highlight stays the calm-active fill below
+                         (aria-selected — the r139 selected-state
+                         vocabulary, untouched). Ring idiom mirrors the
+                         shared Button base. */
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
                         safeActive === i ? "bg-primary/15" : "hover:bg-muted/40"
                       }`}
                     >
@@ -416,8 +430,12 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                            the calm-active fill — bg-primary/15, no ring (the
                            r138 selected-state vocabulary; the ring was a
                            competing edge device next to the ONE focus
-                           system). */
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                           system).
+                           R143 (L2-6): focus-visible:ring-2 + ring-ring for
+                           DIRECT focus (Tab-trapped tabbables) — the
+                           selected-state fill above stays the arrow-key
+                           treatment; the two devices never co-render. */
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
                           safeActive === flatIdx ? "bg-primary/15" : "hover:bg-muted/40"
                         }`}
                       >
@@ -455,8 +473,10 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                         onClick={goToProducts}
                         /* R139 (precision): same calm-active fill as the two
                            sibling option rows above — one selected-state
-                           vocabulary down the whole flattened list. */
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none ${
+                           vocabulary down the whole flattened list.
+                           R143 (L2-6): focus-visible ring for DIRECT
+                           keyboard focus, mirroring the sibling rows. */
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
                           safeActive === flatIdx ? "bg-primary/15" : "hover:bg-muted/40"
                         }`}
                       >

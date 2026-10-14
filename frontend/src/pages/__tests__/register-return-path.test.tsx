@@ -20,6 +20,12 @@
  *   4. register's own back-links (tab + footer) forward the redirect to
  *      /login, so switching back doesn't drop the funnel either.
  *
+ * L1-1 (R143) re-anchored the no-target rows: handleRegisterSuccess is
+ * now wired UNCONDITIONALLY (the orphaned onboarding journey), so a
+ * probe click with no explicit target navigates to the returning-user
+ * default "/" (and the onboarding cases live in
+ * auth-onboarding-journey-r143.test.tsx).
+ *
  * Heavy auth children are mocked at the module boundary; AuthProviders
  * becomes a probe that exposes the onSuccess prop (the real component
  * runs the whole Firebase/Telegram machinery — out of scope for the
@@ -100,20 +106,28 @@ describe("RegisterPage — onSuccess threads the return path (R123-E4a P2)", () 
     expect(window.location.pathname).toBe("/checkout");
   });
 
-  it("no ?redirect= — the probe is inert and nothing redirects", () => {
+  it("no ?redirect= — the returning-user default: the always-wired handler lands on home (L1-1)", () => {
+    // L1-1 (R143): the handler no longer sits inert without a target —
+    // onSuccess(token) with no is_new_user (the probe calls it bare) is
+    // a RETURNING user, so the default navigation is "/". The
+    // brand-new-user arm (/onboarding) is pinned in
+    // auth-onboarding-journey-r143.test.tsx.
     renderAt("/register", <RegisterPage />);
 
     fireEvent.click(screen.getByTestId("auth-probe"));
 
-    expect(window.location.pathname).toBe("/register");
+    expect(window.location.pathname).toBe("/");
   });
 
-  it("an open-redirect target is never navigated to (guard parity with login)", () => {
+  it("an open-redirect target is never navigated to — the guard holds, the default home applies (guard parity with login)", () => {
     renderAt("/register?redirect=//evil.com", <RegisterPage />);
 
     fireEvent.click(screen.getByTestId("auth-probe"));
 
-    expect(window.location.pathname).toBe("/register");
+    // The sanitizer dropped //evil.com BEFORE the handler ran (the
+    // returning-user default above applies) — the open-redirect value
+    // never reaches navigate().
+    expect(window.location.pathname).toBe("/");
   });
 
   it("the back-links to /login forward the redirect so the funnel survives switching back", () => {

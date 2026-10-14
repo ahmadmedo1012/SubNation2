@@ -366,7 +366,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         group relative h-full bg-card border border-border/60 rounded-2xl overflow-hidden cursor-pointer flex flex-col
         float-in ${staggerClass}
         transition-all duration-280 ease-out
-        shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]
+        shadow-calm
         card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
         ${unavailable ? "opacity-45 saturate-[0.3]" : ""}
       `}
@@ -398,7 +398,12 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           utilities re-color every layer through --tw-shadow-color, so
           keeping it at base would flatten both resting layers to 25%;
           hover:shadow-black/25 keeps the hover render (xl @ 25% black)
-          byte-identical to the R120 progression. */}
+          byte-identical to the R120 progression.
+          R143 (L2-1): the resting recipe is now the theme-aware
+          `shadow-calm` token in index.css — dark byte-identical
+          (1px 2px @30% + 10px 28px −14px @40%), .light re-tuned inside
+          the documented 6–14% ceiling (the literal rendered 30/40%
+          black under .light, ~3× over). */}
       <Link
         href={`/product/${product.slug ?? product.id}`}
         aria-label={ariaLabel}

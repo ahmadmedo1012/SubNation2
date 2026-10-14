@@ -60,8 +60,11 @@ export function BalanceCard({
          is a legitimate candidate", the login/admin-login card lift.
          The R115-A10 blob-drift layer + its page-owned glowStyle stay
          byte-identical (the viewport-pause machinery is logic, not
-         chrome); only its alpha joins the r138 hero-blob family value. */
-      className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]"
+         chrome); only its alpha joins the r138 hero-blob family value.
+         R143 (L2-1): the calm elevation is now the theme-aware
+         `shadow-calm` token in index.css (dark byte-identical; .light
+         re-tuned inside the documented 6–14% ceiling). */
+      className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-calm"
     >
       <div className="absolute inset-0 ambient-wash pointer-events-none" />
       <div className="hairline-glow" />

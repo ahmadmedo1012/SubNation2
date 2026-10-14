@@ -56,6 +56,10 @@ function collectSourceTsx(dir: string): string[] {
   return out;
 }
 const sourceTsxFiles = collectSourceTsx(resolve(process.cwd(), "src"));
+// R143 (L2-1): components-tree-only census — the pages/* sites of the
+// 21-site shadow literal census are the pages agent's lane; this suite
+// (components-owned) only freezes the components half of the sweep.
+const componentTsxFiles = collectSourceTsx(resolve(process.cwd(), "src/components"));
 
 /** The complete global cursor:pointer rule, selector list included.
  * CSS Selectors L3 §5.2: ONE invalid selector in a list drops the whole
@@ -259,3 +263,122 @@ describe("R128 token families (A1-F2/F3) — surface + tier channels", () => {
     expect(cssText).toMatch(/--color-tier-platinum:\s*hsl\(var\(--tier-platinum\)\)/);
   });
 });
+
+describe("R143 (L2-1) — the two-layer calm elevation is a theme-aware token", () => {
+  // The r138 recipe shipped as a 21-site copy-pasted Tailwind arbitrary
+  // value — theme-blind (30%/40% black under .light, ~3× DESIGN.md
+  // §Elevation's 6–14% light ceiling) and un-governable (any re-tune
+  // meant 21 edits). R143 tokenized it: --shadow-calm in BOTH theme
+  // blocks + one .shadow-calm utility. These pins freeze the token so
+  // the family can never silently drift back to per-site literals.
+  it("--shadow-calm exists in :root with the exact r138 dark values", () => {
+    expect(cssText).toMatch(
+      /--shadow-calm:\s*0px 1px 2px hsl\(0 0% 0% \/ 0\.3\),\s*0px 10px 28px -14px hsl\(0 0% 0% \/ 0\.4\);/,
+    );
+  });
+
+  it("the .light twin stays inside the documented 6–14% black ceiling", () => {
+    // Both layers ≤ 14%: contact 0.07 (the 2xs/xs weight), ambient 0.13
+    // (the xl footprint). Geometry byte-mirrors the dark token; the
+    // alpha ranges keep any future re-tune inside the ceiling.
+    expect(cssText).toMatch(
+      /--shadow-calm:\s*0px 1px 2px hsl\(0 0% 0% \/ 0\.0[6-9]\),\s*0px 10px 28px -14px hsl\(0 0% 0% \/ 0\.1[0-4]\);/,
+    );
+    // …and no OTHER --shadow-calm declaration exists (exactly two: dark
+    // + light — a stray third block would fork the token).
+    expect(cssText.match(/--shadow-calm:/g)).toHaveLength(2);
+  });
+
+  it("the .shadow-calm utility reads the var (not a re-baked literal)", () => {
+    expect(cssText).toMatch(/\.shadow-calm\s*\{\s*box-shadow:\s*var\(--shadow-calm\);\s*\}/);
+  });
+
+  it("every components/ .tsx swept to the token — the arbitrary literal never returns there", () => {
+    // The 12 component-side sites of the 21-site census (pages-side
+    // files are the pages agent's lane). Comments are stripped so the
+    // R143 rationale prose can name the recipe without tripping the ban.
+    const SWEPT = [
+      "src/components/checkout/CartSummaryAside.tsx",
+      "src/components/checkout/PaymentMethodCard.tsx",
+      "src/components/checkout/CouponCard.tsx",
+      "src/components/wallet/BalanceCard.tsx",
+      "src/components/support/TicketThread.tsx",
+      "src/components/support/CreateTicketForm.tsx",
+      "src/components/ProductCard.tsx",
+      "src/components/admin/referrals/ReferralsStats.tsx",
+      "src/components/admin/orders/BulkActionBar.tsx",
+      "src/components/admin/dashboard/MetricCard.tsx",
+      "src/components/admin/products/ProductEditorCard.tsx",
+      "src/components/admin/pricing/PricingConfigCard.tsx",
+    ];
+    for (const rel of SWEPT) {
+      const stripped = stripJsComments(readFileSync(resolve(process.cwd(), rel), "utf8"));
+      expect(stripped, `${rel} lost the calm elevation`).toContain("shadow-calm");
+      expect(stripped, `${rel} re-introduced the arbitrary literal`).not.toContain(
+        "shadow-[0_1px_2px_rgb(0_0_0/0.3)",
+      );
+    }
+    // And the whole components tree stays literal-free (class strings —
+    // comments stripped so rationale prose may NAME the retired recipe).
+    const offenders: string[] = [];
+    for (const f of componentTsxFiles) {
+      if (stripJsComments(readFileSync(f, "utf8")).includes("shadow-[0_1px_2px_rgb(0_0_0/0.3)")) {
+        offenders.push(f);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("every pages/ .tsx swept to the token too (the orchestrator closed the 6-site pages half)", () => {
+    // R143 (L2-1, central closure): the 9 pages-side sites of the
+    // 21-site census (cart ×3, order-detail, profile, flash-sales,
+    // admin/login, admin/dashboard) were converted centrally after the
+    // pages lane landed — the ban is now tree-wide, not components-only.
+    const PAGES_SWEPT = [
+      "src/pages/cart.tsx",
+      "src/pages/order-detail.tsx",
+      "src/pages/profile.tsx",
+      "src/pages/flash-sales.tsx",
+      "src/pages/admin/login.tsx",
+      "src/pages/admin/dashboard.tsx",
+    ];
+    for (const rel of PAGES_SWEPT) {
+      const stripped = stripJsComments(readFileSync(resolve(process.cwd(), rel), "utf8"));
+      expect(stripped, `${rel} lost the calm elevation`).toContain("shadow-calm");
+      expect(stripped, `${rel} re-introduced the arbitrary literal`).not.toContain(
+        "shadow-[0_1px_2px_rgb(0_0_0/0.3)",
+      );
+    }
+    // …and the whole pages tree stays literal-free as well.
+    const pagesTsxFiles = collectSourceTsx(resolve(process.cwd(), "src/pages"));
+    const offenders: string[] = [];
+    for (const f of pagesTsxFiles) {
+      if (stripJsComments(readFileSync(f, "utf8")).includes("shadow-[0_1px_2px_rgb(0_0_0/0.3)")) {
+        offenders.push(f);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("R143 (L3-1) — the tabular-nums truth is pinned (Readex Pro ships no tnum)", () => {
+  it("index.css documents that tabular-nums is inert on Readex Pro (no tnum feature, proportional digits)", () => {
+    // FontTools probe of the shipped woff2 subsets (findings-L3 L3-1):
+    // GSUB features carry NO tnum; digit advances spread 12% (400 face).
+    // The body-wide font-variant-numeric declaration renders nothing —
+    // kept as future-proofing only. Pinning the comment so a future
+    // audit cannot re-assert "tabular-nums — CLEAN" as an alignment
+    // mechanism (L2's r143 audit did exactly that).
+    expect(cssText).toMatch(/R143 \(L3-1\): tabular-nums is INERT on Readex Pro/);
+    expect(cssText).toMatch(/no `tnum` GSUB feature/);
+  });
+});
+
+/** Strip // and /* *\/ comments from a .tsx/.ts source (the r139
+ * visual-suite idiom — rationale prose may NAME retired strings). */
+function stripJsComments(src: string): string {
+  return src
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\*.*$/gm, "");
+}

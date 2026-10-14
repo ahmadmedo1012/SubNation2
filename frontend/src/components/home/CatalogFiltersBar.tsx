@@ -186,8 +186,13 @@ export function CatalogFiltersBar({
                the hover step calms one notch (/80→/70) and the focus
                tint matches the field's primary/45. Visual siblings
                share one border family so the row reads as a single
-               quiet tool, not two heavy boxes. */
-            className="h-10 appearance-none bg-card/60 border border-border/50 rounded-xl pr-8 pl-7 text-base md:text-sm font-semibold focus:border-primary/45 cursor-pointer transition-all hover:border-border/70"
+               quiet tool, not two heavy boxes.
+               R143 (L3-4): md:text-sm → the A13-F7 pointer:fine guard
+               (input.tsx:43 idiom) — a native select never had the
+               guard, so an iPad-class ≥768px coarse-pointer viewport
+               computed 14px and iOS Safari zoomed the page on every
+               focus. Desktop fine-pointer rendering is unchanged. */
+            className="h-10 appearance-none bg-card/60 border border-border/50 rounded-xl pr-8 pl-7 text-base [@media(min-width:48rem)_and_(pointer:fine)]:text-sm font-semibold focus:border-primary/45 cursor-pointer transition-all hover:border-border/70"
             /* 96-F5 (R96-M03): same iOS focus-zoom fix as the search
                field — raw select rode text-sm at every breakpoint. */
           >

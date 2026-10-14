@@ -70,7 +70,10 @@ export function BuyPanelColumn({
     //   the visual order); below lg it dissolves (max-lg:contents) so the
     //   blocks keep their exact pre-split mobile order via flex
     //   order-5..order-12.
-    <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/55 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
+    // R143 (L2-2): lg:border-border/55 → /60 — the resting card-frame
+    //   value the r139 sweep landed everywhere else; the PDP trio (this,
+    //   ProductMediaSection, route-skeleton's mirror) were the stragglers.
+    <section className="max-lg:contents lg:self-start lg:sticky lg:top-24 lg:bg-card lg:border lg:border-border/60 lg:rounded-2xl lg:overflow-hidden lg:shadow-xl">
       <div className="max-lg:contents lg:p-5 lg:space-y-4">
         {/* ── Variant selector (catalog 2026-09-20) ─────────────────────
           Plan × Duration matrix rendered as grouped pills. Shown only

@@ -46,8 +46,11 @@ export function CartSummaryAside({
           contact line grounds it, the contained 10px/28px ambient gives
           it mass. border/60 stays the family edge; the money path's
           three cards (this, the coupon, the payment panel) rest as one
-          family. */}
-      <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+          family.
+          R143 (L2-1): the recipe is now the theme-aware `shadow-calm`
+          token in index.css — dark byte-identical, `.light` re-tuned
+          inside the 6–14% documented ceiling. */}
+      <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-calm">
         <h2 className="font-bold text-base mb-4">ملخص الطلب</h2>
 
         {/* 98-F2 (R98-A3 F5 / P2): live-price reconciliation

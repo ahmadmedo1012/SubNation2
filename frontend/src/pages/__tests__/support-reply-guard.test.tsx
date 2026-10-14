@@ -29,14 +29,15 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
-/** Minimal Response-like object — avoids depending on a global Response. */
+/** Real Response objects — customFetch (behind the generated client)
+ * reads .headers + .text(), which the old ok/json-only stubs lacked
+ * (L6-1/R143). */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+  const { ok = true, status = ok ? 200 : 500, body = {} } = over;
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const fetchMock = vi.fn();

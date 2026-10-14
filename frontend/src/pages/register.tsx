@@ -43,9 +43,26 @@ export default function RegisterPage() {
     [],
   );
   const [, navigate] = useLocation();
-  const handleRegisterSuccess = useCallback(() => {
-    if (redirectTarget) navigate(redirectTarget);
-  }, [redirectTarget, navigate]);
+  const handleRegisterSuccess = useCallback(
+    // L1-1 (R143): the orphaned onboarding journey — register.tsx used to
+    // pass its onSuccess ONLY when a redirectTarget existed, so the
+    // no-target case fell through to the components' hardcoded
+    // navigate("/") and the /onboarding welcome never met a new user.
+    // The handler is now ALWAYS wired: an explicit redirect target still
+    // wins (the checkout/product return path — onboarding only when the
+    // user asked for no specific page), and a brand-new user otherwise
+    // lands on /onboarding (whose own gate bounces already-onboarded
+    // users home, so a register-page re-entry is safe).
+    // (_token optional: WhatsAppPhoneSignIn's onSuccess contract calls
+    // with no args — its no-target case is deliberately left to the
+    // component's own is_new_user default below, so this handler only
+    // ever fires there WITH a redirect target.)
+    (_token?: string, isNewUser?: boolean) => {
+      if (redirectTarget) navigate(redirectTarget);
+      else navigate(isNewUser ? "/onboarding" : "/");
+    },
+    [redirectTarget, navigate],
+  );
   const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
   // R115-A10: pause the ambient blobs when the auth card scrolls away.
   const glow = useOnScreen<HTMLDivElement>();
@@ -109,7 +126,10 @@ export default function RegisterPage() {
             pinned atmosphere pair (.ambient-wash + .hairline-glow — see
             login.tsx for the full rationale) lands symmetric: the two
             auth pages are one family, one surface treatment. */}
-        <div className="relative overflow-hidden bg-card border border-border/55 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
+        {/* R143 (L2-2): border/55 → /60 — the auth family joins the r139
+            resting-edge sweep (category.tsx:382's rule; login + onboarding
+            converted the same round). */}
+        <div className="relative overflow-hidden bg-card border border-border/60 rounded-3xl p-6 shadow-2xl reveal-up stagger-2">
           <div className="absolute inset-0 ambient-wash pointer-events-none" />
           <div className="hairline-glow" />
           <AuthErrorBanner />
@@ -182,8 +202,12 @@ export default function RegisterPage() {
               R123-E4a (P2): onSuccess threads the sanitized ?redirect=
               target (login.tsx's idiom) — without it a funnel register
               always landed on "/" and lost the checkout/product return
-              path. */}
-          <AuthProviders onSuccess={redirectTarget ? handleRegisterSuccess : undefined} />
+              path.
+              L1-1 (R143): the handler is now wired UNCONDITIONALLY —
+              AuthProviders threads the session mint's is_new_user, so
+              the no-target case routes a brand-new user to /onboarding
+              (an explicit target still wins inside the handler). */}
+          <AuthProviders onSuccess={handleRegisterSuccess} />
 
           {/* WhatsApp — peer of Google + Telegram. Pristine button →
               expands inline. Backend handles new + returning users
@@ -191,7 +215,12 @@ export default function RegisterPage() {
               R123-E4a (P2): same onSuccess threading as AuthProviders
               above — the phone-first path (the majority provider in
               Libya) is exactly where the funnel return path used to
-              die for registrants. */}
+              die for registrants.
+              L1-1 (R143): the gate STAYS for WhatsApp — its onSuccess
+              contract passes no is_new_user, so the no-target case is
+              owned by the component's own new-user default
+              (navigate("/onboarding") on is_new_user); passing this
+              handler unconditionally would flatten that to "/". */}
           {whatsappEnabled && (
             <div className="mt-2.5">
               <WhatsAppPhoneSignIn

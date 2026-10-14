@@ -357,7 +357,10 @@ export default function CheckoutPage() {
     // resurrect math computed for a dead basket.
     const generation = ++couponGenerationRef.current;
     try {
-      const result = await validateCouponForLines(code, lines, token);
+      // L5-1 (R143): the token argument is gone — the generated client
+      // rides customFetch, whose bearer-token getter main.tsx registers
+      // supplies auth (and the 20 s budget + boot-gate retry).
+      const result = await validateCouponForLines(code, lines);
       if (generation === couponGenerationRef.current) {
         if (result.status === "network") {
           setAppliedCoupon(null);
@@ -495,6 +498,13 @@ export default function CheckoutPage() {
     let firstOrderCode: string | null = null;
     let failureMessage: string | null = null;
     let couponFailure = false;
+    // L5-3 (R143): a definitive INSUFFICIENT_BALANCE rejection proves the
+    // cached me.wallet_balance is stale-high — recorded here so the
+    // complete-failure branch can reseed the me cache (the balance chip
+    // and the client-side insufficient gate both key off it; without the
+    // refresh they contradicted the server's verdict on screen until the
+    // 60 s staleTime + a remount).
+    let insufficientBalanceRejection = false;
     // AUD103-2-F2 (r103): units skipped because the LIVE cart no longer
     // contains them (another tab completed/removed the line while this
     // loop iterates its stale snapshot).
@@ -530,7 +540,7 @@ export default function CheckoutPage() {
         // against the current basket (applyCoupon above) — the server
         // re-validates on every unit order anyway.
         if (appliedCoupon?.code !== couponCode) {
-          const result = await validateCouponForLines(couponCode, couponQuoteLines(items), token);
+          const result = await validateCouponForLines(couponCode, couponQuoteLines(items));
           if (result.status === "invalid") {
             const message =
               items.length > 1 ? `${result.lineName} — ${result.message}` : result.message;
@@ -664,6 +674,11 @@ export default function CheckoutPage() {
               // cached error response.
               clearCheckoutUnitKey(it.productId, it.variantId ?? null, unit);
             }
+            // L5-3 (R143): flag the balance-class rejection for the me
+            // reseed below (see the declaration).
+            if (apiErrorData(e)?.code === ErrorCode.INSUFFICIENT_BALANCE) {
+              insufficientBalanceRejection = true;
+            }
             // R120-B5 (copy): the تعذّر-family fallback — the vague
             // «فشل في إنشاء الطلب» sat below the app's calm + actionable
             // error-copy bar (the same family as «تعذّر التحقق من
@@ -706,9 +721,23 @@ export default function CheckoutPage() {
       // product as separate lines, and the old productId-only lookup
       // shrunk only the first one.
       orderedUnitsByLine.forEach(({ productId, variantId, units }) => {
-        const line = items.find(
-          (i) => i.productId === productId && (i.variantId ?? null) === variantId,
+        // G-5 / L5-4 (R143): read the LIVE line at SYNC time, not the
+        // stale render snapshot — `items` is what the loop STARTED from,
+        // and updateQuantity is an absolute set, so a quantity RAISE in
+        // another tab mid-flight (2→3, this loop bought 2) used to be
+        // silently discarded (the sync set the live line to 0/removed
+        // it). The live read keeps the un-purchased raise: 3 − 2 = 1
+        // survives. Same discipline as the G-3 removeIfStillSameIntent
+        // guard and the per-unit multi-tab re-read above; a null live
+        // read (storage unavailable) falls back to the snapshot's line
+        // (the pre-fix behavior).
+        const liveCart = readLiveCartItems();
+        const liveLine = liveCart?.find(
+          (l) => l.productId === productId && (l.variantId ?? null) === variantId,
         );
+        const line =
+          liveLine ??
+          items.find((i) => i.productId === productId && (i.variantId ?? null) === variantId);
         if (!line) return;
         if (units >= line.quantity) removeItem(productId, variantId);
         else updateQuantity(productId, line.quantity - units, variantId);
@@ -745,6 +774,17 @@ export default function CheckoutPage() {
 
       if (failureMessage && created.length === 0) {
         // Complete failure — persistent in-page banner + toast cue.
+        // L5-3 (R143): a definitive INSUFFICIENT_BALANCE verdict proves
+        // the cached balance is stale-high — reseed the me cache (no-store
+        // probe) so the balance chip and the client-side «الناقص» gate
+        // recompute from the FRESH figure instead of contradicting the
+        // banner for the rest of the visit (60 s staleTime, no
+        // refetchOnWindowFocus). Fired un-awaited so the banner + toast
+        // land immediately; the chip recomputes when the probe resolves.
+        if (insufficientBalanceRejection) {
+          void refreshMeBalance();
+          queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+        }
         setOrderError(failureMessage);
         toast({ title: failureMessage, variant: "destructive" });
       } else if (failureMessage && created.length > 0) {
@@ -764,7 +804,16 @@ export default function CheckoutPage() {
         navigate("/orders");
       } else {
         // Full success.
-        clear();
+        // G-5 / L5-4 (R143): clear() only when the sync actually emptied
+        // the LIVE cart. The unconditional clear used to discard a
+        // mid-flight quantity raise from another tab (2→3 while this
+        // loop bought the snapshot's 2) even after the sync had already
+        // preserved the 1-unit remainder — the raise is a NEW purchase
+        // intent this confirm never saw, not this intent's business to
+        // delete. A null live read (storage unavailable) falls back to
+        // the old unconditional clear.
+        const liveAfterSync = readLiveCartItems();
+        if (liveAfterSync === null || liveAfterSync.length === 0) clear();
         toast({
           title: "تم إتمام الطلب",
           description: `تم إنشاء ${formatCount(created.length, {

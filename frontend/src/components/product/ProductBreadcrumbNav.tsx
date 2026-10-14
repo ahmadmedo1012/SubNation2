@@ -50,7 +50,16 @@ export function ProductBreadcrumbNav({
           </>
         )}
         <ChevronLeft className="w-3 h-3 opacity-50 shrink-0" aria-hidden="true" />
-        <span className="text-foreground font-bold truncate" aria-current="page">
+        {/* R143 (L3-2): dir="auto" + text-right — the ProductCard F-1
+            recipe on the "you are here" segment: pure-Latin product
+            names truncate from the wrong end in an RTL block (the
+            ellipsis eats the brand head); text-right re-anchors the
+            visual edge. Arabic names resolve rtl — zero change. */}
+        <span
+          dir="auto"
+          className="text-foreground font-bold truncate text-right"
+          aria-current="page"
+        >
           {product.name}
         </span>
       </nav>

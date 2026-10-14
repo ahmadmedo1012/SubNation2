@@ -4,7 +4,15 @@ import { EmptyState } from "@/components/EmptyState";
 import { SkeletonText } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatRelativeTime } from "@/lib/utils";
+import {
+  createSupportTicket,
+  getSupportTicket,
+  listSupportTickets,
+  replySupportTicket,
+  type CreateSupportTicketBody,
+} from "@workspace/api-client-react";
 import { ArrowRight, Headphones, MessageSquare, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -68,14 +76,15 @@ export default function SupportPage() {
 
   const fetchTickets = () => {
     if (!token) return;
-    fetch("/api/support/tickets", { headers })
-      .then(async (r) => {
-        // 93-C5 / F-05: no res.ok check — a 401/5xx envelope used to be
-        // `.json()`-parsed into a non-array and silently rendered as the
-        // empty list. Distinguish failure from emptiness.
-        if (!r.ok) throw new Error("tickets fetch failed");
-        return r.json();
-      })
+    // L6-1 (R143): this rode a raw `fetch` with NO timeout — a stalled
+    // Libyan mobile link kept `loading` armed until the browser's ~300 s
+    // TCP timeout. The generated listSupportTickets rides customFetch's
+    // 20 s budget + ApiError envelope + transparent boot-gate retry (the
+    // R142 C-1 idiom product.tsx set for the coupon twin); non-2xx now
+    // THROWS, so the 93-C5 / F-05 failure≠emptiness contract moves to
+    // the catch arm below (the array check stays as contract-drift
+    // belt-and-suspenders).
+    listSupportTickets({ headers })
       .then((d) => {
         setTickets(Array.isArray(d) ? d : []);
         setListError(false);
@@ -89,14 +98,14 @@ export default function SupportPage() {
   const openTicket = async (id: number) => {
     setTicketLoading(true);
     try {
-      const res = await fetch(`/api/support/tickets/${id}`, { headers });
-      const d = await res.json().catch(() => null);
-      // 93-C5 / F-05 (A4 P2 #6): openTicket had NO res.ok / shape guard —
-      // a 401/5xx body {error} was set as selectedTicket and the render
-      // path dereferenced `selectedTicket.replies.length` → TypeError →
-      // the route-level ErrorBoundary replaced the whole page. Any
-      // session expiry / API blip while clicking a ticket nuked the page.
-      if (!res.ok || !d || !Array.isArray(d.replies)) {
+      // L6-1 (R143): generated getSupportTicket rides customFetch (20 s
+      // budget + ApiError envelope) — the raw fetch carried neither, and
+      // an unguarded r.json() leaked English SyntaxError text into the
+      // Arabic toast when a proxy 502 answered HTML. The 93-C5 / F-05
+      // shape guard stays: a contract drift must toast, never crash the
+      // page at `selectedTicket.replies.length`.
+      const d: unknown = await getSupportTicket(id, { headers });
+      if (!d || !Array.isArray((d as TicketDetail).replies)) {
         toast({
           title: "تعذّر تحميل التذكرة",
           description: "حدث خطأ في الاتصال — حاول مجدداً",
@@ -104,7 +113,7 @@ export default function SupportPage() {
         });
         return;
       }
-      setSelectedTicket(d);
+      setSelectedTicket(d as TicketDetail);
       setReplyText("");
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
     } catch {
@@ -132,14 +141,15 @@ export default function SupportPage() {
     async (id: number) => {
       if (!token) return;
       try {
-        const res = await fetch(`/api/support/tickets/${id}`, {
+        // L6-1 (R143): generated getSupportTicket rides customFetch (20 s
+        // budget + ApiError envelope) — the raw fetch carried no timeout.
+        // Same shape guard as openTicket (93-C5 / F-05): a non-2xx now
+        // throws into the catch below; on failure the previous thread
+        // stays and the next tick retries.
+        const d: unknown = await getSupportTicket(id, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const d = await res.json().catch(() => null);
-        // Same res.ok + shape guard as openTicket (93-C5 / F-05) — a
-        // 401/5xx envelope must never reach selectedTicket; on failure
-        // the previous thread stays and the next tick retries.
-        if (!res.ok || !d || !Array.isArray(d.replies)) return;
+        if (!d || !Array.isArray((d as TicketDetail).replies)) return;
         setSelectedTicket((prev) => (prev && prev.id === id ? (d as TicketDetail) : prev));
       } catch {
         // network blip — the next 25 s tick retries
@@ -199,13 +209,20 @@ export default function SupportPage() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/support/tickets", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error);
+      // L6-1 (R143): generated createSupportTicket rides customFetch (20 s
+      // budget + ApiError envelope) — the raw POST carried NO timeout (a
+      // stalled link kept `submitting` armed for the browser's ~300 s TCP
+      // timeout) and its r.json() was UNGUARDED: a proxy 502 answering
+      // HTML threw English "Unexpected token '<'…" into the Arabic toast
+      // BEFORE the !res.ok check ever ran.
+      await createSupportTicket(
+        {
+          title: form.title,
+          message: form.message,
+          category: form.category as CreateSupportTicketBody["category"],
+        },
+        { headers },
+      );
       toast({ title: "تم إنشاء التذكرة", description: "سيرد فريق الدعم قريباً" });
       setForm({ title: "", message: "", category: "other" });
       setShowCreate(false);
@@ -213,8 +230,11 @@ export default function SupportPage() {
     } catch (err: unknown) {
       toast({
         title: "خطأ",
-        // R111-F2 Q1: calm + actionable fallback (was the vague «فشلت العملية»).
-        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مجدداً",
+        // R111-F2 Q1 + L6-1 (R143): getErrorMessage prefers the backend's
+        // own Arabic sentence and collapses network/middleware English to
+        // the Arabic fallback (the 96-F7 leak guard) — an HTML 502 body
+        // can no longer surface "Unexpected token '<'…" here.
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -232,20 +252,18 @@ export default function SupportPage() {
     if (!selectedTicket || !replyText.trim()) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/support/tickets/${selectedTicket.id}/reply`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: replyText }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error);
+      // L6-1 (R143): generated replySupportTicket rides customFetch (20 s
+      // budget + ApiError envelope) — the raw POST carried no timeout and
+      // an unguarded r.json() (the handleCreate twin).
+      await replySupportTicket(selectedTicket.id, { message: replyText }, { headers });
       setReplyText("");
       await openTicket(selectedTicket.id);
     } catch (err: unknown) {
       toast({
         title: "خطأ",
-        // R111-F2 Q1 (same family as handleCreate above).
-        description: err instanceof Error ? err.message : "تعذّر إتمام العملية — حاول مجدداً",
+        // R111-F2 Q1 (same family as handleCreate above) + L6-1 (R143):
+        // the 96-F7 leak guard — Arabic-only copy on every failure class.
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

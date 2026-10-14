@@ -104,8 +104,10 @@ describe("R137 (FE) — admin/orders.tsx decomposition: page stays an orchestrat
     // B6-03 (R116): the credentials-on-demand DECRYPT path — the
     // audited GET /:id/credentials fetch, the per-order cache fill and
     // the failure memory all stay beside the state they populate.
+    // R143 (L13-1): re-anchored fetch→adminFetch — the D-3 timeout
+    // threading; the handler's page-ownership intent is unchanged.
     expect(page).toContain("const ensureOrderCredentials = useCallback(");
-    expect(page).toContain("fetch(`/api/admin/orders/${orderId}/credentials`, { headers })");
+    expect(page).toContain("adminFetch(`/api/admin/orders/${orderId}/credentials`, { headers })");
     expect(page).toContain("setCredentialsCache((prev) => new Map(prev).set(orderId, body))");
     // The bulk-refund SELECTION inputs are money-action inputs: the
     // R126-L3 membership-honest select-all flag + the row toggles.

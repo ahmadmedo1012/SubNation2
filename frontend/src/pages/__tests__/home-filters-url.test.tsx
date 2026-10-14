@@ -24,6 +24,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { keepPreviousData } from "@tanstack/react-query";
 import { Router } from "wouter";
+import { CartProvider } from "@/lib/cart";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "@/pages/home";
 import {
@@ -110,7 +111,10 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     // The search box is pre-filled with the committed query.
     expect(screen.getByLabelText("البحث في المنتجات")).toHaveValue("نتفلكس");
     // The category chip is pressed (R134 A2-F1: canonical label).
-    expect(screen.getByRole("button", { name: "برامج وتراخيص" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "برامج وتراخيص" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     // The availability chip is pressed.
     expect(screen.getByRole("button", { name: "متوفر فقط" })).toHaveAttribute(
       "aria-pressed",
@@ -165,7 +169,10 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     const replaceSpy = vi.spyOn(window.history, "replaceState");
     renderPage();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "برامج وتراخيص" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "برامج وتراخيص" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
     });
 
     // مسح (1) — the clear-all affordance in the result header (the empty
@@ -214,5 +221,113 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     // Identity against TanStack v5's exported sentinel — the REAL module
     // (only @workspace/api-client-react is mocked here).
     expect(options.query?.placeholderData).toBe(keepPreviousData);
+  });
+});
+
+// ── L4-3 (R143): the available-first re-sort is BROWSE-only ─────────────────
+// The client-side re-order keyed on `sort` alone, so every no-explicit-sort
+// SEARCH view was re-sorted by availability — silently overriding the
+// backend's relevance tiers (tier 0 compound → tier 1 prefix → tier 2): a
+// loosely-matching stocked product jumped above exact brand matches. The
+// نفد-first UX concern is a browsing problem; a searcher's intent ordering
+// is the relevance tiers.
+describe("HomePage — displayProducts re-sort gating (L4-3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHooks();
+    setUrl("/");
+  });
+  afterEach(() => {
+    setUrl("/");
+  });
+
+  /** Mixed-availability catalog in SERVER order: the نفد exact match
+   * leads, the stocked loose match trails (the tier system's verdict). */
+  const relevanceOrder = [
+    { id: 1, name: "Netflix Family", is_available: false },
+    { id: 2, name: "Netflix Basic", is_available: false },
+    { id: 3, name: "Month Plan VPN", is_available: true },
+    { id: 4, name: "Netflix Standard", is_available: true },
+  ];
+
+  function mockProductsList(rows: Array<{ id: number; name: string; is_available: boolean }>) {
+    vi.mocked(useListProducts).mockReturnValue({
+      data: rows.map((r) => ({
+        id: r.id,
+        slug: `p-${r.id}`,
+        name: r.name,
+        image_url: null,
+        price: 25,
+        category: "streaming",
+        is_available: r.is_available,
+        stock_count: r.is_available ? 5 : 0,
+      })),
+      isLoading: false,
+      isError: false,
+      isPlaceholderData: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useListProducts>);
+  }
+
+  function gridOrder(): string[] {
+    // The ProductCard h3s — DOM order is the rendered grid order.
+    return screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent?.trim() ?? "");
+  }
+
+  /** ProductCard rides useCartCommands — the grid needs the real
+   * CartProvider (localStorage-backed; empty cart by default). */
+  function renderWithCart() {
+    return render(
+      <Router>
+        <CartProvider>
+          <HomePage />
+        </CartProvider>
+      </Router>,
+    );
+  }
+
+  it("a SEARCH result set keeps the server's relevance order (no available-first override)", () => {
+    mockProductsList(relevanceOrder);
+    setUrl("/?search=netflix");
+
+    renderWithCart();
+
+    // Exact (نفد) brand matches keep their tier-0/1 lead — the re-sort
+    // must NOT promote the stocked loose match above them.
+    expect(gridOrder()).toEqual([
+      "Netflix Family",
+      "Netflix Basic",
+      "Month Plan VPN",
+      "Netflix Standard",
+    ]);
+  });
+
+  it("the DEFAULT browse view still fronts available products (R120-B1 unchanged)", () => {
+    mockProductsList(relevanceOrder);
+
+    renderWithCart();
+
+    // Browse mode: stocked cards lead (stably — server order within
+    // each availability group).
+    expect(gridOrder()).toEqual([
+      "Month Plan VPN",
+      "Netflix Standard",
+      "Netflix Family",
+      "Netflix Basic",
+    ]);
+  });
+
+  it("an explicit sort keeps the server order for BOTH browse and search (the pre-L4-3 contract)", () => {
+    mockProductsList(relevanceOrder);
+    setUrl("/?search=netflix&sort=price_asc");
+
+    renderWithCart();
+
+    expect(gridOrder()).toEqual([
+      "Netflix Family",
+      "Netflix Basic",
+      "Month Plan VPN",
+      "Netflix Standard",
+    ]);
   });
 });

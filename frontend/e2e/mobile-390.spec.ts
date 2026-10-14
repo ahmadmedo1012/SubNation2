@@ -27,3 +27,40 @@ test.describe("mobile 390px — no horizontal overflow, sane tap targets", () =>
     expect(box!.height).toBeGreaterThanOrEqual(40); // WCAG 2.5.8 AA floor (44px target tracked separately)
   });
 });
+
+/**
+ * R143 (L3-6): the phone-width net never covered the money-adjacent
+ * surfaces — mobile-390 asserted only / and /login while /wallet,
+ * /orders, /support appeared in NO width spec (the PDP overflow check
+ * ran at desktop 1280). Two additions, both guest-safe:
+ *   1. The gated money routes (/wallet, /orders) must REDIRECT a guest
+ *      to /login at phone width — they never render unauthenticated
+ *      (the cart-gate spec's checkout twin, extended to the wallet and
+ *      order-history surfaces).
+ *   2. The money-adjacent surfaces a guest CAN reach (/support, /cart,
+ *      /terms) carry the same scrollWidth ≤ 390 contract.
+ */
+test.describe("mobile 390px — money-route gates + adjacent surfaces (R143 L3-6)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("/wallet and /orders never render for a guest (phone-width redirect to /login)", async ({
+    page,
+  }) => {
+    await page.goto("/wallet");
+    await page.waitForURL(/\/login/, { timeout: 10_000 });
+    expect(page.url()).toContain("/login");
+    await page.goto("/orders");
+    await page.waitForURL(/\/login/, { timeout: 10_000 });
+    expect(page.url()).toContain("/login");
+  });
+
+  for (const path of ["/support", "/cart", "/terms"]) {
+    test(`${path} — scrollWidth ≤ 390 (the money-adjacent guest surfaces)`, async ({ page }) => {
+      await page.goto(path);
+      await expect(page.locator("main").first()).toBeVisible({ timeout: 15_000 });
+      await page.waitForLoadState("networkidle");
+      const width = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(width, `${path} overflows the 390px viewport`).toBeLessThanOrEqual(390);
+    });
+  }
+});

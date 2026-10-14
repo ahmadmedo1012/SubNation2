@@ -132,7 +132,14 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold truncate mb-1">{r.name}</h3>
+                  {/* R143 (L3-2): dir="auto" + text-right — the ProductCard
+                      F-1 recipe: pure-Latin product names truncate from
+                      the wrong end in an RTL block (the ellipsis eats the
+                      brand head); text-right re-anchors the visual edge.
+                      Arabic names resolve rtl — zero change. */}
+                  <h3 dir="auto" className="text-sm font-bold truncate mb-1 text-right">
+                    {r.name}
+                  </h3>
                   <div className="text-primary-text font-bold tabular-nums">
                     {formatCurrency(r.price)}
                   </div>

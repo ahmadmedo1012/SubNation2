@@ -20,7 +20,7 @@
  * customFetch observer — outside any component tree.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
 vi.mock("@/hooks/use-toast", () => ({
@@ -29,8 +29,10 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 import {
+  AdminSessionExpiredError,
   ADMIN_SESSION_EXPIRED_MESSAGE,
   __resetAdminSessionForTests,
+  adminFetch,
   handleAdminUnauthorized,
   isAdminUnauthorized,
   setAdminSessionMirror,
@@ -167,5 +169,149 @@ describe("isAdminUnauthorized — raw-fetch call-site helper", () => {
     expect(isAdminUnauthorized({ status: 409 }, "/api/admin/users/16")).toBe(false);
     expect(isAdminUnauthorized({ status: 403 }, "/api/admin/users/16")).toBe(false);
     expect(toastMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── L13-2 (R143): the D-3 timeout wiring, pinned BEHAVIORALLY ──────────────
+// D-3 (R142) landed `signal: init?.signal ?? (timeoutMs > 0 ?
+// AbortSignal.timeout(timeoutMs) : undefined)` in adminFetch with only a
+// source-level comment as its pin — a future refactor that drops the
+// `signal:` line (or inverts the ?? precedence) ships green through the
+// whole suite while re-opening the ~300 s operator lockup class across
+// every adminFetch/adminFetchJson consumer. These tests assert the wire:
+// the signal fetch actually receives, the SSE opt-out, the caller-signal
+// precedence, and the 401 sentinel (the wrapper's other half).
+describe("adminFetch — the 20 s timeout wiring (L13-2 / D-3 behavioral pin)", () => {
+  beforeEach(() => {
+    __resetAdminSessionForTests();
+    toastMock.mockClear();
+    window.history.pushState({}, "", "/admin/users");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function okResponse() {
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  }
+
+  /** Records the signal each fetch call receives; resolves immediately. */
+  function recordingFetch() {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const stub = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      signals.push(init?.signal);
+      return okResponse();
+    });
+    return { stub, signals };
+  }
+
+  /** A fetch stub that mirrors the browser's abort semantics (the
+   * money-races neverResolvingFetch idiom): rejects the moment the
+   * effective signal fires. */
+  function hangingFetch() {
+    const stub = vi.fn(
+      (_url: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) throw new Error("test stub expects a signal");
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("This operation was aborted", "AbortError"));
+          });
+        }),
+    );
+    return { stub };
+  }
+
+  it("the DEFAULT call hands fetch a real, un-fired abort signal (the shared 20 s budget's carrier)", async () => {
+    const { stub, signals } = recordingFetch();
+    vi.stubGlobal("fetch", stub);
+
+    await adminFetch("/api/admin/users/16", { method: "PATCH" });
+
+    // The WIRING is what this case pins — without `signal:` in
+    // adminFetch's fetch call this array holds `undefined` (the exact
+    // silent regression L13-2 exists to catch). The 20 s value itself is
+    // SHARED_ADMIN_TIMEOUT_MS = DEFAULT_REQUEST_TIMEOUT_MS, pinned to
+    // 20_000 by money-races-r140.
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[0]?.aborted).toBe(false);
+    // The init the site wrote is preserved verbatim — only the timeout
+    // signal is added.
+    expect(stub.mock.calls[0][1]?.method).toBe("PATCH");
+  });
+
+  it("a custom timeoutMs produces a REAL abort at its deadline — the operator's modal re-arms, never a 300 s hang", async () => {
+    const { stub } = hangingFetch();
+    vi.stubGlobal("fetch", stub);
+
+    const pending = adminFetch("/api/admin/users/16", { method: "PATCH" }, { timeoutMs: 25 });
+    // AbortSignal.timeout(25) fires on the REAL clock (~ms of test time)
+    // and the stub's abort listener rejects — the behavior the 10 L13-1
+    // converted sites now inherit.
+    await expect(pending).rejects.toThrow();
+    expect(stub).toHaveBeenCalledTimes(1);
+  });
+
+  it("timeoutMs: 0 opts OUT of the bound entirely — fetch receives NO signal (the copilot SSE exemption)", async () => {
+    const { stub, signals } = recordingFetch();
+    vi.stubGlobal("fetch", stub);
+
+    await adminFetch("/api/admin/copilot/ask", { method: "POST" }, { timeoutMs: 0 });
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeUndefined();
+  });
+
+  it("a caller-provided init.signal WINS untouched (the ?? precedence contract)", async () => {
+    const { signals } = recordingFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        signals.push(init?.signal ?? undefined);
+        return okResponse();
+      }),
+    );
+
+    const controller = new AbortController();
+    await adminFetch("/api/admin/orders", { method: "GET", signal: controller.signal });
+
+    // The EXACT caller signal, not a composite — a caller-managed abort
+    // (React Query unmount cancellation) must keep its own semantics.
+    expect(signals[0]).toBe(controller.signal);
+  });
+
+  it("an expired-session 401 throws the AdminSessionExpiredError sentinel AFTER the global toast + redirect", async () => {
+    simulateAdminSession(vi.fn());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("{}", { status: 401, headers: { "content-type": "application/json" } }),
+      ),
+    );
+
+    await expect(adminFetch("/api/admin/users/16", { method: "PATCH" })).rejects.toBeInstanceOf(
+      AdminSessionExpiredError,
+    );
+    expect(toastMock).toHaveBeenCalledTimes(1);
+    expect(toastMock.mock.calls[0][0]).toMatchObject({
+      title: ADMIN_SESSION_EXPIRED_MESSAGE,
+      variant: "destructive",
+    });
+    expect(window.location.pathname).toBe("/admin/login");
+  });
+
+  it("non-401 responses return the Response UNTOUCHED (the drop-in contract the 10 L13-1 sites rely on)", async () => {
+    const body = new Response(JSON.stringify({ updated: 2 }), {
+      status: 207,
+      headers: { "content-type": "application/json" },
+    });
+    const stub = vi.fn(async () => body);
+    vi.stubGlobal("fetch", stub);
+
+    const res = await adminFetch("/api/admin/orders/bulk-status", { method: "PATCH" });
+    expect(res).toBe(body);
+    expect(res.status).toBe(207);
   });
 });

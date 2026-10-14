@@ -587,7 +587,15 @@ export default function OrdersPage() {
                       {/* R124-I4 (A5 #1): hover tint rides the text-safe
                           token — raw text-primary is 3.76:1 on the dark
                           card (AA fail on the hover state of small text). */}
-                      <div className="font-bold text-sm leading-snug truncate group-hover:text-primary-text transition-colors duration-150">
+                      {/* R143 (L3-2): dir="auto" + text-right — the
+                          ProductCard F-1 recipe; order product names are
+                          Latin by design and truncate from the wrong end
+                          in an RTL block (the ellipsis eats the brand
+                          head on the money-history surface). */}
+                      <div
+                        dir="auto"
+                        className="font-bold text-sm leading-snug truncate text-right group-hover:text-primary-text transition-colors duration-150"
+                      >
                         {order.product_name}
                       </div>
                       {/* R116-S2 (P2): the purchased option under the product

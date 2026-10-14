@@ -116,7 +116,7 @@ export function OnboardingPage() {
           ))}
         </div>
 
-        <div className="relative overflow-hidden bg-card border border-border/55 rounded-3xl p-6 sm:p-7 shadow-2xl reveal-up">
+        <div className="relative overflow-hidden bg-card border border-border/60 rounded-3xl p-6 sm:p-7 shadow-2xl reveal-up">
           {/* R139 (precision): the welcome card joins the r138-g auth
               atmosphere family — this page's own docblock says "match the
               auth pages for visual continuity", and login/register ride
@@ -129,8 +129,10 @@ export function OnboardingPage() {
               overflow-hidden clips both layers to the rounded-3xl
               corners). shadow-black/20 → bare shadow-2xl: the color
               override was login's R116-S1 retirement (25% black forced
-              under the light-theme card). border/55 stays — the auth
-              family's own edge value. */}
+              under the light-theme card). R143 (L2-2): border/55 → /60 —
+              the auth family joins the r139 resting-edge sweep
+              (category.tsx:382's rule; the /55 ban pins now cover
+              LOGIN/REGISTER/ONBOARDING). */}
           <div className="absolute inset-0 ambient-wash pointer-events-none" />
           <div className="hairline-glow" />
           {step === 1 ? (
@@ -171,9 +173,13 @@ export function OnboardingPage() {
                      from home's hero/SEO with the rationale "a chip that
                      filters to an empty grid misleads shoppers"; this
                      first-run screen kept naming a brand the live catalog
-                     no longer sells. شاهد (Shahid VIP) is verified-live in
-                     streaming. */
-                  description="نتفلكس، ديزني+، شاهد، سبوتيفاي وأكثر."
+                     no longer sells.
+                     L1-3/L4-1 (R143): شاهد removed too — the R122-era
+                     verification claim for it was falsified by the
+                     R142 I-4 probe (search=شاهد → 0 rows); swapped
+                     for باراماونت+ (Paramount+, stocked, per the
+                     I-4 precedent at catalog-filters.ts:114-119). */
+                  description="نتفلكس، ديزني+، باراماونت+، سبوتيفاي وأكثر."
                 />
               </div>
 

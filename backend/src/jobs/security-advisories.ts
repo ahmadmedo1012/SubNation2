@@ -2,6 +2,7 @@ import { db, adminUsersTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { logAdminAlert, resolveAlertsByDedupeKey } from "./alertLogger";
 import { logger } from "../lib/logger";
+import { captureSchedulerFailure } from "../lib/sentry";
 
 /**
  * Round-5 (db-audit 2026-09-07): security advisory for powerful admins
@@ -82,7 +83,20 @@ export async function checkAdminTotpAdvisory(): Promise<void> {
       "security-advisories: TOTP advisory dispatched (weekly dedupe)",
     );
   } catch (err) {
-    // Advisory-only — a failure here must never affect boot.
+    // Advisory-only — a failure here must never affect boot (the function
+    // deliberately resolves instead of throwing).
+    //
+    // R143 (L14-2): but the non-throwing contract made BOTH outer
+    // captures dead code — cron.ts's `captureSchedulerFailure(
+    // "totp_advisory", …)` and the boot one-shot chain's equivalent can
+    // never fire because this internal catch returns normally first. A
+    // slow-growing DB failure (permissions on the advisory SELECT/insert)
+    // left the weekly TOTP nudge silently dead for weeks on a no-deploy
+    // instance — pino warn only, zero Sentry signal. Capture HERE, the
+    // exact pattern the L-3 (R142) fix landed in copilot-reaper.ts and
+    // whatsapp-otp-prune; the outer captures remain the fallback if the
+    // failure class ever escapes this boundary.
     logger.warn({ err, category: "security" }, "security-advisories: TOTP check failed");
+    captureSchedulerFailure("totp_advisory", err, { trigger: "advisory" });
   }
 }

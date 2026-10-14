@@ -176,4 +176,30 @@ describe("INVALID_COUPON fast-fail at validation time — reasonAr passthrough +
     expect(await db.select().from(ordersTable)).toHaveLength(1);
     expect(await db.select().from(walletLedgerTable)).toHaveLength(1);
   });
+
+  it("R143 (L7-2): the pricing layer's below_min_order reasonAr renders GROUPED at ≥1,000 (formatLyd canon)", async () => {
+    const user = await seedUser("50.00");
+    const product = await seedProduct("10.00");
+    await db.insert(couponsTable).values({
+      code: "ICF-MIN1380",
+      type: "percentage",
+      value: "10.00",
+      isActive: true,
+      minOrderAmount: "1380.00",
+    });
+
+    const result = await CheckoutService.purchase({
+      userId: user.id,
+      productId: product.id,
+      couponCode: "ICF-MIN1380",
+    });
+
+    // M17 display canon (R128 B8-D3): resolveCoupon's reasonAr rides
+    // formatLyd — a reverted toFixed(2) answers «يتطلب حد أدنى 1380.00 د.ل».
+    expect(result).toMatchObject({ ok: false, reason: "INVALID_COUPON" });
+    if (!result.ok) {
+      expect(result.message).toBe("يتطلب حد أدنى 1,380.00 د.ل");
+      expect(result.message).not.toContain("1380.00");
+    }
+  });
 });

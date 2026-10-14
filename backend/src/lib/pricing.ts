@@ -31,7 +31,7 @@
 
 import { couponsTable, db, flashSalesTable } from "@workspace/db";
 import { and, eq, gt } from "drizzle-orm";
-import { roundLyd } from "./money";
+import { roundLyd, formatLyd } from "./money";
 import { getPricingConfig } from "./pricing-config";
 
 // ── Public types ───────────────────────────────────────────────────────────
@@ -197,7 +197,9 @@ async function resolveCoupon(input: CouponInput): Promise<AppliedCoupon | Invali
     return {
       code,
       reason: "below_min_order",
-      reasonAr: `يتطلب حد أدنى ${minOrder.toFixed(2)} د.ل`,
+      // R143 (L7-2): formatLyd — display canon, en-US grouping at ≥1,000
+      // (parity with the route twin in routes/coupons.ts).
+      reasonAr: `يتطلب حد أدنى ${formatLyd(minOrder)}`,
       record: row,
     };
   }

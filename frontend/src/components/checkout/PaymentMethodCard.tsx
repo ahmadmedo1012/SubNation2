@@ -34,7 +34,10 @@ export function PaymentMethodCard({
     //   cards (this, the coupon, the summary receipt) rest as one
     //   family: bg-card + border/60 + the calm contact line +
     //   contained ambient.
-    <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)]">
+    // R143 (L2-1): the recipe is now the theme-aware `shadow-calm`
+    //   token in index.css (dark byte-identical; .light re-tuned
+    //   inside the documented 6–14% ceiling).
+    <div className="bg-card border border-border/60 rounded-2xl p-5 reveal-up shadow-calm">
       <div className="flex items-center gap-2 mb-4">
         <Lock className="w-4 h-4 text-muted-foreground" />
         <h2 className="font-bold text-base">طريقة الدفع</h2>

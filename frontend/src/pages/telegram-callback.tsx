@@ -160,6 +160,9 @@ export default function TelegramCallbackPage() {
           token?: string;
           error?: string;
           reason?: string;
+          // L1-1 (R143): the Telegram session mint returns is_new_user
+          // (auth.ts:618) — consumed by the navigation below.
+          is_new_user?: boolean;
         };
 
         if (!res.ok || !json.token) {
@@ -185,7 +188,14 @@ export default function TelegramCallbackPage() {
         if (window.location.hash) {
           window.history.replaceState({}, "", window.location.pathname + window.location.search);
         }
-        navigate(redirectTarget ?? "/", { replace: true });
+        // L1-1 (R143): the orphaned onboarding journey — an explicit
+        // redirect target ALWAYS wins (the checkout/product return path
+        // above); with no target, a brand-new user lands on /onboarding
+        // instead of / (the page's own gate bounces already-onboarded
+        // users home, so re-entry is safe).
+        navigate(redirectTarget ?? (json.is_new_user === true ? "/onboarding" : "/"), {
+          replace: true,
+        });
       } catch {
         setError("server_error");
         navigate("/login?error=server_error", { replace: true });

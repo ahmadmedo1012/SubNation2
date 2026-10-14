@@ -1,4 +1,5 @@
 import { roundToCents, type LocalCartItem } from "@/lib/cart";
+import { validateCoupon as validateCouponApi } from "@workspace/api-client-react";
 
 // R136 (FE-2 decomposition): extracted verbatim from pages/checkout.tsx —
 // the 98-F2 per-line coupon pre-flight (validation inputs + the
@@ -80,10 +81,17 @@ export type CouponQuoteResult =
  *     coupon is invalid FOR THE BASKET and the precise Arabic reason for
  *     the first failing line (basket order) is returned. The confirm
  *     pre-flight aborts BEFORE any charge.
- *   • "network" — at least one request was network-level inconclusive:
- *     applyCoupon surfaces a retryable notice; the confirm pre-flight
- *     fails OPEN (the server re-validates the coupon on every unit
- *     order anyway — see the pre-flight block in handleConfirm).
+ *   • "network" — at least one request was inconclusive at the HTTP
+ *     level (429 rate-limit / 5xx / boot-gate exhaustion / unparseable
+ *     body / timeout / raw network failure): applyCoupon surfaces a
+ *     retryable notice; the confirm pre-flight fails OPEN (the server
+ *     re-validates the coupon on every unit order anyway — see the
+ *     pre-flight block in handleConfirm). L5-2 (R143): this arm used to
+ *     swallow ONLY fetch-level rejections — any HTTP response that
+ *     wasn't 200+valid (a 429 text body, an HTML 502) was misclassified
+ *     as a definitive «الكوبون غير صالح» verdict, converting a transient
+ *     condition into an instruction to drop the coupon (full-price
+ *     payment) on a money screen.
  *   • "valid" — every line validated; per-unit finals are the same
  *     expression the backend charges per unit (validate's
  *     +(order_amount − discount).toFixed(2) === pricing.ts's
@@ -92,46 +100,78 @@ export type CouponQuoteResult =
 export async function validateCouponForLines(
   code: string,
   lines: CouponQuoteLine[],
-  token: string | null,
 ): Promise<CouponQuoteResult> {
   const distinctPrices: number[] = [];
   for (const line of lines) {
     if (!distinctPrices.some((p) => p === line.unitPrice)) distinctPrices.push(line.unitPrice);
   }
+  // Per-distinct-price record in the legacy {ok, body} shape so the
+  // downstream scan (basket-order first-invalid-line + per-unit math)
+  // stays byte-identical; `null` marks a TRANSIENT outcome (L5-2).
   const responses = await Promise.all(
-    distinctPrices.map(async (price) => {
-      try {
-        const res = await fetch("/api/coupons/validate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          credentials: "include",
-          body: JSON.stringify({ code, order_amount: price }),
-        });
-        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-        return { price, res, body };
-      } catch {
-        return { price, res: null, body: null };
-      }
-    }),
+    distinctPrices.map(
+      async (
+        price,
+      ): Promise<{ price: number; ok: boolean; body: Record<string, unknown> | null } | null> => {
+        try {
+          // L5-1 (R143): this rode a raw `fetch` with NO abort — a stalled
+          // NAT link kept the «تحقق» spinner / the confirm CTA's
+          // «جارٍ المعالجة… 0/N» armed until the browser's ~300 s TCP
+          // timeout, and a cold-start 503 surfaced as a coupon failure
+          // instead of riding customFetch's side-effect-free boot-gate
+          // retry. The generated validateCoupon() rides customFetch's 20 s
+          // budget + ApiError envelope (the R142 C-1 idiom product.tsx
+          // landed for the PDP twin); auth rides the shared bearer-token
+          // getter main.tsx registers, so the hand-built Authorization
+          // header (and the `token` parameter) is gone.
+          const data = await validateCouponApi({ code, order_amount: price });
+          return { price, ok: true, body: data as unknown as Record<string, unknown> };
+        } catch (err: unknown) {
+          // L5-2 (R143): classify the HTTP verdict honestly instead of
+          // treating every non-2xx as «الكوبون غير صالح».
+          if (err instanceof Error && err.name === "ApiError") {
+            const status = (err as { status?: unknown }).status;
+            const envelope = (err as { data?: unknown }).data as Record<string, unknown> | null;
+            const message = envelope && typeof envelope.error === "string" ? envelope.error : null;
+            // ONLY a 4xx (rate-limit excepted) carrying a parsed Arabic
+            // {error} envelope is a definitive verdict ABOUT THE COUPON
+            // (not-found / inactive / expired / maxed / min-order / cap).
+            // 429 and 5xx say nothing about the coupon; an unparseable
+            // body (proxy HTML) says nothing either — both are transient,
+            // i.e. the fail-open "network" arm.
+            if (
+              typeof status === "number" &&
+              status >= 400 &&
+              status < 500 &&
+              status !== 429 &&
+              message !== null
+            ) {
+              return { price, ok: false, body: { valid: false, error: message } };
+            }
+          }
+          return null;
+        }
+      },
+    ),
   );
-  // ANY network-level failure leaves the coupon's applicability to the
-  // basket UNKNOWN — inconclusive for the whole pre-flight.
-  if (responses.some((r) => r.res === null)) return { status: "network" };
-  // HTTP-level lookup per distinct price (res non-null after the guard;
-  // the redundant check below keeps the narrowed type without an `as`).
-  const byPrice = new Map<number, { res: Response; body: Record<string, unknown> | null }>();
+  // ANY transient outcome (429 / 5xx / timeout / network / unparseable)
+  // leaves the coupon's applicability to the basket UNKNOWN —
+  // inconclusive for the whole pre-flight (L5-2: previously only a
+  // fetch-level rejection landed here).
+  if (responses.some((r) => r === null)) return { status: "network" };
+  // HTTP-level lookup per distinct price (non-null after the guard
+  // above; the redundant check below keeps the narrowed type without
+  // an `as`).
+  const byPrice = new Map<number, { ok: boolean; body: Record<string, unknown> | null }>();
   for (const r of responses) {
-    if (!r.res) continue;
-    byPrice.set(r.price, { res: r.res, body: r.body });
+    if (!r) continue;
+    byPrice.set(r.price, r);
   }
   // First INVALID line in BASKET order — the error names the first line
   // the shopper sees, carrying the backend's precise Arabic reason.
   for (const line of lines) {
     const r = byPrice.get(line.unitPrice)!;
-    if (!(r.res.ok && r.body && r.body.valid === true)) {
+    if (!(r.ok && r.body && r.body.valid === true)) {
       const message =
         (r.body && typeof r.body.error === "string" && r.body.error) || "الكوبون غير صالح";
       return { status: "invalid", message, lineName: line.name };

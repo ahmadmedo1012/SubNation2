@@ -278,10 +278,22 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
       });
       expect(login.body.requires_2fa).toBe(true);
 
-      const verify2fa = await postJson(url, "/api/admin/login/verify-2fa", {
+      let verify2fa = await postJson(url, "/api/admin/login/verify-2fa", {
         temp_token: login.body.temp_token,
         code: generateSync({ secret: plaintextSecret }),
       });
+      if (verify2fa.status === 401) {
+        // R143 (L8-2): the same TOTP step-boundary race 528ef39 armored
+        // at Steps 2 and 4 — one regenerating retry (1.1s past the
+        // boundary, fresh mid-window code) absorbs the race; a PERSISTENT
+        // 401 (safeDecrypt regression, wiring) still fails the test on
+        // the second attempt.
+        await new Promise((r) => setTimeout(r, 1_100));
+        verify2fa = await postJson(url, "/api/admin/login/verify-2fa", {
+          temp_token: login.body.temp_token,
+          code: generateSync({ secret: plaintextSecret }),
+        });
+      }
       expect(verify2fa.status).toBe(200);
       expect(verify2fa.cookies.some((c) => c.startsWith("admin_token="))).toBe(true);
     } finally {
@@ -327,7 +339,7 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
     try {
       const setup = await postJson(url, "/api/admin/2fa/setup", {}, admin.token);
       const secret = setup.body.secret as string;
-      const verifySetup = await postJson(
+      let verifySetup = await postJson(
         url,
         "/api/admin/2fa/verify-setup",
         {
@@ -335,6 +347,20 @@ describe("R118-B1c (A4 F-4) — TOTP secret encrypted at rest", () => {
         },
         admin.token,
       );
+      if (verifySetup.status === 401) {
+        // R143 (L8-2): the same TOTP step-boundary race 528ef39 armored
+        // at Steps 2 and 4 — one regenerating retry; a persistent 401
+        // (decrypt failure, wiring regression) still fails the test.
+        await new Promise((r) => setTimeout(r, 1_100));
+        verifySetup = await postJson(
+          url,
+          "/api/admin/2fa/verify-setup",
+          {
+            code: generateSync({ secret }),
+          },
+          admin.token,
+        );
+      }
       expect(verifySetup.status).toBe(200);
 
       const login = await postJson(url, "/api/admin/login", {

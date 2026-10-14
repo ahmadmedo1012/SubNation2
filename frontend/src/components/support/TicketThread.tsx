@@ -38,7 +38,11 @@ export function TicketThread({
   messagesEndRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgb(0_0_0/0.3),0_10px_28px_-14px_rgb(0_0_0/0.4)] float-in">
+    // R143 (L2-1): the thread shell rides the two-layer calm elevation
+    //   as the theme-aware `shadow-calm` token in index.css (the r138
+    //   recipe — dark byte-identical; .light re-tuned inside the
+    //   documented 6–14% ceiling).
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-calm float-in">
       {/* R139 (precision): the thread card is the page's prominent active
           surface — border/55 + shadow-lg shadow-black/12 retire for the
           family resting edge + the r138 two-layer calm elevation

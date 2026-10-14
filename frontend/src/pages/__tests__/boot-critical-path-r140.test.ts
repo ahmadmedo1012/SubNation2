@@ -371,9 +371,9 @@ describe("R-140-b: boot-head-start — gates and the home key parity", () => {
 // complete, and no other suite pins them. Deliberately narrow.
 
 describe("R-140-b: vite.config.ts — criticalPreloadInject emits the font preloads", () => {
-  it("targets exactly arabic 400/600/700 + latin 400 (the above-the-fold set)", () => {
+  it("targets exactly arabic 400/600/700 + latin 400/700 (the above-the-fold set — R143 L3-3 added latin-700 for the Navbar wordmark)", () => {
     expect(VITE_CONFIG).toContain(
-      "readex-pro-arabic-(400|600|700)-normal-[A-Za-z0-9_-]+\\.woff2$|readex-pro-latin-400-normal-[A-Za-z0-9_-]+\\.woff2$",
+      "readex-pro-arabic-(400|600|700)-normal-[A-Za-z0-9_-]+\\.woff2$|readex-pro-latin-(400|700)-normal-[A-Za-z0-9_-]+\\.woff2$",
     );
   });
 

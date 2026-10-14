@@ -8,7 +8,9 @@
  * while the user waited for a reply.
  *
  * Pinned here (fake-timer discipline per flash-sale-banner.test.tsx —
- * raw fetch stubbed per-test like every support suite):
+ * fetch stubbed per-test with REAL Response objects, L6-1/R143: the
+ * page rides the generated orval client whose customFetch reads
+ * .headers + .text()):
  *   • an open ticket selected → one silent thread refetch per 25 s;
  *   • the refresh is SILENT: a typed reply draft survives the tick
  *     (openTicket would have cleared it) and a landed admin reply
@@ -35,12 +37,14 @@ vi.mock("@/hooks/use-toast", () => ({
 }));
 
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
-  const { ok = true, status = 200, body = {} } = over;
-  return {
-    ok,
+  const { ok = true, status = ok ? 200 : 500, body = {} } = over;
+  // L6-1 (R143): REAL Response objects — customFetch (behind the
+  // generated client) reads .headers + .text(), which the old
+  // ok/json-only stubs lacked.
+  return new Response(JSON.stringify(body), {
     status,
-    json: () => Promise.resolve(body),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const ticketRow = (status: string) => ({
@@ -74,13 +78,16 @@ function renderPage() {
   );
 }
 
-/** Resolve the pending raw-fetch promise chains with fake timers active
- * (the support page rides plain .then chains, not react-query). */
+/** Resolve the pending fetch promise chains with fake timers active
+ * (the support page rides plain .then chains, not react-query). The
+ * generous microtask hop count lets customFetch's own async/await
+ * chain (mergeHeaders → fetch → .text() → JSON.parse) settle too
+ * (L6-1/R143). */
 async function flushMicrotasks() {
   await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 10; i++) {
+      await Promise.resolve();
+    }
     await vi.advanceTimersByTimeAsync(0);
   });
 }
@@ -122,10 +129,11 @@ describe("SupportPage — B-10 open-ticket thread poll (25 s, visible tabs only)
       await vi.advanceTimersByTimeAsync(25_000);
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock).toHaveBeenLastCalledWith(
-      "/api/support/tickets/1",
-      expect.objectContaining({ headers: { Authorization: "Bearer test-token" } }),
-    );
+    const tickCall = fetchMock.mock.calls.at(-1);
+    expect(String(tickCall?.[0])).toBe("/api/support/tickets/1");
+    // L6-1 (R143): customFetch hands fetch a Headers INSTANCE — read it
+    // as one (the poll still threads the explicit bearer header).
+    expect(new Headers(tickCall?.[1]?.headers).get("authorization")).toBe("Bearer test-token");
 
     // The new reply rendered — the poll is the freshness mechanism.
     expect(screen.getByText("رد جديد من الدعم")).toBeInTheDocument();
@@ -235,8 +243,9 @@ describe("SupportPage — B-10 open-ticket thread poll (25 s, visible tabs only)
     // …then let the response land: the list must stay.
     await act(async () => {
       resolveTick(resLike({ body: threadDetail("open", [{ message: "الرد الأول" }]) }));
-      await Promise.resolve();
-      await Promise.resolve();
+      for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+      }
     });
     expect(screen.getByText("مشكلة في الطلب")).toBeInTheDocument();
     expect(screen.queryByText("الرد الأول")).not.toBeInTheDocument();
