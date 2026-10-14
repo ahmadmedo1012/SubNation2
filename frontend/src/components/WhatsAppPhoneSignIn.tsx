@@ -596,8 +596,22 @@ export function WhatsAppPhoneSignIn({
                   A4-F12 (R120-B2): the resting border is
                   `border-muted-foreground/75` (5.0:1 dark / 3.7:1 light vs
                   the card) — `border-border/60` measured 1.15:1 and left
-                  the field extent sub-perceptual on the same-fill card. */
-                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-card px-3 text-left text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  the field extent sub-perceptual on the same-fill card.
+                  R145 (D7): the FILL gains its own step — bg-card →
+                  bg-input (the --input surface token, 215 20% 16% dark /
+                  220 13% 87% light). The live VLM audit's "input fields
+                  have zero visual weight" traced to the fill: bg-card on
+                  the bg-card auth card left ONLY the border carrying the
+                  field, and at a glance the inputs read as holes in the
+                  card. The muted-foreground/75 resting border stays
+                  (A4-F12's pinned ≥3:1 decision is untouched — the task's
+                  "border-border/60+" floor was already exceeded); the
+                  input token adds the surface dimension under it. The
+                  provider BUTTONS stay in their quiet border/60 register
+                  (their pinned idiom): actions rest quiet, FORM reads as
+                  form — the D7 rebalance is fill-only, both sides not
+                  restyled to compete. */
+                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-input px-3 text-left text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
                 />
                 {/* 94-C3 (A3 P2-5): white on #25D366 was ~2:1 (AA fail).
                 bg keeps the WhatsApp brand green; the label rides the
@@ -720,8 +734,11 @@ export function WhatsAppPhoneSignIn({
                   runs, not just Arabic ones, so this Latin-digit OTP
                   rendered untracked despite the intent documented here.)
                   A4-F12 (R120-B2): resting border at muted-foreground/75
-                  (≥3:1 both themes) — was border-border/60 at 1.15:1. */
-                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-card px-3 text-center tracking-[0.2em] text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
+                  (≥3:1 both themes) — was border-border/60 at 1.15:1.
+                  R145 (D7): bg-card → bg-input — the same fill step the
+                  phone field above gained this round (one form, one
+                  surface family; the border decisions stay byte-identical). */
+                  className="flex-1 h-11 rounded-xl border border-muted-foreground/75 bg-input px-3 text-center tracking-[0.2em] text-base outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring disabled:opacity-50"
                   autoFocus
                 />
                 {typeof navigator !== "undefined" &&
@@ -733,7 +750,9 @@ export function WhatsAppPhoneSignIn({
                       disabled={loading}
                       title="لصق الرمز من الحافظة"
                       aria-label="لصق الرمز من الحافظة"
-                      className="h-11 w-11 rounded-xl border border-muted-foreground/75 bg-card text-muted-foreground hover:text-foreground hover:border-muted-foreground flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
+                      /* R145 (D7): bg-card → bg-input — the paste peer rides
+                         the OTP field's new surface (one row, one fill). */
+                      className="h-11 w-11 rounded-xl border border-muted-foreground/75 bg-input text-muted-foreground hover:text-foreground hover:border-muted-foreground flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
                     >
                       <ClipboardPaste className="w-4 h-4" />
                     </button>

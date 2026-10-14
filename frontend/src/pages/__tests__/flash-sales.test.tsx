@@ -91,7 +91,13 @@ describe("FlashSalesPage — countdown driven by the real /api/flash-sale window
 
     renderPage();
 
-    expect(screen.getByText("لا عرض نشط حالياً")).toBeInTheDocument();
+    // R145 (D6): the pre-approved honest lines — the temporal «حالياً»
+    // frame + the verifiable mechanism note (new sales appear here the
+    // moment they start). Pin updated from «لا عرض نشط حالياً» with the
+    // mission's recomposition; the no-fabricated-countdown guard below
+    // is untouched.
+    expect(screen.getByText("لا توجد عروض فلاش نشطة حالياً")).toBeInTheDocument();
+    expect(screen.getByText("العروض الجديدة تظهر هنا فور بدئها")).toBeInTheDocument();
     // The old implementation rendered a fake 06:00:00 chip regardless.
     expect(screen.queryByText(COUNTDOWN_RE)).not.toBeInTheDocument();
   });
@@ -159,19 +165,23 @@ describe("FlashSalesPage — countdown driven by the real /api/flash-sale window
 // the J-3/F1 truthfulness class on a sitemap-advertised money page. The
 // description (and the og:description it feeds) must carry the neutral hub
 // copy whenever no sale is live, and the discount copy only while a real
-// sale runs.
+// sale runs. R145 (D6): the VISIBLE strings the render pins match were
+// recomposed («لا توجد عروض فلاش نشطة حالياً» + «العروض الجديدة تظهر هنا
+// فور بدئها») and the no-sale header sub-line joined the neutral register —
+// the meta-gating CONTRACT itself is byte-identical.
 describe("FlashSalesPage — availability-gated description (L12-1)", () => {
   function metaContent(selector: string): string | null {
     return document.head.querySelector<HTMLMetaElement>(selector)?.content ?? null;
   }
 
-  it("no active sale ⇒ the hub copy: no «خصومات» promise, no brand enumeration (matching «لا عرض نشط حالياً»)", () => {
+  it("no active sale ⇒ the hub copy: no «خصومات» promise, no brand enumeration (matching the honest empty state)", () => {
     mockProducts({ data: [] });
     mockFlashSale(null);
 
     renderPage();
 
-    expect(screen.getByText("لا عرض نشط حالياً")).toBeInTheDocument();
+    // R145 (D6): the pin rides the recomposed honest title.
+    expect(screen.getByText("لا توجد عروض فلاش نشطة حالياً")).toBeInTheDocument();
     const desc = metaContent('meta[name="description"]');
     expect(desc).toBeTruthy();
     expect(desc).toContain("صفحة عروض SubNation");

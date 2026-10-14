@@ -353,8 +353,19 @@ export default function FlashSalesPage() {
             count line is a p, the sale banner is chrome), so the
             heading ladder is h1-only and sequential. */}
         <h1 className="text-fluid-3xl font-bold mb-2">عروض فلاش</h1>
+        {/* R145 (D6, the L12-1 visible twin): the no-sale arm used to read
+            «خصومات على أفضل الاشتراكات الرقمية» — a discount promise
+            sitting directly above a body that honestly says no sale is
+            live. The exact J-3/F1 truthfulness class L12-1 (R143)
+            adjudicated for THIS page's meta description (the neutral hub
+            copy only when no sale runs); the visible sub-line is the
+            last surface still out-promising the body. The neutral arm
+            reuses the meta's own register («تابع العروض الموسمية…») —
+            one voice, zero new invention. A live sale still names its
+            real title; the ended window keeps the title under the honest
+            «انتهى هذا العرض» notice below. */}
         <p className="text-muted-foreground font-bold text-sm">
-          {activeSale ? activeSale.title : "خصومات على أفضل الاشتراكات الرقمية"}
+          {activeSale ? activeSale.title : "تابع العروض الموسمية على الاشتراكات الرقمية"}
         </p>
       </div>
 
@@ -402,16 +413,36 @@ export default function FlashSalesPage() {
            the component canonized (R136 UX-1; orders/cart/notifications
            all adopted — flash-sales was the lone fork left, and drifted:
            w-16/w-8 tile, /50 edge, silent swap). Pure swap per the
-           component's own contract: title/description/CTA byte-identical,
-           the canonical Button rides the bare action slot, className="px-4"
-           preserves the page's horizontal breathing room under the w-full
-           mobile CTA. Adoption nets role="status" + the decorative
-           aria-hidden icon — the documented a11y win every EmptyHero
-           adoption ships. */
+           component's own contract: the canonical Button rides the bare
+           action slot, className="px-4" preserves the page's horizontal
+           breathing room under the w-full mobile CTA. Adoption nets
+           role="status" + the decorative aria-hidden icon — the documented
+           a11y win every EmptyHero adoption ships.
+           R145 (D6 recompose): the live VLM audit read this state as "a
+           system error or broken feed, not an honest business state" —
+           three compounding causes, all fixed in place:
+           (1) the ICON was Sparkles — the generic no-results glyph; the
+           page's own language is Flame (the header stage above), so the
+           dimmed w-9 flame at opacity-25 in the muted well is the honest
+           metaphor (the fire rests between sales) and kills the
+           "two-different-icons-for-one-concept" dissonance the audit
+           called out;
+           (2) the TITLE gains the temporal frame «حالياً» — the R145-
+           pre-approved line says there are no sales RIGHT NOW, not that
+           the feed is empty;
+           (3) the DESCRIPTION was «تابعنا أو راجع الكتالوج — العروض تعود
+           قريباً!» — «تابعنا» pointed at an affordance this page doesn't
+           own and «قريباً» is an unbacked time promise. The honest
+           replacement states the one verifiable mechanism: new sales
+           APPEAR HERE the moment they start (the page really does render
+           an active sale's cards live — useCountdown keys off the real
+           ends_at). NO fake countdown, NO fabricated urgency (B4 P1-1's
+           pinned contract); the CTA stays the primary next-action
+           (browse the catalog) — the mission's recomposition. */
         <EmptyHero
-          icon={Sparkles}
-          title="لا عرض نشط حالياً"
-          description="تابعنا أو راجع الكتالوج — العروض تعود قريباً!"
+          icon={Flame}
+          title="لا توجد عروض فلاش نشطة حالياً"
+          description="العروض الجديدة تظهر هنا فور بدئها"
           className="px-4"
           action={
             <Button asChild size="lg" className="w-full sm:w-auto">

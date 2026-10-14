@@ -10,6 +10,79 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R145 — the visual transformation round: the homepage recomposed around the lit shelf, Motion shipped lazy-gated, the full customer journey re-art-directed — 2026-10-14
+
+**Scope:** the R145 mission — a measurable, production-ready redesign of
+the customer and admin experience, browser-verified before/after. The
+round's method (Scroll Craft's page-grammar + taste floor, Motion's
+restrained reveal vocabulary) and its defect map live at
+`docs/engineering/R145/defect-map.md`; the evidence (81 baseline + 45
+after screenshots, VLM critiques, fold geometry) at
+`/home/z/my-project/download/r145/` (working-copy path — the durable
+record is this entry + the pins).
+
+**Implemented:**
+- **Motion, lazy-gated** — `motion` 14.2.0; the `MotionLazy` provider
+  (LazyMotion + `m` strict + domAnimation, reducedMotion="user") mounted
+  ONLY inside lazy route chunks; a new `vendor-motion` manual chunk
+  (85.41 KB raw / 30.49 KB gz, fetched on first route load, cached
+  across routes) + the frozen-registry pin updated
+  (chunk-architecture: 11→12 return sites). The shared reveal vocabulary
+  (`Reveal`/`RevealGroup`/`RevealItem` — 14px rise, 620ms, the
+  cubic-bezier(0.23,1,0.32,1) ease, 48ms stagger, once, fires inside
+  the viewport). **Eager path UNTOUCHED: 146,702 B gz vs the 146,850
+  baseline (−148 B) under the 150 KiB warn / 160 KiB hard gate.**
+- **The guest hero recomposed** ("the lit shelf"): one typographic focal
+  h1 (SEO text byte-identical), a value line, the R116-S1 CTA pair, and
+  THE SHELF — real product imagery on a lit plane (the shop-window
+  metaphor), with the stats demoted to the shelf's honest caption
+  (skeleton → content → deliberate-hide contract kept; + a new
+  honesty guard: a malformed payload hides the caption instead of
+  rendering «NaN»). The brand-chip row, the side stats column and the
+  mobile stats strip are DELETED (StatsWidgets.tsx removed, −148 lines)
+  — replaced by the shelf caption + the CategoryRail.
+- **CategoryRail** — the discovery section: 7 live-category tiles
+  (accent-tinted icon, brand examples from BRANDS with sr-only Arabic,
+  honest per-category depth counts, green dot only when the category
+  truly has stock, stocked tiles lead). Carries the chips' SEO weight
+  (sr-only transliterations) forward.
+- **The catalog's section identity** — the sr-only default h2 became a
+  visible section header (text-lg/xl + count line + مسح recovery in one
+  group, the boundary-gap-above rhythm rule); desktop row gap 16→20px;
+  ProductCard hierarchy rebalanced (title full-ink text-foreground,
+  price text-lg→text-base — the name now leads, the price follows).
+- **The close resolves** — TrustFooter recomposed into the how-it-works
+  flow (3 honest steps: choose → wallet top-up in LYD via مدار/ليبيانا
+  → instant delivery post-payment with the ≤24h ceiling) + the trust
+  line; every claim pre-existing and verifiable.
+- **PDP conversion path** (lane 145-C): the terms wall moved BELOW the
+  CTA as a quiet native-<details> disclosure (order-13; content
+  preserved for honesty/crawlers); the reading column at 16px; the
+  breadcrumb one contrast step up; the sticky buy bar verified solid /
+  separated / solid-CTA at scroll against an in-stock product (new pin
+  suite `product-conversion-path-r145.test.tsx`, 7 pins).
+- **Auth/cart/flash honesty** (lane 145-D): login inputs on the
+  `--input` surface (44px targets) while providers keep their quiet
+  register; the dead Google row (no VITE_FIREBASE_*) no longer paints
+  (renderableProviders gate + truth-table pins); the empty cart gained
+  honest category shortcuts (7 live categories, 44px); the flash-sales
+  empty state recomposed editorial («لا توجد عروض فلاش نشطة حالياً»),
+  never error-shaped, zero fabricated urgency.
+- **Admin coherence** (lane 145-E): the admin-login emblem's tinted
+  shadow (the family-breaking glow) replaced with the storefront's flat
+  tint recipe; the shell's mobile boundary gap aligned to the
+  storefront frame rhythm. 130/130 admin suites green.
+- **Two real defects found by the render loop and fixed:** the
+  Chromium-RTL scroll-overflow propagation (a leftward page pan at
+  390px — fixed with `contain:layout` on the rail section, measured
+  722→390) and the malformed-stats NaN caption (guard added).
+
+**Gates:** lint 0 errors (62 pre-existing warnings — the documented
+baseline) · typecheck clean (backend/frontend/scripts) · backend
+270 files / 2,510 tests · frontend 257 files / 2,446 tests (grew +13 —
+the new r145 pins) · production build + PWA green, eager path
+146,702 B gz.
+
 ## Round R144 — the reconciliation round: the migrate.ts monolith decomposed, the storefront fetch family consolidated, the external watchdog shipped — every R143 open item closed or honestly handed off — 2026-10-14
 
 **Commits:** seven on top of R143's `ee5c5cf` — deps `7b21bcc` ·

@@ -1412,6 +1412,26 @@ export default defineConfig({
           if (id.includes("node_modules/firebase") || id.includes("node_modules/@firebase")) {
             return "vendor-firebase";
           }
+          // R145 (Motion): the motion/react engine gets its own named
+          // chunk so it NEVER lands on the eager path. The app shell
+          // (Navbar/App/main.tsx) imports ZERO motion modules — the only
+          // importers are lazy route chunks (home/category/product), so
+          // this chunk is fetched on first route load and then cached
+          // across routes. Consumers ride LazyMotion + `m` +
+          // domAnimation (scroll reveals / parallax / gestures); domMax
+          // (layout + drag) is deliberately NOT loaded anywhere — no
+          // consumer needs layout animation, and the feature delta is
+          // the difference between ~6 KB and ~18 KB gz. The eager-sum
+          // gate above still fails the build if any motion module ever
+          // leaks into the entry graph.
+          if (
+            id.includes("node_modules/motion") ||
+            id.includes("node_modules/framer-motion") ||
+            id.includes("node_modules/motion-dom") ||
+            id.includes("node_modules/motion-utils")
+          ) {
+            return "vendor-motion";
+          }
           // Sentry is on the critical path (instrument.ts is the first
           // import in main.tsx) but should not bloat the index entry. By
           // chunking it separately, the main bundle stays tiny while Sentry

@@ -2,24 +2,28 @@
 // subcomponents and pure tables moved to @/components/home/* (verbatim
 // moves — every query, the filter quartet state + setters, the search
 // commit/debounce lifecycle, every memo (displayProducts/
-// categoryHasStock/heroBrands), the URL-mirror effect, useSeo and
+// categoryHasStock), the URL-mirror effect, useSeo and
 // clearFilters stay HERE; the extracts render the byte-identical DOM
 // they rendered inline yesterday and take values + callbacks as
 // props). Import surface:
 //   • catalog-filters / search-history — the page's pure modules
 //   • primitives — the skeleton/status-icon leaf (consumed by the
 //     ProductsGrid + RecentOrdersStrip extracts)
-//   • AuthedHero/RecentOrdersStrip/GuestHero/StatsWidgets — the hero
-//     trio's branch markup + the secondary stats widgets
-//   • CatalogFiltersBar/ProductsGrid/TrustFooter — this round's
-//     section extractions
+//   • AuthedHero/RecentOrdersStrip/GuestHero — the hero trio's
+//     branch markup (R145: the guest hero owns the stats caption —
+//     StatsWidgets.tsx was deleted with the chips/column/strip it
+//     rendered; the shelf + category rail are new extracts)
+//   • CategoryRail/ShelfRail (R145) — the discovery section + the
+//     hero's lit shelf, both consuming page-owned values only
+//   • CatalogFiltersBar/ProductsGrid/TrustFooter — the section
+//     extractions (TrustFooter recomposed R145 into the close)
 import { AuthedHero } from "@/components/home/AuthedHero";
-import { BRANDS, readInitialFiltersFromUrl } from "@/components/home/catalog-filters";
+import { CategoryRail } from "@/components/home/CategoryRail";
+import { readInitialFiltersFromUrl } from "@/components/home/catalog-filters";
 import { CatalogFiltersBar } from "@/components/home/CatalogFiltersBar";
 import { GuestHero } from "@/components/home/GuestHero";
 import { ProductsGrid } from "@/components/home/ProductsGrid";
 import { RecentOrdersStrip } from "@/components/home/RecentOrdersStrip";
-import { MobileStatsStrip } from "@/components/home/StatsWidgets";
 import { TrustFooter } from "@/components/home/TrustFooter";
 import {
   clearSearchHistory,
@@ -28,6 +32,7 @@ import {
 } from "@/components/home/search-history";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
+import { MotionLazy } from "@/lib/motion-lazy";
 import { keepPreviousData } from "@tanstack/react-query";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
 import {
@@ -310,12 +315,16 @@ export default function HomePage() {
     return [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available));
   }, [products, sort, search]);
 
-  // R122 (A11 P0-adjacent): per-category stock map for the hero brand
-  // chips, computed from the ALREADY-LOADED products array (presentation
-  // only — no new endpoint, no inventory feature). Null whenever the
-  // current view is filtered (search/category/available_only change
-  // WHICH products the array holds, so per-category counts would lie);
-  // sort never changes membership, so it stays truthful under any sort.
+  // R122 (A11 P0-adjacent): per-category stock map for the category
+  // rail tiles, computed from the ALREADY-LOADED products array
+  // (presentation only — no new endpoint, no inventory feature). Null
+  // whenever the current view is filtered (search/category/
+  // available_only change WHICH products the array holds, so
+  // per-category counts would lie); sort never changes membership, so
+  // it stays truthful under any sort.
+  // R145: the same map + the counts memo below replaced the old
+  // heroBrands chip-order memo — the chips are gone; CategoryRail
+  // consumes both (stocked tiles lead + honest depth lines).
   const categoryHasStock = useMemo<Set<string> | null>(() => {
     if (search || category || availableOnly) return null;
     const cats = new Set<string>();
@@ -325,16 +334,18 @@ export default function HomePage() {
     return cats;
   }, [products, search, category, availableOnly]);
 
-  // R122 (A11-F1/P0-adjacent): chips whose category currently has stock
-  // lead the scrollable row (Array#sort is stable — the editorial order
-  // survives within each group). No data (filtered view / empty grid) →
-  // the editorial order stands unchanged.
-  const heroBrands = useMemo(() => {
-    if (!categoryHasStock || categoryHasStock.size === 0) return BRANDS;
-    return [...BRANDS].sort(
-      (a, b) => Number(categoryHasStock.has(b.cat)) - Number(categoryHasStock.has(a.cat)),
-    );
-  }, [categoryHasStock]);
+  // R145: per-category catalog depth — the count of products the
+  // UNFILTERED array holds per category. Null under any filter (the
+  // same truthfulness rule as categoryHasStock: a filtered array
+  // would report the filter's counts, not the catalog's).
+  const categoryCounts = useMemo<Record<string, number> | null>(() => {
+    if (search || category || availableOnly) return null;
+    const counts: Record<string, number> = {};
+    for (const p of products) {
+      if (p.category) counts[p.category] = (counts[p.category] ?? 0) + 1;
+    }
+    return counts;
+  }, [products, search, category, availableOnly]);
 
   const clearFilters = () => {
     setSearch("");
@@ -398,19 +409,24 @@ export default function HomePage() {
   // convention (login/register/onboarding pattern) — 100vh overscrolls
   // on mobile dynamic-toolbar viewports.
   return (
-    <div className="min-h-[100dvh]">
-      {seoBlock}
-      {/* py-4 on mobile (R120-B1 / A1-F3): one fold-budget notch tighter
+    // R145 (Motion): the home route's subtree rides the single Motion
+    // feature provider. home.tsx is a LAZY route chunk, so the
+    // vendor-motion chunk it drags never lands on the eager path (see
+    // motion-lazy.tsx's contract comment + the eager-sum gate).
+    <MotionLazy>
+      <div className="min-h-[100dvh]">
+        {seoBlock}
+        {/* py-4 on mobile (R120-B1 / A1-F3): one fold-budget notch tighter
           than the old py-5; ≥sm keeps the original rhythm. */}
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:py-7">
-        {/* ── Hero ─────────────────────────────────────────── */}
-        {/* `userError` breaks the infinite skeleton: a failed /me probe
+        <div className="max-w-6xl mx-auto px-4 py-4 sm:py-7">
+          {/* ── Hero ─────────────────────────────────────────── */}
+          {/* `userError` breaks the infinite skeleton: a failed /me probe
             (expired session, network) previously left the shimmer hero
             on screen forever. Show the guest hero instead — a degraded but
             honest state that still lets the visitor browse the catalog. */}
-        {token && !user && !userError ? (
-          <div className="mb-5 page-in">
-            {/* R115-I1 (A7 P3-6): the skeleton reserves the height the
+          {token && !user && !userError ? (
+            <div className="mb-5 page-in">
+              {/* R115-I1 (A7 P3-6): the skeleton reserves the height the
                 REAL wrapped hero occupies on mobile — the wallet/points
                 chips wrap onto a second row (~150px: py-4 ×2 + title
                 block ~50px + gap-3 + chip row ~53px), while the old
@@ -418,88 +434,91 @@ export default function HomePage() {
                 landed. sm+ stays single-row (~120px). Measured by class
                 analysis (see A7 P3-6); min-h so a longer name can only
                 grow it, never clip. */}
-            <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg min-h-[150px] sm:min-h-[120px] skeleton-shimmer" />
-          </div>
-        ) : token && user ? (
-          <div className="mb-5 page-in">
-            {/* R140-d (runtime perf): the memo-wrapped hero trio twins —
+              <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-card mb-4 shadow-lg min-h-[150px] sm:min-h-[120px] skeleton-shimmer" />
+            </div>
+          ) : token && user ? (
+            <div className="mb-5 page-in">
+              {/* R140-d (runtime perf): the memo-wrapped hero trio twins —
                 see the wrappers' block comment at module top. */}
-            <MemoAuthedHero user={user} />
-            <MemoRecentOrdersStrip
-              pending={ordersPending}
-              error={ordersError}
-              orders={latestOrders}
-              refetch={refetchOrders}
+              <MemoAuthedHero user={user} />
+              <MemoRecentOrdersStrip
+                pending={ordersPending}
+                error={ordersError}
+                orders={latestOrders}
+                refetch={refetchOrders}
+              />
+            </div>
+          ) : (
+            /* R145: the recomposed guest hero — the lit shelf (real
+             product imagery) + the stats caption. The shelf rides
+             displayProducts (available-first), the caption the stats
+             query — the page stays the single data owner. */
+            <GuestHero
+              products={displayProducts}
+              productsLoading={isLoading && products.length === 0}
+              stats={stats}
+              statsPending={statsPending}
             />
-          </div>
-        ) : (
-          <GuestHero
-            heroBrands={heroBrands}
-            categoryHasStock={categoryHasStock}
-            stats={stats}
-            statsPending={statsPending}
+          )}
+
+          {/* ── Category discovery (R145) — guests only: the authed hero
+            already carries the user's context (wallet, orders) and the
+            filter bar carries the working category select; a second
+            full discovery band for a returning user is noise. The rail
+            hides itself under any active filter (its props go null —
+            the same truthfulness rule the stock map obeys). */}
+          {!token && categoryCounts && (
+            <CategoryRail categoryCounts={categoryCounts} categoryHasStock={categoryHasStock} />
+          )}
+
+          <CatalogFiltersBar
+            searchInput={searchInput}
+            category={category}
+            sort={sort}
+            availableOnly={availableOnly}
+            setCategory={setCategory}
+            setSort={setSort}
+            setAvailableOnly={setAvailableOnly}
+            searchHistory={searchHistory}
+            showSearchHistory={showSearchHistory}
+            setShowSearchHistory={setShowSearchHistory}
+            handleSearchChange={handleSearchChange}
+            commitSearch={commitSearch}
+            handleSearchHistoryClick={handleSearchHistoryClick}
+            handleClearHistory={handleClearHistory}
+            searchWrapRef={searchWrapRef}
+            debounceRef={debounceRef}
           />
-        )}
 
-        {/* Mobile stats strip (guest) — R111-F1 G2: the same
-            skeleton-while-pending / hide-on-error contract as the
-            desktop column above (identical geometry, no CLS).
-            R120-B1 (A1-F3/A3-F2): compacted below sm (p-2, tighter gap,
-            mb-3) — the strip is secondary data and was spending ~84px
-            of the fold budget before the first card. The !token gate
-            stays here: pure guests see the strip, while a failed /me
-            probe (token set, userError) renders the guest hero WITHOUT
-            it — the same three-branch contract the hero trio above
-            encodes. */}
-        {!token && <MobileStatsStrip stats={stats} statsPending={statsPending} />}
-
-        <CatalogFiltersBar
-          searchInput={searchInput}
-          category={category}
-          sort={sort}
-          availableOnly={availableOnly}
-          setCategory={setCategory}
-          setSort={setSort}
-          setAvailableOnly={setAvailableOnly}
-          searchHistory={searchHistory}
-          showSearchHistory={showSearchHistory}
-          setShowSearchHistory={setShowSearchHistory}
-          handleSearchChange={handleSearchChange}
-          commitSearch={commitSearch}
-          handleSearchHistoryClick={handleSearchHistoryClick}
-          handleClearHistory={handleClearHistory}
-          searchWrapRef={searchWrapRef}
-          debounceRef={debounceRef}
-        />
-
-        {/* R140-d (runtime perf): the memo-wrapped grid + the deferred
+          {/* R140-d (runtime perf): the memo-wrapped grid + the deferred
             search stream — see the wrappers' block comment at module top
             and the deferredSearchInput declaration. The filter bar above
             keeps the URGENT searchInput (it renders the input itself);
             only the results section rides the deferred value. */}
-        <MemoProductsGrid
-          isLoading={isLoading}
-          productsError={productsError}
-          products={products}
-          displayProducts={displayProducts}
-          activeFilterCount={activeFilterCount}
-          searchInput={deferredSearchInput}
-          category={category}
-          sort={sort}
-          availableOnly={availableOnly}
-          clearFilters={clearFilters}
-          refetchProducts={refetchProducts}
-        />
+          <MemoProductsGrid
+            isLoading={isLoading}
+            productsError={productsError}
+            products={products}
+            displayProducts={displayProducts}
+            activeFilterCount={activeFilterCount}
+            searchInput={deferredSearchInput}
+            category={category}
+            sort={sort}
+            availableOnly={availableOnly}
+            clearFilters={clearFilters}
+            refetchProducts={refetchProducts}
+          />
 
-        {/* ── Trust footer ── */}
-        {!isLoading && products.length > 0 && <TrustFooter />}
+          {/* ── The close (R145: the resolve — how-it-works + trust) ── */}
+          {!isLoading && products.length > 0 && <TrustFooter />}
 
-        {/* Bottom breathing room for guests. Authed users are covered by
+          {/* Bottom breathing room for guests. Authed users are covered by
             main's mobile-nav-safe-pad (which reserves the MobileNav
             clearance) — stacking a second mobile-nav-safe-pad here used to
             double the pad on mobile AND leak 72px onto desktop. */}
-        {!token && <div className="h-6 md:h-0" />}
+          {!token && <div className="h-6 md:h-0" />}
+        </div>
       </div>
-    </div>
+    </MotionLazy>
   );
 }

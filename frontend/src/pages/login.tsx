@@ -13,7 +13,11 @@ import { Link, useLocation } from "wouter";
  * Public login page — passwordless.
  *
  * Available auth methods:
- *   1. Google Sign-In  — via <AuthProviders /> (Firebase popup)
+ *   1. Google Sign-In  — via <AuthProviders /> (Firebase popup; rendered
+ *                        only when THIS build carries the VITE_FIREBASE_*
+ *                        env — R145 D7's honesty gate in AuthProviders
+ *                        drops the API's google row otherwise, instead of
+ *                        painting a button whose click errors out)
  *   2. Telegram        — via <AuthProviders /> (when enabled in
  *                        `auth.telegram` admin setting + a real
  *                        TELEGRAM_BOT_TOKEN is provisioned)

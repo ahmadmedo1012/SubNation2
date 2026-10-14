@@ -35,6 +35,63 @@ afterEach(() => {
   cleanup();
 });
 
+// R145 (Motion): jsdom ships no IntersectionObserver, and motion/react's
+// viewport features (whileInView) construct one on mount with NO guard
+// (unlike the app's own use-on-screen hook). Without this stub every
+// jsdom render of a motion-bearing page crashed with
+// "IntersectionObserver is not defined". The stub fires
+// isIntersecting: true immediately on observe so reveal content lands
+// in its SHOWN state — deterministic for every consumer (the app's
+// use-on-screen reads the same callback and settles onScreen=true,
+// its documented initial state).
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  class IntersectionObserverStub implements IntersectionObserver {
+    readonly root: Element | Document | null = null;
+    readonly rootMargin: string = "0px";
+    readonly thresholds: ReadonlyArray<number> = [0];
+    constructor(private readonly callback: IntersectionObserverCallback) {}
+    observe(target: Element): void {
+      const entry = {
+        isIntersecting: true,
+        intersectionRatio: 1,
+        target,
+        time: 0,
+        boundingClientRect: (target as HTMLElement).getBoundingClientRect?.() ?? {
+          top: 0,
+          left: 0,
+          bottom: 0,
+          right: 0,
+          width: 0,
+          height: 0,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        },
+        intersectionRect: {
+          top: 0,
+          left: 0,
+          bottom: 0,
+          right: 0,
+          width: 0,
+          height: 0,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        },
+        rootBounds: null,
+      } as unknown as IntersectionObserverEntry;
+      this.callback([entry], this as unknown as IntersectionObserver);
+    }
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  }
+  (globalThis as unknown as Record<string, unknown>).IntersectionObserver =
+    IntersectionObserverStub;
+}
+
 // jsdom 27 includes crypto.randomUUID, but provide a defensive
 // fallback so a jsdom downgrade or a non-standard test environment
 // does not silently break tests that depend on the idempotency-key

@@ -213,7 +213,19 @@ export default function AdminLoginPage() {
     <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-background">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-primary/10">
+          {/* R145 (D10 — lane E): the emblem tile folds into the storefront
+              auth family's icon-tile register — bg-primary/15 +
+              border-primary/22, the exact recipe the storefront login/
+              register value-banner tiles ride — and the r138 shadow rule
+              finally lands on this first admin touchpoint: the old
+              shadow-lg shadow-primary/10 was a brand-TINTED drop shadow
+              (the pink radial glow behind the shield the R145 baseline
+              VLM flagged as the "different visual family" tell; tinted
+              shadows read as color and were retired for the neutral calm
+              elevation family — icon tiles carry no elevation at all).
+              Tile geometry, the 2FA KeyRound swap and every class below
+              the emblem are byte-identical. */}
+          <div className="w-14 h-14 rounded-2xl bg-primary/15 border border-primary/22 mx-auto flex items-center justify-center mb-4">
             {needs2FA ? (
               <KeyRound className="w-7 h-7 text-primary" />
             ) : (

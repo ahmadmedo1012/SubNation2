@@ -71,9 +71,11 @@ const lazyRetry = stripComments(read("src/lib/lazy-with-retry.ts"));
 
 // ── Section 1: manualChunks frozen rule list ───────────────────────────────
 
-/** R140-c freeze: the 11 manualChunks return sites (vendor-utils
- *  appears twice by design — the eager utils trio AND the Round-4
- *  de-eager radix-slot/compose-refs pair both target vendor-utils). */
+/** R140-c freeze (R145-amended): the 12 manualChunks return sites
+ *  (vendor-utils appears twice by design — the eager utils trio AND the
+ *  Round-4 de-eager radix-slot/compose-refs pair both target
+ *  vendor-utils; R145 added vendor-motion, the lazy-gated motion/react
+ *  engine chunk — see vite.config.ts's R145 comment). */
 const FROZEN_MANUAL_CHUNK_RULES = [
   "vendor-utils",
   "vendor-react",
@@ -84,6 +86,7 @@ const FROZEN_MANUAL_CHUNK_RULES = [
   "vendor-radix",
   "vendor-router",
   "vendor-firebase",
+  "vendor-motion",
   "sentry-replay",
   "vendor-sentry",
 ];
@@ -120,6 +123,10 @@ const FROZEN_RULE_MATCHERS: readonly [label: string, pin: string][] = [
   ["vendor-router: regexparam", 'id.includes("node_modules/regexparam")'],
   ["vendor-firebase: firebase", 'id.includes("node_modules/firebase")'],
   ["vendor-firebase: @firebase", 'id.includes("node_modules/@firebase")'],
+  ["vendor-motion: motion", 'id.includes("node_modules/motion")'],
+  ["vendor-motion: framer-motion", 'id.includes("node_modules/framer-motion")'],
+  ["vendor-motion: motion-dom", 'id.includes("node_modules/motion-dom")'],
+  ["vendor-motion: motion-utils", 'id.includes("node_modules/motion-utils")'],
   ["sentry-replay: pnpm store path shape", 'id.includes("@sentry-internal+replay")'],
   [
     "sentry-replay: node_modules path shape",
@@ -131,7 +138,7 @@ const FROZEN_RULE_MATCHERS: readonly [label: string, pin: string][] = [
 ];
 
 describe("R140-c — manualChunks (vite.config.ts): the named-rule list is frozen", () => {
-  it("emits exactly the 11 known return sites / 10 named chunks — deletions AND additions fail", () => {
+  it("emits exactly the 12 known return sites / 11 named chunks — deletions AND additions fail", () => {
     const ruleReturns = [...viteConfig.matchAll(/return\s+"(vendor-[a-z-]+|sentry-replay)";/g)].map(
       (m) => m[1],
     );

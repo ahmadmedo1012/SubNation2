@@ -674,7 +674,19 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         </div>
 
         {/* Page content */}
-        <div className="max-w-7xl mx-auto px-4 md:px-5 pt-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:py-7">
+        {/* R145 (lane E — the boundary-gap pass, container only): the gap
+            above the page's first section joins the storefront's
+            recomposed container rhythm — the homepage frame
+            (max-w-6xl px-4 py-4 sm:py-7, kept by the R145 homepage
+            lanes) steps its mobile top padding at the R120-B1/A1-F3
+            fold-budget notch (16px); the admin shell rode pt-5 (20px)
+            below the same sticky-bar geometry. Desktop is untouched:
+            md:py-7 keeps the 28px step at the shell's OWN md boundary
+            (md:px-5 steps the horizontal slot at the same breakpoint —
+            one step point per axis), and the A13 safe-area bottom calc
+            rides byte-identical. Per-page internal rhythm is out of
+            scope this round. */}
+        <div className="max-w-7xl mx-auto px-4 md:px-5 pt-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:py-7">
           {children}
         </div>
       </div>

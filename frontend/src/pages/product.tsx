@@ -5,9 +5,11 @@ import { RouteSkeleton } from "@/components/ui/route-skeleton";
 // every handler stay HERE; the extracts render the byte-identical DOM they
 // rendered inline yesterday). Import surface:
 //   • buy-intent-key / product-seo — the page's pure modules
-//   • BuyPanelColumn — the R116-S2 END column (selector → price → usage →
-//     error → trust → FAQ → mobile coupon → desktop CTA ride inside it);
-//     the compact sticky-bar CtaBlock twin still mounts HERE
+//   • BuyPanelColumn — the R116-S2 END column (selector → price →
+//     error → trust → FAQ → mobile coupon → desktop CTA ride inside
+//     it, with the usage-terms disclosure closing the column BELOW the
+//     CTA since R145/D3); the compact sticky-bar CtaBlock twin still
+//     mounts HERE
 //   • ProductBreadcrumbNav / ProductNotFoundCard / ProductOutageCard —
 //     the R137 closing section extractions
 //   • OrderSuccessScreen / ProductMediaSection / RecommendationsSection —
@@ -654,13 +656,15 @@ export default function ProductPage() {
       {/* R116-S2 (P2) — desktop split layout. Below lg this is the SAME
           single card as before: the wrapper carries the card chrome
           (max-lg:*) and every block keeps its exact former position via
-          explicit flex `order-*` (image → title → long desc → features →
-          variant selector → price → usage terms → error → trust → FAQ
-          → mobile coupon → CTA). At lg the two <section>s materialize as
-          grid columns (START = RTL-first/right: media + content; END =
-          the sticky buy panel) — `max-lg:contents` dissolves them below
-          lg so their children flow straight into the wrapper's flex
-          column, which is what preserves the mobile sequence. */}
+          explicit flex `order-*` (image → title → long desc → features
+          → variant selector → price → error → trust → FAQ → mobile
+          coupon → CTA → usage-terms disclosure — the terms block moved
+          below the CTA in R145/D3, the conversion-path recomposition).
+          At lg the two <section>s materialize as grid columns (START =
+          RTL-first/right: media + content; END = the sticky buy panel)
+          — `max-lg:contents` dissolves them below lg so their children
+          flow straight into the wrapper's flex column, which is what
+          preserves the mobile sequence. */}
       <div
         /* R143 (L2-2): max-lg:border-border/55 → /60 — the PDP's mobile
             card-frame joins the r139 resting-edge sweep (the pages-side
@@ -675,9 +679,10 @@ export default function ProductPage() {
         <ProductMediaSection product={product} />
 
         {/* R137 (closing): the END column moved verbatim to BuyPanelColumn
-            (selector → price → usage → error → trust → FAQ → coupon →
-            desktop CTA — every value + callback flows down as props with
-            their page-side names; zero hooks inside). */}
+            (selector → price → error → trust → FAQ → coupon → desktop CTA,
+            with the usage-terms disclosure closing the column BELOW the
+            CTA since R145/D3 — every value + callback flows down as props
+            with their page-side names; zero hooks inside). */}
         <BuyPanelColumn
           product={product}
           sortedVariants={sortedVariants}
@@ -762,6 +767,24 @@ export default function ProductPage() {
             The CTA twin inside rides the canonical size="lg" recipe
             (CtaBlock's R138 note); z-[45]/keyboard/short-viewport/
             clearance logic byte-identical. */}
+        {/* R145 (D3 mobile half, VERIFIED — no class change): the
+            live-site VLM critique ("translucent bar bleeding into
+            content above; no border/shadow separation; ghost/outline
+            buy button") was re-checked against the baseline pixels
+            (download/r145/baseline/product-*-mobile-*.png): the rendered
+            bar composites OPAQUE hsl(220 20% 8%) with the border-t +
+            .hairline-glow top rule + the up-cast two-layer shadow all
+            present — the "translucent" read is the same-hue illusion
+            (bg-card bar over the bg-card mobile product card). The
+            "ghost buy button" was the SOLD-OUT branch (muted strike
+            price + the outline «بدائل» recovery button — the A9-5
+            honest state, deliberately NOT a solid primary that would
+            promise a purchase the stock denies); the in-stock buy/login
+            CTAs already ride the solid default Button variant (r138;
+            pinned by money-path-chrome-r139 + product-cta-mobile-r126).
+            The bar stays byte-identical this round — the /35 edge keeps
+            matching the MobileNav docked directly beneath it (one chrome
+            family; FINAL_UX_SYSTEM's z-45 layer note). */}
         <div className="hairline-glow" />
         <CtaBlock
           token={token}

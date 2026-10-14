@@ -171,8 +171,20 @@ describe("R139 — flash-sales: urgency loud-but-compliant + the ProductCard rhy
   it("the empty state CONSUMES EmptyHero (the R136 canonized first-run family) with the canonical CTA in the action slot", () => {
     expect(flash).toContain('import { EmptyHero } from "@/components/EmptyState";');
     expect(flash).toContain("<EmptyHero");
-    expect(flash).toContain('title="لا عرض نشط حالياً"');
-    expect(flash).toContain('description="تابعنا أو راجع الكتالوج — العروض تعود قريباً!"');
+    // R145 (D6 recompose): the two copy pins were updated with the
+    // mission-pre-approved honest lines — the OLD strings encoded the
+    // pre-R145 visuals the live VLM audit graded as "reads as a system
+    // error, not an honest business state" (a feed-empty «لا عرض نشط
+    // حالياً» with no temporal frame; a description whose «تابعنا»
+    // pointed at an affordance the page doesn't own and «تعود قريباً»
+    // promised a timeline nothing backs). Family pins (EmptyHero import,
+    // className="px-4", the canonical CTA recipe) are untouched.
+    expect(flash).toContain('title="لا توجد عروض فلاش نشطة حالياً"');
+    expect(flash).toContain('description="العروض الجديدة تظهر هنا فور بدئها"');
+    // R145 (D6): the empty icon is the page's OWN glyph (Flame — the
+    // header stage's language, the "fire rests between sales" read), not
+    // the generic no-results Sparkles the audit flagged.
+    expect(flash).toContain("icon={Flame}");
     expect(flash).toContain('className="px-4"');
     expect(flash).toContain('<Button asChild size="lg" className="w-full sm:w-auto">');
     // The retired hand-rolled frame is gone.

@@ -275,9 +275,14 @@ describe("home — available products lead the default grid; sold-out cards navi
         <HomePage />
       </Router>,
     );
+    // R145: the guest hero's shelf rail also renders /product/:slug links
+    // (the same displayProducts feed) — scope this GRID-order assertion to
+    // the grid's links by excluding the shelf container. The R120-B1
+    // available-first contract is unchanged; the shelf is a second
+    // consumer of the same re-ordered array.
     const productLinks = Array.from(
       container.querySelectorAll<HTMLAnchorElement>('a[href^="/product/"]'),
-    );
+    ).filter((a) => !a.closest('[aria-label="منتجات المتجر"]'));
     expect(productLinks.length).toBe(2);
     expect(productLinks[0].getAttribute("href")).toBe("/product/chatgpt-plus");
     expect(productLinks[1].getAttribute("href")).toBe("/product/netflix-1m");

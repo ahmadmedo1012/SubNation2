@@ -172,8 +172,14 @@ export function ProductMediaSection({ product }: { product: Product }) {
           <h1 dir="auto" className="text-fluid-3xl font-bold mb-2 text-right">
             {product.name}
           </h1>
+          {/* R145 (D9): text-sm → text-base — the PDP's primary reading
+             line on the mobile-majority surface. The live VLM audit read
+             the 14px light-weight body as eye-strain in a 390px column;
+             16px is the HIG/WCAG-friendly floor for the reading column
+             (weight stays 400 — 500 is banned; the 11px micro-type
+             floor is untouched elsewhere). */}
           {product.description && (
-            <p className="text-muted-foreground leading-relaxed text-sm">{product.description}</p>
+            <p className="text-muted-foreground leading-relaxed text-base">{product.description}</p>
           )}
         </div>
 
@@ -181,8 +187,12 @@ export function ProductMediaSection({ product }: { product: Product }) {
               when an editor has provided one. Mirrors the value embedded
               in the Product JSON-LD so on-page text matches the
               structured data Google ingests. */}
+        {/* R145 (D9): text-sm → text-base — same reading-column raise as
+           the short description above; this block IS the long-form
+           SEO/reading content the audit flagged as a 14px "license
+           agreement". */}
         {product.description_long && (
-          <div className="order-3 max-lg:px-5 rounded-xl border border-border/45 bg-muted/15 p-4 text-sm text-foreground/85 leading-relaxed whitespace-pre-line">
+          <div className="order-3 max-lg:px-5 rounded-xl border border-border/45 bg-muted/15 p-4 text-base text-foreground/85 leading-relaxed whitespace-pre-line">
             {product.description_long}
           </div>
         )}

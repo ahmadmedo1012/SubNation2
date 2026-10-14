@@ -45,10 +45,10 @@ describe("R136 (FE-3) — home.tsx decomposition: page stays an orchestration co
     const extracts = [
       "@/components/home/AuthedHero",
       "@/components/home/CatalogFiltersBar",
+      "@/components/home/CategoryRail",
       "@/components/home/GuestHero",
       "@/components/home/ProductsGrid",
       "@/components/home/RecentOrdersStrip",
-      "@/components/home/StatsWidgets",
       "@/components/home/TrustFooter",
       "@/components/home/catalog-filters",
       "@/components/home/search-history",
@@ -91,7 +91,9 @@ describe("R136 (FE-3) — home.tsx decomposition: page stays an orchestration co
     // stale closure could resurrect a superseded debounce.
     expect(page).toContain("const commitSearch = (val: string) => {");
     expect(page).toContain("saveSearchHistory(query);");
-    expect(page).toContain("const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);");
+    expect(page).toContain(
+      "const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);",
+    );
   });
 
   it("every query + every memo stays in the page (no extract re-fetches or re-derives)", () => {
@@ -99,10 +101,12 @@ describe("R136 (FE-3) — home.tsx decomposition: page stays an orchestration co
       expect(page, hook).toContain(hook);
     }
     // The memos the extracts consume as props: the R120-B1
-    // available-first re-order, the R122 stock map and the chip order.
+    // available-first re-order, the R122 stock map and (R145) the
+    // per-category depth map that replaced the heroBrands chip-order
+    // memo when the chips moved to the CategoryRail tiles.
     expect(page).toContain("const displayProducts = useMemo(");
     expect(page).toContain("const categoryHasStock = useMemo<Set<string> | null>(() => {");
-    expect(page).toContain("const heroBrands = useMemo(");
+    expect(page).toContain("const categoryCounts = useMemo<Record<string, number> | null>(() => {");
     // And the R98-04 URL mirror + the A2-F3 clear-all — page-owned
     // orchestration the whole catalog hangs off.
     expect(page).toContain("window.history.replaceState(");
@@ -115,15 +119,18 @@ describe("R136 (FE-3) — the extracts are self-contained presentational units",
     const files = [
       "AuthedHero",
       "CatalogFiltersBar",
+      "CategoryRail",
       "GuestHero",
       "ProductsGrid",
       "RecentOrdersStrip",
-      "StatsWidgets",
+      "ShelfRail",
       "TrustFooter",
     ];
     for (const name of files) {
       const src = read(`src/components/home/${name}.tsx`);
-      expect(src, name).not.toMatch(/const \[(search|searchInput|category|sort|availableOnly), set/);
+      expect(src, name).not.toMatch(
+        /const \[(search|searchInput|category|sort|availableOnly), set/,
+      );
     }
   });
 

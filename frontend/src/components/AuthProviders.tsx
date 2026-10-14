@@ -96,6 +96,35 @@ function includeFirebaseGoogleProvider(providers: Provider[]) {
   return [firebaseGoogleProvider(), ...providers];
 }
 
+/* R145 (D7 honesty): the renderability gate. /api/auth/providers returns
+ * per-provider `enabled` + `has_config` (backend filters !enabled ||
+ * !has_config server-side, auth-settings.ts) — but TWO rows can still be
+ * lies at RENDER time:
+ *   1. a row the backend stops filtering (or a stale 60s-cached response
+ *      mid-config-change) with enabled/has_config falsy must never paint
+ *      as an available option — the API contract is honored client-side
+ *      too, not trusted blindly;
+ *   2. a client_side Google row (live today: enabled=true, has_config=
+ *      true from the DB's firebase_enabled flag, client_id=null) is only
+ *      ACTIONABLE when THIS build carries the VITE_FIREBASE_* env — the
+ *      live login renders it as a normal button and the click dies in
+ *      ProviderButton's «Firebase Google غير مفعلة» arm. The live VLM
+ *      audit (D7) read exactly that dead button as a co-equal primary.
+ *      Rendering only what this client can execute = the honest list.
+ *      oauth_redirect rows (apple) stay — the SERVER executes those, the
+ *      backend's enabled+has_config filter is their full truth. The
+ *      click-time guard in ProviderButton stays as defense-in-depth for
+ *      any path this filter doesn't own. */
+function renderableProviders(providers: Provider[]): Provider[] {
+  return providers.filter((provider) => {
+    if (provider.enabled === false || provider.has_config === false) return false;
+    if (provider.id === "google" && provider.auth_type === "client_side") {
+      return isFirebaseAuthConfigured();
+    }
+    return true;
+  });
+}
+
 function getReferralCodeFromUrl() {
   return new URLSearchParams(window.location.search).get("ref")?.toUpperCase() ?? undefined;
 }
@@ -255,7 +284,14 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
         if (cancelled) return;
         if (!d || !Array.isArray(d.providers)) throw new Error("PROVIDERS_BAD_SHAPE");
         if (!Array.isArray(d?.providers)) throw new Error("PROVIDERS_BAD_SHAPE");
-        setProviders(includeFirebaseGoogleProvider(d.providers as Provider[]));
+        // R145 (D7 honesty): renderableProviders() (see its block comment)
+        // drops the rows this client cannot honestly present as available —
+        // the API's client_side Google row is dead without the Firebase env.
+        // Applied BEFORE includeFirebaseGoogleProvider so the seed-vs-row
+        // precedence is unchanged: Firebase configured ⇒ the API row is
+        // renderable and the seed skips (id collision); not configured ⇒
+        // the row drops and the seed is a no-op anyway.
+        setProviders(includeFirebaseGoogleProvider(renderableProviders(d.providers as Provider[])));
       })
       .catch(() => {
         if (cancelled) return;

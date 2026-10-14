@@ -143,3 +143,99 @@ describe("AuthProviders — honest load failures (r97 F-11 hardening)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+// ── R145 (D7 honesty): the renderability gate ───────────────────────────────
+// The live /api/auth/providers response ships a Google row with
+// enabled=true + has_config=true (the DB's firebase_enabled flag) while
+// the PRODUCTION build carries no VITE_FIREBASE_* env — the button painted
+// as a normal available option and the click died in ProviderButton's
+// «Firebase Google غير مفعلة» arm (the live VLM audit read that dead
+// button as a co-equal primary: "the eye jumps straight to the social
+// login buttons"). The fix: renderableProviders() drops what THIS client
+// cannot execute. These legs pin the gate's truth table.
+describe("AuthProviders — R145 (D7): unavailable providers are never presented as options", () => {
+  // The sentinel pattern: every negative leg pairs the dropped row with a
+  // row that DOES render, then awaits the renderable one — proving the
+  // .then(setProviders) chain landed BEFORE asserting the absence (an
+  // assertion raced ahead of the microtask would false-pass forever).
+  const appleRow = {
+    id: "apple",
+    label: "Apple",
+    color: "#000",
+    icon: "apple",
+    auth_type: "oauth_redirect",
+    enabled: true,
+    has_config: true,
+  };
+  const googleRow = {
+    id: "google",
+    label: "Google",
+    color: "#4285F4",
+    icon: "google",
+    auth_type: "client_side",
+    enabled: true,
+    has_config: true,
+    client_id: null,
+  };
+
+  it("a client_side Google row is hidden while this build lacks the Firebase env (the live dead-button class)", async () => {
+    firebaseConfigured.configured = false;
+    fetchMock.mockResolvedValue(resLike({ body: { providers: [googleRow, appleRow] } }));
+
+    renderProviders();
+
+    // The renderable peer proves the list landed…
+    expect(await screen.findByRole("button", { name: "المتابعة عبر Apple" })).toBeInTheDocument();
+    // …and Google is not presented as an available option. No fake-error
+    // line either — the load SUCCEEDED; the row simply isn't presentable.
+    expect(screen.queryByRole("button", { name: "المتابعة عبر Google" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("the same Google row renders once Firebase IS configured (the click path is real)", async () => {
+    firebaseConfigured.configured = true;
+    fetchMock.mockResolvedValue(resLike({ body: { providers: [googleRow] } }));
+
+    renderProviders();
+
+    expect(await screen.findByRole("button", { name: "المتابعة عبر Google" })).toBeInTheDocument();
+    // The API row wins over the client seed (no duplicate google button).
+    expect(screen.getAllByRole("button", { name: "المتابعة عبر Google" })).toHaveLength(1);
+  });
+
+  it.each([
+    ["enabled: false", { enabled: false, has_config: true }],
+    ["has_config: false", { enabled: true, has_config: false }],
+  ])(
+    "an oauth_redirect row with %s is dropped, not rendered disabled-looking",
+    async (_label, flags) => {
+      fetchMock.mockResolvedValue(
+        resLike({
+          body: {
+            providers: [
+              { ...appleRow, ...flags },
+              // The landed sentinel: a renderable telegram widget row.
+              {
+                id: "telegram",
+                label: "Telegram",
+                color: "#2AABEE",
+                icon: "telegram",
+                auth_type: "widget",
+                enabled: true,
+                has_config: true,
+                bot_username: "SubNation_USERS_bot",
+                bot_id: "8884466008",
+              },
+            ],
+          },
+        }),
+      );
+
+      renderProviders();
+
+      expect(await screen.findByTestId("telegram-button")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "المتابعة عبر Apple" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+});

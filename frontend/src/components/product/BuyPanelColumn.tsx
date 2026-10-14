@@ -1,4 +1,4 @@
-import { AlertCircle, Info } from "lucide-react";
+import { AlertCircle, ChevronDown, Info } from "lucide-react";
 import { CouponField, type CouponResult } from "@/components/product/CouponField";
 import { CtaBlock } from "@/components/product/CtaBlock";
 import { FaqAccordion } from "@/components/product/FaqAccordion";
@@ -16,6 +16,9 @@ import type { Product, ProductFaqItem, ProductVariant, User } from "@workspace/a
 // byte-identical; zero hooks live here. The desktop CtaBlock rides inside;
 // its compact sticky-bar twin stays in the page (guest/authed geometry is
 // page state — the R135 pin).
+// R145 (D3, P0 — conversion path): the usage-terms block moved BELOW the
+// CTA area + de-energized (see its comment); the column now reads
+// selector → price → error → trust → FAQ → coupon → CTA → terms.
 export function BuyPanelColumn({
   product,
   sortedVariants,
@@ -65,11 +68,11 @@ export function BuyPanelColumn({
 }) {
   return (
     // R116-S2: END column — at lg this is the sticky buy panel
-    //   (selector → price → usage → error → trust → FAQ → coupon → CTA —
-    //   the FAQ joined this column in R117 F-3 so mobile DOM order matches
-    //   the visual order); below lg it dissolves (max-lg:contents) so the
-    //   blocks keep their exact pre-split mobile order via flex
-    //   order-5..order-12.
+    //   (selector → price → error → trust → FAQ → coupon → CTA → terms
+    //   after the R145/D3 move; the FAQ joined this column in R117 F-3 so
+    //   mobile DOM order matches the visual order); below lg it dissolves
+    //   (max-lg:contents) so the blocks keep their exact pre-split mobile
+    //   order via flex order-5..order-13.
     // R143 (L2-2): lg:border-border/55 → /60 — the resting card-frame
     //   value the r139 sweep landed everywhere else; the PDP trio (this,
     //   ProductMediaSection, route-skeleton's mirror) were the stragglers.
@@ -99,14 +102,6 @@ export function BuyPanelColumn({
           selectedVariant={selectedVariant}
           displayPrice={displayPrice}
         />
-
-        {/* Usage terms */}
-        {product.usage_terms && (
-          <div className="order-7 max-lg:mx-5 flex gap-2.5 text-sm text-status-warning bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
-            <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{product.usage_terms}</span>
-          </div>
-        )}
 
         {/* Error */}
         {error && (
@@ -179,6 +174,44 @@ export function BuyPanelColumn({
             onCouponClear={clearCoupon}
           />
         </div>
+
+        {/* Usage terms — R145 (D3, P0): moved BELOW the CTA area +
+            de-energized. The live-site VLM audit caught this block as a
+            yellow warning-tinted wall of legalistic text sitting BETWEEN
+            the price and the buy CTA — a pattern interrupt exactly where
+            intent peaks (after the price the eye must land on the CTA);
+            on the audited products it pushed the CTA below the first
+            desktop viewport entirely. It now closes the panel as a quiet
+            native-<details> disclosure (the FaqSection/DetailsSection
+            family — zero JS state, browser open/close semantics):
+            resting border-border/20 hairline + text-muted-foreground, NO
+            warning tint at rest (severity vocabulary stays reserved for
+            the alert/confirm families). The full operator text rides
+            inside byte-identical — the honesty contract is
+            REPOSITION/DE-EMPHASIZE, never delete (pre-purchase
+            disclosure one tap away + still in the DOM for crawlers).
+            order-13 keeps the mobile DOM/reading order matching the
+            visual order (the R117 F-3 discipline: FAQ 10 → coupon 11 →
+            CTA 12 → terms 13); max-lg:mx-5 keeps the R117 F-1 mobile
+            gutter OUTSIDE the hairline border. */}
+        {product.usage_terms && (
+          <details className="order-13 max-lg:mx-5 group rounded-xl border border-border/20 overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none">
+            <summary className="flex items-center gap-2 px-3.5 py-2.5 text-sm text-muted-foreground cursor-pointer select-none hover:text-foreground hover:bg-muted/15 transition-colors">
+              <Info className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span className="font-semibold">شروط الاستخدام</span>
+              {/* R145: ChevronDown rotator (the accordion contract — never
+                  a sideways arrow); group-open:rotate-180, the
+                  DetailsSection idiom. */}
+              <ChevronDown
+                className="w-4 h-4 ms-auto shrink-0 transition-transform group-open:rotate-180"
+                aria-hidden="true"
+              />
+            </summary>
+            <div className="px-3.5 pt-1 pb-3.5 border-t border-border/20 text-sm text-muted-foreground leading-relaxed">
+              {product.usage_terms}
+            </div>
+          </details>
+        )}
       </div>
     </section>
   );

@@ -112,27 +112,32 @@ describe("G2 — catalog-stats chips: skeleton → content / deliberate hide on 
     mockHooks();
   });
 
-  it("renders chip-shaped skeletons while the first fetch is pending (no silent pop-in)", () => {
+  it("renders the caption skeleton while the first fetch is pending (no silent pop-in)", () => {
     mockHooks({ stats: { isPending: true } });
     const { container } = renderPage();
 
-    // Desktop column (3 chips × 2 bars) + guest mobile strip (3 cells ×
-    // 2 bars) — 12 shimmer nodes, and zero real stat copy yet.
-    expect(shimmerCount(container)).toBeGreaterThanOrEqual(12);
+    // R145: the stats demoted from the side-column chips + mobile strip
+    // (12 shimmer nodes) to the hero shelf's caption — a pair of
+    // inline skeleton bars while the first fetch is pending, and zero
+    // real stat copy yet. Same tri-state discipline (R111-F1 G2),
+    // smaller surface.
+    expect(shimmerCount(container)).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText(STATS_LABELS)).not.toBeInTheDocument();
-    expect(screen.queryAllByText("أقل سعر")).toHaveLength(0);
+    expect(screen.queryAllByText(/تبدأ الأسعار من/)).toHaveLength(0);
   });
 
-  it("renders the chips once stats land", () => {
+  it("renders the caption once stats land", () => {
     mockHooks({
       stats: { data: { available_products: 3, lowest_price: 10, total_units: 120 } },
     });
     const { container } = renderPage();
 
-    // 3 → few form («منتجات متاحة») on the desktop column.
-    expect(screen.getByText("3 منتجات متاحة")).toBeInTheDocument();
-    // «أقل سعر» rides BOTH the desktop column and the guest mobile strip.
-    expect(screen.getAllByText("أقل سعر")).toHaveLength(2);
+    // R145: one caption line under the shelf — 3 → few form
+    // («منتجات متاحة الآن») + the price floor («تبدأ الأسعار من …»,
+    // formatCurrency → «10.00 د.ل»). The single surface replaces the
+    // old desktop column + mobile strip pair.
+    expect(screen.getByText("3 منتجات متاحة الآن")).toBeInTheDocument();
+    expect(screen.getByText(/تبدأ الأسعار من 10\.00 د\.ل/)).toBeInTheDocument();
     expect(shimmerCount(container)).toBe(0);
   });
 
@@ -142,7 +147,7 @@ describe("G2 — catalog-stats chips: skeleton → content / deliberate hide on 
 
     expect(shimmerCount(container)).toBe(0);
     expect(screen.queryByText(STATS_LABELS)).not.toBeInTheDocument();
-    expect(screen.queryAllByText("أقل سعر")).toHaveLength(0);
+    expect(screen.queryAllByText(/تبدأ الأسعار من/)).toHaveLength(0);
   });
 });
 

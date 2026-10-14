@@ -28,7 +28,17 @@ export function ProductBreadcrumbNav({
           landing page only when one exists (KNOWN_CATEGORIES). */}
       <nav
         aria-label="مسار التنقّل"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2 min-w-0"
+        /* R145 (D9): text-muted-foreground → text-foreground/70 — one
+           contrast step up for the breadcrumb row. The live VLM audit
+           read the parent segments («الرئيسية / الفئة») as too light at
+           the old 68%-lightness muted ink; /70 composites ≈8:1 dark /
+           ≈6:1 light over the page surface — both clear the 4.5:1 AA
+           bar at 12px with margin. The links inherit the row color at
+           rest and keep their hover:text-foreground lift; the current
+           crumb stays text-foreground + font-bold — the hierarchy
+           (current > parents > separators) reads one step louder
+           without shouting. */
+        className="flex items-center gap-1.5 text-xs text-foreground/70 mb-2 min-w-0"
       >
         <Link href="/" className="hover:text-foreground transition-colors press-spring shrink-0">
           الرئيسية

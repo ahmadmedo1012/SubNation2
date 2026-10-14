@@ -271,14 +271,22 @@ describe("ProductCard — R138 resting-state premium (deep visual round)", () =>
 
   it("the price block keeps the money typography contract (verified, no drift)", () => {
     renderCard(AVAILABLE_PRODUCT);
-    // R138 (visual audit): text-lg font-bold + tabular-nums leads the
-    // title's text-sm by a full step — money is the card's loudest
-    // element. The strike-through family is pinned by the touch suite's
-    // sale-price fixture; here the resting hierarchy is the contract.
+    // R138 (visual audit): text-lg font-bold + tabular-nums led the
+    // title's text-sm by a full step. R145 (D4) stepped the price to
+    // text-base + the title to full-ink foreground: the NAME now leads
+    // the hierarchy (the live-site critique read the old ratio as
+    // inverted), the price follows as the value datum one step under
+    // it. The strike-through family is pinned by the touch suite's
+    // sale-price fixture; the money idiom (font-bold + tabular-nums +
+    // neutral foreground ink) is the contract.
     const price = screen.getByText(formatCurrency(120));
-    expect(price.className).toContain("text-lg");
+    expect(price.className).toContain("text-base");
     expect(price.className).toContain("font-bold");
     expect(price.className).toContain("tabular-nums");
     expect(price.className).toContain("text-foreground");
+    // D4's other half: the title rides full ink (was /85).
+    const title = screen.getByRole("heading", { name: /ChatGPT Plus/ });
+    expect(title.className).toContain("text-foreground");
+    expect(title.className).not.toContain("text-foreground/85");
   });
 });

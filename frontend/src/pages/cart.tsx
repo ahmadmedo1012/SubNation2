@@ -1,4 +1,5 @@
 import { EmptyHero } from "@/components/EmptyState";
+import { CATEGORIES } from "@/components/home/catalog-filters";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -224,24 +225,63 @@ export default function CartPage() {
            canonized; the asChild CTA rides the bare action slot
            verbatim (one anchor, one tab stop — the A3-F4/A3-F13 fix
            stays exactly as it was). */
-        <EmptyHero
-          icon={ShoppingCart}
-          title="سلتك فارغة"
-          description="ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة"
-          action={
-            /* R139 (precision): the empty-state browse CTA de-hand-rolled
+        <>
+          <EmptyHero
+            icon={ShoppingCart}
+            title="سلتك فارغة"
+            description="ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة"
+            action={
+              /* R139 (precision): the empty-state browse CTA de-hand-rolled
                onto the canonical recipe (139-c's pin-suite flagged it as
                the last pre-r138 hero chrome on a money page's CTA —
                size="lg" + w-full sm:w-auto carries the affordance; the
                hand-rolled bg/shadow/scale stack retires). */
-            <Button asChild size="lg" className="w-full sm:w-auto gap-2 font-bold">
-              <Link href="/">
-                <Sparkles className="w-4 h-4" />
-                متابعة التسوق
-              </Link>
-            </Button>
-          }
-        />
+              <Button asChild size="lg" className="w-full sm:w-auto gap-2 font-bold">
+                <Link href="/">
+                  <Sparkles className="w-4 h-4" />
+                  متابعة التسوق
+                </Link>
+              </Button>
+            }
+          />
+          {/* R145 (D8): the empty cart's active recovery surface. The
+              live VLM audit read this page as "a dead end — a generic
+              icon, a passive message, and a single CTA that forces the
+              journey to restart": the only next-action was «متابعة
+              التسوق» → /, a full journey restart. The honest fix is the
+              catalog's OWN escape-route idiom (ProductsGrid's R132
+              zero-results block): the 7 live categories as
+              /category/:slug Links — same pill classes, same
+              «أو تصفّح الأقسام:» lead-in, same min-h-11 targets. Static
+              routes + CATEGORIES (the pure table the catalog chips
+              derive from — imported per the mission; the first
+              non-home consumer, but the module is pure data + icons
+              with zero React, its docblock's own framing). NO
+              "recommended for you" and NO "recently viewed" — the page
+              holds no such data (items.length === 0 is the whole
+              state); fabricating either would be the dark-pattern class
+              the honesty bar bans. Sits BELOW the EmptyHero card with
+              mt-7 (the page's own section-boundary rhythm — the header
+              rides mb-7; more space above the block than inside it),
+              OUTSIDE the role="status" live region so the swap
+              announcement stays «سلتك فارغة» while the Links are plain
+              discoverable navigation. */}
+          <div className="mt-7 text-center">
+            <p className="text-xs text-muted-foreground mb-2.5">أو تصفّح الأقسام:</p>
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              {CATEGORIES.filter((c) => c.value).map((c) => (
+                <Link
+                  key={c.value}
+                  href={`/category/${c.value}`}
+                  className="inline-flex items-center gap-1 px-3 min-h-11 text-xs font-bold rounded-full bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground hover:border-border/70 transition-colors press-spring"
+                >
+                  <c.Icon className="w-3 h-3" aria-hidden="true" />
+                  {c.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </>
       ) : (
         <>
           {/* Items */}

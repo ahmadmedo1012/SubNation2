@@ -591,8 +591,12 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                  (measured 21–97px dead zone on the RTL reading edge
                  where every Arabic title begins). dir=auto stays for
                  the scrambling fix (R116-S2); only the ALIGNMENT is
-                 pinned to the page's RTL anchor. */
-              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-auto min-w-0 text-right text-foreground/85 group-hover:text-foreground transition-colors duration-200"
+                 pinned to the page's RTL anchor.
+                 R145 (D4): text-foreground at full ink (was /85) — the
+                 name is the card's scannable anchor; with the price
+                 stepping down to text-base below, the name now leads
+                 the hierarchy by weight AND color. */
+              className="font-bold text-sm leading-snug line-clamp-2 sm:line-clamp-1 flex-auto min-w-0 text-right text-foreground group-hover:text-foreground transition-colors duration-200"
             >
               {product.name}
             </h3>
@@ -641,12 +645,17 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 text-sm by a full step (money is the card's loudest
                 element); the strike carries the muted + line-through +
                 tabular-nums family; «تبدأ من» stays the muted 3xs
-                qualifier. Values untouched. */}
+                qualifier. Values untouched.
+                R145 (D4): text-lg → text-base — the live-site critique
+                read the old ratio as inverted hierarchy (price bolder
+                and larger than the product name); the name (bold,
+                full-ink, above) now leads, the price follows at one
+                step under it. */}
             <div className="flex items-baseline gap-1.5 flex-wrap">
               {product.price_from && (
                 <span className="text-3xs font-semibold text-muted-foreground">تبدأ من</span>
               )}
-              <span className="font-bold text-foreground text-lg leading-none tabular-nums">
+              <span className="font-bold text-foreground text-base leading-none tabular-nums">
                 {formatCurrency(displayPrice)}
               </span>
               {product.sale_price && (

@@ -244,6 +244,13 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
     const phone = openPhoneStep();
     expect(phone.className).toContain("text-base");
     expect(phone.getAttribute("enterkeyhint")).toBe("done");
+    // R145 (D7): the field's resting SURFACE rides the --input token —
+    // bg-card on the bg-card auth card left the border alone carrying
+    // the field extent (the live VLM audit's "input fields have zero
+    // visual weight" read; the fill is the whole rebalance, the pinned
+    // muted-foreground/75 border + focus ring stay byte-identical).
+    expect(phone.className).toContain("bg-input");
+    expect(phone.className).not.toContain("bg-card");
   });
 
   it("OTP input: 16px + enterKeyHint=done + unified «رمز التحقق» + Latin-digit aria-label (A6 #17)", async () => {
@@ -254,6 +261,11 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
     const otp = await screen.findByPlaceholderText("رمز التحقق");
     expect(otp.className).toContain("text-base");
     expect(otp.getAttribute("enterkeyhint")).toBe("done");
+    // R145 (D7): the OTP field rides the same --input surface as the
+    // phone field — one form, one fill family (rationale in the phone
+    // test above).
+    expect(otp.className).toContain("bg-input");
+    expect(otp.className).not.toContain("bg-card");
     expect(otp).toHaveAttribute("aria-label", "رمز التحقق المكوّن من 6 أرقام");
     // Terminology is unified — the old «كود التحقق» must not resurface.
     expect(otp.getAttribute("placeholder")).not.toContain("كود");

@@ -2,6 +2,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { ProductSkeleton } from "@/components/home/primitives";
 import { CATEGORIES, SORTS } from "@/components/home/catalog-filters";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
+import { Reveal } from "@/lib/motion-primitives";
 import { categoryLabel, formatCount } from "@/lib/utils";
 import type { ProductListItem } from "@workspace/api-client-react";
 import { PackageSearch } from "lucide-react";
@@ -42,75 +43,83 @@ export function ProductsGrid({
 }) {
   return (
     <>
-      {/* Result header */}
-      {!isLoading && (products.length > 0 || activeFilterCount > 0) && (
-        <div className="flex items-center justify-between mb-2.5 sm:mb-3.5">
-          <p className="text-sm text-muted-foreground">
-            {/* 93-C8 (A11 §3): formatCount carries the Arabic plural
-                paradigm — «منتجان / منتجات / منتجاً» — instead of a
-                bare singular after any count. */}
-            <span className="font-bold text-foreground">
-              {formatCount(products.length, {
-                two: "منتجان",
-                few: "منتجات",
-                many: "منتجاً",
-                other: "منتج",
-              })}
-            </span>
-            {category && <span className="text-muted-foreground"> في هذه الفئة</span>}
-          </p>
-          {activeFilterCount > 0 && (
-            <button
-              onClick={clearFilters}
-              className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-3 py-2.5 min-h-11 rounded-lg hover:bg-primary/8 press-spring font-semibold"
-            >
-              مسح ({activeFilterCount})
-            </button>
-          )}
-        </div>
-      )}
+      {/* ── Catalog section header (R145: the section identity) ──
+          The r136-r144 header was a sr-only h2 by default with a
+          count row floating above it — the live-site audit's "wall of
+          cards" verdict traced to the catalog having NO visible
+          section identity: scrolling from the filter bar into 45
+          identical cards read as one undifferentiated field. The
+          header is now the section's own beat: a real h2 + the count
+          line + the مسح affordance in one group, with the boundary gap
+          ABOVE deliberately larger than any gap inside it (the
+          taste-floor spacing rule: the gap belongs to the section
+          boundary, not the heading-body pair).
+          The label logic is unchanged (filter-aware, dir=auto for the
+          interpolated search text — the A9-m2 contract); only its
+          visibility and rhythm changed. */}
+      <div className="mt-7 sm:mt-11 mb-3.5 sm:mb-4">
+        <Reveal>
+          {(() => {
+            const hasFilter = !!(searchInput || category || sort || availableOnly);
+            let label = "كل الاشتراكات";
+            if (searchInput) label = `نتائج البحث: ${searchInput}`;
+            else if (category) label = categoryLabel(category);
+            else if (sort) label = SORTS.find((s) => s.value === sort)?.label ?? label;
+            else if (availableOnly) label = "المنتجات المتوفّرة فقط";
+            return (
+              <>
+                <h2
+                  dir="auto"
+                  className="text-lg sm:text-xl font-bold text-foreground flex items-center gap-2.5 min-w-0"
+                >
+                  {hasFilter && (
+                    <span
+                      aria-hidden="true"
+                      className="w-1 h-4 sm:h-5 bg-primary rounded-full shrink-0"
+                    />
+                  )}
+                  <span className="truncate">{label}</span>
+                </h2>
+                {/* The count + مسح row — the R136 gate verbatim: count
+                    text only with real content, but the مسح recovery
+                    stays reachable on a 0-result filtered view too
+                    (products.length > 0 || activeFilterCount > 0). */}
+                {!isLoading && (products.length > 0 || activeFilterCount > 0) && (
+                  <p className="text-xs text-muted-foreground mt-1.5 flex items-center flex-wrap gap-x-3 gap-y-1">
+                    <span className="tabular-nums">
+                      {/* 93-C8 (A11 §3): formatCount carries the Arabic
+                          plural paradigm. */}
+                      <span className="font-bold text-foreground">
+                        {formatCount(products.length, {
+                          two: "منتجان",
+                          few: "منتجات",
+                          many: "منتجاً",
+                          other: "منتج",
+                        })}
+                      </span>
+                      {category && <span className="text-muted-foreground"> في هذه الفئة</span>}
+                    </span>
+                    {activeFilterCount > 0 && (
+                      <button
+                        onClick={clearFilters}
+                        className="text-xs text-muted-foreground hover:text-primary-text transition-colors px-3 py-2.5 min-h-11 rounded-lg hover:bg-primary/8 press-spring font-semibold"
+                      >
+                        مسح ({activeFilterCount})
+                      </button>
+                    )}
+                  </p>
+                )}
+              </>
+            );
+          })()}
+        </Reveal>
+      </div>
 
       {/* ── Products Grid ─────────────────────────────────── */}
-      {/*
-        h2 above the product grid. Text reflects the active filter
-        so the heading is informative rather than decorative:
-          - search active → "نتائج البحث"
-          - category selected → category Arabic label
-          - sort changed → sort label
-          - default → "كل الاشتراكات"
-        When idle (no filter active) the heading is sr-only to
-        preserve the current visual; with a filter, it becomes
-        visible as a small section title.
-        R134 (A2-F6): the default no longer claims availability —
-        the default grid lists ALL products (the R120-B1 re-order
-        fronts the available ones but still renders the نفد cards
-        below), so «الاشتراكات المتاحة» was a promise the grid
-        doesn't keep for SR users and crawlers reading the h2.
-      */}
-      {(() => {
-        const hasFilter = !!(searchInput || category || sort || availableOnly);
-        let label = "كل الاشتراكات";
-        if (searchInput) label = `نتائج البحث: ${searchInput}`;
-        else if (category) label = categoryLabel(category);
-        else if (sort) label = SORTS.find((s) => s.value === sort)?.label ?? label;
-        else if (availableOnly) label = "المنتجات المتوفّرة فقط";
-        // A9-m2 (R127-B13): dir="auto" on both variants — the label
-        // interpolates the raw searchInput, and a Latin-digit or
-        // bidi-confusable query garbled the heading's direction.
-        return hasFilter ? (
-          <h2
-            dir="auto"
-            className="text-sm font-bold text-muted-foreground mb-3 flex items-center gap-2"
-          >
-            <span className="w-1 h-4 bg-primary rounded-full" />
-            {label}
-          </h2>
-        ) : (
-          <h2 dir="auto" className="sr-only">
-            {label}
-          </h2>
-        );
-      })()}
+      {/* The filter-aware section h2 lives in the header above (the
+          R145 visible variant — A9-m2 dir="auto" preserved there on
+          every branch; R134 A2-F6: the default label never claims
+          availability — the grid lists ALL products, available-first). */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -209,7 +218,10 @@ export function ProductsGrid({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+        /* R145 (rhythm): lg:gap-5 — the desktop row gap grows one step
+           (16→20px) so each card row reads as a row; mobile keeps the
+           fold-dense gap-3 (R120-B1) and sm its gap-4. */
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
           {displayProducts.map((product, i) => (
             <div key={product.id} className={i >= 4 ? "cv-card" : undefined}>
               <ProductCard

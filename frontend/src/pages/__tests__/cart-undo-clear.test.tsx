@@ -441,6 +441,41 @@ describe("CartPage — R120-B2 (A4-F6 labels + A3-F4/F13 empty CTA + A1-F9 links
     expect(screen.queryByRole("button", { name: "متابعة التسوق" })).not.toBeInTheDocument();
   });
 
+  it("R145 (D8): the empty state is an ACTIVE recovery surface — the 7 live categories as /category/:slug Links at min-h-11", async () => {
+    renderPage();
+    await screen.findByText("سلتك فارغة");
+
+    // The lead-in names the affordance (the catalog's own R132
+    // zero-results idiom, mirrored verbatim).
+    expect(screen.getByText("أو تصفّح الأقسام:")).toBeInTheDocument();
+    // Exactly the 7 live categories (CATEGORIES minus the "الكل" chip) —
+    // each a static-route Link at the 44px tap floor. href filtering is
+    // manual (getByRole's options carry ARIA attrs only — the A1-F9
+    // test's own idiom three legs below).
+    const linksByHref = (href: string) =>
+      screen.getAllByRole("link").filter((l) => l.getAttribute("href") === href);
+    const slugs = ["streaming", "music", "software", "vpn", "ai-tools", "seo-tools", "education"];
+    for (const slug of slugs) {
+      const links = linksByHref(`/category/${slug}`);
+      expect(links).toHaveLength(1);
+      expect(links[0]!.className).toContain("min-h-11");
+    }
+    // No 8th escape chip (the "الكل" row never renders as a category).
+    expect(linksByHref("/category/")).toHaveLength(0);
+  });
+
+  it("R145 (D8): the recovery surface is empty-state-only — a populated cart renders zero category shortcuts", async () => {
+    seedCart(2);
+    renderPage();
+    await findRow();
+
+    const linksByHref = (href: string) =>
+      screen.getAllByRole("link").filter((l) => l.getAttribute("href") === href);
+    for (const slug of ["streaming", "vpn", "education"]) {
+      expect(linksByHref(`/category/${slug}`)).toHaveLength(0);
+    }
+  });
+
   it("A1-F9: a null-slug line links to /product/{id} — never to home", async () => {
     localStorage.setItem(
       "subnation_cart_v2",
