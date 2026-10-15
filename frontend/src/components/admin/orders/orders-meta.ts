@@ -78,6 +78,17 @@ export const REFUND_FAILURE_LABELS: Record<string, string> = {
   CONCURRENCY_ERROR: "تعارض تزامني",
 };
 
+// R151: Arabic labels for the bulk-status `reason` codes the backend
+// returns when every requested id was skipped (updated:0). Mirrors the
+// backend's F2/F3 guards (backend/src/routes/admin/orders.ts) — the
+// operator sees the exact Arabic reason, never the raw English code nor
+// a misleading green "Updated 0 orders".
+export const BULK_SKIPPED_REASON_LABELS: Record<string, string> = {
+  REFUNDED_IS_TERMINAL: "الطلبات المُستردة حالة نهائية",
+  COMPLETED_IS_PURCHASE_ONLY: "الاكتمال يتم عبر عملية الشراء فقط",
+  COMPLETED_NOT_DEMOTABLE: "لا يمكن التراجع عن طلب مكتمل",
+};
+
 export function isWithinDays(dateStr: string, days: number) {
   if (!days) return true;
   const d = new Date(dateStr);

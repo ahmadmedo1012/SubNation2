@@ -245,6 +245,47 @@ describe("AdminOrdersPage — bulk status / bulk refund feedback (B5-02 + B5-05)
     expect(toastArg.description).toContain("مكتمل");
     expect(toastArg.variant).toBe("success");
   });
+
+  it("R151: bulk-status with updated=0 + skipped_blocked_completion → destructive toast (NOT green success)", async () => {
+    // Backend F3 guard: completion is purchase-tx-only, so bulk-setting
+    // pending orders to "completed" returns {updated:0, skipped_blocked_completion:N,
+    // reason:"COMPLETED_IS_PURCHASE_ONLY"}. The old FE typed only
+    // `updated`/`failed`, discarded the skip counts + reason, and toasted
+    // a green "Updated 0 orders · skipped N" — the operator thought the
+    // tool was broken. Must be destructive with the mapped reason.
+    fetchMock.mockResolvedValue(
+      resLike({
+        body: {
+          success: true,
+          updated: 0,
+          skipped_blocked_completion: 2,
+          reason: "COMPLETED_IS_PURCHASE_ONLY",
+        },
+      }),
+    );
+    renderPage();
+
+    await screen.findAllByText("SN-1001");
+    selectRow("SN-1001");
+    selectRow("SN-1002");
+    fireEvent.click(screen.getByRole("button", { name: "تغيير الحالة" }));
+    const anchor = screen.getByRole("button", { name: "تغيير الحالة" }).parentElement!;
+    fireEvent.click(within(anchor).getByRole("menuitem", { name: "مكتمل" }));
+
+    const title = await screen.findByText("تغيير الحالة الجماعي");
+    const dialog = title.closest('[role="alertdialog"]')!;
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "تغيير الحالة" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    const toastArg = toastMock.mock.calls[0][0];
+    // NOT green: zero rows transitioned, all skipped with a real reason.
+    expect(toastArg.variant).toBe("destructive");
+    // The skipped count lands in the title.
+    expect(toastArg.title).toContain("2");
+    // The mapped Arabic reason — not the raw English code.
+    expect(toastArg.description).toBe("الاكتمال يتم عبر عملية الشراء فقط");
+    expect(toastArg.description).not.toContain("COMPLETED_IS_PURCHASE_ONLY");
+  });
 });
 
 /** R120-B4 (A2-F4 + A2-F19) — the bulk menu follows the backend's RBAC

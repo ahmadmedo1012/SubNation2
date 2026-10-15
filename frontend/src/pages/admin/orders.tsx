@@ -45,6 +45,7 @@ import {
   DATE_RANGES,
   ORDERS_PAGE_SIZE,
   REFUND_FAILURE_LABELS,
+  BULK_SKIPPED_REASON_LABELS,
   STATUS_FILTERS,
   isWithinDays,
 } from "@/components/admin/orders/orders-meta";
@@ -410,13 +411,26 @@ export default function AdminOrdersPage() {
         throw new Error(getErrorMessage(body) || `فشل تنفيذ العملية (HTTP ${r.status})`);
       }
       // 207 (Multi-Status) — Response.ok is true for it, so the partial
-      // body must be parsed explicitly, never swallowed.
+      // body must be parsed explicitly, never swallowed. R151: the body
+      // ALSO carries `skipped_*` counts + a `reason` code when the F2/F3
+      // guards skip every requested id (updated:0) — the old type
+      // discarded them and toasted a green "Updated 0 orders".
       const body = (await r.json().catch(() => null)) as {
         updated?: number;
         failed?: Array<{ orderId: number; code?: string; message?: string }>;
+        reason?: string;
+        skipped_refunded?: number;
+        skipped_blocked_completion?: number;
+        skipped_completed_source?: number;
+        skipped_missing?: number;
       } | null;
       const updated = body?.updated ?? requestedCount;
       const failed = body?.failed ?? [];
+      const totalSkipped =
+        (body?.skipped_refunded ?? 0) +
+        (body?.skipped_blocked_completion ?? 0) +
+        (body?.skipped_completed_source ?? 0) +
+        (body?.skipped_missing ?? 0);
       if (failed.length > 0) {
         // RefundService failure codes → Arabic reasons.
         const reasons = failed
@@ -428,6 +442,19 @@ export default function AdminOrdersPage() {
         toast({
           title: `تم تحديث ${updated} من ${requestedCount} طلب`,
           description: `فشلت ${failed.length}: ${reasons}`,
+          variant: "destructive",
+        });
+      } else if (updated === 0 && totalSkipped > 0) {
+        // R151: every requested id was skipped by a backend guard (F2/F3)
+        // — zero rows transitioned. A green "Updated 0 orders" misled the
+        // operator into thinking the tool was broken. Surface the exact
+        // Arabic reason + the skipped count, destructive tone.
+        const reasonLabel = body?.reason
+          ? (BULK_SKIPPED_REASON_LABELS[body.reason] ?? body.reason)
+          : "لا توجد طلبات قابلة للتحديث";
+        toast({
+          title: `لم يتم تحديث أي طلب (تخطي ${totalSkipped})`,
+          description: reasonLabel,
           variant: "destructive",
         });
       } else {

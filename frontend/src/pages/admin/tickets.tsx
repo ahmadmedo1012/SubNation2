@@ -220,6 +220,22 @@ export default function AdminTicketsPage() {
     }
   };
 
+  // R151: a SILENT detail refresh for the post-mutation re-fetch in
+  // handleReply / handleStatus. openTicket toasts on failure (correct for
+  // a user-initiated open — they clicked a row and it failed), but a
+  // refresh AFTER a successful primary mutation must NOT surface its
+  // failure as «خطأ»: the reply/status already committed, and a refresh
+  // blip is not a mutation failure. The next 25 s poll or the operator's
+  // next open re-syncs the thread silently.
+  const refreshSelectedSilently = async (id: number): Promise<void> => {
+    try {
+      const d = await getAdminTicket(id, { headers });
+      setSelected((prev) => (prev && prev.id === id ? d : prev));
+    } catch {
+      /* best-effort refresh — the primary mutation committed */
+    }
+  };
+
   // R120-B5 (A2-F9): the dependency array previously keyed ONLY on
   // `selected?.replies?.length` — opening a DIFFERENT ticket with the
   // same reply count (1 ↔ 1, extremely common: opener + one user reply)
@@ -271,7 +287,15 @@ export default function AdminTicketsPage() {
       // serializes the body (the manual header merge retires).
       await replyAdminTicket(selected.id, { message: replyText }, { headers });
       setReplyText("");
-      await openTicket(selected.id);
+      // R151: the post-reply refresh is SILENT (refreshSelectedSilently),
+      // NOT openTicket. openTicket toasts «خطأ» on failure — correct for
+      // a user-clicked open, but a refresh AFTER a committed reply must
+      // not surface a network blip as a reply failure (the old code did:
+      // draft was already cleared → operator lost the text + could not
+      // tell if it sent → a retype + resubmit created a DUPLICATE
+      // customer-facing reply, the reply endpoint having no idempotency
+      // middleware). A refresh failure now swallows silently.
+      await refreshSelectedSilently(selected.id);
       void refetch();
       // R125-I4 (A4-B-3): see the qc declaration — the reply/status
       // family keeps the shared stats key fresh (server 30s cache
@@ -305,7 +329,12 @@ export default function AdminTicketsPage() {
         { status: status as AdminTicketStatusBodyStatus },
         { headers },
       );
-      if (selected?.id === id) await openTicket(id);
+      // R151: the post-status refresh is SILENT (refreshSelectedSilently).
+      // openTicket toasts «خطأ» on failure — a refresh blip after a
+      // committed status flip must not surface as a failure (the old
+      // code did: the success toast sat AFTER the failing await, so a
+      // successful flip showed as «خطأ» and the operator re-clicked).
+      await refreshSelectedSilently(id);
       void refetch();
       // R125-I4 (A4-B-3): a status flip changes open_tickets — refresh
       // the stats key the layout badge + dashboard read from.
