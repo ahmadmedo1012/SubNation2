@@ -81,6 +81,17 @@ vi.mock("../../services/whatsapp-otp.service", () => ({
 vi.mock("../../lib/admin-session", () => ({
   pruneStaleAdminSessions: vi.fn(async () => 0),
 }));
+// The roster's remaining DB-backed jobs were missed by the sweep above — the
+// real auth-audit / reencrypt implementations do `await db.execute(...)`,
+// which never resolves under fake timers and would stall the sequential boot
+// chain before checkExpiringCoupons (job #10) is reached.
+vi.mock("../../jobs/auth-audit-retention", () => ({
+  pruneStaleLoginAttempts: vi.fn(async () => 0),
+  pruneOldAuditLogs: vi.fn(async () => 0),
+}));
+vi.mock("../../jobs/reencrypt-v1-credentials", () => ({
+  reencryptV1CredentialBlobs: vi.fn(async () => ({})),
+}));
 
 import { acquireSchedulerLeadership } from "../scheduler-coordinator";
 import { initCronJobs } from "../../jobs/cron";
@@ -168,21 +179,30 @@ describe("R108 — SINGLE_INSTANCE_MODE=true: ungated in-process schedulers", ()
   });
 
   it("fires the deferred boot one-shot chain exactly once (same chain as an elected leader)", async () => {
-    process.env.SINGLE_INSTANCE_MODE = "true";
-    const handle = await startWebSchedulers(fakeRedis as never);
-    trackHandle(handle);
-    expect(handle.active).toBe(true);
+    // R132 (test-truth): the chain is deferred via setTimeout(BOOT_ONE_SHOT_DELAY_MS=0)
+    // after leadership. Relying on vi.waitFor's default 1 s patience flaked
+    // under the full suite's CPU contention (the 0 ms macrotask can take > 1 s
+    // of wall clock to fire — the R130/R131 load-flaky class). Fake timers make
+    // it deterministic: the deferred setTimeout fires when we advance the clock,
+    // and the chain is sequential awaits over already-resolved mocks, so one
+    // advance drains it fully.
+    vi.useFakeTimers();
+    try {
+      const handle = await startWebSchedulers(fakeRedis as never);
+      trackHandle(handle);
+      expect(handle.active).toBe(true);
 
-    // BOOT_ONE_SHOT_DELAY_MS=0 (beforeEach) — flush the fire-and-forget
-    // microtasks with the demotion suite's waitFor pattern.
-    await vi.waitFor(() => {
+      await vi.advanceTimersByTimeAsync(1); // fire the deferred chain + drain microtasks
+
       expect(checkExpiringCoupons).toHaveBeenCalledTimes(1);
       expect(runStockSweep).toHaveBeenCalledTimes(1);
       expect(reportOrphanInventory).toHaveBeenCalledTimes(1);
       expect(deactivateExpiredFlashSales).toHaveBeenCalledTimes(1);
       expect(reapExpiredCopilotPreviews).toHaveBeenCalledTimes(1);
       expect(pruneExpiredOtps).toHaveBeenCalledTimes(1);
-    });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stop() drains alerting + cron and resolves (release is the synthetic no-op)", async () => {
