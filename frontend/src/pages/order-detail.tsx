@@ -663,8 +663,13 @@ export default function OrderDetailPage() {
               the support link as a subtle text link at the very
               bottom of the page (below all other cards) means many
               users miss it.
+              R151: widened to `refunded` too — a refunded order renders
+              the same failure/refunded card (with the refund amount +
+              points-reversal notice) but the in-card CTA stayed gated on
+              `failed` only, leaving refunded users with just the
+              bottom text link (which itself carried no order context).
             */}
-            {order.status === "failed" && (
+            {(order.status === "failed" || order.status === "refunded") && (
               /* R120-B7 (reviewer finding — A4-F1 sweep completion): same
                  asChild composition as the decrypt-failure card above —
                  one anchor, one tab stop. */
@@ -723,7 +728,7 @@ export default function OrderDetailPage() {
               R120-B7 sweep missed because its regex only matched the
               capitalized Button component. */}
           <Link
-            href="/support"
+            href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}
             /* R124-I4 (A5 #1): hover:text-primary/80 is sub-AA on the
                 hover state — the text-safe twin. */
             className="text-xs text-muted-foreground hover:text-primary-text transition-colors inline-flex items-center gap-1.5 press-spring"

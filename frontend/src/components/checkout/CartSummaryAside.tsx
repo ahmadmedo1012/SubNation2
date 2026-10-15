@@ -95,7 +95,7 @@ export function CartSummaryAside({
                 asChild composition (cart.tsx ghost-CTA idiom) instead
                 of Link>Button nesting — one anchor, one tab stop, no
                 invalid interactive-in-interactive button. */}
-            <Button asChild variant="outline" size="sm" className="font-bold">
+            <Button asChild variant="outline" size="lg" className="font-bold">
               <Link href="/">تصفح المنتجات</Link>
             </Button>
           </div>

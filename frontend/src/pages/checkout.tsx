@@ -801,7 +801,13 @@ export default function CheckoutPage() {
           title: "اكتمل الشراء من نافذة أخرى",
           description: "تم إنشاء طلباتك هناك وستجدها في صفحة طلباتك",
         });
-        navigate("/orders");
+        // R151: gate the redirect with abandonedRef — the full-success
+        // branch (below) guards `navigate` with `!abandonedRef.current`
+        // so a shopper who left /checkout mid-loop isn't yanked back. The
+        // skippedByOtherTab branch re-introduced that yank: if the user
+        // navigated away, the async closure fires navigate("/orders")
+        // after unmount. Same guard as the success path.
+        if (!abandonedRef.current) navigate("/orders");
       } else {
         // Full success.
         // G-5 / L5-4 (R143): clear() only when the sync actually emptied

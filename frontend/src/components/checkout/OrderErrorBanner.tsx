@@ -51,7 +51,10 @@ export function OrderErrorBanner({
               <p className="mt-1 font-normal">{orderError}</p>
               <Link
                 href="/orders"
-                className="inline-flex items-center gap-1 mt-1.5 text-status-error underline underline-offset-2 hover:opacity-80"
+                /* R151: 44px touch target + the negative-margin trick the
+                   banner's dismiss button uses (same row, different floors
+                   — the recovery link was ~20px at text-xs before). */
+                className="inline-flex items-center gap-1 mt-1.5 min-h-11 -my-2 py-2 px-1 text-status-error underline underline-offset-2 hover:opacity-80"
               >
                 راجع طلباتك المنشأة
               </Link>
