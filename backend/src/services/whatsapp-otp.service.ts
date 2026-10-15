@@ -390,9 +390,11 @@ async function startOtpLocked(input: StartOtpInput, phone: string): Promise<Star
     // The 6-digit numeric string is treated as a single "word" by
     // WhatsApp's text selection on Android & iOS, so triple-tap (or
     // long-press → already-correct selection) selects the entire
-    // code in one gesture. A real native "copy code" button is only
-    // available on the official Business Cloud API authentication
-    // template, which is out of scope for whatsapp-web.js / OpenWA.
+    // code in one gesture. A real native "copy code" button exists only
+    // on the official Business Cloud API authentication template —
+    // which is PERMANENTLY EXCLUDED from SubNation's architecture (R150:
+    // self-hosted non-Cloud-API integration only), so the selection-word
+    // trick is the durable answer, not a stopgap.
     `SubNation — رمز التحقق\n\n${code}\n\nصالح لمدة 5 دقائق.\nلا تشارك هذا الرمز مع أحد.`,
   );
   if (!send.ok) {

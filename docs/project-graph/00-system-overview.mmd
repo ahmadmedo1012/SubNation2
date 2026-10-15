@@ -31,7 +31,7 @@ graph TB
     SN -->|DATABASE_URL sslmode=require| NEON
     WA -->|PERSISTENCE_URL openwa_sessions table| NEON
     SN -->|"WHATSAPP_OTP_BASE_URL http://openwa:2785<br/>X-API-Key shared secret"| WA
-    WA -->|WhatsApp Cloud via Baileys| W[WhatsApp network]
+    WA -->|"WhatsApp Web linked-device protocol via Baileys<br/>(self-hosted, non-Cloud-API — R150)"| W[WhatsApp network]
     W -->|OTP message| C
 
     classDef attention fill:#fee,stroke:#c00

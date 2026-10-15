@@ -10,6 +10,70 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R150 — WhatsApp OTP reliability completion + the Cloud API decommission — 2026-10-15
+
+**Scope:** the R150 mission — establish why `Waiting for this message`
+persisted after R149, complete the evidence-based gateway repair (or
+replace on evidence), permanently decommission WhatsApp Cloud API, and
+make every unverifiable-from-remote step an exact owner action. Full
+report: `docs/engineering/R150/round-close.md`.
+
+**Why R149 didn't resolve the production case (two-part, evidence-based):**
+(A) the production binary was never verified as updated — R149's fix
+shipped to `sha-363b594` on GHCR but the Coolify re-pin was an owner
+action with no verification path, and the gateway (compose-internal
+`:2785`, Coolify behind owner credentials at `:8000`) could not be
+fingerprinted from outside; (B) a real defect remained even with R149
+deployed: the retry store was in-memory, so a container redeploy inside a
+message's retry window permanently orphaned it, and exhausted retry
+counters reset on restart. The library machinery itself was verified
+correct this round (Baileys 6.7.24 `sendMessagesAgain` force-fetches a
+fresh session and re-relays the original content under the same id).
+
+**The repair (gateway repo, openwa R150 commit `9398374`):** restart
+persistence of the full retry contract (atomic state file inside the
+session auth folder → rides the existing AES-256-GCM-encrypted blob,
+TTL-anchored to the original send time, bounds re-applied at hydrate,
+dies with the pairing), a masking Baileys log adapter (retry-outcome
+observability + closes the raw-JID stdout leak of the default bare-pino
+logger), `/healthz release` deployment identity (SHA baked into the
+image), and the upstream-default Ubuntu/Chrome companion identity
+(WhatsApp 428-rejects WIN32 at pairing since ~2026-06-30, #2677). Suite
+116 → **143/143 green**, audit 0 vulnerabilities, REST contract
+unchanged.
+
+**Repair-vs-replace verdict:** repair. The R150 research lane evaluated
+whatsmeow (first time — strongest retry machinery of any library, and its
+own tracker still carries the failure class: #160 open since 2022, #1018
+closed NOT_PLANNED), WPPConnect (browser class, ~300–500 MB
+Chromium/session), whatsapp-web.js (stalled ~5.5 months, own "Waiting"
+reports closed undiagnosed), Baileys 7.x (RC-only, #1767 still open) —
+none demonstrably eliminates the class. whatsmeow is recorded as the
+designated fallback on evidence, not migration for its own sake.
+
+**Cloud API decommissioned:** `docs/pending/whatsapp-cloud-api-migration.md`
+REMOVED (mission order); the architecture diagram's transport edge
+corrected from the mislabel "WhatsApp Cloud via Baileys" to the WhatsApp
+Web linked-device protocol; `user-provider.ts` and the OTP message
+comment no longer present Cloud API as a future option; docs index
+PENDING bucket 2→1. Verified by repo-wide scan: **no Cloud API code path,
+env var, secret, webhook, or CI dependency ever existed** — the
+integration was never built, so the removal is complete on the
+project-owned surface. The supported architecture is now stated as
+self-hosted, non-Cloud-API only. R149's records stay in history as audit
+records, superseded as guidance by R150. Meta-side check (one owner look
+at the Business portfolio; nothing is expected) is the sole remaining
+decommission item.
+
+**Owner actions (exact):** re-pin Coolify to `sha-9398374` and verify via
+the new `/healthz release` field (full SHA
+`9398374853734f0d39f71a85476bc587f2df2d46`); run the real-device
+acceptance matrix (10 consecutive decrypted-and-rendered messages per
+platform + the failing scenario) with the new `[retry]`/`[baileys]`
+correlation lines; the Meta portfolio look. Gates: backend touched only
+in comments (typecheck + backend suite green; frontend untouched —
+targeted per Ponytail, CI runs the full battery on the push).
+
 ## Round R149 — WhatsApp delivery engineering: the retry-contract fix + the transport decision — 2026-10-15
 
 **Scope:** the R149 mission — fix the WhatsApp "Waiting for this message"

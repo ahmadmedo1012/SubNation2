@@ -10,8 +10,10 @@
  *
  * Why a helper: the same 3-branch ternary was repeated in routes/auth.ts,
  * routes/orders.ts, and routes/wallet.ts. One source of truth means
- * future provider additions (e.g. WhatsApp Cloud API) need a single
- * code change.
+ * future provider additions need a single code change. (R150: the
+ * WhatsApp channel is and stays the self-hosted OpenWA linked-device
+ * gateway — WhatsApp Cloud API is permanently excluded from the
+ * architecture; it is not a "future provider" option.)
  */
 export function derivePrimaryProvider(user: {
   telegramId?: string | null;
