@@ -139,7 +139,11 @@ export default function AdminSettingsPage() {
         configured: false,
         delivered: false,
         attempts: 0,
-        errorMessage: err instanceof Error ? err.message : String(err),
+        // R148 (3-errcopy): route through getErrorMessage — a network-
+        // level English message ("Failed to fetch", the timeout
+        // DOMException) collapses to Arabic instead of landing raw in
+        // the diagnostic row; Arabic server messages pass through.
+        errorMessage: getErrorMessage(err),
         hint: "تعذّر الوصول إلى نقطة الاختبار — تحقّق من الشبكة وجلسة الإدارة.",
       });
     } finally {
@@ -208,7 +212,11 @@ export default function AdminSettingsPage() {
         setLoading(false);
         return;
       }
-      setLoadError(err instanceof Error && err.message ? err.message : "تعذّر تحميل الإعدادات");
+      // R148 (3-errcopy): the raw extractor leaked network-level
+      // English ("Failed to fetch") into the Arabic error cards —
+      // getErrorMessage passes the wrapper's already-Arabic messages
+      // through and collapses technical English to the Arabic generic.
+      setLoadError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

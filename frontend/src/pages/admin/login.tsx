@@ -192,7 +192,11 @@ export default function AdminLoginPage() {
       }
       navigate(returnPath);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "فشلت العملية");
+      // R148 (3-errcopy): getErrorMessage passes the already-Arabic
+      // thrown messages through (the gate + bootstrap copy above) and
+      // collapses network-level English from adminFetch — the same
+      // routing the password-step onError above uses.
+      setError(getErrorMessage(err));
     } finally {
       verifyingRef.current = false;
       setIsVerifying(false);

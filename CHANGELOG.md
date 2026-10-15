@@ -10,6 +10,56 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R148 — exposure self-verification + Embronic Phase A honesty + the error-copy closure — 2026-10-15
+
+**Scope:** the R148 mission — close the operator-gated security/monitoring
+tracks to their real boundary, investigate the real Embronic API contract,
+and continue full-product improvement under the standing Ponytail ruleset.
+Full report: `docs/engineering/R148/round-close.md`.
+
+**External tracks (operator-gated, closed at maximum authorized depth):**
+the three public exposures (:8080 Traefik dashboard/API, :6001 Reverb,
+:8000 Coolify mgmt) re-verified STILL OPEN from an independent vantage —
+the watchdog now probes all three every 5 minutes (warning-level
+`::warning::` annotation, run stays green, alerting path untouched), so
+executing `EXPOSURE_REMEDIATION_R144.md` §3 flips them to ✓ automatically
+and the Actions history becomes the §4 verification record. Embronic
+Phase A: **no official public API documentation exists** (web search +
+direct page reads: WordPress/WooCommerce storefront, reseller program is a
+white-label panel + credits product, no `EMBRONIC_API_*` provisioned
+anywhere) — the finding + the exact 3-item owner action are recorded in
+`docs/pending/embronic-adapter-design.md`, the prepared provider boundary
+verified untouched, zero invented endpoints. Monitoring/release-identity/
+GSC owner actions restated precisely (Telegram secrets copy from the
+Coolify env of record; Coolify *include source commit in build* toggle;
+the GSC_VERIFICATION_R144 §1 flow).
+
+**Shipped (product):**
+
+- **Products-editor double-create guard:** ⌘S + no pending guard could
+  double-submit `POST /api/admin/products` (no Idempotency-Key) →
+  duplicate catalog rows; now guarded + the R147 busy-state idiom
+  («جارٍ الحفظ…» + `aria-busy` + Loader2), the three raw error toasts
+  routed through `getErrorMessage`, the toolbar plural rides `formatCount`.
+- **Error-copy closure repo-wide:** ~40 raw `err.message` display
+  extractors across 21 files showed the generated ApiError's
+  `"HTTP 400 Bad Request: <Arabic>"` glued English verbatim in Arabic
+  toasts/error slots — every one now routes through `getErrorMessage`
+  (R96 96-F7 / R126-L3 / R144-C1 idiom): 27 admin-page sites
+  (settings/pricing/promotions/admins/login/whatsapp/coupons/orders/
+  enrichment + settings subcomponents), 5 admin-component sites
+  (InlineStockEdit, InventoryUploadDialog, CopilotPanel ×3), and the last
+  3 customer-facing sites (AuthProviders linking/consent slots — gaining
+  code-mapped Arabic for EXPIRED/CANDIDATE_MISMATCH/FIREBASE_UID_MISMATCH
+  — + TelegramLoginButton auth-url failure). Auth/security logic
+  untouched.
+
+**Evidence:** 1,028 targeted frontend tests green across the lanes
+(+6 new/updated pins), `tsc --noEmit` clean per lane; probe logic verified
+against the live VPS (8080→301 ✗ 6001→404 ✗ 8000→302 ✗, dark control ✓);
+workflow YAML parsed; full batteries on the pushed SHA via CI per the
+verification budget.
+
 ## Round R147 — the honest-availability round: the sold-out catalog made navigable end to end, four admin interaction defects closed — 2026-10-15
 
 **Scope:** the R147 mission — verify the live baseline, benchmark the

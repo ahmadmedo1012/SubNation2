@@ -191,4 +191,29 @@ describe("AdminPromotionsPage — activating a store-wide discount requires conf
     );
     expect(patches).toHaveLength(1);
   });
+
+  it("an HTTP-prefixed rejection surfaces the server's Arabic suffix — never the English HTTP noise (R148 3-errcopy)", async () => {
+    // A gateway/customFetch-shaped rejection ("HTTP <status> <text>:
+    // <server message>") — the catch's old raw extractor rendered it
+    // verbatim into the Arabic toast (the R96 96-F7 leak class).
+    fetchMock.mockImplementation((url: string, init?: RequestInit) =>
+      (init?.method ?? "GET") === "PATCH"
+        ? Promise.reject(new Error("HTTP 400 Bad Request: لا يمكن تفعيل عرضين نشطين في نفس الوقت"))
+        : Promise.resolve(resLike({ body: { flash_sales: [STOPPED_SALE] } })),
+    );
+
+    renderPage();
+    const dialog = await openActivateConfirm();
+    fireEvent.click(within(dialog).getByRole("button", { name: "تفعيل" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    const toastArg = toastMock.mock.calls[0][0];
+    expect(toastArg.title).toBe("تعذّر التحديث");
+    // The server's own Arabic wording survives…
+    expect(toastArg.description).toBe("لا يمكن تفعيل عرضين نشطين في نفس الوقت");
+    // …and the technical English prefix never lands in the toast.
+    expect(String(toastArg.description)).not.toMatch(/^HTTP/);
+    expect(String(toastArg.description)).not.toContain("Bad Request");
+    expect(toastArg.variant).toBe("destructive");
+  });
 });

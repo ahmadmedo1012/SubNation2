@@ -198,7 +198,10 @@ export default function AdminCouponsPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        // R148 (3-errcopy): route through getErrorMessage — the same
+        // routing the load path above uses; network-level English
+        // collapses to Arabic instead of landing raw in the toast.
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -219,7 +222,8 @@ export default function AdminCouponsPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        // R148 (3-errcopy): route through getErrorMessage (see create).
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -260,7 +264,9 @@ export default function AdminCouponsPage() {
         // majority fallback «فشلت العملية» (:255/:276) — the cross-repo
         // fallback canon decision stays deferred to R128 per B14's
         // batching.
-        description: err instanceof Error ? err.message : "فشلت العملية",
+        // R148 (3-errcopy): the raw extractor retired — getErrorMessage
+        // (see create) collapses network-level English to Arabic.
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/errors";
 // R123 (E3 item 1): the inline stock edit rides the session-aware wrapper
 // (a 401 mid-save now gets the global «انتهت الجلسة» toast + redirect
 // instead of a per-row failure toast); the two bulk loops keep their
@@ -56,7 +57,11 @@ export function InlineStockEdit({
       if (!(e instanceof AdminSessionExpiredError)) {
         toast({
           title: "تعذّر تحديث المخزون",
-          description: e instanceof Error ? e.message : "خطأ غير معروف",
+          /* R148 (error-copy sweep): the raw extractor leaked ApiError's
+             "HTTP 4xx …" prefix into this Arabic toast — routed through
+             getErrorMessage (the products.tsx R126-L3 idiom; server Arabic
+             passes, technical English collapses). */
+          description: getErrorMessage(e),
           variant: "destructive",
         });
       }

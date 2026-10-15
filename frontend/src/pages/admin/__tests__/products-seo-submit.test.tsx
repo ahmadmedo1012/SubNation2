@@ -19,7 +19,7 @@
  * the assertion target is the `mutate({ id, data })` payload itself.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -42,9 +42,7 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -234,5 +232,69 @@ describe("AdminProductsPage — product editor SEO override fields (R123 E3 item
     const second = updateMutate.mock.calls[1][0] as { data: Record<string, unknown> };
     expect(second.data.seo_title).toBeUndefined();
     expect(JSON.stringify(second.data)).not.toContain("seo_title");
+  });
+});
+
+describe("AdminProductsPage — in-flight save re-entry guard + busy submit register (R148 D1)", () => {
+  // The page reads isPending off the object the mocked hook returns —
+  // flipping it in place (same reference every render) simulates the
+  // POST flight without react-query plumbing.
+  const updateHook = { isPending: false, mutate: updateMutate };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useListAdminProducts as unknown as Mock).mockReturnValue({
+      data: PRODUCTS,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    (useCreateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    (useUpdateProduct as unknown as Mock).mockReturnValue(updateHook);
+    (useDeleteProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    updateHook.isPending = false;
+    updateMutate.mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("a second ⌘S press while the POST is in flight fires exactly ONE mutate — the shortcut bypasses the disabled button", async () => {
+    renderPage();
+    const { seoTitle } = await openEditor();
+
+    // First save: exactly one mutate, resting label on the button.
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التعديلات" }));
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(1));
+
+    // The POST is now in flight; a keystroke re-renders the editor
+    // with the busy register (Loader2 + «جارٍ الحفظ…» + aria-busy +
+    // disabled — the R148 D1 operator-visible half).
+    updateHook.isPending = true;
+    fireEvent.change(seoTitle, { target: { value: "جارٍ" } });
+
+    const busyBtn = screen.getByRole("button", { name: /جارٍ الحفظ…/ });
+    expect(busyBtn).toBeDisabled();
+    expect(busyBtn).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("button", { name: "حفظ التعديلات" })).not.toBeInTheDocument();
+
+    // The exact production defect: ⌘S dispatches a submit event on the
+    // form, which BYPASSES the disabled button — the page-level
+    // handleSubmit guard must swallow it (no second POST → no
+    // duplicate product; the backend carries no Idempotency-Key).
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    await act(async () => {});
+    expect(updateMutate).toHaveBeenCalledTimes(1);
   });
 });

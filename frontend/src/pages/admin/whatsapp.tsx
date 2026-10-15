@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 // UI-path change: the endpoints stay the app's own diagnostics proxy,
 // and nothing here auto-triggers session operations.
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
+import { getErrorMessage } from "@/lib/errors";
 import { copyToClipboard } from "@/lib/utils";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد جلسات بعد"
 // empty state adopts the shared EmptyState card.
@@ -121,7 +122,10 @@ export default function AdminWhatsAppPage() {
       hasLoadedRef.current = true;
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "تعذّر جلب جلسات واتساب");
+      // R148 (3-errcopy): getErrorMessage passes the wrapper's Arabic
+      // body messages through and collapses network-level English —
+      // the raw extractor leaked it into the error card + banner.
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -171,7 +175,9 @@ export default function AdminWhatsAppPage() {
       // far from the pressed button (possibly off-screen). The top
       // banner stays reserved for list-load failures.
       toast({
-        title: err instanceof Error ? err.message : "تعذّر إنشاء الجلسة",
+        // R148 (3-errcopy): route through getErrorMessage — Arabic
+        // body messages pass through, network-level English collapses.
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -197,8 +203,9 @@ export default function AdminWhatsAppPage() {
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       // R125-I5 (A3-12): toast like the successes (see createSession).
+      // R148 (3-errcopy): route through getErrorMessage (see load).
       toast({
-        title: err instanceof Error ? err.message : "تعذّر تشغيل الجلسة",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -238,8 +245,9 @@ export default function AdminWhatsAppPage() {
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       // R125-I5 (A3-12): toast like the successes (see createSession).
+      // R148 (3-errcopy): route through getErrorMessage (see load).
       toast({
-        title: err instanceof Error ? err.message : "تعذّر إصدار رمز الاقتران",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -264,8 +272,9 @@ export default function AdminWhatsAppPage() {
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       // R125-I5 (A3-12): toast like the successes (see createSession).
+      // R148 (3-errcopy): route through getErrorMessage (see load).
       toast({
-        title: err instanceof Error ? err.message : "تعذّر جلب QR",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -297,8 +306,9 @@ export default function AdminWhatsAppPage() {
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       // R125-I5 (A3-12): toast like the successes (see createSession).
+      // R148 (3-errcopy): route through getErrorMessage (see load).
       toast({
-        title: err instanceof Error ? err.message : "تعذّر حذف الجلسة",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

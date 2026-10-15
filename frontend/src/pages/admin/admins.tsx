@@ -251,8 +251,11 @@ export default function AdminAdminsPage() {
       void reload();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
+      // R148 (3-errcopy): getErrorMessage passes the wrapper's Arabic
+      // body messages through and collapses network-level English —
+      // the raw extractor leaked it into the toast title.
       toast({
-        title: err instanceof Error ? err.message : "فشل العملية",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -294,8 +297,9 @@ export default function AdminAdminsPage() {
       void reload();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
+      // R148 (3-errcopy): route through getErrorMessage (see toggle).
       toast({
-        title: err instanceof Error ? err.message : "فشل الإنشاء",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -334,8 +338,9 @@ export default function AdminAdminsPage() {
       void reload();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
+      // R148 (3-errcopy): route through getErrorMessage (see toggle).
       toast({
-        title: err instanceof Error ? err.message : "فشل التحديث",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

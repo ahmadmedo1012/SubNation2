@@ -1,5 +1,6 @@
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage } from "@/lib/errors";
 // R123 (E3 item 1): the two raw fetches ride the session-aware wrappers
 // — a 401 mid-upload gets the global «انتهت الجلسة» toast + redirect
 // instead of a «فشل الرفع» toast on a dialog being torn down, and the
@@ -197,7 +198,10 @@ export function InventoryUploadDialog({
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "فشل الرفع",
-        description: err instanceof Error ? err.message : "خطأ غير متوقع",
+        /* R148 (error-copy sweep): raw extractor → getErrorMessage (the
+           R126-L3 idiom) so ApiError's "HTTP 4xx …" prefix never lands
+           in this Arabic toast. */
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CATEGORY_OPTIONS, type ProductForm } from "@/components/admin/products/products-meta";
 import { formatCurrency } from "@/lib/utils";
-import { CheckCircle, X } from "lucide-react";
+import { CheckCircle, Loader2, X } from "lucide-react";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/products.tsx —
 // the create/edit editor card (header + ⌘S/Esc hint + the nine-field form
@@ -375,9 +375,25 @@ export function ProductEditorCard({
             type="submit"
             className="h-9 bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
             disabled={createPending || updatePending}
+            /* R148 (D1): the in-flight save now carries a busy register
+               the bare disabled never had — Loader2 swap (the
+               VariantFormPanel submit idiom) + «جارٍ الحفظ…» label
+               (the AdminAccountCard «جارٍ...» idiom) + aria-busy. The
+               page-level handleSubmit guard is the real re-entry
+               killer (⌘S bypasses the disabled button); this is the
+               operator-visible half. */
+            aria-busy={createPending || updatePending}
           >
-            <CheckCircle className="w-4 h-4 ml-1.5" />
-            {editingId ? "حفظ التعديلات" : "إضافة المنتج"}
+            {createPending || updatePending ? (
+              <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+            ) : (
+              <CheckCircle className="w-4 h-4 ml-1.5" />
+            )}
+            {createPending || updatePending
+              ? "جارٍ الحفظ…"
+              : editingId
+                ? "حفظ التعديلات"
+                : "إضافة المنتج"}
           </Button>
         </div>
       </form>

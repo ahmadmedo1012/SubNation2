@@ -265,7 +265,10 @@ export default function AdminPricingPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّرت المعاينة",
-        description: err instanceof Error ? err.message : "تعذّر الاتصال بالخادم",
+        // R148 (3-errcopy): the file's own resolver (the recompute twin
+        // above) — network-level English collapses to Arabic via its
+        // getErrorMessage fallback instead of landing raw in the toast.
+        description: describeError(err),
         variant: "destructive",
       });
     } finally {

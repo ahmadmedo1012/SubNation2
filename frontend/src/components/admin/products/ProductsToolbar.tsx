@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
-import { CATEGORY_FILTERS } from "@/components/admin/products/products-meta";
+import { CATEGORY_FILTERS, PRODUCT_COUNT_FORMS } from "@/components/admin/products/products-meta";
+import { formatCount } from "@/lib/utils";
 import { CheckSquare, Search, Square, X } from "lucide-react";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/products.tsx —
@@ -116,7 +117,13 @@ export function ProductsToolbar({
           مسح
         </button>
       )}
-      <span className="text-xs text-muted-foreground mr-auto">{filteredCount} منتج</span>
+      {/* R148 (D3): the count noun rides the 93-C8 formatCount paradigm
+          (PRODUCT_COUNT_FORMS — the same plural engine the
+          ProductsHeader counter above uses) instead of the frozen
+          «N منتج»: 2 → «منتجان», 3 → «منتجات». */}
+      <span className="text-xs text-muted-foreground mr-auto">
+        {formatCount(filteredCount, PRODUCT_COUNT_FORMS)}
+      </span>
     </div>
   );
 }

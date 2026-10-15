@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { apiUrl } from "@/lib/api-config";
+import { getErrorMessage } from "@/lib/errors";
 import { fetchPublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { LinkConsentModal } from "./LinkConsentModal";
 import { TelegramLoginButton } from "./TelegramLoginButton";
@@ -208,7 +209,11 @@ function ProviderButton({
         return;
       }
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : "حدث خطأ غير متوقع");
+      // R148 (error-copy sweep): raw extractor leaked ApiError's
+      // "HTTP 4xx …" prefix into this Arabic error slot — routed through
+      // getErrorMessage (the R144-C1 profile.tsx idiom; server Arabic
+      // passes, technical English collapses to Arabic network copy).
+      onError(getErrorMessage(err) || "حدث خطأ غير متوقع");
     } finally {
       setLoading(false);
     }
@@ -350,7 +355,11 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
       // FIREBASE_UID_MISMATCH. Either way we close the modal and surface
       // the message; the user re-clicks the provider to start over.
       setPendingLink(null);
-      setError(err instanceof Error ? err.message : "تعذّر إكمال ربط الحساب");
+      // R148 (error-copy sweep): same class as :211 — getErrorMessage maps
+      // the consent-path codes (EXPIRED / CANDIDATE_MISMATCH /
+      // FIREBASE_UID_MISMATCH) to their Arabic copy instead of the raw
+      // HTTP-prefixed message.
+      setError(getErrorMessage(err) || "تعذّر إكمال ربط الحساب");
     } finally {
       setLinking(false);
     }

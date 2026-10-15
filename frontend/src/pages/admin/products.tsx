@@ -230,9 +230,13 @@ export default function AdminProductsPage() {
         toast({ title: "تمت الإضافة", variant: "success" });
       },
       onError(err: unknown) {
+        // R148 (D2): route through getErrorMessage — the R126-L3 guard
+        // the two bulk loops below already use. The generated ApiError
+        // message glues "HTTP 400 Bad Request: " onto the Arabic server
+        // message, which used to land raw in the toast.
         toast({
           title: "خطأ",
-          description: err instanceof Error ? err.message : "فشلت العملية",
+          description: getErrorMessage(err),
           variant: "destructive",
         });
       },
@@ -251,9 +255,10 @@ export default function AdminProductsPage() {
         toast({ title: "تم التحديث", variant: "success" });
       },
       onError(err: unknown) {
+        // R148 (D2): same Arabic guard as createMutation above.
         toast({
           title: "خطأ",
-          description: err instanceof Error ? err.message : "فشلت العملية",
+          description: getErrorMessage(err),
           variant: "destructive",
         });
       },
@@ -268,9 +273,10 @@ export default function AdminProductsPage() {
         toast({ title: "تمت الأرشفة", variant: "success" });
       },
       onError(err: unknown) {
+        // R148 (D2): same Arabic guard as createMutation above.
         toast({
           title: "خطأ",
-          description: err instanceof Error ? err.message : "فشلت العملية",
+          description: getErrorMessage(err),
           variant: "destructive",
         });
       },
@@ -398,6 +404,12 @@ export default function AdminProductsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // R148 (D1): in-flight re-entry guard — the ⌘S shortcut dispatches a
+    // submit event that bypasses the (disabled) submit button, so two
+    // presses during one POST minted two products (the backend POST
+    // carries no Idempotency-Key). preventDefault stays FIRST: the
+    // swallowed event must not fall through to a native form GET.
+    if (createMutation.isPending || updateMutation.isPending) return;
     const data = {
       name: form.name,
       description: form.description || undefined,

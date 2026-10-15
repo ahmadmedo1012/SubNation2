@@ -10,6 +10,7 @@
  */
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
+import { getErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useDirtyGuard } from "@/hooks/use-dirty-guard";
@@ -130,8 +131,11 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
       toast({ title: "تم تحديث بيانات الحساب", variant: "success" });
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
+      // R148 (3-errcopy): getErrorMessage passes the wrapper's Arabic
+      // body messages through and collapses network-level English —
+      // the raw extractor leaked it into the toast title.
       toast({
-        title: err instanceof Error ? err.message : "فشل التحديث",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -201,8 +205,9 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
       navigate("/admin/login");
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
+      // R148 (3-errcopy): same class as the profile form above.
       toast({
-        title: err instanceof Error ? err.message : "فشل تغيير كلمة المرور",
+        title: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

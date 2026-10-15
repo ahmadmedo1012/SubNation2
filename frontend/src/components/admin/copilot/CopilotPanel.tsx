@@ -428,7 +428,10 @@ export function CopilotPanel() {
         patchTurn(turn.id, { loading: false });
         return;
       }
-      const msg = err instanceof Error ? err.message : "حدث خطأ";
+      // R148 (error-copy sweep): raw extractor → getErrorMessage (this
+      // file's own :397/:466/:637/:686 idiom) — Arabic server wording
+      // passes, technical English collapses.
+      const msg = getErrorMessage(err);
       patchTurn(turn.id, { error: msg, loading: false });
     }
   }
@@ -659,7 +662,9 @@ export function CopilotPanel() {
         patchTurn(turn.id, { previewState: "pending", loading: false });
         return;
       }
-      const msg = err instanceof Error ? err.message : "حدث خطأ";
+      // R148 (error-copy sweep): raw extractor → getErrorMessage (this
+      // file's own :397/:466/:637/:686 idiom).
+      const msg = getErrorMessage(err);
       patchTurn(turn.id, { previewState: "pending", error: msg });
     }
   }
@@ -696,7 +701,9 @@ export function CopilotPanel() {
         patchTurn(turn.id, { previewState: "awaiting_double_confirm", loading: false });
         return;
       }
-      const msg = err instanceof Error ? err.message : "حدث خطأ";
+      // R148 (error-copy sweep): raw extractor → getErrorMessage (this
+      // file's own :397/:466/:637/:686 idiom).
+      const msg = getErrorMessage(err);
       patchTurn(turn.id, { previewState: "awaiting_double_confirm", error: msg });
     }
   }

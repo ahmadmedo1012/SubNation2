@@ -10,6 +10,7 @@
  */
 import { useAdminHeaders } from "@/hooks/use-admin-headers";
 import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle, Loader2, RefreshCw, Shield, ShieldCheck } from "lucide-react";
@@ -91,7 +92,10 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
       });
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
-      const message = err instanceof Error ? err.message : "حدث خطأ";
+      // R148 (3-errcopy): getErrorMessage passes the wrapper's Arabic
+      // body messages through (the includes flip below keeps working)
+      // and collapses network-level English to the Arabic generic.
+      const message = getErrorMessage(err);
       // R125-I5 (A3-1): belt-and-braces for a failed session probe — the
       // backend's exact gate message means TOTP IS enabled; surface the
       // password field instead of stranding the error with no CTA.
@@ -125,7 +129,7 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
       setCurrentPassword("");
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
-      setError(err instanceof Error ? err.message : "حدث خطأ");
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

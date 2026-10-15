@@ -4,7 +4,47 @@
 
 Status: **design-ready boundary. NO invented endpoints. NO fake integration.**
 Blocked on: official Embronic API documentation + credentials (+ reseller subscription if required).
-Recorded in `docs/project-plan/09-external-blockers.md` (#1).
+Blocker lineage: `docs/project-plan/09-external-blockers.md` (#1) — that 00–09 set moved to
+`docs/deprecated/project-plan/` in the R122 docs reorg; the blocker itself stays open and is
+re-verified below (R148).
+
+## Phase A discovery result (R148, 2026-10-14) — no official public API contract exists
+
+Searched from the remote engineering environment (independent vantage, read-only):
+
+- **Web search** (multiple query shapes: "Embronic API documentation reseller",
+  "embronic.com API", "Embronic reseller kit"): zero hits to any Embronic API/developer
+  documentation. All "reseller API" results are other companies (Ingram Micro, GoDaddy, etc.).
+- **Direct page reads of embronic.com** (`/product/reseller-kit/`, `/product/reseller-credit/`):
+  a WordPress/WooCommerce storefront (wp-json, contact-form-7 — the only "api" strings on the
+  pages are WP internals). The reseller program is a **white-label panel + credits product**:
+  "We provide the platform, hosting, automation tools, account generation systems, and
+  white-label dashboards" / "a centralized reseller panel built for automation and scalability".
+  No endpoint definitions, no auth scheme, no developer/partner docs linked from public pages.
+- **Provisioned configuration**: no `EMBRONIC_API_*` variables exist in any authorized
+  environment reachable from the engineering side (repo, env examples, this session).
+
+**Conclusion (honest):** the integration cannot be implemented against a real contract today.
+Per the mission's critical rule: no endpoint invention, no scraping-as-production, no
+fabricated credentials, no pretend `embronic.provider.ts`. The prepared boundary below is
+verified coherent and untouched.
+
+### Exact owner action (the only path forward)
+
+Ask Embronic (via the reseller-account support/partner channel after purchasing or holding the
+reseller tier) whether the program includes **programmatic API access**, and obtain:
+
+1. Official API documentation (base URL + version, auth method + scopes, catalog/plan/price/
+   availability operations, order creation + provider order-id semantics, idempotency keys,
+   status query/webhooks, account delivery/activation/replacement/refund behavior, rate limits +
+   error schema, sandbox facility, which calls consume reseller credits).
+2. Credentials for that API (+ sandbox if one exists) — to be placed in the Coolify env table
+   as `EMBRONIC_API_*` (server-side only, per the Secrets contract in this design).
+3. Confirmation of the reseller tier/subscription if API access is tier-gated.
+
+Until those arrive: the catalog's honest sold-out state stands (manual inventory upload remains
+the documented fallback per `docs/operations/FINAL_INVENTORY_LOADING.md` — NOT the solution to
+this integration, only the interim supply path of record).
 
 ## What exists today (verified)
 

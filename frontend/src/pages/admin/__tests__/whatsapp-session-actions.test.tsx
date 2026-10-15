@@ -22,9 +22,7 @@ import { type ReactNode } from "react";
 import AdminWhatsAppPage from "@/pages/admin/whatsapp";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -196,5 +194,49 @@ describe("AdminWhatsAppPage — gateway docs deep-link degradation (110-M / 109-
       // The label survives as a muted plain-text hint — no dead-domain link.
       expect(screen.getByText("وثائق البوابة")).toBeInTheDocument();
     }
+  });
+});
+
+/**
+ * R148 (3-errcopy) — the session-action toasts speak Arabic only.
+ *
+ * Every action catch on this page used to render
+ * `err instanceof Error ? err.message : …` verbatim — a network-level
+ * failure (the browser's TypeError("Failed to fetch"), the 20 s timeout
+ * DOMException) landed raw inside the Arabic toast title. The catches
+ * now route through getErrorMessage: the wrapper's Arabic body messages
+ * pass through untouched (whatsapp-error-state pins that half) and
+ * technical English collapses to the shared Arabic network copy.
+ */
+describe("AdminWhatsAppPage — error toasts speak Arabic only (R148 3-errcopy)", () => {
+  beforeEach(() => {
+    toastMock.mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("a network-level create failure toasts the shared Arabic copy, never the raw English", async () => {
+    // The initial sessions GET succeeds (rows render); the create POST
+    // rejects with the browser's network-failure shape.
+    fetchMock.mockImplementation((input: unknown, init?: RequestInit) =>
+      (init?.method ?? "GET") === "POST"
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : Promise.resolve(resLike({ body: { sessions: SESSIONS } })),
+    );
+
+    renderPage();
+    expect(await screen.findByText("subnation-otp")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
+    const toastArg = toastMock.mock.calls[0][0];
+    expect(toastArg.title).toBe("تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى.");
+    // The raw English never lands in the toast.
+    expect(String(toastArg.title)).not.toContain("Failed to fetch");
+    expect(toastArg.variant).toBe("destructive");
   });
 });

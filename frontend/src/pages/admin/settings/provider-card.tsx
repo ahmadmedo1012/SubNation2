@@ -16,6 +16,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
+import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/hooks/use-toast";
 import {
   CheckCircle,
@@ -159,7 +160,10 @@ export function ProviderCard({
       // `fallbackError: "فشل الحفظ"` covers message-less bodies) to
       // both channels. `setError("")` at save() start keeps every
       // retry clean.
-      const message = err instanceof Error ? err.message : "فشلت العملية";
+      // R148 (3-errcopy): getErrorMessage also collapses network-level
+      // English ("Failed to fetch", the timeout DOMException) — the raw
+      // extractor leaked it into the span + toast.
+      const message = getErrorMessage(err);
       setError(message);
       toast({
         title: "خطأ",

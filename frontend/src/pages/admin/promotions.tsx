@@ -113,7 +113,10 @@ export default function AdminPromotionsPage() {
     } catch (err) {
       // Session expiry already toasted + redirected — not a load error.
       if (err instanceof AdminSessionExpiredError) return;
-      const message = err instanceof Error ? err.message : "خطأ غير معروف";
+      // R148 (3-errcopy): getErrorMessage passes the wrapper's Arabic
+      // body messages through and collapses network-level English —
+      // the raw extractor leaked it into the error card + toast.
+      const message = getErrorMessage(err);
       setLoadError(message);
       toast({
         title: "تعذّر تحميل العروض",
@@ -193,7 +196,9 @@ export default function AdminPromotionsPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّر الإنشاء",
-        description: err instanceof Error ? err.message : "خطأ غير معروف",
+        // R148 (3-errcopy): route through getErrorMessage — network-
+        // level English collapses to Arabic (the R126-L3 guard).
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -252,7 +257,8 @@ export default function AdminPromotionsPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّر التحديث",
-        description: err instanceof Error ? err.message : "خطأ غير معروف",
+        // R148 (3-errcopy): route through getErrorMessage (see load).
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
@@ -291,7 +297,8 @@ export default function AdminPromotionsPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "تعذّر الحذف",
-        description: err instanceof Error ? err.message : "خطأ غير معروف",
+        // R148 (3-errcopy): route through getErrorMessage (see load).
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

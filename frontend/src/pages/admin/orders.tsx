@@ -462,8 +462,10 @@ export default function AdminOrdersPage() {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
         title: "خطأ",
-        description:
-          err instanceof Error && err.message ? err.message : "فشل تنفيذ العملية، حاول مرة أخرى",
+        // R148 (3-errcopy): route through getErrorMessage — the 207
+        // per-row failures above already ride it; the catch's raw
+        // extractor leaked network-level English into the Arabic toast.
+        description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {

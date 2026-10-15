@@ -19,6 +19,7 @@ import { useAdminHeaders } from "@/hooks/use-admin-headers";
 // `HTTP 401`; the ok-guard + safe error-body parse move into the
 // wrapper too.
 import { adminFetchJson } from "@/lib/admin-session";
+import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 // R125-I3 (A2-1): the LoadMoreButton — the review queue's next_cursor
 // was fetched but never used (drafts #26+ were invisible while the
@@ -194,11 +195,10 @@ export default function AdminEnrichmentPage() {
             size="page"
             retryIcon={RefreshCw}
             title="تعذّر تحميل المسودات"
-            description={
-              query.error instanceof Error
-                ? query.error.message
-                : "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
-            }
+            // R148 (3-errcopy): route through getErrorMessage — the
+            // raw extractor leaked network-level English into the
+            // Arabic error card; the wrapper's Arabic passes through.
+            description={getErrorMessage(query.error)}
             onRetry={() => query.refetch()}
           />
         )}

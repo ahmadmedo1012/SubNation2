@@ -82,7 +82,10 @@ describe("R137 (FE) — admin/settings.tsx decomposition: page stays an orchestr
       'if (isAdminUnauthorized(res, url)) throw new Error("__unauthorized__");',
     );
     expect(page).toContain(
-      'setLoadError(err instanceof Error && err.message ? err.message : "تعذّر تحميل الإعدادات");',
+      // R148 (3-errcopy): the raw extractor retired — the load failure
+      // routes through getErrorMessage (network-level English collapses
+      // to Arabic; the wrapper's Arabic body messages pass through).
+      "setLoadError(getErrorMessage(err));",
     );
     // runTelegramTest carries the diagnostic POST — the
     // AdminSessionExpiredError quiet-catch + the offline fallback

@@ -671,3 +671,66 @@ describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R12
     expect(screen.queryByText(/منتج محدد/)).not.toBeInTheDocument();
   });
 });
+
+/** R148 (D2) — the three mutation onError toasts route through
+ *  getErrorMessage (the R126-L3 guard the bulk loops already use). The
+ *  old `err instanceof Error ? err.message : …` rendered the generated
+ *  ApiError message verbatim — "HTTP 400 Bad Request: <Arabic>" with the
+ *  English HTTP prefix glued onto the Arabic server message. The hooks
+ *  are mocked at the module boundary, so the config the page passes is
+ *  captured and onError invoked directly. */
+describe("AdminProductsPage — create/update/archive error toasts speak Arabic (R148 D2)", () => {
+  const onErrorOf = (cfg: unknown) =>
+    (cfg as { mutation?: { onError?: (err: unknown) => void } }).mutation?.onError;
+  const configs: Array<unknown> = [];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockProductsResult(PRODUCTS);
+    configs.length = 0;
+    (useCreateProduct as unknown as Mock).mockImplementation((cfg: unknown) => {
+      configs[0] = cfg;
+      return { isPending: false, mutate: vi.fn() };
+    });
+    (useUpdateProduct as unknown as Mock).mockImplementation((cfg: unknown) => {
+      configs[1] = cfg;
+      return { isPending: false, mutate: vi.fn() };
+    });
+    (useDeleteProduct as unknown as Mock).mockImplementation((cfg: unknown) => {
+      configs[2] = cfg;
+      return { isPending: false, mutate: vi.fn() };
+    });
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("all three handlers strip the ApiError 'HTTP 4xx' prefix — the Arabic server message survives, the English never lands", () => {
+    renderPage();
+    expect(configs).toHaveLength(3);
+
+    // The generated ApiError message shape: technical HTTP prefix glued
+    // onto the Arabic server message.
+    const apiError = new Error("HTTP 400 Bad Request: السعر غير صالح");
+    for (const cfg of configs) {
+      const onError = onErrorOf(cfg);
+      expect(onError).toBeTypeOf("function");
+      onError?.(apiError);
+    }
+
+    expect(toastMock).toHaveBeenCalledTimes(3);
+    for (const call of toastMock.mock.calls) {
+      const toastArg = call[0] as { title: string; description: string; variant: string };
+      expect(toastArg.title).toBe("خطأ");
+      // getErrorMessage strips the prefix and passes the Arabic suffix.
+      expect(toastArg.description).toBe("السعر غير صالح");
+      // The old code rendered the full raw message — this is the pin.
+      expect(toastArg.description).not.toMatch(/HTTP/);
+      expect(toastArg.variant).toBe("destructive");
+    }
+  });
+});

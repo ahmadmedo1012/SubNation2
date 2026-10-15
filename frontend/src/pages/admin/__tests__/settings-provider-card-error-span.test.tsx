@@ -149,4 +149,34 @@ describe("ProviderCard — B14-14: the inline error span is wired (R127-L11)", (
     });
     expect(screen.queryByText("انتهت الجلسة")).not.toBeInTheDocument();
   });
+
+  it("a technical English rejection collapses to the Arabic generic — never the raw HTTP noise (R148 3-errcopy)", async () => {
+    // A gateway/customFetch-shaped rejection with NO Arabic suffix — the
+    // old raw extractor rendered "HTTP 409 Conflict" verbatim in the
+    // inline span AND the toast (the R96 96-F7 leak class). The catch
+    // now routes through getErrorMessage.
+    (adminFetchJson as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("HTTP 409 Conflict"),
+    );
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التغييرات" }));
+
+    // Both channels carry the shared Arabic network copy…
+    expect(
+      await screen.findByText("تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى."),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "خطأ",
+          description: "تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى.",
+          variant: "destructive",
+        }),
+      );
+    });
+    // …and the technical English never lands anywhere on the card.
+    expect(document.body.textContent).not.toContain("HTTP 409");
+    expect(document.body.textContent).not.toContain("Conflict");
+  });
 });

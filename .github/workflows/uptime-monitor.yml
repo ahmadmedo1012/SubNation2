@@ -23,6 +23,16 @@
 #     §5; L17-5 named /api/healthz/live as the zero-IO alternative).
 #   - TLS certificate expiry (< 14 days = failure — Traefik's ACME renewal
 #     normally keeps this at ~60+; a low number means renewal broke).
+#   - Port-exposure guard (R148): the perimeter contract is "public
+#     22/80/443 ONLY" (COOLIFY_FINAL_SETUP §1, L17-1/R144). :8080 (Traefik
+#     dashboard/API), :6001 (Coolify realtime/Reverb) and :8000 (Coolify
+#     management) must FAIL to connect from outside — any HTTP status =
+#     still open. Warning-level ONLY (exposure ≠ outage — the run stays
+#     green so the badge keeps meaning "site up"; no Telegram noise):
+#     the per-run annotation + log IS the continuous §4 verification record
+#     of EXPOSURE_REMEDIATION_R144.md. Closing the ports is VM/panel work
+#     (the repo cannot close a port) — this guard just keeps the contract
+#     measured every 5 minutes from the same external vantage.
 #
 # ALERTING: reuses the production Telegram ops channel (OPERATIONS_RUNBOOK
 # §12) — set REPOSITORY secrets TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (the
@@ -169,6 +179,41 @@ jobs:
             echo "✗ TLS: $days days remaining (notAfter=$not_after) — inside the 14-day threshold; Traefik ACME renewal should fix this on its own, repeated failures mean renewal broke"
           else
             echo "✓ TLS: $days days remaining (notAfter=$not_after)"
+          fi
+
+      # ── Probe 4: exposure guard (R148) — the L17-1/R144 port contract ─────
+      # Automates EXPOSURE_REMEDIATION_R144.md §4's external verification:
+      # each out-of-contract listener must FAIL to connect (000); ANY HTTP
+      # status means the port is still publicly open. State of record at
+      # R148 (2026-10-14, independent external vantage): 8080 → 301/200
+      # (Traefik dashboard + unauthenticated API), 6001 → 404 (Reverb
+      # answering), 8000 → 302 (Coolify management) — all three OPEN;
+      # closure is operator VM/panel work per the runbook (§3.1 dashboard
+      # toggle / §3.2 realtime stop / §3.3 firewall allowlist with the
+      # preflight-lockout warnings). When the operator closes them, these
+      # lines flip to ✓ automatically and the Actions history becomes the
+      # "record the result" evidence the runbook asks for.
+      - name: "Exposure guard (contract: public 22/80/443 only)"
+        run: |
+          VM=169.58.100.161
+          exposure_open=0
+          probe_port() {
+            # $1 = port, $2 = label, $3 = runbook pointer
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 6 "http://${VM}:$1/" 2>/dev/null || true)
+            if [ -z "$code" ]; then code="000"; fi
+            if [ "$code" = "000" ]; then
+              echo "✓ :$1 ($2) — dark from outside, contract honored"
+            else
+              echo "✗ :$1 ($2) — STILL PUBLIC (HTTP $code) — $3"
+              exposure_open=$((exposure_open + 1))
+            fi
+          }
+          probe_port 8080 "Traefik dashboard/API"  "EXPOSURE_REMEDIATION_R144.md §3.1"
+          probe_port 6001 "Coolify realtime/Reverb" "EXPOSURE_REMEDIATION_R144.md §3.2"
+          probe_port 8000 "Coolify management path"  "EXPOSURE_REMEDIATION_R144.md §3.3 (preflight #2: SSH tunnel before closing)"
+          echo "exposure_open=$exposure_open" >> "$GITHUB_ENV"
+          if [ "$exposure_open" -gt 0 ]; then
+            echo "::warning::Port-exposure contract violated: $exposure_open/3 out-of-contract listeners still answer the public internet (L17-1/R144 — docs/deployment/EXPOSURE_REMEDIATION_R144.md). Site uptime is UNAFFECTED; this is the perimeter exposure. Remediation is operator VM/panel work per the runbook."
           fi
 
       # ── Alert / recovery dispatch ─────────────────────────────────────────

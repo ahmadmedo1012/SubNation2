@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
+import { getErrorMessage } from "@/lib/errors";
 
 /**
  * Telegram Login — CSP-safe redirect flow.
@@ -154,7 +155,10 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
       window.location.href = authUrl.toString();
     } catch (err) {
       setLoading(false);
-      onError(err instanceof Error ? err.message : "تعذّر فتح صفحة Telegram، حاول مجدداً");
+      // R148 (error-copy sweep): raw extractor → getErrorMessage (the
+      // R144-C1 idiom) — the auth-url fetch's ApiError prefix never lands
+      // raw in this Arabic error slot.
+      onError(getErrorMessage(err) || "تعذّر فتح صفحة Telegram، حاول مجدداً");
     }
   };
 
