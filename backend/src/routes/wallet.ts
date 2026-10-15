@@ -550,8 +550,22 @@ router.post(
           amount: roundLydString(amount),
           paymentMethod: method,
           paymentNetwork: network,
-          senderPhone: sender_phone ?? null,
-          senderAccount: sender_account ?? null,
+          // R151: store the NORMALIZED sender phone, not the raw input.
+          // The composite soft-dedup (topup.service.ts:360) matches
+          // senderPhone as a raw string — two submissions of the same
+          // number with different formatting ("0913456789" vs
+          // "+218913456789", both valid, both normalize to "913456789")
+          // bypassed the dedup and could both be approved, crediting the
+          // wallet twice for one real transfer. normalizeLibyanPhone
+          // returns the canonical 9-digit form (validated upstream for
+          // mobile_transfer; the fallback keeps the raw value for any
+          // non-Libyan edge case). sender_account is trimmed for the
+          // same reason (the lypay dedup at topup.service.ts:404).
+          senderPhone: sender_phone ? (normalizeLibyanPhone(sender_phone) ?? sender_phone) : null,
+          senderAccount:
+            typeof sender_account === "string"
+              ? sender_account.trim() || null
+              : (sender_account ?? null),
           paymentReference,
           status: initialStatus,
           adminNote: initialAdminNote,

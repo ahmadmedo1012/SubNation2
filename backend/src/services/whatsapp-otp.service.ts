@@ -17,6 +17,7 @@ import { createHmac } from "crypto";
 
 import { logAuthActivity } from "../lib/auth-activity";
 import { generateReferralCode, normalizeLibyanPhone } from "../lib/crypto";
+import { isUniqueViolation } from "../lib/pg-errors";
 import { createUserSession } from "../lib/session";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -737,47 +738,67 @@ async function findOrCreateWhatsAppUser(
     if (referrer) referredById = referrer.id;
   }
 
-  const [created] = await db.transaction(async (tx) => {
-    const [u] = await tx
-      .insert(usersTable)
-      .values({
-        phone,
-        phoneVerified: true,
-        authProvider: "whatsapp_phone",
-        referralCode: generateReferralCode(),
-        referredBy: referredById,
-        // R115 (welcome-bonus policy B): NO instant credit at signup — the
-        // referred user's welcome bonus lands on their FIRST APPROVED
-        // TOPUP (topup.service.ts, guarded by users.welcome_bonus_granted).
-        // Uniform across Google / WhatsApp / Telegram.
-        walletBalance: "0.00",
-        lastAuthAt: now,
-      })
-      .returning();
+  try {
+    const [created] = await db.transaction(async (tx) => {
+      const [u] = await tx
+        .insert(usersTable)
+        .values({
+          phone,
+          phoneVerified: true,
+          authProvider: "whatsapp_phone",
+          referralCode: generateReferralCode(),
+          referredBy: referredById,
+          // R115 (welcome-bonus policy B): NO instant credit at signup — the
+          // referred user's welcome bonus lands on their FIRST APPROVED
+          // TOPUP (topup.service.ts, guarded by users.welcome_bonus_granted).
+          // Uniform across Google / WhatsApp / Telegram.
+          walletBalance: "0.00",
+          lastAuthAt: now,
+        })
+        .returning();
 
-    // F2 (round-94 A4): the referral EVENT row, in the same tx as the
-    // user it refers. Telegram (auth-settings.ts) and Firebase
-    // (firebase-auth.service.ts) both insert { referrer, referee,
-    // status: 'pending' } at signup; this WhatsApp path was the only
-    // channel that skipped it — user.referredBy was set and the 5 LYD
-    // welcome bonus + ledger landed, but TopupService.approve (the
-    // sole consumer) requires the event row to award the referrer's
-    // +50 points on the first topup, so the promise silently never
-    // paid on this channel (/admin/referrals showed pending: 0).
-    // Same value shape + onConflictDoNothing as the sibling channels;
-    // in-tx (stronger than they are) so the event can never exist
-    // without the user row it belongs to.
-    if (referredById && referredById !== u.id) {
-      await tx
-        .insert(referralEventsTable)
-        .values({ referrerId: referredById, refereeId: u.id, status: "pending" })
-        .onConflictDoNothing();
-    }
+      // F2 (round-94 A4): the referral EVENT row, in the same tx as the
+      // user it refers. Telegram (auth-settings.ts) and Firebase
+      // (firebase-auth.service.ts) both insert { referrer, referee,
+      // status: 'pending' } at signup; this WhatsApp path was the only
+      // channel that skipped it — user.referredBy was set and the 5 LYD
+      // welcome bonus + ledger landed, but TopupService.approve (the
+      // sole consumer) requires the event row to award the referrer's
+      // +50 points on the first topup, so the promise silently never
+      // paid on this channel (/admin/referrals showed pending: 0).
+      // Same value shape + onConflictDoNothing as the sibling channels;
+      // in-tx (stronger than they are) so the event can never exist
+      // without the user row it belongs to.
+      if (referredById && referredById !== u.id) {
+        await tx
+          .insert(referralEventsTable)
+          .values({ referrerId: referredById, refereeId: u.id, status: "pending" })
+          .onConflictDoNothing();
+      }
 
-    return [u];
-  });
+      return [u];
+    });
 
-  return { user: created, isNewUser: true };
+    return { user: created, isNewUser: true };
+  } catch (err) {
+    // R151 (F6-sibling / R146-F3 parity): a phone can hold TWO live,
+    // unconsumed OTP rows (two `start` requests inside the 5-min TTL).
+    // Two concurrent verifies with two DIFFERENT valid codes each
+    // consume their OWN row (different ids → both pass the F6 guard),
+    // then both call findOrCreateWhatsAppUser for the same NEW phone.
+    // Both miss the existing-user SELECT, both INSERT — the loser's
+    // users.phone UNIQUE tripped as an unclassified 23505 → raw 500 on
+    // a registration that actually SUCCEEDED. Firebase (R146-F3) and
+    // Telegram (telegram-auth-flow.ts) already catch this and re-read
+    // the winner's row; this closes the WhatsApp parity gap. Re-throw
+    // any non-duplicate error unchanged. The winner's transaction
+    // already emitted the referral event, so the loser returns a
+    // normal isNewUser:false login on the winner's row.
+    if (!isUniqueViolation(err)) throw err;
+    const [winner] = await db.select().from(usersTable).where(eq(usersTable.phone, phone)).limit(1);
+    if (!winner) throw err;
+    return { user: winner, isNewUser: false };
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

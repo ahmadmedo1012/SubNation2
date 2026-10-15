@@ -241,6 +241,34 @@ describe("POST /api/wallet/topups — validation (generated zod + handler rules)
     expect(res.body.code).toBe("INVALID_DATA");
   });
 
+  it("R151: normalizes sender_phone before storage (dedup can't be bypassed by formatting)", async () => {
+    // The composite soft-dedup (topup.service.ts:360) matches
+    // senderPhone as a raw string — two submissions of the same number
+    // with different formatting ("0913456789" vs "+218913456789", both
+    // valid, both normalize to "913456789") bypassed the dedup and could
+    // both be approved, crediting the wallet twice for one real
+    // transfer. The route now stores the NORMALIZED form.
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const res = await call<{ id: number }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: {
+        amount: 50,
+        payment_network: "madar",
+        sender_phone: "+218913456789",
+        payment_reference: "TRX-NORM-1",
+      },
+    });
+    expect(res.status).toBe(201);
+
+    const [row] = await db
+      .select()
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.id, res.body.id));
+    // The canonical 9-digit form — NOT "+218913456789".
+    expect(row.senderPhone).toBe("913456789");
+  });
+
   it("rejects a payment_reference longer than 100 chars with 400 (F-03 handler cap)", async () => {
     // F-03 (round-93): the handler trims and caps the reference at 100
     // chars — the semantic bound the dedup layers compare on. The zod
@@ -387,8 +415,11 @@ describe("POST /api/wallet/topups — happy path", () => {
     expect(res.body.amount).toBe(50);
     expect(res.body.payment_method).toBe("mobile_transfer");
     expect(res.body.payment_network).toBe("madar");
-    // Stored raw (validation-only normalization) — pins current behavior.
-    expect(res.body.sender_phone).toBe("0912345678");
+    // R151: sender_phone is now stored NORMALIZED (canonical 9-digit
+    // form), not raw — so the composite soft-dedup at approval time
+    // can't be bypassed by submitting the same number with different
+    // formatting. "0912345678" → normalizeLibyanPhone → "912345678".
+    expect(res.body.sender_phone).toBe("912345678");
     expect(res.body.sender_account).toBeNull();
     expect(res.body.payment_reference).toBe("TX-REF-1");
     expect(res.body.status).toBe("pending");
@@ -403,6 +434,8 @@ describe("POST /api/wallet/topups — happy path", () => {
     expect(row.userId).toBe(user.id);
     expect(parseFloat(String(row.amount))).toBe(50);
     expect(row.status).toBe("pending");
+    // The persisted column agrees with the normalized response.
+    expect(row.senderPhone).toBe("912345678");
   });
 
   it("creates a pending lypay topup with sender_account and no network", async () => {
