@@ -330,7 +330,7 @@ ledger; `docs/API.md` owns the API surface.
 | **CURRENT** | 50 (36 md incl. this index + 13 mmd + 1 json) | in place (this index's tables above) |
 | **HISTORY** | 204 files — 165 md + 39 jpg (74 md from R122 + the R135 wave: 90 md / 39 jpg of inspection evidence r124–r130 + r134 + the ledger split; incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r130 + r134, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit`, `CHANGELOG-rounds-r116-r126.md` |
 | **DEPRECATED** | 16 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set |
-| **PENDING** | 1 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design; `FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands) |
+| **PENDING** | 2 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design; `FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands) · `docs/pending/whatsapp-cloud-api-migration.md` (R149 WhatsApp transport decision record: Baileys gateway hardened now, official Cloud API gated on Meta owner prerequisites) |
 
 Move map for dated ledger entries: `docs/history/README.md`.
 

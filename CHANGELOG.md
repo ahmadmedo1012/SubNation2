@@ -10,6 +10,58 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R149 — WhatsApp delivery engineering: the retry-contract fix + the transport decision — 2026-10-15
+
+**Scope:** the R149 mission — fix the WhatsApp "Waiting for this message"
+failure at its root cause in the gateway repo, decide (and act on) the
+long-term transport route, close every feasible production-hardening item,
+and honestly re-verify the operator-gated tracks. Full report:
+`docs/engineering/R149/round-close.md`.
+
+**WhatsApp (the round's core, fixed in `ahmadmedo1012/openwa`'s R149
+commit):** the recipient-side "Waiting for this message. This may take a
+while." had a proven code-level root cause — the gateway implemented NONE
+of Baileys 6.7.24's message-retry contract (no `getMessage`, no outbound
+message store), so when a recipient device failed to decrypt and requested
+a re-send, the gateway silently dropped the request and the placeholder
+was permanent (verified in the locked dependency's own source at
+`messages-recv.js` `sendMessagesAgain`; canonical issue
+WhiskeySockets/Baileys#1767). The fix implements the full contract:
+per-session in-memory message store (TTL 30 min = 6× the 5-min OTP
+validity, FIFO cap 500, survives reconnects, NO at-rest plaintext OTP
+archive), `getMessage` serving exact original content (miss → safe
+`undefined`), reconnect-persistent `msgRetryCounterCache` (5-resend
+protocol bound holds across the retry window), privacy-preserving
+`[retry] resend request` diagnostics (id + masked JID + served flag), and
+WA-02 pairing-death clearing. Gateway suite 103 → **116/116 green**;
+stays on 6.7.24 (the FINAL 6.x — 7.x is RC-only with no retry fix). The
+settle/warm-up gates are confirmed to cover only the post-link subcase;
+the two defenses now compose. REST contract unchanged → zero app code
+changes required.
+
+**Transport decision (acted on):** retain + harden the Baileys gateway
+NOW; the official **Cloud API is the long-term target**, gated on 5 exact
+Meta owner prerequisites (business portfolio, WABA, COPY_CODE auth
+template, sender number with the same-number-unlink caveat, ≈$0.0048/
+delivery pricing); every third-party alternative REJECTED on live
+evidence (Evolution API 2.3.7 carries the IDENTICAL failure unfixed —
+open #2705; the rest are the same unofficial class). Decision record:
+`docs/pending/whatsapp-cloud-api-migration.md` (new, PENDING bucket,
+indexed).
+
+**External tracks (re-verified at their real boundary):** ports
+:8080/:6001/:8000 re-probed STILL PUBLIC from an independent vantage
+(301/404/302, dark control port confirms) — owner-gated per
+EXPOSURE_REMEDIATION_R144 §3, watchdog keeps measuring every 5 min;
+Actions secrets still lack TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID; live
+bundle still lacks VITE_RELEASE_SHA; GSC meta still empty; Embronic
+re-searched — still no developer API (R148 Phase A record stands).
+**Honesty boundary:** the production gateway binary keeps running
+`sha-ba6a843` until the operator re-pins the Coolify image to the R149
+commit's `sha-<short>` tag (single-gateway rule), and no real-handset
+acceptance test was possible from this session — both recorded as exact
+owner actions with acceptance criteria.
+
 ## Round R148 — exposure self-verification + Embronic Phase A honesty + the error-copy closure — 2026-10-15
 
 **Scope:** the R148 mission — close the operator-gated security/monitoring
