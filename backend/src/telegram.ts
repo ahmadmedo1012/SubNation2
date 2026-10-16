@@ -165,6 +165,12 @@ export interface NotifyNewTopupInput {
    *  duplicate guards (exact + composite) are only actionable when the
    *  human in the loop can SEE the value they dedupe on. */
   paymentReference?: string | null;
+  /** R154 (P1-A): sibling topup ids matching (amount, network, sender)
+   *  that are pending or approved within 24h — the operator-visible
+   *  duplicate-risk signal for ref-less mobile transfers. The storefront
+   *  receipt field is retired, so this ⚠ line + the pending row's admin
+   *  note are the review evidence. Signal only — the operator decides. */
+  duplicateRiskSiblingIds?: readonly number[] | null;
 }
 
 /**
@@ -199,6 +205,12 @@ export function notifyNewTopup(input: NotifyNewTopupInput): void {
     // bespoke approval card (B8 unification win #4).
     input.paymentReference
       ? `رمز التحويل: <code>${escapeHtml(input.paymentReference)}</code>`
+      : null,
+    // R154 (P1-A): the duplicate-risk ⚠ line — sibling ids so the
+    // operator can compare the rows before tapping ✅. Explicitly a
+    // "potential" risk: amount+network+sender cannot prove a repeat.
+    input.duplicateRiskSiblingIds && input.duplicateRiskSiblingIds.length > 0
+      ? `⚠️ <b>خطر تكرار محتمل</b> — يوجد طلب آخر بنفس المبلغ والشبكة والمُرسل قيد المراجعة أو معتمد خلال 24 ساعة (${input.duplicateRiskSiblingIds.map((id) => `#${id}`).join("، ")}) — تحقق من إيصال التحويل قبل الاعتماد`
       : null,
     timestampLine(),
     ``,

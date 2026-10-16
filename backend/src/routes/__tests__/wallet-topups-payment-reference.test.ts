@@ -98,7 +98,7 @@ describe("F-03: payment_reference normalization on POST /api/wallet/topups", () 
     expect(row.paymentReference).toBe("TRX-TRIM-9");
   });
 
-  it("whitespace-only reference on mobile_transfer now 400s (B4-R1 — blank refs were the dual-approval class)", async () => {
+  it("whitespace-only reference on mobile_transfer normalizes to NULL and is accepted (R154 — the required field is retired)", async () => {
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
 
@@ -107,17 +107,17 @@ describe("F-03: payment_reference normalization on POST /api/wallet/topups", () 
       payment_network: "madar",
       payment_reference: "   ",
     });
-    expect(res.status).toBe(400);
-    expect(res.body!.code).toBe("INVALID_DATA");
+    expect(res.status).toBe(201);
+    expect(res.body!.payment_reference).toBeNull();
   });
 
-  it("omitting the field entirely on mobile_transfer 400s (B4-R1 — legacy ref-less shape is closed at creation)", async () => {
+  it("omitting the field entirely on mobile_transfer is accepted (R154 — ref-less is the storefront's normal shape)", async () => {
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
 
     const res = await postTopup(token, { amount: 50, payment_network: "madar" });
-    expect(res.status).toBe(400);
-    expect(res.body!.code).toBe("INVALID_DATA");
+    expect(res.status).toBe(201);
+    expect(res.body!.payment_reference).toBeNull();
   });
 
   it("a NULL reference still round-trips for lypay (optional there) — the DB column stays nullable", async () => {

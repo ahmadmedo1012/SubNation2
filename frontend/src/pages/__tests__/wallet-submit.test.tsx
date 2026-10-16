@@ -7,13 +7,11 @@
  * field that was always empty — a user could submit the same real
  * transfer 3× (MAX_PENDING) and be credited 3×. These tests pin:
  *
- *   1. A reference the user typed is TRIMMED and sent in the POST body
- *      (asserted on the orval mutation's `mutate({ data })` payload —
- *      A10's spec phrases it as the fetch body; the implementation goes
- *      through useCreateTopup, so the payload is the outgoing contract).
- *      R123-E4a (P1): the reference is now REQUIRED on the
- *      mobile_transfer flow (backend B4-R1 parity — a blank one is a
- *      client-side rejection, no request) and still optional on lypay.
+ *   1. R154 (P1-A): the mobile_transfer flow RETIRED the reference field
+ *      — the payload omits payment_reference entirely and no client-side
+ *      guard demands one (the operator carries the duplicate-risk signal
+ *      instead). lypay keeps its optional reference and still trims/sends
+ *      it when the user provides one.
  *   2. Client-side rejection of an invalid amount performs no request.
  *   3. A failed /api/wallet probe renders an error state, NOT a
  *      fabricated 0.00-balance card (A10 spec (e), A4 P2 #7).
@@ -150,7 +148,7 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
     sessionStorage.clear();
   });
 
-  it("sends the trimmed payment_reference in the topup POST body", async () => {
+  it("the mobile_transfer payload omits payment_reference entirely (R154 — the field is retired)", async () => {
     renderPage();
 
     // Amount (step 2 of the mobile-transfer flow).
@@ -161,12 +159,12 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
     fireEvent.change(screen.getByPlaceholderText("091XXXXXXX"), {
       target: { value: "0912345678" },
     });
-    // The receipt reference field (93-C5 / F-03) — typed with padding to
-    // prove the trim-at-submit boundary. R116-S2: unified «رمز التحويل»
-    // label. R123-E4a: REQUIRED on the mobile flow (B4-R1 parity).
-    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
-      target: { value: "  TRX-9  " },
-    });
+    // R154 (P1-A): the receipt field no longer renders on this flow —
+    // there is nothing to fill and nothing to require.
+    expect(screen.queryByLabelText("رمز التحويل (مطلوب)")).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("رقم إيصال التحويل كما ورد في رسالة التحويل"),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "إرسال طلب الشحن" }));
 
@@ -177,13 +175,16 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
       data: expect.objectContaining({
         amount: 50,
         payment_method: "mobile_transfer",
-        payment_reference: "TRX-9",
         sender_phone: "0912345678",
       }),
     });
+    const body = mutateMock.mock.calls[0][0].data as Record<string, unknown>;
+    // The payload key carries undefined (JSON.stringify drops it on the
+    // wire — the backend's zod .nullish() then sees it absent).
+    expect(body.payment_reference).toBeUndefined();
   });
 
-  it("rejects a blank transfer reference on the mobile_transfer flow — no request (R123-E4a / B4-R1 parity)", async () => {
+  it("submits a reference-less mobile_transfer with no client-side guard (R154 — no blank-reference rejection)", async () => {
     const { container } = renderPage();
 
     fireEvent.change(screen.getByPlaceholderText("أو أدخل مبلغاً آخر…"), {
@@ -193,19 +194,17 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
       target: { value: "0912345678" },
     });
 
-    // The mobile-transfer receipt field is REQUIRED — the backend has
-    // hard-required payment_reference there since B4-R1 (backend
-    // wallet.ts:380-392, 400 «رمز التحويل … مطلوب» — R126-L2/A8 F4
-    // canon wording); the UI said «اختياري» and users who skipped it
-    // hit a post-submit 400. This
-    // FLIPS the pre-R123 pin ("omits payment_reference when blank —
-    // optional field"). fireEvent.submit bypasses jsdom's constraint
-    // validation (the field is `required`) — the amount tests' idiom —
-    // so handleSubmit's OWN guard is what's exercised here.
+    // R154 (P1-A): the retired field's old guard is gone with it — a
+    // reference-less submit is the flow's NORMAL shape now (the backend
+    // accepts it and raises the operator duplicate-risk signal instead).
+    // fireEvent.submit bypasses jsdom's constraint validation — the
+    // amount tests' idiom — so handleSubmit's own path is exercised.
     fireEvent.submit(container.querySelector("form")!);
 
-    expect(await screen.findByText("يرجى إدخال رمز التحويل من رسالة التحويل")).toBeInTheDocument();
-    expect(mutateMock).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText("يرجى إدخال رمز التحويل من رسالة التحويل")).not.toBeInTheDocument();
   });
 
   it("keeps the reference genuinely optional on the lypay flow — omitted when blank", async () => {
@@ -229,6 +228,32 @@ describe("WalletPage topup form — payment_reference reaches the server (93-C5 
     const body = mutateMock.mock.calls[0][0].data as Record<string, unknown>;
     expect(body.payment_method).toBe("lypay");
     expect(body.payment_reference).toBeUndefined();
+  });
+
+  it("the lypay flow still trims + sends a user-provided reference (the field survives ONLY there)", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByText("تحويل مصرفي"));
+    fireEvent.change(screen.getByLabelText("المبلغ بالدينار الليبي"), {
+      target: { value: "50" },
+    });
+    // R154: the optional bank-receipt reference still rides the lypay
+    // tab — trimmed at the submit boundary.
+    fireEvent.change(screen.getByLabelText("رمز التحويل (اختياري)"), {
+      target: { value: "  TRX-LY-9  " },
+    });
+    fireEvent.change(screen.getByLabelText("رقم حسابك (المُرسل)"), {
+      target: { value: "0028776630001" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "إرسال طلب الشحن" }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalledTimes(1);
+    });
+    const body = mutateMock.mock.calls[0][0].data as Record<string, unknown>;
+    expect(body.payment_method).toBe("lypay");
+    expect(body.payment_reference).toBe("TRX-LY-9");
   });
 
   it("rejects an invalid amount client-side without any request", async () => {
@@ -385,11 +410,8 @@ describe("WalletPage — topup Idempotency-Key reset semantics (96-F6 / R96 §5.
     fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
       target: { value: "0912345678" },
     });
-    // R123-E4a: the mobile-flow receipt is required — fill it so the
-    // submit reaches the mutation (the key-rotation contract under test).
-    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
-      target: { value: "TRX-96" },
-    });
+    // R154: no receipt field on the mobile flow — amount + phone are the
+    // payload; the key-rotation contract under test needs nothing else.
 
     const intentKey = lastKey();
     expect(intentKey).toBeTruthy();
@@ -427,10 +449,6 @@ describe("WalletPage — topup Idempotency-Key reset semantics (96-F6 / R96 §5.
     });
     fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
       target: { value: "0912345678" },
-    });
-    // R123-E4a: required receipt on the mobile flow (see above).
-    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
-      target: { value: "TRX-70" },
     });
     const intentKey = lastKey();
 
@@ -512,9 +530,6 @@ describe("WalletPage — topup CTA aria-busy during the create-topup flight (R13
     });
     fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
       target: { value: "0912345678" },
-    });
-    fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
-      target: { value: "TRX-135" },
     });
 
     const cta = screen.getByRole("button", { name: "إرسال طلب الشحن" });

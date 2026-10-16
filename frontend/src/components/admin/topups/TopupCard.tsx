@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Calendar,
   CheckCircle,
   CheckSquare,
@@ -180,13 +181,23 @@ export const TopupCard = React.memo(function TopupCard({
           )}
         </div>
 
-        {/* Admin note */}
-        {t.admin_note && t.status !== "pending" && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/20 border border-border/50 px-3 py-2 rounded-lg mb-3">
-            <MessageSquare className="w-3 h-3 shrink-0" />
-            {t.admin_note}
-          </div>
-        )}
+        {/* Admin note — R154 (P1-A): also rendered on PENDING rows now:
+            the duplicate-risk signal for ref-less mobile transfers is
+            written into admin_note at creation (wallet.ts route) and
+            must reach the operator BEFORE the ✅ tap, styled as the
+            warning it is. Terminal rows keep the muted register. */}
+        {t.admin_note &&
+          (t.status === "pending" ? (
+            <div className="flex items-start gap-2 text-xs text-status-warning bg-status-warning/8 border border-status-warning/22 px-3 py-2 rounded-lg mb-3 leading-relaxed">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>{t.admin_note}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/20 border border-border/50 px-3 py-2 rounded-lg mb-3">
+              <MessageSquare className="w-3 h-3 shrink-0" />
+              {t.admin_note}
+            </div>
+          ))}
 
         {/* R116 (A4-04): reviewer attribution — who acted on this
             topup and when (V1-M23 reviewed_by + reviewed_at). */}

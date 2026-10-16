@@ -215,12 +215,12 @@ describe("POST /api/wallet/topups — validation (generated zod + handler rules)
     const token = signUserToken({ userId: user.id });
     const res = await call<{ code: string }>(app, "POST", "/api/wallet/topups", {
       token,
-      // B4-R1: the reference is required now — include one so THIS test
-      // still exercises the sender-phone validation it was written for.
       body: {
         amount: 50,
         payment_network: "madar",
         sender_phone,
+        // R154: no reference needed anymore — the sender-phone validation
+        // under test fires before any reference handling.
         payment_reference: "TRX-PHONE-CHECK-1",
       },
     });
@@ -499,37 +499,170 @@ describe("POST /api/wallet/topups — happy path", () => {
   });
 });
 
-// ── B4-R1 (R111, round-111 B4 audit): payment_reference REQUIRED for ────────
-// mobile_transfer + creation-time duplicate-receipt guard. A blank ref was
-// exempt from EVERY dedup layer (V1-M9 partial unique, B2-02 exact check,
-// composite soft-dedup — all key on the reference), so two ref-less pendings
-// for one real transfer were both approvable (200 LYD credited for one 100
-// LYD transfer). lypay keeps the reference optional.
+// ── R154 (P1-A): the B4-R1 hard-required reference is RETIRED for ───────
+// mobile_transfer (the storefront receipt field is gone — the telecom USSD
+// channel doesn't reliably surface a receipt to the customer, and the
+// required field was the top abandonment point of the money path). The
+// dedup battery for REFERENCED records (B4-R1 creation guard, V1-M9 partial
+// unique, B2-02 exact check, composite soft-dedup) is preserved verbatim for
+// legacy rows and any submission that still carries a reference. Ref-less
+// mobile transfers instead get the operator-visible DUPLICATE-RISK signal:
+// pending/recently-approved siblings on (amount, network, sender phone)
+// surface as the pending row's admin note + the ⚠ line on the Telegram card
+// — a review safeguard, never a blanket rejection.
 
-describe("POST /api/wallet/topups — B4-R1 reference requirement (mobile_transfer)", () => {
+describe("POST /api/wallet/topups — R154 ref-less mobile_transfer + duplicate-risk signal", () => {
   it.each([
     ["field omitted entirely", undefined],
     ["whitespace-only reference", "   "],
     ["empty string", ""],
   ])(
-    "mobile_transfer without a usable reference (%s) → 400 INVALID_DATA",
+    "mobile_transfer without a reference (%s) → 201 pending (the required field is retired)",
     async (_label, payment_reference) => {
       const user = await seedUser();
       const token = signUserToken({ userId: user.id });
-      const res = await call<{ code: string; error: string }>(app, "POST", "/api/wallet/topups", {
+      const res = await call<{
+        status: string;
+        payment_reference: string | null;
+        admin_note: string | null;
+      }>(app, "POST", "/api/wallet/topups", {
         token,
         body: { amount: 50, payment_network: "madar", payment_reference },
       });
-      expect(res.status).toBe(400);
-      expect(res.body.code).toBe("INVALID_DATA");
-      // R126-L2 (A8 F4): the 400 mirrors the storefront's «رمز التحويل»
-      // label canon (was «مرجع التحويل» — A8's terminology table).
-      expect(res.body.error).toContain("رمز التحويل");
-      expect(res.body.error).not.toContain("مرجع التحويل");
-      // Nothing was written.
-      expect(await db.select().from(walletTopupsTable)).toHaveLength(0);
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe("pending");
+      expect(res.body.payment_reference).toBeNull();
+      // No sibling evidence → no risk note.
+      expect(res.body.admin_note).toBeNull();
     },
   );
+
+  it("ref-less submission with a PENDING sibling (same amount/network/sender) → risk admin_note, still 201", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+
+    const first = await call<{ id: number }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 100, payment_network: "libyana", sender_phone: "0912345678" },
+    });
+    expect(first.status).toBe(201);
+    // A DIFFERENT idempotency key — the deliberate repeat submission shape.
+    const second = await call<{ id: number; admin_note: string | null }>(
+      app,
+      "POST",
+      "/api/wallet/topups",
+      { token, body: { amount: 100, payment_network: "libyana", sender_phone: "0912345678" } },
+    );
+    expect(second.status).toBe(201);
+    expect(second.body.admin_note).toContain("خطر تكرار محتمل");
+    expect(second.body.admin_note).toContain(`#${first.body.id}`);
+  });
+
+  it("the duplicate-risk probe matches the NORMALIZED sender phone (not the raw formatting)", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+
+    const first = await call<{ id: number }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 75, payment_network: "madar", sender_phone: "0912345678" },
+    });
+    expect(first.status).toBe(201);
+    // Same phone, different formatting — stored normalized, so the probe
+    // must still see the sibling.
+    const second = await call<{ admin_note: string | null }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 75, payment_network: "madar", sender_phone: "+218912345678" },
+    });
+    expect(second.status).toBe(201);
+    expect(second.body.admin_note).toContain("خطر تكرار محتمل");
+  });
+
+  it("a DIFFERENT amount or sender phone or network → no risk note (legitimate repeat)", async () => {
+    // Each variant rides a FRESH user — MAX_PENDING=3 would 429 a fourth
+    // same-user submission before the probe could speak.
+    const probe = async (body: Record<string, unknown>) => {
+      const user = await seedUser();
+      const first = await call(app, "POST", "/api/wallet/topups", {
+        token: signUserToken({ userId: user.id }),
+        body: { amount: 100, payment_network: "libyana", sender_phone: "0912345678" },
+      });
+      expect(first.status).toBe(201);
+      const variant = await call<{ admin_note: string | null }>(app, "POST", "/api/wallet/topups", {
+        token: signUserToken({ userId: user.id }),
+        body,
+      });
+      expect(variant.status).toBe(201);
+      expect(variant.body.admin_note).toBeNull();
+    };
+
+    // Different amount — e.g. the customer topped up 100 then wanted 50.
+    await probe({ amount: 50, payment_network: "libyana", sender_phone: "0912345678" });
+    // Different network.
+    await probe({ amount: 100, payment_network: "madar", sender_phone: "0912345678" });
+    // Different sender phone.
+    await probe({ amount: 100, payment_network: "libyana", sender_phone: "0923456789" });
+  });
+
+  it("an APPROVED sibling within 24h also raises the signal; siblings are probe-visible regardless of their own reference", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+
+    // Approved sibling (same amount/network/sender, ref-less, < 24h old).
+    await db.insert(walletTopupsTable).values({
+      userId: user.id,
+      amount: "100.00",
+      paymentMethod: "mobile_transfer",
+      paymentNetwork: "libyana",
+      senderPhone: "912345678",
+      paymentReference: null,
+      status: "approved",
+    });
+    const risky = await call<{ admin_note: string | null }>(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 100, payment_network: "libyana", sender_phone: "0912345678" },
+    });
+    expect(risky.status).toBe(201);
+    expect(risky.body.admin_note).toContain("خطر تكرار محتمل");
+
+    // A sibling that itself carries a REFERENCE still counts toward the
+    // probe — the risk being signaled is THIS transfer being a repeat; a
+    // receipt-verified earlier sibling makes a matching new submission
+    // MORE suspicious, not less. (Referenced rows keep their own exact-ref
+    // battery; this signal is about the ref-less newcomer.)
+    const other = await seedUser();
+    const otherToken = signUserToken({ userId: other.id });
+    await db.insert(walletTopupsTable).values({
+      userId: other.id,
+      amount: "100.00",
+      paymentMethod: "mobile_transfer",
+      paymentNetwork: "libyana",
+      senderPhone: "912345678",
+      paymentReference: "LEGACY-REF-1",
+      status: "pending",
+    });
+    const refSibling = await call<{ admin_note: string | null }>(
+      app,
+      "POST",
+      "/api/wallet/topups",
+      {
+        token: otherToken,
+        body: { amount: 100, payment_network: "libyana", sender_phone: "0912345678" },
+      },
+    );
+    expect(refSibling.status).toBe(201);
+    expect(refSibling.body.admin_note).toContain("خطر تكرار محتمل");
+
+    // Cross-USER isolation — a THIRD user with no history submits the same
+    // (amount, network, sender) shape and gets NO signal: the probe is
+    // user-scoped, so another user's matching rows never raise it.
+    const third = await seedUser();
+    const isolated = await call<{ admin_note: string | null }>(app, "POST", "/api/wallet/topups", {
+      token: signUserToken({ userId: third.id }),
+      body: { amount: 100, payment_network: "libyana", sender_phone: "0912345678" },
+    });
+    expect(isolated.status).toBe(201);
+    expect(isolated.body.admin_note).toBeNull();
+  });
 
   it("lypay keeps the reference optional (gateway receipts are not consistently exposed to users)", async () => {
     const user = await seedUser();
@@ -545,6 +678,9 @@ describe("POST /api/wallet/topups — B4-R1 reference requirement (mobile_transf
   });
 
   it("same user + reference + amount with a PENDING row → 409 DUPLICATE_PENDING_REFERENCE, no second row", async () => {
+    // R154: the reference-based creation guard stays verbatim for
+    // REFERENCED records (legacy clients + lypay receipts) — the retirement
+    // of the storefront field changes nothing for this battery.
     const user = await seedUser();
     const token = signUserToken({ userId: user.id });
 

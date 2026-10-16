@@ -362,29 +362,12 @@ router.post(
       }
     }
 
-    // B4-R1 (R111, round-111 B4 audit — the last wallet-credit inflation
-    // path): a blank payment_reference is exempt from EVERY dedup layer
-    // (V1-M9 partial unique + B2-02 exact check + composite soft-dedup all
-    // key on the reference), so two ref-less pendings for one real
-    // transfer were both approvable — 200 LYD credited for one 100 LYD
-    // transfer. The wallet form's receipt field (PaymentReferenceField)
-    // makes the reference the natural input; the server now REQUIRES it
-    // for mobile_transfer (the bank-transfer channel where receipts
-    // exist). lypay keeps it optional (gateway receipts are not
-    // consistently exposed to users). Enforcement is at CREATION only —
-    // pre-existing blank-ref rows (live: 2 pending) stay approvable via
-    // TopupService.approve untouched.
-    if (method === "mobile_transfer" && paymentReference === null) {
-      return res.status(400).json(
-        createErrorResponse(
-          // R126-L2 (A8 F4): «رمز التحويل» — the storefront field label
-          // (wallet.tsx PaymentReferenceField) and the R116-S2 «رمز»
-          // terminology canon; was «مرجع التحويل».
-          "رمز التحويل (رقم العملية من إيصال التحويل) مطلوب لطلبات شحن المحفظة",
-          ErrorCode.INVALID_DATA,
-        ),
-      );
-    }
+    // R151: hoisted NORMALIZED sender phone — stored normalized (see the
+    // insert below), so the R154 duplicate-risk probe must compare against
+    // the SAME canonical 9-digit form, not the raw input.
+    const normalizedSenderPhone = sender_phone
+      ? (normalizeLibyanPhone(sender_phone) ?? sender_phone)
+      : null;
 
     if (method === "mobile_transfer" && sender_phone) {
       if (!normalizeLibyanPhone(sender_phone)) {
@@ -482,6 +465,18 @@ router.post(
       // per-statement snapshots (the advisory lock already serializes
       // same-user submissions, so no observable difference).
       // Round trips inside the lock: 3 → 1.
+      //
+      // R154 (P1-A): the guard statement now also computes the
+      // DUPLICATE-RISK probe for ref-less mobile transfers — the
+      // B4-R1 hard-required reference is retired with the storefront
+      // field, so mobile_transfer pendings arrive reference-less again.
+      // Exact uniqueness CANNOT be claimed from (amount, network,
+      // sender) alone — a legitimate customer can top up the same
+      // amount twice in a day — so the evidence is surfaced as an
+      // operator-visible REVIEW signal (admin note on the pending row
+      // + the ⚠ line on the Telegram card), never a blanket rejection.
+      // The idempotency-key replay + pending-cap + reference-based
+      // guards (for legacy/referenced rows) are unchanged.
       const [guards] = await tx
         .select({
           pendingCount:
@@ -501,22 +496,29 @@ router.post(
                 // never ran pre-fold; a SQL null literal keeps the guard
                 // inert without a subquery.
                 sql<number | null>`null`,
+          duplicateRiskIds:
+            method === "mobile_transfer" && paymentReference === null && normalizedSenderPhone
+              ? sql<
+                  string | null
+                >`(select string_agg(t.id::text, ',') from (select id from ${walletTopupsTable} where ${walletTopupsTable.userId} = ${userId} and ${walletTopupsTable.amount} = ${roundLydString(amount)} and ${walletTopupsTable.paymentNetwork} = ${network} and ${walletTopupsTable.senderPhone} = ${normalizedSenderPhone} and (${walletTopupsTable.status} = 'pending' or (${walletTopupsTable.status} = 'approved' and ${walletTopupsTable.createdAt} >= now() - interval '24 hours')) order by id limit 3) t)`
+              : sql<string | null>`null`,
         })
         .from(walletTopupsTable)
         .where(eq(walletTopupsTable.userId, userId));
 
-      // B4-R1: creation-time duplicate-receipt guard. With the reference
-      // now mandatory, the remaining duplicate shape is the SAME receipt
-      // resubmitted under a DIFFERENT idempotency key (or no key at all —
-      // legacy clients) — two identical pending cards in the operator
-      // queue for one real transfer. Same user + same reference + same
-      // (rounded) amount + still pending → 409 with an honest message.
-      // Same reference with a DIFFERENT amount is left through: the
-      // approval battery (exact-ref check + V1-M9 partial unique) still
-      // guarantees the second approval 409s, and blocking it here would
-      // false-positive on a bank that reuses receipt strings. Runs inside
-      // the per-user advisory lock, so a double-submit race cannot slip
-      // two rows past this check.
+      // B4-R1: creation-time duplicate-receipt guard (referenced records —
+      // R154 keeps this intact for any submission that still carries a
+      // reference, e.g. legacy clients and lypay receipts). The duplicate
+      // shape it closes: the SAME receipt resubmitted under a DIFFERENT
+      // idempotency key (or no key at all) — two identical pending cards
+      // in the operator queue for one real transfer. Same user + same
+      // reference + same (rounded) amount + still pending → 409 with an
+      // honest message. Same reference with a DIFFERENT amount is left
+      // through: the approval battery (exact-ref check + V1-M9 partial
+      // unique) still guarantees the second approval 409s, and blocking it
+      // here would false-positive on a bank that reuses receipt strings.
+      // Runs inside the per-user advisory lock, so a double-submit race
+      // cannot slip two rows past this check.
       if (guards.duplicateId != null) {
         return { kind: "duplicate" as const, existingId: guards.duplicateId };
       }
@@ -533,6 +535,22 @@ router.post(
       if (guards.rejectedCount >= 3) {
         initialStatus = "rejected";
         initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
+      }
+
+      // R154 (P1-A): parse the ref-less duplicate-risk probe (≤3 sibling
+      // ids, comma-joined) — pending-or-recently-approved twins on
+      // (amount, network, sender). Signal only, never a rejection.
+      const duplicateRiskSiblingIds =
+        typeof guards.duplicateRiskIds === "string" && guards.duplicateRiskIds.length > 0
+          ? guards.duplicateRiskIds
+              .split(",")
+              .map((s) => Number(s))
+              .filter((n) => Number.isInteger(n) && n > 0)
+          : [];
+
+      if (duplicateRiskSiblingIds.length > 0 && initialStatus === "pending") {
+        const siblingList = duplicateRiskSiblingIds.map((id) => `#${id}`).join("، ");
+        initialAdminNote = `⚠️ خطر تكرار محتمل: يوجد طلب آخر بنفس المبلغ والشبكة والمُرسل قيد المراجعة أو معتمد خلال 24 ساعة (${siblingList}) — تحقق من إيصال التحويل قبل الاعتماد`;
       }
 
       const [topup] = await tx
@@ -561,7 +579,7 @@ router.post(
           // mobile_transfer; the fallback keeps the raw value for any
           // non-Libyan edge case). sender_account is trimmed for the
           // same reason (the lypay dedup at topup.service.ts:404).
-          senderPhone: sender_phone ? (normalizeLibyanPhone(sender_phone) ?? sender_phone) : null,
+          senderPhone: normalizedSenderPhone,
           senderAccount:
             typeof sender_account === "string"
               ? sender_account.trim() || null
@@ -596,7 +614,12 @@ router.post(
         }
       }
 
-      return { kind: "ok" as const, topup, initialStatus };
+      return {
+        kind: "ok" as const,
+        topup,
+        initialStatus,
+        duplicateRiskSiblingIds,
+      };
     });
 
     if (submission.kind === "replayed") {
@@ -665,7 +688,7 @@ router.post(
       });
     }
 
-    const { topup, initialStatus } = submission;
+    const { topup, initialStatus, duplicateRiskSiblingIds } = submission;
     // AUD103-2-F6 (r103): display-vs-storage parity — everything the
     // operator card, the user notification, and the risk pipeline SEE
     // downstream must be the STORED (rounded) amount, not the raw
@@ -707,6 +730,11 @@ router.post(
         topupId: topup.id,
         provider: derivePrimaryProvider(currentUser),
         paymentReference,
+        // R154 (P1-A): the ⚠ duplicate-risk line rides the operator card
+        // for ref-less mobile transfers — the review evidence that
+        // retired the customer-facing receipt field.
+        duplicateRiskSiblingIds:
+          duplicateRiskSiblingIds.length > 0 ? duplicateRiskSiblingIds : null,
       });
 
     // Risk pipeline (003-anomaly-detection) — emit topup_attempt. Never

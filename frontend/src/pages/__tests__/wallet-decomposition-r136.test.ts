@@ -84,13 +84,15 @@ describe("R136 (FE-1) — wallet.tsx decomposition: page stays an orchestration 
   });
 
   it("the nested atoms are still imported by their consumers (LedgerEntryRow / TransferCodePanel / PaymentReferenceField)", () => {
-    // These three render inside their consumer extracts, not the page —
+    // These render inside their consumer extracts, not the page —
     // the deletion guard for them lives at the CONSUMER's import.
+    // R154 (P1-A): PaymentReferenceField is consumed by the LYPAY flow
+    // only — the mobile flow retired the receipt field.
     const statement = read("src/components/wallet/WalletStatementCard.tsx");
     expect(statement).toContain('from "@/components/wallet/LedgerEntryRow"');
     const mobileForm = read("src/components/wallet/MobileTransferForm.tsx");
     expect(mobileForm).toContain('from "@/components/wallet/TransferCodePanel"');
-    expect(mobileForm).toContain('from "@/components/wallet/PaymentReferenceField"');
+    expect(mobileForm).not.toContain('from "@/components/wallet/PaymentReferenceField"');
     const lypay = read("src/components/wallet/LyPayFlow.tsx");
     expect(lypay).toContain('from "@/components/wallet/PaymentReferenceField"');
   });

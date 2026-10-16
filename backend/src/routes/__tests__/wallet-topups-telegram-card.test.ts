@@ -274,4 +274,42 @@ describe("R123 (E1) + R128 (B8-D2): the folded Telegram operator card on POST /a
       close();
     }
   });
+
+  it("R154 (P1-A): a ref-less submission with a matching sibling carries the ⚠ duplicate-risk line on the card", async () => {
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    const { url, close } = await listen(buildApp());
+    try {
+      const first = await postTopup(url, token, {
+        amount: 100,
+        payment_network: "libyana",
+        sender_phone: "0912345678",
+      });
+      expect(first.status).toBe(201);
+
+      // The deliberate repeat shape (different/no idempotency key).
+      const second = await postTopup(url, token, {
+        amount: 100,
+        payment_network: "libyana",
+        sender_phone: "0912345678",
+      });
+      expect(second.status).toBe(201);
+
+      await vi.waitFor(() => {
+        expect(approvalCards()).toHaveLength(2);
+      });
+      const secondCard = approvalCards()[1]!;
+      const text = String(secondCard.text);
+      // The ⚠ line names the risk as POTENTIAL, carries the sibling id
+      // for comparison, and tells the operator to verify before ✅.
+      expect(text).toContain("خطر تكرار محتمل");
+      expect(text).toContain(`#${first.body.id}`);
+      expect(text).toContain("تحقق من إيصال التحويل قبل الاعتماد");
+      // The FIRST card (no sibling evidence at its creation) carries no
+      // warning line.
+      expect(String(approvalCards()[0]!.text)).not.toContain("خطر تكرار محتمل");
+    } finally {
+      close();
+    }
+  });
 });

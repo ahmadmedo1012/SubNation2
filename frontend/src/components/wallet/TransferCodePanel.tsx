@@ -1,13 +1,21 @@
 import { PhoneCall } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
-import { transferCode, transferCodeTelHref, type TransferNetwork } from "@/lib/transfer-code";
+import {
+  transferCodeTelHref,
+  transferPlan,
+  type TransferNetwork,
+  type TransferPlan,
+} from "@/lib/transfer-code";
+import { formatCount, formatCurrency } from "@/lib/utils";
 
-// R136 (FE-1 decomposition): extracted verbatim from pages/wallet.tsx —
+// R136 (FE-1 decomposition): extracted from pages/wallet.tsx —
 // the mobile-transfer flow's instructions legend + the live USSD
 // transfer-code panel. Stateless (network/amount/receiver flow down as
 // values; the code recomputes on every render exactly as it did inline).
-// The move only changes its address — DOM, classes, aria and the tel:
-// link semantics are byte-identical.
+// R154: the panel now renders the full INSTALLMENT plan (R154-P1) —
+// totals above a network's single-transfer limit (Libyana 50 / Madar 20)
+// list one dial/copy action per required transfer, never one generic
+// button that only dials the first.
 
 /**
  * Step-by-step explanation of the mobile transfer flow. Concise on
@@ -38,15 +46,63 @@ export function InstructionsPanel() {
 }
 
 /**
- * Live, dynamically-generated USSD transfer code + one-tap action.
+ * One installment row: numbered label + amount + code + copy + dial.
+ * R154-P1: every required transfer gets its OWN dial action — a
+ * generic "transfer" button that only dials the first installment while
+ * more are still required is exactly the trap this layout removes.
+ */
+function InstallmentRow({
+  index,
+  count,
+  installment,
+}: {
+  index: number;
+  count: number;
+  installment: TransferPlan["installments"][number];
+}) {
+  const href = transferCodeTelHref(installment.code);
+  return (
+    <div className="rounded-lg bg-muted/60 border border-border/40 p-2.5">
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <span className="text-xs font-bold text-foreground/90">
+          {/* التحويل 1 من 2 — the numbered-transfer label. */}
+          التحويل {index + 1} من {count}
+        </span>
+        <span className="text-2xs text-muted-foreground font-semibold">
+          {formatCurrency(installment.amount)}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div
+          dir="ltr"
+          /* R122 (A1 P2-4): tracking-[0.2em] for the Latin-only mono run —
+             the global Arabic letter-spacing guard zeroes the plain
+             tracking utilities app-wide (index.css:917). */
+          className="flex-1 min-w-0 font-mono font-bold text-xs sm:text-sm tracking-[0.2em] rounded-lg bg-background/60 border border-border/40 px-2.5 py-2 break-all min-h-[40px] flex items-center text-foreground"
+        >
+          {installment.code}
+        </div>
+        <CopyButton text={installment.code} />
+      </div>
+      <a
+        href={href}
+        className="mt-2 flex items-center justify-center gap-2 w-full h-10 rounded-xl font-bold text-xs transition-all press-spring bg-primary text-primary-foreground"
+      >
+        <PhoneCall className="w-4 h-4" />
+        اتصال بالتحويل {index + 1}
+      </a>
+    </div>
+  );
+}
+
+/**
+ * Live, dynamically-generated USSD transfer plan + per-transfer actions.
  *
- * The code recomputes on every amount/network change — no debounce,
- * no submit needed. The "تحويل الرصيد" button uses a `tel:` URL with
- * the code embedded; mobile dialers honour this for both Libyana and
- * Madar. On non-mobile environments the link still navigates to the
- * tel: URL — most desktops fall back gracefully (system handler or
- * "no app available"), and we additionally expose a copy button so
- * the user can never get stuck.
+ * The plan recomputes on every amount/network change — no debounce,
+ * no submit needed. Each dial button uses a `tel:` URL with THAT
+ * transfer's code embedded; mobile dialers honour this for both
+ * Libyana and Madar. On non-mobile environments the copy button is
+ * the universal fallback (the hint below says so up front).
  */
 export function TransferCodePanel({
   network,
@@ -57,8 +113,9 @@ export function TransferCodePanel({
   amount: string;
   receiver: string;
 }) {
-  const code = transferCode(network, amount, receiver);
-  const href = code ? transferCodeTelHref(code) : null;
+  const plan = transferPlan(network, amount, receiver);
+  const count = plan?.installments.length ?? 0;
+  const multi = count > 1;
   const buttonClasses =
     "flex items-center justify-center gap-2 w-full h-11 rounded-xl font-bold text-sm transition-all press-spring";
 
@@ -78,10 +135,13 @@ export function TransferCodePanel({
               «كود التحويل». */}
           رمز التحويل
         </div>
-        {/* R116-S2 (P2, money path): the shared 44px CopyButton replaces
-            the local pill — the transfer CODE is what the user must dial,
-            so the copy affordance is the money-critical control here. */}
-        {code && <CopyButton text={code} />}
+        {/* R154: the total rides the header so the installment list
+            below can never be mistaken for the full amount. */}
+        {plan && (
+          <span className="text-2xs text-muted-foreground font-semibold">
+            الإجمالي: {formatCurrency(plan.total)}
+          </span>
+        )}
       </div>
 
       {/* 96-F6 (R96 A6 #19): the empty-state hint is Arabic — it used to
@@ -92,19 +152,50 @@ export function TransferCodePanel({
           live region mounted across the swap so the generated code is
           still announced. */}
       <div aria-live="polite" className="mb-3">
-        {code ? (
-          <div
-            dir="ltr"
-            /* R122 (A1 P2-4): tracking-wide was a silent no-op — the global
-               Arabic letter-spacing guard (index.css:917) zeroes the five
-               tracking utilities app-wide, so this LTR mono code rendered
-               with 0 spacing while the same class of datum on /referrals
-               had 0.2em. The arbitrary tracking-[0.2em] form carries the
-               intended spacing for Latin-only runs; the guard's
-               letter-join protection stays intact for Arabic. */
-            className="font-mono font-bold text-base sm:text-lg tracking-[0.2em] rounded-lg bg-muted/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
-          >
-            {code}
+        {plan ? (
+          <div className="space-y-2.5">
+            {multi && (
+              <div
+                role="status"
+                className="flex items-start gap-2 text-xs bg-status-warning/8 border border-status-warning/22 text-status-warning rounded-lg px-3 py-2.5 leading-relaxed"
+              >
+                {/* R154: honest multi-transfer instruction — every code is
+                    a SEPARATE transfer, and all of them must complete
+                    before ONE top-up request for the aggregate total. */}
+                يلزم{" "}
+                {formatCount(count, {
+                  one: "تحويل واحد",
+                  two: "تحويلان منفصلان",
+                  few: "تحويلات منفصلة",
+                  many: "تحويلاً منفصلاً",
+                  other: "تحويل منفصل",
+                })}{" "}
+                — كل رمز أدناه يمثل تحويلاً مستقلاً. أكمل جميع التحويلات ثم أرسل طلباً واحداً
+                بالمبلغ الإجمالي.
+              </div>
+            )}
+            {plan.installments.map((installment, i) =>
+              multi ? (
+                <InstallmentRow key={i} index={i} count={count} installment={installment} />
+              ) : (
+                <div key={i} className="flex items-center gap-2">
+                  <div
+                    dir="ltr"
+                    /* R122 (A1 P2-4): tracking-wide was a silent no-op — the global
+                       Arabic letter-spacing guard (index.css:917) zeroes the five
+                       tracking utilities app-wide, so this LTR mono code rendered
+                       with 0 spacing while the same class of datum on /referrals
+                       had 0.2em. The arbitrary tracking-[0.2em] form carries the
+                       intended spacing for Latin-only runs; the guard's
+                       letter-join protection stays intact for Arabic. */
+                    className="flex-1 min-w-0 font-mono font-bold text-base sm:text-lg tracking-[0.2em] rounded-lg bg-muted/60 border border-border/40 px-3 py-2.5 break-all min-h-[44px] flex items-center text-foreground"
+                  >
+                    {installment.code}
+                  </div>
+                  <CopyButton text={installment.code} />
+                </div>
+              ),
+            )}
           </div>
         ) : (
           <div className="rounded-lg bg-muted/60 border border-border/40 px-3 py-2.5 min-h-[44px] flex items-center text-muted-foreground text-sm">
@@ -122,9 +213,9 @@ export function TransferCodePanel({
         على الجوال: اضغط الزر لفتح لوحة الاتصال. على الحاسوب: انسخ الرمز وأدخله يدوياً.
       </p>
 
-      {href ? (
+      {plan && !multi ? (
         <a
-          href={href}
+          href={transferCodeTelHref(plan.installments[0]!.code)}
           /* R139 (precision): the one-tap dial CTA drops the retired
              hand-rolled stack (hover:bg-primary/90 + shadow-md
              shadow-primary/25 — the named r138 retirements) and the raw
@@ -140,10 +231,14 @@ export function TransferCodePanel({
         <button
           type="button"
           disabled
+          aria-disabled="true"
           className={`${buttonClasses} bg-muted/40 text-muted-foreground/60 cursor-not-allowed`}
         >
           <PhoneCall className="w-4 h-4" />
-          تحويل الرصيد
+          {/* R154: multi-installment plans dial per-row above — the
+              generic CTA honestly retires instead of dialing only the
+              first transfer while more are still required. */}
+          أكمل جميع التحويلات أولاً
         </button>
       )}
     </div>

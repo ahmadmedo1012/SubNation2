@@ -4,26 +4,32 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InstructionsPanel, TransferCodePanel } from "@/components/wallet/TransferCodePanel";
 import { NETWORKS, StepDot } from "@/components/wallet/topup-meta";
-import { PaymentReferenceField } from "@/components/wallet/PaymentReferenceField";
 import { RECEIVER_PHONE, type TransferNetwork } from "@/lib/transfer-code";
 
 // R136 (FE-1 decomposition): extracted verbatim from pages/wallet.tsx —
-// the mobile-transfer topup flow (network → amount → USSD transfer +
-// receipt → sender phone → submit). EVERY input's onChange/onBlur calls
-// a PAGE-OWNED handler passed down as a prop (onAmountChange /
-// onAmountPreset / onAmountBlur / onReferenceChange / onNetworkChange /
+// the mobile-transfer topup flow (network → amount → USSD transfer →
+// sender phone → submit). EVERY input's onChange/onBlur calls a
+// PAGE-OWNED handler passed down as a prop (onAmountChange /
+// onAmountPreset / onAmountBlur / onNetworkChange /
 // onSavedPhonePick / onSenderPhoneChange / …) — never a raw setter: the
 // 96-F6/98-F2 Idempotency-Key rotation rides those handlers, and an
 // extract-local setter would desync the key from the mutation's
 // captured headers (the 409 hole the page's docblock warns about).
 // handleSubmit + topupMutation stay in the page. The move only changes
 // its address; DOM, classes, aria and event semantics are byte-identical.
+//
+// R154 (P1-A): the transfer-receipt reference field is RETIRED from
+// this flow — the customer was asked for a receipt code the telecom
+// USSD channel does not reliably surface, and the required field was
+// the top abandonment point of the money path. The plan panel above
+// now carries the multi-transfer instructions; duplicate-transfer
+// risk is surfaced to the OPERATOR at review time (backend route +
+// Telegram card) instead of being pushed onto the customer.
 
 export function MobileTransferForm({
   network,
   amount,
   presets,
-  paymentReference,
   senderPhone,
   senderPhoneTouched,
   senderPhoneErr,
@@ -37,7 +43,6 @@ export function MobileTransferForm({
   onAmountChange,
   onAmountPreset,
   onAmountBlur,
-  onReferenceChange,
   onSavedPhonePick,
   onSenderPhoneChange,
   onSenderPhoneTouched,
@@ -46,7 +51,6 @@ export function MobileTransferForm({
   network: string;
   amount: string;
   presets: number[];
-  paymentReference: string;
   senderPhone: string;
   senderPhoneTouched: boolean;
   senderPhoneErr: string | null;
@@ -60,7 +64,6 @@ export function MobileTransferForm({
   onAmountChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onAmountPreset: (p: number) => void;
   onAmountBlur: (e: FocusEvent<HTMLInputElement>) => void;
-  onReferenceChange: (v: string) => void;
   onSavedPhonePick: (phone: string) => void;
   onSenderPhoneChange: (e: ChangeEvent<HTMLInputElement>) => void;
   onSenderPhoneTouched: () => void;
@@ -197,7 +200,7 @@ export function MobileTransferForm({
 
       <div className="border-t border-border/20" />
 
-      {/* Step 3: One-tap transfer + the receipt it produces */}
+      {/* Step 3: The transfer plan (single or installments) */}
       <div>
         <StepDot n={3} label="نفّذ التحويل" />
         <TransferCodePanel
@@ -205,24 +208,10 @@ export function MobileTransferForm({
           amount={amount}
           receiver={RECEIVER_PHONE}
         />
-        {/* 93-C5 / F-03: the transfer receipt — REQUIRED on this
-            flow since R123-E4a (see PaymentReferenceField).
-            R124-I1 (A1 P2): rendered AFTER the transfer panel —
-            the receipt number only exists once the user has
-            run the USSD transfer above, so the field used to
-            sit ~1,000px above the button that generates its
-            value (a required field the user cannot fill yet,
-            then a scroll-back hunt after step 3). The flow now
-            reads top-to-bottom: transfer → receipt from the
-            transfer SMS → sender phone → submit. Validation,
-            state and the idempotency-key rotation contract are
-            unchanged. */}
-        <PaymentReferenceField
-          id="topup-payment-reference-mobile"
-          value={paymentReference}
-          onChange={onReferenceChange}
-          required
-        />
+        {/* R154 (P1-A): the PaymentReferenceField that used to render
+            here is retired — see the file header. The flow stays clean
+            and sequential: network → amount → transfers → sender
+            phone → one top-up request for the aggregate total. */}
       </div>
 
       <div className="border-t border-border/20" />

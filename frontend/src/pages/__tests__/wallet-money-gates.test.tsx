@@ -127,12 +127,9 @@ function fillValidForm(amount: string) {
   fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
     target: { value: "0912345678" },
   });
-  // R123-E4a (P1): the mobile-transfer receipt is REQUIRED — fill it so
-  // the submit reaches the mutation (the money gates under test are the
-  // amount/pending ones, not the reference guard).
-  fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
-    target: { value: "TRX-GATE" },
-  });
+  // R154 (P1-A): the mobile-transfer receipt field is retired — amount +
+  // phone are the whole payload now (the money gates under test are the
+  // amount/pending ones).
 }
 
 async function submitFromForm() {

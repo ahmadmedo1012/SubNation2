@@ -200,9 +200,8 @@ function fillValidTopupForm() {
   fireEvent.change(screen.getByLabelText("رقم هاتف المُرسل"), {
     target: { value: "0912345678" },
   });
-  fireEvent.change(screen.getByLabelText("رمز التحويل (مطلوب)"), {
-    target: { value: "TRX-140J" },
-  });
+  // R154 (P1-A): the receipt field is retired from the mobile flow —
+  // amount + phone are the whole payload now.
 }
 
 function walletSubmitCta(): HTMLButtonElement {
@@ -494,9 +493,10 @@ describe("R140-j — source pins: label bindings per input (both topup flows + t
     expect(mobile).toContain('id="topup-amount-mobile"');
     expect(mobile).toContain('htmlFor="topup-sender-phone"');
     expect(mobile).toContain('id="topup-sender-phone"');
-    // The receipt field's two call sites pass DISTINCT ids (the shared
-    // PaymentReferenceField binds Label htmlFor={id} + Input id={id}).
-    expect(mobile).toContain('id="topup-payment-reference-mobile"');
+    // R154 (P1-A): the mobile flow's receipt field is retired — the
+    // reference field renders ONLY on the lypay flow now (its distinct id
+    // pinned below).
+    expect(mobile).not.toContain("topup-payment-reference");
 
     const lypay = s("src/components/wallet/LyPayFlow.tsx");
     expect(lypay).toContain('htmlFor="topup-amount-lypay"');

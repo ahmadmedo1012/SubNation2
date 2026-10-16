@@ -108,12 +108,15 @@ export default function WalletPage() {
   const [senderPhone, setSenderPhone] = useState("");
   const [senderAccount, setSenderAccount] = useState("");
   // 93-C5 / F-03 (A2 P1 #2): the transfer receipt/transaction reference.
-  // The backend's whole V1-M9/B2-02 duplicate-credit dedup machinery
-  // (advisory lock + in-tx check + partial unique index) is conditional
-  // on a NON-EMPTY payment_reference — and this form never sent one, so
-  // a user could submit the same transfer 3× (MAX_PENDING) and be
-  // credited 3× for one real receipt. Optional field, ≤100 chars
-  // (backend trims + rejects >100), trimmed before sending.
+  // R154 (P1-A): the field is RETIRED from the mobile_transfer flow (the
+  // telecom USSD channel doesn't reliably surface a receipt to the
+  // customer — the required field was the top abandonment point); the
+  // state atom survives solely as the LYPAY tab's OPTIONAL reference
+  // (bank receipts exist there). The backend's dedup battery keys on
+  // it whenever present, and the mobile flow's duplicate-risk signal is
+  // computed from (amount, network, sender phone) evidence instead.
+  // Optional field, ≤100 chars (backend trims + rejects >100), trimmed
+  // before sending — mobile_transfer submissions never carry it.
   const [paymentReference, setPaymentReference] = useState("");
   const [senderPhoneTouched, setSenderPhoneTouched] = useState(false);
   const [error, setError] = useState("");
@@ -221,10 +224,12 @@ export default function WalletPage() {
     }
     setAmount(String(p));
   };
-  // 96-F6 (R96 §5.1): PaymentReferenceField's onChange for both flows.
-  // The reference is payload-relevant (rotation) but NOT part of the
-  // task's fingerprint contract (amount|method|phone) — the rotation
-  // alone already prevents the 409 same-key-different-body branch.
+  // 96-F6 (R96 §5.1): PaymentReferenceField's onChange — LYPAY's
+  // optional bank-receipt reference (R154: the mobile flow no longer
+  // renders the field). The reference is payload-relevant (rotation)
+  // but NOT part of the task's fingerprint contract
+  // (amount|method|phone) — the rotation alone already prevents the
+  // 409 same-key-different-body branch.
   const handlePaymentReferenceChange = (v: string) => {
     if (v !== paymentReference) {
       resetTopupKey(topupIntentFingerprint(amount, method, senderPhone));
@@ -585,14 +590,10 @@ export default function WalletPage() {
         setError("رقم هاتف المُرسل غير صالح. يجب أن يبدأ بـ 091 أو 092 أو 093 أو 094");
         return;
       }
-      // R123-E4a (P1): the backend hard-requires payment_reference for
-      // mobile_transfer (B4-R1, backend wallet.ts:380-389) — the receipt
-      // is both the dedup key and the reviewer's evidence. Same
-      // error-toast idiom as the sender-phone guard above.
-      if (!paymentReference.trim()) {
-        setError("يرجى إدخال رمز التحويل من رسالة التحويل");
-        return;
-      }
+      // R154 (P1-A): the mobile_transfer receipt-reference requirement
+      // is retired with the field — the sender phone + amount + network
+      // are the review evidence now, and the operator carries a
+      // duplicate-risk signal instead of a customer-typed code.
     }
 
     if (method === "lypay" && !senderAccount.trim()) {
@@ -603,7 +604,9 @@ export default function WalletPage() {
     setSubmitting(true);
     // 93-C5 / F-03: trim once at the boundary (the backend trims again +
     // rejects >100 chars; maxLength on the input already bounds typing).
-    const trimmedReference = paymentReference.trim().slice(0, 100);
+    // R154 (P1-A): ONLY the lypay flow submits a reference — the mobile
+    // flow's payload carries none (the field is retired there).
+    const trimmedReference = method === "lypay" ? paymentReference.trim().slice(0, 100) : "";
     // G-2 (R142): belt-and-suspenders — the stable request object already
     // syncs at every rotation point, but the pre-mutate sync guarantees
     // the wire key matches topupKeyRef.current even if a future rotation
@@ -807,7 +810,6 @@ export default function WalletPage() {
                 network={network}
                 amount={amount}
                 presets={presets}
-                paymentReference={paymentReference}
                 senderPhone={senderPhone}
                 senderPhoneTouched={senderPhoneTouched}
                 senderPhoneErr={senderPhoneErr}
@@ -821,7 +823,6 @@ export default function WalletPage() {
                 onAmountChange={handleAmountChange}
                 onAmountPreset={applyAmountPreset}
                 onAmountBlur={handleAmountBlur}
-                onReferenceChange={handlePaymentReferenceChange}
                 onSavedPhonePick={handleSavedPhonePick}
                 onSenderPhoneChange={handleSenderPhoneChange}
                 onSenderPhoneTouched={handleSenderPhoneTouched}
