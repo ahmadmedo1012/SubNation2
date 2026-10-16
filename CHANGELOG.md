@@ -10,6 +10,18 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R151 — Customer-journey parity + operational visibility + the independent close-out — 2026-10-16
+
+**Scope:** the whole-product excellence continuation — four implementation commits landed 2026-10-15, reconciled and closed out 2026-10-16 with the round's first FULL local gate battery plus live-production E2E. Full report: `docs/engineering/R151/round-close.md`.
+
+**Backend (`6c57a42`):** the WhatsApp `findOrCreate` identity race — a 23505 duplicate-key rejection surfaced as a login failure; now caught and resolved (regression: `whatsapp-findcreate-race.test.ts`). The wallet `sender_phone` normalization twin rode the same commit. Money invariants M1–M17 untouched.
+
+**Admin (`0de77fe`):** the orders bulk-status all-skipped verdict now toasts destructive with the mapped Arabic reason (was a green «تم تحديث حالة 0 طلب» — the operator thought the tool broken). The tickets reply/status post-mutation refresh became silent — a refresh blip after a committed reply no longer toasts «خطأ» (which invited duplicate customer-facing replies). Two regression test files.
+
+**Storefront (`ef0c3e6`):** the checkout `skippedByOtherTab` navigate gained the `abandonedRef` guard (no post-unmount yank); the order-detail support CTA now renders for refunded orders and the bottom link carries the `?ref=` deep-link param; two sub-44px tap targets raised (CartSummaryAside empty-cart CTA, OrderErrorBanner recovery link).
+
+**Close-out additions:** the off-scale premium-toast icon radius (`11px`, the sole impeccable advisory) snapped to the on-scale `10px` — the detector now reports zero advisories. The full battery ran locally fresh: backend 271 files / 2,507 tests, frontend 264 files / 2,496 tests (5,003 combined), lint 0-error/62-warning baseline, typecheck clean, route parity 84 ops, error-code sync 55, header params 7/7, drizzle + orval drift none, build green with eager path 146,665 B gz (budget 150 KiB). **Live-production guest E2E: 52/52 passed** (desktop + mobile-390: Arabic catalog, search contract, money-route gates, no horizontal overflow, 44px targets, SEO shells); `healthz` ok; www→apex 301. The further-defect sweep (raw colors, theme-token parity, icon-button a11y, hooks-warning triage, coverage gaps) found no reproducible P0/P1 — negative results recorded in the report.
+
 ## Round R150 — WhatsApp OTP reliability completion + the Cloud API decommission — 2026-10-15
 
 **Scope:** the R150 mission — establish why `Waiting for this message`
