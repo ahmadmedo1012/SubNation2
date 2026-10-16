@@ -296,6 +296,17 @@
   --elevate-1: rgba(0, 0, 0, 0.03);
   --elevate-2: rgba(0, 0, 0, 0.06);
 
+  /* R153 (theme parity): the derived *-border tokens lighten by +9 in the
+     dark theme (a dark fill's border glows toward the light). In THIS
+     theme 93% + 9 clamps to 100% — a pure-white border on a 93% fill
+     sitting on a white card is INVISIBLE (the not-found secondary
+     Button had no perceptible edge). Darken instead: -6 lands the
+     secondary/muted/accent derived borders at L=87 — exactly this
+     theme's own --border value (220 13% 87%) — and shifts the primary
+     and destructive rims darker on their fills, so every derived border
+     stays perceptible in both themes. */
+  --opaque-button-border-intensity: -6;
+
   /* Light-mode surface ladder. Without these, every consumer of
      hsl(var(--surface-card/overlay)) inherits the dark values from
      :root — collapsing the whole elevation system into near-black on

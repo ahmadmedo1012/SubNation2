@@ -14,6 +14,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
+import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
 
 /**
  * A9-F2 (R128-IMP-5 / B1 item 8): the full notifications page.
@@ -133,7 +134,30 @@ export default function NotificationsPage() {
     // the server TELLS us whether a next page exists).
     getNextPageParam: (lastPage, allPages) => (lastPage.hasMore ? allPages.length + 1 : undefined),
     enabled: !!token,
+    // R153 (frozen-while-mounted fix): the page previously fetched ONCE —
+    // no poll, no NOTIFICATION_NEW_EVENT listener, no resync-family entry,
+    // and refetchOnWindowFocus is off app-wide — so a user sitting on
+    // /notifications never saw a new row until a full remount. The bell's
+    // own freshness contract now applies here: a 60 s refetchInterval
+    // (react-query skips it while the tab is hidden by default — same
+    // visible-tab gating as the bell's interval). An infinite query's
+    // refetch re-pulls every LOADED page (typically 1-2) — same order of
+    // cost as the bell's window fetch.
+    refetchInterval: 60_000,
+    // The socket accelerator: when a socket-bearing surface (wallet,
+    // order-detail) is mounted in the tab, the backend's notification-new
+    // event refetches immediately instead of waiting for the interval.
+    refetchOnMount: true,
   });
+
+  // R153: NOTIFICATION_NEW_EVENT → immediate refetch (the bell's twin —
+  // the event fires from hooks/use-socket.ts wherever a storefront socket
+  // is mounted in this tab).
+  useEffect(() => {
+    const onNew = () => void refetch();
+    window.addEventListener(NOTIFICATION_NEW_EVENT, onNew);
+    return () => window.removeEventListener(NOTIFICATION_NEW_EVENT, onNew);
+  }, [refetch]);
 
   // Accumulated list — dedup by id (orders.tsx idiom): a notification
   // landing between page requests shifts offset boundaries, so a row can

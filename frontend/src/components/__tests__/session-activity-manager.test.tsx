@@ -107,7 +107,7 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
 
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(5);
+    expect(invalidateSpy).toHaveBeenCalledTimes(6);
 
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
@@ -120,6 +120,9 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     // §4 ledger surface stale contradicted the money screen itself.
     expect(keys).toContain(JSON.stringify(["/api/wallet/ledger"]));
     expect(keys).toContain(JSON.stringify(["/api/auth/me"]));
+    // R153: the paged notifications-history family (the /notifications
+    // page holds no socket of its own — the resync is its freshness net).
+    expect(keys).toContain(JSON.stringify(["/api/notifications"]));
 
     // The orders leg is a PREDICATE sweep (list variants + details).
     const predicateCalls = invalidateSpy.mock.calls
@@ -141,12 +144,12 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     // Rapid re-focus — throttled.
     now += 1_000;
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(5);
+    expect(invalidateSpy).toHaveBeenCalledTimes(6);
 
     // 31 s later — fresh resync allowed.
     now += 30_000;
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(10);
+    expect(invalidateSpy).toHaveBeenCalledTimes(12);
 
     dateNowSpy.mockRestore();
   });
@@ -304,16 +307,18 @@ describe("SessionActivityManager — admin-family visibility resync (R127-B6-2)"
     vi.useRealTimers();
   });
 
-  it("admin session returning to the tab ALSO invalidates the admin realtime families (8 keys)", async () => {
+  it("admin session returning to the tab ALSO invalidates the admin realtime families", async () => {
     const { invalidateSpy } = renderManager();
 
     await fireVisible();
 
-    // 5 storefront calls (orders predicate + wallet + topups + ledger +
-    // me — R-140-o added the ledger family) + the 11-key admin
+    // 6 storefront calls (orders predicate + wallet + topups + ledger +
+    // me + notifications — R-140-o added the ledger family, R153 the
+    // paged notifications history) + the 13-key admin
     // set (stats/orders/topups/users/tickets/risk×2/products — the R134
-    // additions: chart-data + referrals + pricing/config).
-    expect(invalidateSpy).toHaveBeenCalledTimes(16);
+    // additions: chart-data + referrals + pricing/config — the R153
+    // additions: the alerts families, closing the reconnect badge gap).
+    expect(invalidateSpy).toHaveBeenCalledTimes(19);
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
@@ -332,6 +337,10 @@ describe("SessionActivityManager — admin-family visibility resync (R127-B6-2)"
     expect(keys).toContain(JSON.stringify(["/api/admin/chart-data"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/referrals"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/pricing/config"]));
+    // R153: the alerts families — the reconnect badge gap (the live
+    // admin-alert-new handler invalidated them; the resync set did not).
+    expect(keys).toContain(JSON.stringify(["admin-alerts"]));
+    expect(keys).toContain(JSON.stringify(["admin-alerts-unread-count"]));
   });
 
   it("hidden → no admin invalidations either (a backgrounded tab must not burn data)", async () => {
@@ -371,7 +380,7 @@ describe("SessionActivityManager — SOCKET_RESYNC_EVENT storefront consumer (R1
       window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(5);
+    expect(invalidateSpy).toHaveBeenCalledTimes(6); // R153: +the notifications history family
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
@@ -398,7 +407,7 @@ describe("SessionActivityManager — SOCKET_RESYNC_EVENT storefront consumer (R1
       window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(10);
+    expect(invalidateSpy).toHaveBeenCalledTimes(12);
   });
 
   it("admin-only session: SAM does NOT invalidate on the event (SocketInitializer owns the admin branch)", async () => {

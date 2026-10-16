@@ -10,6 +10,7 @@ import {
   Info,
   MessageSquare,
   Package,
+  RefreshCw,
   ShoppingBag,
   Star,
   Wallet,
@@ -138,6 +139,13 @@ export function NotificationBell() {
   const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
+  // R153: the honest tri-state for the panel body — "loading" (the first
+  // fetch is in flight; showing «لا توجد إشعارات» before ANY data arrived
+  // overclaims), "ok", and "error" (the fetch failed and we hold no data
+  // — an outage must never masquerade as an empty history, the 93-C5 /
+  // F-05 class). Subsequent poll failures keep the stale list (still the
+  // best data) and reconcile silently on the next successful tick.
+  const [loadState, setLoadState] = useState<"loading" | "ok" | "error">("loading");
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -191,6 +199,9 @@ export function NotificationBell() {
       if (seq !== fetchSeqRef.current) return;
       if (!Array.isArray(data)) return;
       setNotifs(data);
+      // R153: data arrived — the panel body is "ok" regardless of length
+      // (an empty array IS the honest empty state now, not a guess).
+      setLoadState("ok");
 
       // Compute the max notification id we've now received.
       const currentMaxId = data.reduce((m, n) => Math.max(m, n.id), 0);
@@ -218,7 +229,15 @@ export function NotificationBell() {
 
       lastSeenMaxIdRef.current = Math.max(lastSeenMaxIdRef.current, currentMaxId);
     } catch {
-      // network blip — next 15 s tick retries
+      // R153: an outage only flips the panel to the error state when we
+      // hold NO data — with a stale list on screen the best UX is to keep
+      // showing it (the 60 s poll / socket event reconciles silently).
+      if (seq === fetchSeqRef.current) {
+        setNotifs((current) => {
+          if (current.length === 0) setLoadState("error");
+          return current;
+        });
+      }
     }
   }, [token]);
 
@@ -277,12 +296,13 @@ export function NotificationBell() {
     [markRead, navigate],
   );
 
-  // Freshness strategy (Round-4, perf P1-4): the server pushes a
-  // `notification-new` socket event the moment a notification row is
-  // inserted — the socket listener (hooks/use-socket.ts) translates it
-  // into the NOTIFICATION_NEW_EVENT window event and this component
-  // refetches IMMEDIATELY (badge + toast land in ~1 RTT). The 60 s
-  // interval below is only a socket-dropout fallback, still gated to
+  // Freshness strategy (R153 — corrected): the storefront socket singleton
+  // exists only on the pages that mount useSocket (order-detail, wallet),
+  // so for every other surface the 60 s visible-tab interval below is the
+  // PRIMARY freshness mechanism and NOTIFICATION_NEW_EVENT is the
+  // accelerator that fires when a socket-bearing page is mounted. The
+  // /notifications page mirrors this contract with its own 60 s
+  // refetchInterval + event listener (R153 Phase C). Both stay gated to
   // visible tabs (Round-3 8-c §2.2 — a backgrounded tab fires nothing).
   useEffect(() => {
     if (!token) {
@@ -401,6 +421,8 @@ export function NotificationBell() {
           <NotificationPanel
             notifs={notifs}
             unread={unread}
+            loadState={loadState}
+            onRetry={() => void fetchAll()}
             onClose={() => setOpen(false)}
             onMarkAllRead={() => void markAllRead()}
             onMarkRead={(id) => void markRead(id)}
@@ -416,6 +438,8 @@ export function NotificationBell() {
 function NotificationPanel({
   notifs,
   unread,
+  loadState,
+  onRetry,
   onClose,
   onMarkAllRead,
   onMarkRead,
@@ -424,6 +448,8 @@ function NotificationPanel({
 }: {
   notifs: Notif[];
   unread: number;
+  loadState: "loading" | "ok" | "error";
+  onRetry: () => void;
   onClose: () => void;
   onMarkAllRead: () => void;
   onMarkRead: (id: number) => void;
@@ -582,8 +608,40 @@ function NotificationPanel({
         </div>
       </div>
 
-      {/* Body */}
-      {notifs.length === 0 ? (
+      {/* Body — R153: the tri-state (loading / error / ok) replaces the
+          unconditional empty-hero: a first-load or outage previously
+          rendered «لا توجد إشعارات» — false information in both cases. */}
+      {loadState === "loading" && notifs.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground" role="status">
+          <div className="relative w-14 h-14 mx-auto mb-3">
+            <div className="absolute inset-0 rounded-2xl bg-muted/50 blur-sm animate-pulse" />
+            <div className="relative w-14 h-14 rounded-2xl bg-muted/40 border border-border/30 flex items-center justify-center">
+              <Bell className="w-6 h-6 opacity-20" />
+            </div>
+          </div>
+          <p className="text-sm font-bold text-foreground/60 mb-0.5">جارٍ تحميل الإشعارات…</p>
+          <p className="text-xs text-muted-foreground">لحظات وتظهر آخر التحديثات</p>
+        </div>
+      ) : loadState === "error" && notifs.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground" role="alert">
+          <div className="relative w-14 h-14 mx-auto mb-3">
+            <div className="absolute inset-0 rounded-2xl bg-destructive/10 blur-sm" />
+            <div className="relative w-14 h-14 rounded-2xl bg-destructive/5 border border-destructive/20 flex items-center justify-center">
+              <Bell className="w-6 h-6 text-destructive/70" />
+            </div>
+          </div>
+          <p className="text-sm font-bold text-foreground/60 mb-0.5">تعذّر تحميل الإشعارات</p>
+          <p className="text-xs text-muted-foreground mb-3">حدث خطأ في الاتصال — تحقّق من شبكتك</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex min-h-11 items-center gap-1.5 text-xs font-bold px-4 rounded-lg border border-border/60 hover:border-border transition-colors press-spring"
+          >
+            <RefreshCw className="w-3 h-3" />
+            إعادة المحاولة
+          </button>
+        </div>
+      ) : notifs.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground">
           <div className="relative w-14 h-14 mx-auto mb-3">
             <div className="absolute inset-0 rounded-2xl bg-muted/50 blur-sm" />

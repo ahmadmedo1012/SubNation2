@@ -67,6 +67,10 @@ export function invalidateStorefrontTransactionalFamilies(queryClient: QueryClie
   void queryClient.invalidateQueries({ queryKey: getListTopupsQueryKey() });
   void queryClient.invalidateQueries({ queryKey: getGetWalletLedgerQueryKey() });
   void queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+  // R153: the paged notifications-history family — the /notifications
+  // page holds no socket of its own, so a reconnect previously left its
+  // rows stale until a remount (the bell recovered, the page did not).
+  void queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
 }
 
 /**
@@ -109,4 +113,11 @@ export function invalidateAdminRealtimeFamilies(queryClient: QueryClient): void 
   void queryClient.invalidateQueries({ queryKey: ["/api/admin/chart-data"] });
   void queryClient.invalidateQueries({ queryKey: ["/api/admin/referrals"] });
   void queryClient.invalidateQueries({ queryKey: ["/api/admin/pricing/config"] });
+  // R153 (reconnect badge gap): the alerts families — the live
+  // admin-alert-new handler invalidates them, but the RESYNC set never
+  // did, so after a disconnect→reconnect the alerts badge/unread count
+  // lagged until the 5-minute fallback poll. Same key roots the alerts
+  // page's useQuery calls use.
+  void queryClient.invalidateQueries({ queryKey: ["admin-alerts"] });
+  void queryClient.invalidateQueries({ queryKey: ["admin-alerts-unread-count"] });
 }

@@ -626,11 +626,14 @@ describe("R-140-o D — topup-updated → wallet query invalidation: keys align 
     await waitFor(() => expect(client.getQueryData(getListTopupsQueryKey())).toEqual({ v: 3 }));
   });
 
-  it("invalidateStorefrontTransactionalFamilies covers the ONE storefront money set (orders sweep + wallet/topups/ledger/me)", () => {
+  it("invalidateStorefrontTransactionalFamilies covers the ONE storefront money set (orders sweep + wallet/topups/ledger/me + notifications)", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const spy = vi.spyOn(client, "invalidateQueries");
     invalidateStorefrontTransactionalFamilies(client);
-    expect(spy).toHaveBeenCalledTimes(5);
+    // R153: 5 → 6 — the paged notifications-history family joined the
+    // reconnect-resync set (the /notifications page holds no socket of
+    // its own; without this entry a reconnect left its rows stale).
+    expect(spy).toHaveBeenCalledTimes(6);
     const keys = spy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
@@ -639,6 +642,7 @@ describe("R-140-o D — topup-updated → wallet query invalidation: keys align 
     expect(keys).toContain(JSON.stringify(["/api/wallet/topups"]));
     expect(keys).toContain(JSON.stringify(["/api/wallet/ledger"]));
     expect(keys).toContain(JSON.stringify(["/api/auth/me"]));
+    expect(keys).toContain(JSON.stringify(["/api/notifications"]));
     // The orders leg is the PREDICATE sweep (list variants + every open
     // detail page) — and it never touches the catalog family.
     const predicateCall = spy.mock.calls

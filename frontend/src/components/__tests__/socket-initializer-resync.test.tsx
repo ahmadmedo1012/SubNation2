@@ -125,7 +125,7 @@ describe("SocketInitializer — admin resync event (R104)", () => {
     // for all of those families), and the tickets/risk lists have no
     // polling fallback of their own (products has the 60 s poll as
     // its dropout fallback).
-    expect(invalidateSpy).toHaveBeenCalledTimes(11); // R134: +chart-data +referrals +pricing/config
+    expect(invalidateSpy).toHaveBeenCalledTimes(13); // R134: +chart-data +referrals +pricing/config · R153: +the two alerts families (the reconnect badge gap)
     const keys = invalidatedKeys(invalidateSpy);
     expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/orders"]));
@@ -140,7 +140,7 @@ describe("SocketInitializer — admin resync event (R104)", () => {
     await act(async () => {
       window.dispatchEvent(new CustomEvent(RESYNC_EVENT));
     });
-    expect(invalidateSpy).toHaveBeenCalledTimes(22); // R134: 11 keys × 2 events
+    expect(invalidateSpy).toHaveBeenCalledTimes(26); // R134: 11 keys × 2 events · R153: 13 keys × 2
   });
 
   it("user-only session (adminToken null): this component stays a no-op on the resync event (the storefront set is SAM's branch — R127-B6-3)", async () => {
@@ -222,7 +222,7 @@ describe("SocketInitializer — connected admin-stats-update handler (R126-L3)",
       handler();
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(11); // R134: +chart-data +referrals +pricing/config
+    expect(invalidateSpy).toHaveBeenCalledTimes(13); // R134: +chart-data +referrals +pricing/config · R153: +the two alerts families (the reconnect badge gap)
     const keys = invalidatedKeys(invalidateSpy);
     expect(keys).toContain(JSON.stringify(["/api/admin/stats"]));
     expect(keys).toContain(JSON.stringify(["/api/admin/orders"]));

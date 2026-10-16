@@ -311,33 +311,60 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
       system: "إشعار النظام",
     };
 
+    // R153 (toast-race hardening): three defects closed —
+    //   1. In-flight guard: the socket event, the 5-minute interval and
+    //      the visibility catch-up could fire poll() concurrently; two
+    //      overlapping /new fetches each toasted the same alerts (the
+    //      toast had no stable id to dedupe on).
+    //   2. Stable toast ids (admin-alert-<id>, the bell's notif-<id>
+    //      idiom): even if two deliveries race past the guard, Sonner
+    //      dedupes by id instead of stacking duplicates.
+    //   3. The 50-cap gap: /new?since= caps at LIMIT 50 — a burst larger
+    //      than 50 previously advanced lastId to the fetched max and the
+    //      older-than-cap alerts were NEVER toasted. The poll now loops
+    //      (bounded — 5 pages / 250 alerts max) until a short page, so
+    //      lastId only ever advances past alerts the operator was shown.
+    let inFlight = false;
     const poll = () => {
       // R104 (AG2-7): a hidden admin tab must NEVER poll — this is a raw
-      // setInterval (react-query's refetchIntervalInBackground:false
-      // does not apply here), and an operator's forgotten background tab
-      // polling every 5 min keeps resetting Render's 15-minute idle
-      // timer all night. Visible-tab semantics only; the socket event
-      // listener below still covers background delivery while the admin
-      // socket is parked-then-revived.
+      // interval (react-query's refetchIntervalInBackground:false does not
+      // apply here) and an operator's forgotten background tab would keep
+      // resetting the host's idle timer all night. Visible-tab semantics
+      // only; the socket listener still covers background delivery while
+      // the admin socket is parked-then-revived.
+      if (inFlight) return;
       if (document.visibilityState === "hidden") return;
-      const lastId = Number(localStorage.getItem("sn_last_alert_id") ?? "0");
-      adminFetch(`/api/admin/alerts/new?since=${lastId}`, {
-        headers,
-      })
-        .then((r) => (r.ok ? r.json() : { alerts: [] }))
-        .then((data: { alerts?: Array<{ id: number; type: string; message: string }> }) => {
-          const alerts = data?.alerts ?? [];
+      inFlight = true;
+      const run = async (): Promise<void> => {
+        for (let round = 0; round < 5; round++) {
+          const lastId = Number(localStorage.getItem("sn_last_alert_id") ?? "0");
+          let alerts: Array<{ id: number; type: string; message: string }> = [];
+          try {
+            const r = await adminFetch(`/api/admin/alerts/new?since=${lastId}`, { headers });
+            if (r.ok) {
+              alerts = ((await r.json()) as { alerts?: typeof alerts })?.alerts ?? [];
+            }
+          } catch {
+            return; // network/401-swallow — the existing silent contract
+          }
           if (alerts.length === 0) return;
           alerts.forEach((alert) => {
             toast({
               title: ALERT_LABELS[alert.type] ?? "تنبيه",
               description: alert.message,
+              id: `admin-alert-${alert.id}`,
             });
           });
           const maxId = Math.max(...alerts.map((a) => a.id));
           localStorage.setItem("sn_last_alert_id", String(maxId));
-        })
-        .catch(() => {});
+          // A full page (50) means more unalerted rows may exist below —
+          // loop instead of skipping them (bounded by the round counter).
+          if (alerts.length < 50) return;
+        }
+      };
+      void run().finally(() => {
+        inFlight = false;
+      });
     };
 
     poll();
