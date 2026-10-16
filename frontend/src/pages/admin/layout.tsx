@@ -304,10 +304,19 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
     if (!adminToken || !canSeeSupportBadge) return;
 
     const ALERT_LABELS: Record<string, string> = {
+      // R154 (P5): full AlertType coverage — six types used to fall to the
+      // generic «إشعار» title (the alerts PAGE had full labels; the toast
+      // did not).
+      coupon_expired: "كوبون منتهي",
       coupon_maxed: "كوبون استُنفد",
       coupon_expiring: "كوبون منتهٍ قريباً",
+      inventory_corrupt: "بيانات مخزون غير متسقة",
+      flash_sale_expired: "عرض محدود منتهي",
+      forecast_stockout: "توقع نفاد مخزون",
       low_stock: "مخزون منخفض",
       no_stock: "نفاد مخزون",
+      refunded_live_credentials: "بيانات وصول حيّة مُستردة",
+      whatsapp_channel: "قناة واتساب",
       system: "إشعار النظام",
     };
 

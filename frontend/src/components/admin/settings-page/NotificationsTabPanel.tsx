@@ -30,6 +30,13 @@ export function NotificationsTabPanel() {
           "موافقة على طلب شحن",
           "رفض طلب شحن",
           "إتمام طلب شراء جديد",
+          // R154 (P5): the four events the pipeline ships but the panel
+          // never listed (the operators' setup expectations drifted from
+          // the code).
+          "استنفاد كوبون (أقصى استخدام)",
+          "اقتراب انتهاء كوبون",
+          "مخزون منخفض أو نافد",
+          "فحص تشخيصي لإعدادات تيليجرام",
         ].map((event) => (
           /* R139 (precision): VERIFIED, no change — the fixed-event rows
              keep the R120-B4 descriptive register (no per-row status

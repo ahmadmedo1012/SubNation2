@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth";
 import { trapTabKey } from "@/lib/a11y/trap-tab-key";
 import { formatCount, formatRelativeTime } from "@/lib/utils";
 import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
+import { SOCKET_RESYNC_EVENT } from "@/lib/socket";
 import { useLocation } from "wouter";
 import { toast } from "@/hooks/use-toast";
 
@@ -48,8 +49,7 @@ interface Notif {
  * used to read «40 إشعاراً» as if it were the user's lifetime total;
  * at exactly the cap the honest label is «آخر 40 …» (below the cap the
  * count IS the total — every row the user has is loaded). Full history
- * pagination (a /notifications page over ?page=) is deferred — see
- * the R126 worklog note.
+ * pagination lives on the /notifications page over ?page= (R128).
  */
 const NOTIFICATION_HISTORY_CAP = 40;
 
@@ -315,6 +315,15 @@ export function NotificationBell() {
     let id: ReturnType<typeof setInterval> | null = setInterval(() => void fetchAll(), 60_000);
     const onSocketNotification = () => void fetchAll();
     window.addEventListener(NOTIFICATION_NEW_EVENT, onSocketNotification);
+    // R154 (P5): the reconnect-resync gap — a same-tab WiFi blip on a
+    // socket-bearing page fires SOCKET_RESYNC_EVENT (the socket singleton
+    // reconnects and the react-query families refresh) but the bell is a
+    // RAW-FETCH surface: without this listener the badge stayed stale for
+    // up to the remaining 60 s of the poll interval after the page
+    // itself had already refreshed. Rides the same debounced fetchAll
+    // (fetch-seq guards make a duplicate fetch harmless).
+    const onResync = () => void fetchAll();
+    window.addEventListener(SOCKET_RESYNC_EVENT, onResync);
     const onVisibility = () => {
       if (document.hidden) {
         if (id !== null) {
@@ -330,6 +339,7 @@ export function NotificationBell() {
     return () => {
       if (id !== null) clearInterval(id);
       window.removeEventListener(NOTIFICATION_NEW_EVENT, onSocketNotification);
+      window.removeEventListener(SOCKET_RESYNC_EVENT, onResync);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [token, fetchAll]);

@@ -110,8 +110,7 @@ describe("R154 — Telegram signup: exactly-once provider-aware new-account card
       {
         user: {
           id: tgId,
-          first_name: "محمد",
-          last_name: "التاجوري",
+          first_name: "محمد التاجوري",
           username: "mohamed_tajouri",
         },
         auth_date: Math.floor(Date.now() / 1000),

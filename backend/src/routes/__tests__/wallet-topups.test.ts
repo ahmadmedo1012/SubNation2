@@ -2,7 +2,14 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { describe, expect, it, beforeAll, beforeEach } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { db, initTestDb, resetTestDb, usersTable, walletTopupsTable } from "../../test/db";
+import {
+  db,
+  initTestDb,
+  resetTestDb,
+  usersTable,
+  walletTopupsTable,
+  notificationsTable,
+} from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { walletRouter } from "../wallet";
 import { __resetIdempotencyTableProbeForTests } from "../../lib/idempotency";
@@ -380,6 +387,45 @@ describe("POST /api/wallet/topups — auto-reject heuristic (≥3 prior rejectio
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("pending");
     expect(res.body.admin_note).toBeNull();
+  });
+
+  it("R154 (P5): the CUSTOMER now gets a notification row on BOTH outcomes — «قيد المراجعة» when pending, the honest refusal on auto-reject (previously NOBODY was notified)", async () => {
+    // Pending path: a clean submission writes the review-acknowledgment row.
+    const user = await seedUser();
+    const token = signUserToken({ userId: user.id });
+    await call(app, "POST", "/api/wallet/topups", {
+      token,
+      body: { amount: 50, payment_network: "madar" },
+    });
+    let rows = await db
+      .select()
+      .from(notificationsTable)
+      .where(eq(notificationsTable.userId, user.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.type).toBe("wallet");
+    expect(rows[0]!.title).toBe("تم استلام طلب الشحن");
+    expect(rows[0]!.message).toContain("قيد المراجعة");
+    expect(rows[0]!.link).toBe("/wallet");
+    expect(rows[0]!.isRead).toBe(false);
+
+    // Auto-reject path: the serial-abuser verdict gets its own row.
+    const abuser = await seedUser();
+    const abuserToken = signUserToken({ userId: abuser.id });
+    await seedTopup(abuser.id, "rejected");
+    await seedTopup(abuser.id, "rejected");
+    await seedTopup(abuser.id, "rejected");
+    await call(app, "POST", "/api/wallet/topups", {
+      token: abuserToken,
+      body: { amount: 50, payment_network: "madar" },
+    });
+    rows = await db
+      .select()
+      .from(notificationsTable)
+      .where(eq(notificationsTable.userId, abuser.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.title).toBe("تعذّر قبول طلب الشحن");
+    expect(rows[0]!.message).toContain("تواصل مع الدعم");
+    expect(rows[0]!.link).toBe("/support");
   });
 });
 

@@ -10,7 +10,7 @@ import {
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { pageParam } from "../lib/http";
-import { roundLydString } from "../lib/money";
+import { roundLydString, formatLyd } from "../lib/money";
 import { normalizeLibyanPhone } from "../lib/crypto";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
 import { derivePrimaryProvider } from "../lib/user-provider";
@@ -35,6 +35,7 @@ import {
   scopeIdempotencyKey,
 } from "../lib/idempotency";
 import { notifyNewTopup } from "../telegram";
+import { createNotification } from "../notify";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { toNumber } from "../lib/numeric";
 
@@ -736,6 +737,32 @@ router.post(
         duplicateRiskSiblingIds:
           duplicateRiskSiblingIds.length > 0 ? duplicateRiskSiblingIds : null,
       });
+
+    // R154 (P5): the CUSTOMER's side of the topup loop — the first
+    // notifications row used to appear only on approve/reject, so the
+    // bell + history stayed silent between submission and the operator's
+    // verdict (the waiting modal covers the open tab only). Now every
+    // GENUINE submission (replays return earlier) writes a persistent
+    // «قيد المراجعة» row, and the serial-abuser auto-reject writes its
+    // own honest row (previously NOBODY was notified on that path).
+    // Best-effort — createNotification never fails the 201.
+    if (initialStatus === "pending") {
+      await createNotification(
+        userId,
+        "wallet",
+        "تم استلام طلب الشحن",
+        `طلب شحن بقيمة ${formatLyd(storedAmount)} قيد المراجعة الآن — سنعلمك فور اعتماده.`,
+        "/wallet",
+      );
+    } else {
+      await createNotification(
+        userId,
+        "wallet",
+        "تعذّر قبول طلب الشحن",
+        `لم يُقبل طلب الشحن بقيمة ${formatLyd(storedAmount)} (سجلّ طلبات مرفوضة متكررة). تواصل مع الدعم لأي استفسار.`,
+        "/support",
+      );
+    }
 
     // Risk pipeline (003-anomaly-detection) — emit topup_attempt. Never
     // blocks; gated on RISK_PIPELINE_ENABLED inside scoreEvent.

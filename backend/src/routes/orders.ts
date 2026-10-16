@@ -19,6 +19,8 @@ import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUs
 import { riskHardBlockMiddleware } from "../middlewares/risk-hard-block";
 import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 import { notifyNewOrder } from "../telegram";
+import { createNotification } from "../notify";
+import { formatLyd } from "../lib/money";
 import { CheckoutService, type CheckoutFailureReason } from "../services/checkout.service";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { runStockSweep } from "../jobs/stockWatcher";
@@ -193,7 +195,8 @@ const CHECKOUT_FAILURE_HTTP = {
     // lost the race; another concurrent purchase already consumed the
     // last redemption slot.
     status: 409,
-    message: "تم استخدام الكوبون من قبل مستخدم آخر في نفس الوقت. حاول بدون الكوبون أو استخدم كوبوناً آخر.",
+    message:
+      "تم استخدام الكوبون من قبل مستخدم آخر في نفس الوقت. حاول بدون الكوبون أو استخدم كوبوناً آخر.",
     code: ErrorCode.INVALID_DATA,
   },
   CONCURRENCY_ERROR: {
@@ -226,7 +229,8 @@ const CHECKOUT_FAILURE_HTTP = {
     // buyer is pointed to support; the operator already received a
     // deduped inventory_corrupt alert with the product + unit id.
     status: 503,
-    message: "بيانات هذا المنتج تحتاج صيانة من الإدارة حالياً — لم يُخصم أي مبلغ من محفظتك. جرّب لاحقاً أو تواصل مع الدعم.",
+    message:
+      "بيانات هذا المنتج تحتاج صيانة من الإدارة حالياً — لم يُخصم أي مبلغ من محفظتك. جرّب لاحقاً أو تواصل مع الدعم.",
     code: ErrorCode.SERVICE_UNAVAILABLE,
   },
   VARIANT_NOT_FOUND: {
@@ -324,12 +328,14 @@ router.post(
         // code riding the failure envelope so the client can re-price
         // and retry with the CURRENT price.
         if (result.code === "PRODUCT_STALE") {
-          return res.status(409).json(
-            createErrorResponse(
-              "تغيّرت بيانات المنتج أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي",
-              ErrorCode.CONFLICT,
-            ),
-          );
+          return res
+            .status(409)
+            .json(
+              createErrorResponse(
+                "تغيّرت بيانات المنتج أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي",
+                ErrorCode.CONFLICT,
+              ),
+            );
         }
         // R134 (A7-F4): durable same-key-DIFFERENT-body — the Redis
         // layer's 409 envelope verbatim, so clients see ONE shape
@@ -372,6 +378,20 @@ router.post(
       orderCode: order.orderCode ?? null,
       provider: derivePrimaryProvider(user),
     });
+
+    // R154 (P5): the CUSTOMER's side of the loop — the first notifications
+    // row used to appear only when an admin changed the order's status,
+    // leaving the bell + history silent on the moment of purchase itself.
+    // Mirrors the F10 replay contract: only a genuinely NEW order notifies
+    // (the replay branch above returns before reaching here). Best-effort
+    // — createNotification never fails the 201.
+    await createNotification(
+      userId,
+      "order",
+      "تم استلام طلبك",
+      `طلبك ${product.name} (${formatLyd(finalPrice)}) قيد المعالجة الآن — سنعلمك عند تغيّر حالته.`,
+      order.orderCode ? `/orders/${order.orderCode}` : "/orders",
+    );
 
     // 2026-09-20 (free-infrastructure round): a purchase is one of the
     // ONLY events that changes inventory — trigger the low/zero-stock
