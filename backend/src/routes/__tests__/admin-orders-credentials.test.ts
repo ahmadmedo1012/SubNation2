@@ -229,7 +229,7 @@ describe("B6-03: GET /api/admin/orders/:id/credentials — the only decrypt surf
         password: "pw-for-a",
         extra: "EXTRA-A",
       });
-      const b = await seedOrder({
+      await seedOrder({
         email: "order-b@test.local",
         password: "pw-for-b",
         extra: "EXTRA-B",

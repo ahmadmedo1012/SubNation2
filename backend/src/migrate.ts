@@ -14,7 +14,7 @@
 // R144-B2: (lib/boot-migrations.ts + the jobs/__tests__ battery) keeps
 // R144-B2: working UNCHANGED. Machine-verified: scripts/r144b2_verify_split.py.
 import { db } from "@workspace/db";
-import { sql, type SQL } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { hashPassword } from "./lib/crypto";
 import { encrypt, isEncrypted } from "./lib/encryption";
 import { logger } from "./lib/logger";

@@ -108,7 +108,7 @@ export default function AdminTopupsPage() {
     return () => clearTimeout(t);
   }, [search]);
   const [processingId, setProcessingId] = useState<number | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<any | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<AdminTopupRow | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkAction, setBulkAction] = useState<"approve" | "reject" | "approveAll" | null>(null);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);

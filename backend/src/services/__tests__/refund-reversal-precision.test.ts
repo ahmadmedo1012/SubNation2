@@ -18,14 +18,11 @@ import { eq } from "drizzle-orm";
 import {
   db,
   initTestDb,
-  inventoryTable,
   ordersTable,
   pointsLedgerTable,
   productsTable,
-  productVariantsTable,
   resetTestDb,
   usersTable,
-  walletLedgerTable,
 } from "../../test/db";
 import { RefundService } from "../refund.service";
 import { insertPointsLedgerEntry } from "../../lib/points-ledger";

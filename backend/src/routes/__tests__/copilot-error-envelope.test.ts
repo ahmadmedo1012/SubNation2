@@ -110,7 +110,7 @@ async function raw(
   return { status: res.status, text: await res.text() };
 }
 
-async function adminIdFor(token: string): Promise<number> {
+async function adminIdFor(_token: string): Promise<number> {
   // signAdminToken fixtures carry no sid in non-production; the seeded id
   // is the only admin — resolve it for preview ownership seeding.
   const [row] = await db.select({ id: adminUsersTable.id }).from(adminUsersTable).limit(1);

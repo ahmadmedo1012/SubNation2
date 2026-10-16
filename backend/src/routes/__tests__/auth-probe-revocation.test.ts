@@ -84,12 +84,18 @@ async function seedSession(): Promise<SeededSession> {
   };
 }
 
+/** The /api/auth/probe body fields this suite asserts on. */
+interface ProbeBody {
+  authenticated: boolean;
+  user?: { phone?: string; linked_identities?: unknown[] };
+}
+
 async function probe(
   url: string,
   headers: Record<string, string>,
-): Promise<{ status: number; body: any }> {
+): Promise<{ status: number; body: ProbeBody }> {
   const res = await fetch(`${url}/api/auth/probe`, { headers });
-  const body = (await res.json()) as any;
+  const body = (await res.json()) as ProbeBody;
   return { status: res.status, body };
 }
 
@@ -144,8 +150,8 @@ describe("GET /api/auth/probe — session revocation parity (93-A1 S2)", () => {
       const { status, body } = await probe(url, { Cookie: `auth_token=${seeded.token}` });
       expect(status).toBe(200);
       expect(body.authenticated).toBe(true);
-      expect(body.user.phone).toBeDefined();
-      expect(Array.isArray(body.user.linked_identities)).toBe(true);
+      expect(body.user?.phone).toBeDefined();
+      expect(Array.isArray(body.user?.linked_identities)).toBe(true);
     } finally {
       close();
     }
@@ -240,7 +246,7 @@ describe("GET /api/auth/probe — session revocation parity (93-A1 S2)", () => {
     try {
       const { body } = await probe(url, { Cookie: `auth_token=${seeded.token}` });
       expect(body.authenticated).toBe(true);
-      expect(body.user.phone).toBeDefined();
+      expect(body.user?.phone).toBeDefined();
     } finally {
       close();
       if (previousEnv === undefined) {

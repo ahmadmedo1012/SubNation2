@@ -30,7 +30,6 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TopupWaitingModal } from "@/components/TopupWaitingModal";
-import { useListTopups } from "@workspace/api-client-react";
 
 interface MockTopup {
   id: number;

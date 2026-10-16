@@ -1,7 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
-import { db, initTestDb, resetTestDb } from "../../test/db";
-import { getRedisClient } from "../../lib/redis-client";
+import { db, initTestDb } from "../../test/db";
 
 /**
  * R104 (AG4-2) / RT-3 (red team) — the Neon-persisted pairing-epoch
@@ -59,7 +58,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 /** Gateway session response with a STABLE pairingId (R104 gateway shape). */
 function installFetchMock(pairingId: string | (() => string | undefined), status = "ready") {
   const calls: Array<{ url: string }> = [];
-  globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+  globalThis.fetch = vi.fn(async (input: string | URL, _init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url });
     if (url.endsWith(SESSION_URL)) {

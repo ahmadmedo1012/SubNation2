@@ -107,7 +107,7 @@ describe("stockWatcher — fresh alert notifies Telegram exactly once", () => {
 
 describe("stockWatcher — suppressed alert does NOT re-ping Telegram (A6-P2-1)", () => {
   it("cold restart inside the 24h dedupe window: drawer row suppresses insert AND Telegram", async () => {
-    const pid = await seedProduct("Zero Restart", 0);
+    await seedProduct("Zero Restart", 0);
 
     await checkLowStockForTests();
     expect(notifyMock).toHaveBeenCalledTimes(1);

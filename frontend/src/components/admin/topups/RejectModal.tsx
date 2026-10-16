@@ -4,6 +4,7 @@ import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
+import type { AdminTopupRow } from "@/components/admin/topups/topups-queue-meta";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/topups.tsx —
 // the single-reject dialog shell. The ONLY state it carries is the
@@ -30,21 +31,10 @@ export function RejectModal({
   onCancel,
   loading,
 }: {
-  topup: {
-    id: number;
-    amount: number;
-    user_phone: string;
-    user_display_name?: string | null;
-    user_email?: string | null;
-    user_auth_provider?: string | null;
-    user_has_google?: boolean;
-    user_has_telegram?: boolean;
-    user_has_firebase?: boolean;
-    user_has_whatsapp?: boolean;
-    status: string;
-    payment_network?: string;
-    created_at?: string;
-  } | null;
+  // R152: the hand-rolled 14-field structural copy had drifted from the
+  // generated type (payment_network lost its nullability) — the shared
+  // AdminTopupRow is the single source of truth now.
+  topup: AdminTopupRow | null;
   open: boolean;
   onConfirm: (note: string) => void;
   onCancel: () => void;

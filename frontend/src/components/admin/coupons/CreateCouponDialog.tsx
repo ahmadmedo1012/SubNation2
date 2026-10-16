@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
-import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
+import { AppDialog } from "@/components/ui/app-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Hash, Percent, Plus, RefreshCw } from "lucide-react";

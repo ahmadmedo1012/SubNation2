@@ -69,7 +69,20 @@ function fakeRedisWithoutHeartbeat() {
   return { get: vi.fn(async () => null) };
 }
 
-async function getScheduler(token: string): Promise<{ status: number; body: any }> {
+/** The /api/admin/system/scheduler body fields this suite asserts on. */
+interface SchedulerBody {
+  mode: string;
+  description: string;
+  active: boolean;
+  isLeader: boolean;
+  heartbeat: {
+    expected: boolean;
+    healthy: boolean;
+    note: string | undefined;
+  };
+}
+
+async function getScheduler(token: string): Promise<{ status: number; body: SchedulerBody }> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       const addr = server.address();

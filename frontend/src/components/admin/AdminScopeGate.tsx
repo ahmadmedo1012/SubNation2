@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { useAuth } from "../../lib/auth";
 import { AdminLayout } from "../../pages/admin/layout";
 
 /**

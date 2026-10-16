@@ -23,7 +23,7 @@ import {
 } from "../../services/openwa.service";
 import { db } from "@workspace/db";
 import { inventoryTable, productsTable } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { isEncrypted, safeDecrypt } from "../../lib/encryption";
 
 const router: IRouter = Router();

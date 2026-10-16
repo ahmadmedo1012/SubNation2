@@ -34,7 +34,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WalletPage from "@/pages/wallet";
-import { useCreateTopup, useGetWallet, useListTopups } from "@workspace/api-client-react";
+import { useGetWallet, useListTopups } from "@workspace/api-client-react";
 
 const mutateMock = vi.fn();
 

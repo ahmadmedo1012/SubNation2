@@ -116,10 +116,6 @@ function installAnyStub() {
   });
 }
 
-function markerSignal(): AbortSignal {
-  return new AbortController().signal;
-}
-
 // ── Fetch stubs ─────────────────────────────────────────────────────────────
 
 /** A fetch that never resolves until its request signal aborts. */

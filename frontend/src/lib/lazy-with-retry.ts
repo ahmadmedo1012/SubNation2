@@ -72,7 +72,7 @@ const RELOAD_KEY_PREFIX = "sn:chunk-reload:";
  *
  *   const WalletPage = lazyWithRetry(() => import("@/pages/wallet"));
  */
-export function lazyWithRetry<T extends ComponentType<any>>(
+export function lazyWithRetry<T extends ComponentType<any>>( // eslint-disable-line @typescript-eslint/no-explicit-any -- mirrors React.lazy's own generic constraint (ComponentType<any> in @types/react); narrowing it would break valid lazy targets.
   factory: () => Promise<{ default: T }>,
 ): LazyExoticComponent<T> {
   return lazy(async () => {

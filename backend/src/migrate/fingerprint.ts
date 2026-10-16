@@ -4,9 +4,9 @@
 // R144-B2: → `../jobs/alertLogger`, in alertMoneyConstraintIssue) is disclosed
 // R144-B2: and machine-verified moved-not-modified (scripts/r144b2_verify_split.py).
 import { db } from "@workspace/db";
-import { sql, type SQL } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { constraintSkipKeys, runMigrations } from "../migrate";
+import { constraintSkipKeys } from "../migrate";
 import { extractRows } from "./shared";
 
 /**

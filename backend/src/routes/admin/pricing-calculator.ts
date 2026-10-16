@@ -256,7 +256,6 @@ router.post("/pricing/calculate", requireAdmin, async (req, res) => {
   // cost base. It answers "how bad can an allowed combination get?".
   const capPct = config.maxTotalDiscountPct;
   const flashPct = flashSaleApplied ? flashSaleApplied.discount_percent : 0;
-  const worstCaseCouponPct = Math.max(0, capPct - flashPct);
   const worstCasePrice = round2(listPrice * (1 - capPct / 100));
   const worstCaseGross = costLyd != null ? round2(worstCasePrice - costLyd) : null;
   const worstCaseContribution =

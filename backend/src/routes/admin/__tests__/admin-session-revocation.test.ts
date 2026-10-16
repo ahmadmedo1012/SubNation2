@@ -2,7 +2,7 @@ import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { adminSessionsTable, adminUsersTable, db, initTestDb, resetTestDb, usersTable } from "../../../test/db";
+import { adminSessionsTable, adminUsersTable, db, initTestDb, resetTestDb } from "../../../test/db";
 import { signAdminToken } from "../../../lib/jwt";
 import {
   createAdminSession,
@@ -26,7 +26,10 @@ function buildApp(): Express {
   app.use(express.json());
   app.use(cookieParser());
   app.get("/api/admin/echo", requireAdmin, (req, res) => {
-    const adminReq = req as Parameters<typeof requireAdmin>[0] & { adminId: number; adminSessionId: string | null };
+    const adminReq = req as Parameters<typeof requireAdmin>[0] & {
+      adminId: number;
+      adminSessionId: string | null;
+    };
     res.json({ ok: true, adminId: adminReq.adminId, sid: adminReq.adminSessionId });
   });
   return app;
@@ -48,7 +51,11 @@ async function listen(app: Express): Promise<{ url: string; close: () => void }>
 async function seedAdmin(): Promise<number> {
   const [a] = await db
     .insert(adminUsersTable)
-    .values({ username: "admin_sess", passwordHash: await hashPassword("pass-12345"), isActive: true })
+    .values({
+      username: "admin_sess",
+      passwordHash: await hashPassword("pass-12345"),
+      isActive: true,
+    })
     .returning();
   return a.id;
 }
@@ -57,7 +64,10 @@ async function get(url: string, token: string) {
   const res = await fetch(`${url}/api/admin/echo`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, unknown> | null };
+  return {
+    status: res.status,
+    body: (await res.json().catch(() => null)) as Record<string, unknown> | null,
+  };
 }
 
 beforeAll(async () => {
@@ -71,10 +81,19 @@ beforeEach(async () => {
 describe("admin session rows (V1-M13 / A8-01)", () => {
   it("createAdminSession mints a row + sid-bound token that requireAdmin accepts", async () => {
     const adminId = await seedAdmin();
-    const { token, sid } = await createAdminSession({ adminId, role: "admin", userAgent: "vitest", ipAddress: "127.0.0.1" });
+    const { token, sid } = await createAdminSession({
+      adminId,
+      role: "admin",
+      userAgent: "vitest",
+      ipAddress: "127.0.0.1",
+    });
 
     expect(sid).toMatch(/^[0-9a-f]{32}$/);
-    const [row] = await db.select().from(adminSessionsTable).where(eq(adminSessionsTable.id, sid)).limit(1);
+    const [row] = await db
+      .select()
+      .from(adminSessionsTable)
+      .where(eq(adminSessionsTable.id, sid))
+      .limit(1);
     expect(row).toBeDefined();
     expect(row.adminId).toBe(adminId);
     expect(row.revokedAt).toBeNull();

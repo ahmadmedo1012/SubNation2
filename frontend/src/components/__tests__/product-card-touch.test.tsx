@@ -123,7 +123,7 @@ describe("ProductCard — add-to-cart double-tap lock (96-F4 / R96 A2 P1-7)", ()
 
 describe("ProductCard — badge/نفد polish (96-F4 / R96 A6 #11 + #12)", () => {
   it("category badge is text-3xs font-semibold (was 9px bold)", () => {
-    const { container } = renderCard(AVAILABLE_PRODUCT);
+    renderCard(AVAILABLE_PRODUCT);
     // The badge is the pill next to the card title — «بث مباشر» is the
     // streaming category label.
     const badge = screen.getByText("بث مباشر");

@@ -1,7 +1,6 @@
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
 import { adminUsersTable, db, initTestDb, resetTestDb } from "../../test/db";
 import { signAdminToken } from "../../lib/jwt";
 import { requireAdmin } from "../../middlewares/requireAdmin";

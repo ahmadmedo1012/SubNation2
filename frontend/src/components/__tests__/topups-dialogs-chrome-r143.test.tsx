@@ -22,12 +22,20 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BulkConfirmModal } from "@/components/admin/topups/BulkConfirmModal";
 import { RejectModal } from "@/components/admin/topups/RejectModal";
+import type { AdminTopupRow } from "@/components/admin/topups/topups-queue-meta";
 
-const TOPUP = {
+// R152: RejectModal's prop type was unified on the shared AdminTopupRow
+// (the hand-rolled 14-field copy had drifted) — the fixture now has to
+// carry the generated type's required fields too. Only the fields the
+// dialog actually renders carry real values.
+const TOPUP: AdminTopupRow = {
   id: 21,
-  amount: 60,
+  user_id: 9,
   user_phone: "0917777777",
+  amount: 60,
+  payment_method: "mobile_transfer",
   status: "pending",
+  created_at: "2026-10-01T09:00:00.000Z",
 };
 
 afterEach(() => {

@@ -12,7 +12,6 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { couponsTable, db, flashSalesTable, initTestDb, resetTestDb } from "../../test/db";
 import { computePricing, isAppliedCoupon, isInvalidCoupon } from "../pricing";
 import {

@@ -841,7 +841,7 @@ describe("idempotency middleware — F-3 (R118-A1): the same-tick concurrent-arr
  */
 describe("idempotency middleware — R122 (A3-P2-4): canonical body hash", () => {
   it("a reordered-but-equivalent body REPLAYS (was a false 409 IDEMPOTENCY_KEY_REUSE)", async () => {
-    const double = installTtlRedis();
+    installTtlRedis();
     const handler = vi.fn((_req, res) => {
       res.status(201).json({ ok: true, n: 1 });
     });
@@ -867,7 +867,7 @@ describe("idempotency middleware — R122 (A3-P2-4): canonical body hash", () =>
   });
 
   it("reordering is canonicalized RECURSIVELY (nested objects), arrays keep their order", async () => {
-    const double = installTtlRedis();
+    installTtlRedis();
     const handler = vi.fn((_req, res) => {
       res.status(201).json({ ok: true });
     });

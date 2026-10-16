@@ -50,7 +50,7 @@ async function call(
   token: string,
   body: unknown,
   headers: Record<string, string> = {},
-): Promise<{ status: number; body: any }> {
+): Promise<{ status: number; body: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       const addr = server.address();

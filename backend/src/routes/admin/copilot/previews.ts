@@ -6,8 +6,6 @@
  *   POST   /api/admin/copilot/previews/:id/confirm  — execute (low-risk only)
  */
 
-import { db, copilotPreviewsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
 import type { Request, Response } from "express";
 import { Router } from "express";
 import { logger } from "../../../lib/logger";

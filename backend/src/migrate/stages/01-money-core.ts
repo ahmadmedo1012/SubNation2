@@ -3,11 +3,9 @@
 // R144-B2: the ONE dynamic-import specifier that moved (`./jobs/alertLogger`
 // R144-B2: → `../jobs/alertLogger`, in alertMoneyConstraintIssue) is disclosed
 // R144-B2: and machine-verified moved-not-modified (scripts/r144b2_verify_split.py).
-import { sql, type SQL } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { logger } from "../../lib/logger";
-import { runMigrations } from "../../migrate";
 import { alertMoneyConstraintIssue, recordConstraintSkip } from "../alerts";
-import { ensurePgTrgmExtension } from "../pg-extensions";
 import { type SqlExecutor, defaultExecutor, extractCount, extractRows } from "../shared";
 
 /**

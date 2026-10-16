@@ -85,11 +85,6 @@ CREATE TABLE risk_rules (
 );
 `;
 
-interface SeededRule {
-  name: string;
-  scoreDelta: number;
-}
-
 /** Seed the two Phase-1-style hard-threshold rules. */
 async function seedStandardRules(): Promise<void> {
   await db.insert(riskRulesTable).values([
@@ -219,12 +214,8 @@ describe("scoreEvent — bounded, monotonic, benign-clean (R118-A5 #10)", () => 
     );
 
     // Bounded: two max-delta rules cap at 100 — never above.
-    await seedRule("max_a", 100, [
-      { field: "user.recentFailedLogins", operator: "gte", value: 1 },
-    ]);
-    await seedRule("max_b", 100, [
-      { field: "user.recentFailedLogins", operator: "gte", value: 2 },
-    ]);
+    await seedRule("max_a", 100, [{ field: "user.recentFailedLogins", operator: "gte", value: 1 }]);
+    await seedRule("max_b", 100, [{ field: "user.recentFailedLogins", operator: "gte", value: 2 }]);
     const capped = await scoreEvent(suspiciousContext(5, 10));
     expect(capped.score).toBe(100);
     expect(capped.score).toBeLessThanOrEqual(100);
@@ -244,7 +235,10 @@ describe("scoreEvent — threshold verdicts incl. hard_block (R118-A5 #10)", () 
   it("critical + modelEnabled + hardBlock gates → the hard_block verdict consumed by risk-hard-block.ts", async () => {
     await seedStandardRules();
     // Both gates ON — the only shape decideAction emits hard_block for.
-    await seedConfig({ modelEnabled: true, autoBlockEnabled: { softBlock: true, hardBlock: true, alert: true } });
+    await seedConfig({
+      modelEnabled: true,
+      autoBlockEnabled: { softBlock: true, hardBlock: true, alert: true },
+    });
     const result = await scoreEvent(suspiciousContext(3, 250, 1)); // 90 → critical
     expect(result).toMatchObject({ score: 90, level: "critical", actionTaken: "hard_block" });
   });
@@ -252,7 +246,10 @@ describe("scoreEvent — threshold verdicts incl. hard_block (R118-A5 #10)", () 
   it("critical with the model gate OFF (production default) → alert, NOT hard_block", async () => {
     await seedStandardRules();
     // autoBlockEnabled.hardBlock=true but modelEnabled=false (Phase-3 gate).
-    await seedConfig({ modelEnabled: false, autoBlockEnabled: { softBlock: true, hardBlock: true, alert: true } });
+    await seedConfig({
+      modelEnabled: false,
+      autoBlockEnabled: { softBlock: true, hardBlock: true, alert: true },
+    });
     const result = await scoreEvent(suspiciousContext(3, 250, 1));
     expect(result.level).toBe("critical");
     expect(result.actionTaken).toBe("alert");
@@ -327,10 +324,7 @@ describe("risk-config cache invalidation changes the verdict (R118-A5 #10)", () 
 describe("persistence (RISK_PIPELINE_ENABLED=true) (R118-A5 #10)", () => {
   it("persists the scored event with the computed verdict and returns the row id", async () => {
     process.env.RISK_PIPELINE_ENABLED = "true";
-    const [user] = await db
-      .insert(usersTable)
-      .values({ phone: "950000001" })
-      .returning();
+    const [user] = await db.insert(usersTable).values({ phone: "950000001" }).returning();
     await seedRule("fixed_40", 40, [
       { field: "user.recentFailedLogins", operator: "gte", value: 3 },
     ]);

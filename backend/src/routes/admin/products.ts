@@ -24,11 +24,7 @@ import { runStockSweep } from "../../jobs/stockWatcher";
 // R143 (L16-1): the pure field-bound validators moved to
 // products-field-limits.ts (the route crossed the 1,000-line ceiling
 // mid-round — see that module for the contracts).
-import {
-  ACCOUNT_PASSWORD_PLAINTEXT_MAX,
-  PRODUCT_FIELD_LIMITS,
-  productFieldError,
-} from "./products-field-limits";
+import { ACCOUNT_PASSWORD_PLAINTEXT_MAX, productFieldError } from "./products-field-limits";
 
 const router = Router();
 

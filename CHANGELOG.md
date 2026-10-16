@@ -10,6 +10,16 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R152 — Type-safety unification + lint-debt retirement — 2026-10-16
+
+**Scope:** the whole-product excellence continuation — the interrupted type-safety wave from the R151 hand-off was reconciled (verified hunk-by-hunk against the generated types, completed, and gated) rather than discarded. Full report: `docs/engineering/R152/round-close.md`.
+
+**Admin money queue (the round's one substantive fix):** the single-reject dialog's hand-rolled 14-field structural copy of the generated topup type had drifted (`payment_network` lost its nullability vs the orval-generated `AdminTopup`); both ends now ride the shared `AdminTopupRow` — and the page's `rejectTarget` state atom shed its bare `any`. Latent, not live (the dialog renders amount + user line only), but the `any` meant any future field misuse would have compiled silently.
+
+**Hygiene:** ~30 dead imports/locals/helpers removed (migrate stages, copilot previews, diagnostics, products, test modules); response-body `any` types in test helpers replaced with precise local interfaces (`SchedulerBody`, `ProbeBody`) and optional-chained assertions; the workspace's last `no-explicit-any` (`lazy-with-retry`) rides a justified disable-line mirroring `React.lazy`'s own generic. **Lint debt: 62 → 15 warnings (0 errors)** — the 15 survivors are the R151-triaged exhaustive-deps idioms; the 62-warning baseline is retired.
+
+**Gates (run fresh this session on the final tree):** backend 271 files / 2,507 tests, frontend 264 files / 2,496 tests (5,003 combined — full battery run twice, catching one stale decomposition spot-pin that was updated to pin the improved typed declaration), typecheck clean, route parity 84 ops, error-code sync 55, header params 7/7, impeccable 0 advisories, build green with eager path **146,665 B gz — byte-identical to R151** (the machine proof of zero runtime diff). The hand-rolled-type sweep found exactly one other escape-hatch copy (`RiskEventDetail`, risk-event.tsx) — compared field-for-field against the backend route: accurate, no drift; recorded as a watch item.
+
 ## Round R151 — Customer-journey parity + operational visibility + the independent close-out — 2026-10-16
 
 **Scope:** the whole-product excellence continuation — four implementation commits landed 2026-10-15, reconciled and closed out 2026-10-16 with the round's first FULL local gate battery plus live-production E2E. Full report: `docs/engineering/R151/round-close.md`.

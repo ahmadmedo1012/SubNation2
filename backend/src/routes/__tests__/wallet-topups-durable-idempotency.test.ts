@@ -107,7 +107,7 @@ async function postTopup(
   token: string,
   headers: Record<string, string> = {},
   body: Record<string, unknown> = topupBody(),
-): Promise<{ status: number; headers: Headers; body: any }> {
+): Promise<{ status: number; headers: Headers; body: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       const addr = server.address();
