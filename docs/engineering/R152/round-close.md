@@ -129,7 +129,37 @@ journeys of `validate:suite` (Firebase/OTP/Redis/Socket/Admin/
 Lighthouse/Sentry) — the sandbox ran them and they failed on missing
 credentials exactly as documented; no production surface was touched.
 
-## 4. Round ledger
+## 4. Live-production verification (read-only, post-deploy)
+
+CI on `d253153` completed **success** (all jobs: gitleaks, CVE gate,
+lint/typecheck/drift, unit-test matrix, production build + boot smoke,
+guest smoke, impeccable). Coolify auto-deployed; verification from this
+session after the deploy:
+
+- `GET /api/healthz` → `{"status":"ok"}`.
+- Deployed bundle identity rotated: `index-rzt2bEm3.js` (R151) →
+  `index-B9PE4dD0.js` — the R152 build is what production serves. The
+  stylesheet hash `index-8E6VOJgM.css` is identical to the local build
+  (the round's CSS surface is untouched, as expected).
+- `www.subnation.ly` → apex redirect intact.
+- **Guest E2E suite against production: 52/52 passed** (3.2 min,
+  desktop-chromium + mobile-390 projects) — the same live-DOM contract
+  family as R151: Arabic catalog + search normalization, product-detail
+  money honesty at 1280px, mobile-390 overflow/tap-target checks,
+  money-route auth gates, robots/sitemap/noindex-404 shells.
+
+Production was browsed read-only throughout; no account was created,
+no mutation was attempted, and no production data was read beyond
+public catalog surfaces.
+
+## 5. What remains owner-gated (unchanged from R151)
+
+Real-device WhatsApp OTP acceptance matrix, Coolify gateway re-pin
+verification, and the live-credential journeys of `validate:suite`
+(Firebase/OTP/Redis/Socket/Admin/Lighthouse/Sentry) — the sandbox ran
+them and they failed on missing credentials exactly as documented.
+
+## 6. Round ledger
 
 - 1 commit (this report's companion): the reconciled wave + the three
   completions + this report + the CHANGELOG entry.
