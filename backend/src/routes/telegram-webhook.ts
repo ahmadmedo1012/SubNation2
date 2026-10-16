@@ -143,27 +143,66 @@ async function handleCallbackQuery(
   const { action, topupId } = parsed;
 
   // Load + verify still pending BEFORE mutating (the service re-checks too).
+  // R153: the pre-check now also reads the reviewer attribution so the
+  // already-processed branch can say WHAT happened and WHO did it — the
+  // old single "تمت معالجة هذا الطلب مسبقاً" toast left an operator who
+  // tapped a stale button unable to tell an approved topup from a rejected
+  // one (the production report that opened this round).
   const [topup] = await db
-    .select({ status: walletTopupsTable.status })
+    .select({
+      status: walletTopupsTable.status,
+      reviewedBy: walletTopupsTable.reviewedBy,
+    })
     .from(walletTopupsTable)
     .where(eq(walletTopupsTable.id, topupId))
     .limit(1);
 
-  let outcomeLine: string;
   if (!topup) {
     await answerCallbackQuery(botToken, cq.id, "الطلب غير موجود", true);
     return;
   }
   if (topup.status !== "pending") {
-    await answerCallbackQuery(botToken, cq.id, "تمت معالجة هذا الطلب مسبقاً", true);
-    // Strip stale keyboard so the stale button can't be tapped again.
+    // R153: truthful, state-specific feedback replaces the ambiguous
+    // catch-all. Three production paths land here: (1) the operator
+    // approved on the WEBSITE — the pending card's buttons stay live
+    // because the site path has no message identity to edit them; (2) a
+    // Telegram retry re-delivered a callback whose first delivery
+    // already committed; (3) an impatient double-tap arrived after the
+    // first tap committed. In every one of them the operator deserves to
+    // know the topup's true terminal state, not a shrug.
+    const by = topup.reviewedBy ? ` بواسطة ${topup.reviewedBy}` : "";
+    await answerCallbackQuery(
+      botToken,
+      cq.id,
+      topup.status === "approved" ? `هذا الطلب معتمد بالفعل${by}` : `هذا الطلب مرفوض بالفعل${by}`,
+      true,
+    );
+    // Strip stale keyboard so the dead button can't be tapped again, and
+    // stamp the final state on the card text itself (R153: previously only
+    // the keyboard vanished — the card kept reading «⏳ بانتظار الموافقة»,
+    // inviting the next operator to tap a button that was no longer there).
+    // Idempotent: if a prior delivery already appended an outcome line the
+    // text is left untouched (the gateway classifies the Telegram "message
+    // is not modified" collision as benign).
     if (cq.message?.chat?.id && cq.message?.message_id) {
+      if (typeof cq.message.text === "string" && !cq.message.text.includes("الحالة: تمت")) {
+        await editMessageText(
+          botToken,
+          cq.message.chat.id,
+          cq.message.message_id,
+          cq.message.text +
+            (topup.status === "approved"
+              ? `\n\n✅ الحالة: تمت الموافقة${by}`
+              : `\n\n❌ الحالة: تم الرفض${by}`),
+        );
+      }
       await editMessageReplyMarkup(botToken, cq.message.chat.id, cq.message.message_id);
     }
     return;
   }
 
   const actorTag = cq.from.username ? `@${cq.from.username}` : `tg:${cq.from.id}`;
+  let outcomeLine: string;
   try {
     if (action === "approve") {
       await import("../services/topup.service").then((m) =>
@@ -180,10 +219,55 @@ async function handleCallbackQuery(
       outcomeLine = `\n\n❌ الحالة: تم الرفض بواسطة ${actorTag}`;
     }
   } catch (err) {
-    logger.warn({ err, topupId }, "[telegram-webhook] action failed");
-    await answerCallbackQuery(botToken, cq.id, "فشل تنفيذ الإجراء، حاول مجدداً", true);
+    // R153: a ServiceError carries an operator-appropriate Arabic verdict
+    // from the money state machine itself (duplicate reference, changed
+    // balance, lost race). Surfacing it verbatim replaces the old generic
+    // "فشل تنفيذ الإجراء، حاول مجدداً" — which was factually WRONG for the
+    // 409 race-loser case: a concurrent delivery (double-tap, Telegram
+    // retry, website race) had already committed the approval, and the
+    // toast told the operator the operation FAILED and invited another
+    // tap. For that specific 409 the state is re-read so the toast says
+    // the truthful terminal state instead.
+    const { ServiceError } = await import("../services/topup.service");
+    let message = "فشل تنفيذ الإجراء، حاول مجدداً";
+    if (err instanceof ServiceError) {
+      message = err.message;
+      if (err.message.includes("تمت معالجته مسبقاً")) {
+        const [fresh] = await db
+          .select({ status: walletTopupsTable.status, reviewedBy: walletTopupsTable.reviewedBy })
+          .from(walletTopupsTable)
+          .where(eq(walletTopupsTable.id, topupId))
+          .limit(1);
+        if (fresh && fresh.status !== "pending") {
+          const by = fresh.reviewedBy ? ` بواسطة ${fresh.reviewedBy}` : "";
+          message =
+            fresh.status === "approved"
+              ? `هذا الطلب معتمد بالفعل${by}`
+              : `هذا الطلب مرفوض بالفعل${by}`;
+        }
+      }
+    } else {
+      logger.warn({ err, topupId }, "[telegram-webhook] action failed");
+    }
+    await answerCallbackQuery(botToken, cq.id, message, true);
     return;
   }
+
+  // R153: answer the tapper FIRST, immediately after the money transaction
+  // commits — BEFORE the card edits. The old order (edits → answer) let up
+  // to 30 s of sequential Bot-API edit timeouts (10 s each) sit between the
+  // committed credit and the operator's only transient feedback signal;
+  // on a slow delivery that window bred double-taps and Telegram re-delivery
+  // retries, both of which landed on the committed row and answered with the
+  // ambiguous "already processed" — the exact production symptom this round
+  // opened with. The durable card state rides the edits below; if those
+  // fail the money and topup state remain correct and the failure is
+  // observable in the logs (telegram-gateway R153 classification).
+  await answerCallbackQuery(
+    botToken,
+    cq.id,
+    action === "approve" ? "✅ تمت الموافقة وإضافة الرصيد" : "❌ تم رفض الطلب",
+  );
 
   // B11-F1 (R127): the audit row this money path lacked. The admin-UI
   // route writes topup.approve/topup.reject rows (admin/topups.ts:159/196)
@@ -210,6 +294,8 @@ async function handleCallbackQuery(
 
   // Update the tapped message: strip keyboard + append a status line to the
   // ORIGINAL text (Telegram includes message.text in callback queries).
+  // R153: these edits run AFTER the callback answer — they are the durable
+  // record, not the feedback signal (see the answer-first comment above).
   if (cq.message?.chat?.id && cq.message?.message_id) {
     await editMessageReplyMarkup(botToken, cq.message.chat.id, cq.message.message_id);
     if (typeof cq.message.text === "string") {
@@ -221,11 +307,6 @@ async function handleCallbackQuery(
       );
     }
   }
-  await answerCallbackQuery(
-    botToken,
-    cq.id,
-    action === "approve" ? "✅ تمت الموافقة وإضافة الرصيد" : "❌ تم رفض الطلب",
-  );
 
   logger.info({ topupId, action, actor: actorTag }, "[telegram-webhook] topup decision executed");
 }

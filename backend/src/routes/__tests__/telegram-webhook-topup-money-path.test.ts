@@ -167,7 +167,11 @@ type TopupStatus = "pending" | "approved" | "rejected";
 async function seedTopup(
   userId: number,
   status: TopupStatus,
-  overrides: { amount?: string; paymentReference?: string | null } = {},
+  overrides: {
+    amount?: string;
+    paymentReference?: string | null;
+    reviewedBy?: string | null;
+  } = {},
 ) {
   const [t] = await db
     .insert(walletTopupsTable)
@@ -177,6 +181,12 @@ async function seedTopup(
       paymentMethod: "mobile_transfer",
       paymentNetwork: "madar",
       status,
+      ...(overrides.reviewedBy === undefined
+        ? {}
+        : {
+            reviewedBy: overrides.reviewedBy,
+            ...(status === "pending" ? {} : { reviewedAt: new Date() }),
+          }),
       ...(overrides.paymentReference === undefined
         ? {}
         : { paymentReference: overrides.paymentReference }),
@@ -387,10 +397,13 @@ describe("POST /api/webhook/telegram — malformed callback data (allowlisted ta
 // ── 4) Stale pre-check — no double credit on an already-processed topup ─────
 
 describe("POST /api/webhook/telegram — stale topup pre-check (no double credit)", () => {
-  it("an ALREADY-APPROVED topup tapped ✅ again → already-processed toast + keyboard strip, balance unchanged", async () => {
+  it("an ALREADY-APPROVED topup tapped ✅ again → truthful approved-verdict toast (with reviewer) + keyboard strip + card state stamp, balance unchanged", async () => {
     // The user was already credited by the first approval (balance 35.00).
+    // R153: the stale branch must say WHAT the terminal state is and WHO
+    // did it — the old ambiguous «تمت معالجة هذا الطلب مسبقاً» is the
+    // production symptom this round opened with.
     const user = await seedUser("35.00");
-    const topup = await seedTopup(user.id, "approved");
+    const topup = await seedTopup(user.id, "approved", { reviewedBy: "@site_admin" });
     const { url, close } = await listen(buildApp());
     try {
       const res = await postUpdate(
@@ -402,27 +415,36 @@ describe("POST /api/webhook/telegram — stale topup pre-check (no double credit
       const answers = answersFor("cq-stale1");
       expect(answers).toHaveLength(1);
       expect(answers[0]).toMatchObject({
-        text: "تمت معالجة هذا الطلب مسبقاً",
+        text: "هذا الطلب معتمد بالفعل بواسطة @site_admin",
         show_alert: true,
       });
 
       // The stale keyboard is stripped so the dead button can't be tapped
-      // again (the one edit the stale branch performs)…
+      // again…
       const edits = botCalls("editMessageReplyMarkup");
       expect(edits).toHaveLength(1);
       expect(edits[0]).toMatchObject({ chat_id: 777, message_id: 55 });
-      // …but no money moves and no text rewrite happens on this branch.
+      // …and the card text itself is stamped with the final state (R153:
+      // the card must stop reading «⏳ بانتظار الموافقة» — an outcome-less
+      // pending card with no buttons invites the next operator to "help").
+      const textEdits = botCalls("editMessageText");
+      expect(textEdits).toHaveLength(1);
+      expect(textEdits[0]).toMatchObject({
+        chat_id: 777,
+        message_id: 55,
+        text: "طلب شحن جديد — 25.00 د.ل\n\n✅ الحالة: تمت الموافقة بواسطة @site_admin",
+      });
+      // …but no money moves.
       expect(await balanceOf(user.id)).toBe("35.00");
       expect(await ledgerFor(user.id)).toHaveLength(0);
-      expect(botCalls("editMessageText")).toHaveLength(0);
     } finally {
       close();
     }
   });
 
-  it("an ALREADY-REJECTED topup tapped ✅ → same already-processed toast, no credit", async () => {
+  it("an ALREADY-REJECTED topup tapped ✅ → truthful rejected-verdict toast, no credit, terminal state preserved", async () => {
     const user = await seedUser("10.00");
-    const topup = await seedTopup(user.id, "rejected");
+    const topup = await seedTopup(user.id, "rejected", { reviewedBy: "@night_shift" });
     const { url, close } = await listen(buildApp());
     try {
       const res = await postUpdate(
@@ -431,12 +453,34 @@ describe("POST /api/webhook/telegram — stale topup pre-check (no double credit
       );
       expect(res.status).toBe(200);
       expect(answersFor("cq-stale2")[0]).toMatchObject({
-        text: "تمت معالجة هذا الطلب مسبقاً",
+        text: "هذا الطلب مرفوض بالفعل بواسطة @night_shift",
         show_alert: true,
       });
       expect(await balanceOf(user.id)).toBe("10.00");
       expect(await ledgerFor(user.id)).toHaveLength(0);
       expect((await topupRow(topup.id)).status).toBe("rejected");
+      // The action-mismatch case: a ✅ tap on a REJECTED topup changes
+      // nothing — the terminal state is immutable from a stale button.
+      expect((await topupRow(topup.id)).reviewedBy).toBe("@night_shift");
+    } finally {
+      close();
+    }
+  });
+
+  it("an approved topup WITHOUT reviewer attribution still reads truthfully (legacy rows)", async () => {
+    const user = await seedUser("35.00");
+    const topup = await seedTopup(user.id, "approved", { reviewedBy: null });
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await postUpdate(
+        url,
+        callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${topup.id}`, "cq-stale3"),
+      );
+      expect(res.status).toBe(200);
+      expect(answersFor("cq-stale3")[0]).toMatchObject({
+        text: "هذا الطلب معتمد بالفعل",
+        show_alert: true,
+      });
     } finally {
       close();
     }
@@ -546,8 +590,9 @@ describe("POST /api/webhook/telegram — valid approve (money path)", () => {
       expect(replay.body).toEqual({ ok: true });
 
       // No double credit: balance, ledger and status are exactly the
-      // post-first-approval truth, and the replay gets the honest
-      // already-processed toast.
+      // post-first-approval truth, and the replay gets the TRUTHFUL
+      // already-approved verdict naming the reviewer (R153: was the
+      // ambiguous «تمت معالجة هذا الطلب مسبقاً»).
       expect(await balanceOf(user.id)).toBe("35.00");
       const ledger = await ledgerFor(user.id);
       expect(ledger).toHaveLength(1);
@@ -555,10 +600,186 @@ describe("POST /api/webhook/telegram — valid approve (money path)", () => {
       const answers = answersFor("cq-replay");
       expect(answers).toHaveLength(2);
       expect(answers[1]).toMatchObject({
-        text: "تمت معالجة هذا الطلب مسبقاً",
+        text: "هذا الطلب معتمد بالفعل بواسطة @ops_manager",
         show_alert: true,
       });
     } finally {
+      close();
+    }
+  });
+
+  it("R153 — the answer precedes the card edits (tap→feedback latency contract)", async () => {
+    const user = await seedUser("10.00");
+    const topup = await seedTopup(user.id, "pending", { amount: "25.00" });
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await postUpdate(
+        url,
+        callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${topup.id}`, "cq-order"),
+      );
+      expect(res.status).toBe(200);
+
+      // botApiCalls preserves the global order of Bot-API traffic. The
+      // answerCallbackQuery for cq-order must be recorded BEFORE any
+      // editMessageReplyMarkup/editMessageText — the production incident
+      // had up to 30 s of edit timeouts between the committed credit and
+      // the operator's only feedback signal, which bred double-taps that
+      // landed on the committed row.
+      const answerIdx = botApiCalls.findIndex(
+        (c) => c.method === "answerCallbackQuery" && c.body.callback_query_id === "cq-order",
+      );
+      const editIdx = botApiCalls.findIndex((c) => c.method.startsWith("editMessage"));
+      expect(answerIdx).toBeGreaterThanOrEqual(0);
+      expect(editIdx).toBeGreaterThan(answerIdx);
+    } finally {
+      close();
+    }
+  });
+
+  it("R153 — a double-tap (second callback id, arrives after commit) never double-credits and answers truthfully", async () => {
+    const user = await seedUser("10.00");
+    const topup = await seedTopup(user.id, "pending", { amount: "25.00" });
+    const { url, close } = await listen(buildApp());
+    try {
+      // First tap: the real approval.
+      const first = await postUpdate(
+        url,
+        callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${topup.id}`, "cq-tap1"),
+      );
+      expect(first.status).toBe(200);
+      expect(await balanceOf(user.id)).toBe("35.00");
+
+      // Second tap on the same button (different callback id — Telegram
+      // mints a fresh one per tap), delivered after the first committed.
+      const second = await postUpdate(
+        url,
+        callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${topup.id}`, "cq-tap2"),
+      );
+      expect(second.status).toBe(200);
+
+      // Exactly one credit, one ledger row — and the second tapper is
+      // told the true state + who approved it, not "try again".
+      expect(await balanceOf(user.id)).toBe("35.00");
+      expect(await ledgerFor(user.id)).toHaveLength(1);
+      expect(answersFor("cq-tap1")[0]).toMatchObject({
+        text: "✅ تمت الموافقة وإضافة الرصيد",
+        show_alert: false,
+      });
+      expect(answersFor("cq-tap2")[0]).toMatchObject({
+        text: "هذا الطلب معتمد بالفعل بواسطة @ops_manager",
+        show_alert: true,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('R153 — the concurrent race (pre-check passed, service\'s in-tx re-check loses) → service verdict verbatim, never "try again", no credit', async () => {
+    const user = await seedUser("10.00");
+    const topup = await seedTopup(user.id, "pending", { amount: "25.00" });
+    const { url, close } = await listen(buildApp());
+    // The repo's documented pglite race harness (services/__tests__/helpers/
+    // tx-interleave.ts — B2-01/B2-02 idiom): a Promise.all of two requests
+    // only exercises sequential ordering under the single-session test DB,
+    // so the read→write window is simulated inside the service's own
+    // transaction instead. The webhook's OUTSIDE-tx pre-check runs first
+    // and sees "pending" (it is not wrapped — only the tx callback's
+    // selects are); the interleave then flips the row to approved right
+    // after the service's in-tx re-check SELECT resolves, so the guarded
+    // UPDATE matches 0 rows and throws the 409 — the exact window a
+    // concurrent delivery / website approval exploits in production.
+    const { interleaveWriterAfterSelect } =
+      await import("../../services/__tests__/helpers/tx-interleave");
+    const restore = interleaveWriterAfterSelect(db, {
+      matchSelectFields: (fields) =>
+        typeof fields === "object" && fields !== null && "status" in fields,
+      writer: async (realTx) => {
+        await realTx
+          .update(walletTopupsTable)
+          .set({ status: "approved", reviewedBy: "@site_admin", reviewedAt: new Date() })
+          .where(eq(walletTopupsTable.id, topup.id));
+      },
+    });
+    try {
+      const res = await postUpdate(
+        url,
+        callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${topup.id}`, "cq-race"),
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true });
+
+      // No credit: the race-loser never reaches the wallet write (the
+      // writer's simulated flip rolls back with the aborted tx — the
+      // documented harness caveat — leaving the row pending for the
+      // operator's next attempt, exactly like a rolled-back production
+      // attempt would).
+      expect(await balanceOf(user.id)).toBe("10.00");
+      expect(await ledgerFor(user.id)).toHaveLength(0);
+
+      // The loser's toast is the money state machine's own verdict
+      // (ServiceError passthrough, R153) — NOT the old generic
+      // "فشل تنفيذ الإجراء، حاول مجدداً" that invited pointless retries.
+      const answers = answersFor("cq-race");
+      expect(answers).toHaveLength(1);
+      expect(answers[0]).toMatchObject({
+        text: "الطلب تمت معالجته مسبقاً",
+        show_alert: true,
+      });
+      // No card edits on the failed path — the pending card stays intact
+      // for the operator's next (now-safe) attempt.
+      expect(botCalls("editMessageText")).toHaveLength(0);
+    } finally {
+      restore();
+      close();
+    }
+  });
+
+  it("R153 — a failed card edit AFTER the committed credit keeps money + answer intact (edit failure is observable, not fatal)", async () => {
+    const user = await seedUser("10.00");
+    const topup = await seedTopup(user.id, "pending", { amount: "25.00" });
+    const { url, close } = await listen(buildApp());
+    // Telegram answers {ok:false} for every editMessageText call (e.g.
+    // "message is not modified" or a deleted message) — but succeeds for
+    // the answer/keyboard calls.
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: Parameters<typeof realFetch>[0], init?: RequestInit) => {
+      const u = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (u.startsWith("https://api.telegram.org/") && u.endsWith("/editMessageText")) {
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+        botApiCalls.push({ method: "editMessageText", body });
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error_code: 400,
+            description: "Bad Request: message is not modified",
+          }),
+          { status: 200 },
+        );
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const res = await postUpdate(
+        url,
+        callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${topup.id}`, "cq-editfail"),
+      );
+      // The webhook still acks 200.
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true });
+
+      // The financial transaction stands: credit + ledger committed.
+      expect(await balanceOf(user.id)).toBe("35.00");
+      expect(await ledgerFor(user.id)).toHaveLength(1);
+      expect((await topupRow(topup.id)).status).toBe("approved");
+
+      // The operator was STILL answered with the success verdict — a
+      // Telegram UI edit failure must never mask the committed outcome.
+      expect(answersFor("cq-editfail")).toHaveLength(1);
+      expect(answersFor("cq-editfail")[0]).toMatchObject({
+        text: "✅ تمت الموافقة وإضافة الرصيد",
+      });
+    } finally {
+      globalThis.fetch = realFetch;
       close();
     }
   });
@@ -633,7 +854,8 @@ describe("POST /api/webhook/telegram — TopupService failure inside the money p
 
       // The second card: the route's own pre-check passes (still
       // pending), the SERVICE refuses (409 duplicate reference) — the
-      // webhook surfaces the failure toast and acks 200, never a 5xx.
+      // webhook surfaces the SERVICE's own Arabic verdict verbatim (R153:
+      // was the generic "فشل تنفيذ الإجراء") and acks 200, never a 5xx.
       const refused = await postUpdate(
         url,
         callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${second.id}`, "cq-dup-refused"),
@@ -641,7 +863,7 @@ describe("POST /api/webhook/telegram — TopupService failure inside the money p
       expect(refused.status).toBe(200);
       expect(refused.body).toEqual({ ok: true });
       expect(answersFor("cq-dup-refused")[0]).toMatchObject({
-        text: "فشل تنفيذ الإجراء، حاول مجدداً",
+        text: "رمز التحويل مستخدم مسبقاً في طلب شحن آخر معتمد — لا يمكن اعتماد نفس التحويل مرتين",
         show_alert: true,
       });
 

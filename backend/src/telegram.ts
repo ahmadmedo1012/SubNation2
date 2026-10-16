@@ -48,6 +48,7 @@ import { logger } from "./lib/logger";
 import { formatLyd } from "./lib/money";
 import { safeInc, telegramSendsTotal } from "./lib/metrics";
 import { captureSubsystemException } from "./lib/sentry";
+import { recordTopupCard } from "./lib/telegram-cards";
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
@@ -80,6 +81,9 @@ interface TelegramApiResponse {
   error_code?: number;
   description?: string;
   parameters?: { retry_after?: number };
+  /** R153: sendMessage's success payload — the message_id the pending-card
+   * settlement (lib/telegram-cards.ts) keys on. */
+  result?: { message_id?: number };
 }
 
 // ── Public surface ─────────────────────────────────────────────────────────
@@ -202,7 +206,22 @@ export function notifyNewTopup(input: NotifyNewTopupInput): void {
   ]
     .filter(Boolean)
     .join("\n");
-  void dispatch("topup_new", msg, buttonsForTopup(input.topupId));
+  const keyboard = buttonsForTopup(input.topupId);
+  void dispatchWithDetails("topup_new", msg, keyboard).then((result) => {
+    // R153: capture the delivered card's identity so ANY finalization
+    // path (website approve, gateway auto-approve, webhook itself) can
+    // settle the card — stamp the outcome + kill the live buttons —
+    // instead of leaving them as stale traps for the next operator tap.
+    // Only the button-carrying card is recorded: it is the actionable
+    // one. Best-effort: a Redis miss just falls back to the webhook's
+    // truthful stale-tap branch.
+    if (result.outcome === "ok" && result.messageId != null && input.topupId) {
+      const chatId = Number(process.env.TELEGRAM_CHAT_ID);
+      if (Number.isFinite(chatId)) {
+        void recordTopupCard(input.topupId, chatId, result.messageId, msg);
+      }
+    }
+  });
 }
 
 /**
@@ -392,6 +411,9 @@ interface DispatchResult {
   outcome: "ok" | "skip" | "failure";
   attempts: number;
   errorMessage: string | null;
+  /** R153: the delivered message's id (null on skip/failure) — the
+   * pending-topup card settlement keys on it. */
+  messageId: number | null;
 }
 
 async function dispatchWithDetails(
@@ -405,7 +427,7 @@ async function dispatchWithDetails(
   if (!token || !chatId) {
     safeInc(telegramSendsTotal, { event, outcome: "skip" });
     logger.debug({ event, category: "telegram" }, "telegram dispatch: skip (env not configured)");
-    return { outcome: "skip", attempts: 0, errorMessage: null };
+    return { outcome: "skip", attempts: 0, errorMessage: null, messageId: null };
   }
 
   let attempts = 0;
@@ -437,7 +459,12 @@ async function dispatchWithDetails(
           { event, status: response.status, category: "telegram" },
           "telegram dispatch: ok",
         );
-        return { outcome: "ok", attempts, errorMessage: null };
+        return {
+          outcome: "ok",
+          attempts,
+          errorMessage: null,
+          messageId: body?.result?.message_id ?? null,
+        };
       }
 
       // Non-ok: distinguish transient (retryable) from permanent.
@@ -476,7 +503,7 @@ async function dispatchWithDetails(
         status: response.status,
         errorCode,
       });
-      return { outcome: "failure", attempts, errorMessage: lastError };
+      return { outcome: "failure", attempts, errorMessage: lastError, messageId: null };
     } catch (err) {
       // Network / DNS / TLS / timeout. Treat first occurrence as
       // transient so we get one retry; retain final error if both fail.
@@ -496,14 +523,14 @@ async function dispatchWithDetails(
         "telegram dispatch: failure (network)",
       );
       captureSubsystemException("telegram", err, { event });
-      return { outcome: "failure", attempts, errorMessage: lastError };
+      return { outcome: "failure", attempts, errorMessage: lastError, messageId: null };
     }
   }
 
   // Exhausted retries — defensive bookkeeping; the loop above always
   // returns before reaching here, but TypeScript can't see that.
   safeInc(telegramSendsTotal, { event, outcome: "failure" });
-  return { outcome: "failure", attempts, errorMessage: lastError ?? "exhausted" };
+  return { outcome: "failure", attempts, errorMessage: lastError ?? "exhausted", messageId: null };
 }
 
 /**

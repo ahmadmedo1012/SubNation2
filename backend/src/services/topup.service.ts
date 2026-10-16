@@ -7,6 +7,7 @@ import { roundLyd, formatLyd } from "../lib/money";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
 import { notifyTopupApproved, notifyTopupRejected } from "../telegram";
+import { settleTopupCard } from "../lib/telegram-cards";
 
 // ── Topup Service ─────────────────────────────────────────────────────────────
 
@@ -689,6 +690,17 @@ export class TopupService {
       emitToAdmins("admin-stats-update", { type: "topup-approved" });
     }
 
+    // R153: settle the operator chat's pending Telegram card — the ✅/❌
+    // buttons on the card this approval just finalized are live traps for
+    // the next operator tap (website approvals previously left them
+    // because the site had no message identity). Fire-and-forget, never
+    // throws: a Telegram/Redis miss only means the card settles on its
+    // first stale tap instead (the webhook's truthful branch).
+    void settleTopupCard(
+      topupId,
+      `\n\n✅ الحالة: تمت الموافقة${reviewedBy ? ` بواسطة ${reviewedBy}` : ""}`,
+    );
+
     return { success: true, message: "تمت الموافقة على طلب الشحن وإضافة الرصيد" };
   }
 
@@ -755,6 +767,13 @@ export class TopupService {
       });
       emitToAdmins("admin-stats-update", { type: "topup-rejected" });
     }
+
+    // R153: the reject twin of the approve settlement — same fire-and-forget
+    // semantics (see the approve comment).
+    void settleTopupCard(
+      topupId,
+      `\n\n❌ الحالة: تم الرفض${reviewedBy ? ` بواسطة ${reviewedBy}` : ""}`,
+    );
 
     return { success: true, message: "تم رفض طلب الشحن" };
   }
