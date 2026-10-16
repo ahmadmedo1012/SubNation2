@@ -1,6 +1,6 @@
 import React from "react";
 import { Edit2 } from "lucide-react";
-import { displayUserName, type AdminUserShape } from "@/lib/admin/user-display";
+import { displayUserName, displayUserPhone, type AdminUserShape } from "@/lib/admin/user-display";
 import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
 import { type UserRowProps } from "@/components/admin/users/DesktopUserRow";
 import { ProviderBadges } from "@/components/admin/users/ProviderBadges";
@@ -27,6 +27,11 @@ export const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit 
         <div className="font-mono font-bold text-sm truncate">
           {displayUserName(user as unknown as AdminUserShape)}
         </div>
+        {/* R154 (P3-D): placeholder-safe phone line — the real number or
+            «لا يوجد رقم هاتف مرتبط», never a raw tg_/f_ placeholder. */}
+        <div className="text-2xs text-muted-foreground mt-0.5 truncate">
+          {displayUserPhone(user as unknown as AdminUserShape)}
+        </div>
         <div className="mt-1">
           <ProviderBadges user={user as unknown as Record<string, unknown>} />
         </div>
@@ -47,7 +52,7 @@ export const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit 
         /* R123 (E3 P3b): the mobile twin of the desktop edit
            button — same accessible name so screen readers
            announce the same action in both layouts. */
-        aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
+        aria-label={`تعديل المستخدم ${displayUserName(user as unknown as AdminUserShape)}`}
         className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
       >
         <Edit2 className="w-4 h-4" />

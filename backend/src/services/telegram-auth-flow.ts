@@ -21,6 +21,7 @@ import { logAuthActivity } from "../lib/auth-activity";
 import { logger } from "../lib/logger";
 import { isUniqueViolation } from "../lib/pg-errors";
 import { scoreEventFireAndForget } from "../lib/risk-emit";
+import { notifyNewUser } from "../telegram";
 // 93-A1 S3 (round-93): replay-hash claim + per-flow TTLs moved to
 // lib/telegram-replay.ts (TTL ≥ freshness + bounded no-Redis fallback).
 import {
@@ -116,6 +117,17 @@ export async function findOrCreateTelegramUser(
     // Telegram activity in /admin/security and the profile page's
     // linked-accounts list reflects it.
     await refreshTelegramIdentity(existing, tgId, now);
+    // R154 (P3-C): keep the Telegram @username fresh on every login
+    // (usernames change; the id stays authoritative). Never a linkage
+    // key — display only.
+    if (fields.username && fields.username !== existing.telegramUsername) {
+      const [updated] = await db
+        .update(usersTable)
+        .set({ telegramUsername: fields.username })
+        .where(eq(usersTable.id, existing.id))
+        .returning();
+      if (updated) return { user: updated, isNewUser: false };
+    }
     return { user: existing, isNewUser: false };
   }
 
@@ -146,6 +158,7 @@ export async function findOrCreateTelegramUser(
           // Profile flow can later let the user add a real phone & link OTP.
           phone: `tg_${tgId}`,
           telegramId: tgId,
+          telegramUsername: fields.username ?? undefined,
           displayName: displayName || undefined,
           photoUrl: fields.photo_url ?? undefined,
           authProvider: "telegram",
@@ -198,6 +211,28 @@ export async function findOrCreateTelegramUser(
       .values({ referrerId: referredById, refereeId: created.id, status: "pending" })
       .onConflictDoNothing();
   }
+
+  // R154 (P3-A): the exactly-once new-account operator notification. This
+  // is the ONE hook every Telegram signup path lands on (widget, Mini
+  // App, OIDC) — it fires ONLY on the committed creation path, so the
+  // 23505 race loser (isNewUser:false above) never double-notifies and a
+  // normal login never notifies. Best-effort delivery (the telegram.ts
+  // dispatch pipeline's metrics/retry); a Telegram outage never rolls
+  // back the account.
+  notifyNewUser({
+    phone: created.phone,
+    userId: created.id,
+    hadReferral: referredById != null,
+    provider: "telegram",
+    identity: {
+      displayName: created.displayName,
+      telegramUsername: created.telegramUsername,
+      telegramId: tgId,
+      // tg_<id> is an internal placeholder — the card says the user did
+      // NOT provide a phone number instead of echoing it.
+      phoneIsPlaceholder: true,
+    },
+  });
 
   return { user: created, isNewUser: true };
 }

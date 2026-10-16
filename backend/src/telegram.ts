@@ -127,24 +127,72 @@ export function logTelegramBootStatus(): void {
 /**
  * Input options for {@link notifyNewUser}.
  *
- * Exported so callers (auth-settings handlers, the auth route, and
- * any future signup pipeline) can pass typed objects through helper
- * functions without re-inlining the shape at every callsite.
+ * Exported so callers (auth-settings handlers, the auth route, the
+ * WhatsApp verify route, and the Telegram find-or-create hook) can pass
+ * typed objects through helper functions without re-inlining the shape
+ * at every callsite.
  */
 export interface NotifyNewUserInput {
   phone: string;
   userId?: number;
   hadReferral: boolean;
-  /** Auth provider used for sign-up: "telegram" | "firebase" | "email" | etc. */
+  /** Auth provider used for sign-up: "telegram" | "whatsapp" | "firebase" | … */
   provider?: string | null;
+  /**
+   * R154 (P3-B): the provider-aware identity block — every field is
+   * OPTIONAL and only VERIFIED claims ride (nothing fabricated):
+   *   - Google signups carry displayName/email/emailVerified;
+   *   - Telegram signups carry displayName/telegramUsername/telegramId
+   *     and phoneIsPlaceholder (the tg_<id> placeholder must NEVER be
+   *     presented as a real phone number);
+   *   - WhatsApp OTP signups carry a REAL verified phone and nothing else.
+   */
+  identity?: {
+    displayName?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    telegramUsername?: string | null;
+    telegramId?: string | null;
+    /** true when `phone` is a provider placeholder (tg_/f_) — the card
+     *  says «لم يقدّم رقم هاتف» instead of echoing it. */
+    phoneIsPlaceholder?: boolean;
+  };
 }
 
 export function notifyNewUser(input: NotifyNewUserInput): void {
+  const isTelegram = (input.provider ?? "").toLowerCase().startsWith("telegram");
+  const phoneLine = input.identity?.phoneIsPlaceholder
+    ? "الهاتف: <b>لم يقدّم رقم هاتف</b>"
+    : `الهاتف: <code>${escapeHtml(input.phone)}</code>`;
+  const emailLine = input.identity?.email
+    ? `البريد: <code>${escapeHtml(input.identity.email)}</code>${
+        input.identity.emailVerified ? " (مُوثّق)" : ""
+      }`
+    : isTelegram
+      ? // Telegram's profile scope carries NO email claim — say so
+        // instead of fabricating one.
+        "البريد: <b>غير متاح من تيليجرام</b>"
+      : null;
   const msg = [
     `🆕 <b>مستخدم جديد</b>`,
-    `رقم الهاتف: <code>${escapeHtml(input.phone)}</code>`,
     input.provider ? `طريقة التسجيل: <b>${providerLabel(input.provider)}</b>` : null,
+    input.identity?.displayName ? `الاسم: <b>${escapeHtml(input.identity.displayName)}</b>` : null,
+    phoneLine,
+    isTelegram
+      ? [
+          input.identity?.telegramUsername
+            ? `تيليجرام: <b>@${escapeHtml(input.identity.telegramUsername)}</b>`
+            : null,
+          input.identity?.telegramId
+            ? `معرّف تيليجرام: <code>${escapeHtml(input.identity.telegramId)}</code>`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" — ") || null
+      : null,
+    emailLine,
     input.hadReferral ? `✅ سجّل عبر إحالة` : null,
+    input.userId ? `معرّف المستخدم: <code>#${input.userId}</code>` : null,
     timestampLine(),
   ]
     .filter(Boolean)
@@ -652,7 +700,13 @@ function buttonsForTopup(topupId?: number): InlineKeyboard | undefined {
 
 function buttonsForUser(userId?: number): InlineKeyboard | undefined {
   const origin = appUrl();
-  if (!origin || !userId) return undefined;
+  if (!origin) return undefined;
+  // R154 (P3-B): the deep link pre-fills the admin directory's search —
+  // the ?search= contract GlobalSearch already established — so the
+  // operator lands ON the user's row instead of the bare list.
+  if (userId) {
+    return [[{ text: "👤 فتح بطاقة المستخدم", url: `${origin}/admin/users?search=${userId}` }]];
+  }
   return [[{ text: "👤 فتح المستخدمين", url: `${origin}/admin/users` }]];
 }
 
@@ -674,12 +728,20 @@ function providerLabel(provider: string): string {
     case "telegram":
     case "telegram.org":
       return "تيليجرام";
+    case "whatsapp":
+    case "whatsapp_phone":
+      // R154 (P3-B): the WhatsApp OTP channel's own label — it used to
+      // fall into the Firebase-phone bucket ("هاتف (Firebase)") on every
+      // order/topup card.
+      return "واتساب (OTP)";
     case "firebase":
     case "google":
     case "google.com":
+    case "firebase_google":
       return "Google";
     case "phone":
     case "firebase-phone":
+    case "firebase_phone":
       return "هاتف (Firebase)";
     case "email":
     case "password":

@@ -8,6 +8,11 @@ import type { FormEvent } from "react";
 import { AppDialog, AppDialogBody } from "@/components/ui/app-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  displayUserPhone,
+  telegramIdentityLine,
+  type AdminUserShape,
+} from "@/lib/admin/user-display";
 import { Label } from "@/components/ui/label";
 import { formatCurrency, formatDate, tierColor, tierLabel } from "@/lib/utils";
 import { type AdminUser } from "@workspace/api-client-react";
@@ -66,7 +71,18 @@ export function UserEditDialog({
         if (!o) onClose();
       }}
       title="تعديل المستخدم"
-      description={editingUser?.phone}
+      description={
+        editingUser
+          ? [
+              // R154 (P3-D): placeholder-safe phone (never a raw tg_/f_
+              // value) + the Telegram identity line when present.
+              displayUserPhone(editingUser as unknown as AdminUserShape),
+              telegramIdentityLine(editingUser as unknown as AdminUserShape),
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : undefined
+      }
       dismissable={!saving}
       footer={
         <>

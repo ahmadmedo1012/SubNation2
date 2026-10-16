@@ -571,11 +571,21 @@ router.post("/firebase/session", async (req, res) => {
       typeof link_consent_token === "string" ? link_consent_token : undefined,
     );
     if (result.isNewUser) {
+      // R154 (P3-B): provider-aware identity — Google signups ride the
+      // verified token claims; an f_ placeholder phone is never presented
+      // as a real number.
+      const phoneIsPlaceholder = result.user.phone.startsWith("f_");
       notifyNewUser({
         phone: result.user.phone,
         userId: result.user.id,
         hadReferral: !!result.user.referredBy,
         provider: derivePrimaryProvider(result.user),
+        identity: {
+          displayName: result.user.displayName,
+          email: result.user.email,
+          emailVerified: result.user.emailVerified,
+          phoneIsPlaceholder,
+        },
       });
     }
 

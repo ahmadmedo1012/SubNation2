@@ -1,5 +1,5 @@
 import { db, ordersTable, usersTable } from "@workspace/db";
-import { and, count, desc, eq, inArray, like } from "drizzle-orm";
+import { and, count, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
@@ -45,15 +45,39 @@ router.get("/users", requireAdmin, async (req, res) => {
   // joins the users directory (same rationale as admin/orders.ts).
   const page = pageParam(req);
 
+  // R154 (P3-D): the search now covers every STORED identity dimension
+  // the operator can see on a row — user id, real phone, display name,
+  // email, Telegram @username, and the Telegram identity id — via the
+  // admin/orders.ts multi-column idiom (case-insensitive ILIKE on the
+  // lowercased term, wildcards escaped, id equality when the term is
+  // numeric). A search for a tg_<id> placeholder still matches (the
+  // placeholder lives in the phone column), but so does the real
+  // identity data the operator actually knows.
+  const buildSearchCondition = (term: string) => {
+    const escaped = `%${escapeLikeTerm(term.toLowerCase())}%`;
+    const conditions = [
+      like(sql`lower(${usersTable.phone})`, escaped),
+      like(sql`lower(coalesce(${usersTable.displayName}, ''))`, escaped),
+      like(sql`lower(coalesce(${usersTable.email}, ''))`, escaped),
+      like(sql`lower(coalesce(${usersTable.telegramUsername}, ''))`, escaped),
+      like(sql`coalesce(${usersTable.telegramId}, '')`, escaped),
+    ];
+    const asNumber = Number.parseInt(term, 10);
+    if (Number.isSafeInteger(asNumber) && asNumber > 0 && String(asNumber) === term.trim()) {
+      conditions.push(eq(usersTable.id, asNumber));
+    }
+    return or(...conditions);
+  };
+
   const users =
-    search && typeof search === "string"
+    search && typeof search === "string" && search.trim().length > 0
       ? await db
           .select()
           .from(usersTable)
           // AUD103-3-F4 (r103): escape LIKE wildcards so a "%"/"_" in the
           // search box can't act as a pattern wildcard (bare "%" matched
           // every row).
-          .where(like(usersTable.phone, `%${escapeLikeTerm(search)}%`))
+          .where(buildSearchCondition(search.trim()))
           .orderBy(desc(usersTable.createdAt))
           .limit(limit)
           .offset((page - 1) * limit)
@@ -92,6 +116,11 @@ router.get("/users", requireAdmin, async (req, res) => {
       display_name: u.displayName ?? null,
       email: u.email ?? null,
       photo_url: u.photoUrl ?? null,
+      // R154 (P3-C): the Telegram identity pair — username + classic id —
+      // so the directory can distinguish accounts without echoing the
+      // tg_<id> phone placeholder as if it were a number.
+      telegram_username: u.telegramUsername ?? null,
+      telegram_id: u.telegramId ?? null,
       // Self-reported auth provider — values: "firebase_phone" |
       // "firebase_google" | "firebase" | "telegram" | "legacy_password"
       auth_provider: u.authProvider ?? "legacy_password",

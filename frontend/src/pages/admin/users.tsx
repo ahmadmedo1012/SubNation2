@@ -44,6 +44,12 @@ import { csvCell } from "@/lib/csv";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatCurrency, formatDate, tierLabel } from "@/lib/utils";
+import {
+  displayUserName,
+  displayUserPhone,
+  telegramIdentityLine,
+  type AdminUserShape,
+} from "@/lib/admin/user-display";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   customFetch,
@@ -351,11 +357,14 @@ export default function AdminUsersPage() {
     // a fat-fingered 100,000-point set (= 1,000 د.ل) landed in one
     // unconfirmed tap while every adjacent money path confirmed.
     if (walletValue !== null || pointsChanged) {
+      // R154 (P3-D): placeholder-safe user label — the confirm copy never
+      // addresses the operator by a raw tg_/f_ placeholder.
+      const userLabel = displayUserName(editingUser as unknown as AdminUserShape);
       // R126-L3 (A2-5): the points leg of the confirm — the delta + its
       // dinar equivalent (the same "كل 100 نقطة = 1 د.ل" idiom the
       // form hint uses), so both currencies are named honestly when
       // both ride the PATCH.
-      const pointsSentence = `سيتم تحديد نقاط ولاء ${editingUser.phone} إلى ${nextPoints} (الحالية: ${currentPoints}) — القيمة بالدينار عند التحويل: ${formatCurrency(nextPoints / 100)} (كل 100 نقطة = 1 د.ل).`;
+      const pointsSentence = `سيتم تحديد نقاط ولاء ${userLabel} إلى ${nextPoints} (الحالية: ${currentPoints}) — القيمة بالدينار عند التحويل: ${formatCurrency(nextPoints / 100)} (كل 100 نقطة = 1 د.ل).`;
       let description: string;
       if (walletValue !== null) {
         const currentBalance = Number(editingUser.wallet_balance ?? 0) || 0;
@@ -367,10 +376,10 @@ export default function AdminUsersPage() {
               : currentBalance - walletValue;
         const actionText =
           form.wallet_mode === "set"
-            ? `سيتم تحديد رصيد محفظة ${editingUser.phone} إلى ${formatCurrency(walletValue)} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
+            ? `سيتم تحديد رصيد محفظة ${userLabel} إلى ${formatCurrency(walletValue)} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
             : form.wallet_mode === "add"
-              ? `سيتم إضافة ${formatCurrency(walletValue)} إلى محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
-              : `سيتم خصم ${formatCurrency(walletValue)} من محفظة ${editingUser.phone} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`;
+              ? `سيتم إضافة ${formatCurrency(walletValue)} إلى محفظة ${userLabel} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`
+              : `سيتم خصم ${formatCurrency(walletValue)} من محفظة ${userLabel} (الرصيد الحالي: ${formatCurrency(currentBalance)}).`;
         const negativeWarning =
           form.wallet_mode === "subtract" && nextBalance < 0
             ? " تنبيه: المبلغ يتجاوز الرصيد الحالي وسيُرفض التحديث."
@@ -469,7 +478,7 @@ export default function AdminUsersPage() {
       // action; green like the topup approvals.
       toast({
         title: "تم الحفظ",
-        description: `تم تحديث بيانات ${editingUser.phone}`,
+        description: `تم تحديث بيانات ${displayUserName(editingUser as unknown as AdminUserShape)}`,
         variant: "success",
       });
       // 99-M3: success is a terminal resolution — the intent key must not
@@ -611,6 +620,7 @@ export default function AdminUsersPage() {
   const exportUsersCSV = () => {
     const csvHeaders = [
       "رقم الهاتف",
+      "هوية تيليجرام",
       "الرصيد",
       "المستوى",
       "النقاط",
@@ -619,7 +629,11 @@ export default function AdminUsersPage() {
       "تاريخ التسجيل",
     ];
     const rows = sorted.map((u) => [
-      u.phone ?? "",
+      // R154 (P3-D): placeholder-safe — the real phone or the honest
+      // «no phone linked» line, never a raw tg_/f_ placeholder; the
+      // Telegram identity (username · id) joins as its own column.
+      displayUserPhone(u as unknown as AdminUserShape),
+      telegramIdentityLine(u as unknown as AdminUserShape) ?? "",
       // R120-B4 (A5-F13): the shared currency formatter (grouping + د.ل)
       // — the same string the table renders, so the CSV never presents
       // an ungrouped 1234.50 the UI never showed. (The dashboard's

@@ -58,6 +58,7 @@ CREATE TABLE users (
   phone varchar(20) NOT NULL UNIQUE,
   google_id varchar(255) UNIQUE,
   telegram_id varchar(255) UNIQUE,
+  telegram_username varchar(255), -- R154 (P3-C): display-only Telegram @username
   firebase_uid varchar(255) UNIQUE,
   email varchar(255),
   email_verified boolean NOT NULL DEFAULT false,

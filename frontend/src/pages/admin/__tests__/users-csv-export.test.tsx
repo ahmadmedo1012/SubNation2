@@ -16,7 +16,7 @@
  *      comma-joined fragment.
  *   2. Plain cells (phone, counts) are quoted harmlessly.
  *   3. Embedded double quotes are escaped by doubling (RFC-4180 §2.7).
- *   4. A full assembled row keeps its 7-column shape — the header
+ *   4. A full assembled row keeps its 8-column shape (R154: +Telegram identity column) — the header
  *      count and the row's quoted-cell count agree.
  */
 
@@ -51,9 +51,10 @@ describe("csvCell — RFC-4180 quoting for the users export (A2-3)", () => {
     expect(csvCell('قال "تسوية" هنا')).toBe('"قال ""تسوية"" هنا"');
   });
 
-  it("an assembled row keeps its 7-column shape — header and row agree", () => {
+  it("an assembled row keeps its 8-column shape — header and row agree (R154: +Telegram identity column)", () => {
     const headers = [
       "رقم الهاتف",
+      "هوية تيليجرام",
       "الرصيد",
       "المستوى",
       "النقاط",
@@ -65,6 +66,7 @@ describe("csvCell — RFC-4180 quoting for the users export (A2-3)", () => {
     // grouping threshold that used to shift the row.
     const row = [
       "0913456789",
+      "@libyan_user · 987654321",
       formatCurrency(1234.5),
       "برونزي",
       150,
@@ -105,6 +107,9 @@ describe("csvCell — RFC-4180 quoting for the users export (A2-3)", () => {
     expect(parseLine(headerLine)).toEqual(headers);
     expect(parseLine(rowLine)).toEqual([
       "0913456789",
+      // The Telegram identity starts with "@" — the OWASP formula-injection
+      // guard (R128 B3-F2) prefixes it with the apostrophe.
+      "'@libyan_user · 987654321",
       formatCurrency(1234.5),
       "برونزي",
       "150",

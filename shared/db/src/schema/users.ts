@@ -24,6 +24,14 @@ export const usersTable = pgTable(
     phone: varchar("phone", { length: 20 }).notNull().unique(),
     googleId: varchar("google_id", { length: 255 }).unique(),
     telegramId: varchar("telegram_id", { length: 255 }).unique(),
+    /**
+     * R154 (P3-C): the Telegram @username (verified on every widget /
+     * Mini App / OIDC login, nullable — many Telegram accounts have none).
+     * Powers the admin directory's Telegram identity column + the
+     * new-account operator notification. NEVER used as a linkage key
+     * (usernames change; the telegram_id stays authoritative).
+     */
+    telegramUsername: varchar("telegram_username", { length: 255 }),
     firebaseUid: varchar("firebase_uid", { length: 255 }).unique(),
     email: varchar("email", { length: 255 }),
     emailVerified: boolean("email_verified").notNull().default(false),

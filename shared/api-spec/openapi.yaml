@@ -7173,12 +7173,19 @@ components:
           type: integer
         phone:
           type: string
+          description: Real phone when the channel provides one; an internal placeholder (tg_<id> / f_<hash>) for phoneless Telegram/Google accounts — render via the directory's placeholder-aware display, never as a customer number.
         display_name:
           type: ["string", "null"]
         email:
           type: ["string", "null"]
         photo_url:
           type: ["string", "null"]
+        telegram_username:
+          type: ["string", "null"]
+          description: R154 — the Telegram @username (display-only, refreshed on every Telegram login; null when the account has none).
+        telegram_id:
+          type: ["string", "null"]
+          description: R154 — the classic Telegram user id (the verified identity key).
         auth_provider:
           type: string
           description: |

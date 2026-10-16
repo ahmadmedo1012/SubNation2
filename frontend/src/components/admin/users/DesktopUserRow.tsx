@@ -6,7 +6,7 @@ import { Edit2 } from "lucide-react";
 // risk.tsx LEVEL_META idiom) instead of raw cyan/yellow/slate hues
 // that collapse to 1.43–2.86:1 on the shipped light theme.
 import { StatusBadge } from "@/components/ui/status-badge";
-import { displayUserName, type AdminUserShape } from "@/lib/admin/user-display";
+import { displayUserName, displayUserPhone, type AdminUserShape } from "@/lib/admin/user-display";
 import { formatCurrency, formatDate, tierLabel } from "@/lib/utils";
 import { type AdminUser } from "@workspace/api-client-react";
 import { TIER_TONE } from "@/components/admin/users/user-directory-meta";
@@ -52,6 +52,12 @@ export const DesktopUserRow = React.memo(function DesktopUserRow({
     >
       <td className="px-4 py-2.5 font-mono font-bold text-sm">
         {displayUserName(user as unknown as AdminUserShape)}
+        {/* R154 (P3-D): the REAL phone when the channel provided one —
+            «لا يوجد رقم هاتف مرتبط» for placeholder phones (tg_/f_),
+            with the Telegram identity line beside it. */}
+        <div className="font-sans font-normal text-2xs text-muted-foreground mt-0.5">
+          {displayUserPhone(user as unknown as AdminUserShape)}
+        </div>
       </td>
       <td className="px-4 py-2.5">
         <ProviderBadges user={user as unknown as Record<string, unknown>} />
@@ -84,7 +90,7 @@ export const DesktopUserRow = React.memo(function DesktopUserRow({
       <td className="px-4 py-2.5">
         <button
           onClick={() => onEdit(user)}
-          aria-label={`تعديل المستخدم ${user.phone ?? ""}`}
+          aria-label={`تعديل المستخدم ${displayUserName(user as unknown as AdminUserShape)}`}
           /* 93-C6 / F-07 (A5 S-6): p-1.5 ≈ 28px target —
              p-2 + min sizes lift the tappable area for
              the 375px admin layout. */

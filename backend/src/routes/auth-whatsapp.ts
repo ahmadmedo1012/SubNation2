@@ -6,6 +6,7 @@ import { scoreEventFireAndForget } from "../lib/risk-emit";
 import * as Sentry from "@sentry/node";
 import { isWhatsAppGatewayConfigured } from "../services/openwa.service";
 import { startOtp, verifyOtp } from "../services/whatsapp-otp.service";
+import { notifyNewUser } from "../telegram";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { getAuthCookieOptions } from "../lib/cookie-options";
 
@@ -277,6 +278,23 @@ whatsappAuthRouter.post("/whatsapp/verify", async (req, res) => {
     res.cookie("auth_token", result.token, {
       ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
     });
+
+    // R154 (P3-A): the WhatsApp OTP channel joins the exactly-once
+    // new-account notification set — a REAL verified phone number and
+    // nothing else fabricated (no name/email claims exist on this
+    // channel). Fires only on the committed first-login (the service's
+    // 23505 race loser returns isNewUser:false); best-effort delivery.
+    if (result.isNewUser) {
+      notifyNewUser({
+        phone: result.user.phone,
+        userId: result.user.id,
+        hadReferral: !!result.user.referredBy,
+        provider: "whatsapp",
+        identity: {
+          displayName: result.user.displayName,
+        },
+      });
+    }
 
     return res.json({
       token: COOKIE_SESSION_SENTINEL,

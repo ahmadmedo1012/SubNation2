@@ -1479,6 +1479,7 @@ export const AdminUserLoyaltyTier = {
 
 export interface AdminUser {
   id: number;
+  /** Real phone when the channel provides one; an internal placeholder (tg_<id> / f_<hash>) for phoneless Telegram/Google accounts — render via the directory's placeholder-aware display, never as a customer number. */
   phone: string;
   /** @nullable */
   display_name?: string | null;
@@ -1486,6 +1487,16 @@ export interface AdminUser {
   email?: string | null;
   /** @nullable */
   photo_url?: string | null;
+  /**
+   * R154 — the Telegram @username (display-only, refreshed on every Telegram login; null when the account has none).
+   * @nullable
+   */
+  telegram_username?: string | null;
+  /**
+   * R154 — the classic Telegram user id (the verified identity key).
+   * @nullable
+   */
+  telegram_id?: string | null;
   /**
    * "firebase_phone" | "firebase_google" | "firebase" |
    * "telegram" | "whatsapp_phone" | "legacy_password".

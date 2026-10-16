@@ -7,7 +7,12 @@ import { adminFetchJson } from "@/lib/admin-session";
 // R125 (A6 B-9): formatCount feeds the search palette's sr-only result
 // announcement (Arabic plural forms — «نتيجة واحدة» / «3 نتائج»).
 import { formatCount, formatCurrency } from "@/lib/utils";
-import { displayUserName, userFromRow } from "@/lib/admin/user-display";
+import {
+  displayUserName,
+  displayUserPhone,
+  userFromRow,
+  type AdminUserShape,
+} from "@/lib/admin/user-display";
 import { type AdminOrder, type AdminProduct, type AdminUser } from "@workspace/api-client-react";
 import { Loader2, Package, Search, ShoppingBag, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -443,8 +448,14 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                           <Users className="w-3.5 h-3.5 text-status-info" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-mono text-sm font-bold">{u.phone}</div>
+                          {/* R154 (P3-D): placeholder-safe — the real phone
+                              or the honest «no phone linked» line, never a
+                              raw tg_/f_ placeholder. */}
+                          <div className="font-mono text-sm font-bold">
+                            {displayUserName(u as unknown as AdminUserShape)}
+                          </div>
                           <div className="text-xs text-muted-foreground">
+                            {displayUserPhone(u as unknown as AdminUserShape)} ·{" "}
                             {formatCurrency(u.wallet_balance)} رصيد · {u.order_count} طلب
                           </div>
                         </div>

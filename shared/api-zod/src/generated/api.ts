@@ -2805,10 +2805,24 @@ export const ListAdminUsersQueryParams = zod.object({
 
 export const ListAdminUsersResponseItem = zod.object({
   id: zod.number().int(),
-  phone: zod.string(),
+  phone: zod
+    .string()
+    .describe(
+      "Real phone when the channel provides one; an internal placeholder (tg_<id> / f_<hash>) for phoneless Telegram/Google accounts — render via the directory's placeholder-aware display, never as a customer number.",
+    ),
   display_name: zod.string().nullish(),
   email: zod.string().nullish(),
   photo_url: zod.string().nullish(),
+  telegram_username: zod
+    .string()
+    .nullish()
+    .describe(
+      "R154 — the Telegram @username (display-only, refreshed on every Telegram login; null when the account has none).",
+    ),
+  telegram_id: zod
+    .string()
+    .nullish()
+    .describe("R154 — the classic Telegram user id (the verified identity key)."),
   auth_provider: zod
     .string()
     .optional()

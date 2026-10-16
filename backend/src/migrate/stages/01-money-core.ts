@@ -291,6 +291,9 @@ export async function applyUsersColumnReconcileStage(
 /** Columns the FINAL (post-Stage-C) users schema carries. */
 const USERS_FINAL_COLUMN_DDL: Array<[name: string, definition: string]> = [
   ["telegram_id", "VARCHAR(255) UNIQUE"],
+  // R154 (P3-C): nullable Telegram @username — display-only, never a
+  // linkage key (the telegram_id above stays authoritative).
+  ["telegram_username", "VARCHAR(255)"],
   ["firebase_uid", "VARCHAR(255)"],
   ["email", "VARCHAR(255)"],
   ["email_verified", "BOOLEAN NOT NULL DEFAULT FALSE"],

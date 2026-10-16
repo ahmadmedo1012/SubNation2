@@ -29,6 +29,11 @@ export interface AdminUserShape {
   display_name?: string | null;
   /** Lower-cased email when known. */
   email?: string | null;
+  /** R154 (P3-C): the Telegram @username — display-only, nullable. */
+  telegram_username?: string | null;
+  /** R154 (P3-C): the classic Telegram user id — the verified identity
+   *  key (what the widget/Mini App/OIDC logins link on). */
+  telegram_id?: string | null;
   /** Backend's stored authProvider tag — values:
    *    "firebase_google" | "firebase_phone" (legacy) |
    *    "telegram" | "whatsapp_phone" | "firebase" | "legacy_password" */
@@ -41,10 +46,36 @@ export interface AdminUserShape {
 }
 
 /** Stored phone is a placeholder if it starts with one of these prefixes. */
-const PLACEHOLDER_PREFIXES = ["tg_", "fb_", "gh_"];
+const PLACEHOLDER_PREFIXES = ["tg_", "f_", "fb_", "gh_"];
 
 function isPlaceholderPhone(phone: string): boolean {
   return PLACEHOLDER_PREFIXES.some((p) => phone.startsWith(p));
+}
+
+/**
+ * R154 (P3-D): the phone line for a directory row / dialog / CSV — the
+ * REAL stored phone when the channel provided one, the honest «لا يوجد
+ * رقم هاتف مرتبط» when it is an internal placeholder. NEVER renders a
+ * tg_/f_ placeholder as if it were a customer number.
+ */
+export function displayUserPhone(user: AdminUserShape): string {
+  const phone = typeof user.phone === "string" ? user.phone.trim() : "";
+  if (phone && !isPlaceholderPhone(phone)) return phone;
+  return "لا يوجد رقم هاتف مرتبط";
+}
+
+/**
+ * R154 (P3-D): the Telegram identity line — "@username · 987654321" —
+ * for rows that carry a Telegram identity; null otherwise (renders
+ * nothing, not a fake value).
+ */
+export function telegramIdentityLine(user: AdminUserShape): string | null {
+  const username = typeof user.telegram_username === "string" ? user.telegram_username.trim() : "";
+  const id = typeof user.telegram_id === "string" ? user.telegram_id.trim() : "";
+  const parts: string[] = [];
+  if (username) parts.push(`@${username.replace(/^@/, "")}`);
+  if (id) parts.push(id);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /**
