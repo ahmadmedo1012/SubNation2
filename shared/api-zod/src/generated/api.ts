@@ -190,6 +190,12 @@ export const ListPublicAuthProvidersResponse = zod.object({
         .string()
         .nullish()
         .describe("Numeric Telegram bot id (parsed server-side; the token never leaves the DB)."),
+      oidc_enabled: zod
+        .boolean()
+        .optional()
+        .describe(
+          "R154 — true when the operator configured BotFather's OIDC Client ID + Secret; the SPA switches the Telegram button to the OIDC Authorization Code + PKCE flow (GET /auth/telegram/oidc/login) instead of the legacy widget redirect.",
+        ),
     }),
   ),
   whatsapp_status: zod
@@ -282,6 +288,44 @@ export const AuthTelegramCallbackQueryParams = zod.object({
 });
 
 export const AuthTelegramCallbackResponse = zod.void();
+
+/**
+ * Issues a single-use state/PKCE verifier/nonce (server-side store, 10-minute TTL) and 302s the browser to https://oauth.telegram.org/auth with scope `openid profile` — NO phone scope (registration is phone-free by design) and no telegram:bot_access. Unconfigured OIDC credentials redirect to /login?error=provider_disabled.
+ * @summary R154 — start the modern Telegram Login OIDC flow (Authorization Code + PKCE)
+ */
+export const AuthTelegramOidcLoginQueryParams = zod.object({
+  redirect: zod.coerce
+    .string()
+    .optional()
+    .describe("Same-origin internal path honored after login (open-redirect-guarded)."),
+  ref: zod.coerce
+    .string()
+    .optional()
+    .describe("Referral code captured at flow start; bound into the server-side state."),
+});
+
+export const AuthTelegramOidcLoginResponse = zod.void();
+
+/**
+ * Consumes the single-use state, exchanges the authorization code with the server-held PKCE verifier, validates the RS256 ID token against the official JWKS (issuer, audience, expiry, issued-at, nonce), and mints the SAME session cookie the legacy flows use — the verified classic `id` claim links to the existing users.telegram_id account (never `sub`, which is a different internal identifier). No token in the redirect URL.
+ * @summary R154 — complete the Telegram Login OIDC flow
+ */
+export const AuthTelegramOidcCallbackQueryParams = zod.object({
+  code: zod.coerce
+    .string()
+    .optional()
+    .describe("Authorization code from oauth.telegram.org (absent on user cancellation)."),
+  state: zod.coerce
+    .string()
+    .optional()
+    .describe("The single-use state issued at /auth/telegram/oidc/login."),
+  error: zod.coerce
+    .string()
+    .optional()
+    .describe("Provider-reported error (user cancellation etc.)."),
+});
+
+export const AuthTelegramOidcCallbackResponse = zod.void();
 
 /**
  * @summary Exchange a Firebase Google ID token for the session cookie
@@ -3194,6 +3238,12 @@ export const GetAdminAuthSettingsResponse = zod.object({
             label: zod.string(),
             isSecret: zod.boolean(),
             placeholder: zod.string().optional(),
+            optional: zod
+              .boolean()
+              .optional()
+              .describe(
+                "R154 — optional fields accept an empty value in PATCH submissions (an empty value CLEARS the stored setting; the OIDC credentials are a legal unset state).",
+              ),
           })
           .describe("Static provider-field metadata (the form builder's source)."),
       ),

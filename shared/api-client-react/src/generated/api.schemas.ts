@@ -1851,6 +1851,8 @@ export interface AdminAuthProviderField {
   label: string;
   isSecret: boolean;
   placeholder?: string;
+  /** R154 — optional fields accept an empty value in PATCH submissions (an empty value CLEARS the stored setting; the OIDC credentials are a legal unset state). */
+  optional?: boolean;
 }
 
 export type AdminAuthProviderAuthType =
@@ -3029,6 +3031,8 @@ export type ListPublicAuthProviders200ProvidersItem = {
    * @nullable
    */
   bot_id?: string | null;
+  /** R154 — true when the operator configured BotFather's OIDC Client ID + Secret; the SPA switches the Telegram button to the OIDC Authorization Code + PKCE flow (GET /auth/telegram/oidc/login) instead of the legacy widget redirect. */
+  oidc_enabled?: boolean;
 };
 
 /**
@@ -3093,6 +3097,32 @@ export type AuthTelegramCallbackParams = {
    * Widget fields arrive as query params; verified then redirected.
    */
   hash: string;
+};
+
+export type AuthTelegramOidcLoginParams = {
+  /**
+   * Same-origin internal path honored after login (open-redirect-guarded).
+   */
+  redirect?: string;
+  /**
+   * Referral code captured at flow start; bound into the server-side state.
+   */
+  ref?: string;
+};
+
+export type AuthTelegramOidcCallbackParams = {
+  /**
+   * Authorization code from oauth.telegram.org (absent on user cancellation).
+   */
+  code?: string;
+  /**
+   * The single-use state issued at /auth/telegram/oidc/login.
+   */
+  state?: string;
+  /**
+   * Provider-reported error (user cancellation etc.).
+   */
+  error?: string;
 };
 
 export type AuthFirebaseSessionBody = {

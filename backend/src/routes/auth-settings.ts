@@ -2,11 +2,17 @@
  * Auth Provider Settings Routes
  *
  * Public (mount at /auth):
- *   GET  /providers          → /api/auth/providers
- *   POST /telegram           → verify Telegram widget data (callback mode)
- *   GET  /telegram/callback  → verify Telegram widget data (redirect mode,
- *                              for mobile / in-app browsers where popups
- *                              + cross-window postMessage are blocked)
+ *   GET  /providers                    → /api/auth/providers
+ *   POST /telegram                     → verify Telegram widget data (callback mode)
+ *   GET  /telegram/callback            → verify Telegram widget data (redirect mode,
+ *                                          for mobile / in-app browsers where popups
+ *                                          + cross-window postMessage are blocked)
+ *   GET  /telegram/oidc/login          → R154: start the modern OIDC Authorization
+ *                                          Code Flow with PKCE (302 to
+ *                                          oauth.telegram.org)
+ *   GET  /telegram/oidc/callback       → R154: complete the OIDC flow (state +
+ *                                          PKCE + nonce + RS256/JWKS ID-token
+ *                                          validation) and mint the session
  *
  * Admin (mount at /admin/settings):
  *   GET   /auth              → list all providers (masked secrets)
@@ -15,7 +21,8 @@
  * R126-L9 (A3 split plan E): the business logic moved out — the
  * system_settings persistence + masking live in
  * services/auth-settings-store.ts, the Telegram login flows in
- * services/telegram-auth-flow.ts, and the B1-1 callback CSRF gate in
+ * services/telegram-auth-flow.ts (legacy) + services/telegram-oidc-flow.ts
+ * (R154 modern OIDC), and the B1-1 callback CSRF gate in
  * lib/telegram-callback.ts. This file owns transport only: provider
  * metadata, the cache key/middleware, cookies, redirects, and response
  * envelopes. Re-exports below keep the module's import surface
@@ -47,6 +54,7 @@ import {
   type ProviderMeta,
 } from "../services/auth-settings-store";
 import { handleTelegramAuth, handleTelegramWebAppAuth } from "../services/telegram-auth-flow";
+import { completeTelegramOidcLogin, startTelegramOidcFlow } from "../services/telegram-oidc-flow";
 import {
   TELEGRAM_CALLBACK_CSRF_ERROR,
   isTelegramCallbackSameOrigin,
@@ -88,9 +96,12 @@ const PROVIDERS: ProviderMeta[] = [
     label: "Telegram",
     color: "#2AABEE",
     icon: "telegram",
+    // R154 (P2): auth_type stays "widget" for the legacy fallback; the
+    // public providers response carries `oidc_enabled` so the SPA switches
+    // transports without a new auth_type enum.
     auth_type: "widget",
-    description: "تسجيل الدخول عبر Telegram Login Widget",
-    setup_url: "https://core.telegram.org/widgets/login",
+    description: "تسجيل الدخول عبر Telegram",
+    setup_url: "https://core.telegram.org/bots/telegram-login",
     fields: [
       {
         key: "bot_username",
@@ -103,6 +114,20 @@ const PROVIDERS: ProviderMeta[] = [
         label: "Bot Token",
         isSecret: true,
         placeholder: "1234567890:ABC-DEF...",
+      },
+      {
+        key: "oidc_client_id",
+        label: "OIDC Client ID (BotFather — Login Widget)",
+        isSecret: false,
+        optional: true,
+        placeholder: "1234567890",
+      },
+      {
+        key: "oidc_client_secret",
+        label: "OIDC Client Secret (BotFather — Login Widget)",
+        isSecret: true,
+        optional: true,
+        placeholder: "الصق القيمة من BotFather — لا تُعرض بعد الحفظ",
       },
     ],
   },
@@ -213,6 +238,21 @@ authProviderPublicRouter.get("/providers", authProviderCache, async (_req, res) 
       if (/^\d{6,}$/.test(prefix)) bot_id = prefix;
     }
 
+    // R154 (P2): `oidc_enabled` — the modern OIDC transport is live ONLY
+    // when the operator configured BotFather's Client ID + Client Secret
+    // (a DIFFERENT credential pair from the Bot API token). The SPA
+    // switches the Telegram button to /api/auth/telegram/oidc/login when
+    // this is true; the legacy widget flow remains the fallback.
+    let oidc_enabled = false;
+    if (meta.id === "telegram") {
+      oidc_enabled =
+        !!cfg.enabled &&
+        typeof cfg.oidc_client_id === "string" &&
+        cfg.oidc_client_id.trim().length > 0 &&
+        typeof cfg.oidc_client_secret === "string" &&
+        cfg.oidc_client_secret.trim().length > 0;
+    }
+
     return {
       id: meta.id,
       label: meta.label,
@@ -226,6 +266,7 @@ authProviderPublicRouter.get("/providers", authProviderCache, async (_req, res) 
       app_id: cfg.app_id ?? null,
       bot_username: cfg.bot_username ?? null,
       bot_id,
+      oidc_enabled,
     };
   }).filter((p) => {
     if (!p.enabled || !p.has_config) return false;
@@ -252,6 +293,7 @@ authProviderPublicRouter.get("/providers", authProviderCache, async (_req, res) 
         app_id: null,
         bot_username: null,
         bot_id: null,
+        oidc_enabled: false,
       });
     }
   }
@@ -527,6 +569,100 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
   }
 });
 
+// ── R154 (P2): Telegram Login — modern OIDC (Authorization Code + PKCE) ─────
+//
+// Spec: https://core.telegram.org/bots/telegram-login ("Manual
+// Implementation"). This is the flow that makes Telegram registration
+// phone-free by design: the requested scopes are `openid profile` — NO
+// `phone` (no SMS/phone consent step) and no `telegram:bot_access`.
+//
+// CSRF/replay model (the B1-1 banner's documented upgrade path, realized):
+//   • `state` — server-generated, single-use, stored server-side
+//     (lib/telegram-oidc-states.ts, 10-minute TTL) bound to THIS flow's
+//     verifier/nonce/redirect/referral. The callback consumes it exactly
+//     once; a cross-site attacker cannot forge one.
+//   • PKCE S256 — the authorization code is useless without the
+//     server-held verifier; code interception dies here.
+//   • `nonce` — echoed inside the RS256-signed ID token and re-checked
+//     against the flow's stored value.
+// The cross-site redirect from oauth.telegram.org is EXPECTED here (the
+// state+PKCE+nonce battery is the defense), so the legacy B1-1
+// same-origin gate deliberately does not apply to this route pair.
+//
+// Owner setup (BotFather): select the bot → Login Widget → add the
+// Allowed URL `https://<site-origin>/api/auth/telegram/oidc/callback`
+// (plus the site origin itself) → copy the shown Client ID + Client
+// Secret into /admin/settings → Telegram.
+
+// GET /api/auth/telegram/oidc/login — start the flow (302 to Telegram).
+authProviderPublicRouter.get("/telegram/oidc/login", async (req, res) => {
+  try {
+    const query = req.query as Record<string, string | undefined>;
+    const start = await startTelegramOidcFlow({
+      originHeader: (req.headers.origin as string | undefined) ?? undefined,
+      redirect: typeof query.redirect === "string" ? query.redirect : null,
+      referralCode: typeof query.ref === "string" ? query.ref : null,
+    });
+    if ("error" in start) {
+      // provider_disabled | misconfigured_origin — both are honest
+      // "not ready" states surfaced on the login page, never a mint.
+      return res.redirect(`/login?error=${encodeURIComponent(start.error)}`);
+    }
+    return res.redirect(start.authorizationUrl);
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.redirect("/login?error=server_error");
+  }
+});
+
+// GET /api/auth/telegram/oidc/callback — complete the flow.
+//
+// Telegram redirects here with ?code=&state= on success, ?error= (or
+// nothing) on user cancellation. On success: consume the state (single
+// use), exchange the code with the PKCE verifier, validate the RS256 ID
+// token against the official JWKS (iss/aud/exp/iat/nonce), find-or-create
+// the SAME account the legacy flows use (classic `id` claim →
+// users.telegram_id — never `sub`, which is a different internal
+// identifier), mint the session, set the httpOnly cookie, and 302 to the
+// flow's stored post-login path (or the cookie-bounce /auth/callback —
+// no token in the URL, F-010 parity).
+authProviderPublicRouter.get("/telegram/oidc/callback", async (req, res) => {
+  try {
+    const query = req.query as Record<string, string | undefined>;
+
+    // Cancellation / provider-reported error: Telegram sends ?error=
+    // (or an empty redirect) when the user dismisses the consent screen.
+    if (typeof query.error === "string" && query.error) {
+      return res.redirect(`/login?error=${encodeURIComponent(query.error)}`);
+    }
+    const code = typeof query.code === "string" ? query.code : "";
+    const state = typeof query.state === "string" ? query.state : "";
+    if (!code || !state) {
+      return res.redirect("/login?error=cancelled");
+    }
+
+    const result = await completeTelegramOidcLogin({
+      code,
+      state,
+      originHeader: (req.headers.origin as string | undefined) ?? undefined,
+      client: getClientInfo(req),
+    });
+    if (!result.ok) {
+      return res.redirect(`/login?error=${encodeURIComponent(result.reason)}`);
+    }
+
+    // Cookie-first session transport (F-010 parity with every other mint
+    // route); the JWT never rides the URL.
+    res.cookie("auth_token", result.token, {
+      ...getAuthCookieOptions(30 * 24 * 60 * 60 * 1000),
+    });
+    return res.redirect(result.redirect ?? "/auth/callback");
+  } catch (err) {
+    Sentry.captureException(err);
+    return res.redirect("/login?error=server_error");
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN ROUTER  (mount at /admin/settings in index.ts)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -572,13 +708,16 @@ const MAX_PROVIDER_FIELD_LENGTH: Record<string, number> = {
 
 function providerFieldSchema(field: ProviderField): z.ZodString {
   const max = MAX_PROVIDER_FIELD_LENGTH[field.key] ?? 500;
+  // R154 (P2): optional fields (the OIDC credentials) accept "" — the
+  // unset state is legal and means "fall back to the legacy flow".
+  if (field.optional) return z.string().trim().max(max);
   return z.string().trim().min(1).max(max);
 }
 
 function buildProviderPatchSchema(meta: ProviderMeta) {
   const shape: Record<string, z.ZodTypeAny> = { enabled: z.boolean().optional() };
   for (const field of meta.fields) {
-    shape[field.key] = providerFieldSchema(field);
+    shape[field.key] = providerFieldSchema(field).optional();
   }
   return z.object(shape).strict();
 }
@@ -612,6 +751,14 @@ authProviderAdminRouter.patch("/auth/:id", requireAdmin, async (req, res) => {
     const val = incoming[field.key];
     if (val === undefined) continue;
     if (field.isSecret && (val === "[SET]" || val === "")) continue;
+    // R154 (P2): an EMPTY optional field CLEARS the value (the admin
+    // form's "leave it unset" state) instead of storing a blank string
+    // the enabled-probe would misread as configured.
+    if (field.optional && val === "") {
+      delete updated[field.key];
+      changedFields.push(field.key);
+      continue;
+    }
     updated[field.key] = val;
     changedFields.push(field.key);
   }

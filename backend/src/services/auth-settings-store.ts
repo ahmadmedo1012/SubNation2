@@ -23,6 +23,11 @@ export interface ProviderField {
   label: string;
   isSecret: boolean;
   placeholder?: string;
+  /** R154 (P2): optional fields may be left EMPTY — the PATCH schema
+   *  accepts "" for them and the storage layer CLEARS the value (the
+   *  OIDC credentials are a legal unset state; the flow falls back to
+   *  the legacy widget transport until they are configured). */
+  optional?: boolean;
 }
 
 export interface ProviderMeta {

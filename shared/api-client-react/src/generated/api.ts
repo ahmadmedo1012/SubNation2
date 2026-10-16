@@ -108,6 +108,8 @@ import type {
   AuthFirebaseSession409,
   AuthFirebaseSessionBody,
   AuthTelegramCallbackParams,
+  AuthTelegramOidcCallbackParams,
+  AuthTelegramOidcLoginParams,
   AuthTelegramWebApp200,
   AuthTelegramWebAppBody,
   AuthTelegramWidget200,
@@ -1318,6 +1320,299 @@ export function useAuthTelegramCallback<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getAuthTelegramCallbackQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAuthTelegramOidcLoginUrl = (params?: AuthTelegramOidcLoginParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/auth/telegram/oidc/login?${stringifiedParams}`
+    : `/api/auth/telegram/oidc/login`;
+};
+
+/**
+ * Issues a single-use state/PKCE verifier/nonce (server-side store, 10-minute TTL) and 302s the browser to https://oauth.telegram.org/auth with scope `openid profile` — NO phone scope (registration is phone-free by design) and no telegram:bot_access. Unconfigured OIDC credentials redirect to /login?error=provider_disabled.
+ * @summary R154 — start the modern Telegram Login OIDC flow (Authorization Code + PKCE)
+ */
+export const authTelegramOidcLogin = async (
+  params?: AuthTelegramOidcLoginParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<unknown> => {
+  return customFetch<unknown>(getAuthTelegramOidcLoginUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAuthTelegramOidcLoginQueryKey = (params?: AuthTelegramOidcLoginParams) => {
+  return [`/api/auth/telegram/oidc/login`, ...(params ? [params] : [])] as const;
+};
+
+export const getAuthTelegramOidcLoginQueryOptions = <
+  TData = Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcLoginParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcLogin>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAuthTelegramOidcLoginQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof authTelegramOidcLogin>>> = ({ signal }) =>
+    authTelegramOidcLogin(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type AuthTelegramOidcLoginQueryResult = NonNullable<
+  Awaited<ReturnType<typeof authTelegramOidcLogin>>
+>;
+export type AuthTelegramOidcLoginQueryError = ErrorType<void>;
+
+export function useAuthTelegramOidcLogin<
+  TData = Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+  TError = ErrorType<void>,
+>(
+  params: undefined | AuthTelegramOidcLoginParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcLogin>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+          TError,
+          Awaited<ReturnType<typeof authTelegramOidcLogin>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAuthTelegramOidcLogin<
+  TData = Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcLoginParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcLogin>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+          TError,
+          Awaited<ReturnType<typeof authTelegramOidcLogin>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAuthTelegramOidcLogin<
+  TData = Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcLoginParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcLogin>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary R154 — start the modern Telegram Login OIDC flow (Authorization Code + PKCE)
+ */
+
+export function useAuthTelegramOidcLogin<
+  TData = Awaited<ReturnType<typeof authTelegramOidcLogin>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcLoginParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcLogin>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getAuthTelegramOidcLoginQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAuthTelegramOidcCallbackUrl = (params?: AuthTelegramOidcCallbackParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/auth/telegram/oidc/callback?${stringifiedParams}`
+    : `/api/auth/telegram/oidc/callback`;
+};
+
+/**
+ * Consumes the single-use state, exchanges the authorization code with the server-held PKCE verifier, validates the RS256 ID token against the official JWKS (issuer, audience, expiry, issued-at, nonce), and mints the SAME session cookie the legacy flows use — the verified classic `id` claim links to the existing users.telegram_id account (never `sub`, which is a different internal identifier). No token in the redirect URL.
+ * @summary R154 — complete the Telegram Login OIDC flow
+ */
+export const authTelegramOidcCallback = async (
+  params?: AuthTelegramOidcCallbackParams,
+  options?: Parameters<typeof customFetch>[1],
+): Promise<unknown> => {
+  return customFetch<unknown>(getAuthTelegramOidcCallbackUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAuthTelegramOidcCallbackQueryKey = (params?: AuthTelegramOidcCallbackParams) => {
+  return [`/api/auth/telegram/oidc/callback`, ...(params ? [params] : [])] as const;
+};
+
+export const getAuthTelegramOidcCallbackQueryOptions = <
+  TData = Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcCallbackParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcCallback>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAuthTelegramOidcCallbackQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof authTelegramOidcCallback>>> = ({
+    signal,
+  }) => authTelegramOidcCallback(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type AuthTelegramOidcCallbackQueryResult = NonNullable<
+  Awaited<ReturnType<typeof authTelegramOidcCallback>>
+>;
+export type AuthTelegramOidcCallbackQueryError = ErrorType<void>;
+
+export function useAuthTelegramOidcCallback<
+  TData = Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+  TError = ErrorType<void>,
+>(
+  params: undefined | AuthTelegramOidcCallbackParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcCallback>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+          TError,
+          Awaited<ReturnType<typeof authTelegramOidcCallback>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAuthTelegramOidcCallback<
+  TData = Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcCallbackParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcCallback>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+          TError,
+          Awaited<ReturnType<typeof authTelegramOidcCallback>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAuthTelegramOidcCallback<
+  TData = Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcCallbackParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcCallback>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary R154 — complete the Telegram Login OIDC flow
+ */
+
+export function useAuthTelegramOidcCallback<
+  TData = Awaited<ReturnType<typeof authTelegramOidcCallback>>,
+  TError = ErrorType<void>,
+>(
+  params?: AuthTelegramOidcCallbackParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof authTelegramOidcCallback>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getAuthTelegramOidcCallbackQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

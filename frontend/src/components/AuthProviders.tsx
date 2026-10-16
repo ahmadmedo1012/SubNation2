@@ -29,6 +29,10 @@ export interface Provider {
   /** Numeric prefix of the bot token, parsed server-side. Required to
    *  build the OAuth redirect URL without exposing the full token. */
   bot_id?: string | null;
+  /** R154 (P2): true when the operator configured BotFather's OIDC
+   *  Client ID + Secret — the modern Authorization Code + PKCE flow
+   *  replaces the legacy widget redirect for THIS deployment. */
+  oidc_enabled?: boolean;
 }
 
 // ── Provider Icons ─────────────────────────────────────────────────────────────
@@ -420,6 +424,11 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
               key={provider.id}
               botId={provider.bot_id}
               botUsername={provider.bot_username}
+              /* R154 (P2): the modern OIDC transport when the operator
+                 configured BotFather's OIDC credentials — phone-free
+                 registration by design; the legacy widget redirect
+                 stays the fallback until then. */
+              oidc={!!provider.oidc_enabled}
               onSuccess={handleSuccess}
               onError={setError}
             />

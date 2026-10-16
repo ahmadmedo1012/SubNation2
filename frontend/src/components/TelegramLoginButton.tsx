@@ -64,6 +64,14 @@ interface TelegramLoginButtonProps {
   /** Bot username (without the `@`). Currently unused for redirect flow
    *  but kept for diagnostics + future popup-mode fallback. */
   botUsername?: string;
+  /** R154 (P2): when true, the button starts the modern OIDC flow
+   *  (GET /api/auth/telegram/oidc/login) instead of the legacy widget
+   *  redirect — the backend builds the oauth.telegram.org Authorization
+   *  Code + PKCE URL server-side (state/nonce/verifier live in the
+   *  backend's single-use store; the browser never sees a secret).
+   *  Registration through this flow never asks for a phone number
+   *  (scopes are openid + profile only). */
+  oidc?: boolean;
   /** No-op in redirect flow — the backend handles success and ends up
    *  on /auth/callback. Kept to preserve the AuthProviders contract. */
   onSuccess?: (token: string) => void;
@@ -110,7 +118,7 @@ function TelegramIcon() {
   );
 }
 
-export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps) {
+export function TelegramLoginButton({ botId, oidc = false, onError }: TelegramLoginButtonProps) {
   const [loading, setLoading] = useState(false);
 
   const handleClick = () => {
@@ -122,8 +130,27 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
     try {
       setLoading(true);
 
-      const origin = window.location.origin;
       const referral = readReferralFromUrl();
+      // 93-C5 / F-15 (A4 #3): the guarded destination must survive the
+      // round-trip (the legacy flow re-appends it to return_to; the
+      // R154 OIDC flow passes it to the login endpoint which binds it
+      // into the server-side state).
+      const redirect = readRedirectTargetFromUrl();
+
+      if (oidc) {
+        // R154 (P2) — the modern transport: one top-level navigation to
+        // the backend, which issues state/PKCE/nonce, redirects to
+        // oauth.telegram.org, and completes the Authorization Code flow
+        // on the callback. No popup, no cross-window postMessage, no
+        // CSP allowances; COOP-irrelevant (top-level navigation).
+        const login = new URL("/api/auth/telegram/oidc/login", window.location.origin);
+        if (referral) login.searchParams.set("ref", referral);
+        if (redirect) login.searchParams.set("redirect", redirect);
+        window.location.href = login.toString();
+        return;
+      }
+
+      const origin = window.location.origin;
 
       // Build the return URL pointing at the FRONTEND callback page.
       //
@@ -134,11 +161,6 @@ export function TelegramLoginButton({ botId, onError }: TelegramLoginButtonProps
       // to /api/auth/telegram for verification + JWT issuance.
       const returnUrl = new URL("/auth/telegram-callback", origin);
       if (referral) returnUrl.searchParams.set("ref", referral);
-      // 93-C5 / F-15 (A4 #3): carry the guarded destination through the
-      // Telegram round-trip so the callback page can send the user back
-      // to /checkout instead of dropping them on "/" — without this,
-      // ?redirect= worked ONLY on the Google path.
-      const redirect = readRedirectTargetFromUrl();
       if (redirect) returnUrl.searchParams.set("redirect", redirect);
 
       // Build the official Telegram OAuth URL.

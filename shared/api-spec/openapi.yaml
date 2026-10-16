@@ -333,6 +333,9 @@ paths:
                         bot_id:
                           type: ["string", "null"]
                           description: Numeric Telegram bot id (parsed server-side; the token never leaves the DB).
+                        oidc_enabled:
+                          type: boolean
+                          description: R154 — true when the operator configured BotFather's OIDC Client ID + Secret; the SPA switches the Telegram button to the OIDC Authorization Code + PKCE flow (GET /auth/telegram/oidc/login) instead of the legacy widget redirect.
                   whatsapp_status:
                     # R123 (contract-suite finding): the handler emits null when the
                     # WhatsApp OTP channel is not configured — the enum covers the
@@ -470,6 +473,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/telegram/oidc/login:
+    get:
+      operationId: authTelegramOidcLogin
+      tags: [auth]
+      summary: "R154 — start the modern Telegram Login OIDC flow (Authorization Code + PKCE)"
+      security: []
+      description: >-
+        Issues a single-use state/PKCE verifier/nonce (server-side store,
+        10-minute TTL) and 302s the browser to
+        https://oauth.telegram.org/auth with scope `openid profile` —
+        NO phone scope (registration is phone-free by design) and no
+        telegram:bot_access. Unconfigured OIDC credentials redirect to
+        /login?error=provider_disabled.
+      parameters:
+        - name: redirect
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Same-origin internal path honored after login (open-redirect-guarded).
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code captured at flow start; bound into the server-side state.
+      responses:
+        "302":
+          description: Redirect to oauth.telegram.org/auth (or /login?error=... when not configured).
+
+  /auth/telegram/oidc/callback:
+    get:
+      operationId: authTelegramOidcCallback
+      tags: [auth]
+      summary: "R154 — complete the Telegram Login OIDC flow"
+      security: []
+      description: >-
+        Consumes the single-use state, exchanges the authorization code
+        with the server-held PKCE verifier, validates the RS256 ID
+        token against the official JWKS (issuer, audience, expiry,
+        issued-at, nonce), and mints the SAME session cookie the legacy
+        flows use — the verified classic `id` claim links to the
+        existing users.telegram_id account (never `sub`, which is a
+        different internal identifier). No token in the redirect URL.
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Authorization code from oauth.telegram.org (absent on user cancellation).
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: The single-use state issued at /auth/telegram/oidc/login.
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Provider-reported error (user cancellation etc.).
+      responses:
+        "302":
+          description: Success → session cookie set + redirect to the stored path (or /auth/callback); failure → /login?error=oidc_state|oidc_invalid_token|cancelled|...
 
   /auth/firebase/session:
     post:
@@ -7587,6 +7657,9 @@ components:
           type: boolean
         placeholder:
           type: string
+        optional:
+          type: boolean
+          description: R154 — optional fields accept an empty value in PATCH submissions (an empty value CLEARS the stored setting; the OIDC credentials are a legal unset state).
       required: [key, label, isSecret]
 
     AdminAuthProvider:

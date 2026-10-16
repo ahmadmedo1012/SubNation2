@@ -91,7 +91,16 @@ async function refreshTelegramIdentity(
     });
 }
 
-async function findOrCreateTelegramUser(
+/**
+ * Find-or-create the users row for a VERIFIED Telegram identity.
+ *
+ * R154 (P2): also exported for the OIDC flow (services/telegram-oidc-flow.ts)
+ * — the modern Telegram Login exchanges its id_token for the SAME classic
+ * Telegram user id (`id` claim), so both flows land on ONE account and
+ * never fork duplicates. Callers MUST have verified their credential
+ * (widget HMAC / Mini App HMAC / OIDC signature+claims) before calling.
+ */
+export async function findOrCreateTelegramUser(
   fields: TelegramAuthFields,
   referralCode: string | undefined,
 ): Promise<{ user: typeof usersTable.$inferSelect; isNewUser: boolean }> {
