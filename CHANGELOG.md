@@ -10,6 +10,18 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R157 — The visual & experience excellence round — 2026-10-17
+
+**Scope:** 37 audit-evidenced findings closed across three lanes (guest storefront, customer account/money journey, design system), executed by three parallel Explore audit agents → three implementation lanes (two full-stack subagents + the coordinator) under ponytail discipline, verified as one combined tree. Full report: `docs/engineering/R157/round-close.md`.
+
+**Design system:** the 12 theme-blind `hover:shadow-black/NN` overrides retired (`.light` hover weight halves into the 6–14% ceiling); the new `ui/select` primitive (native select in the Input recipe) replaces 5 divergent hand-rolled selects; topup-meta raw hues → status tokens; alert-dialog chrome unified with AppDialog (scrim/surface/radius); the light-mode-invisible media tile retinted; a `success` Button variant replaces the hand-rolled approve buttons; ink-token swaps (`text-white` → `text-primary-foreground`); the hand-rolled profile spinner → `Loader2`; flash-sales grid rhythm aligned.
+
+**Account & money:** topup rows derive the payment channel from `payment_method` (lypay rows finally say «LyPay» — they were channelless); rejected rows surface `admin_note` (the reason lived only inside the waiting modal); `delivered_extra_details` rides the shared CopyButton (the license-key payoff moment); the receipt stamps «سُلّمت …» on delivery; the installment dial CTA hits the 44px money-action floor; the multi-installment copy pluralized; persistent 1–10,000 LYD bounds hints; preset chips carry «د.ل»; the support composer is an auto-growing textarea (Enter=send).
+
+**Storefront / auth / notifications:** login/register provider skeletons (the auth card stopped popping taller twice after paint); the CheckoutCta insufficient-balance branch («رصيد المحفظة غير كافٍ — اشحن المحفظة» + aria-describedby linkage); the AuthErrorBanner close-button RTL fix; the PDP 640–1024px band gets exactly one sticky buy affordance; both auth callbacks set titles + `role=status/alert`; CategoryRail RTL edge fix; `formatCurrency` NaN renders the honest «— د.ل»; the notifications page row click mirrors the bell (mark-read always — link-less rows were inert); the bell footer count is a «عرض الكل» link to /notifications; the bell panel closes on page scroll.
+
+**Tests:** 3 new suites (16 cases) + 18 intentional contract re-pins with in-line rationale. **Gates:** frontend 274 files/2,555 + backend 277 files/2,558 = **5,113 tests green**, lint 0/15 baseline, typecheck clean, route parity 86 ops, error-code sync 55, header params 7/7, build green — eager 146,593 B gz (−137 B, budget 150 KiB). One finding honestly deferred (closed-ticket inline CTA — needs a cross-file prop, an inert fallback was refused); follow-ups documented in the round report.
+
 ## Round R156 — The Telegram OIDC production login fix — 2026-10-17
 
 **Scope:** the real-user Telegram login that still failed after R155 («تعذر التحقق من هوية Telegram») root-caused against primary sources and fixed — the flow now accepts the documented auth-code token shape and every profile-compatible signing algorithm. Full report: `docs/engineering/R156/round-close.md`.
