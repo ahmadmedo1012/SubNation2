@@ -163,7 +163,8 @@ describe("R137 (FE) — admin/orders.tsx decomposition: page stays an orchestrat
     const bulk = read("src/components/admin/orders/BulkActionBar.tsx");
     expect(bulk).toContain('aria-label="تغيير الحالة الجماعي"');
     expect(bulk).toContain('(s) => s.value !== "refunded" || canBulkRefund');
-    expect(bulk).toContain("جارٍ التحديث...");
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(bulk).toContain("جارٍ التحديث…");
     // The refund confirm copy the A5 O-3 test reads is built by the
     // page's applyBulkStatus from the LIVE selection — pinned above at
     // its owner; the desktop/mobile rows carry the R117 decrypt signal.

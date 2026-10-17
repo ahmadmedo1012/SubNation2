@@ -36,9 +36,7 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -148,7 +146,8 @@ describe("AdminTopupsPage — reject modal dialog semantics (F3-03)", () => {
     // …the built-in close button is disabled…
     expect(screen.getByRole("button", { name: "إغلاق" })).toBeDisabled();
     // …and the confirm button shows the busy label.
-    expect(screen.getByRole("button", { name: "جارٍ الرفض..." })).toBeDisabled();
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(screen.getByRole("button", { name: "جارٍ الرفض…" })).toBeDisabled();
 
     // Settle → success path closes the modal (existing behavior).
     resolveReject({ success: true });

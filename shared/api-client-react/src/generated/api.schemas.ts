@@ -3827,6 +3827,20 @@ export type ListAdminRiskEventsParams = {
    */
   level?: ListAdminRiskEventsLevel;
   /**
+   * R160 (risk sort affordance): optional column sort for the
+   * cursor-paginated queue, `column:direction`. ABSENT → the
+   * frozen default `created_at DESC, id DESC` (byte-identical
+   * to pre-R160). Explicit sorts append `id DESC` as a
+   * pagination-stability tiebreaker. The next_cursor ENCODES
+   * the active sort's keyset tuple: `"<isoCreatedAt>:<id>"` for
+   * created_at sorts (asc flips the continuation comparison),
+   * `"<score>:<id>"` for score sorts (the score column is an
+   * integer 0..100, so the parse is float-safe). Unknown
+   * key/direction → 400 INVALID_DATA.
+   * @nullable
+   */
+  sort?: ListAdminRiskEventsSort;
+  /**
    * Exact event-type filter — camelCase query name (matches the
    * FE caller). Unlike level, an out-of-enum value here IS 400
    * INVALID_DATA.
@@ -3849,7 +3863,10 @@ export type ListAdminRiskEventsParams = {
    */
   to?: string | null;
   /**
-   * Opaque keyset cursor from a previous page's next_cursor.
+   * Opaque keyset cursor from a previous page's next_cursor — its
+   * ENCODING follows the active ?sort= ("<isoCreatedAt>:<id>" for
+   * created_at/default sorts, "<score>:<id>" for score sorts);
+   * send it back with the same sort that produced it.
    * @nullable
    */
   cursor?: string | null;
@@ -3863,6 +3880,16 @@ export const ListAdminRiskEventsLevel = {
   medium: "medium",
   high: "high",
   critical: "critical",
+} as const;
+
+export type ListAdminRiskEventsSort =
+  (typeof ListAdminRiskEventsSort)[keyof typeof ListAdminRiskEventsSort] | null;
+
+export const ListAdminRiskEventsSort = {
+  "created_at:asc": "created_at:asc",
+  "created_at:desc": "created_at:desc",
+  "score:asc": "score:asc",
+  "score:desc": "score:desc",
 } as const;
 
 export type ListAdminRiskEventsEventType =

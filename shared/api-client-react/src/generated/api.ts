@@ -12798,11 +12798,12 @@ export const getListAdminRiskEventsUrl = (params?: ListAdminRiskEventsParams) =>
 };
 
 /**
- * The risk page's queue + load-more. Keyset cursor (opaque
- * "<isoCreatedAt>:<id>") over (created_at DESC, id DESC);
- * next_cursor is null on the last page. The LEFT JOIN enriches
- * each row with the user's phone/email (nullable — user_id is
- * ON DELETE SET NULL). Cache-Control: no-store.
+ * The risk page's queue + load-more. Keyset cursor (opaque, and
+ * encoding-dependent on the active sort — see the cursor param)
+ * over (created_at DESC, id DESC) by default; next_cursor is null
+ * on the last page. The LEFT JOIN enriches each row with the
+ * user's phone/email (nullable — user_id is ON DELETE SET NULL).
+ * Cache-Control: no-store.
  * @summary Risk events review queue (requireAdmin + users scope) — keyset cursor pagination
  */
 export const listAdminRiskEvents = async (

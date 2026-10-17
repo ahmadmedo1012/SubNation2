@@ -92,7 +92,7 @@ export default function StatusPage(): ReactElement {
   // is open.
   void tick;
 
-  const { data, isLoading, refetch, dataUpdatedAt } = useQuery<HealthzSummary>({
+  const { data, isLoading, isFetching, refetch, dataUpdatedAt } = useQuery<HealthzSummary>({
     queryKey: ["public-status-summary"],
     queryFn: fetchHealthzSummary,
     // R104 (AG2-9): 90 s → 5 min. A left-open status tab was 40
@@ -191,12 +191,17 @@ export default function StatusPage(): ReactElement {
                  p-2 + w-4 icon ≈ 32px — under the app-wide 44px tap
                  floor (WCAG 2.5.8's 24px would pass, the repo's bar
                  doesn't). Fixed h-11 w-11 box (banner-less page — no
-                 negative-margin trick needed). */
-              className="h-11 w-11 flex items-center justify-center rounded-lg hover:bg-card transition-colors text-muted-foreground hover:text-foreground"
+                 negative-margin trick needed).
+                 R160 (audit F5): the manual refresh now spins while the
+                 refetch is in flight — on a slow link the control read
+                 as dead for up to its full budget (isFetching, not
+                 isLoading: a background refetch has no skeleton). */
+              className="h-11 w-11 flex items-center justify-center rounded-lg hover:bg-card transition-colors text-muted-foreground hover:text-foreground aria-disabled:opacity-60"
               aria-label="تحديث"
               title="تحديث"
+              aria-disabled={isFetching}
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
             </button>
           </div>
         )}

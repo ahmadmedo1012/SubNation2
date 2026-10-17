@@ -400,6 +400,13 @@ function FormShell() {
 function CheckoutShell() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
+      {/* Back-link row — R160 (audit F10): the real page gained the
+          in-page back-to-cart row (order-detail's idiom); mirror it so
+          the chunk-load swap causes zero vertical reflow (ProductShell's
+          back-row precedent: min-h-11 row + mb-4). */}
+      <div className="min-h-11 mb-5 flex items-center">
+        <div className="h-4 w-24 skeleton-shimmer rounded" />
+      </div>
       <div className="flex items-center gap-3 mb-7">
         <div className="w-11 h-11 rounded-xl skeleton-shimmer" />
         <div className="space-y-1.5">

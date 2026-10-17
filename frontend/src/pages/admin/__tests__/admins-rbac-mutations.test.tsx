@@ -315,7 +315,7 @@ describe("AdminAdminsPage — RBAC mutation pins (L13-4 #1, R143 deferred)", () 
 
   it("while the disable POST is in flight, the row's toggle is busy — a double-click cannot re-fire it (R147 2-c D3)", async () => {
     // Park the disable POST on a gate the test releases — the row's
-    // button must disable + read «جارٍ...» for exactly that window
+    // button must disable + read «جارٍ…» for exactly that window
     // (the coupons.tsx `toggling` idiom, first pinned here for admins:
     // the POST kills live sessions, so a double-fire was never
     // cosmetic).
@@ -335,8 +335,9 @@ describe("AdminAdminsPage — RBAC mutation pins (L13-4 #1, R143 deferred)", () 
     fireEvent.click(within(dialog).getByRole("button", { name: "تعطيل" }));
 
     // In-flight: the row's toggle flips to the busy label AND disables
-    // (the TopupCard «جارٍ...» idiom).
-    const busy = await within(card).findByText("جارٍ...");
+    // (the TopupCard «جارٍ…» idiom).
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    const busy = await within(card).findByText("جارٍ…");
     expect(busy.closest("button")).toBeDisabled();
 
     // Release the POST — exactly ONE disable fired, then the success

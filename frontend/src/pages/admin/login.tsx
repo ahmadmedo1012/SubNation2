@@ -378,7 +378,7 @@ export default function AdminLoginPage() {
               {loginMutation.isPending || isVerifying ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  جارٍ التحقق...
+                  جارٍ التحقق…
                 </>
               ) : needs2FA ? (
                 "تأكيد الدخول"

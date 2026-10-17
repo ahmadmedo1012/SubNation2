@@ -137,7 +137,8 @@ async function advance(ms: number) {
 }
 
 function openPaletteAndType(value: string) {
-  fireEvent.click(screen.getByRole("button", { name: /بحث\.\.\./ }));
+  // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+  fireEvent.click(screen.getByRole("button", { name: /بحث…/ }));
   // The palette renders in the same commit as the click — no findBy
   // needed (and none possible: it polls on faked timers).
   const input = screen.getByPlaceholderText("بحث في الطلبات، المستخدمين، المنتجات…");
@@ -250,7 +251,8 @@ describe("AdminLayout GlobalSearch — palette a11y contract (R125 A6 B-9)", () 
 
   it("Esc closes the palette and returns focus to the trigger (was dropped to <body>)", async () => {
     renderLayout();
-    const trigger = screen.getByRole("button", { name: /بحث\.\.\./ });
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    const trigger = screen.getByRole("button", { name: /بحث…/ });
     trigger.focus();
     fireEvent.click(trigger);
 

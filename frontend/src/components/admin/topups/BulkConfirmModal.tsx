@@ -94,9 +94,9 @@ export function BulkConfirmModal({
             disabled={loading}
           >
             {loading && progress
-              ? `جاري ${progress.done}/${progress.total}...`
+              ? `جاري ${progress.done}/${progress.total}…`
               : loading
-                ? "جارٍ المعالجة..."
+                ? "جارٍ المعالجة…"
                 : action === "approve"
                   ? "موافقة"
                   : "رفض"}
@@ -120,8 +120,8 @@ export function BulkConfirmModal({
             onChange={(e) => setNote(e.target.value)}
             placeholder={
               action === "approve"
-                ? "مثال: مطابقة كشوف الحسابات المسائية..."
-                : "مثال: مراجع غير صحيح، إشعارات مكررة..."
+                ? "مثال: مطابقة كشوف الحسابات المسائية…"
+                : "مثال: مراجع غير صحيح، إشعارات مكررة…"
             }
             className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
             /* R143 (L2-5): the money-path note field joins the input.tsx
@@ -147,7 +147,7 @@ export function BulkConfirmModal({
           aria-live="polite"
           className="px-1 pt-2 text-xs text-muted-foreground tabular-nums min-h-[1rem]"
         >
-          {loading && progress ? `جاري ${progress.done}/${progress.total}...` : ""}
+          {loading && progress ? `جاري ${progress.done}/${progress.total}…` : ""}
         </div>
       </AppDialogBody>
     </AppDialog>

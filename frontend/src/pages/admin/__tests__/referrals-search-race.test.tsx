@@ -159,7 +159,8 @@ describe("AdminReferralsPage — debounced search races (R98-02)", () => {
 
     renderPage();
     await flushAsync(); // the mount fetch (no search param) settles
-    const input = screen.getByPlaceholderText("بحث برقم المُحيل أو المُحال...");
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    const input = screen.getByPlaceholderText("بحث برقم المُحيل أو المُحال…");
 
     // Type "abc" — the 300ms debounce fires on faked time; the "abc"
     // request goes in flight and stays pending on its own 700ms fake
@@ -186,7 +187,7 @@ describe("AdminReferralsPage — debounced search races (R98-02)", () => {
 
     renderPage();
     await flushAsync(); // the mount fetch settles
-    const input = screen.getByPlaceholderText("بحث برقم المُحيل أو المُحال...");
+    const input = screen.getByPlaceholderText("بحث برقم المُحيل أو المُحال…");
 
     fireEvent.change(input, { target: { value: "abc" } });
     await advance(320);

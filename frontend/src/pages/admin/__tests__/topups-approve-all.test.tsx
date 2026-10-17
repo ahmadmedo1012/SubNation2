@@ -11,7 +11,7 @@
  *      opens instead (a11y-complete, RTL-styled).
  *   2. While the loop runs, the confirm + trigger buttons are disabled
  *      and hammering them fires no second loop (double-loop prevention).
- *   3. A live "جاري done/total..." progress counter renders.
+ *   3. A live "جاري done/total…" progress counter renders.
  *   4. Mixed results produce ONE summary toast: X نجحت / Y فشلت with
  *      per-item failure reasons (#id: reason).
  *
@@ -48,9 +48,7 @@ vi.mock("@workspace/api-client-react", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 // The admin shell (sidebar / socket / copilot) is out of scope for
@@ -196,7 +194,8 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     expect(busyButtons).toHaveLength(1);
     for (const btn of busyButtons) expect(btn).toBeDisabled();
     const busyTriggers = screen
-      .getAllByText("جاري 0/3...")
+      // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+      .getAllByText("جاري 0/3…")
       .map((el) => el.closest("button"))
       .filter((b): b is HTMLButtonElement => b instanceof HTMLButtonElement);
     expect(busyTriggers).toHaveLength(2); // modal confirm + header trigger
@@ -207,10 +206,11 @@ describe("AdminTopupsPage — approveAll money loop is guarded + observable (B5-
     expect(approveTopup).toHaveBeenCalledTimes(1);
 
     // Live progress counter renders (modal subtitle/button + trigger).
-    expect(screen.getAllByText("جاري 0/3...").length).toBeGreaterThan(0);
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(screen.getAllByText("جاري 0/3…").length).toBeGreaterThan(0);
 
     gate11.resolve(APPROVED);
-    await waitFor(() => expect(screen.getAllByText("جاري 1/3...").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("جاري 1/3…").length).toBeGreaterThan(0));
     gate12.resolve(APPROVED);
 
     // Loop completes → single summary toast.

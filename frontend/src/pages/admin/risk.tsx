@@ -22,7 +22,10 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+// R123 (E3 P3a): two-way URL sync — useSearch re-renders on ?sort=
+// changes (the orders.tsx ?sort=/?status= idiom).
+import { useSearch } from "wouter";
 import { AdminLayout } from "./layout";
 // R137 (FE decomposition): the risk queue's presentational sections and
 // pure metadata moved to @/components/admin/risk/* (verbatim moves — the
@@ -41,6 +44,7 @@ import { AdminLayout } from "./layout";
 //   • RiskEventsMobileList — the mobile drill-in card list
 import {
   type DashboardResponse,
+  isRiskSort,
   type ListResponse,
   type RiskLevel,
 } from "@/components/admin/risk/risk-meta";
@@ -54,6 +58,20 @@ export default function AdminRiskPage() {
   const headers = useAdminHeaders();
   const { adminToken, hasAdminPermission } = useAuth();
   const [filter, setFilter] = useState<"all" | RiskLevel>("all");
+  // R160 (risk sort affordance): the SERVER-side ?sort= state — the
+  // queue is CURSOR-paginated, so unlike the coupons console's
+  // client-side sort the ordering rides the query key (a flip changes
+  // the key → the accumulating list restarts at page 1 under the new
+  // ordering, and the cursor never crosses sorts). Same two-way ?sort=
+  // sync discipline as the users/orders directories; invalid deep-link
+  // values degrade to the default ("" → no param).
+  const [sortBy, setSortBy] = useState(() => {
+    const s = new URLSearchParams(window.location.search).get("sort") ?? "";
+    return isRiskSort(s) ? s : "";
+  });
+  // R123 (E3 P3a): the URL is the second source of truth (see the
+  // sync effect below).
+  const searchParam = useSearch();
 
   // R125-I4 (A3-11): honest-reason RBAC gate (the settings.tsx
   // tabAllowed idiom). The nav hides /admin/risk from admins without
@@ -98,11 +116,23 @@ export default function AdminRiskPage() {
     isFetchingNextPage,
     isFetching,
   } = useInfiniteQuery<ListResponse, Error>({
-    queryKey: ["admin-risk-events", "load-more", { level: filter === "all" ? undefined : filter }],
+    // R160: the validated sort rides the query key — a flip restarts
+    // the cursor list at page 1 (the key change drops the stale pages,
+    // so a created_at cursor can never leak into a score-ordered
+    // request).
+    queryKey: [
+      "admin-risk-events",
+      "load-more",
+      {
+        level: filter === "all" ? undefined : filter,
+        sort: isRiskSort(sortBy) ? sortBy : undefined,
+      },
+    ],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       params.set("limit", "100");
       if (filter !== "all") params.set("level", filter);
+      if (isRiskSort(sortBy)) params.set("sort", sortBy);
       const cursor = pageParam as string | null;
       if (cursor) params.set("cursor", cursor);
       return adminFetchJson<ListResponse>(`/api/admin/risk/events?${params.toString()}`, {
@@ -149,6 +179,28 @@ export default function AdminRiskPage() {
     for (const e of countSource) c[e.level]++;
     return c;
   }, [countSource]);
+
+  // R123 (E3 P3a): URL → sort (a ?sort= change lands without clobbering
+  // a sort the operator already picked locally — the orders.tsx
+  // contract). An invalid value degrades to the default ordering
+  // instead of reaching the server as a 400.
+  useEffect(() => {
+    const q = new URLSearchParams(searchParam);
+    const s = q.get("sort") ?? "";
+    const sort = isRiskSort(s) ? s : "";
+    setSortBy((prev) => (prev === sort ? prev : sort));
+  }, [searchParam]);
+
+  // R160: sort flips write ?sort= back via replaceState (the same
+  // discipline — the extracts call THIS handler, never the raw setter,
+  // so the URL cannot desync from the headers/chips).
+  const handleSortBy = (value: string) => {
+    setSortBy(value);
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set("sort", value);
+    else url.searchParams.delete("sort");
+    window.history.replaceState(null, "", url.toString());
+  };
 
   // R125-I4 (A3-11): the deep-link honest-reason card (the settings.tsx
   // tabAllowed idiom) — reached only via a URL, never via the nav (which
@@ -235,8 +287,8 @@ export default function AdminRiskPage() {
         )}
         {events.length > 0 && (
           <>
-            <RiskEventsTable events={events} />
-            <RiskEventsMobileList events={events} />
+            <RiskEventsTable events={events} sortBy={sortBy} onSortBy={handleSortBy} />
+            <RiskEventsMobileList events={events} sortBy={sortBy} onSelectSort={handleSortBy} />
 
             {/* R125-I4 (A4-B-6): the has-more envelope drives a real
                 append-in-place «تحميل المزيد» (the orders/users/tickets

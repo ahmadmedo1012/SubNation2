@@ -37,5 +37,15 @@ export default defineConfig({
         hasTouch: true,
       },
     },
+    {
+      // R160 (R159-AUDIT gap i): the 640–1024 band — landscape phones and
+      // small tablets — had NO project, so the R157 PDP affordance split
+      // (sticky bar <lg, buy panel ≥lg) was never exercised at its own
+      // width. 768 sits mid-band; plain chromium, no touch emulation.
+      name: "tablet-768",
+      use: {
+        viewport: { width: 768, height: 1024 },
+      },
+    },
   ],
 });

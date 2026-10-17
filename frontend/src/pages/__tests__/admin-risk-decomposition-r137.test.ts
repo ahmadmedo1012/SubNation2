@@ -73,9 +73,18 @@ describe("R137 (FE) — admin/risk.tsx decomposition: page stays an orchestratio
     // The accumulating events infinite query — the load-more key
     // segment, the next_cursor envelope contract and the queue action.
     expect(page).toContain("useInfiniteQuery<ListResponse, Error>({");
-    expect(page).toContain(
-      'queryKey: ["admin-risk-events", "load-more", { level: filter === "all" ? undefined : filter }],',
+    // R160 re-pin: the validated ?sort= joined the query key (the risk
+    // sort affordance — a flip restarts the cursor list at page 1 so a
+    // created_at cursor can never leak into a score-ordered request).
+    // Whitespace-free matching — prettier wraps the key object across
+    // lines (the R141 lesson); the pinned contract is the key's members.
+    const squashed = page.replace(/\s+/g, " ");
+    expect(squashed).toContain(
+      'queryKey: [ "admin-risk-events", "load-more", { level: filter === "all" ? undefined : filter, sort: isRiskSort(sortBy) ? sortBy : undefined, }, ],',
     );
+    // R160: the ?sort= rides the request too (the whitelisted param the
+    // backend route validates).
+    expect(page).toContain('if (isRiskSort(sortBy)) params.set("sort", sortBy);');
     expect(page).toContain("getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,");
     expect(page).toContain("initialPageParam: null as string | null,");
     expect(page).toContain("onClick={() => void fetchNextPage()}");
@@ -99,6 +108,15 @@ describe("R137 (FE) — admin/risk.tsx decomposition: page stays an orchestratio
     // One source: the infinite query's key, the counter query's enabled
     // gate and the chip bar's active state all key off the filter atom.
     expect(page).toContain('const [filter, setFilter] = useState<"all" | RiskLevel>("all");');
+    // R160 (strengthening, the R159 orders precedent): the ?sort= atom
+    // is page-owned too — the extracts (table headers + mobile chips)
+    // receive the value + the handleSortBy callback, never a setter.
+    expect(page).toContain(
+      "const [sortBy, setSortBy] = useState(() => {\n" +
+        '    const s = new URLSearchParams(window.location.search).get("sort") ?? "";\n' +
+        '    return isRiskSort(s) ? s : "";\n' +
+        "  });",
+    );
     // The flattened events window the table/mobile extracts + the
     // counts memo + the cascade branches all consume.
     expect(page).toContain(

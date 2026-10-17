@@ -18,9 +18,13 @@
  *      th ever grows a sort control it MUST also grow aria-sort
  *      (auto/ascending/descending): this pin trips first.
  *      (R159 re-pin: the orders sort affordance made OrdersTable the
- *      register's ONE opted-in sortable member — it left the negative
+ *      register's FIRST opted-in sortable member — it left the negative
  *      loop below and is pinned POSITIVELY in the dedicated R159 test
  *      that follows; every other member keeps the tripwire.)
+ *      (R160 re-pin #2: the risk sort affordance made RiskEventsTable
+ *      the SECOND opted-in member — النقاط/الوقت, the same whitelisted
+ *      ?sort= idiom — it too left the loop and is pinned POSITIVELY
+ *      below; the remaining members keep the tripwire.)
  *   3. Selection semantics: the orders select-all + per-row selectors
  *      are named + stateful (aria-label + aria-pressed, the F3-08 fix).
  *   4. Empty states swap the tables OUT (no tbody that renders zero
@@ -130,11 +134,17 @@ describe("R-140-l — the admin real-table register: scope + accessible name", (
   }
 
   // R159 re-pin: OrdersTable (the orders sort affordance ledger item)
-  // left the no-aria-sort register — it is the ONE register member with
-  // sortable headers (المبلغ/التاريخ, the backend ?sort= whitelist). The
-  // tripwire keeps guarding every OTHER member unchanged.
+  // left the no-aria-sort register — it is the register's one opted-in
+  // sortable member with sortable headers (المبلغ/التاريخ, the backend
+  // ?sort= whitelist). The tripwire keeps guarding every OTHER member
+  // unchanged.
+  // R160 re-pin #2: RiskEventsTable (the risk sort affordance) joined
+  // it — النقاط/الوقت (score/created_at). Both are pinned POSITIVELY
+  // below; the tripwire keeps guarding the remaining members.
   const NOT_SORTABLE = Object.keys(REAL_TABLES).filter(
-    (f) => f !== "src/components/admin/orders/OrdersTable.tsx",
+    (f) =>
+      f !== "src/components/admin/orders/OrdersTable.tsx" &&
+      f !== "src/components/admin/risk/RiskEventsTable.tsx",
   );
   for (const file of NOT_SORTABLE) {
     const src = strippedRealTables[file];
@@ -162,6 +172,21 @@ describe("R-140-l — the admin real-table register: scope + accessible name", (
     expect(src).not.toMatch(/<th[^>]*\sonKeyDown/);
     expect(src).toContain('aria-label="ترتيب حسب المبلغ"');
     expect(src).toContain('aria-label="ترتيب حسب التاريخ"');
+  });
+
+  it("RiskEventsTable (R160): exactly the two whitelisted sortable th, live aria-sort, buttons INSIDE the th", () => {
+    // R160: the risk half of the sort-affordance ledger — the same
+    // positive form on the register's second opted-in member. The
+    // النقاط (score) + الوقت (created_at) headers carry the live
+    // state with a real keyboard-operable <button> inside; the rows
+    // stay whole-row drill-in links (the R125-I4 contract — a thead
+    // button never fights the tbody row overlay).
+    const src = strippedRealTables["src/components/admin/risk/RiskEventsTable.tsx"];
+    expect(count(src, /aria-sort=/g)).toBe(2);
+    expect(src).not.toMatch(/<th[^>]*onClick/);
+    expect(src).not.toMatch(/<th[^>]*\sonKeyDown/);
+    expect(src).toContain('aria-label="ترتيب حسب النقاط"');
+    expect(src).toContain('aria-label="ترتيب حسب الوقت"');
   });
 
   it("RecomputePreviewCard: the money sample keeps the r139 byte pins over the scoped th", () => {
@@ -277,7 +302,13 @@ describe("R-140-l — h1-once + sequential ladder per owned page (source census)
   it("onboarding.tsx: 2 branch-exclusive h1s (one per step view), no orphaned h2", () => {
     expect(count(ONBOARDING, /<h1[\s>]/g)).toBe(2);
     expect(count(ONBOARDING, /<h[23456][\s>]/g)).toBe(0);
-    expect(ONBOARDING).toContain('<h1 className="text-xl font-bold">جاهز للبدء</h1>');
+    // R160 (audit F2): both step h1s gained ref={stepHeadingRef} +
+    // tabIndex={-1} (the step-swap focus handoff — the audited a11y
+    // fix); the class/level contract is unchanged, so the spot-pin
+    // follows the attributes in (regex: the label sits on its own line).
+    expect(ONBOARDING).toMatch(
+      /<h1 ref=\{stepHeadingRef\} tabIndex=\{-1\} className="text-xl font-bold">\s*جاهز للبدء\s*<\/h1>/,
+    );
     expect(ONBOARDING).not.toContain('<h2 className="text-xl font-bold">جاهز للبدء</h2>');
   });
 });

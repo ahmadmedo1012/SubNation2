@@ -44,7 +44,7 @@ import { readLiveCartItems, roundToCents, useCart, cartHasBlockingStock } from "
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { ErrorCode } from "@workspace/error-codes";
-import { ShieldCheck, ShoppingBag } from "lucide-react";
+import { ArrowRight, ShieldCheck, ShoppingBag } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -57,7 +57,7 @@ import {
   type CreateOrderBody,
   type Order,
 } from "@workspace/api-client-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { formatCount } from "@/lib/utils";
 
 /**
@@ -713,8 +713,17 @@ export default function CheckoutPage() {
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       }
       const msg = getErrorMessage(e);
+      // R160 (audit F1): mirror the HTTP-partial branch above — a
+      // network abort AFTER ≥1 confirmed unit is a PARTIAL outcome,
+      // never "nothing was deducted". Without setPartialCount the
+      // banner fabricated a full-refund claim («لم يتم خصم أي مبلغ»)
+      // that the wallet view immediately contradicts; created[] holds
+      // confirmed 2xx Order objects, so the partial branch's
+      // «راجع طلباتك المنشأة» link is the honest verdict. The toast
+      // follows the HTTP-partial register too (banner-only).
+      if (created.length > 0) setPartialCount(created.length);
       setOrderError(msg);
-      toast({ title: msg, variant: "destructive" });
+      if (created.length === 0) toast({ title: msg, variant: "destructive" });
     } finally {
       setSubmitting(false);
       setSubmitProgress(null);
@@ -743,6 +752,18 @@ export default function CheckoutPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {seoBlock}
+      {/* Back-to-cart — R160 (audit F10): the funnel's first in-page
+          escape (order-detail's back-row idiom; the stock-blocked CTA
+          says «راجع السلة» but its only affordances lived in chrome —
+          the Navbar icon / mobile bottom-nav). A real <Link> so it is
+          keyboard-operable and middle-clickable. */}
+      <Link
+        href="/cart"
+        className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm mb-5 transition-colors press-spring group"
+      >
+        <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform duration-150" />
+        سلة المشتريات
+      </Link>
       <div className="flex items-center gap-3 mb-7 page-in">
         <div className="w-11 h-11 rounded-xl bg-primary/12 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
           <ShoppingBag className="w-5 h-5 text-primary" />
@@ -757,43 +778,52 @@ export default function CheckoutPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-5">
         {/* Payment details (left on desktop) */}
-        <div className="space-y-4">
-          {/* Payment method — wallet only (see component docblock) */}
-          <PaymentMethodCard
-            balanceLoading={balanceLoading}
-            balance={balance}
-            balanceError={balanceError}
-            insufficient={insufficient}
-            comparisonTotal={comparisonTotal}
-          />
+        {/* R160 (audit F6): the whole left column is payment machinery —
+            with an EMPTY basket there is nothing to pay and no coupon
+            to apply, but the balance card + coupon + trust line still
+            rendered above the aside's «سلتك فارغة», reading as a
+            functional checkout for a phantom basket. Gate the column
+            on !isEmpty (the aside keeps its droppedLineNotices hoist —
+            those must announce regardless). */}
+        {!isEmpty && (
+          <div className="space-y-4">
+            {/* Payment method — wallet only (see component docblock) */}
+            <PaymentMethodCard
+              balanceLoading={balanceLoading}
+              balance={balance}
+              balanceError={balanceError}
+              insufficient={insufficient}
+              comparisonTotal={comparisonTotal}
+            />
 
-          {/* Coupon */}
-          <CouponCard
-            coupon={coupon}
-            appliedCoupon={appliedCoupon}
-            couponChecking={couponChecking}
-            couponNotice={couponNotice}
-            isEmpty={isEmpty}
-            onCouponChange={(value) => {
-              // Any edit voids the stored pre-check result — the label
-              // must never show a total validated for a different code
-              // (the generation bump also kills an in-flight validate
-              // for the OLD code — R98-01's async hole).
-              setCoupon(value);
-              couponGenerationRef.current += 1;
-              setAppliedCoupon(null);
-              setCouponNotice(null);
-            }}
-            onApplyCoupon={() => void applyCoupon()}
-            onClearCoupon={clearAppliedCoupon}
-          />
+            {/* Coupon */}
+            <CouponCard
+              coupon={coupon}
+              appliedCoupon={appliedCoupon}
+              couponChecking={couponChecking}
+              couponNotice={couponNotice}
+              isEmpty={isEmpty}
+              onCouponChange={(value) => {
+                // Any edit voids the stored pre-check result — the label
+                // must never show a total validated for a different code
+                // (the generation bump also kills an in-flight validate
+                // for the OLD code — R98-01's async hole).
+                setCoupon(value);
+                couponGenerationRef.current += 1;
+                setAppliedCoupon(null);
+                setCouponNotice(null);
+              }}
+              onApplyCoupon={() => void applyCoupon()}
+              onClearCoupon={clearAppliedCoupon}
+            />
 
-          {/* Trust */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground font-bold px-1">
-            <ShieldCheck className="w-4 h-4 text-status-success" />
-            <span>دفعتك آمنة ومشفّرة بالكامل</span>
+            {/* Trust */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground font-bold px-1">
+              <ShieldCheck className="w-4 h-4 text-status-success" />
+              <span>دفعتك آمنة ومشفّرة بالكامل</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Cart summary (right on desktop) */}
         {/* R138 (visual): the summary's receipt-metaphor polish (row

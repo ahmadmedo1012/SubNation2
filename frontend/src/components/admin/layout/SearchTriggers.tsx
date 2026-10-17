@@ -23,7 +23,7 @@ export function SearchTriggers({
           className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/70 border border-border/60 hover:border-border transition-all duration-150 text-muted-foreground text-xs group"
         >
           <Search className="w-3 h-3" />
-          <span>بحث...</span>
+          <span>بحث…</span>
           {/* R139 (precision): the ⌘K kbd chip's fill joins the muted-well
               family — bg-muted → bg-muted/60, the exact value the sidebar
               footer's sibling ⌘K chip rides (one shell, one kbd register);

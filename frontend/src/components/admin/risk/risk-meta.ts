@@ -66,3 +66,39 @@ export const TONE_CHIP: Record<StatusBadgeVariant, string> = {
   primary: "bg-primary/15 text-primary-text border-primary/40",
   neutral: "bg-muted/45 text-muted-foreground border-border/50",
 };
+
+// ── R160 (the R158-A P3 «no sort affordance on risk»): the ?sort=
+// whitelist ──────────────────────────────────────────────────────────
+// Hand-mirrors the backend route's zod enum (backend/src/routes/admin/
+// risk.ts RISK_SORT_VALUES) and the openapi param (the generated
+// ListAdminRiskEventsSort). The generated const is deliberately NOT
+// imported here: the admin risk render suites stub the global fetch
+// and never mock the generated client, but keeping the meta React-free
+// + self-contained preserves the r137 purity contract; the
+// risk-sort test pins meta ↔ generated parity. Keep the three lists in
+// lockstep.
+export const RISK_SORTS = ["created_at:asc", "created_at:desc", "score:asc", "score:desc"] as const;
+export type RiskSort = (typeof RISK_SORTS)[number];
+
+/** Tolerant intake: an invalid ?sort= deep link degrades to the default
+ * ordering ("" — the param is dropped) instead of a 400. */
+export const isRiskSort = (v: string): v is RiskSort =>
+  (RISK_SORTS as readonly string[]).includes(v);
+
+/** The desktop sortable-header toggle: the default ("" — no ?sort= param)
+ * IS created_at DESC (the queue's frozen default), so the effective
+ * direction maps through before the asc/desc flip. */
+export function nextRiskSort(key: "created_at" | "score", current: string): RiskSort {
+  const effective = current === "" ? "created_at:desc" : current;
+  return effective === `${key}:desc` ? `${key}:asc` : `${key}:desc`;
+}
+
+// R160: the mobile chip labels (the shared FilterTabs chips dialect —
+// the users panel's «الأقدم» label precedent). The default maps to
+// «الأحدث» because an absent ?sort= is newest-first.
+export const RISK_SORT_CHIPS: Array<{ value: RiskSort; label: string }> = [
+  { value: "created_at:desc", label: "الأحدث" },
+  { value: "created_at:asc", label: "الأقدم" },
+  { value: "score:desc", label: "الأعلى نقاطًا" },
+  { value: "score:asc", label: "الأقل نقاطًا" },
+];

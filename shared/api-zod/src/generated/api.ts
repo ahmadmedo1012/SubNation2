@@ -4369,11 +4369,12 @@ export const GetAdminRiskDashboardResponse = zod
   .describe("GET /admin/risk/dashboard — the review-queue header aggregates.");
 
 /**
- * The risk page's queue + load-more. Keyset cursor (opaque
- * "<isoCreatedAt>:<id>") over (created_at DESC, id DESC);
- * next_cursor is null on the last page. The LEFT JOIN enriches
- * each row with the user's phone/email (nullable — user_id is
- * ON DELETE SET NULL). Cache-Control: no-store.
+ * The risk page's queue + load-more. Keyset cursor (opaque, and
+ * encoding-dependent on the active sort — see the cursor param)
+ * over (created_at DESC, id DESC) by default; next_cursor is null
+ * on the last page. The LEFT JOIN enriches each row with the
+ * user's phone/email (nullable — user_id is ON DELETE SET NULL).
+ * Cache-Control: no-store.
  * @summary Risk events review queue (requireAdmin + users scope) — keyset cursor pagination
  */
 export const ListAdminRiskEventsQueryParams = zod.object({
@@ -4392,6 +4393,18 @@ export const ListAdminRiskEventsQueryParams = zod.object({
     ])
     .nullish()
     .describe("Exact level filter (out-of-enum values are ignored, not 400)."),
+  sort: zod
+    .union([
+      zod.literal("created_at:asc"),
+      zod.literal("created_at:desc"),
+      zod.literal("score:asc"),
+      zod.literal("score:desc"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe(
+      'R160 (risk sort affordance): optional column sort for the\ncursor-paginated queue, `column:direction`. ABSENT → the\nfrozen default `created_at DESC, id DESC` (byte-identical\nto pre-R160). Explicit sorts append `id DESC` as a\npagination-stability tiebreaker. The next_cursor ENCODES\nthe active sort\'s keyset tuple: `"<isoCreatedAt>:<id>"` for\ncreated_at sorts (asc flips the continuation comparison),\n`"<score>:<id>"` for score sorts (the score column is an\ninteger 0..100, so the parse is float-safe). Unknown\nkey/direction → 400 INVALID_DATA.\n',
+    ),
   eventType: zod
     .union([
       zod.literal("login_attempt"),
@@ -4427,7 +4440,9 @@ export const ListAdminRiskEventsQueryParams = zod.object({
   cursor: zod.coerce
     .string()
     .nullish()
-    .describe("Opaque keyset cursor from a previous page's next_cursor."),
+    .describe(
+      'Opaque keyset cursor from a previous page\'s next_cursor — its\nENCODING follows the active ?sort= ("<isoCreatedAt>:<id>" for\ncreated_at/default sorts, "<score>:<id>" for score sorts);\nsend it back with the same sort that produced it.\n',
+    ),
 });
 
 export const ListAdminRiskEventsResponse = zod

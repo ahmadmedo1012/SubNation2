@@ -72,6 +72,9 @@ export function OrderErrorBanner({
           type="button"
           onClick={onDismiss}
           aria-label="إغلاق رسالة الخطأ"
+          title="إغلاق رسالة الخطأ"
+          /* R160 (audit F4): the tooltip-twin contract (DESIGN.md — an
+             icon-only control carries BOTH aria-label and title). */
           /* 96-F4 (R96 A2 P2-12): 44×44 touch target with the
              negative-margin trick preserved (the banner keeps its
              tight padding while the hit area grows to the floor). */

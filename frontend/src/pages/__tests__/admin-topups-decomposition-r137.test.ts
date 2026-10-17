@@ -151,7 +151,8 @@ describe("R137 (FE) — admin/topups.tsx decomposition: page stays an orchestrat
     // their new address so the existing render pins stay meaningful.
     const card = read("src/components/admin/topups/TopupCard.tsx");
     expect(card).toContain("aria-label={`تحديد طلب الشحن ${t.id} للإجراء الجماعي`}");
-    expect(card).toContain('{isProcessing && !isRejecting ? "جارٍ..." : "موافقة"}');
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(card).toContain('{isProcessing && !isRejecting ? "جارٍ…" : "موافقة"}');
     expect(card).toContain("aria-pressed={isSelected}");
     // The deep-link write-back rode along with the tab's verbatim
     // onClick (the statusFilter atom + initializer stay in the page).
@@ -170,7 +171,8 @@ describe("R137 (FE) — admin/topups.tsx decomposition: page stays an orchestrat
       'if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !loading) onConfirm(note);',
     );
     const bulk = read("src/components/admin/topups/BulkConfirmModal.tsx");
-    expect(bulk).toContain("`جاري ${progress.done}/${progress.total}...`");
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(bulk).toContain("`جاري ${progress.done}/${progress.total}…`");
     // The stat strip kept the pending chip + the honest search count.
     const header = read("src/components/admin/topups/TopupsHeader.tsx");
     expect(header).toContain("{pendingCount} قيد الانتظار");

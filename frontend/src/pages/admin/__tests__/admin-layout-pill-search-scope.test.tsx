@@ -193,7 +193,8 @@ describe("GlobalSearch — scope-honest sections (R122 A2-P2)", () => {
 
     renderLayout();
 
-    const trigger = screen.getByRole("button", { name: /بحث\.\.\./ });
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    const trigger = screen.getByRole("button", { name: /بحث…/ });
     fireEvent.click(trigger);
 
     const input = await screen.findByPlaceholderText("بحث في المستخدمين…");
@@ -238,7 +239,8 @@ describe("GlobalSearch — scope-honest sections (R122 A2-P2)", () => {
     await waitFor(() => {
       expect(screen.getByText("page-body")).toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: /بحث\.\.\./ })).not.toBeInTheDocument();
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(screen.queryByRole("button", { name: /بحث…/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /بحث سريع/ })).not.toBeInTheDocument();
   });
 });

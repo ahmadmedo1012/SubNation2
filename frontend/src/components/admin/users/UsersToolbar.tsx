@@ -54,7 +54,7 @@ export function UsersToolbar({
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           <Input
             type="search"
-            placeholder="بحث برقم الهاتف..."
+            placeholder="بحث برقم الهاتف…"
             aria-label="بحث برقم الهاتف"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}

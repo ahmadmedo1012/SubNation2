@@ -138,7 +138,8 @@ describe("R137 (FE) — admin/referrals.tsx decomposition: page stays an orchest
     expect(leaderboard).toContain("أكثر المستخدمين إحالةً");
     expect(leaderboard).toContain("MEDAL_COLORS[i]");
     const filters = read("src/components/admin/referrals/ReferralsFilters.tsx");
-    expect(filters).toContain('placeholder="بحث برقم المُحيل أو المُحال..."');
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(filters).toContain('placeholder="بحث برقم المُحيل أو المُحال…"');
     expect(filters).toContain("onSearchChange(e.target.value)");
     // The stats strip (hidden until the first successful load — B5-03).
     const stats = read("src/components/admin/referrals/ReferralsStats.tsx");

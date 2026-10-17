@@ -239,19 +239,23 @@ density is deliberately higher than a typical marketing site: money surfaces
 (prices, balances, order codes) are always `tabular-nums` with Western digits
 and a «د.ل» suffix, isolated with `dir="ltr"` where codes mix with Arabic.
 
-**Money ink (R130-A2-F4):** three tiers, deliberate —
-`text-foreground` for ambient grid/card prices (the browsing layer),
-`text-primary` for the brand buy moment (the PDP price + sticky buy bar,
-large-text 3:1-safe), `text-primary-text` for LEDGER surfaces (cart lines,
-checkout totals, order totals — the AA-tuned 43%/4.60+ money ink). A new
-money surface picks by layer: browsing → foreground, buying → primary,
+**Money ink (R130-A2-F4, receipt register amended R160):** three tiers,
+deliberate — `text-foreground` for ambient grid/card prices (the browsing
+layer), `text-primary` for the brand buy moment (the PDP price + sticky buy
+bar, large-text 3:1-safe), `text-primary-text` for LEDGER surfaces (cart
+lines, checkout totals, order totals — the AA-tuned 43%/4.60+ money ink).
+A new money surface picks by layer: browsing → foreground, buying → primary,
 transacting → primary-text. Never raw hues, never `muted-foreground` for an
-amount.
+amount. Receipt-terminal exception (R138/R139, codified R160): the receipt's
+TERMINAL amount (the final «الإجمالي» line on the summary/receipt cards)
+emphasizes by weight + size only — never a color class (pinned by
+money-path-chrome-r139: "text-primary-text deliberately removed"); the
+three-tier rule above still governs every non-terminal amount.
 
-**Copy dialects (R159):** storefront Arabic copy uses the typographic
-ellipsis «…» (cart, orders, wallet, support — «جارٍ التحقق…»); the admin
-console rides ASCII `...` (~20 legacy sites, normalized on touch). New
-copy follows its surface's dialect; a string crossing surfaces adopts «…».
+**Copy dialects (R159, unified R160):** one ellipsis dialect repo-wide —
+the typographic «…» («جارٍ التحقق…»), storefront and admin console alike.
+The ASCII `...` dialect is retired (R160 normalized the last ~20 admin
+legacy sites); new copy keeps «…» on every surface.
 
 ## Colors
 

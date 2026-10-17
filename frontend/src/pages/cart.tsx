@@ -491,6 +491,12 @@ export default function CartPage() {
                           aria-label={
                             it.quantity === 1 ? `حذف المنتج ${it.name}` : `إنقاص كمية ${it.name}`
                           }
+                          /* R160 (audit F4): the tooltip-twin contract —
+                             title mirrors the dynamic aria-label (the
+                             status-page refresh control's precedent). */
+                          title={
+                            it.quantity === 1 ? `حذف المنتج ${it.name}` : `إنقاص كمية ${it.name}`
+                          }
                         >
                           {it.quantity === 1 ? (
                             <X className="w-4 h-4 text-status-error" />
@@ -518,6 +524,13 @@ export default function CartPage() {
                               ? `الحد الأقصى المتاح ${it.quantity} — ${it.name}`
                               : `زيادة كمية ${it.name}`
                           }
+                          /* R160 (audit F4): the tooltip-twin contract —
+                             title mirrors the dynamic aria-label. */
+                          title={
+                            it.quantity >= stockAwareCeiling(it.stockCount ?? null)
+                              ? `الحد الأقصى المتاح ${it.quantity} — ${it.name}`
+                              : `زيادة كمية ${it.name}`
+                          }
                         >
                           <Plus className="w-4 h-4" />
                         </button>
@@ -527,6 +540,9 @@ export default function CartPage() {
                         onClick={() => removeWithUndo(it)}
                         className="min-h-11 min-w-11 px-2 rounded-lg hover:bg-status-error/10 text-muted-foreground hover:text-status-error transition-colors press-spring flex items-center justify-center"
                         aria-label={`حذف المنتج ${it.name}`}
+                        /* R160 (audit F4): the tooltip-twin contract —
+                           title mirrors the aria-label. */
+                        title={`حذف المنتج ${it.name}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

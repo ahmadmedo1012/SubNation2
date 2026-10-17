@@ -190,7 +190,7 @@ export function ProductEditorCard({
             value={form.image_url}
             onChange={(e) => onFormChange((f) => ({ ...f, image_url: e.target.value }))}
             dir="ltr"
-            placeholder="https://..."
+            placeholder="https://…"
           />
           {form.image_url.trim() && (
             <div className="mt-2 flex items-center gap-2.5">
@@ -380,7 +380,7 @@ export function ProductEditorCard({
             /* R148 (D1): the in-flight save now carries a busy register
                the bare disabled never had — Loader2 swap (the
                VariantFormPanel submit idiom) + «جارٍ الحفظ…» label
-               (the AdminAccountCard «جارٍ...» idiom) + aria-busy. The
+               (the AdminAccountCard «جارٍ…» idiom) + aria-busy. The
                page-level handleSubmit guard is the real re-entry
                killer (⌘S bypasses the disabled button); this is the
                operator-visible half. */

@@ -1,6 +1,7 @@
+import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate } from "@/lib/utils";
-import { LEVEL_META, type RiskEventRow } from "@/components/admin/risk/risk-meta";
+import { LEVEL_META, nextRiskSort, type RiskEventRow } from "@/components/admin/risk/risk-meta";
 import { Link } from "wouter";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/risk.tsx —
@@ -11,7 +12,43 @@ import { Link } from "wouter";
 // row-local and ride along verbatim. The move only changes its address;
 // DOM, classes, aria and Arabic copy are byte-identical.
 
-export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
+// R160 (risk sort affordance): the desktop sortable headers — the
+// OrdersTable R159 idiom. Only the two whitelisted columns (النقاط =
+// score, الوقت = created_at) grow a button; the th carries the ARIA
+// `aria-sort` state (the r140-l pin's own rule: a th that grows a sort
+// control MUST grow aria-sort) while the button owns the click toggle.
+// The default ("" — no ?sort=) IS created_at DESC, so the effective
+// direction maps through before the asc/desc flip.
+function riskSortAria(
+  key: "created_at" | "score",
+  sortBy: string,
+): "ascending" | "descending" | "none" {
+  const effective = sortBy === "" ? "created_at:desc" : sortBy;
+  if (effective === `${key}:asc`) return "ascending";
+  if (effective === `${key}:desc`) return "descending";
+  return "none";
+}
+
+/** The visible direction indicator: the active column's live chevron,
+    the inactive columns' quiet two-way glyph. */
+function SortIndicator({ column, sortBy }: { column: "created_at" | "score"; sortBy: string }) {
+  const effective = sortBy === "" ? "created_at:desc" : sortBy;
+  if (effective === `${column}:asc`) return <ChevronUp className="w-3 h-3" aria-hidden="true" />;
+  if (effective === `${column}:desc`) return <ChevronDown className="w-3 h-3" aria-hidden="true" />;
+  return <ChevronsUpDown className="w-3 h-3 opacity-50" aria-hidden="true" />;
+}
+
+export function RiskEventsTable({
+  events,
+  sortBy,
+  onSortBy,
+}: {
+  events: RiskEventRow[];
+  /** R160: the current ?sort= value ("" = the default created_at DESC —
+   * the page owns the state + the URL sync; the table only renders it). */
+  sortBy: string;
+  onSortBy: (value: string) => void;
+}) {
   return (
     <>
       {/* Canonical admin table chrome + horizontal scroll on mobile —
@@ -23,9 +60,11 @@ export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
               announces itself under the page's «مراقبة المخاطر» h1
               instead of a bare «جدول» (7 columns of risk scores);
               scope="col" already rode every th. Rows are whole-row
-              drill-in links (the R125-I4 contract) — not sortable,
-              not selectable: no aria-sort, no row checkboxes by
-              design. */}
+              drill-in links (the R125-I4 contract) — not selectable:
+              no row checkboxes by design. R160: the النقاط/الوقت
+              headers grew the whitelisted sort controls (the R159
+              OrdersTable opted-in idiom) — the register's no-aria-sort
+              note now covers only the remaining plain headers. */}
           <table aria-label="جدول أحداث المخاطر" className="w-full text-sm min-w-[720px]">
             <thead
               /* R128 (A3-F2): the fraud queue is the longest-scanned
@@ -57,14 +96,46 @@ export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
                 <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   القاعدة
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
-                  النقاط
+                {/* R160: النقاط — the whitelisted score sort; py-2/-my-2
+                    = the select-all hit-area idiom without growing the
+                    header row (the whole-row drill-in anchor lives on
+                    the tbody rows, so a thead button never fights it). */}
+                <th
+                  scope="col"
+                  aria-sort={riskSortAria("score", sortBy)}
+                  className="px-4 py-2.5 text-start font-semibold"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSortBy(nextRiskSort("score", sortBy))}
+                    aria-label="ترتيب حسب النقاط"
+                    className="inline-flex items-center gap-1 py-2 -my-2 hover:text-foreground transition-colors"
+                  >
+                    النقاط
+                    <SortIndicator column="score" sortBy={sortBy} />
+                  </button>
                 </th>
                 <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   الإجراء
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
-                  الوقت
+                {/* R160: الوقت — the whitelisted created_at sort; the
+                    DEFAULT ordering is already created_at DESC, so the
+                    first click flips to ascending (the
+                    effective-direction map). */}
+                <th
+                  scope="col"
+                  aria-sort={riskSortAria("created_at", sortBy)}
+                  className="px-4 py-2.5 text-start font-semibold"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSortBy(nextRiskSort("created_at", sortBy))}
+                    aria-label="ترتيب حسب الوقت"
+                    className="inline-flex items-center gap-1 py-2 -my-2 hover:text-foreground transition-colors"
+                  >
+                    الوقت
+                    <SortIndicator column="created_at" sortBy={sortBy} />
+                  </button>
                 </th>
               </tr>
             </thead>

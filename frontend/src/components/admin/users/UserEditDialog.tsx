@@ -117,7 +117,7 @@ export function UserEditDialog({
             disabled={saving || !canEditMoney || (noteRequired && !noteValid)}
           >
             <CheckCircle className="w-4 h-4 me-1.5" />
-            {saving ? "جارٍ الحفظ..." : "حفظ"}
+            {saving ? "جارٍ الحفظ…" : "حفظ"}
           </Button>
         </>
       }

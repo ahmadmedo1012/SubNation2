@@ -27,7 +27,7 @@ import {
   riskRulesTable,
   usersTable,
 } from "@workspace/db";
-import { and, desc, eq, gte, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit";
@@ -79,6 +79,17 @@ const EVENT_TYPE_VALUES = [
   "admin_force_reauth",
 ] as const;
 const VALID_EVENT_TYPES = new Set<string>(EVENT_TYPE_VALUES);
+
+// R160 (the R158-A P3 «no sort affordance on risk»): the ?sort= whitelist
+// for the review queue. The list is CURSOR-paginated, so (unlike the
+// coupons console's client-side sort) the ordering must ride the SQL
+// ORDER BY — a client-side sort would rank only the loaded page. Exactly
+// the two operator-valued columns the table surfaces: created_at (الوقت)
+// and score (النقاط — an integer 0..100 by schema check, which is what
+// makes the score-encoding cursor below safe: no float round-trip).
+// Unknown key/direction → 400 INVALID_DATA, the ?eventType= idiom.
+const RISK_SORT_VALUES = ["created_at:asc", "created_at:desc", "score:asc", "score:desc"] as const;
+const RISK_SORT_SCHEMA = z.enum(RISK_SORT_VALUES);
 
 // R120-B6/A6-F8: the four admin risk write bodies were bare `req.body as`
 // casts — every field survived on manual typeof guards, which silently
@@ -153,20 +164,78 @@ router.get("/risk/events", requireAdmin, async (req, res) => {
     filters.push(eq(riskEventsTable.userId, userId));
   }
 
-  // Cursor: opaque "<isoCreatedAt>:<id>" descending.
+  // R160: ?sort= — validated column sort (the orders route's R159 recipe).
+  // ABSENT param keeps the frozen default `created_at DESC, id DESC`
+  // byte-identical to pre-R160. Explicit sorts append `id DESC` as the
+  // pagination-stability tiebreaker (score ties are the common case on
+  // a 0..100 integer scale).
+  const sortRaw = typeof req.query.sort === "string" ? req.query.sort : undefined;
+  let sortColumn: "created_at" | "score" = "created_at";
+  let sortDir: "asc" | "desc" = "desc";
+  if (sortRaw !== undefined) {
+    const sortParsed = RISK_SORT_SCHEMA.safeParse(sortRaw);
+    if (!sortParsed.success) {
+      res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "ترتيب غير صالح (المسموح: created_at:asc, created_at:desc, score:asc, score:desc)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+      return;
+    }
+    const [column, direction] = sortParsed.data.split(":");
+    sortColumn = column as "created_at" | "score";
+    sortDir = direction as "asc" | "desc";
+  }
+
+  // Cursor: opaque, and ENCODING-DEPENDENT on the active sort — the
+  // keyset tuple must mirror the ORDER BY or pages would duplicate/drop
+  // rows:
+  //   - created_at sorts (and the absent-sort default): "<isoCreatedAt>:<id>"
+  //     over (created_at DESC|ASC, id DESC);
+  //   - score sorts: "<score>:<id>" over (score DESC|ASC, id DESC) — the
+  //     score column is an integer (chk_risk_score_range 0..100), so the
+  //     strict "digits:digits" regex below is float-safe by construction.
+  // Same parse-tolerance discipline as the original cursor: a malformed
+  // cursor is silently ignored (first page), never a 500. A cursor sent
+  // under the WRONG sort (a stale client mixing formats) fails the
+  // score regex → ignored; the reverse (a score cursor parsed as a
+  // 2-digit year) matches nothing and returns an empty page — both are
+  // self-inconsistent requests our client never sends (a sort flip
+  // restarts the query at page 1).
   const cursorRaw = typeof req.query.cursor === "string" ? req.query.cursor : null;
   if (cursorRaw) {
     const sep = cursorRaw.lastIndexOf(":");
-    const iso = sep > 0 ? cursorRaw.slice(0, sep) : "";
-    const id = Number.parseInt(cursorRaw.slice(sep + 1), 10);
-    const cursorDate = new Date(iso);
-    if (!Number.isNaN(cursorDate.getTime()) && Number.isFinite(id)) {
-      filters.push(
-        or(
-          lt(riskEventsTable.createdAt, cursorDate),
-          and(eq(riskEventsTable.createdAt, cursorDate), lt(riskEventsTable.id, id))!,
-        )!,
-      );
+    if (sortColumn === "score") {
+      const scoreCursor = /^(\d+):(\d+)$/.exec(cursorRaw);
+      if (scoreCursor) {
+        const cursorScore = Number.parseInt(scoreCursor[1], 10);
+        const id = Number.parseInt(scoreCursor[2], 10);
+        filters.push(
+          or(
+            sortDir === "asc"
+              ? gt(riskEventsTable.score, cursorScore)
+              : lt(riskEventsTable.score, cursorScore),
+            and(eq(riskEventsTable.score, cursorScore), lt(riskEventsTable.id, id))!,
+          )!,
+        );
+      }
+    } else {
+      const iso = sep > 0 ? cursorRaw.slice(0, sep) : "";
+      const id = Number.parseInt(cursorRaw.slice(sep + 1), 10);
+      const cursorDate = new Date(iso);
+      if (!Number.isNaN(cursorDate.getTime()) && Number.isFinite(id)) {
+        filters.push(
+          or(
+            sortDir === "asc"
+              ? gt(riskEventsTable.createdAt, cursorDate)
+              : lt(riskEventsTable.createdAt, cursorDate),
+            and(eq(riskEventsTable.createdAt, cursorDate), lt(riskEventsTable.id, id))!,
+          )!,
+        );
+      }
     }
   }
 
@@ -189,13 +258,25 @@ router.get("/risk/events", requireAdmin, async (req, res) => {
     .from(riskEventsTable)
     .leftJoin(usersTable, eq(usersTable.id, riskEventsTable.userId))
     .where(filters.length ? and(...filters) : undefined)
-    .orderBy(desc(riskEventsTable.createdAt), desc(riskEventsTable.id))
+    .orderBy(
+      ...(sortColumn === "score"
+        ? [sortDir === "asc" ? asc(riskEventsTable.score) : desc(riskEventsTable.score)]
+        : [sortDir === "asc" ? asc(riskEventsTable.createdAt) : desc(riskEventsTable.createdAt)]),
+      desc(riskEventsTable.id),
+    )
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
-  const nextCursor = hasMore && last ? `${last.createdAt.toISOString()}:${last.id}` : null;
+  // R160: the emitted cursor encodes the tuple the ACTIVE sort paginates
+  // over (see the cursor comment above).
+  const nextCursor =
+    hasMore && last
+      ? sortColumn === "score"
+        ? `${last.score}:${last.id}`
+        : `${last.createdAt.toISOString()}:${last.id}`
+      : null;
 
   res.json({
     events: page.map((r) => ({

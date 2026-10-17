@@ -100,7 +100,7 @@ export function RejectModal({
             disabled={loading}
           >
             <XCircle className="w-3.5 h-3.5 me-1.5" />
-            {loading ? "جارٍ الرفض..." : "تأكيد الرفض"}
+            {loading ? "جارٍ الرفض…" : "تأكيد الرفض"}
           </Button>
         </>
       }
@@ -117,7 +117,7 @@ export function RejectModal({
             id="topups-f1-28266"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="مثال: رمز التحويل غير صحيح، المبلغ غير مطابق..."
+            placeholder="مثال: رمز التحويل غير صحيح، المبلغ غير مطابق…"
             className="w-full h-20 bg-secondary border border-border rounded-lg px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
             /* R143 (L2-5): the exact site J-2 called out — the 1px
                focus:ring-1 focus:ring-destructive composite under the

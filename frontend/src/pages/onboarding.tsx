@@ -5,7 +5,7 @@ import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe, customFetch } from "@workspace/api-client-react";
 import { ShieldCheck, ShoppingBag, Sparkles, Truck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 /**
@@ -49,6 +49,20 @@ export function OnboardingPage() {
   const [, navigate] = useLocation();
   const [step, setStep] = useState<1 | 2>(1);
   const [completing, setCompleting] = useState(false);
+  // R160 (audit F2): the step swap unmounts the focused «التالي» button
+  // (focus fell to <body>) and the h1 swap is unaudible — RouteAnnouncer
+  // stays silent because the ROUTE never changes. Move focus to the
+  // incoming step's h1 (tabIndex={-1} on both) on every step CHANGE;
+  // the mounted guard keeps the first paint from stealing page focus.
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    stepHeadingRef.current?.focus();
+  }, [step]);
   // R115-A10: pause the ambient blobs when the card scrolls away.
   const glow = useOnScreen<HTMLDivElement>();
   const { data: user } = useGetMe({
@@ -125,7 +139,14 @@ export function OnboardingPage() {
 
       <div className="relative w-full max-w-md">
         {/* Progress dots — 2 steps */}
-        <div className="flex items-center justify-center gap-1.5 mb-5">
+        {/* R160 (audit F7): the decorative dots row carries step
+            semantics (role=group + the current «الخطوة N من 2» label) —
+            the Western digits follow the DESIGN.md digit rule. */}
+        <div
+          role="group"
+          aria-label={`الخطوة ${step} من 2`}
+          className="flex items-center justify-center gap-1.5 mb-5"
+        >
           {[1, 2].map((s) => (
             <div
               key={s}
@@ -166,7 +187,7 @@ export function OnboardingPage() {
                     both); the brand accent rides the text-safe token.
                     R128-A4 (F-3): leading-tight removed — the base h1–h4
                     1.3 Arabic-safe floor (index.css) owns the leading. */}
-                <h1 className="text-2xl font-bold">
+                <h1 ref={stepHeadingRef} tabIndex={-1} className="text-2xl font-bold">
                   مرحباً بك في <span className="text-primary-text">SubNation</span>
                 </h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -235,7 +256,9 @@ export function OnboardingPage() {
                     h1–h4 leading floor (index.css), so the tag swap is
                     pixel-neutral; heading order stays sequential per
                     rendered view. */}
-                <h1 className="text-xl font-bold">جاهز للبدء</h1>
+                <h1 ref={stepHeadingRef} tabIndex={-1} className="text-xl font-bold">
+                  جاهز للبدء
+                </h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   اختر إلى أين تتوجّه — يمكنك دائماً العودة لإعدادات حسابك من صفحة الملف الشخصي.
                 </p>
@@ -287,7 +310,14 @@ export function OnboardingPage() {
             type="button"
             onClick={() => completeAndGo("/")}
             disabled={completing}
-            className="underline underline-offset-2 hover:text-foreground transition-colors"
+            /* R160 (audit F3): the skip control rode ~17px inside its
+               text-2xs paragraph — the R122 class the sibling «السابق»
+               already fixed (min-h-11). It completes onboarding AND
+               navigates: a first-session money-adjacent action. The
+               negative margin keeps the paragraph's rhythm while the
+               hit area reaches the 44px floor (the order-detail
+               code-button idiom). */
+            className="inline-flex items-center min-h-11 px-2 -my-3 underline underline-offset-2 hover:text-foreground transition-colors"
           >
             هنا
           </button>

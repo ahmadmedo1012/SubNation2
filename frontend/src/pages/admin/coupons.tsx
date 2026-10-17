@@ -15,8 +15,13 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency, localDateTimeToUtcIso } from "@/lib/utils";
 import { AlertCircle, Tag } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useCallback, useEffect, useMemo, useState } from "react";
+// R123 (E3 P3a): two-way URL sync — useSearch re-renders on ?sort=
+// changes (the users.tsx ?tier=/?sort= idiom).
+import { useLocation, useSearch } from "wouter";
+// R160: the shared chips primitive (the users panel's client-side sort
+// dialect — the 44px touch floor is baked in).
+import { FilterTabs } from "@/components/ui/filter-tabs";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 // R137 (FE decomposition): the money-discount page's presentational
@@ -35,7 +40,9 @@ import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 //   • CouponsTable — the responsive rows + toggle/archive actions
 //   • CouponsTableSkeleton — the page-shaped loading skeleton
 import {
+  COUPON_SORT_CHIPS,
   EMPTY_FORM,
+  isCouponSort,
   MAX_FIXED_COUPON_VALUE,
   type Coupon,
   type CreateForm,
@@ -50,6 +57,9 @@ export default function AdminCouponsPage() {
   // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
   const canView = hasAdminPermission("finance");
   const [, navigate] = useLocation();
+  // R123 (E3 P3a): the URL is the second source of truth for the sort
+  // (see the sync effect below).
+  const searchParam = useSearch();
   const { toast } = useToast();
   // 93-C7 / C-UX3 (A12 §1.3 + A5 C-1): the raw window.confirm on
   // coupon delete is replaced by the shared styled confirm — the
@@ -75,6 +85,16 @@ export default function AdminCouponsPage() {
   // double-click fired two DELETEs; the second 404'd and stacked an
   // error toast on top of the success toast.
   const [archiving, setArchiving] = useState<number | null>(null);
+  // R160 (coupons sort affordance): the CLIENT-side ?sort= state — the
+  // admin list API returns the ENTIRE capped list (≤200) in one fetch,
+  // so the sort ranks the full dataset in memory (the users-directory
+  // precedent; a server-side param would be indirection with zero user
+  // value). Same two-way ?sort= sync discipline as users.tsx; invalid
+  // deep-link values degrade to the default ("" → the API's order).
+  const [sortBy, setSortBy] = useState(() => {
+    const s = new URLSearchParams(window.location.search).get("sort") ?? "";
+    return isCouponSort(s) ? s : "";
+  });
 
   // 98-F7 (R98-05): dirty-state guard — a half-filled coupon form is
   // un-submitted work, so a refresh/tab-close mid-edit (or with a
@@ -128,6 +148,42 @@ export default function AdminCouponsPage() {
     }
     fetchCoupons();
   }, [adminToken]);
+
+  // R123 (E3 P3a): URL → sort (a ?sort= change lands without clobbering
+  // a sort the operator already picked locally — the users.tsx
+  // contract). An invalid value degrades to the API's default ordering.
+  useEffect(() => {
+    const q = new URLSearchParams(searchParam);
+    const s = q.get("sort") ?? "";
+    const sort = isCouponSort(s) ? s : "";
+    setSortBy((prev) => (prev === sort ? prev : sort));
+  }, [searchParam]);
+
+  // R160: sort flips write ?sort= back via replaceState (the users.tsx
+  // syncFilterParams discipline — flips don't spam the history stack).
+  const handleSortBy = (value: string) => {
+    setSortBy(value);
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set("sort", value);
+    else url.searchParams.delete("sort");
+    window.history.replaceState(null, "", url.toString());
+  };
+
+  // R160: the in-memory ordering over the FULL fetched list (the users
+  // page's `sorted` memo idiom). "" and created_at:desc keep the API
+  // array as-is — the server order IS created_at DESC, and re-sorting
+  // locally could reshuffle its unspecified ties. The value sorts
+  // rank by the raw numeric `value` (what the الخصم column renders).
+  const sortedCoupons = useMemo(() => {
+    if (sortBy === "" || sortBy === "created_at:desc") return coupons;
+    const dir = sortBy.endsWith(":asc") ? 1 : -1;
+    const byValue = sortBy.startsWith("value");
+    return [...coupons].sort((a, b) =>
+      byValue
+        ? (a.value - b.value) * dir
+        : (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir,
+    );
+  }, [coupons, sortBy]);
 
   const handleCreate = async () => {
     if (!form.code.trim()) {
@@ -276,7 +332,6 @@ export default function AdminCouponsPage() {
 
   const activeCount = coupons.filter((c) => c.is_active).length;
   const totalUsed = coupons.reduce((a, c) => a + c.used_count, 0);
-
   // R134 (A3-F1): the deep-link honest-reason gate (the R133 risk.tsx
   // idiom, now shared) — the nav hides this page from scope-less admins;
   // a deep link used to fire every query into a synchronized 403 burst.
@@ -308,6 +363,22 @@ export default function AdminCouponsPage() {
           setValueError={setValueError}
           onSubmit={handleCreate}
         />
+
+        {/* R160 (coupons sort affordance): the shared FilterTabs chips
+            bar — ONE control for both breakpoints (the surface below is
+            the R-140-l frozen DIV-GRID, so there is no th to carry
+            aria-sort; the users directory's client-side sort rides the
+            same chips dialect). The state + the ?sort= write-back stay
+            page-owned. */}
+        {!loading && coupons.length > 0 && (
+          <FilterTabs
+            variant="chips"
+            ariaLabel="ترتيب الكوبونات"
+            value={isCouponSort(sortBy) ? sortBy : "created_at:desc"}
+            onSelect={handleSortBy}
+            items={COUPON_SORT_CHIPS}
+          />
+        )}
 
         {/* Table */}
         {loading ? (
@@ -370,7 +441,7 @@ export default function AdminCouponsPage() {
               />
             ) : coupons.length > 0 ? (
               <CouponsTable
-                coupons={coupons}
+                coupons={sortedCoupons}
                 activeCount={activeCount}
                 toggling={toggling}
                 archiving={archiving}

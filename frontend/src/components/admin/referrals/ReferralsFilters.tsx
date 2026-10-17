@@ -28,7 +28,7 @@ export function ReferralsFilters({
         <div className="relative flex-1">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           <Input
-            placeholder="بحث برقم المُحيل أو المُحال..."
+            placeholder="بحث برقم المُحيل أو المُحال…"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             className="ps-9 h-9 text-sm"

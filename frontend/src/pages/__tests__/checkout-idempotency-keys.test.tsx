@@ -336,6 +336,34 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     expect(await screen.findByText(/بنجاح قبل توقف العملية/)).toBeInTheDocument();
   });
 
+  it("R160 (audit F1): a NETWORK abort after ≥1 charged unit renders the PARTIAL banner — never the fabricated «nothing was deducted» claim", async () => {
+    // Unit 1 confirms (2xx → wallet moved); unit 2's fetch drops at the
+    // network level (TypeError — the outer catch path, NOT the
+    // HTTP-partial branch). Before R160 the catch never called
+    // setPartialCount, so the banner fell to the full-failure branch and
+    // claimed «لم يتم خصم أي مبلغ» while the charged unit's order row and
+    // the wallet view contradicted it on arrival.
+    seedCart(2);
+    renderPage();
+
+    createOrderMock
+      .mockResolvedValueOnce({ order_code: "SNDBKEYNET1" })
+      .mockRejectedValueOnce(new TypeError("failed to fetch"));
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+
+    // The PARTIAL branch owns the banner: the charged-unit count + the
+    // recovery link to the created orders.
+    expect(await screen.findByText(/بنجاح قبل توقف العملية/)).toBeInTheDocument();
+    const recovery = await screen.findByRole("link", { name: "راجع طلباتك المنشأة" });
+    expect(recovery).toHaveAttribute("href", "/orders");
+    // …and the fabricated full-refund claim is absent.
+    expect(screen.queryByText(/لم يتم خصم أي مبلغ/)).not.toBeInTheDocument();
+    // Banner-only register (matches the HTTP-partial branch): no
+    // destructive toast on top of the partial banner.
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
   it("AUD103-2-F1: two cart lines of the SAME product (different variants) keep SEPARATE unit-key slots — no sibling overwrite", async () => {
     // Regression for the double-debit window: the pre-r103 slot
     // `${productId}:${unitIndex}` was variant-blind, so line B's persist

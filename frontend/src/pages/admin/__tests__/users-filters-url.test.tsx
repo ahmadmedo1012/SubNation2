@@ -99,9 +99,8 @@ describe("AdminUsersPage — «مسح الفلاتر» writes the clear back to 
 
     // R147 (2-c D4): the deep-link box's accessible name persists after
     // typing (the placeholder alone vanishes).
-    expect(screen.getByPlaceholderText("بحث برقم الهاتف...")).toHaveAccessibleName(
-      "بحث برقم الهاتف",
-    );
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(screen.getByPlaceholderText("بحث برقم الهاتف…")).toHaveAccessibleName("بحث برقم الهاتف");
 
     // The tier filter (initialized from ?tier=gold) empties the view.
     await waitFor(() => {

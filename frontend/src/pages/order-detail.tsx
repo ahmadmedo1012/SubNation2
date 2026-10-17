@@ -752,7 +752,7 @@ export default function OrderDetailPage() {
             href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}
             /* R124-I4 (A5 #1): hover:text-primary/80 is sub-AA on the
                 hover state — the text-safe twin. */
-            className="text-xs text-muted-foreground hover:text-primary-text transition-colors inline-flex items-center gap-1.5 press-spring"
+            className="text-xs text-muted-foreground hover:text-primary-text transition-colors inline-flex items-center gap-1.5 press-spring min-h-6"
           >
             <ExternalLink className="w-3 h-3" />
             مشكلة في هذا الطلب؟ تواصل مع الدعم

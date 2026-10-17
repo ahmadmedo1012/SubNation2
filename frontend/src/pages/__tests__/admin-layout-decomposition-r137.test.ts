@@ -208,7 +208,8 @@ describe("R137 (FE) — the extracts are self-contained units (verbatim moves)",
     expect(sidebarNav).toContain("(mergedBadges as Record<string, number>)?.[item.badgeKey]");
     // SearchTriggers: the ⌘K pill + the icon-only mobile twin.
     const triggers = read("src/components/admin/layout/SearchTriggers.tsx");
-    expect(triggers).toContain("<span>بحث...</span>");
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    expect(triggers).toContain("<span>بحث…</span>");
     expect(triggers).toContain('aria-label="بحث سريع"');
     expect(triggers).toContain("{canGlobalSearch && (");
   });

@@ -278,7 +278,8 @@ describe("AdminOrdersPage — server-side search (A2 P2-2)", () => {
   it("the debounced input value reaches the query params as `search`", async () => {
     renderPage();
 
-    const input = screen.getByPlaceholderText("بحث... ( / )");
+    // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
+    const input = screen.getByPlaceholderText("بحث… ( / )");
     // R147 (2-c D4): the accessible name persists after typing (the
     // placeholder alone vanishes — the storefront CatalogFiltersBar
     // aria-label idiom).

@@ -98,6 +98,9 @@ export function CouponCard({
             variant="outline"
             onClick={onClearCoupon}
             aria-label="إزالة الكوبون"
+            /* R160 (audit F4): the tooltip-twin contract (DESIGN.md — an
+               icon-only control carries BOTH aria-label and title). */
+            title="إزالة الكوبون"
             /* R116-S2 (P2/P3): 44px touch floor on the coupon
                apply/clear pair — the money path's most-tapped
                secondary controls (was min-h-9). */
@@ -113,7 +116,17 @@ export function CouponCard({
             disabled={!coupon.trim() || couponChecking || isEmpty}
             className="h-11 shrink-0 font-bold"
           >
-            {couponChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : "تحقق"}
+            {/* R160 (audit F8): the spinner swap emptied the accessible
+                name while checking — the sr-only twin keeps it (the
+                CheckoutCta visible-label precedent). */}
+            {couponChecking ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="sr-only">جارٍ التحقق…</span>
+              </>
+            ) : (
+              "تحقق"
+            )}
           </Button>
         )}
       </div>

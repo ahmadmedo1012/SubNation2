@@ -25,7 +25,7 @@ export function deriveSchedulerBanner(scheduler: SchedulerResponse | undefined):
   if (!scheduler) {
     schedTone = "degraded";
     schedTitle = "حالة الجدولة";
-    schedMessage = "جارٍ التحميل...";
+    schedMessage = "جارٍ التحميل…";
   } else if (scheduler.mode === "embedded" && scheduler.active) {
     if (scheduler.heartbeat.expected && !scheduler.heartbeat.healthy) {
       schedTone = "degraded";

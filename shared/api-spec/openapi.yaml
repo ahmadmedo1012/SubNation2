@@ -5243,11 +5243,12 @@ paths:
           adminBearerAuth: []
       summary: Risk events review queue (requireAdmin + users scope) — keyset cursor pagination
       description: |
-        The risk page's queue + load-more. Keyset cursor (opaque
-        "<isoCreatedAt>:<id>") over (created_at DESC, id DESC);
-        next_cursor is null on the last page. The LEFT JOIN enriches
-        each row with the user's phone/email (nullable — user_id is
-        ON DELETE SET NULL). Cache-Control: no-store.
+        The risk page's queue + load-more. Keyset cursor (opaque, and
+        encoding-dependent on the active sort — see the cursor param)
+        over (created_at DESC, id DESC) by default; next_cursor is null
+        on the last page. The LEFT JOIN enriches each row with the
+        user's phone/email (nullable — user_id is ON DELETE SET NULL).
+        Cache-Control: no-store.
       parameters:
         - name: limit
           in: query
@@ -5260,6 +5261,27 @@ paths:
             type: ["string", "null"]
             enum: [low, medium, high, critical, null]
           description: Exact level filter (out-of-enum values are ignored, not 400).
+        - name: sort
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum:
+              - created_at:asc
+              - created_at:desc
+              - score:asc
+              - score:desc
+              - null
+          description: |
+            R160 (risk sort affordance): optional column sort for the
+            cursor-paginated queue, `column:direction`. ABSENT → the
+            frozen default `created_at DESC, id DESC` (byte-identical
+            to pre-R160). Explicit sorts append `id DESC` as a
+            pagination-stability tiebreaker. The next_cursor ENCODES
+            the active sort's keyset tuple: `"<isoCreatedAt>:<id>"` for
+            created_at sorts (asc flips the continuation comparison),
+            `"<score>:<id>"` for score sorts (the score column is an
+            integer 0..100, so the parse is float-safe). Unknown
+            key/direction → 400 INVALID_DATA.
         - name: eventType
           in: query
           schema:
@@ -5301,7 +5323,11 @@ paths:
           in: query
           schema:
             type: ["string", "null"]
-          description: Opaque keyset cursor from a previous page's next_cursor.
+          description: |
+            Opaque keyset cursor from a previous page's next_cursor — its
+            ENCODING follows the active ?sort= ("<isoCreatedAt>:<id>" for
+            created_at/default sorts, "<score>:<id>" for score sorts);
+            send it back with the same sort that produced it.
       responses:
         "200":
           description: Events page + next cursor

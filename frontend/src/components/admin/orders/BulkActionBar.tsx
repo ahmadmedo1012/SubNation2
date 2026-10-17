@@ -81,7 +81,7 @@ export function BulkActionBar({
           >
             {bulkUpdating ? (
               <>
-                <RefreshCw className="w-3 h-3 animate-spin" /> جارٍ التحديث...
+                <RefreshCw className="w-3 h-3 animate-spin" /> جارٍ التحديث…
               </>
             ) : (
               <>

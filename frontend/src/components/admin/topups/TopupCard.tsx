@@ -62,7 +62,7 @@ interface TopupCardProps {
   isProcessing: boolean;
   /** processingId === topup.id && rejectTarget?.id === topup.id — the
    *  reject modal is open on this row (its confirm label wins over
-   *  the row approve «جارٍ...»). */
+   *  the row approve «جارٍ…»). */
   isRejecting: boolean;
   onSelect: (id: number) => void;
   onApprove: (id: number) => void;
@@ -233,7 +233,7 @@ export const TopupCard = React.memo(function TopupCard({
                 disabled={isProcessing}
               >
                 <CheckCircle className="w-3.5 h-3.5 me-1.5" />
-                {isProcessing && !isRejecting ? "جارٍ..." : "موافقة"}
+                {isProcessing && !isRejecting ? "جارٍ…" : "موافقة"}
               </Button>
               <Button
                 size="sm"
