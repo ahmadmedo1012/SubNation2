@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
-import { createHash, createSign, generateKeyPairSync } from "node:crypto";
+import { createHash, createSign, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, initTestDb, resetTestDb, userAuthIdentitiesTable, usersTable } from "../../test/db";
 import {
@@ -42,6 +42,27 @@ const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 20
 const KID = "test-r154-key";
 const PUBLIC_JWK = publicKey.export({ format: "jwk" }) as { kty: string; n: string; e: string };
 
+/** R156: the live oauth.telegram.org JWKS carries one key per documented
+ * algorithm (RS256 default, ES256, EdDSA — live-fetched 2026-10). The
+ * mock mirrors that shape; the flow must verify against any of them. */
+const EC_KID = "oidc-es256-1";
+const { privateKey: ecPrivateKey, publicKey: ecPublicKey } = generateKeyPairSync("ec", {
+  namedCurve: "P-256",
+});
+const EC_JWK = ecPublicKey.export({ format: "jwk" }) as {
+  kty: string;
+  crv: string;
+  x: string;
+  y: string;
+};
+const ED_KID = "oidc-eddsa-1";
+const { privateKey: edPrivateKey, publicKey: edPublicKey } = generateKeyPairSync("ed25519");
+const ED_JWK = edPublicKey.export({ format: "jwk" }) as {
+  kty: string;
+  crv: string;
+  x: string;
+};
+
 /** Sign an RS256 JWT the way Telegram would (used by the fetch mock). */
 function signIdToken(claims: Record<string, unknown>, headerOver: Record<string, unknown> = {}) {
   const header = { alg: "RS256", kid: KID, typ: "JWT", ...headerOver };
@@ -49,6 +70,42 @@ function signIdToken(claims: Record<string, unknown>, headerOver: Record<string,
   const signingInput = `${encode(header)}.${encode(claims)}`;
   const signature = createSign("RSA-SHA256").update(signingInput).sign(privateKey);
   return `${signingInput}.${signature.toString("base64url")}`;
+}
+
+/** DER ECDSA → JOSE raw r||s (Node signs DER; JWTs carry raw). */
+function derToJose(der: Buffer): Buffer {
+  const readInt = (off: number): { value: Buffer; next: number } => ({
+    value: der.subarray(off + 2, off + 2 + der[off + 1]!),
+    next: off + 2 + der[off + 1]!,
+  });
+  const r = readInt(2);
+  const s = readInt(r.next);
+  const fixed = (v: Buffer): Buffer => {
+    // Strip DER's non-negative sign byte, then left-pad to 32.
+    const t = v.length === 33 ? v.subarray(1) : v;
+    const out = Buffer.alloc(32);
+    t.copy(out, 32 - t.length);
+    return out;
+  };
+  return Buffer.concat([fixed(r.value), fixed(s.value)]);
+}
+
+/** Sign an ES256 (P-256) JWT the way Telegram would. */
+function signEs256IdToken(claims: Record<string, unknown>): string {
+  const header = { alg: "ES256", kid: EC_KID, typ: "JWT" };
+  const encode = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64url");
+  const signingInput = `${encode(header)}.${encode(claims)}`;
+  const raw = derToJose(cryptoSign("sha256", Buffer.from(signingInput, "utf8"), ecPrivateKey));
+  return `${signingInput}.${raw.toString("base64url")}`;
+}
+
+/** Sign an EdDSA (Ed25519) JWT the way Telegram would. */
+function signEdDsaIdToken(claims: Record<string, unknown>): string {
+  const header = { alg: "EdDSA", kid: ED_KID, typ: "JWT" };
+  const encode = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64url");
+  const signingInput = `${encode(header)}.${encode(claims)}`;
+  const raw = cryptoSign(null, Buffer.from(signingInput, "utf8"), edPrivateKey);
+  return `${signingInput}.${raw.toString("base64url")}`;
 }
 
 function validClaims(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -83,9 +140,16 @@ function installFetchMock(): void {
   globalThis.fetch = (async (input: Parameters<typeof ORIGINAL_FETCH>[0], init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url === "https://oauth.telegram.org/.well-known/jwks.json") {
-      return new Response(JSON.stringify({ keys: [{ ...PUBLIC_JWK, kid: KID, use: "sig" }] }), {
-        status: 200,
-      });
+      return new Response(
+        JSON.stringify({
+          keys: [
+            { ...PUBLIC_JWK, kid: KID, alg: "RS256", use: "sig" },
+            { ...EC_JWK, kid: EC_KID, alg: "ES256", use: "sig" },
+            { ...ED_JWK, kid: ED_KID, alg: "EdDSA", use: "sig" },
+          ],
+        }),
+        { status: 200 },
+      );
     }
     if (url === "https://oauth.telegram.org/token") {
       tokenEndpointCalls += 1;
@@ -551,5 +615,136 @@ describe("R154 — completing the flow (completeTelegramOidcLogin)", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("provider_disabled");
+  });
+});
+
+describe("R156 — the documented auth-code reality (the production fix)", () => {
+  // ROOT CAUSE (live production, 2026-10-17): the /auth parameter table
+  // documents NO nonce parameter and the discovery doc's claims_supported
+  // omits it — the auth-code id_token legitimately arrives nonce-less,
+  // so the R154 hard nonce requirement failed EVERY real login with
+  // oidc_invalid_token («تعذر التحقق من هوية Telegram»). The nonce stays
+  // enforced whenever Telegram actually echoes one.
+  it("a nonce-LESS token verifies — the documented auth-code shape that failed every production login", async () => {
+    const token = signIdToken(validClaims({ nonce: undefined }));
+    const verdict = await verifyTelegramOidcIdToken(token, {
+      clientId: CLIENT_ID,
+      nonce: "stored-flow-nonce",
+    });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.identity.telegramId).toBe("987654321");
+  });
+
+  it("the full production shape — nonce-less token end-to-end — registers and mints a session", async () => {
+    const tgId = nextTelegramId();
+    const { state } = await startFlow();
+    const stored = await consumeTelegramOidcState(state);
+    const { storeTelegramOidcState } = await import("../../lib/telegram-oidc-states");
+    await storeTelegramOidcState(state, stored!);
+    nextIdToken = signIdToken(validClaims({ id: tgId, nonce: undefined }));
+
+    const result = await completeTelegramOidcLogin({
+      code: "c-nonceless",
+      state,
+      originHeader: ORIGIN,
+      client: { ipAddress: "127.0.0.1", userAgent: "vitest" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.isNewUser).toBe(true);
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.telegramId, String(tgId)));
+    expect(user).toBeDefined();
+  });
+
+  it("ES256 (P-256) and EdDSA (Ed25519) tokens verify — the documented opt-in algorithms", async () => {
+    const esId = nextTelegramId();
+    const es = signEs256IdToken(validClaims({ id: esId, nonce: undefined }));
+    const esVerdict = await verifyTelegramOidcIdToken(es, {
+      clientId: CLIENT_ID,
+      nonce: "stored",
+    });
+    expect(esVerdict.ok).toBe(true);
+    if (!esVerdict.ok) return;
+    expect(esVerdict.identity.telegramId).toBe(String(esId));
+
+    const edId = nextTelegramId();
+    const ed = signEdDsaIdToken(validClaims({ id: edId, nonce: undefined }));
+    const edVerdict = await verifyTelegramOidcIdToken(ed, {
+      clientId: CLIENT_ID,
+      nonce: "stored",
+    });
+    expect(edVerdict.ok).toBe(true);
+    if (!edVerdict.ok) return;
+    expect(edVerdict.identity.telegramId).toBe(String(edId));
+  });
+
+  it("ES256K is refused, a tampered ES256 signature dies, and a kid/alg cross-mismatch never verifies", async () => {
+    // ES256K: Node verifies no secp256k1 and Telegram rejects the profile
+    // scope this flow requires when ES256K is selected — refused outright.
+    const es256k = signIdToken(validClaims(), { alg: "ES256K", kid: EC_KID });
+    const es256kVerdict = await verifyTelegramOidcIdToken(es256k, {
+      clientId: CLIENT_ID,
+      nonce: "x",
+    });
+    expect(es256kVerdict.ok).toBe(false);
+    if (!es256kVerdict.ok) expect(es256kVerdict.reason).toBe("bad_algorithm");
+
+    // Tampered payload under a REAL ES256 signature.
+    const real = signEs256IdToken(validClaims({ nonce: undefined }));
+    const [h, , s] = real.split(".");
+    const forgedPayload = Buffer.from(
+      JSON.stringify(validClaims({ id: 111_222_333, nonce: undefined })),
+    ).toString("base64url");
+    const forged = `${h}.${forgedPayload}.${s}`;
+    const forgedVerdict = await verifyTelegramOidcIdToken(forged, {
+      clientId: CLIENT_ID,
+      nonce: "x",
+    });
+    expect(forgedVerdict.ok).toBe(false);
+    if (!forgedVerdict.ok) expect(forgedVerdict.reason).toBe("bad_signature");
+
+    // An RS256-header token pointing at the ES256 key — the JWKS key's
+    // own alg field must refuse the cross-binding.
+    const cross = signIdToken(validClaims(), { alg: "RS256", kid: EC_KID });
+    const crossVerdict = await verifyTelegramOidcIdToken(cross, {
+      clientId: CLIENT_ID,
+      nonce: "x",
+    });
+    expect(crossVerdict.ok).toBe(false);
+    if (!crossVerdict.ok) expect(crossVerdict.reason).toBe("bad_signature");
+  });
+
+  it("aud-as-number and id-as-string shapes (API drift tolerance) verify", async () => {
+    const token = signIdToken(
+      validClaims({ aud: Number(CLIENT_ID), id: String(987_654_321), nonce: undefined }),
+    );
+    const verdict = await verifyTelegramOidcIdToken(token, {
+      clientId: CLIENT_ID,
+      nonce: "stored",
+    });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.identity.telegramId).toBe("987654321");
+  });
+
+  it("a nonce the token DOES carry must still match — fail-closed, never skipped", async () => {
+    const wrong = signIdToken(validClaims({ nonce: "attacker-nonce" }));
+    const verdict = await verifyTelegramOidcIdToken(wrong, {
+      clientId: CLIENT_ID,
+      nonce: "stored-flow-nonce",
+    });
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.reason).toBe("nonce_mismatch");
+      // The R156 failure detail names its exact check (type-only, no
+      // token values) so the next live failure is diagnosable.
+      expect(verdict.detail?.noncePresent).toBe(true);
+      expect(verdict.detail?.alg).toBe("RS256");
+      expect(verdict.detail?.kid).toBe(KID);
+    }
   });
 });

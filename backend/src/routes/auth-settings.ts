@@ -605,6 +605,12 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
 //      If BotFather regenerates the secret, re-paste the new value.
 // A rejected pair surfaces as reason `oidc_invalid_client` (logged with
 // Telegram's error code) — check these three steps first.
+// The signing algorithm under BotFather → Login Widget → Advanced may be
+// RS256 (default), ES256, or EdDSA — the validator accepts all three.
+// ES256K is NOT usable: Telegram rejects the `profile` scope this flow
+// requests when it is selected. A validation failure logs the reason +
+// the alg/kid/claim types (never token values) under
+// "[telegram-oidc] ID token validation failed".
 
 // GET /api/auth/telegram/oidc/login — start the flow (302 to Telegram).
 authProviderPublicRouter.get("/telegram/oidc/login", async (req, res) => {

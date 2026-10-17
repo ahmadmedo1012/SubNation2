@@ -12,10 +12,15 @@
  *   3. POST https://oauth.telegram.org/token (Basic auth client_id:secret)
  *        grant_type=authorization_code&code=...&redirect_uri=...
  *        &client_id=...&code_verifier=...
- *   4. Validate the returned id_token: RS256 via the JWKS endpoint
- *      (https://oauth.telegram.org/.well-known/jwks.json), then
+ *   4. Validate the returned id_token: signature via the JWKS endpoint
+ *      (https://oauth.telegram.org/.well-known/jwks.json) with Telegram's
+ *      documented algorithms (RS256 default, ES256/EdDSA selectable under
+ *      BotFather → Login Widget → Advanced — the live JWKS advertises one
+ *      key per alg, and the token's alg must match its key's), then
  *      iss === "https://oauth.telegram.org", aud === client_id,
- *      exp/iat timing, nonce match, and the verified `id` claim.
+ *      exp/iat timing, the nonce WHEN PRESENT (the /auth parameter table
+ *      documents no nonce parameter — CSRF/replay ride the single-use
+ *      state + PKCE + one-time code), and the verified `id` claim.
  *
  * Scopes: `openid profile` ONLY — the task forbids requesting the phone
  * scope (registration must not require a phone number or SMS consent) and
@@ -61,8 +66,15 @@ export const TELEGRAM_OIDC_TOKEN_ENDPOINT = "https://oauth.telegram.org/token";
 export const TELEGRAM_OIDC_JWKS_ENDPOINT = "https://oauth.telegram.org/.well-known/jwks.json";
 export const TELEGRAM_OIDC_ISSUER = "https://oauth.telegram.org";
 
-/** The only signing algorithm this flow accepts (Telegram's default). */
-const REQUIRED_ALG = "RS256";
+/**
+ * Telegram's documented ID-token algorithms (core.telegram.org/bots/
+ * telegram-login): RS256 default; ES256 and EdDSA selectable under
+ * BotFather → Login Widget → Advanced (live-verified: the JWKS carries
+ * one key per alg). ES256K is refused — Node verifies no secp256k1, and
+ * Telegram rejects the `profile` scope this flow requires when ES256K
+ * is selected, so it can never legitimately reach this validator.
+ */
+const SUPPORTED_ALGS: ReadonlySet<string> = new Set(["RS256", "ES256", "EdDSA"]);
 
 /** Allowed clock skew for exp/iat checks (the OIDC spec's 5-minute norm). */
 const CLOCK_SKEW_SEC = 300;
@@ -169,6 +181,9 @@ export async function startTelegramOidcFlow(input: {
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
+    // Not in the /auth documented parameter table (Telegram ignores it
+    // today) — sent forward-compatibly; the validator enforces it
+    // whenever Telegram echoes one into the id_token.
     nonce,
   });
   return {
@@ -218,6 +233,9 @@ interface Jwk {
   e?: string;
   alg?: string;
   use?: string;
+  crv?: string;
+  x?: string;
+  y?: string;
 }
 
 let jwksCache: { keys: Jwk[]; fetchedAt: number } | null = null;
@@ -242,16 +260,76 @@ export const __testResetJwksCache = (): void => {
   jwksCache = null;
 };
 
-function verifyRs256Signature(jwt: JwtParts, jwk: Jwk): boolean {
-  if (jwk.kty !== "RSA" || typeof jwk.n !== "string" || typeof jwk.e !== "string") return false;
+/**
+ * ES256 JWTs carry the signature as raw r||s (RFC 7515 §3.4); Node
+ * verifies DER-encoded ECDSA — convert before crypto.verify.
+ */
+function joseSignatureToDer(raw: Buffer): Buffer | null {
+  if (raw.length !== 64) return null;
+  const signedInt = (bytes: Buffer): Buffer | null => {
+    let start = 0;
+    while (start < bytes.length && bytes[start] === 0) start += 1;
+    const value = bytes.subarray(start);
+    if (value.length === 0) return null;
+    return value[0]! & 0x80 ? Buffer.concat([Buffer.from([0]), value]) : Buffer.from(value);
+  };
+  const r = signedInt(raw.subarray(0, 32));
+  const s = signedInt(raw.subarray(32, 64));
+  if (!r || !s) return null;
+  return Buffer.concat([
+    Buffer.from([0x30, 2 + r.length + 2 + s.length]),
+    Buffer.from([0x02, r.length]),
+    r,
+    Buffer.from([0x02, s.length]),
+    s,
+  ]);
+}
+
+/**
+ * Signature verification per algorithm, cross-bound to the JWK: a key
+ * advertising alg X only verifies a token whose header says X, and the
+ * key TYPE must match the algorithm's family (RSA/EC-P256/OKP-Ed25519).
+ */
+function verifySignature(jwt: JwtParts, jwk: Jwk): boolean {
+  if (typeof jwk.alg === "string" && jwk.alg !== jwt.header.alg) return false;
   try {
-    // Minimal structural JWK (kty/n/e) — satisfies createPublicKey's
-    // JsonWebKey input shape without importing DOM-flavored types.
+    const data = Buffer.from(jwt.signingInput, "utf8");
+    if (jwt.header.alg === "RS256") {
+      if (jwk.kty !== "RSA" || typeof jwk.n !== "string" || typeof jwk.e !== "string") {
+        return false;
+      }
+      const key = createPublicKey({
+        key: jwk as { kty: string; n: string; e: string },
+        format: "jwk",
+      });
+      return cryptoVerify("RSA-SHA256", data, key, jwt.signature);
+    }
+    if (jwt.header.alg === "ES256") {
+      if (
+        jwk.kty !== "EC" ||
+        jwk.crv !== "P-256" ||
+        typeof jwk.x !== "string" ||
+        typeof jwk.y !== "string"
+      ) {
+        return false;
+      }
+      const der = joseSignatureToDer(jwt.signature);
+      if (!der) return false;
+      const key = createPublicKey({
+        key: jwk as { kty: string; crv: string; x: string; y: string },
+        format: "jwk",
+      });
+      return cryptoVerify("sha256", data, key, der);
+    }
+    // EdDSA — Ed25519 (Node verifies the raw 64-byte JOSE signature).
+    if (jwk.kty !== "OKP" || jwk.crv !== "Ed25519" || typeof jwk.x !== "string") {
+      return false;
+    }
     const key = createPublicKey({
-      key: jwk as { kty: string; n: string; e: string; kid?: string },
+      key: jwk as { kty: string; crv: string; x: string },
       format: "jwk",
     });
-    return cryptoVerify("RSA-SHA256", Buffer.from(jwt.signingInput, "utf8"), key, jwt.signature);
+    return cryptoVerify(null, data, key, jwt.signature);
   } catch {
     return false;
   }
@@ -286,55 +364,91 @@ export interface TelegramOidcIdentity {
   authDate: number;
 }
 
+/** Bounded, non-secret claim TYPES for the failure log line (R156: the
+ * next live failure must name its exact check — never token VALUES). */
+function validationDetail(jwt: JwtParts | null): Record<string, unknown> {
+  if (!jwt) return {};
+  const type = (v: unknown): string =>
+    Array.isArray(v) ? "array" : v === null ? "null" : typeof v;
+  return {
+    alg: typeof jwt.header.alg === "string" ? jwt.header.alg.slice(0, 16) : undefined,
+    kid: typeof jwt.header.kid === "string" ? jwt.header.kid.slice(0, 64) : undefined,
+    issType: type(jwt.claims.iss),
+    audType: type(jwt.claims.aud),
+    noncePresent: typeof jwt.claims.nonce === "string",
+    idType: type(jwt.claims.id),
+  };
+}
+
 /**
- * Full ID-token validation: RS256 signature against the official JWKS +
- * every claim check. Returns the verified identity or the specific
- * failure reason (never logged with token contents).
+ * Full ID-token validation: signature against the official JWKS (every
+ * documented, profile-compatible algorithm) + every claim check.
+ * Returns the verified identity or the specific failure reason with
+ * bounded type-only diagnostics (never token contents).
  */
 export async function verifyTelegramOidcIdToken(
   idToken: string,
   expected: { clientId: string; nonce: string },
 ): Promise<
   | { ok: true; identity: TelegramOidcIdentity }
-  | { ok: false; reason: TelegramOidcVerificationFailure }
+  | { ok: false; reason: TelegramOidcVerificationFailure; detail?: Record<string, unknown> }
 > {
   const jwt = decodeJwt(idToken);
   if (!jwt) return { ok: false, reason: "malformed_token" };
+  const fail = (reason: TelegramOidcVerificationFailure) => ({
+    ok: false as const,
+    reason,
+    detail: validationDetail(jwt),
+  });
 
-  // Algorithm pinning — an alg=none / HS256 confusion token dies here.
-  if (jwt.header.alg !== REQUIRED_ALG) return { ok: false, reason: "bad_algorithm" };
+  // Algorithm pinning — an alg=none / HS256 confusion / ES256K token
+  // dies here, before any key lookup.
+  if (!SUPPORTED_ALGS.has(jwt.header.alg)) return fail("bad_algorithm");
 
   const keys = await fetchTelegramJwks();
+  // kid-first; a kid-less header falls back to the key advertising the
+  // token's own alg (the live JWKS sets alg on every key).
   const jwk = jwt.header.kid
     ? (keys.find((k) => k.kid === jwt.header.kid) ?? null)
-    : (keys[0] ?? null);
-  if (!jwk) return { ok: false, reason: "unknown_key" };
-  if (!verifyRs256Signature(jwt, jwk)) return { ok: false, reason: "bad_signature" };
+    : (keys.find((k) => k.alg === jwt.header.alg) ?? keys[0] ?? null);
+  if (!jwk) return fail("unknown_key");
+  if (!verifySignature(jwt, jwk)) return fail("bad_signature");
 
   const nowSec = Math.floor(Date.now() / 1000);
-  if (jwt.claims.iss !== TELEGRAM_OIDC_ISSUER) return { ok: false, reason: "wrong_issuer" };
-  const aud = Array.isArray(jwt.claims.aud) ? jwt.claims.aud[0] : jwt.claims.aud;
-  if (aud !== expected.clientId) return { ok: false, reason: "wrong_audience" };
+  if (jwt.claims.iss !== TELEGRAM_OIDC_ISSUER) return fail("wrong_issuer");
+  const rawAud = Array.isArray(jwt.claims.aud) ? jwt.claims.aud[0] : jwt.claims.aud;
+  // The docs' example ships aud as a string; a numeric shape is coerced —
+  // the VALUE must equal the configured client id either way.
+  const aud = typeof rawAud === "number" ? String(rawAud) : rawAud;
+  if (aud !== expected.clientId) return fail("wrong_audience");
   const exp = typeof jwt.claims.exp === "number" ? jwt.claims.exp : 0;
-  if (exp + CLOCK_SKEW_SEC <= nowSec) return { ok: false, reason: "expired" };
+  if (exp + CLOCK_SKEW_SEC <= nowSec) return fail("expired");
   const iat = typeof jwt.claims.iat === "number" ? jwt.claims.iat : 0;
-  if (iat > nowSec + CLOCK_SKEW_SEC) return { ok: false, reason: "issued_in_future" };
-  // Nonce: replay defense for the implicit-style token re-use — the state
-  // store already binds the flow to one code exchange; this re-checks the
-  // token against the flow that requested it.
+  if (iat > nowSec + CLOCK_SKEW_SEC) return fail("issued_in_future");
+  // R156: the /auth parameter table documents NO nonce parameter (and the
+  // discovery doc's claims_supported omits it) — the auth-code id_token
+  // legitimately arrives nonce-less; CSRF/replay ride the single-use
+  // state + PKCE + the one-time code. When Telegram DOES echo one, it
+  // must match — fail-closed, never a skip.
   if (
-    typeof jwt.claims.nonce !== "string" ||
+    typeof jwt.claims.nonce === "string" &&
     !constantTimeEqual(jwt.claims.nonce, expected.nonce)
   ) {
-    return { ok: false, reason: "nonce_mismatch" };
+    return fail("nonce_mismatch");
   }
 
   // The linkage key: `id` is the CLASSIC Telegram user id (the documented
-  // profile claim). `sub` is a DIFFERENT internal identifier — never used.
+  // profile claim) — a positive integer as a number (the docs' example)
+  // or its numeric-string form. `sub` is a DIFFERENT internal identifier
+  // — never used for linkage.
   const idClaim = jwt.claims.id;
-  if (typeof idClaim !== "number" || !Number.isSafeInteger(idClaim) || idClaim <= 0) {
-    return { ok: false, reason: "missing_id_claim" };
-  }
+  const telegramId =
+    typeof idClaim === "number" && Number.isSafeInteger(idClaim) && idClaim > 0
+      ? String(idClaim)
+      : typeof idClaim === "string" && /^\d{1,15}$/.test(idClaim)
+        ? idClaim
+        : null;
+  if (!telegramId) return fail("missing_id_claim");
 
   const given = typeof jwt.claims.given_name === "string" ? jwt.claims.given_name : null;
   const family = typeof jwt.claims.family_name === "string" ? jwt.claims.family_name : null;
@@ -343,7 +457,7 @@ export async function verifyTelegramOidcIdToken(
   return {
     ok: true,
     identity: {
-      telegramId: String(idClaim),
+      telegramId,
       displayName: displayName || (typeof jwt.claims.name === "string" ? jwt.claims.name : null),
       username:
         typeof jwt.claims.preferred_username === "string" &&
@@ -527,7 +641,7 @@ export async function completeTelegramOidcLogin(input: {
       );
     });
     logger.warn(
-      { category: "auth", reason: verification.reason },
+      { category: "auth", reason: verification.reason, ...verification.detail },
       "[telegram-oidc] ID token validation failed",
     );
     return {
