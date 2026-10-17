@@ -54,6 +54,49 @@ const ERROR_MESSAGES: Record<string, { title: string; tone: "warning" | "error" 
     title: "حدث خطأ غير متوقع. حاول مرة أخرى.",
     tone: "error",
   },
+  // ── R155: the Telegram OIDC flow's own reason codes. Every one of these
+  // used to fall through to the generic fallback below — a rejected
+  // client credential, an expired flow state, and a failed identity
+  // check all rendered the same «حدث خطأ غير متوقع», which made
+  // production failures undiagnosable (R155's live reproduction).
+  // Telegram-side denial (the user backed out of the consent screen —
+  // the standard OAuth code Telegram redirects back with).
+  access_denied: {
+    title: "تم إلغاء تسجيل الدخول. يمكنك المحاولة مرة أخرى أو اختيار طريقة أخرى.",
+    tone: "info",
+  },
+  // The flow's single-use state expired or was already consumed.
+  oidc_state: {
+    title: "انتهت صلاحية جلسة تسجيل الدخول. ابدأ المحاولة من جديد.",
+    tone: "warning",
+  },
+  // Telegram rejected the code exchange (expired/used code, PKCE or
+  // redirect mismatch) — retryable by the user.
+  oidc_token_exchange: {
+    title: "تعذّر إكمال تسجيل الدخول عبر Telegram. حاول مرة أخرى.",
+    tone: "error",
+  },
+  // Telegram rejected the BotFather Client ID/Secret pair — an operator
+  // configuration problem, not something the user can retry away.
+  oidc_invalid_client: {
+    title: "إعداد تسجيل الدخول عبر Telegram غير صحيح. يُرجى إبلاغ الإدارة.",
+    tone: "error",
+  },
+  // A 200 response that carried no id_token.
+  oidc_missing_id_token: {
+    title: "استجابة غير صالحة من Telegram. حاول مرة أخرى.",
+    tone: "error",
+  },
+  // ID-token signature/claim validation failed.
+  oidc_invalid_token: {
+    title: "تعذّر التحقق من هوية Telegram. حاول مرة أخرى.",
+    tone: "error",
+  },
+  // No configured browser origin could build the callback URL.
+  misconfigured_origin: {
+    title: "إعداد تسجيل الدخول غير مكتمل على الخادم. يُرجى إبلاغ الإدارة.",
+    tone: "warning",
+  },
 };
 
 function readErrorParam(): string | null {

@@ -362,6 +362,25 @@ interface TelegramTokenResponse {
   access_token?: string;
   id_token?: string;
   token_type?: string;
+  /**
+   * OAuth error code. Live-verified against the real endpoint: Telegram
+   * reports exchange failures as HTTP 200 + {"error":"invalid_grant" |
+   * "invalid_client" | ...} — the HTTP status alone never discriminates,
+   * and the error STRING is the only signal separating an
+   * operator-fixable credential problem from a code/verifier problem.
+   */
+  error?: string;
+}
+
+/**
+ * Bound + sanitize an OAuth error code before it reaches a log line
+ * (defensive: a misrouted or hostile endpoint could return anything as
+ * the `error` value — never trust it as free text).
+ */
+function sanitizeTelegramOauthError(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const bounded = raw.trim().slice(0, 64);
+  return /^[a-z0-9_]+$/i.test(bounded) ? bounded : null;
 }
 
 /**
@@ -437,9 +456,38 @@ export async function completeTelegramOidcLogin(input: {
       error: "تعذّر الاتصال بـ Telegram، حاول مجدداً",
     };
   }
-  if (!tokenRes.ok) {
+  // R155: Telegram reports OAuth failures INSIDE a 200 body
+  // ({"error":"invalid_grant"} etc. — live-verified), so the body must be
+  // read on every response and its error code surfaced. A JSON parse
+  // failure (HTML error page, empty body) degrades to the generic
+  // exchange rejection — never a crash.
+  let tokens: TelegramTokenResponse;
+  try {
+    tokens = (await tokenRes.json()) as TelegramTokenResponse;
+  } catch {
+    tokens = {};
+  }
+  if (!tokenRes.ok || typeof tokens.error === "string") {
+    const tgError = sanitizeTelegramOauthError(tokens.error);
+    if (tgError === "invalid_client") {
+      // The BotFather-issued Client ID/Secret pair was rejected — an
+      // operator-configuration failure (wrong/regenerated secret, bot
+      // not switched to the OpenID Connect login mode), not a user or
+      // protocol failure. Distinct reason so the logs and the login
+      // page can say exactly what to fix.
+      logger.warn(
+        { category: "auth", httpStatus: tokenRes.status, tgError },
+        "[telegram-oidc] token exchange rejected the client credentials (invalid_client) — re-check the BotFather OpenID Connect Client ID/Secret and the Allowed URLs",
+      );
+      return {
+        ok: false,
+        status: 502,
+        reason: "oidc_invalid_client",
+        error: "إعداد تسجيل الدخول عبر Telegram غير صحيح، يُرجى مراجعة الإعدادات",
+      };
+    }
     logger.warn(
-      { category: "auth", status: tokenRes.status },
+      { category: "auth", httpStatus: tokenRes.status, tgError },
       "[telegram-oidc] token exchange rejected",
     );
     return {
@@ -449,7 +497,6 @@ export async function completeTelegramOidcLogin(input: {
       error: "فشل تبادل الرمز مع Telegram، حاول مجدداً",
     };
   }
-  const tokens = (await tokenRes.json()) as TelegramTokenResponse;
   if (typeof tokens.id_token !== "string" || tokens.id_token.length === 0) {
     return {
       ok: false,

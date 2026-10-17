@@ -73,6 +73,9 @@ function validClaims(over: Record<string, unknown> = {}): Record<string, unknown
 /** The fetch mock — token endpoint + JWKS endpoint, real net for the rest. */
 const ORIGINAL_FETCH = globalThis.fetch;
 let nextIdToken = "unconfigured";
+/** R155: when set, the token mock answers 200 + {"error": <this>} — the
+ * live-verified shape Telegram reports OAuth failures in. */
+let nextTokenError: string | null = null;
 let tokenEndpointCalls = 0;
 let lastTokenRequestBody: URLSearchParams | null = null;
 
@@ -87,6 +90,9 @@ function installFetchMock(): void {
     if (url === "https://oauth.telegram.org/token") {
       tokenEndpointCalls += 1;
       lastTokenRequestBody = new URLSearchParams(String(init?.body ?? ""));
+      if (nextTokenError !== null) {
+        return new Response(JSON.stringify({ error: nextTokenError }), { status: 200 });
+      }
       return new Response(
         JSON.stringify({ access_token: "at", token_type: "Bearer", id_token: nextIdToken }),
         {
@@ -187,6 +193,8 @@ beforeEach(async () => {
   __testResetJwksCache();
   tokenEndpointCalls = 0;
   lastTokenRequestBody = null;
+  nextTokenError = null;
+  nextIdToken = "unconfigured";
 });
 
 describe("R154 — the authorization request (startTelegramOidcFlow)", () => {
@@ -370,6 +378,67 @@ describe("R154 — completing the flow (completeTelegramOidcLogin)", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("oidc_state");
+  });
+
+  // ── R155: Telegram reports OAuth failures as HTTP 200 + {"error":..."}
+  // (live-verified against the real endpoint). The R154 code only checked
+  // the HTTP status — every grant failure fell through to the misleading
+  // `oidc_missing_id_token` with NO log line, hiding the discriminator
+  // between an operator-fixable credential problem and a code problem.
+  it('a 200 + {"error":"invalid_client"} exchange surfaces the operator-actionable reason', async () => {
+    const { state } = await startFlow();
+    nextTokenError = "invalid_client";
+
+    const result = await completeTelegramOidcLogin({
+      code: "rejected-code",
+      state,
+      originHeader: ORIGIN,
+      client: { ipAddress: "127.0.0.1", userAgent: "vitest" },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // The DISTINCT reason — the login page and the logs can now say the
+    // BotFather Client ID/Secret pair itself was rejected.
+    expect(result.reason).toBe("oidc_invalid_client");
+    // Fail-closed: no user row was created from the rejected exchange.
+    const users = await db.select().from(usersTable);
+    expect(users).toHaveLength(0);
+  });
+
+  it('a 200 + {"error":"invalid_grant"} exchange is an oidc_token_exchange failure, NOT a misleading missing-id-token', async () => {
+    const { state } = await startFlow();
+    nextTokenError = "invalid_grant";
+
+    const result = await completeTelegramOidcLogin({
+      code: "expired-or-used-code",
+      state,
+      originHeader: ORIGIN,
+      client: { ipAddress: "127.0.0.1", userAgent: "vitest" },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // R155 behavior change: a grant error in a 200 body used to be
+    // classified as `oidc_missing_id_token` (the response DID carry an
+    // error — the id_token was never "missing", the grant was refused).
+    expect(result.reason).toBe("oidc_token_exchange");
+    const after = await db.select().from(usersTable);
+    expect(after).toHaveLength(0);
+  });
+
+  it("a 200 with NO error and NO id_token stays the honest oidc_missing_id_token", async () => {
+    const { state } = await startFlow();
+    // Not an error body — a genuinely id_token-less success shape.
+    nextIdToken = "";
+
+    const result = await completeTelegramOidcLogin({
+      code: "c",
+      state,
+      originHeader: ORIGIN,
+      client: { ipAddress: "127.0.0.1", userAgent: "vitest" },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("oidc_missing_id_token");
   });
 
   it("fails closed with a SPECIFIC reason for every tampered/invalid token shape", async () => {

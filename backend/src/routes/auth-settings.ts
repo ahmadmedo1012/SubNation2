@@ -589,10 +589,22 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
 // state+PKCE+nonce battery is the defense), so the legacy B1-1
 // same-origin gate deliberately does not apply to this route pair.
 //
-// Owner setup (BotFather): select the bot → Login Widget → add the
-// Allowed URL `https://<site-origin>/api/auth/telegram/oidc/callback`
-// (plus the site origin itself) → copy the shown Client ID + Client
-// Secret into /admin/settings → Telegram.
+// Owner setup (BotFather) — the complete ritual, in order:
+//   1. @BotFather → /mybots → the bot → Bot Settings → Web Login. If the
+//      screen still shows the LEGACY Login Widget settings, switch it via
+//      "Switch to OpenID Connect Login" FIRST — the Client ID/Secret only
+//      exist on the new settings page.
+//   2. Allowed URLs — add BOTH the exact callback
+//      `https://<site-origin>/api/auth/telegram/oidc/callback` AND the
+//      site origin itself. Telegram only processes redirects for
+//      pre-registered URLs.
+//   3. Copy the displayed Client ID + Client Secret into
+//      /admin/settings → Telegram. The Client Secret is a SEPARATE
+//      BotFather-issued credential — it is NOT the Bot API token and
+//      NOT the bot token's suffix; never substitute one for the other.
+//      If BotFather regenerates the secret, re-paste the new value.
+// A rejected pair surfaces as reason `oidc_invalid_client` (logged with
+// Telegram's error code) — check these three steps first.
 
 // GET /api/auth/telegram/oidc/login — start the flow (302 to Telegram).
 authProviderPublicRouter.get("/telegram/oidc/login", async (req, res) => {
@@ -632,7 +644,14 @@ authProviderPublicRouter.get("/telegram/oidc/callback", async (req, res) => {
 
     // Cancellation / provider-reported error: Telegram sends ?error=
     // (or an empty redirect) when the user dismisses the consent screen.
+    // R155: the forwarded code was previously SILENT — nothing in the
+    // logs ever said why a flow aborted here. Bounded + logged (never
+    // free-text: the raw param only rides an encoded redirect anyway).
     if (typeof query.error === "string" && query.error) {
+      logger.warn(
+        { category: "auth", providerError: query.error.slice(0, 64) },
+        "[telegram-oidc] provider redirected back with an error",
+      );
       return res.redirect(`/login?error=${encodeURIComponent(query.error)}`);
     }
     const code = typeof query.code === "string" ? query.code : "";
