@@ -34,10 +34,18 @@ test.describe("cart + checkout guest gate", () => {
     // The gate itself (B5-1): buyable CTA or honest sold-out — never
     // neither. The first card on a live catalog can be a sold-out
     // product; it cannot be a page with NO buy gate at all.
+    // R160 (production drift): the sold-out branch must be the PDP's
+    // OWN stock-verdict chip (role="status" + the exact name — the
+    // soldout-pdp.spec selector), NOT a page-wide getByText: the PDP's
+    // recommendations rail also renders «نفد المخزون» badges for
+    // sold-out RELATED products, and when the live catalog carries one
+    // there, the .or() resolved to 2 elements (a strict-mode violation,
+    // the tablet-768 production failure of this run). The chip-scoped
+    // branch keeps the union to exactly one element per side.
     const buy = page
       .getByRole("button", { name: "أضف للسلة — سجّل الدخول عند إتمام الطلب" })
       .first();
-    const soldOut = page.getByText("نفد المخزون").first();
+    const soldOut = page.getByRole("status", { name: "نفد المخزون", exact: true }).first();
     await expect(buy.or(soldOut)).toBeVisible({ timeout: 15_000 });
 
     // Post-click flow only: a sold-out product has no cart step.

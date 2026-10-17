@@ -47,7 +47,14 @@ test.describe("guest cart drain — the session round-trip", () => {
     // from «السلة، فارغة» to the count plural (Navbar.tsx:672-682 —
     // formatCount(1, …) = «1 منتج»; the badge SPAN itself is
     // aria-hidden chrome, Navbar.tsx:711-716).
-    const cartLink = page.getByRole("link", { name: "السلة، 1 منتج", exact: true });
+    // R160 (mobile-390): the same accessible name is carried by BOTH the
+    // Navbar link and the mobile bottom-nav's cart link — the add-twin's
+    // visible-surface idiom (and .first()) keeps the locator strict-safe
+    // at every width.
+    const cartLink = page
+      .getByRole("link", { name: "السلة، 1 منتج", exact: true })
+      .filter({ visible: true })
+      .first();
     await expect(cartLink).toBeVisible({ timeout: 10_000 });
 
     // /cart: the line renders with its name (cart.tsx:388) and quantity
@@ -72,8 +79,14 @@ test.describe("guest cart drain — the session round-trip", () => {
       timeout: 10_000,
     });
     await expect(page.getByText("ابدأ بتصفح الكتالوج وأضف منتجاتك المفضلة للسلة")).toBeVisible();
-    // The badge drained too (Navbar.tsx:681 — «فارغة» at count 0).
-    await expect(page.getByRole("link", { name: "السلة، فارغة", exact: true })).toBeVisible();
+    // The badge drained too (Navbar.tsx:681 — «فارغة» at count 0). The
+    // same twin discipline as the count assertion above.
+    await expect(
+      page
+        .getByRole("link", { name: "السلة، فارغة", exact: true })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
 
     // The undo affordance EXISTS post-removal (cart.tsx:102-112: sonner
     // «تمت إزالة المنتج» + action «تراجع» → addItem re-adds, 6s window)
