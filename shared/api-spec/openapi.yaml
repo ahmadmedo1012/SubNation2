@@ -2094,6 +2094,25 @@ paths:
           description: |
             LOWER LIKE across order code, user phone / email / display
             name, or product name (the admin command palette filter).
+        - name: sort
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum:
+              - created_at:asc
+              - created_at:desc
+              - total:asc
+              - total:desc
+              - null
+          description: |
+            R159 (orders sort affordance): optional column sort for the
+            paginated list, `column:direction`. `total` maps to the
+            order's amount column (the AdminOrder DTO key stays `amount`).
+            ABSENT → the frozen default `created_at DESC` (byte-identical
+            to pre-R159). Explicit sorts append `id DESC` as a
+            pagination-stability tiebreaker (amount ties are common and
+            Postgres's sort is not stable across LIMIT/OFFSET pages).
+            Unknown key/direction → 400 INVALID_DATA.
       responses:
         "200":
           description: All orders

@@ -155,9 +155,14 @@ describe("R137 (FE) — admin/topups.tsx decomposition: page stays an orchestrat
     expect(card).toContain("aria-pressed={isSelected}");
     // The deep-link write-back rode along with the tab's verbatim
     // onClick (the statusFilter atom + initializer stay in the page).
+    // R159 (IMPL-A): the pill markup retired for ui/filter-tabs — the
+    // write-back stays in the twin's onSelect wrapper (verbatim), and
+    // aria-pressed arrives from the primitive (pinned by its own suite
+    // + topups-status-tab-query's render assertions).
     const tabs = read("src/components/admin/topups/StatusFilterTabs.tsx");
+    expect(tabs).toContain('from "@/components/ui/filter-tabs"');
+    expect(tabs).toContain("value={statusFilter}");
     expect(tabs).toContain("window.history.replaceState(");
-    expect(tabs).toContain("aria-pressed={active}");
     // The dialog shells kept their guarded ⌘/Ctrl+Enter submit and the
     // live money-loop counter (byte-identical).
     const reject = read("src/components/admin/topups/RejectModal.tsx");

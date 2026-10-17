@@ -1749,6 +1749,18 @@ export const ListAdminOrdersQueryParams = zod.object({
     .describe(
       "LOWER LIKE across order code, user phone / email / display\nname, or product name (the admin command palette filter).\n",
     ),
+  sort: zod
+    .union([
+      zod.literal("created_at:asc"),
+      zod.literal("created_at:desc"),
+      zod.literal("total:asc"),
+      zod.literal("total:desc"),
+      zod.literal(null),
+    ])
+    .nullish()
+    .describe(
+      "R159 (orders sort affordance): optional column sort for the\npaginated list, `column:direction`. `total` maps to the\norder's amount column (the AdminOrder DTO key stays `amount`).\nABSENT → the frozen default `created_at DESC` (byte-identical\nto pre-R159). Explicit sorts append `id DESC` as a\npagination-stability tiebreaker (amount ties are common and\nPostgres's sort is not stable across LIMIT/OFFSET pages).\nUnknown key/direction → 400 INVALID_DATA.\n",
+    ),
 });
 
 export const ListAdminOrdersResponseItem = zod.object({

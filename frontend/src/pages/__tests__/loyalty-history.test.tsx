@@ -280,7 +280,9 @@ describe("LoyaltyPage — conversion gates + tiers driven by API values (R115, A
     expect(input.getAttribute("step")).toBe("50");
     // max = floor(points / rate) * rate = floor(500/50)*50 = 500.
     expect(input.getAttribute("max")).toBe("500");
-    expect(input.getAttribute("placeholder")).toBe("عدد النقاط (50، 100، ...)");
+    // R159 (audit-2): the placeholder normalized to the storefront «…»
+    // ellipsis dialect — pin follows the source string.
+    expect(input.getAttribute("placeholder")).toBe("عدد النقاط (50، 100، …)");
   });
 
   it("shows the persistent inline WHY: below-min and non-multiple values explain themselves", async () => {

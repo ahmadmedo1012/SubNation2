@@ -1,6 +1,6 @@
-import { CheckSquare, Square } from "lucide-react";
+import { CheckSquare, ChevronDown, ChevronUp, ChevronsUpDown, Square } from "lucide-react";
 import { formatCount, formatCurrency } from "@/lib/utils";
-import { ORDER_COUNT_FORMS } from "@/components/admin/orders/orders-meta";
+import { ORDER_COUNT_FORMS, nextOrderSort } from "@/components/admin/orders/orders-meta";
 import { DesktopOrderRow } from "@/components/admin/orders/DesktopOrderRow";
 import type { AdminOrderRow, OrderCredentials } from "@/components/admin/orders/orders-types";
 
@@ -11,6 +11,32 @@ import type { AdminOrderRow, OrderCredentials } from "@/components/admin/orders/
 // every value and callback flows down as props (DesktopOrderCard rides
 // along inside its consumer). The move only changes the address; DOM,
 // classes and aria are byte-identical.
+
+// R159 (orders sort affordance): the desktop sortable headers. Only the
+// two whitelisted columns (المبلغ = total, التاريخ = created_at) grow a
+// button; the th carries the ARIA `aria-sort` state (the r140-l pin's
+// own rule: a th that grows a sort control MUST grow aria-sort) while
+// the button owns the click toggle. The default ("" — no ?sort=) IS
+// created_at DESC, so the effective direction maps through before the
+// asc/desc flip and the icon render.
+function orderSortAria(
+  key: "created_at" | "total",
+  sortBy: string,
+): "ascending" | "descending" | "none" {
+  const effective = sortBy === "" ? "created_at:desc" : sortBy;
+  if (effective === `${key}:asc`) return "ascending";
+  if (effective === `${key}:desc`) return "descending";
+  return "none";
+}
+
+/** The visible direction indicator: the active column's live chevron,
+    the inactive columns' quiet two-way glyph. */
+function SortIndicator({ column, sortBy }: { column: "created_at" | "total"; sortBy: string }) {
+  const effective = sortBy === "" ? "created_at:desc" : sortBy;
+  if (effective === `${column}:asc`) return <ChevronUp className="w-3 h-3" aria-hidden="true" />;
+  if (effective === `${column}:desc`) return <ChevronDown className="w-3 h-3" aria-hidden="true" />;
+  return <ChevronsUpDown className="w-3 h-3 opacity-50" aria-hidden="true" />;
+}
 
 export function OrdersTable({
   filtered,
@@ -25,6 +51,8 @@ export function OrdersTable({
   search,
   knownTotal,
   totalRevenue,
+  sortBy,
+  onSortBy,
 }: {
   filtered: AdminOrderRow[];
   selectedIds: Set<number>;
@@ -38,6 +66,10 @@ export function OrdersTable({
   search: string;
   knownTotal: boolean;
   totalRevenue: number;
+  /** R159: the current ?sort= value ("" = the default created_at DESC —
+   * the page owns the state + the URL sync; the table only renders it). */
+  sortBy: string;
+  onSortBy: (value: string) => void;
 }) {
   return (
     <div className="hidden md:block bg-card border border-border/60 rounded-2xl overflow-hidden">
@@ -101,11 +133,24 @@ export function OrdersTable({
               >
                 المنتج
               </th>
+              {/* R159: المبلغ — the whitelisted `total` sort (orders.amount
+                  server-side; the button toggles desc↔asc via the shared
+                  nextOrderSort helper, py-2/-my-2 = the select-all hit-area
+                  idiom without growing the header row). */}
               <th
                 scope="col"
+                aria-sort={orderSortAria("total", sortBy)}
                 className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
-                المبلغ
+                <button
+                  type="button"
+                  onClick={() => onSortBy(nextOrderSort("total", sortBy))}
+                  aria-label="ترتيب حسب المبلغ"
+                  className="inline-flex items-center gap-1 py-2 -my-2 hover:text-foreground transition-colors"
+                >
+                  المبلغ
+                  <SortIndicator column="total" sortBy={sortBy} />
+                </button>
               </th>
               <th
                 scope="col"
@@ -113,11 +158,23 @@ export function OrdersTable({
               >
                 الحالة
               </th>
+              {/* R159: التاريخ — the whitelisted created_at sort; the
+                  DEFAULT ordering is already created_at DESC, so the first
+                  click flips to ascending (the effective-direction map). */}
               <th
                 scope="col"
+                aria-sort={orderSortAria("created_at", sortBy)}
                 className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
-                التاريخ
+                <button
+                  type="button"
+                  onClick={() => onSortBy(nextOrderSort("created_at", sortBy))}
+                  aria-label="ترتيب حسب التاريخ"
+                  className="inline-flex items-center gap-1 py-2 -my-2 hover:text-foreground transition-colors"
+                >
+                  التاريخ
+                  <SortIndicator column="created_at" sortBy={sortBy} />
+                </button>
               </th>
               <th scope="col" className="w-8 px-4 py-3" />
             </tr>

@@ -134,6 +134,10 @@ describe("R137 (FE) — admin/orders.tsx decomposition: page stays an orchestrat
       "const [debouncedSearch, setDebouncedSearch] = useState(search);",
       "const [expandedRow, setExpandedRow] = useState<number | null>(null);",
       "const [dateRange, setDateRange] = useState(() => {",
+      // R159: the ?sort= state joined the census — the server-side sort
+      // param rides the query key, so the atom must stay page-owned (an
+      // extract re-declaring it would desync the URL write-back).
+      "const [sortBy, setSortBy] = useState(() => {",
       "const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());",
       "const [showStats, setShowStats] = useState(true);",
       "const [bulkStatusOpen, setBulkStatusOpen] = useState(false);",

@@ -12,11 +12,15 @@
  *      to the register); thead/tbody structure with NO tfoot (the
  *      honest-counts bands are divs outside the table — the r139
  *      register) and NO scope="row" (rows are td data, no row headers).
- *   2. NO SORTABLE HEADERS exist anywhere in the register — sorting
+ *   2. NO SORTABLE HEADERS exist in the register — sorting
  *      rides aria-pressed chips in the filter panels (users' client-side
  *      sort) — so no th is interactive and none carries aria-sort. If a
  *      th ever grows a sort control it MUST also grow aria-sort
  *      (auto/ascending/descending): this pin trips first.
+ *      (R159 re-pin: the orders sort affordance made OrdersTable the
+ *      register's ONE opted-in sortable member — it left the negative
+ *      loop below and is pinned POSITIVELY in the dedicated R159 test
+ *      that follows; every other member keeps the tripwire.)
  *   3. Selection semantics: the orders select-all + per-row selectors
  *      are named + stateful (aria-label + aria-pressed, the F3-08 fix).
  *   4. Empty states swap the tables OUT (no tbody that renders zero
@@ -123,7 +127,17 @@ describe("R-140-l — the admin real-table register: scope + accessible name", (
       expect(src).toContain("<tbody");
       expect(src).not.toContain("<tfoot");
     });
+  }
 
+  // R159 re-pin: OrdersTable (the orders sort affordance ledger item)
+  // left the no-aria-sort register — it is the ONE register member with
+  // sortable headers (المبلغ/التاريخ, the backend ?sort= whitelist). The
+  // tripwire keeps guarding every OTHER member unchanged.
+  const NOT_SORTABLE = Object.keys(REAL_TABLES).filter(
+    (f) => f !== "src/components/admin/orders/OrdersTable.tsx",
+  );
+  for (const file of NOT_SORTABLE) {
+    const src = strippedRealTables[file];
     it(`${file}: no interactive/sortable header (sort rides aria-pressed chips; no aria-sort)`, () => {
       // The register's th elements are plain scoped headers — the users
       // console sorts via the filter panel's aria-pressed chip bar, the
@@ -135,6 +149,20 @@ describe("R-140-l — the admin real-table register: scope + accessible name", (
       expect(src).not.toMatch(/<th[^>]*\sonKeyDown/);
     });
   }
+
+  it("OrdersTable (R159): exactly the two whitelisted sortable th, live aria-sort, buttons INSIDE the th", () => {
+    // The positive form of the register's sort rule, on its one opted-in
+    // member: the المبلغ (total) + التاريخ (created_at) headers carry the
+    // live ascending/descending/none state on their th with a real
+    // keyboard-operable <button> inside (never an onClick on the th
+    // itself), and NO other column grew a control.
+    const src = strippedRealTables["src/components/admin/orders/OrdersTable.tsx"];
+    expect(count(src, /aria-sort=/g)).toBe(2);
+    expect(src).not.toMatch(/<th[^>]*onClick/);
+    expect(src).not.toMatch(/<th[^>]*\sonKeyDown/);
+    expect(src).toContain('aria-label="ترتيب حسب المبلغ"');
+    expect(src).toContain('aria-label="ترتيب حسب التاريخ"');
+  });
 
   it("RecomputePreviewCard: the money sample keeps the r139 byte pins over the scoped th", () => {
     const src = strippedRealTables["src/components/admin/pricing/RecomputePreviewCard.tsx"];

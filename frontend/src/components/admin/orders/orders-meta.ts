@@ -96,3 +96,43 @@ export function isWithinDays(dateStr: string, days: number) {
   cutoff.setDate(cutoff.getDate() - days);
   return d >= cutoff;
 }
+
+// ── R159 (the R158-A P3 «no sort affordance on orders» / the R158
+// deferred ledger item): the ?sort= whitelist ──────────────────────────
+// Hand-mirrors the backend route's zod enum (backend/src/routes/admin/
+// orders.ts ORDER_SORT_VALUES) and the openapi param (the generated
+// ListAdminOrdersSort). The generated const is deliberately NOT imported
+// here: every admin orders render suite mocks @workspace/api-client-react
+// with a narrow factory surface, so pulling a runtime value through
+// orders-meta would crash those mocks at module init. Keep the three lists
+// in lockstep — the orders-sort test pins meta ↔ generated parity.
+export const ORDER_SORTS = [
+  "created_at:asc",
+  "created_at:desc",
+  "total:asc",
+  "total:desc",
+] as const;
+export type OrderSort = (typeof ORDER_SORTS)[number];
+
+/** Tolerant intake: an invalid ?sort= deep link degrades to the default
+ * ordering ("" — the param is dropped) instead of a 400. */
+export const isOrderSort = (v: string): v is OrderSort =>
+  (ORDER_SORTS as readonly string[]).includes(v);
+
+/** The desktop sortable-header toggle: the default ("" — no ?sort= param)
+ * IS created_at DESC (the header's «الأحدث أولاً» contract), so the
+ * effective direction maps through before the asc/desc flip. */
+export function nextOrderSort(key: "created_at" | "total", current: string): OrderSort {
+  const effective = current === "" ? "created_at:desc" : current;
+  return effective === `${key}:desc` ? `${key}:asc` : `${key}:desc`;
+}
+
+// R159: the mobile chip labels (the shared FilterTabs chips dialect —
+// the users panel's «الأقدم» label precedent). The default maps to
+// «الأحدث» because an absent ?sort= is newest-first.
+export const ORDER_SORT_CHIPS: Array<{ value: OrderSort; label: string }> = [
+  { value: "created_at:desc", label: "الأحدث" },
+  { value: "created_at:asc", label: "الأقدم" },
+  { value: "total:desc", label: "الأعلى قيمة" },
+  { value: "total:asc", label: "الأقل قيمة" },
+];

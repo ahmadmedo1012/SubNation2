@@ -114,7 +114,10 @@ export function BulkActionBar({
                     next?.focus();
                   }
                 }}
-                className="absolute left-0 top-full mt-1 z-30 bg-card border border-border/60 rounded-2xl shadow-xl overflow-hidden min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
+                /* R159 (audit motion sweep): duration-100 → 150 — the
+                   state-feedback tier + the admin dropdown family's
+                   GlobalSearch precedent. */
+                className="absolute left-0 top-full mt-1 z-30 bg-card border border-border/60 rounded-2xl shadow-xl overflow-hidden min-w-[160px] animate-in fade-in zoom-in-95 duration-150"
               >
                 {BULK_STATUSES.filter(
                   // R120-B4 (A2-F4): the refund entry is

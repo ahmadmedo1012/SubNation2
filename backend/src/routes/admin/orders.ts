@@ -2,7 +2,7 @@ import { db, notificationsTable, ordersTable, productsTable, usersTable } from "
 import { z } from "zod";
 import { logger } from "../../lib/logger";
 import { notifyAdminStats } from "../../lib/socket";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { safeDecrypt } from "../../lib/encryption";
@@ -79,6 +79,18 @@ type OrderStatus = (typeof ORDER_STATUS_VALUES)[number];
 // validation point — a parsed value is a member of the pg enum by
 // construction, so Postgres can never see a 22P02 from this router.
 const ORDER_STATUS_SCHEMA = z.enum(ORDER_STATUS_VALUES);
+
+// R159 (the R158-A P3 «no sort affordance on orders» / the R158 deferred
+// ledger item): the server-side ?sort= whitelist. The admin orders list is
+// SERVER-paginated (limit/page + the accumulating load-more client), so a
+// client-side sort like the users directory's would only rank the loaded
+// window — the ordering must ride the SQL ORDER BY. Exactly the two columns
+// the admin table surfaces: created_at (التاريخ) and total (المبلغ =
+// orders.amount; the DTO key stays `amount` — `total` is the URL-facing
+// name). Unknown key/direction → 400 INVALID_DATA, the ?status= family
+// idiom above (read-only param: no money computation is touched).
+const ORDER_SORT_VALUES = ["created_at:asc", "created_at:desc", "total:asc", "total:desc"] as const;
+const ORDER_SORT_SCHEMA = z.enum(ORDER_SORT_VALUES);
 
 // A9-1 (R116): Arabic labels for the durable order-status notification —
 // mirrors statusLabel() in frontend/src/lib/utils.ts (r111 ledger:
@@ -206,6 +218,35 @@ router.get("/orders", requireAdmin, async (req, res) => {
   // lists). Behavior for every legitimate value is unchanged.
   const page = pageParam(req);
 
+  // R159: ?sort= — validated column sort. ABSENT param keeps the frozen
+  // default `created_at DESC` byte-identical to pre-R159 (no tiebreaker is
+  // appended in that branch). Explicit sorts append `id DESC` as a
+  // pagination-stability tiebreaker: amount ties are the COMMON case
+  // (fixed-price products) and Postgres's sort is not stable across
+  // LIMIT/OFFSET pages, so without it the accumulating load-more list
+  // could duplicate or drop rows across pages.
+  const sortRaw = typeof req.query.sort === "string" ? req.query.sort : undefined;
+  let orderByColumns = [desc(ordersTable.createdAt)];
+  if (sortRaw !== undefined) {
+    const sortParsed = ORDER_SORT_SCHEMA.safeParse(sortRaw);
+    if (!sortParsed.success) {
+      return res
+        .status(400)
+        .json(
+          createErrorResponse(
+            "ترتيب غير صالح (المسموح: created_at:asc, created_at:desc, total:asc, total:desc)",
+            ErrorCode.INVALID_DATA,
+          ),
+        );
+    }
+    const [column, direction] = sortParsed.data.split(":");
+    const sortColumn = column === "total" ? ordersTable.amount : ordersTable.createdAt;
+    orderByColumns = [
+      direction === "asc" ? asc(sortColumn) : desc(sortColumn),
+      desc(ordersTable.id),
+    ];
+  }
+
   // V4: the admin command palette sends ?search= — previously ignored
   // (silently unfiltered results). Match order code, user phone/email/
   // name, or product name (case-insensitive).
@@ -241,7 +282,7 @@ router.get("/orders", requireAdmin, async (req, res) => {
     .leftJoin(usersTable, eq(ordersTable.userId, usersTable.id))
     .leftJoin(productsTable, eq(ordersTable.productId, productsTable.id))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(ordersTable.createdAt))
+    .orderBy(...orderByColumns)
     .limit(limit)
     .offset((page - 1) * limit);
 

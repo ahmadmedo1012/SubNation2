@@ -46,6 +46,10 @@ const ticketsEmpty = read("src/components/admin/tickets/TicketsEmptyStates.tsx")
 
 const alertsPage = read("src/pages/admin/alerts.tsx");
 const alertsTabs = read("src/components/admin/alerts/AlertsFilterTabs.tsx");
+// R159 (IMPL-A): the four admin tray/chip twins that moved to the
+// shared primitive this round — their class-level pins follow the
+// markup into ui/filter-tabs (the R158-D account-surfaces precedent).
+const filterTabs = read("src/components/ui/filter-tabs.tsx");
 const alertsChips = read("src/components/admin/alerts/AlertsTypeChips.tsx");
 const alertsList = read("src/components/admin/alerts/AlertsGroupedList.tsx");
 const alertsEmpty = read("src/components/admin/alerts/AlertsEmptyState.tsx");
@@ -58,35 +62,50 @@ const couponsTable = read("src/components/admin/coupons/CouponsTable.tsx");
 const telegramPing = read("src/components/admin/settings-page/TelegramDiagnosticPing.tsx");
 
 describe("R139 (139-h) — tickets: the calm pill dialect on both filter bars", () => {
-  it("the status tabs ride the family active pill inside the family segment tray", () => {
+  it("the status tabs ride the shared FilterTabs tray (the calm-pill family)", () => {
     // R139: the tray wash aligns to the secondary/40 family value; the
-    // active chip was a card-colored tile with a soft shadow, the
-    // inactive chip was borderless — both states now carry the border
-    // box (no 1px toggle jitter). aria-pressed byte-identical.
-    expect(statusTabs).toContain(
+    //   active chip was a card-colored tile with a soft shadow, the
+    //   inactive chip was borderless — both states carry the border
+    //   box (no 1px toggle jitter).
+    // R159 (IMPL-A): the twin's hand-rolled pill markup retired for
+    //   ui/filter-tabs (variant="tray") — the class pins follow the
+    //   markup into the primitive; the twin keeps the delegation only
+    //   (same props contract, aria-pressed + the 44px min-h-11 floor
+    //   now arrive from FILTER_TABS).
+    expect(statusTabs).toContain('from "@/components/ui/filter-tabs"');
+    expect(statusTabs).toContain("<FilterTabs");
+    expect(statusTabs).toContain('variant="tray"');
+    expect(statusTabs).toContain("value={statusFilter}");
+    expect(filterTabs).toContain(
       '"flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1"',
     );
-    expect(statusTabs).toContain(
-      '"bg-primary/15 text-primary-text border border-primary/30 font-bold"',
+    expect(filterTabs).toContain('"bg-primary/15 text-primary-text border-primary/30"');
+    expect(filterTabs).toContain(
+      '"border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"',
     );
-    expect(statusTabs).toContain(
-      '"border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"',
-    );
-    expect(statusTabs).toContain("aria-pressed={statusFilter === s.value}");
+    expect(filterTabs).toContain("aria-pressed={active}");
+    // The retired register stays retired at the twin's address.
     expect(statusTabs).not.toContain("bg-card shadow-sm");
     expect(statusTabs).not.toContain("bg-secondary/50");
   });
 
-  it("the category chips ride the tray-less pill values (muted/30 box, /70 hover step)", () => {
+  it("the category chips ride the shared FilterTabs chips variant (the tray-less pill values)", () => {
     // R139: active rises /10→/15 tint; the resting chip had a
-    // full-strength edge + secondary hover wash.
-    expect(categoryChips).toContain(
-      '"bg-primary/15 border-primary/30 text-primary-text font-bold"',
-    );
-    expect(categoryChips).toContain(
+    //   full-strength edge + secondary hover wash.
+    // R159 (IMPL-A): the twin's hand-rolled chip markup retired for
+    //   ui/filter-tabs (variant="chips") — the muted/30 box + /70 hover
+    //   step idle and the calm active trio follow the markup into the
+    //   primitive; the twin keeps the delegation only.
+    expect(categoryChips).toContain('from "@/components/ui/filter-tabs"');
+    expect(categoryChips).toContain("<FilterTabs");
+    expect(categoryChips).toContain('variant="chips"');
+    expect(categoryChips).toContain("value={categoryFilter}");
+    expect(filterTabs).toContain(
       '"bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"',
     );
-    expect(categoryChips).toContain("aria-pressed={categoryFilter === c.value}");
+    expect(filterTabs).toContain('"bg-primary/15 text-primary-text border-primary/30"');
+    expect(filterTabs).toContain("aria-pressed={active}");
+    // The retired resting register stays retired at the twin's address.
     expect(categoryChips).not.toContain('"border-border text-muted-foreground');
     expect(categoryChips).not.toContain("hover:bg-secondary/60");
   });
@@ -186,19 +205,31 @@ describe("R139 (139-h) — tickets: the queue register + the detail pane", () =>
 });
 
 describe("R139 (139-h) — alerts: chips, the inbox register, the calm-error poll banner", () => {
-  it("the filter tabs ride the family active pill inside the family segment tray", () => {
+  it("the filter tabs ride the shared FilterTabs tray + scroll rail (the calm-pill family)", () => {
     // R139: the tray was a muted/30 + /40 trough; the active tab was
-    // a card-colored tile with a soft shadow.
-    expect(alertsTabs).toContain(
-      '"flex items-center gap-1 bg-secondary/40 border border-border/60 p-1 rounded-2xl overflow-x-auto scrollbar-none w-fit max-w-full"',
+    //   a card-colored tile with a soft shadow.
+    // R159 (IMPL-A): the twin's hand-rolled tray retired for
+    //   ui/filter-tabs (variant="tray" + scrollable + countBadge="chip"
+    //   — the exact active bg-primary/15 / inactive bg-muted/60 micro
+    //   chip pair this bar shipped in R139). The class pins follow the
+    //   markup into the primitive; the twin's tray-level items-center
+    //   was a no-op (uniform min-h-11 pills) and the canonical tray
+    //   drops it.
+    expect(alertsTabs).toContain('from "@/components/ui/filter-tabs"');
+    expect(alertsTabs).toContain("<FilterTabs");
+    expect(alertsTabs).toContain("scrollable");
+    expect(alertsTabs).toContain('countBadge="chip"');
+    expect(alertsTabs).toContain("value={filter}");
+    expect(filterTabs).toContain(
+      '"flex gap-1 bg-secondary/40 border border-border/60 rounded-2xl p-1"',
     );
-    expect(alertsTabs).toContain(
-      '"bg-primary/15 text-primary-text border border-primary/30 font-bold"',
+    expect(filterTabs).toContain('"overflow-x-auto scrollbar-none w-fit max-w-full"');
+    expect(filterTabs).toContain('"bg-primary/15 text-primary-text border-primary/30"');
+    expect(filterTabs).toContain(
+      '"border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"',
     );
-    expect(alertsTabs).toContain(
-      '"border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"',
-    );
-    expect(alertsTabs).toContain("aria-pressed={filter === tab.value}");
+    expect(filterTabs).toContain("aria-pressed={active}");
+    // The retired register stays retired at the twin's address.
     expect(alertsTabs).not.toContain("bg-card text-foreground shadow-sm");
   });
 
@@ -206,6 +237,12 @@ describe("R139 (139-h) — alerts: chips, the inbox register, the calm-error pol
     // R139: the ACTIVE tuple (severity token tint + full ink) is
     // verified unchanged; the resting chip was a muted/20 wash + /40
     // edge with a text-only hover.
+    // R159 (IMPL-A): this twin stays hand-rolled — ui/filter-tabs has
+    // no "low_stock" tone (coupon_expiring/forecast_stockout's
+    // --status-low-stock actives) and its chip badge hardcodes the
+    // primary active ink where this bar rides the R143 L2-7
+    // bg-foreground/10 (storefront-contracts pins both). The
+    // primitive's owner converts it once the tone lands.
     expect(alertsChips).toContain("font-bold ${m.bg} ${m.border} ${m.color}");
     expect(alertsChips).toContain(
       '"bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"',

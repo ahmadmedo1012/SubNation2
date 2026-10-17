@@ -47,6 +47,7 @@ import {
   REFUND_FAILURE_LABELS,
   BULK_SKIPPED_REASON_LABELS,
   STATUS_FILTERS,
+  isOrderSort,
   isWithinDays,
 } from "@/components/admin/orders/orders-meta";
 import { downloadCsv, orderCsvRows } from "@/components/admin/orders/orders-csv";
@@ -87,6 +88,16 @@ export default function AdminOrdersPage() {
   const [search, setSearch] = useState(
     () => new URLSearchParams(window.location.search).get("search") ?? "",
   );
+  // R159 (orders sort affordance): the SERVER-side ?sort= state — the
+  // list is paginated on the server, so unlike the users directory's
+  // client-side chip sort the ordering rides the query key (a flip
+  // restarts the accumulating list at page 1 under the new ordering).
+  // Same two-way ?sort= sync discipline as ?status=/?days= below;
+  // invalid deep-link values degrade to the default ("" → no param).
+  const [sortBy, setSortBy] = useState(() => {
+    const s = new URLSearchParams(window.location.search).get("sort") ?? "";
+    return isOrderSort(s) ? s : "";
+  });
   const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [dateRange, setDateRange] = useState(() => {
@@ -174,7 +185,13 @@ export default function AdminOrdersPage() {
   // hook used by admins.tsx / promotions.tsx — same message text.
   const { confirm, ConfirmDialog } = useConfirm();
 
-  const listParams = { search: debouncedSearch.trim() || undefined, limit: ORDERS_PAGE_SIZE };
+  // R159: the validated sort rides the query key (isOrderSort also
+  // narrows the string state to the generated param's literal union).
+  const listParams = {
+    search: debouncedSearch.trim() || undefined,
+    limit: ORDERS_PAGE_SIZE,
+    sort: isOrderSort(sortBy) ? sortBy : undefined,
+  };
   const {
     data: ordersPages,
     isLoading,
@@ -537,16 +554,25 @@ export default function AdminOrdersPage() {
     const rawDays = Number.parseInt(q.get("days") ?? "0", 10);
     const days = DATE_RANGES.some((d) => d.days === rawDays) ? rawDays : 0;
     setDateRange((prev) => (prev === days ? prev : days));
+    // R159: ?sort= lands the same way — an invalid value degrades to the
+    // default ordering instead of reaching the server as a 400.
+    const rawSort = q.get("sort") ?? "";
+    const sort = isOrderSort(rawSort) ? rawSort : "";
+    setSortBy((prev) => (prev === sort ? prev : sort));
   }, [searchParam]);
 
   // R123 (E3 P3a): filters → URL (replaceState — flips don't spam the
   // history stack; empty/zero values drop the param entirely).
-  const syncFilterParams = (status: string, days: number) => {
+  // R159: ?sort= joins the same write-back (sort flips ride the page's
+  // handler wrappers, never a raw setter — the URL must not desync).
+  const syncFilterParams = (status: string, days: number, sort: string) => {
     const url = new URL(window.location.href);
     if (status) url.searchParams.set("status", status);
     else url.searchParams.delete("status");
     if (days > 0) url.searchParams.set("days", String(days));
     else url.searchParams.delete("days");
+    if (sort) url.searchParams.set("sort", sort);
+    else url.searchParams.delete("sort");
     window.history.replaceState(null, "", url.toString());
   };
 
@@ -556,20 +582,30 @@ export default function AdminOrdersPage() {
   // from the chips).
   const handleStatusFilter = (value: string) => {
     setStatusFilter(value);
-    syncFilterParams(value, dateRange);
+    syncFilterParams(value, dateRange, sortBy);
   };
 
   const handleDateRange = (days: number) => {
     setDateRange(days);
-    syncFilterParams(statusFilter, days);
+    syncFilterParams(statusFilter, days, sortBy);
+  };
+
+  // R159: sort flips write ?sort= back (the same discipline — the
+  // extracts call THIS handler, never the raw setter).
+  const handleSortBy = (value: string) => {
+    setSortBy(value);
+    syncFilterParams(statusFilter, dateRange, value);
   };
 
   // R123 (E3 P3a): the clear-all also clears the URL params.
+  // R159: ?sort= resets with them (the users panel's reset clears its
+  // sort the same way).
   const clearAllFilters = () => {
     setSearch("");
     setStatusFilter("");
     setDateRange(0);
-    syncFilterParams("", 0);
+    setSortBy("");
+    syncFilterParams("", 0, "");
   };
 
   // Redirect effect AFTER all hooks so hook order is identical every
@@ -771,6 +807,8 @@ export default function AdminOrdersPage() {
               search={search}
               knownTotal={knownTotal}
               totalRevenue={totalRevenue}
+              sortBy={sortBy}
+              onSortBy={handleSortBy}
             />
 
             {/* Mobile card list — R137 (FE): moved verbatim to
@@ -784,6 +822,8 @@ export default function AdminOrdersPage() {
               failedCredentialIds={failedCredentialIds}
               onToggleSelect={toggleSelect}
               onToggleExpand={toggleExpand}
+              sortBy={sortBy}
+              onSelectSort={handleSortBy}
             />
 
             {/* 94-C2 (A2 P1-1): "load more" appends the next page in

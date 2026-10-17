@@ -170,10 +170,16 @@ describe("R137 (FE) — admin/tickets.tsx decomposition: page stays an orchestra
     expect(empties).toContain("لا تذاكر بفئة {categoryLabel} ضمن الصفحات المحمّلة");
     expect(empties).toContain("إلغاء فلتر الفئة");
     // The R124-C2 aria-pressed chip bars moved to their own atoms.
+    // R159 (IMPL-A): both bars now delegate to ui/filter-tabs — the
+    // aria-pressed toggle state arrives from the primitive (pinned by
+    // its own suite + the render suites); the spot-pins keep the
+    // delegation + value threading at the twins' addresses.
     const tabs = read("src/components/admin/tickets/StatusFilterTabs.tsx");
-    expect(tabs).toContain("aria-pressed={statusFilter === s.value}");
+    expect(tabs).toContain('from "@/components/ui/filter-tabs"');
+    expect(tabs).toContain("value={statusFilter}");
     const chips = read("src/components/admin/tickets/CategoryFilterChips.tsx");
-    expect(chips).toContain("aria-pressed={categoryFilter === c.value}");
+    expect(chips).toContain('from "@/components/ui/filter-tabs"');
+    expect(chips).toContain("value={categoryFilter}");
     // The page h1 + the honest count stay in the page (the
     // admin-h1-unification scan reads pages/admin/*.tsx).
     expect(page).toContain('<h1 className="text-xl font-bold">تذاكر الدعم</h1>');

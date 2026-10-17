@@ -1,4 +1,5 @@
 import { CATEGORY_FILTERS } from "@/components/admin/tickets/tickets-meta";
+import { FilterTabs } from "@/components/ui/filter-tabs";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/tickets.tsx —
 // the queue's category chip bar (the client-side filter over the
@@ -6,6 +7,13 @@ import { CATEGORY_FILTERS } from "@/components/admin/tickets/tickets-meta";
 // ?category= URL sync; the extract takes the value + the onSelect
 // callback (the inline setCategoryFilter + syncFilterParams closure
 // became the page-owned wrapper — same event, same writes).
+//
+// R159 (IMPL-A): the hand-rolled chips retired for the shared
+// ui/FilterTabs primitive (R158-D) — same export + props contract, so the
+// page is unchanged. aria-pressed, the tray-less muted-box idle and the
+// calm active trio now come from the primitive via variant="chips" (its
+// min-h-11 bakes the 44px touch floor — the admin dialect inherits it,
+// R158-D); the page's onSelect wrapper keeps the ?category= sync.
 
 export function CategoryFilterChips({
   categoryFilter,
@@ -15,32 +23,12 @@ export function CategoryFilterChips({
   onSelect: (value: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {CATEGORY_FILTERS.map((c) => (
-        <button
-          key={c.value}
-          onClick={() => onSelect(c.value)}
-          /* R124-C2 (A6 F10): same toggle-state exposure as the
-             status tabs above. */
-          aria-pressed={categoryFilter === c.value}
-          /* R139 (precision): the tray-less chip bar joins the r138
-             calm-pill dialect (the products category-bar twin shipped
-             this round): active rises /10→/15 tint (the family fill),
-             and the resting chip swaps its full-strength edge +
-             secondary hover wash for the muted/30 box + /30 border +
-             /70 border hover step — the values the pill family rides
-             when no tray carries it. Both states were already boxed
-             (the border stayed); aria-pressed + onSelect are
-             byte-identical. */
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-            categoryFilter === c.value
-              ? "bg-primary/15 border-primary/30 text-primary-text font-bold"
-              : "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
-          }`}
-        >
-          {c.label}
-        </button>
-      ))}
-    </div>
+    <FilterTabs
+      variant="chips"
+      ariaLabel="تصفية التذاكر حسب الفئة"
+      items={CATEGORY_FILTERS}
+      value={categoryFilter}
+      onSelect={onSelect}
+    />
   );
 }

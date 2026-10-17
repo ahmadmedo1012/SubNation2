@@ -103,7 +103,10 @@ export function ConvertPointsCard({
               min={pointsPerLyd}
               max={Math.floor(data.points / pointsPerLyd) * pointsPerLyd}
               step={pointsPerLyd}
-              placeholder={`عدد النقاط (${pointsPerLyd}، ${pointsPerLyd * 2}، ...)`}
+              /* R159 (audit-2): ASCII "..." → «…» — the storefront copy
+                  dialect (DESIGN.md Copy dialects); pinned twin updated with
+                 the source. */
+              placeholder={`عدد النقاط (${pointsPerLyd}، ${pointsPerLyd * 2}، …)`}
               value={convertPoints}
               onChange={(e) => onConvertPointsChange(e.target.value)}
               dir="ltr"

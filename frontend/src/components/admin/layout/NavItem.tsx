@@ -113,7 +113,7 @@ export function NavItem({
                   the dark-theme 3.76:1 family — the text-primary-text
                   token is the storefront sweep's fix applied to the
                   admin context actions. */}
-              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-primary-text hover:bg-primary/8 transition-all duration-100">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-primary-text hover:bg-primary/8 transition-all duration-150">
                 <action.icon className="w-3 h-3 shrink-0" />
                 <span>{action.label}</span>
               </div>

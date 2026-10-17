@@ -315,9 +315,12 @@ export default function LoyaltyPage() {
     if (!Number.isFinite(pts) || pts <= 0) return "أدخل عدداً صحيحاً من النقاط";
     if (pts < pointsPerLyd) return `الحد الأدنى للتحويل ${pointsPerLyd} نقطة`;
     if (pts % pointsPerLyd !== 0)
+      // R159 (audit-2): the multiples hint's trailing "..." was the
+      // storefront's ASCII outlier (the storefront dialect is «…» — DESIGN.md
+      // Copy dialects); normalized with its placeholder twin.
       return `يجب أن تكون النقاط من مضاعفات ${pointsPerLyd} (${pointsPerLyd}، ${
         pointsPerLyd * 2
-      }، ...)`;
+      }، …)`;
     return null;
   })();
 

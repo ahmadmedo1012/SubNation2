@@ -3410,6 +3410,18 @@ export type ListAdminOrdersParams = {
    * @nullable
    */
   search?: string | null;
+  /**
+   * R159 (orders sort affordance): optional column sort for the
+   * paginated list, `column:direction`. `total` maps to the
+   * order's amount column (the AdminOrder DTO key stays `amount`).
+   * ABSENT → the frozen default `created_at DESC` (byte-identical
+   * to pre-R159). Explicit sorts append `id DESC` as a
+   * pagination-stability tiebreaker (amount ties are common and
+   * Postgres's sort is not stable across LIMIT/OFFSET pages).
+   * Unknown key/direction → 400 INVALID_DATA.
+   * @nullable
+   */
+  sort?: ListAdminOrdersSort;
 };
 
 export type ListAdminOrdersStatus =
@@ -3420,6 +3432,16 @@ export const ListAdminOrdersStatus = {
   completed: "completed",
   failed: "failed",
   refunded: "refunded",
+} as const;
+
+export type ListAdminOrdersSort =
+  (typeof ListAdminOrdersSort)[keyof typeof ListAdminOrdersSort] | null;
+
+export const ListAdminOrdersSort = {
+  "created_at:asc": "created_at:asc",
+  "created_at:desc": "created_at:desc",
+  "total:asc": "total:asc",
+  "total:desc": "total:desc",
 } as const;
 
 export type GetAdminOrderCredentials200Status =

@@ -136,10 +136,17 @@ describe("R137 (FE) — admin/alerts.tsx decomposition: page stays an orchestrat
     expect(header).toContain("حذف الكل");
     expect(header).toContain("قراءة الكل");
     // The two filter bars keep aria-pressed (R125 A3 #6 / A6 B-10).
+    // R159 (IMPL-A): AlertsFilterTabs delegates to ui/filter-tabs —
+    // aria-pressed arrives from the primitive (pinned by its own suite
+    // + alerts-delete-confirm's two-bar render assertions);
+    // AlertsTypeChips keeps its hand-rolled severity chips (the
+    // primitive's tone set cannot express --status-low-stock — the
+    // deferred conversion, documented in admin-comms-promo-visual).
     const chips = read("src/components/admin/alerts/AlertsTypeChips.tsx");
     expect(chips).toContain("aria-pressed={filter === s.key}");
     const tabs = read("src/components/admin/alerts/AlertsFilterTabs.tsx");
-    expect(tabs).toContain("aria-pressed={filter === tab.value}");
+    expect(tabs).toContain('from "@/components/ui/filter-tabs"');
+    expect(tabs).toContain("value={filter}");
     // The empty branch's announcing role (R125 A6 B-8).
     const empty = read("src/components/admin/alerts/AlertsEmptyState.tsx");
     expect(empty).toContain('role="status"');

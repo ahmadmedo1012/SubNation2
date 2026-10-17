@@ -12,6 +12,19 @@ import type {
 // active filter down and reports taps through onSetFilter. The move only
 // changes its address; DOM, classes, aria-pressed and Arabic copy are
 // byte-identical.
+//
+// R159 (coordinator verdict — closes IMPL-A's stop-clause): NO-GO on
+// the ui/filter-tabs conversion, and not only for the tone-enum gap
+// IMPL-A stopped on. This bar is a SEVERITY-CHIP dialect, not a
+// filter-pill one: actives ride TYPE_META's /10 fill + /20 edge
+// row-badge tuples (vs the primitive's /15 + /30 pill actives), the
+// count badge rides the R143 L2-7 theme-aware bg-foreground/10 with
+// inherited ink (vs the primitive's hardcoded primary pair) plus
+// px-1/no-py padding (vs px-1.5 py-px). A faithful conversion needs
+// THREE escape hatches (per-item active classes, badge ink override,
+// badge padding) — a wrapper for its own sake. The twin keeps its
+// dialect; revisit only if a second severity-chip bar appears (the
+// escape hatches then earn a real second consumer).
 
 export function AlertsTypeChips({
   alerts,

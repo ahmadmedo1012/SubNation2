@@ -58,9 +58,16 @@ export function AuthedHero({ user }: { user: User }) {
               emphasis. */}
           <h1 className="text-fluid-2xl font-bold text-primary-text">اشترِ اشتراكك المفضل اليوم</h1>
         </div>
+        {/* R159: the wallet/loyalty chips' hover border+shadow rode an
+            off-scale duration-250 (a pre-R158 value the R158-C duration
+            census missed — it counted only 180/220/280 drift). Normalized
+            to the DESIGN.md 200ms surfaces tier every sibling chip/card
+            hover already rides (CategoryRail, ShelfRail, cart rows); the
+            280ms exception stays scoped to the ProductCard/flash-sales
+            card lift. */}
         <div className="flex gap-2">
           <Link href="/wallet">
-            <div className="bg-background/50 border border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer min-w-[122px]">
+            <div className="bg-background/50 border border-border/50 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-200 card-spring cursor-pointer min-w-[122px]">
               <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
                 <Wallet className="w-3.5 h-3.5 text-primary-text" />
               </div>
@@ -75,7 +82,7 @@ export function AuthedHero({ user }: { user: User }) {
             </div>
           </Link>
           <Link href="/loyalty">
-            <div className="bg-background/50 border border-border/50 hover:border-status-warning/40 hover:shadow-lg hover:shadow-status-warning/12 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-250 card-spring cursor-pointer">
+            <div className="bg-background/50 border border-border/50 hover:border-status-warning/40 hover:shadow-lg hover:shadow-status-warning/12 rounded-2xl px-3.5 py-2.5 flex items-center gap-2.5 transition-all duration-200 card-spring cursor-pointer">
               <div className="w-8 h-8 rounded-xl bg-status-warning/10 border border-status-warning/20 flex items-center justify-center shrink-0">
                 <Star className="w-3.5 h-3.5 text-status-warning" />
               </div>

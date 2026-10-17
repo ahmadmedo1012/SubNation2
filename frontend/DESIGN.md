@@ -248,6 +248,11 @@ money surface picks by layer: browsing → foreground, buying → primary,
 transacting → primary-text. Never raw hues, never `muted-foreground` for an
 amount.
 
+**Copy dialects (R159):** storefront Arabic copy uses the typographic
+ellipsis «…» (cart, orders, wallet, support — «جارٍ التحقق…»); the admin
+console rides ASCII `...` (~20 legacy sites, normalized on touch). New
+copy follows its surface's dialect; a string crossing surfaces adopts «…».
+
 ## Colors
 
 Two themes over one token spine. The **dark theme is the default** (`:root`);
@@ -256,7 +261,7 @@ a light twin (the `light-` prefixed values above). Token authority lives in
 `frontend/src/index.css`; the values here are their computed hex equivalents.
 
 - **Primary (#dc1840 dark / #d3173d light):** the single interaction accent —
-  primary buttons, links, focus ring, selection. As *text on dark surfaces*,
+  primary buttons, links, focus ring, selection. As _text on dark surfaces_,
   always use the lighter `primary-text` twin (#ed5e7b / #d3173d): the surface
   value is for fills, not ink.
 - **Status family (success/warning/error/info/low-stock/purple):** one token
@@ -264,7 +269,7 @@ a light twin (the `light-` prefixed values above). Token authority lives in
   recipes (StatusBadge). Never hand-roll raw palette hues for status UI.
 - **Category accents (9 hues):** per-product-category coding used by product
   cards and category heroes at alpha tints (chips 10–15%, hero accents up
-to 70%); each has a
+  to 70%); each has a
   dark-tuned (lighter) and light-tuned (darker) value. gaming and
   productivity are currently retired categories.
 - **Brand marks:** WhatsApp (#25d366 + its AA ink #054339), Google four-color
@@ -272,7 +277,7 @@ to 70%); each has a
 - **Elevation:** depth comes from a surface ladder
   (base → card → overlay) plus neutral black shadows, never from colored
   glows — the only sanctioned colored light is the primary (and status
-accents) at 5–45% alpha where documented, on
+  accents) at 5–45% alpha where documented, on
   interactive elements (button/discount-badge glow).
 
 ## Typography
@@ -337,7 +342,7 @@ full-bleed media.
   deliberate in-between, documented in-source); any other duration off
   the scale ships with an in-source comment saying why.
 - **StatusBadge:** the single status-pill recipe (`bg-/12`, `text-`,
-  `border-/28`), three padding sizes (xs/sm/md) whose *type* stays at 11–12px.
+  `border-/28`), three padding sizes (xs/sm/md) whose _type_ stays at 11–12px.
 - **ProductCard:** category-tinted media tile (accent at 10–12% alpha),
   12px-above-title rhythm, 16px radius, hover = spring lift 3px + shine sweep
   (desktop only).
