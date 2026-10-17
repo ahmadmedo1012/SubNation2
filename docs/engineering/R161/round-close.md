@@ -187,11 +187,45 @@ the DESIGN.md contract amendment, the full regression battery).
 
 ## Production verification
 
-Post-deploy (read-only): healthz, the Arabic acceptance matrix over
-HTTPS, the rendered suggestions + Escape + focus ring + sticky band
-via the real browser, and the deploy-race-safe e2e re-run (the named
-skips must now pass). See the CHANGELOG entry for the verified CI run
-and the SHA-verified deployment.
+- **CI**: run `39062936577` on `d18403a` — completed, success (all
+  gates: secret scan, lint/typecheck/drift, both unit suites,
+  coverage, build).
+- **Deployment**: the Coolify push-to-deploy webhook fired on the
+  push; verified live through behavior probes (below), not assumed.
+- **The Arabic acceptance matrix over HTTPS (read-only, 30 cases,
+  0 failures)**: all 4 Netflix spellings → exactly 1 row (Netflix)
+  with no cross-family rows; «نتفلكس بريميوم» → 1 row (the
+  suppression live — previously recalled every Premium-named
+  product); «نتفلكس ١٢/12 شهر» → Netflix present (39-row recall,
+  Netflix ranked first); ديزني/سبوتفاي×2/يوتيوب/ويندوز ١٠ (Arabic-
+  Indic digits)/شات جي بي تي + شاتجيبيتي/في بي ان all resolve;
+  every new alias live (مشاهدة → 17 streaming, منصات المشاهدة → 17,
+  سمراش + «سم راش» → Semrush, راديو → 11 music, انمي → 17, مكتبة
+  → 2 education, بروكسي → 4 vpn, صاوند كلاود, اتش ام ايه, نيتفلكس);
+  mixed script both directions; tatweel+diacritics; garbage Arabic →
+  honest []; a 10k-char adversarial query → bounded, no crash.
+- **Taxonomy rendered**: the storefront DOM carries «منصات
+  المشاهدة» (Navbar drawer, category rail — 17 اشتراكاً count), zero
+  «بث مباشر» residuals; the /category/streaming crawler shell serves
+  the new meta title/description.
+- **Real-browser (agent-browser, named session)**: the suggestions
+  listbox «منتجات مطابقة» renders the Netflix row (name + category
+  chip + price) + «عرض كل النتائج»; ArrowDown selects it
+  (aria-selected verified); Escape dismisses the dropdown; the
+  search input's computed focus box-shadow is the full composite —
+  `#0a0c10 1px offset + rgb(220,24,64) 3px full-opacity ring + 15%
+  halo 6px` (the P1 fix live; the audit's before-state measured a
+  1.1:1 tint only); the guest sticky buy bar at a true 768×1024
+  viewport stays fully in-viewport through deep scroll to max
+  (rB 707 < vh 1024; the pre-fix audit measured it 1281 — below
+  the fold). Screenshot: `download/r161-sticky-768.png`.
+- **The deploy-race-safe e2e re-run against production**: the two
+  new R161-B specs (suggestions navigation + Escape) now PASS for
+  real (they skip pre-deploy by design); the hardened pdp-band pin
+  assertion passes at tablet-768. Full guest suite × 3 viewports:
+  mobile-390 **31/31**, desktop-chromium **31/31**, tablet-768
+  **31/31** (one transient home-spec flake passed on retry and on a
+  clean re-run).
 
 ## Ledger (deferred with rationale)
 
