@@ -14,9 +14,13 @@
  * Safety:
  *   - Matches each entry by `slug` first (the canonical, stable identity —
  *     display names drift with marketing renames), falling back to an
- *     exact `product_name` match. Skips any entry that matches neither,
- *     instead of inventing one. Skipped entries WARN with counts
- *     (110-F, R110) — a stale file must never shrink the import silently.
+ *     exact `product_name` match. R162-B: executed as two SEQUENTIAL
+ *     queries (slug, then name) via ./seo-join.ts — the old single
+ *     `or(slug, name).limit(1)` had no ordering, so a slug-vs-name
+ *     conflict resolved to an arbitrary row. Skips any entry that
+ *     matches neither, instead of inventing one. Skipped entries WARN
+ *     with counts (110-F, R110) — a stale file must never shrink the
+ *     import silently.
  *   - Only writes the SEO surface: descriptionLong, faq, seoTitle,
  *     seoDescription. Never touches name, price, slug, isActive,
  *     isArchived, costPrice, etc.
@@ -46,8 +50,9 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { loadLocalEnv, repoRoot } from "./runtime";
+import { resolveSeoTarget, type SeoTargetPredicate } from "./seo-join";
 
 loadLocalEnv();
 const { db, pool, productsTable } = await import("@workspace/db");
@@ -110,7 +115,8 @@ async function main(): Promise<void> {
       `\n   mode: ${APPLY ? "APPLY" : "DRY-RUN"}${FORCE ? " (force overwrite)" : ""}\n`,
   );
 
-  // Pre-flight: look up each product by name, classify into update / skip.
+  // Pre-flight: look up each product (slug first, then exact name),
+  // classify into update / skip.
   type Plan =
     | { kind: "missing"; entry: SeoEntry }
     | { kind: "archived"; entry: SeoEntry; productId: number }
@@ -130,14 +136,11 @@ async function main(): Promise<void> {
 
   const plans: Plan[] = [];
 
-  for (const entry of entries) {
-    // 110-F (R110 — 109-n P3): slug-first join. The JSON's `slug` is the
-    // canonical URL identity (stable across marketing renames of
-    // product_name — the exact drift that made the old name-only match
-    // silently skip half the file); the exact-name fallback keeps
-    // hand-edited entries without a slug importable.
-    const slug = (entry.slug ?? "").trim().toLowerCase();
-    const [row] = await db
+  // R162-B: one drizzle lookup per predicate; the slug-first priority
+  // lives in resolveSeoTarget (see ./seo-join.ts for why the join must
+  // not be a single unordered `or(...).limit(1)`).
+  const findTarget = async (predicate: SeoTargetPredicate) => {
+    const base = db
       .select({
         id: productsTable.id,
         name: productsTable.name,
@@ -147,14 +150,24 @@ async function main(): Promise<void> {
         seoDescription: productsTable.seoDescription,
         isArchived: productsTable.isArchived,
       })
-      .from(productsTable)
-      .where(
-        or(
-          slug ? eq(productsTable.slug, slug) : undefined,
-          eq(productsTable.name, entry.product_name),
-        ),
-      )
-      .limit(1);
+      .from(productsTable);
+    if (predicate.by === "slug") {
+      return (await base.where(eq(productsTable.slug, predicate.slug)).limit(1))[0];
+    }
+    // `name` has no unique constraint — order by id so duplicate names
+    // resolve deterministically instead of by scan order.
+    return (
+      await base.where(eq(productsTable.name, predicate.name)).orderBy(productsTable.id).limit(1)
+    )[0];
+  };
+
+  for (const entry of entries) {
+    // 110-F (R110 — 109-n P3): slug-first join. The JSON's `slug` is the
+    // canonical URL identity (stable across marketing renames of
+    // product_name — the exact drift that made the old name-only match
+    // silently skip half the file); the exact-name fallback keeps
+    // hand-edited entries without a slug importable.
+    const row = await resolveSeoTarget(findTarget, entry.slug, entry.product_name);
 
     if (!row) {
       plans.push({ kind: "missing", entry });

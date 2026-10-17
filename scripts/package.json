@@ -14,6 +14,7 @@
     "check:error-codes": "tsx ../scripts/check-error-code-sync.ts",
     "check:header-params": "tsx ../scripts/check-openapi-header-params.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "validate:env": "tsx ./src/validate-production-env.ts"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "tsx": "catalog:"
+    "tsx": "catalog:",
+    "vitest": "^4.1.11"
   }
 }

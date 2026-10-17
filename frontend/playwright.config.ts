@@ -19,6 +19,9 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
+  // R162-C verdict (keep): retries smooth transients against the LIVE
+  // heartbeat target only — deterministic defects fail all 3 attempts
+  // (scheduled run 38245700451 failed through this exact retries:2).
   retries: 2,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
