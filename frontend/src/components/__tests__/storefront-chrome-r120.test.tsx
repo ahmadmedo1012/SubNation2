@@ -185,7 +185,9 @@ describe("Navbar — guest drawer: categories + scroll-lock + a11y (R120-B1 / A3
     expect(burger).toHaveAttribute("aria-expanded", "true");
     expect(document.getElementById("guest-menu")).toBeInTheDocument();
     // Category shortcuts (7) + flash-sales + support + auth rows.
-    expect(screen.getByRole("link", { name: "بث مباشر" })).toHaveAttribute(
+    // R161-C: the streaming link rides the honest taxonomy label
+    // (on-demand viewing platforms, not live broadcast).
+    expect(screen.getByRole("link", { name: "منصات المشاهدة" })).toHaveAttribute(
       "href",
       "/category/streaming",
     );

@@ -52,6 +52,22 @@ test.describe("PDP buy affordance — exactly one sticky surface per width (R157
       await expect(barCta).toBeVisible();
       // …and the in-panel CTA is display:none (BuyPanelColumn.tsx:149).
       await expect(panelCta).toBeHidden();
+
+      // R161-G (pin hardening): visibility proves the bar RENDERS in the
+      // band — not that it PINS. R157 widened the bar to lg:hidden but
+      // left every clearance rule scoped ≤639.98px, so position:sticky
+      // had NO bottom offset across 640-1023 (Lane F measured the bar at
+      // y=1281 with scrollY=800 at 768×1024 — no buy affordance mid-PDP).
+      // Scroll past the bar's in-flow position and assert the PIN: the
+      // CTA box stays fully inside the viewport (390: docked above the
+      // MobileNav; 768-1023: at the safe-area floor).
+      await page.evaluate(() => window.scrollBy(0, Math.round(window.innerHeight * 1.5)));
+      const pinned = await barCta.boundingBox();
+      expect(pinned, "the sticky-bar CTA must have a box after scrolling").not.toBeNull();
+      const viewportHeight = page.viewportSize()?.height ?? 0;
+      expect(pinned!.y).toBeGreaterThanOrEqual(0);
+      expect(pinned!.y + pinned!.height).toBeLessThanOrEqual(viewportHeight + 1);
+
       // Keyboard operability: focus + Enter fires the same onLogin a tap
       // does — the guest lands on /login?intent=buy (product.tsx:640-643),
       // never a purchase (the config's guest-only contract).

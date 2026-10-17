@@ -152,3 +152,111 @@ test.describe("arabic search — plan-level journeys (R132, API-parity)", () => 
     }
   });
 });
+
+/**
+ * R161-B — live product suggestions (typing-time affordance) + Escape
+ * dismissal. DEPLOY-RACE-SAFE by construction (the soldout-pdp
+ * honest-skip precedent): the CI run may execute before the R161-B
+ * frontend chunk has deployed, so each case takes the suggestions
+ * listbox's PRESENCE as the feature-detect — present → the full
+ * API-parity assertions (the same /api/products?search=…&fields=list
+ * URL the app fetches is the ground truth); absent → a LOUD named
+ * skip so the coordinator can re-run post-deploy. NEVER a silent pass.
+ */
+test.describe("arabic search — live suggestions (R161-B, deploy-race-safe)", () => {
+  test("typing «نتفلكس» offers the API's first match — clicking it navigates to the product (search-suggestions-r161b)", async ({
+    page,
+    request,
+  }) => {
+    // Ground truth: the exact request the suggestion dropdown fires.
+    const api = await request.get(
+      `/api/products?search=${encodeURIComponent("نتفلكس")}&fields=list`,
+    );
+    expect(api.status(), "GET /api/products?search=نتفلكس&fields=list must be 200").toBe(200);
+    const matches = (await api.json()) as Array<{
+      name: string;
+      slug: string | null;
+      id: number;
+    }>;
+    expect(
+      matches.length,
+      "live catalog must carry a Netflix match for the suggestions contract",
+    ).toBeGreaterThan(0);
+
+    await page.goto("/");
+    const search = page.getByLabel("البحث في المنتجات");
+    await expect(search).toBeVisible({ timeout: 15_000 });
+    // Type WITHOUT Enter — suggestions are the typing-time surface
+    // (300ms debounce + the list fetch; the typing itself only arms the
+    // page's own 320ms URL mirror, which is not this spec's subject).
+    await search.fill("نتفلكس");
+
+    // Feature-detect: the suggestions listbox appears once the
+    // debounced fetch lands (4s covers debounce + a slow round trip).
+    const listbox = page.getByRole("listbox", { name: "منتجات مطابقة" });
+    const present = await listbox.waitFor({ state: "visible", timeout: 4_000 }).then(
+      () => true,
+      () => false,
+    );
+    if (!present) {
+      test.skip(
+        true,
+        "R161-B suggestions markup not deployed yet (listbox «منتجات مطابقة» absent) — re-run spec search-suggestions-r161b post-deploy",
+      );
+    }
+
+    // API parity: the FIRST option is the API's first match (name +
+    // the row's category/price vocabulary render inside the option).
+    const first = listbox.getByRole("option").first();
+    await expect(first).toContainText(matches[0].name, { timeout: 5_000 });
+
+    // Clicking it navigates to that product's page.
+    await first.click();
+    const href = `/product/${matches[0].slug ?? matches[0].id}`;
+    await expect(page).toHaveURL(new RegExp(`${href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), {
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(matches[0].name, {
+      timeout: 15_000,
+    });
+  });
+
+  test("Escape dismisses the suggestions dropdown without committing (search-escape-r161b)", async ({
+    page,
+    request,
+  }) => {
+    // Same ground truth + feature-detect gate as above — an absent
+    // listbox is the pre-deploy engine, not a pass.
+    const api = await request.get(
+      `/api/products?search=${encodeURIComponent("نتفلكس")}&fields=list`,
+    );
+    expect(api.status()).toBe(200);
+    expect(((await api.json()) as unknown[]).length).toBeGreaterThan(0);
+
+    await page.goto("/");
+    const search = page.getByLabel("البحث في المنتجات");
+    await expect(search).toBeVisible({ timeout: 15_000 });
+    await search.fill("نتفلكس");
+
+    const listbox = page.getByRole("listbox", { name: "منتجات مطابقة" });
+    const present = await listbox.waitFor({ state: "visible", timeout: 4_000 }).then(
+      () => true,
+      () => false,
+    );
+    if (!present) {
+      test.skip(
+        true,
+        "R161-B suggestions markup not deployed yet (listbox «منتجات مطابقة» absent) — re-run spec search-escape-r161b post-deploy",
+      );
+    }
+    await expect(search).toHaveAttribute("aria-expanded", "true");
+
+    // Escape closes the dropdown (audit defect F#2) — the query text
+    // stays in the input (the dismissal is preventDefault'ed against
+    // Chromium's type=search quick-clear too).
+    await search.press("Escape");
+    await expect(search).toHaveAttribute("aria-expanded", "false");
+    await expect(listbox).toHaveCount(0);
+    await expect(search).toHaveValue("نتفلكس");
+  });
+});

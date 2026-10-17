@@ -115,8 +115,14 @@ describe("tierLabel + tierColor", () => {
 
 describe("categoryLabel", () => {
   it("returns Arabic labels for the documented product categories", () => {
-    expect(categoryLabel("streaming")).toBe("بث مباشر");
-    expect(categoryLabel("music")).toBe("موسيقى");
+    // R161-C: streaming → «منصات المشاهدة» — the 17 live products are
+    // all on-demand viewing platforms, so the old live-broadcast label
+    // was a semantic falsehood to customers and search engines; music →
+    // «موسيقى وصوتيات» — TuneIn/Headspace/Brain.fm are audio services,
+    // not music-only. Pinned byte-exactly by
+    // lib/__tests__/taxonomy-consistency-r161.test.ts too.
+    expect(categoryLabel("streaming")).toBe("منصات المشاهدة");
+    expect(categoryLabel("music")).toBe("موسيقى وصوتيات");
     expect(categoryLabel("gaming")).toBe("ألعاب");
     expect(categoryLabel("productivity")).toBe("إنتاجية");
   });

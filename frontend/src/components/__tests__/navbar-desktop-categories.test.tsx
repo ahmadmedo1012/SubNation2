@@ -47,10 +47,12 @@ vi.mock("@/components/layout/NotificationBell", () => ({
 
 /** The 7 live category slugs (lib/categories.ts) the panel must carry.
  *  R134 (A2-F1): canonical labels — Navbar now derives from
- *  categoryLabel() (lib/utils), same as home's chips. */
+ *  categoryLabel() (lib/utils), same as home's chips.
+ *  R161-C: streaming/music re-pinned to the honest taxonomy labels
+ *  (on-demand viewing platforms / audio-wide family). */
 const EXPECTED = [
-  ["بث مباشر", "/category/streaming"],
-  ["موسيقى", "/category/music"],
+  ["منصات المشاهدة", "/category/streaming"],
+  ["موسيقى وصوتيات", "/category/music"],
   ["برامج وتراخيص", "/category/software"],
   ["شبكات VPN", "/category/vpn"],
   ["أدوات ذكاء اصطناعي", "/category/ai-tools"],

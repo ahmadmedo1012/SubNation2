@@ -465,15 +465,23 @@
     }
   }
 
-  /* Product page sticky buy bar (sm:hidden, ~68px) stacks ABOVE the
-     MobileNav — when it is on screen, the total fixed bottom chrome is
-     nav + bar. :has() scopes the extra reservation to exactly those
-     routes instead of taxing every mobile page. */
-  @media (max-width: 639.98px) {
+  /* Product page sticky buy bar (lg:hidden, ~68px — R157 widened the
+     render band to 1023.98px) stacks ABOVE the fixed chrome at the
+     viewport bottom. R161-G: the reservation was stranded at 639.98px
+     by that widening — split at the nav boundary. Below 768px the
+     MobileNav renders (md:hidden) and stacks under the bar; 768-1023.98
+     it does not, so the reservation is the bar alone. :has() scopes both
+     to exactly those routes instead of taxing every mobile page. */
+  @media (max-width: 767.98px) {
     html:has(.mobile-sticky-above-nav) {
       scroll-padding-bottom: calc(
         var(--mobile-nav-h) + 68px + 0.75rem + env(safe-area-inset-bottom, 0px)
       );
+    }
+  }
+  @media (min-width: 768px) and (max-width: 1023.98px) {
+    html:has(.mobile-sticky-above-nav) {
+      scroll-padding-bottom: calc(68px + 0.75rem + env(safe-area-inset-bottom, 0px));
     }
   }
 
@@ -1141,7 +1149,19 @@
       background-color 0.18s ease;
   }
   .input-premium:focus {
-    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15);
+    /* R161 (Lane F audit P1 — the invisible keyboard focus): compose,
+       never clobber. The generated focus-visible utilities (ring-offset-1
+       + ring-2 ring-ring, F3-01's AA recipe) paint the focus ring, but
+       this hand-written rule sits AFTER the utilities layer at equal
+       specificity, so a bare box-shadow here REPLACED the ring with the
+       15% halo alone — measured ~1.1:1 on the page background, i.e.
+       invisible on Tab (every ui/input + ui/select consumer). The
+       composite restores the ring layers (1px background offset + 2px
+       full-opacity ring) and keeps the calm halo OUTSIDE them. */
+    box-shadow:
+      0 0 0 1px hsl(var(--background)),
+      0 0 0 3px hsl(var(--ring)),
+      0 0 0 6px hsl(var(--ring) / 0.15);
   }
 
   /* ── Mobile thumb-safe touch targets ──────────────── */
@@ -1160,8 +1180,9 @@
 
   /* ── Mobile-only layout utilities ──────────────────────────────────
      All utilities below are scoped to the breakpoints where their
-     companion elements actually render (MobileNav is `md:hidden`,
-     product sticky bar is `sm:hidden`). Without the media queries a
+     companion elements actually render (MobileNav is `md:hidden`;
+     the product sticky bars are `lg:hidden` — see the R161-G band
+     split below). Without the media queries a
      later-defined same-specificity rule silently beats Tailwind's
      `md:pb-0`/`sm:pb-8` overrides (hand-written utilities are emitted
      after generated ones) — that shipped a phantom 72px desktop pad
@@ -1188,7 +1209,11 @@
     }
   }
 
-  @media (max-width: 639.98px) {
+  /* R161-G: both product-page sticky bars render to 1023.98px (lg:hidden,
+     R157) — the pin/pad scopes below follow that band, split at the nav
+     boundary (MobileNav is md:hidden: below 768px it stacks under the
+     bar; 768-1023.98px it does not render at all). */
+  @media (max-width: 767.98px) {
     /* Both product-page sticky bars ride this: the authed FIXED bar
        (bottom offset) and — since R120-B7, when the guest bottom nav
        started rendering on /product/* — the GUEST sticky bar's pin
@@ -1199,19 +1224,36 @@
       bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
     }
 
-    /* Product page body padding. `main` already reserves the MobileNav
-       clearance via mobile-nav-safe-pad (72px ≥ 60px nav), so the auth
-       variant only needs the sticky buy bar height + breathing room —
-       the old 68+60 stack double-counted the nav (~76px of dead space). */
-    .mobile-product-pad-auth {
-      padding-bottom: calc(68px + 0.5rem);
-    }
     /* Guest: sticky bar (~68px) + the nav itself (R120-B7 — the guest
-       bottom nav renders on /product/* now; main is unpadded for
-       guests, so the page root carries BOTH clearances) + safe-area
+       bottom nav renders on /product/* below 768px; main is unpadded
+       for guests, so the page root carries BOTH clearances) + safe-area
        + breathing room. */
     .mobile-product-pad-guest {
       padding-bottom: calc(68px + var(--mobile-nav-h) + env(safe-area-inset-bottom) + 0.5rem);
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023.98px) {
+    /* The bars still render here but the MobileNav does not — the pin
+       drops the nav term to the safe-area floor… */
+    .mobile-sticky-above-nav {
+      bottom: env(safe-area-inset-bottom);
+    }
+    /* …and the guest pad keeps bar + safe-area + breathing only. */
+    .mobile-product-pad-guest {
+      padding-bottom: calc(68px + env(safe-area-inset-bottom) + 0.5rem);
+    }
+  }
+
+  /* Product page body padding. `main` already reserves the MobileNav
+     clearance via mobile-nav-safe-pad (72px ≥ 60px nav) below 768px, so
+     the auth variant only needs the sticky buy bar height + breathing
+     room — the old 68+60 stack double-counted the nav (~76px of dead
+     space). No nav term to drop, so the single rule widens to the bar's
+     full render band (≤1023.98px) unchanged. */
+  @media (max-width: 1023.98px) {
+    .mobile-product-pad-auth {
+      padding-bottom: calc(68px + 0.5rem);
     }
   }
 }

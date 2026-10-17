@@ -175,8 +175,17 @@ export function categoryLabel(cat: string | null | undefined): string {
   // then the retired gaming/productivity kept for archived products
   // and old links so labels never degrade to a raw English slug.
   const labels: Record<string, string> = {
-    streaming: "بث مباشر",
-    music: "موسيقى",
+    // R161-C: the streaming family's 17 live products are ALL on-demand
+    // subscription platforms (Netflix, Disney+, Prime Video…) — the old
+    // live-broadcast label was a semantic falsehood to customers and
+    // search engines. «منصات المشاهدة» (viewing platforms) is the
+    // honest chip-brevity form; the search aliases مشاهدة /
+    // منصات المشاهدة resolve on the backend (R161-A).
+    streaming: "منصات المشاهدة",
+    // R161-C: «موسيقى وصوتيات» — 3 of the family's 11 live products are
+    // audio-not-music (TuneIn radio, Headspace meditation, Brain.fm
+    // focus audio); plain «موسيقى» misled for them.
+    music: "موسيقى وصوتيات",
     software: "برامج وتراخيص",
     vpn: "شبكات VPN",
     // R124 (A10-F8c): «أدوات ذكاء اصطناعي» — the canonical root of the

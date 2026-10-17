@@ -466,7 +466,7 @@ export function AppRoutes() {
       <MetaTags
         fallback
         title="SubNation — سوق الاشتراكات الرقمية"
-        description="اشترِ Netflix والبث المباشر واشتراكات VPN وتراخيص Windows والبرامج وأدوات الذكاء الاصطناعي بالدينار الليبي (د.ل) — تسليم فوري في ليبيا."
+        description="اشترِ Netflix ومنصات المشاهدة واشتراكات VPN وتراخيص Windows والبرامج وأدوات الذكاء الاصطناعي بالدينار الليبي (د.ل) — تسليم فوري في ليبيا."
         path={location || "/"}
         robots={robotsForPath(location)}
       />

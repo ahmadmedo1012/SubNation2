@@ -133,6 +133,12 @@ export default function CheckoutPage() {
   // Partial-success bookkeeping: orders that DID go through before a
   // failure — shown in the banner so the user knows what was charged.
   const [partialCount, setPartialCount] = useState(0);
+  // R161-G (audit E#1, money honesty): set when a complete failure rode
+  // units another tab already charged/removed mid-flight (the loop's
+  // skippedByOtherTab) — the wallet state is UNKNOWN from this tab, so
+  // the banner's «لم يتم خصم أي مبلغ» claim must not render. Same reset
+  // points as partialCount (a new confirm starts from a clean verdict).
+  const [walletStateUnknown, setWalletStateUnknown] = useState(false);
   // R115-I1 (A7 P3-5): per-unit progress for the submitting label — a
   // 5-unit basket runs N sequential POSTs (seconds on 3G) and the
   // spinner-only CTA read as "stuck". {current}/{total} rides the
@@ -353,6 +359,7 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setOrderError(null);
     setPartialCount(0);
+    setWalletStateUnknown(false);
     // R115-I1 (A7 P3-5): the honest denominator for «جارٍ المعالجة… N/M»
     // — the SAME clamp the loop below charges (MAX_UNITS_PER_LINE).
     setSubmitProgress({
@@ -653,6 +660,10 @@ export default function CheckoutPage() {
           void refreshMeBalance();
           queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
         }
+        // R161-G (audit E#1): skips mean another tab charged/removed
+        // units during this flight — this tab cannot honestly claim
+        // «لم يتم خصم أي مبلغ» (the wallet view may contradict it).
+        setWalletStateUnknown(skippedByOtherTab > 0);
         setOrderError(failureMessage);
         toast({ title: failureMessage, variant: "destructive" });
       } else if (failureMessage && created.length > 0) {
@@ -698,7 +709,15 @@ export default function CheckoutPage() {
             other: "طلب",
           })} بنجاح`,
         });
-        if (firstOrderCode && !abandonedRef.current) navigate(`/orders/${firstOrderCode}`);
+        if (firstOrderCode && !abandonedRef.current) {
+          // R161-G (multi-order honesty, the R160 NO-GO): with >1 created
+          // order NO single receipt tells the story — order-detail shows
+          // only firstOrderCode and never mentions the N−1 siblings. Land
+          // on /orders instead (this page's own skippedByOtherTab
+          // precedent): the toast above already counts every order, and
+          // /orders lists them all newest-first with codes + amounts.
+          navigate(created.length > 1 ? "/orders" : `/orders/${firstOrderCode}`);
+        }
         // r97 F-17(4) / 98-F2: the shopper left mid-loop — the loop still
         // finished and the toast above reported it, but the redirect is
         // skipped (their navigation decision stands).
@@ -711,6 +730,12 @@ export default function CheckoutPage() {
         await refreshMeBalance();
         queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+        // R161-G (audit E#3, P4): mirror the try-side partial path — the
+        // charged units consumed real stock, so a network-partial must
+        // refresh the PDP/catalog caches too (else they serve stale
+        // stock_count/is_available for up to their 3-min staleTime).
+        queryClient.invalidateQueries({ queryKey: ["product-by-slug"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/products"] });
       }
       const msg = getErrorMessage(e);
       // R160 (audit F1): mirror the HTTP-partial branch above — a
@@ -850,6 +875,7 @@ export default function CheckoutPage() {
             <OrderErrorBanner
               orderError={orderError}
               partialCount={partialCount}
+              walletStateUnknown={walletStateUnknown}
               onDismiss={() => setOrderError(null)}
             />
             <CheckoutCta

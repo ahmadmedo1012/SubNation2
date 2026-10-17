@@ -573,7 +573,9 @@ describe("AdminProductsPage — stats co-invalidation + Arabic bulk reasons (R12
 describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R127-B2)", () => {
   // Two streaming + two music products — the category chips split
   // them 2/2 while the selection rides across the flip
-  // (CATEGORY_FILTERS: «بث مباشر» = streaming, «موسيقى» = music).
+  // (CATEGORY_FILTERS: «منصات المشاهدة» = streaming,
+  // «موسيقى وصوتيات» = music — R161-C re-pin, the honest taxonomy
+  // labels the admin selects derive from adminLabel).
   const MIXED = [
     PRODUCT(1, "Netflix 1M"),
     PRODUCT(2, "Hulu 1M"),
@@ -622,10 +624,10 @@ describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R12
     fireEvent.click(screen.getByRole("button", { name: "تحديد Apple Music" }));
     expect(screen.getByText("2 منتج محدد")).toBeInTheDocument();
 
-    // …then narrow the chip to «بث مباشر»: the two visible streaming
+    // …then narrow the chip to «منصات المشاهدة»: the two visible streaming
     // rows are UNSELECTED, yet the stale selection's SIZE (2) equals
     // the filtered LENGTH (2) — the old size-equality trap.
-    fireEvent.click(screen.getByRole("button", { name: "بث مباشر" }));
+    fireEvent.click(screen.getByRole("button", { name: "منصات المشاهدة" }));
     await waitFor(() => expect(screen.queryAllByText("Spotify 3M")).toHaveLength(0));
     expect(selectAllButton()).toHaveAttribute("aria-pressed", "false");
 
@@ -652,11 +654,11 @@ describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R12
     fireEvent.click(screen.getByRole("button", { name: "تحديد Apple Music" }));
     expect(screen.getByText("3 منتج محدد")).toBeInTheDocument();
 
-    // …then narrow to «موسيقى»: both visible rows are selected (the
+    // …then narrow to «موسيقى وصوتيات»: both visible rows are selected (the
     // button reads checked) but Netflix 1M rides hidden in the set —
     // size 3 ≠ length 2, so the old branch re-ran the SELECT side
     // and the checked button could never clear anything.
-    fireEvent.click(screen.getByRole("button", { name: "موسيقى" }));
+    fireEvent.click(screen.getByRole("button", { name: "موسيقى وصوتيات" }));
     await waitFor(() => expect(screen.queryAllByText("Netflix 1M")).toHaveLength(0));
     expect(deselectAllButton()).toHaveAttribute("aria-pressed", "true");
 

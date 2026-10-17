@@ -331,8 +331,8 @@ export default function CategoryPage() {
                   this was the family's last storefront remnant), and the
                   category was named THREE times inside ~200px: the
                   breadcrumb crumb, the eyebrow, and this keyword-rich h1
-                  (every label — البث المباشر، الموسيقى، … — appears
-                  verbatim inside its own h1). The hero now reads icon
+                  (every label — منصات المشاهدة، الموسيقى والصوتيات، …
+                  — appears verbatim inside its own h1). The hero now reads icon
                   stage → h1 → intro, the flash-sales header family
                   shape. Zero SEO/aria impact: the h1 + metaTitle +
                   breadcrumb carry the page's identity contracts. */}
@@ -359,7 +359,12 @@ export default function CategoryPage() {
              1px is the craft-floor cap for colored heading stripes. */
           className={`text-base font-bold mb-3 flex items-center gap-2 border-r ${theme.headingBorder} pr-3`}
         >
-          منتجات {meta.label}
+          {/* R161-C: «اشتراكات {meta.label}» — reads naturally for every
+              live category under the new vocabulary (اشتراكات منصات
+              المشاهدة / اشتراكات الموسيقى والصوتيات / …) and matches the
+              h1 family («اشتراكات … في ليبيا») better than the old
+              «منتجات …» template. */}
+          اشتراكات {meta.label}
           {!isLoading && products.length > 0 && (
             <span className="text-xs font-bold text-muted-foreground">({products.length})</span>
           )}

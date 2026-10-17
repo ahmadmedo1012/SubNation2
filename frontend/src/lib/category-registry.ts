@@ -82,7 +82,10 @@ const LIVE_ROWS: CategoryRegistryRow[] = [
   {
     slug: "streaming",
     label: categoryLabel("streaming"),
-    adminLabel: "بث مباشر",
+    // R161-C: streaming adminLabel = the chip label (identical now —
+    // the family is all on-demand viewing platforms, no live-broadcast
+    // service among the 17 live products).
+    adminLabel: "منصات المشاهدة",
     Icon: Tv2,
     accent: {
       bg: "bg-cat-streaming/10",
@@ -97,7 +100,9 @@ const LIVE_ROWS: CategoryRegistryRow[] = [
   {
     slug: "music",
     label: categoryLabel("music"),
-    adminLabel: "موسيقى",
+    // R161-C: music adminLabel = the chip label (TuneIn/Headspace/
+    // Brain.fm make the family audio-wide, not music-only).
+    adminLabel: "موسيقى وصوتيات",
     Icon: Music2,
     accent: {
       bg: "bg-cat-music/10",

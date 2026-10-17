@@ -89,11 +89,15 @@ const OLD_ADMIN_INITIAL: Record<string, string> = {
 
 /** The pre-R146 admin option lists — the two-label vocabulary (only
  *  ai-tools carries the definite article; retired rows wear the
- *  «(مؤرشفة)» suffix in the editor select only). */
+ *  «(مؤرشفة)» suffix in the editor select only).
+ *  R161-C: streaming/music re-pinned to the honest taxonomy labels —
+ *  the streaming family is all on-demand viewing platforms (was the
+ *  live-broadcast misnomer) and the music family is audio-wide (3 of
+ *  11 products are radio/meditation/focus-audio, not music). */
 const OLD_OPTIONS = [
   { value: "", label: "اختر الفئة" },
-  { value: "streaming", label: "بث مباشر" },
-  { value: "music", label: "موسيقى" },
+  { value: "streaming", label: "منصات المشاهدة" },
+  { value: "music", label: "موسيقى وصوتيات" },
   { value: "software", label: "برامج وتراخيص" },
   { value: "vpn", label: "شبكات VPN" },
   { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },
@@ -104,8 +108,8 @@ const OLD_OPTIONS = [
 ];
 const OLD_FILTERS = [
   { value: "", label: "الكل" },
-  { value: "streaming", label: "بث مباشر" },
-  { value: "music", label: "موسيقى" },
+  { value: "streaming", label: "منصات المشاهدة" },
+  { value: "music", label: "موسيقى وصوتيات" },
   { value: "software", label: "برامج وتراخيص" },
   { value: "vpn", label: "شبكات VPN" },
   { value: "ai-tools", label: "أدوات الذكاء الاصطناعي" },

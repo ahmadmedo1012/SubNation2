@@ -180,6 +180,7 @@ const BRAND_ALIASES: Record<string, string> = {
   نتفلكس: "netflix", // the site's own hero spelling (r122-a11)
   نفلكس: "netflix", // short form users type (r122-a11 §P1-1 action item)
   نفليكس: "netflix", // R132: transposed لا variant, common Libyan typo
+  نيتفلكس: "netflix", // R161-A: ني- variant (SEO census live probe 0)
   سبوتيفاي: "spotify",
   سبوتفاي: "spotify",
   سبوتيفي: "spotify",
@@ -211,6 +212,7 @@ const BRAND_ALIASES: Record<string, string> = {
   تايدل: "tidal",
   تيدال: "tidal", // R132: Libyan variant
   "ساوند كلاود": "soundcloud",
+  "صاوند كلاود": "soundcloud", // R161-A: Libyan ص-spelling (live probe 0)
   باندورا: "pandora",
   نابستر: "napster",
   كوبوز: "qobuz",
@@ -227,6 +229,7 @@ const BRAND_ALIASES: Record<string, string> = {
   "سايبر جوست": "cyberghost",
   فانيش: "ipvanish",
   "اتش ام اي": "hma",
+  "اتش ام ايه": "hma", // R161-A: the SEO keyword's ايه spelling (live probe 0)
   // ── AI / SEO / education (6) ──
   "شات جي بي تي": "chatgpt",
   "جي بي تي": "chatgpt",
@@ -235,6 +238,8 @@ const BRAND_ALIASES: Record<string, string> = {
   افريفس: "ahrefs",
   سيمراش: "semrush",
   سيمرش: "semrush", // R132: Libyan variant
+  سمراش: "semrush", // R161-A: the SEO file's secondary keyword (live probe 0)
+  "سم راش": "semrush", // R161-A: its spaced form (same collapsed key)
   "سكيل شير": "skillshare",
   سكريد: "scribd",
   سكريبد: "scribd", // R132: Libyan variant
@@ -313,10 +318,14 @@ const CATEGORY_ALIASES: Record<string, CategoryAlias> = {
   مسلسلات: "streaming",
   مسلسل: "streaming",
   سينما: "streaming",
+  مشاهدة: "streaming", // R161-A: the renamed category's plain word (live probe 0)
+  "منصات المشاهدة": "streaming", // R161-A: the new canonical label itself must find it
+  انمي: "streaming", // R161-A: Funimation's SEO keyword (أ folds to ا)
   // music
   موسيقى: "music",
   اغاني: "music",
   بودكاست: "music",
+  راديو: "music", // R161-A: TuneIn's own SEO keyword (live probe 0)
   // software
   برامج: "software",
   برنامج: "software",
@@ -327,6 +336,7 @@ const CATEGORY_ALIASES: Record<string, CategoryAlias> = {
   // vpn
   "في بي ان": "vpn", // the name-alias "vpn" only substring-matches
   برايفت: "vpn", // «برايفت» / «شبكة برايفت» — Libyan VPN shorthand
+  بروكسي: "vpn", // R161-A: Libyan colloquialism, beside «برايفت»
   // ai-tools
   "ذكاء اصطناعي": "ai-tools",
   ذكاء: "ai-tools",
@@ -338,6 +348,7 @@ const CATEGORY_ALIASES: Record<string, CategoryAlias> = {
   كورسات: "education",
   دورات: "education",
   كتب: "education", // Scribd's books — education category
+  مكتبة: "education", // R161-A: Scribd's semantic keyword
 };
 
 /**
@@ -347,7 +358,9 @@ const CATEGORY_ALIASES: Record<string, CategoryAlias> = {
  * the match (every month-plan product); beside a brand the route builds
  * compound AND branches («نتفلكس شهر» → name ILIKE %netflix% AND
  * %month%) that rank first — the customer's plan-level intent surfaces
- * at the top instead of drowning in the OR recall.
+ * at the top instead of drowning in the OR recall. R161-A: beside a
+ * resolved brand the modifier's bare OR nameTerm is suppressed — the
+ * compound + the brand branch carry the intent alone.
  *
  * Exact/phrase matching only — no containment, no skeletons («برو»
  * must never fire inside an unrelated word).
@@ -435,8 +448,9 @@ const ARABIC_LETTER = /[\u0621-\u063A\u0641-\u064A]/;
 export interface ArabicSearchExpansion {
   /**
    * Extra literal ILIKE terms for the NAME column (brand aliases +
-   * modifier fragments + transliteration skeletons) — the R122
-   * behavior, unchanged.
+   * transliteration skeletons). Modifier fragments ride here only for a
+   * modifier-ONLY query — beside a resolved brand they are suppressed
+   * into the compounds below (R161-A cross-brand noise suppression).
    */
   nameTerms: string[];
   /**
@@ -495,7 +509,7 @@ const MAX_VARIANT_TERMS = 6;
  *
  * @example
  *   expandArabicSearch("افلام")            → { nameTerms: [], categories: ["streaming"], … }
- *   expandArabicSearch("نتفلكس شهر")       → { nameTerms: ["netflix","month"], compounds: [{brand:"netflix",modifier:"month"}], … }
+ *   expandArabicSearch("نتفلكس شهر")       → { nameTerms: ["netflix"], compounds: [{brand:"netflix",modifier:"month"}], … }
  *   expandArabicSearch("netflix اشتراك")   → { nameTerms: [], latinTerms: ["netflix"], … }
  *   expandArabicSearch("netflix premium")  → all empty (pure English unchanged)
  */
@@ -671,6 +685,17 @@ export function expandArabicSearch(query: string): ArabicSearchExpansion {
   const brandCandidates = aliasTerms.filter((t) => !modifiers.includes(t));
   const compounds: ArabicSearchExpansion["compounds"] = [];
   if (modifiers.length > 0 && brandCandidates.length > 0) {
+    // R161-A: cross-brand noise suppression — beside a resolved brand
+    // alias the modifier's bare OR nameTerm recalled EVERY product
+    // whose name carries the fragment («نتفلكس بريميوم» pulled the
+    // YouTube/Spotify Premium rows below the Netflix tiers). The
+    // compound AND branch + the brand OR branch carry the intent, so
+    // the bare modifier term drops out of the OR recall. A
+    // modifier-only query (no brand side) never reaches this branch
+    // and keeps its breadth; variantTerms (R142) are untouched.
+    for (let i = nameTerms.length - 1; i >= 0; i--) {
+      if (modifiers.includes(nameTerms[i]!)) nameTerms.splice(i, 1);
+    }
     const digitRef = digitTokens[0];
     outer: for (const brand of brandCandidates) {
       for (const modifier of modifiers) {

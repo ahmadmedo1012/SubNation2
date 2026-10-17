@@ -375,5 +375,12 @@ full-bleed media.
   reduced-motion kill-switch.
 - Do keep dark-context surfaces (scrims, footer, mobile nav) on the surface
   ladder so the AA-tuned foreground tokens stay valid.
-- Don't introduce a second focus system — the global `:focus-visible`
-  2px crimson outline is the only one.
+- Don't introduce a third focus treatment. Two exist by design (R161
+  codified the de-facto contract): the **global `:focus-visible` 2px
+  crimson outline** (default for links, cards, tabs, chips — everything
+  that is not a form control or control primitive) and the **ring-2
+  recipe** (`focus-visible:ring-2 ring-ring ring-offset-1
+  ring-offset-background` — the AA-tuned treatment for the Button /
+  Input / Select / Textarea primitive family, protected by
+  button-a11y.test.tsx). Never suppress one without installing the
+  other; a component must never mix both.

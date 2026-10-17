@@ -166,7 +166,11 @@ export function ProductsGrid({
                   maybe-sold-out hint alongside the generic retry line. */}
               <p className="font-bold text-base mb-1.5">
                 {availableOnly && activeFilterCount === 1
-                  ? "كل المنتجات المطابقة نفد المخزون حالياً"
+                  ? /* R161-B (E#38): subject–predicate order — the old
+                       «كل المنتجات المطابقة نفد المخزون حالياً» read the
+                       sold-out clause as a dangling verb phrase; the
+                       verb-first form is the natural Arabic sentence. */
+                    "نفد مخزون كل المنتجات المطابقة حالياً"
                   : "لا توجد منتجات تطابق بحثك"}
               </p>
               <p className="text-sm text-muted-foreground mb-5">

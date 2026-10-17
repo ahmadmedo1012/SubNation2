@@ -198,6 +198,25 @@ describe("global focus system (R115-A6 #5)", () => {
       /:focus-visible\s*\{\s*outline: 2px solid hsl\(var\(--ring\)\);\s*outline-offset: 2px;\s*\}/,
     );
   });
+
+  it("R161: .input-premium:focus COMPOSES the AA ring, never clobbers it", () => {
+    // Lane F's live audit (P1): the hand-written .input-premium:focus sat
+    // after the generated focus-visible utilities at equal specificity,
+    // so its bare 15%-alpha box-shadow REPLACED the ring-2 recipe —
+    // every ui/input + ui/select consumer focused to an invisible
+    // ~1.1:1 tint (measured on the Tab key, both themes' backgrounds).
+    // The composite pins the restoration: the ring layers FIRST (1px
+    // background offset + 2px full-opacity ring — F3-01's contrast
+    // contract), the calm halo OUTSIDE them. A regression back to a
+    // bare tint-only declaration fails this pin loudly.
+    const block = cssText.match(/\.input-premium:focus\s*\{[^}]*\}/);
+    expect(block, ".input-premium:focus block not found").toBeTruthy();
+    expect(block![0]).toMatch(/0 0 0 3px hsl\(var\(--ring\)\)/);
+    expect(block![0]).toMatch(/0 0 0 1px hsl\(var\(--background\)\)/);
+    // The halo may ride along, but must never be the ONLY shadow layer.
+    const layers = block![0].match(/0 0 0 \d+px hsl\(/g) ?? [];
+    expect(layers.length, "the tint-only clobber returned").toBeGreaterThanOrEqual(3);
+  });
 });
 
 describe("entrance fill-mode (R128 A5-1) — `backwards`, never `both`", () => {

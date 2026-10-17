@@ -40,10 +40,12 @@ import {
   getGetMeQueryKey,
   getListOrdersQueryKey,
   getListProductsQueryKey,
+  listProducts,
   useGetCatalogStats,
   useGetMe,
   useListOrders,
   useListProducts,
+  type ProductListItem,
 } from "@workspace/api-client-react";
 import type { ComponentProps } from "react";
 import {
@@ -118,6 +120,15 @@ export default function HomePage() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // R161-B: live product suggestions — the dropdown's data half. The
+  // page stays the single data owner (the R136 contract: every query
+  // lives here); the fetch is the SAME list projection the grid rides
+  // (?fields=list — no new endpoint, no new dependency) behind its own
+  // 300ms debounce. Suggestions are an ENHANCEMENT, never an error
+  // surface: every failure shape collapses to "no suggestions"
+  // silently — the no-results verdict stays the grid's job on Enter.
+  const [suggestions, setSuggestions] = useState<ProductListItem[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   // R94-A1 #16 (P3): the history dropdown wrapper — blur closes the list
   // ONLY when focus actually leaves the whole search control. The old
   // unconditional 200ms timeout unmounted the list while keyboard users
@@ -132,7 +143,12 @@ export default function HomePage() {
 
   const handleSearchChange = (val: string) => {
     setSearchInput(val);
-    setShowSearchHistory(val.length > 0 && searchHistory.length > 0);
+    // R161-B: while typing the dropdown is the SUGGESTIONS surface — it
+    // opens on a non-empty input even with zero stored history (the
+    // old rule gated on history existing, so a first-visit shopper
+    // never saw the live rows). <2 chars renders no panel (no fetch);
+    // the bar derives which section shows.
+    setShowSearchHistory(val.length > 0);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       // R94-A1 #16 (P3): the committed filter value is trimmed — a lone
@@ -177,6 +193,52 @@ export default function HomePage() {
     },
     [],
   );
+
+  // R161-B: the suggestions fetch — the admin GlobalSearch 94-C2 idiom
+  // (AbortController + the abort-flag ordering guard), scaled to ONE
+  // endpoint. The effect keys on the URGENT searchInput (the input must
+  // never lag); the debounce keeps it to one request per typing pause.
+  // A stale slow response is dropped by its own controller's aborted
+  // flag even when the fetch itself ignores the signal (belt-only).
+  useEffect(() => {
+    const q = searchInput.trim();
+    if (q.length < 2) {
+      // <2 chars never fetches; the previous run's timer/fetch were
+      // already cleared/aborted by its cleanup before this body ran.
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setSuggestionsLoading(true);
+      const run = async () => {
+        try {
+          // R161-B: the generated imperative client (NOT a raw fetch —
+          // the R144 adoption gate); options is customFetch's
+          // RequestInit, so the AbortSignal rides along natively.
+          const rows = await listProducts(
+            { search: q, fields: "list" },
+            { signal: controller.signal },
+          );
+          if (controller.signal.aborted) return; // superseded mid-parse
+          setSuggestions(Array.isArray(rows) ? rows.slice(0, 5) : []);
+        } catch {
+          if (controller.signal.aborted) return; // the newer query owns state
+          // Outage / error envelope → silently no suggestions (the
+          // grid below carries the page's honest error surface).
+          setSuggestions([]);
+        } finally {
+          if (!controller.signal.aborted) setSuggestionsLoading(false);
+        }
+      };
+      void run();
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchInput]);
 
   const handleSearchHistoryClick = (query: string) => {
     setSearchInput(query);
@@ -488,6 +550,8 @@ export default function HomePage() {
             handleClearHistory={handleClearHistory}
             searchWrapRef={searchWrapRef}
             debounceRef={debounceRef}
+            suggestions={suggestions}
+            suggestionsLoading={suggestionsLoading}
           />
 
           {/* R140-d (runtime perf): the memo-wrapped grid + the deferred

@@ -12,10 +12,17 @@ import { formatCount } from "@/lib/utils";
 export function OrderErrorBanner({
   orderError,
   partialCount,
+  walletStateUnknown,
   onDismiss,
 }: {
   orderError: string | null;
   partialCount: number;
+  /** R161-G (audit E#1, money honesty): true when another tab may have
+   *  charged/removed units during the flight (skippedByOtherTab > 0) —
+   *  the wallet state is unknown from this tab, so the no-deduction
+   *  subline below must not render (the wallet view can contradict
+   *  it). */
+  walletStateUnknown: boolean;
   onDismiss: () => void;
 }) {
   return (
@@ -62,9 +69,14 @@ export function OrderErrorBanner({
           ) : (
             <>
               <p>تعذّر إتمام الطلب: {orderError}</p>
-              <p className="mt-1 font-normal text-muted-foreground">
-                لم يتم خصم أي مبلغ. راجع الرصيد والمخزون ثم أعد المحاولة.
-              </p>
+              {/* R161-G (audit E#1): the claim is only honest when this
+                  tab knows no charge landed — a skip means another tab
+                  owned some units' wallet math (render the bare error). */}
+              {!walletStateUnknown && (
+                <p className="mt-1 font-normal text-muted-foreground">
+                  لم يتم خصم أي مبلغ. راجع الرصيد والمخزون ثم أعد المحاولة.
+                </p>
+              )}
             </>
           )}
         </div>

@@ -157,6 +157,11 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     toastSpy.mockReset();
     localStorage.clear();
     localStorage.clear();
+    // R161-G: the full-success landing tests below drive wouter's
+    // navigate() (native history) — start every case from a neutral URL
+    // so a previous case's landing can't leak into the next one (the
+    // wallet-return-affordance idiom).
+    window.history.pushState(null, "", "/");
     // The page's balance probe (/api/auth/me) must resolve a solvent
     // balance so the confirm CTA stays enabled.
     vi.stubGlobal(
@@ -362,6 +367,53 @@ describe("CheckoutPage — stable per-unit Idempotency-Keys (96-F4 / R96 A4 §2.
     // Banner-only register (matches the HTTP-partial branch): no
     // destructive toast on top of the partial banner.
     expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("R161-G (multi-order honesty, the R160 NO-GO): a 2-unit FULL success lands on /orders — never a single-order receipt deep link", async () => {
+    // Two unit orders commit. The first order's receipt used to own the
+    // landing (/orders/{firstOrderCode}) while order-detail never
+    // mentions the second order — the buyer had no in-page evidence the
+    // other charge existed. /orders lists BOTH (codes + amounts,
+    // newest-first) and the toast already counts honestly.
+    seedCart(2);
+    renderPage();
+
+    createOrderMock
+      .mockResolvedValueOnce({ order_code: "SNDBKEYMULTI1" })
+      .mockResolvedValueOnce({ order_code: "SNDBKEYMULTI2" });
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+
+    // The list landing (this page's own skippedByOtherTab precedent).
+    await waitFor(() => expect(window.location.pathname).toBe("/orders"));
+    expect(window.location.pathname).not.toBe("/orders/SNDBKEYMULTI1");
+    // The honest count toast (formatCount dual form: «2 طلبين»).
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "تم إتمام الطلب",
+        description: "تم إنشاء 2 طلبين بنجاح",
+      }),
+    );
+  });
+
+  it("R161-G: a 1-unit success keeps the receipt deep link /orders/{code}", async () => {
+    // One order IS the single receipt that tells the story — the
+    // order-detail landing stays (this pins the previously-unpinned
+    // deep link so the multi-order widening can't eat it).
+    seedCart(1);
+    renderPage();
+
+    createOrderMock.mockResolvedValueOnce({ order_code: "SNDBKEY001" });
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/orders/SNDBKEY001"));
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "تم إتمام الطلب",
+        description: "تم إنشاء 1 طلب بنجاح",
+      }),
+    );
   });
 
   it("AUD103-2-F1: two cart lines of the SAME product (different variants) keep SEPARATE unit-key slots — no sibling overwrite", async () => {

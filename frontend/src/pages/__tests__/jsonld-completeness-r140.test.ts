@@ -461,7 +461,14 @@ describe("R-140-g — product.tsx: Product + Offer + BreadcrumbList end-to-end",
 
     expect(ldOf("BreadcrumbList").itemListElement).toEqual([
       { "@type": "ListItem", position: 1, name: "الرئيسية", item: `${ORIGIN}/` },
-      { "@type": "ListItem", position: 2, name: "بث مباشر", item: `${ORIGIN}/category/streaming` },
+      // R161-C: the streaming crumb rides the honest on-demand
+      // viewing-platforms label (categoryLabel, re-pinned).
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "منصات المشاهدة",
+        item: `${ORIGIN}/category/streaming`,
+      },
       { "@type": "ListItem", position: 3, name: "Netflix شهر", item: `${ORIGIN}/product/5` },
     ]);
   });

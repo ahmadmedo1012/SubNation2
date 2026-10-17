@@ -392,7 +392,10 @@ export async function loadProductList(params: ProductListParams) {
     // R132 (arabic-search round 2): the expansion is now structured
     // (lib/arabic-search expandArabicSearch) and this condition ORs
     // FOUR new branch families, all bounded + escapeLikeTerm'd:
-    //   - nameTerms (the R122 behavior — brand aliases + skeletons);
+    //   - nameTerms (the R122 behavior — brand aliases + skeletons;
+    //     R161-A: beside a resolved brand a modifier's bare OR term is
+    //     suppressed in the lib — «نتفلكس بريميوم» must not recall every
+    //     *Premium* product);
     //   - latinTerms: per-token Latin ILIKEs for MIXED-script queries
     //     only («netflix اشتراك» used to return nothing — the raw
     //     whole-string ILIKE can never match an English name once an

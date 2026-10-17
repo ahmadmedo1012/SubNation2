@@ -291,7 +291,9 @@ async function lookupProductForShareSurfaces(
  */
 export const SHELL_CATEGORY_META: Record<string, { metaTitle: string; metaDescription: string }> = {
   streaming: {
-    metaTitle: "البث المباشر في ليبيا — Netflix و Disney+ | SubNation",
+    // R161-C: mirrors categories.ts's streaming metaTitle verbatim
+    // (the parity suite pins the pair — keep both sides in sync).
+    metaTitle: "منصات المشاهدة في ليبيا — Netflix و Disney+ | SubNation",
     // I-4 (R142): Shahid VIP dropped — the live catalog sells neither it
     // nor Crunchyroll; the frontend CATEGORY_META twin (categories.ts)
     // carries the same edit (the parity suite pins the pair verbatim).

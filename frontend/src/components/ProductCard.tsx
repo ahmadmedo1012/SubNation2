@@ -385,7 +385,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
                 //   "<product name> — <category label> اشتراك"
                 // Falls back gracefully when name is missing. The
                 // category context helps Google Image search ranking
-                // for queries like "اشتراك بث مباشر ليبيا".
+                // for queries like "اشتراك منصات المشاهدة ليبيا"
+                // (R161-C — the streaming family's honest label; the
+                // «اشتراك {categoryLabel}» template reads naturally
+                // for every category, genitive construct).
                 const name = (product.name ?? "").trim();
                 const cat = categoryLabel(product.category);
                 if (!name) return cat ? `اشتراك ${cat}` : "اشتراك رقمي";

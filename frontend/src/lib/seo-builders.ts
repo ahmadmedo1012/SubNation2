@@ -44,8 +44,10 @@ export function buildOrganizationLd() {
     // R120-B3 (A7-F5): the description names what the catalog ACTUALLY
     // sells (streaming/VPN/Windows+software/AI — the live categories);
     // "PS Plus" advertised a retired family with zero results.
+    // R161-C: «ومنصات المشاهدة» — the streaming family's honest name
+    // (all 17 live products are on-demand viewing platforms).
     description:
-      "سوق الاشتراكات الرقمية في ليبيا — Netflix والبث المباشر، اشتراكات VPN، تراخيص Windows والبرامج، أدوات الذكاء الاصطناعي بالدينار الليبي.",
+      "سوق الاشتراكات الرقمية في ليبيا — Netflix ومنصات المشاهدة، اشتراكات VPN، تراخيص Windows والبرامج، أدوات الذكاء الاصطناعي بالدينار الليبي.",
   };
 }
 
@@ -141,10 +143,11 @@ export function buildProductLd(p: ProductLdInput) {
     // rows keep the numeric fallback.
     sku: p.slug ? `subnation-${p.slug}` : String(p.id),
     // R120-B3 (A7-F11): brand = the SELLER (SubNation) — the old
-    // categoryLabel («بث مباشر» for a Netflix product) asserted the
-    // marketplace's own taxonomy as the MANUFACTURER, polluting
-    // knowledge-graph association. The category still ships — as the
-    // Product LD `category` field, which is what it actually is.
+    // categoryLabel (the streaming category's name, «منصات المشاهدة»
+    // for a Netflix product) asserted the marketplace's own taxonomy as
+    // the MANUFACTURER, polluting knowledge-graph association. The
+    // category still ships — as the Product LD `category` field, which
+    // is what it actually is.
     brand: {
       "@type": "Brand",
       name: "SubNation",

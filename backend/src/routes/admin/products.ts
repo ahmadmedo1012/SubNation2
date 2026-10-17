@@ -13,7 +13,7 @@ import { logger } from "../../lib/logger";
 import { notifyAdminStats } from "../../lib/socket";
 import { computeRetailLYD, getPricingConfig } from "../../lib/pricing-config";
 import { encrypt, safeDecrypt } from "../../lib/encryption";
-import { escapeLikeTerm, intParam } from "../../lib/http";
+import { intParam } from "../../lib/http";
 import { slugifyWithId } from "../../lib/slugify";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { bumpSitemapCache } from "../seo";
@@ -26,6 +26,7 @@ import { runStockSweep } from "../../jobs/stockWatcher";
 // products-field-limits.ts (the route crossed the 1,000-line ceiling
 // mid-round — see that module for the contracts).
 import { ACCOUNT_PASSWORD_PLAINTEXT_MAX, productFieldError } from "./products-field-limits";
+import { adminProductSearchWhere } from "./product-search-sweep";
 
 const router = Router();
 
@@ -38,15 +39,11 @@ router.use((_req, res, next) => {
 });
 
 router.get("/products", requireAdmin, async (req, res) => {
-  // V4: the admin command palette sends ?search= — previously ignored
-  // (the handler didn't even read req). Match name or category,
-  // case-insensitive, capped at 100 chars. R134 (A1-F2): escape LIKE
-  // wildcards — the AUD103-3-F4 idiom every sibling admin search carries
-  // (users.ts / orders.ts); a "%"/"_" in the palette used to act as a
-  // pattern wildcard here.
-  const searchRaw = typeof req.query.search === "string" ? req.query.search.trim() : "";
-  const searchLike =
-    searchRaw.length > 0 ? `%${escapeLikeTerm(searchRaw.toLowerCase().slice(0, 100))}%` : null;
+  // V4 + R161-D: the ?search= sweep (raw ILIKE + the bounded Arabic
+  // expansion) lives in ./product-search-sweep — extracted when the R161
+  // parity pushed this file past its growth-banned tripwire (the
+  // products-field-limits.ts lift precedent).
+  const searchWhere = adminProductSearchWhere(req.query.search);
 
   // Use an explicit projection (mirrors routes/products.ts) so a future
   // schema column added before its migration runs cannot break this
@@ -81,16 +78,7 @@ router.get("/products", requireAdmin, async (req, res) => {
       createdAt: productsTable.createdAt,
     })
     .from(productsTable)
-    .where(
-      searchLike
-        ? and(
-            eq(productsTable.isArchived, false),
-            // Round-3 (8-c §4.7): ILIKE (not LOWER LIKE) so the trigram
-            // GIN index on products.name actually serves admin search.
-            sql`(${productsTable.name} ILIKE ${searchLike} OR LOWER(${productsTable.category}) LIKE ${searchLike})`,
-          )
-        : eq(productsTable.isArchived, false),
-    )
+    .where(searchWhere)
     .orderBy(desc(productsTable.createdAt))
     .limit(200);
 

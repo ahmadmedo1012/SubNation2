@@ -181,6 +181,81 @@ describe("MobileNav — guest product-page reconciliation (R120-B7)", () => {
   });
 });
 
+// R161-G (Lane F's rendered-funnel verdict): the R157 sm→lg visibility
+// widening stranded every clearance rule for the product sticky bars in
+// the old 639.98px scope — the GUEST bar rendered with NO bottom offset
+// (position:sticky never pinned: no buy affordance mid-PDP across the
+// whole 640-1023 band; Lane F measured the bar at y=1281 with
+// scrollY=800 at 768×1024) and the authed FIXED bar sat at its natural
+// position (permanently off-screen on long PDPs). The scopes now follow
+// the bars' real render band (lg:hidden), SPLIT at the nav boundary
+// (MobileNav is md:hidden: below 768px it stacks under the bar,
+// 768-1023.98px it does not render at all). These pins carry the media
+// SCOPES the block above deliberately never asserted.
+describe("MobileNav — R161-G sticky-bar band scopes (640-1023.98px)", () => {
+  it("the above-nav pin keeps the nav term below 768px (the MobileNav renders there)", () => {
+    const rule =
+      cssText.match(
+        /@media \(max-width: 767\.98px\) \{[^@]*?\.mobile-sticky-above-nav \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(rule).toContain("bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom))");
+  });
+
+  it("a 768-1023.98px sub-band pin exists WITHOUT the nav term (nav is md:hidden there)", () => {
+    const rule =
+      cssText.match(
+        /@media \(min-width: 768px\) and \(max-width: 1023\.98px\) \{[^@]*?\.mobile-sticky-above-nav \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(rule).toContain("bottom: env(safe-area-inset-bottom)");
+    expect(rule).not.toContain("var(--mobile-nav-h)");
+  });
+
+  it("the guest product pad splits at the nav boundary too (nav term below 768px only)", () => {
+    const navBand =
+      cssText.match(
+        /@media \(max-width: 767\.98px\) \{[^@]*?\.mobile-product-pad-guest \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(navBand).toContain("68px");
+    expect(navBand).toContain("var(--mobile-nav-h)");
+    expect(navBand).toContain("env(safe-area-inset-bottom)");
+
+    const tabletBand =
+      cssText.match(
+        /@media \(min-width: 768px\) and \(max-width: 1023\.98px\) \{[^@]*?\.mobile-product-pad-guest \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(tabletBand).toContain(
+      "padding-bottom: calc(68px + env(safe-area-inset-bottom) + 0.5rem)",
+    );
+    expect(tabletBand).not.toContain("var(--mobile-nav-h)");
+  });
+
+  it("the authed pad widens to the bar's full render band (≤1023.98px) with unchanged semantics", () => {
+    const rule =
+      cssText.match(
+        /@media \(max-width: 1023\.98px\) \{[^@]*?\.mobile-product-pad-auth \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(rule).toContain("padding-bottom: calc(68px + 0.5rem)");
+  });
+
+  it("the html:has scroll-padding override splits at the nav boundary too", () => {
+    const navBand =
+      cssText.match(
+        /@media \(max-width: 767\.98px\) \{[^@]*?html:has\(\.mobile-sticky-above-nav\) \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(navBand).toContain("var(--mobile-nav-h)");
+    expect(navBand).toContain("68px");
+
+    const tabletBand =
+      cssText.match(
+        /@media \(min-width: 768px\) and \(max-width: 1023\.98px\) \{[^@]*?html:has\(\.mobile-sticky-above-nav\) \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(tabletBand).toContain(
+      "scroll-padding-bottom: calc(68px + 0.75rem + env(safe-area-inset-bottom, 0px))",
+    );
+    expect(tabletBand).not.toContain("var(--mobile-nav-h)");
+  });
+});
+
 describe("MobileNav — 96-F5 (R96 F-4 + P2-3): GPU diet + keyboard hide", () => {
   it("rides a SOLID background — no backdrop-blur on the fixed bar", () => {
     render(

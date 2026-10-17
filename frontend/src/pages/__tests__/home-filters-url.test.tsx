@@ -138,8 +138,10 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
     const replaceSpy = vi.spyOn(window.history, "replaceState");
     renderPage();
 
-    // Click a category chip…
-    fireEvent.click(screen.getByRole("button", { name: "موسيقى" }));
+    // Click a category chip… (R161-C: «موسيقى وصوتيات» — the music
+    // chip derives from categoryLabel, re-pinned with the honest
+    // audio-wide family label)
+    fireEvent.click(screen.getByRole("button", { name: "موسيقى وصوتيات" }));
     await waitFor(() => {
       const url = replaceSpy.mock.calls.at(-1)?.[2];
       expect(String(url)).toMatch(/^\/\?category=music$/);
@@ -192,11 +194,12 @@ describe("HomePage — catalog filters ↔ URL (R98-04 + F-16)", () => {
 
     expect(screen.getByLabelText("ترتيب المنتجات")).toHaveValue("");
     // No category chip is armed (R134 A2-F1: canonical labels —
-    // home.tsx derives from categoryLabel()).
+    // home.tsx derives from categoryLabel()). R161-C: streaming/music
+    // ride the honest taxonomy labels.
     for (const label of [
       "الكل",
-      "بث مباشر",
-      "موسيقى",
+      "منصات المشاهدة",
+      "موسيقى وصوتيات",
       "برامج وتراخيص",
       "شبكات VPN",
       "أدوات ذكاء اصطناعي",

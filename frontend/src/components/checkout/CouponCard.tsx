@@ -69,7 +69,9 @@ export function CouponCard({
             onCouponChange(e.target.value.toUpperCase());
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !appliedCoupon) {
+            // R161-G (P4): match the disabled apply button — Enter during
+            // an in-flight validate must not fire a second apply.
+            if (e.key === "Enter" && !appliedCoupon && !couponChecking) {
               e.preventDefault();
               onApplyCoupon();
             }

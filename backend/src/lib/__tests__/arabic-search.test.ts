@@ -73,6 +73,7 @@ describe("expandArabicSearchTerms (R122 A11-F2)", () => {
     ["نتفليكس", ["netflix"]],
     ["نتفلكس", ["netflix"]],
     ["نفلكس", ["netflix"]],
+    ["نيتفلكس", ["netflix"]], // R161-A: ني- variant (live probe 0)
     // the site's hero chips resolve too
     ["سبوتفاي", ["spotify"]],
     ["سبوتيفاي", ["spotify"]],
@@ -94,6 +95,7 @@ describe("expandArabicSearchTerms (R122 A11-F2)", () => {
     // ── normalization is applied to the query before matching ──
     ["نـتـفـلـكـس", ["netflix"]], // tatweel
     ["نَتْفَلِكْس", ["netflix"]], // diacritics
+    ["نـتـفـلـيـكـسُ", ["netflix"]], // R161-A: tatweel + damma on the ي-spelling
     ["إكسبرس", ["expressvpn"]], // hamza-on-alef variant
     // ── containment: the definite article + spaceless compounds ──
     ["النتفلكس", ["netflix"]],
@@ -115,6 +117,15 @@ describe("expandArabicSearchTerms (R122 A11-F2)", () => {
     ["فيبيان", ["vpn"]],
     // ── mixed script: Arabic token expands, Latin token untouched ──
     ["netflix نتفلكس", ["netflix"]],
+    // ── R161-A alias additions (each a live-probed 0-result gap, R161-E) ──
+    ["سمراش", ["semrush"]], // the SEO file's secondary keyword
+    ["سم راش", ["semrush"]], // …spaced (same collapsed key)
+    ["صاوند كلاود", ["soundcloud"]], // Libyan ص-spelling
+    ["اتش ام ايه", ["hma"]], // the SEO keyword's ايه spelling
+    // ── R161-A: harmless noise never breaks resolution ──
+    ["  نتفلكس   بريميوم ", ["netflix"]], // extra spaces (suppression holds)
+    ["نتفلكس!", ["netflix"]], // trailing punctuation
+    ["نتفلكس، بريميوم", ["netflix"]], // Arabic comma
     // ── pure-English and empty inputs expand to NOTHING (SQL identical
     //    to the pre-R122 behavior — English search cannot regress) ──
     ["netflix", []],
@@ -204,6 +215,14 @@ describe("expandArabicSearch (R132) — category intent", () => {
     ["في بي ان", "vpn"],
     ["فيبيان", "vpn"], // collapsed form of the phrase
     ["برايفت", "vpn"],
+    // ── R161-A additions (live-probed 0-result gaps, R161-E) ──
+    ["مشاهدة", "streaming"], // the renamed category's plain word
+    ["منصات المشاهدة", "streaming"], // the new canonical label itself
+    ["انمي", "streaming"], // Funimation's SEO keyword
+    ["أنمي", "streaming"], // أ folds to ا — same key
+    ["راديو", "music"], // TuneIn's SEO keyword
+    ["مكتبة", "education"], // Scribd's semantic keyword
+    ["بروكسي", "vpn"], // Libyan colloquialism, beside «برايفت»
   ])("expandArabicSearch(%j).categories → [%j]", (query, slug) => {
     expect(expandArabicSearch(query).categories).toContain(slug);
   });
@@ -239,6 +258,12 @@ describe("expandArabicSearch (R132) — mixed-script queries", () => {
     const exp = expandArabicSearch("netflix نتفلكس");
     expect(exp.latinTerms).toEqual([]); // "netflix" already a nameTerm
     expect(exp.nameTerms).toEqual(["netflix"]);
+  });
+
+  it("mixed-script order does not matter: «اشتراك netflix» also rides the Latin branch (R161-A)", () => {
+    const exp = expandArabicSearch("اشتراك netflix");
+    expect(exp.latinTerms).toEqual(["netflix"]);
+    expect(exp.nameTerms).toContain("ashtrak");
   });
 
   it("pure-digit tokens are compound refinements, never standalone OR noise", () => {
@@ -281,10 +306,13 @@ describe("expandArabicSearch (R132) — modifiers + compound branches", () => {
     expect(expandArabicSearch("بلس").nameTerms).toEqual(["plus"]);
   });
 
-  it("«نتفلكس شهر» → one compound AND branch + both plain terms", () => {
+  it("«نتفلكس شهر» → one compound AND branch + the brand plain term", () => {
     const exp = expandArabicSearch("نتفلكس شهر");
     expect(exp.compounds).toEqual([{ brand: "netflix", modifier: "month" }]);
-    expect(exp.nameTerms).toEqual(["netflix", "month"]);
+    // R161-A: the bare "month" nameTerm is suppressed beside the brand
+    // (cross-brand noise) — the month intent rides the compound AND +
+    // the variantTerms EXISTS arm (R142, pinned below).
+    expect(exp.nameTerms).toEqual(["netflix"]);
   });
 
   it("«نتفلكس بريميوم» compounds brand × tier", () => {
@@ -343,6 +371,8 @@ describe("expandArabicSearch (R142 I-1) — multi-word phrases survive rider tok
     const exp = expandArabicSearch("شات جي بي تي برو");
     expect(exp.nameTerms).toContain("chatgpt");
     expect(exp.compounds).toEqual([{ brand: "chatgpt", modifier: "pro" }]);
+    // R161-A: the bare "pro" nameTerm is suppressed beside the brand.
+    expect(exp.nameTerms).toEqual(["chatgpt"]);
   });
 
   it("«في بي ان سنوي» resolves the vpn phrase beside a duration word", () => {
@@ -388,6 +418,47 @@ describe("expandArabicSearch (R142 I-2) — duration tokens for the variant-labe
   });
 });
 
+describe("expandArabicSearch (R161-A) — cross-brand noise suppression", () => {
+  it("«نتفلكس بريميوم» keeps the brand term but NOT the bare premium nameTerm (the compound carries the tier intent)", () => {
+    const exp = expandArabicSearch("نتفلكس بريميوم");
+    expect(exp.nameTerms).toContain("netflix");
+    expect(exp.nameTerms).not.toContain("premium");
+    expect(exp.compounds).toEqual([{ brand: "netflix", modifier: "premium" }]);
+  });
+
+  it("«بريميوم» alone keeps the bare term (modifier-only breadth is law)", () => {
+    expect(expandArabicSearch("بريميوم").nameTerms).toEqual(["premium"]);
+  });
+
+  it("«شهر» alone keeps the bare term AND its variant-label arm (R142 contract untouched)", () => {
+    const exp = expandArabicSearch("شهر");
+    expect(exp.nameTerms).toEqual(["month"]);
+    expect(exp.variantTerms).toEqual(["شهر"]);
+  });
+
+  it("«نتفلكس شهر» keeps the variant-label arm beside the suppressed bare month term (R142 contract untouched)", () => {
+    const exp = expandArabicSearch("نتفلكس شهر");
+    expect(exp.nameTerms).toEqual(["netflix"]);
+    expect(exp.variantTerms).toEqual(["شهر"]);
+  });
+
+  it("a LATIN brand beside a modifier keeps the bare term (only Arabic-resolved aliases suppress)", () => {
+    // «Spotify بريميوم»: the Latin token rides latinTerms, not
+    // aliasTerms — the R132 route test pins this recall's breadth.
+    const exp = expandArabicSearch("Spotify بريميوم");
+    expect(exp.nameTerms).toEqual(["premium"]);
+    expect(exp.latinTerms).toEqual(["spotify"]);
+    expect(exp.compounds).toEqual([]);
+  });
+
+  it("a skeleton beside a modifier keeps the bare term (skeletons are not brand aliases)", () => {
+    // «خضار برو» — no brand side resolves, so nothing suppresses.
+    const exp = expandArabicSearch("خضار برو");
+    expect(exp.compounds).toEqual([]);
+    expect(exp.nameTerms).toEqual(["khsar", "pro"]);
+  });
+});
+
 describe("expandArabicSearch (R132) — adversarial bounds", () => {
   it("every output family is hard-capped for a 20-token adversarial query", () => {
     const tokens = [
@@ -420,5 +491,16 @@ describe("expandArabicSearch (R132) — adversarial bounds", () => {
     expect(exp.compounds.length).toBeLessThanOrEqual(4);
     // name terms keep the R122 ≤12 bound (8 tokens considered, ≤3 skeletons)
     expect(exp.nameTerms.length).toBeLessThanOrEqual(12);
+  });
+
+  it("R161-A: a 10k-char single-token query stays within the documented bounds", () => {
+    const tenK = "ق".repeat(10_000); // one 10k-char token, no alias hit
+    const exp = expandArabicSearch(tenK);
+    // one token → at most one (inert) skeleton term; nothing scales with
+    // the input length.
+    expect(exp.nameTerms).toEqual(["q".repeat(10_000)]);
+    expect(exp.compounds).toEqual([]);
+    expect(exp.categories).toEqual([]);
+    expect(exp.variantTerms).toEqual([]);
   });
 });

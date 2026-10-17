@@ -512,6 +512,10 @@ export function Navbar() {
             onClick={toggleTheme}
             className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all duration-150 text-muted-foreground hover:text-foreground touch-target flex items-center justify-center"
             aria-label="تبديل المظهر (داكن/فاتح)"
+            /* R161 (Lane F audit F#8): the icon-only tooltip-twin completion
+               — the header trio (theme/menu/cart) was the R160 census's
+               remaining gap; the pair is the contract (DESIGN.md). */
+            title="تبديل المظهر (داكن/فاتح)"
           >
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
@@ -547,7 +551,7 @@ export function Navbar() {
                   )}
                 </div>
               </Link>
-              <Link href="/profile" aria-label="حسابي">
+              <Link href="/profile" aria-label="حسابي" title="حسابي">
                 <div className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9">
                   <User className="w-4 h-4" />
                 </div>
@@ -626,6 +630,7 @@ export function Navbar() {
             )}
             onClick={() => setOpen((v) => !v)}
             aria-label="القائمة"
+            title="القائمة" /* R161 (F#8): the icon-only tooltip twin */
             /* R120-B1 (A4-F5): disclosure state + target wiring. R135
                (FE-1): the target follows the token — guest and authed
                drawers are distinct ids, so the control never points at a
@@ -670,6 +675,20 @@ export function Navbar() {
           <Link
             href="/cart"
             aria-label={`السلة، ${
+              itemCount > 0
+                ? formatCount(itemCount, {
+                    one: "منتج",
+                    two: "منتجان",
+                    few: "منتجات",
+                    many: "منتجاً",
+                    other: "منتج",
+                  })
+                : "فارغة"
+            }`}
+            /* R161 (F#8): the tooltip twin mirrors the dynamic accessible
+               name — the sighted hover hint stays in lockstep with the
+               count the badge announces. */
+            title={`السلة، ${
               itemCount > 0
                 ? formatCount(itemCount, {
                     one: "منتج",

@@ -46,16 +46,26 @@ export interface CategoryMeta {
 export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
   streaming: {
     slug: "streaming",
-    label: "البث المباشر",
-    h1: "اشتراكات البث المباشر في ليبيا",
+    // R161-C: landing label «منصات المشاهدة» — the definite-article
+    // landing form of the chip vocabulary (utils/registry now read
+    // «منصات المشاهدة» too); the family's 17 live products are all
+    // on-demand platforms, so the old live-broadcast label is retired.
+    label: "منصات المشاهدة",
+    h1: "اشتراكات منصات المشاهدة في ليبيا",
     intro:
-      "اختر اشتراكك المفضل لخدمات البث المباشر العالمية والعربية بالدينار الليبي. " +
+      // R161-C: the old first clause advertised live-broadcast services
+      // AND an Arabic platform («والعربية») — neither is stocked (all 17
+      // live products are Western on-demand platforms).
+      "اختر اشتراكك المفضل في منصات المشاهدة العالمية بالدينار الليبي. " +
       // I-4 (R142): Shahid VIP + Crunchyroll dropped — the live catalog
       // sells neither (lane I's 2026-10-13 probe: search=شاهد → 0; the 17
       // stocked streaming names are enumerated in docs/SEO_PRODUCTS.json).
       // The remaining five are all live; restocking a brand re-adds it.
+      // R161-C: «وأكثر من 12 منصة عالمية أخرى» — the honest count of the
+      // other live rows (17 total) beyond the five named below.
       "نوفر اشتراكات Netflix، Disney+، Amazon Prime Video، Apple TV+ " +
-      "و YouTube Premium بأسعار محلية وتسليم فوري بعد الدفع. " +
+      "و YouTube Premium وأكثر من 12 منصة عالمية أخرى، بأسعار محلية " +
+      "وتسليم فوري بعد الدفع. " +
       "كل الاشتراكات أصلية ومضمونة، مع دعم فني سريع طوال أيام الأسبوع. " +
       "ادفع من محفظتك بالدينار الليبي عبر مدار أو ليبيانا واستلم تفاصيل الحساب " +
       "خلال ثوانٍ. الاشتراك صالح للاستخدام في جميع المدن الليبية: طرابلس، " +
@@ -63,8 +73,10 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
     /* R124 (A10-F5): all seven metaTitles now carry the «| SubNation»
        brand tail (home/products/flash-sales/support all did) and fit
        the full ≤60-char budget — the previous ai-tools title (63) was
-       word-boundary-clamped at runtime, eating its tail first. */
-    metaTitle: "البث المباشر في ليبيا — Netflix و Disney+ | SubNation",
+       word-boundary-clamped at runtime, eating its tail first.
+       R161-C: the streaming title rides the new category vocabulary
+       (55 chars — still inside the 60 budget). */
+    metaTitle: "منصات المشاهدة في ليبيا — Netflix و Disney+ | SubNation",
     // I-4 (R142): Shahid VIP dropped from the CTR copy too (unstocked —
     // the live catalog sells neither it nor Crunchyroll). The comment
     // sits ABOVE the value (not inside the concat expression): the
@@ -76,7 +88,7 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
       {
         question: "هل اشتراك Netflix يعمل في ليبيا؟",
         answer:
-          "نعم، جميع اشتراكات البث المباشر التي نقدمها تعمل في ليبيا بدون أي قيود جغرافية. " +
+          "نعم، جميع اشتراكات منصات المشاهدة التي نقدمها تعمل في ليبيا بدون أي قيود جغرافية. " +
           "تستلم بيانات الحساب فوراً بعد الدفع وتتمكن من الاستخدام مباشرة من المنزل أو الهاتف.",
       },
       {
@@ -108,8 +120,11 @@ export const CATEGORY_META: Record<CategoryMeta["slug"], CategoryMeta> = {
   },
   music: {
     slug: "music",
-    label: "الموسيقى",
-    h1: "اشتراكات الموسيقى الرقمية في ليبيا",
+    // R161-C: «الموسيقى والصوتيات» — the definite-article landing form
+    // of the new chip vocabulary «موسيقى وصوتيات» (TuneIn/Headspace/
+    // Brain.fm are audio services, not music-only).
+    label: "الموسيقى والصوتيات",
+    h1: "اشتراكات الموسيقى والصوتيات في ليبيا",
     intro:
       "استمع إلى ملايين الأغاني والبودكاست بدون إعلانات وبجودة صوت عالية على " +
       "Spotify Premium وغيره من خدمات الموسيقى الرقمية. كل الاشتراكات أصلية " +

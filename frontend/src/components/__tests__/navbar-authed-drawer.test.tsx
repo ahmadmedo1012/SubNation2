@@ -131,7 +131,9 @@ describe("Navbar authed drawer — R135 (FE-1 / R124-A4 #5)", () => {
     }
     // The category shortcuts + العروض ride the SAME source the guest
     // drawer renders (DrawerCategoriesSection — one table, zero drift).
-    expect(within(drawer).getByRole("link", { name: "بث مباشر" })).toHaveAttribute(
+    // R161-C: the streaming link rides the honest taxonomy label
+    // (on-demand viewing platforms, not live broadcast).
+    expect(within(drawer).getByRole("link", { name: "منصات المشاهدة" })).toHaveAttribute(
       "href",
       "/category/streaming",
     );

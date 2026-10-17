@@ -755,3 +755,186 @@ describe("R142 I-3 — search responses stay uncacheable at the edge (B6-02)", (
     expect(list.cacheControl).toBe("public, max-age=0, s-maxage=60, stale-while-revalidate=300");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// R161-A — the census alias additions (each one a live-probed 0-result
+// gap, R161-E) + the cross-brand noise suppression (a brand+modifier
+// query must not recall every product carrying the modifier fragment).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** R161-A multi-family catalog: the premium-named streaming rows make
+ * the suppression guard have real cross-brand noise to exclude, and the
+ * YouTube/Semrush families serve the new aliases. */
+async function seedR161Catalog() {
+  await db.insert(productsTable).values([
+    { name: "Netflix Premium", slug: "netflix-premium", price: "79.80", category: "streaming" },
+    { name: "Disney+ Premium", slug: "disney-plus-premium", price: "49.80", category: "streaming" },
+    { name: "YouTube Premium", slug: "youtube-premium", price: "59.00", category: "streaming" },
+    { name: "Spotify Premium", slug: "spotify-premium", price: "59.80", category: "music" },
+    { name: "Windows 10 Pro", slug: "windows-10-pro", price: "119.00", category: "software" },
+    { name: "ExpressVPN", slug: "expressvpn", price: "89.00", category: "vpn" },
+    { name: "IPVanish VPN", slug: "ipvanish-vpn", price: "199.00", category: "vpn" },
+    { name: "ChatGPT Plus", slug: "chatgpt-plus", price: "99.00", category: "ai-tools" },
+    { name: "Semrush Pro", slug: "semrush-pro", price: "450.00", category: "seo-tools" },
+  ]);
+}
+
+describe("R161-A — census alias acceptance (live-probed 0-result gaps)", () => {
+  it.each([["نتفليكس"], ["نتفلكس"], ["نفلكس"], ["نيتفلكس"]])(
+    "«%s» returns ONLY the Netflix product (no cross-family false positives)",
+    async (query) => {
+      await seedCatalog();
+      const app = buildApp();
+      await expect(searchNames(app, query)).resolves.toEqual(["Netflix Premium"]);
+    },
+  );
+
+  it("«ديزني» finds the Disney+ product", async () => {
+    await seedCatalog();
+    const app = buildApp();
+    await expect(searchNames(app, "ديزني")).resolves.toEqual(["Disney+ Standard"]);
+  });
+
+  it("«سبوتفاي» and «سبوتيفاي» both find Spotify", async () => {
+    await seedCatalog();
+    const app = buildApp();
+    await expect(searchNames(app, "سبوتفاي")).resolves.toEqual(["Spotify Premium"]);
+    await expect(searchNames(app, "سبوتيفاي")).resolves.toEqual(["Spotify Premium"]);
+  });
+
+  it("«يوتيوب» finds YouTube", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "يوتيوب")).resolves.toEqual(["YouTube Premium"]);
+  });
+
+  it("«ويندوز ١٠» and «ويندوز 10» (digit folding) both find Windows 10 Pro", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "ويندوز ١٠")).resolves.toEqual(["Windows 10 Pro"]);
+    await expect(searchNames(app, "ويندوز 10")).resolves.toEqual(["Windows 10 Pro"]);
+  });
+
+  it("«شات جي بي تي» and «شاتجيبيتي» both find ChatGPT Plus", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "شات جي بي تي")).resolves.toEqual(["ChatGPT Plus"]);
+    await expect(searchNames(app, "شاتجيبيتي")).resolves.toEqual(["ChatGPT Plus"]);
+  });
+
+  it("«في بي ان» returns EVERY VPN product (name alias + category branch)", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    const names = await searchNames(app, "في بي ان");
+    expect(names).toHaveLength(2);
+    expect(names).toEqual(expect.arrayContaining(["ExpressVPN", "IPVanish VPN"]));
+  });
+
+  it("«مشاهدة» (the renamed streaming label) reaches the streaming category", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    const names = await searchNames(app, "مشاهدة");
+    expect(names).toHaveLength(3);
+    expect(names).toEqual(
+      expect.arrayContaining(["Netflix Premium", "Disney+ Premium", "YouTube Premium"]),
+    );
+    expect(names).not.toContain("Spotify Premium");
+    expect(names).not.toContain("Windows 10 Pro");
+    expect(names).not.toContain("ExpressVPN");
+  });
+
+  it("«راديو» reaches the music category (TuneIn's SEO keyword)", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "راديو")).resolves.toEqual(["Spotify Premium"]);
+  });
+
+  it("«سم راش» and «سمراش» find Semrush (the SEO file's secondary keyword spellings)", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "سم راش")).resolves.toEqual(["Semrush Pro"]);
+    await expect(searchNames(app, "سمراش")).resolves.toEqual(["Semrush Pro"]);
+  });
+
+  it("mixed script: «Netflix اشتراك» and «اشتراك netflix» both find Netflix (latinTerms arm)", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "Netflix اشتراك")).resolves.toEqual(["Netflix Premium"]);
+    await expect(searchNames(app, "اشتراك netflix")).resolves.toEqual(["Netflix Premium"]);
+  });
+
+  it("harmless noise: extra spaces, punctuation, tatweel + diacritics all still resolve", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "  نتفلكس   بريميوم ")).resolves.toEqual(["Netflix Premium"]);
+    await expect(searchNames(app, "نتفلكس!")).resolves.toEqual(["Netflix Premium"]);
+    await expect(searchNames(app, "نـتـفـلـيـكـسُ")).resolves.toEqual(["Netflix Premium"]);
+  });
+
+  it("an unrelated Arabic string returns [] (honest empty — no arbitrary brand)", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "خدمة توصيل طعام")).resolves.toEqual([]);
+  });
+});
+
+describe("R161-A — cross-brand noise suppression (brand + modifier)", () => {
+  it("«نتفلكس بريميوم» returns ONLY Netflix (the bare %premium% OR used to recall Spotify Premium too)", async () => {
+    await seedCatalog();
+    const app = buildApp();
+    // seedCatalog's Spotify Premium rode along pre-R161-A; the compound
+    // (netflix ∧ premium → tier 0) + the brand prefix (tier 1) carry the
+    // intent now.
+    await expect(searchNames(app, "نتفلكس بريميوم")).resolves.toEqual(["Netflix Premium"]);
+  });
+
+  it("…and the multi-premium R161 seed agrees: Disney+/YouTube/Spotify Premium stay out", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    await expect(searchNames(app, "نتفلكس بريميوم")).resolves.toEqual(["Netflix Premium"]);
+  });
+
+  it("«بريميوم» alone keeps the modifier-only breadth (every premium row stays reachable)", async () => {
+    await seedR161Catalog();
+    const app = buildApp();
+    const names = await searchNames(app, "بريميوم");
+    expect(names).toHaveLength(4);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "Netflix Premium",
+        "Disney+ Premium",
+        "YouTube Premium",
+        "Spotify Premium",
+      ]),
+    );
+  });
+
+  it("the LIVE shape (brand-only names) resolves at tier 1 — «نتفلكس بلس» no longer recalls ChatGPT Plus via the bare %plus% arm", async () => {
+    await seedLiveVariantCatalog();
+    const app = buildApp();
+    // Netflix's name carries no "plus" fragment, so the compound yields
+    // 0 tier-0 rows by construction — the brand OR branch returns the
+    // right product at tier 1 (prefix), and the suppressed bare term
+    // keeps "ChatGPT Plus" out of the recall.
+    await expect(searchNames(app, "نتفلكس بلس")).resolves.toEqual(["Netflix"]);
+  });
+
+  it("seedPlanCatalog ranking: «نتفلكس بريميوم» puts the compound rows first and narrows the recall", async () => {
+    await seedPlanCatalog();
+    const app = buildApp();
+    const names = await searchNames(app, "نتفلكس بريميوم");
+    // compound tier 0 (netflix ∧ premium)…
+    expect(names.slice(0, 2).sort()).toEqual([
+      "Netflix Premium 1-Month",
+      "Netflix Premium 12-Month",
+    ]);
+    // …the suppressed bare %premium% branch used to recall the other
+    // premium rows (Spotify, …) at tier 2 — they stay out now…
+    expect(names).not.toContain("Spotify Premium 1-Month");
+    // …while the brand OR arm keeps the plain Netflix rows (Gift, tier 2).
+    expect(names).toContain("Gift Netflix Card");
+    expect(names.indexOf("Gift Netflix Card")).toBeGreaterThan(
+      Math.max(names.indexOf("Netflix Premium 1-Month"), names.indexOf("Netflix Premium 12-Month")),
+    );
+  });
+});

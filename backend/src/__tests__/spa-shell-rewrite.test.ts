@@ -786,18 +786,21 @@ describe("applySpaShellMeta — comments that MENTION tags in prose (R120 hotfix
 </html>`;
 
   it("rewrites the REAL title and leaves the comment + canonical + og tags intact", () => {
+    // R161-C: the fixture title rides the new streaming vocabulary
+    // («اشتراكات منصات المشاهدة» — the honest on-demand-platforms
+    // label; the old live-broadcast misnomer is retired).
     const out = appModule.applySpaShellMeta(SHELL_WITH_TAG_MENTION_COMMENTS, {
       status: 200,
-      title: "اشتراكات البث المباشر",
+      title: "اشتراكات منصات المشاهدة",
       description: "وصف الفئة",
       canonical: "https://subnation.ly/category/streaming",
     });
     // The REAL title rewritten…
-    expect(out).toContain('<title data-rh="true">اشتراكات البث المباشر</title>');
+    expect(out).toContain('<title data-rh="true">اشتراكات منصات المشاهدة</title>');
     // …the canonical REWRITTEN (was: deleted by the comment-pairing bug)…
     expect(out).toContain('rel="canonical" href="https://subnation.ly/category/streaming"');
     // …og tags rewritten in place…
-    expect(out).toContain('property="og:title" content="اشتراكات البث المباشر"');
+    expect(out).toContain('property="og:title" content="اشتراكات منصات المشاهدة"');
     // …and the comment text survives VERBATIM (uncut, still closed).
     expect(out).toContain("one <title>, one");
     expect(out).toContain("-->");
