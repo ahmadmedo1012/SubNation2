@@ -28,6 +28,7 @@ import { sql } from "drizzle-orm";
 // adapter member is always present, so runtime behavior is unchanged.
 import type { RedisClientType } from "redis";
 import type { Server } from "socket.io";
+import { readEnvNumber } from "../lib/env";
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { getSchedulerState, type SchedulerStateSnapshot } from "../lib/scheduler-state";
 import { getIO } from "../lib/socket";
@@ -60,8 +61,8 @@ let inflight: Promise<HealthCheckResponseExtended> | null = null;
 const DEFAULT_AGGREGATE_TIMEOUT_MS = 8_000;
 
 function aggregateTimeoutMs(): number {
-  const raw = Number(process.env.HEALTH_AGGREGATE_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_AGGREGATE_TIMEOUT_MS;
+  // R158 (B#7): the shared reader — same positive predicate + the new warn.
+  return readEnvNumber("HEALTH_AGGREGATE_TIMEOUT_MS", DEFAULT_AGGREGATE_TIMEOUT_MS, (n) => n > 0);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -175,8 +176,8 @@ function clearFailureCounter(redis: RedisClientType, checkName: string): void {
 // R3 (round-93 A3): per-check race budget. Function (not const) so tests
 // and ops can retune it at runtime without a re-import.
 function checkTimeoutMs(): number {
-  const raw = Number(process.env.HEALTH_CHECK_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
+  // R158 (B#7): the shared reader — same positive predicate + the new warn.
+  return readEnvNumber("HEALTH_CHECK_TIMEOUT_MS", 5_000, (n) => n > 0);
 }
 
 /** Test seam: reset the aggregate cache + in-flight slot + neon streak. */

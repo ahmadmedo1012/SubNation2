@@ -329,6 +329,13 @@ full-bleed media.
   filled error red, white label; outline/ghost/secondary ride the neutral
   surface tokens. Sizes: 32 (sm) / 36 (default) / 48px (lg, the canonical
   money CTA). Press feedback is the spring scale-down (`press-spring`).
+- **Motion durations:** a four-step scale — **150ms** for state feedback
+  (hover, press, color changes), **200ms** for surfaces (dialogs, drawers,
+  rails), **300ms** for spatial transforms (image scale, panel movement),
+  **500ms+** for ambient and progress motion. The one named exception is
+  the card-hover lift at **280ms** (`ProductCard` / `flash-sales` — a
+  deliberate in-between, documented in-source); any other duration off
+  the scale ships with an in-source comment saying why.
 - **StatusBadge:** the single status-pill recipe (`bg-/12`, `text-`,
   `border-/28`), three padding sizes (xs/sm/md) whose *type* stays at 11–12px.
 - **ProductCard:** category-tinted media tile (accent at 10–12% alpha),
@@ -336,6 +343,14 @@ full-bleed media.
   (desktop only).
 - **Toasts (sonner, custom skin):** 16px glass panels, 1px leading accent
   strip in the status token, translucent icon bubble at 14% alpha.
+- **Icon-only controls:** every icon-only button pairs an `aria-label` (the
+  assistive-tech name) with the native `title` attribute (the sighted
+  desktop hover hint) — both, always; the pair is the tooltip contract. A
+  JS tooltip primitive was evaluated and refused (audit R158-C): the eager
+  bundle's ~3 KB of headroom cannot fund a ~5–8 KiB gzipped tooltip, the
+  Libyan audience is touch-first (hover barely exists on the target
+  devices), and `aria-label` already carries the accessible name — `title`
+  is only a hover affordance, never a dependency.
 
 ## Do's and Don'ts
 

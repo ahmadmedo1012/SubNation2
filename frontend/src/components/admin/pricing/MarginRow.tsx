@@ -48,7 +48,7 @@ export function MarginRow({
       <div className={`tabular-nums text-sm font-bold ${tone}`}>
         {lyd == null ? "—" : `${lyd >= 0 ? "+" : ""}${fmt(lyd)} د.ل`}
         {pct != null && (
-          <span className="text-3xs font-normal opacity-75 ml-1">({fmt(pct, 1)}%)</span>
+          <span className="text-3xs font-normal opacity-75 me-1">({fmt(pct, 1)}%)</span>
         )}
       </div>
     </div>

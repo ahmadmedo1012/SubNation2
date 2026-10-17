@@ -22,9 +22,12 @@ export function AdminsHeader({ onAdd }: { onAdd: () => void }) {
           byte-identical. */}
       <Button
         onClick={onAdd}
-        className="bg-primary hover:bg-primary/90 h-9 active:scale-[0.97] transition-transform"
+        /* R158 (A6 tail): the flat bg-primary/hover-darken/active:scale
+         * override retires — buttonVariants owns the canonical fill
+         * (gradient + shadow + press-spring). */
+        className="h-9"
       >
-        <Plus className="w-4 h-4 ml-1.5" />
+        <Plus className="w-4 h-4 me-1.5" />
         إضافة مسؤول
       </Button>
     </div>

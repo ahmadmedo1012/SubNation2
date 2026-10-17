@@ -149,7 +149,7 @@ function makeStaleHeartbeatRedis() {
  */
 async function requestSummary(): Promise<{ status: number; body: string }> {
   const app = express();
-  app.use(healthModule.default);
+  app.use(healthModule.healthRouter); // R158 (B#9): health.ts joined the named-export convention.
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       const addr = server.address();
@@ -185,7 +185,7 @@ async function requestHealthz(
   headers: Record<string, string> = {},
 ): Promise<{ status: number; body: string }> {
   const app = express();
-  app.use(healthModule.default);
+  app.use(healthModule.healthRouter); // R158 (B#9): health.ts joined the named-export convention.
   return new Promise((resolve, reject) => {
     const server = app.listen(0, async () => {
       const addr = server.address();
@@ -260,7 +260,7 @@ describe("R3 — /healthz/summary never wedges during a Redis outage", () => {
     process.env.HEALTH_AGGREGATE_TIMEOUT_MS = "80";
 
     const app = express();
-    app.use(healthModule.default);
+    app.use(healthModule.healthRouter); // R158 (B#9): health.ts joined the named-export convention.
 
     const fire = () =>
       new Promise<{ status: number; body: string }>((resolve, reject) => {
@@ -301,7 +301,7 @@ describe("R3 — liveness endpoint stays trivially green (unchanged contract)", 
     process.env.HEALTH_AGGREGATE_TIMEOUT_MS = "60";
 
     const app = express();
-    app.use(healthModule.default);
+    app.use(healthModule.healthRouter); // R158 (B#9): health.ts joined the named-export convention.
 
     const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
       const server = app.listen(0, async () => {

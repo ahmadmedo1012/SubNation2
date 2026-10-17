@@ -214,7 +214,15 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
             <label htmlFor="settings-2fa-verify-code" className="sr-only">
               رمز التحقق المكوّن من 6 أرقام
             </label>
-            <input
+            {/* R158 (admin polish): the OTP field joins the shared Input
+                (the admin login OTP twin's register — text-center h-11
+                tracking-[0.2em] text-lg font-mono appended over the
+                base's ONE focus system); the hand-rolled border/focus
+                classes retire. id/type/inputMode/pattern/autoComplete/
+                value/onChange/placeholder/dir byte-identical, and the
+                max-w-[200px] box keeps its pairing with the verify CTA
+                beside it. */}
+            <Input
               id="settings-2fa-verify-code"
               type="text"
               /* 96-F7 (R96 M6): numeric keypad on mobile for the 6-digit
@@ -228,18 +236,7 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
               onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="000000"
               dir="ltr"
-              /* R139 (precision): the OTP field keeps its specialized
-                  geometry (h-11 pair with the verify CTA, text-lg centered
-                  mono — the sanctioned bespoke-OTP register the storefront's
-                  WhatsAppPhoneSignIn rides) but joins its token family: the
-                  resting border /70 → muted-foreground/75 (the A4-F12 ≥3:1
-                  call) and the hand-rolled focus:ring-1 ring-primary/20 — a
-                  SECOND, sub-3:1 focus system — retires for the ONE ring
-                  (ring-2 ring-ring, the F3-12 fix). tracking-widest → the
-                  arbitrary tracking-[0.2em] form (R122 A1 P2-4: the global
-                  Arabic letter-spacing guard zeroes the five NAMED tracking
-                  utilities on ALL runs — the old class was a no-op). */
-              className="w-full max-w-[200px] h-11 bg-background border border-muted-foreground/75 rounded-xl px-4 text-center text-lg tracking-[0.2em] font-mono outline-none focus:border-primary/50 focus:ring-2 focus:ring-ring transition-all"
+              className="max-w-[200px] h-11 text-center text-lg tracking-[0.2em] font-mono"
             />
             {/* R139 (precision): the verify CTA retires its hand-roll (flat
                 bg-primary + hover:bg-primary/90) for the canonical Button
@@ -321,10 +318,14 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
             {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error — the 139-i triage decision). */}
             {error && <p className="text-xs text-status-error">{error}</p>}
             <div className="flex items-center gap-2">
-              <button
+              {/* R158 (admin polish): the rotate submit joins the shared
+                  Button family (outline/sm) — the quiet primary-tinted
+                  hand-roll retires; type/disabled/spinner byte-identical. */}
+              <Button
                 type="submit"
+                variant="outline"
+                size="sm"
                 disabled={loading || !currentPassword}
-                className="flex items-center gap-2 h-10 px-5 rounded-xl bg-primary/10 text-primary-text font-bold text-sm hover:bg-primary/20 transition-all border border-primary/20 disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -332,7 +333,7 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
                   <RefreshCw className="w-4 h-4" />
                 )}
                 متابعة
-              </button>
+              </Button>
               <button
                 type="button"
                 onClick={() => {
@@ -350,13 +351,13 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
           <>
             {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error — the 139-i triage decision). */}
             {error && <p className="text-xs text-status-error">{error}</p>}
-            <button
-              onClick={() => setShowRotate(true)}
-              className="flex items-center gap-2 h-10 px-5 rounded-xl bg-muted/40 text-foreground font-bold text-sm hover:bg-muted/60 transition-all border border-border/60"
-            >
+            {/* R158 (admin polish): the rotate entry CTA joins the shared
+                Button family (outline/sm) — the quiet muted hand-roll
+                retires; onClick + icon byte-identical. */}
+            <Button variant="outline" size="sm" onClick={() => setShowRotate(true)}>
               <RefreshCw className="w-4 h-4" />
               إعادة إعداد المصادقة الثنائية
-            </button>
+            </Button>
           </>
         )}
       </div>

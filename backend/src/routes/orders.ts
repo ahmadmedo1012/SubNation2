@@ -7,12 +7,10 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { limitParam, pageParam, stringParam } from "../lib/http";
 import { derivePrimaryProvider } from "../lib/user-provider";
 import { idempotency } from "../middlewares/idempotency";
-// R134 (A7-F4): the canonical body hash + the shared reuse envelope.
-import {
-  canonicalBodyHash,
-  IDEMPOTENCY_KEY_REUSE_CODE,
-  IDEMPOTENCY_KEY_REUSE_MESSAGE,
-} from "../lib/idempotency-body-hash";
+// R134 (A7-F4): the canonical body hash. R158 (B-F2): the durable-reuse
+// 409 envelope comes from the ONE factory — byte-identical to the
+// previous literals.
+import { canonicalBodyHash, idempotencyReuseBody } from "../lib/idempotency-body-hash";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 // 98-B3 (round-98 wave B): the hard-block refusal layer — mounted before
 // the soft guard, see the mount comment at POST / below.
@@ -341,14 +339,11 @@ router.post(
         // layer's 409 envelope verbatim, so clients see ONE shape
         // whether the fast layer or the durable layer classified it
         // (production runs without Redis; this is the branch that
-        // fires there).
-        if (result.code === IDEMPOTENCY_KEY_REUSE_CODE) {
-          return res.status(409).json({
-            success: false,
-            error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-            message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-            code: IDEMPOTENCY_KEY_REUSE_CODE,
-          });
+        // fires there). R158 (B-F2): the envelope body now comes from
+        // the ONE factory (idempotencyReuseBody) and the code compares
+        // against the typed ErrorCode member.
+        if (result.code === ErrorCode.IDEMPOTENCY_KEY_REUSE) {
+          return res.status(409).json(idempotencyReuseBody());
         }
         // H5 — optimistic wallet deduction lost a race with a concurrent
         // balance mutation. Retryable by design (re-reads the balance).

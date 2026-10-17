@@ -441,7 +441,11 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
         {!collapsed ? (
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-sm shadow-primary/30">
-              <Shield className="w-3.5 h-3.5 text-white" />
+              {/* R158 (admin polish): text-white → text-primary-foreground —
+                  the ink token for primary fills (equal today,
+                  drift-proof if the token ever retunes; the R157-C
+                  TicketDetailPane twin fix). */}
+              <Shield className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
             <div>
               <div className="font-bold text-xs leading-none">SubNation</div>
@@ -450,7 +454,9 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           </div>
         ) : (
           <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center relative shadow-sm shadow-primary/30">
-            <Shield className="w-3.5 h-3.5 text-white" />
+            {/* R158 (admin polish): text-white → text-primary-foreground
+                (the expanded brand tile's twin fix). */}
+            <Shield className="w-3.5 h-3.5 text-primary-foreground" />
             {totalBadges > 0 && (
               /* R128 (A1-D3): same yellow-400 corner dot as the NavItem
                  collapsed badge — migrated to the sibling AA ink-pair. */
@@ -495,7 +501,7 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
             className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all duration-150 group press-spring"
           >
             <Search className="w-3.5 h-3.5 shrink-0" />
-            <span className="flex-1 text-right">بحث سريع</span>
+            <span className="flex-1 text-start">بحث سريع</span>
             <kbd className="text-3xs font-mono bg-muted/60 border border-border/50 px-1 py-0.5 rounded group-hover:border-border transition-colors">
               ⌘K
             </kbd>
@@ -507,6 +513,10 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
              label «خروج» (same treatment as the NavItem links). */
           aria-label={collapsed ? "خروج" : undefined}
           title={collapsed ? "خروج" : undefined}
+          /* R158 (admin polish): the destructive channel is the PINNED
+             choice for the logout hover ink (the one documented
+             exception to the §6 status-error one-red rule — a control
+             red, not a status read). */
           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/8 transition-all duration-150 press-spring ${collapsed ? "justify-center" : ""}`}
         >
           <LogOut className="w-4 h-4 shrink-0" />

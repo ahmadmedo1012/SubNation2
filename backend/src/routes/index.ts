@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { requireAdmin } from "../middlewares/requireAdmin";
 import { requirePermission } from "../lib/permissions";
-import healthRouter from "./health";
+import { healthRouter } from "./health";
 import { authRouter } from "./auth";
 import { telegramWebhookRouter } from "./telegram-webhook";
 import {
@@ -21,8 +21,8 @@ import { couponsRouter } from "./coupons";
 import { cartRouter } from "./cart";
 import { authProviderPublicRouter, authProviderAdminRouter } from "./auth-settings";
 import { whatsappAuthRouter } from "./auth-whatsapp";
-import metricsRouter from "./metrics";
-import cwvRouter from "./cwv";
+import { metricsRouter } from "./metrics";
+import { cwvRouter } from "./cwv";
 
 const router = Router();
 

@@ -47,6 +47,10 @@
 import { logger } from "./lib/logger";
 import { formatLyd } from "./lib/money";
 import { safeInc, telegramSendsTotal } from "./lib/metrics";
+// R158 (B-F4): the payment-network labels now come from the ONE shared
+// registry (allowlist + 400 copy + these labels previously lived in three
+// hand-synced places: wallet.ts, telegram.ts, and the route's message).
+import { PAYMENT_NETWORKS } from "./lib/payment-networks";
 import { captureSubsystemException } from "./lib/sentry";
 import { recordTopupCard } from "./lib/telegram-cards";
 
@@ -222,25 +226,18 @@ export interface NotifyNewTopupInput {
 }
 
 /**
- * A8 F1 (R126): user-facing labels for the payment-network allowlist
- * (wallet.ts PAYMENT_NETWORK_ALLOWLIST: libyana / madar / sadad /
- * lypay), mirroring the storefront's network names (wallet.tsx
- * NETWORKS labels + the admin topups NetworkBadge). The old
- * madar-only ternary labeled every LyPay/sadad topup «ليبيانا» in the
- * operator alert — false information in a money-approval context.
+ * A8 F1 (R126): user-facing labels for the payment-network allowlist —
+ * R158 (B-F4): the map now lives in lib/payment-networks.ts (ONE shared
+ * registry: the creation allowlist, these operator-card labels, and the
+ * allowlist-honesty copy of the 400 message). The old madar-only
+ * ternary labeled every LyPay/sadad topup «ليبيانا» in the operator
+ * alert — false information in a money-approval context.
  */
-const PAYMENT_NETWORK_LABELS: Record<string, string> = {
-  libyana: "ليبيانا",
-  madar: "مدار",
-  lypay: "LyPay (تحويل مصرفي)",
-  sadad: "سداد",
-};
-
 export function notifyNewTopup(input: NotifyNewTopupInput): void {
   // A8 F1 (R126): an unknown network omits the «الشبكة» line instead of
-  // guessing a label. Lowercased because wallet.ts passes the "LyPay"
-  // method literal for bank-transfer topups.
-  const netLabel = PAYMENT_NETWORK_LABELS[input.network.trim().toLowerCase()] ?? null;
+  // guessing a label. Lowercased because the topup creation path passes
+  // the "LyPay" method literal for bank-transfer topups.
+  const netLabel = PAYMENT_NETWORKS[input.network.trim().toLowerCase()] ?? null;
   const msg = [
     `💰 <b>طلب شحن جديد</b>`,
     `المستخدم: <code>${escapeHtml(input.phone)}</code>`,

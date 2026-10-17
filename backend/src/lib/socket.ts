@@ -490,3 +490,30 @@ export function emitToAdminAlerts(event: string, data: unknown) {
     safeInc(socketEventsTotal, { event, direction: "outbound" });
   }
 }
+
+/**
+ * R158 (B#2): the ONE home of the `admin-stats-update` notify idiom —
+ * the 5-line dynamic-import + emitToAdmins + .catch block was
+ * copy-pasted ×15 across the admin route family (users / orders /
+ * products / product-variants / risk / tickets) with a byte-identical
+ * event name, warn message and fire-and-forget contract. Routes now
+ * call `notifyAdminStats("user-update")`; payload extras ride the
+ * second arg (status / product_id / applied counts — the same shapes
+ * the per-route R125-I6/R126-L4 pins assert).
+ *
+ * The original blocks' dynamic import existed to keep the socket
+ * module out of the route files' eager graph; with this helper the
+ * routes DO import lib/socket statically (already the precedent for
+ * topup.service.ts / health.ts / diagnostics.ts), so the import can
+ * no longer fail at emit time — the .catch's "degrade to one warn,
+ * never a 500" contract is kept as a synchronous try/catch around the
+ * (guarded, non-throwing) emit. The event name, payload shape and warn
+ * message are pinned by routes/__tests__/admin-stats-emit.test.ts.
+ */
+export function notifyAdminStats(type: string, extra: Record<string, unknown> = {}) {
+  try {
+    emitToAdmins("admin-stats-update", { type, ...extra });
+  } catch (err) {
+    logger.warn({ err }, "socket admin-stats notify failed");
+  }
+}

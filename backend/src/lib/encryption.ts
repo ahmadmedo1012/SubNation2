@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { logger } from "./logger";
+import { readEnvNumber } from "./env";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
@@ -379,8 +380,8 @@ export function __resetSafeDecryptWarnThrottleForTests(): void {
 }
 
 function safeDecryptWarnThrottleWindowMs(): number {
-  const raw = Number(process.env.SAFE_DECRYPT_WARN_THROTTLE_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 60_000;
+  // R158 (B#7): the shared reader — same positive predicate + the new warn.
+  return readEnvNumber("SAFE_DECRYPT_WARN_THROTTLE_MS", 60_000, (n) => n > 0);
 }
 
 export function safeDecrypt(value: string | null): string | null {

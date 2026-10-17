@@ -257,7 +257,7 @@ const ProductCard = React.memo(function ProductCard({
             className="flex-1 min-w-[88px] h-8 text-xs active:scale-[0.97] transition-transform"
             onClick={() => onEdit(product)}
           >
-            <Edit2 className="w-3 h-3 ml-1" /> تعديل
+            <Edit2 className="w-3 h-3 me-1" /> تعديل
           </Button>
           <Button
             size="sm"
@@ -265,7 +265,7 @@ const ProductCard = React.memo(function ProductCard({
             className="flex-1 min-w-[88px] h-8 text-xs text-muted-foreground active:scale-[0.97] transition-transform"
             onClick={() => onUploadInventory(product)}
           >
-            <Upload className="w-3 h-3 ml-1" /> رفع مخزون
+            <Upload className="w-3 h-3 me-1" /> رفع مخزون
           </Button>
           {/* catalog-recon: variant manager entry (plan/duration/
               cost + engine pricing). */}
@@ -276,7 +276,7 @@ const ProductCard = React.memo(function ProductCard({
             className="flex-1 min-w-[88px] h-8 text-xs text-primary-text active:scale-[0.97] transition-transform"
             onClick={() => onManageVariants(product)}
           >
-            <Layers className="w-3 h-3 ml-1" /> الباقات
+            <Layers className="w-3 h-3 me-1" /> الباقات
           </Button>
           <Button
             size="sm"

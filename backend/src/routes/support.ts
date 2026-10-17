@@ -1,9 +1,12 @@
 import { db, supportTicketsTable, ticketRepliesTable } from "@workspace/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { intParam } from "../lib/http";
+// R158 (B#6): the two ticket-intent limiters moved to their documented
+// single home (lib/rate-limits.ts, per the app.ts:225 comment) — they
+// were route-file locals, invisible to the rate-limits-intent test.
+import { ticketCreateLimiter, ticketReplyLimiter } from "../lib/rate-limits";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 
@@ -99,20 +102,10 @@ router.get("/", requireUser, async (req, res) => {
   return res.json(result);
 });
 
-// V3-C5a: ticket-creation spam guard — the global userLimiter (1200/min)
-// was the only ceiling on this route; 5 tickets/hour/user is far above
-// any human cadence. Keyed by userId (requireUser has already run), so
-// the express-rate-limit IPv6 keyGenerator validation does not apply.
-const ticketCreateLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 5,
-  keyGenerator: (req) => `ticket:${(req as AuthenticatedRequest).userId}`,
-  message: {
-    error:
-      "لقد أنشأت عدداً كافياً من التذاكر في هذه الساعة. انتظر قليلاً أو أضف رداً على تذكرة قائمة.",
-    code: "RATE_LIMITED",
-  },
-});
+// V3-C5a: ticket-creation spam guard — 5 tickets/hour/user (the global
+// userLimiter's 1200/min was the only ceiling before). The limiter's
+// window/key/429 shape lives in lib/rate-limits.ts (R158 home move)
+// and is pinned by the rate-limits-intent suite.
 
 router.post("/", requireUser, ticketCreateLimiter, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;
@@ -197,21 +190,10 @@ router.get("/:id", requireUser, async (req, res) => {
   });
 });
 
-// SEC-92-07: per-user reply limiter, mirroring ticketCreateLimiter above.
-// 30 replies/hour/user is two orders of magnitude above any honest
-// conversation cadence while capping the storage-DoS amplifier (each
-// reply is a ticket_replies row + a status update). Keyed by userId
-// (requireUser has already run), so the express-rate-limit IPv6
-// keyGenerator validation does not apply.
-const ticketReplyLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 30,
-  keyGenerator: (req) => `ticket-reply:${(req as AuthenticatedRequest).userId}`,
-  message: {
-    error: "لقد أرسلت عدداً كافياً من الردود في هذه الساعة. انتظر قليلاً قبل المحاولة مجدداً.",
-    code: "RATE_LIMITED",
-  },
-});
+// SEC-92-07: per-user reply limiter, 30 replies/hour/user (two orders of
+// magnitude above any honest cadence; caps the storage-DoS amplifier —
+// each reply is a ticket_replies row + a status update). Definition lives
+// in lib/rate-limits.ts with the create twin (R158 home move).
 
 router.post("/:id/reply", requireUser, ticketReplyLimiter, async (req, res) => {
   const { userId } = req as AuthenticatedRequest;

@@ -310,7 +310,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             aria-expanded={total > 0}
             aria-controls="global-search-results"
             aria-activedescendant={total > 0 ? `global-search-option-${safeActive}` : undefined}
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-right"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-start"
           />
           {/* R139 (precision): bg-muted/50 → /60 — the esc chip joins the
               kbd register every other ⌘K/esc/↵ chip in the shell rides
@@ -389,7 +389,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                          (aria-selected — the r139 selected-state
                          vocabulary, untouched). Ring idiom mirrors the
                          shared Button base. */
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-start outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
                         safeActive === i ? "bg-primary/15" : "hover:bg-muted/40"
                       }`}
                     >
@@ -440,7 +440,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                            DIRECT focus (Tab-trapped tabbables) — the
                            selected-state fill above stays the arrow-key
                            treatment; the two devices never co-render. */
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-start outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
                           safeActive === flatIdx ? "bg-primary/15" : "hover:bg-muted/40"
                         }`}
                       >
@@ -487,7 +487,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                            vocabulary down the whole flattened list.
                            R143 (L2-6): focus-visible ring for DIRECT
                            keyboard focus, mirroring the sibling rows. */
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-right outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-start outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${
                           safeActive === flatIdx ? "bg-primary/15" : "hover:bg-muted/40"
                         }`}
                       >
@@ -567,7 +567,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             <kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">esc</kbd>{" "}
             إغلاق
           </span>
-          <span className="mr-auto">
+          <span className="ms-auto">
             <kbd className="font-mono bg-muted/60 px-1 rounded border border-border/40">⌘K</kbd> فتح
           </span>
         </div>

@@ -1,23 +1,19 @@
-import {
-  AlertTriangle,
-  Edit2,
-  Eye,
-  EyeOff,
-  Layers,
-  Loader2,
-  Plus,
-  Trash2,
-  WifiOff,
-} from "lucide-react";
+import { AlertTriangle, Edit2, Eye, EyeOff, Layers, Plus, Trash2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { fmtUsd, variantTitle } from "@/components/admin/product-variants/variants-meta";
+// R158 (admin polish): the loading branch joins the shared
+// TableSkeleton the risk/coupons/users tables ride — this was the
+// console's last hand-rolled centered-spinner list loader (a swap the
+// R136 UX-1 sweep skipped: the old block carried no role="status"
+// pair, so the loading→loaded transition was silent to AT).
+import { TableSkeleton } from "@/components/admin/TableSkeleton";
 import { formatCount, formatCurrency } from "@/lib/utils";
 import type { AdminProductVariant } from "@workspace/api-client-react";
 
 // R137 (FE, closing decomposition): extracted verbatim from
 // components/admin/ProductVariantsDialog.tsx — the variant rows surface
-// (loading spinner / load-error card with retry / empty state with the
+// (loading skeleton / load-error card with retry / empty state with the
 // first-add CTA / the sticky-glass drift table with per-row
 // edit/toggle/delete actions). Presentational by contract: the variants
 // query, the three mutations and the confirm-gated delete stay in the
@@ -49,10 +45,13 @@ export function VariantRows({
   return (
     <>
       {variantsLoading ? (
-        <div className="py-12 flex flex-col items-center gap-3 text-muted-foreground">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="text-xs">جارٍ تحميل الباقات…</span>
-        </div>
+        /* R158 (admin polish): the shared TableSkeleton mirrors the
+           loaded 8-column grid below (الباقة/التكلفة/السعر/المحسوب/
+           SKU/الترتيب/الحالة/إجراءات) with per-cell widths tuned to
+           each column's real content width; role="status" + the sr-only
+           label ride the primitive (the R125 A6-B8 pair the old
+           centered spinner lacked). */
+        <TableSkeleton cells={["w-24", "w-16", "w-16", "w-16", "w-20", "w-10", "w-16", "w-24"]} />
       ) : variantsError ? (
         <div
           role="alert"
@@ -76,9 +75,12 @@ export function VariantRows({
           <Button
             size="sm"
             onClick={startAdd}
-            className="bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
+            /* R158 (admin polish): the flat bg-primary/hover-darken/
+               active:scale overrides retire — buttonVariants owns the
+               canonical fill (gradient + shadow + press-spring); the
+               sm sizing is kept (the empty-state card's rhythm). */
           >
-            <Plus className="w-3.5 h-3.5 ml-1" /> إضافة باقة
+            <Plus className="w-3.5 h-3.5 me-1" /> إضافة باقة
           </Button>
         </div>
       ) : (
@@ -101,28 +103,28 @@ export function VariantRows({
                row DATA (titles/prices) where the weight ladder belongs. */}
             <thead className="bg-muted/30 text-muted-foreground">
               <tr>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   الباقة
                 </th>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   التكلفة
                 </th>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   السعر
                 </th>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   المحسوب
                 </th>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   SKU
                 </th>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   الترتيب
                 </th>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   الحالة
                 </th>
-                <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                <th scope="col" className="text-start font-semibold px-2 py-1.5">
                   إجراءات
                 </th>
               </tr>

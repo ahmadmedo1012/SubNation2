@@ -68,6 +68,90 @@ function renderPage() {
   );
 }
 
+describe("AdminPromotionsPage — create-form field guards render INLINE, not as toasts (R158 admin polish)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchMock.mockReset();
+    // Page load succeeds with one stopped sale (the create CTA is
+    // enabled — no active sale).
+    fetchMock.mockImplementation(async () => resLike({ body: { flash_sales: [STOPPED_SALE] } }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** datetime-local value helper (local wall-clock format). */
+  const localDateTime = (offsetMs: number): string => {
+    const d = new Date(Date.now() + offsetMs);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  async function openCreateForm() {
+    fireEvent.click(await screen.findByRole("button", { name: "إنشاء عرض" }));
+    expect(await screen.findByText("إنشاء عرض جديد")).toBeInTheDocument();
+  }
+
+  it("the 0–95 discount guard surfaces under its field (role=alert), never as a toast; no POST fires", async () => {
+    renderPage();
+    await openCreateForm();
+
+    fireEvent.change(screen.getByLabelText("نسبة الخصم (%)"), { target: { value: "99" } });
+    fireEvent.change(screen.getByLabelText("ينتهي في"), {
+      target: { value: localDateTime(60 * 60 * 1000) },
+    });
+    // Submit the FORM directly — the number input's own max="95" makes
+    // an out-of-range value HTML-invalid, so a button-click submit is
+    // blocked by constraint validation before the page's JS backstop
+    // ever runs (the guard exists for browsers/paths that skip it;
+    // this is how we exercise it in jsdom).
+    const form = screen.getByText("إنشاء عرض جديد").closest("form")!;
+    fireEvent.submit(form);
+
+    // The inline field error (the coupons valueError idiom — R158)…
+    expect(await screen.findByText("نسبة الخصم بين 0 و 95.")).toBeInTheDocument();
+    expect(screen.getByText("نسبة الخصم بين 0 و 95.")).toHaveAttribute("role", "alert");
+    // …NOT a toast, and the create POST never fired.
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "POST"),
+    ).toHaveLength(0);
+  });
+
+  it("the ends-at guard surfaces under its field; editing the field clears the stale error", async () => {
+    renderPage();
+    await openCreateForm();
+
+    // Valid discount, but a PAST expiry — the 5-minute floor trips.
+    fireEvent.change(screen.getByLabelText("نسبة الخصم (%)"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("ينتهي في"), {
+      target: { value: localDateTime(-24 * 60 * 60 * 1000) },
+    });
+    const form = screen.getByText("إنشاء عرض جديد").closest("form")!;
+    fireEvent.submit(form);
+
+    expect(
+      await screen.findByText("وقت الانتهاء يجب أن يكون بعد 5 دقائق على الأقل."),
+    ).toBeInTheDocument();
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "POST"),
+    ).toHaveLength(0);
+
+    // Any edit to the guarded field clears the stale error
+    // (re-validated on the next submit — the coupons idiom).
+    fireEvent.change(screen.getByLabelText("ينتهي في"), {
+      target: { value: localDateTime(24 * 60 * 60 * 1000) },
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("وقت الانتهاء يجب أن يكون بعد 5 دقائق على الأقل."),
+      ).not.toBeInTheDocument(),
+    );
+  });
+});
+
 describe("AdminPromotionsPage — a failed load is an error toast, not a fake-clean history (A2 P2-9)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

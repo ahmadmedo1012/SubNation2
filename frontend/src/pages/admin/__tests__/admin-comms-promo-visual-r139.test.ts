@@ -55,6 +55,7 @@ const couponsPage = read("src/pages/admin/coupons.tsx");
 const couponsHeader = read("src/components/admin/coupons/CouponsHeader.tsx");
 const couponsDialog = read("src/components/admin/coupons/CreateCouponDialog.tsx");
 const couponsTable = read("src/components/admin/coupons/CouponsTable.tsx");
+const telegramPing = read("src/components/admin/settings-page/TelegramDiagnosticPing.tsx");
 
 describe("R139 (139-h) — tickets: the calm pill dialect on both filter bars", () => {
   it("the status tabs ride the family active pill inside the family segment tray", () => {
@@ -276,9 +277,13 @@ describe("R139 (139-h) — coupons: pills, quiet stat tints, the receipt money p
     // brand ink for plain foreground (usage is not a status) while
     // the active count KEEPS success ink (a literal status reading).
     expect(couponsHeader).not.toContain("shadow-primary");
-    expect(couponsHeader).toContain(
-      '"gap-1.5 text-sm bg-primary hover:bg-primary/90 press-spring"',
-    );
+    // R158: the flat bg-primary fill + hover-darken retired — the
+    // canonical Button recipe owns the CTA fill now (gradient +
+    // shadow + press-spring ride buttonVariants); the pin follows the
+    // markup (gap + text-sm sizing kept).
+    expect(couponsHeader).toContain('className="gap-1.5 text-sm"');
+    expect(couponsHeader).not.toContain("bg-primary hover:bg-primary/90");
+    expect(couponsHeader).not.toContain("press-spring");
     expect(couponsHeader).toContain(
       '"text-2xl font-bold text-foreground tabular-nums">{totalUsed}',
     );
@@ -336,5 +341,19 @@ describe("R139 (139-h) — coupons: pills, quiet stat tints, the receipt money p
     // family value.
     expect(couponsPage).toContain('"text-xs text-primary-text hover:underline"');
     expect(couponsPage).not.toContain('"text-xs text-primary hover:underline');
+  });
+});
+
+describe("R158 — telegram: the settings lane's last raw CTA joins the canonical Button", () => {
+  it("the «اختبار» trigger rides buttonVariants — no raw bg-primary button, no raw text-white", () => {
+    // R158 (admin polish): the settings-page lane dodged the R139/R157
+    // canonical-CTA sweeps — the last raw hand-rolled bg-primary +
+    // text-white <button> in src retires for the shared Button (sm).
+    // buttonVariants owns the fill/ink/focus-ring/press-spring; the
+    // icon + label + disabled contract is byte-identical.
+    expect(telegramPing).toContain('<Button size="sm" onClick={onRunTest} disabled={tgTesting}>');
+    expect(telegramPing).not.toMatch(/<button\s/);
+    expect(telegramPing).not.toContain("bg-primary");
+    expect(telegramPing).not.toContain("text-white");
   });
 });

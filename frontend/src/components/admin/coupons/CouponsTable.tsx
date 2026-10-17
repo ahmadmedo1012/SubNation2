@@ -160,7 +160,7 @@ export function CouponsTable({
                   <span className="text-muted-foreground">/{coupon.max_uses}</span>
                 )}
                 {coupon.max_uses === null && (
-                  <InfinityIcon className="w-3 h-3 text-muted-foreground inline mr-1" />
+                  <InfinityIcon className="w-3 h-3 text-muted-foreground inline ms-1" />
                 )}
               </div>
 

@@ -5,18 +5,26 @@ import { Input } from "@/components/ui/input";
 // emerald/amber/blue/red hues to the canonical StatusBadge on the
 // --status-* tokens.
 import { StatusBadge } from "@/components/ui/status-badge";
-import { Check, Copy, KeyRound, Loader2, Play, QrCode, Trash2 } from "lucide-react";
+// R158 (admin polish): the pair-code copy joins the shared CopyButton
+// — the page's Button + copied-feedback re-implementation (an
+// untracked 1800ms reset timer + no failure branch of its own)
+// retires; the md size keeps the exact «نسخ/تم النسخ/تعذّر النسخ»
+// label contract and the shared button's 44px hit box + tracked
+// reset timer take over.
+import { CopyButton } from "@/components/CopyButton";
+import { KeyRound, Loader2, Play, QrCode, Trash2 } from "lucide-react";
 import { statusMeta, type WhatsAppSession } from "./whatsapp-meta";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/whatsapp.tsx —
 // the sessions list: per-row identity (name + status pill + id), the
 // start/QR/delete action cluster, the pair-code form (phone field + issued
-// code block with the R125-I5 staleness cue + copy feedback) and the QR
-// image block. EVERYTHING that mutates stays in the page — the sessions
-// array, the busy/pair/QR atoms and the copy feedback all ride down as
-// values; start/QR/delete/pair/copy/open fire through page-owned
-// callbacks. The move only changes its address; DOM, classes, aria labels
-// and Arabic copy are byte-identical.
+// code block with the R125-I5 staleness cue + the R158 shared CopyButton)
+// and the QR image block. EVERYTHING that mutates stays in the page — the
+// sessions array, the busy/pair/QR atoms all ride down as values;
+// start/QR/delete/pair/open fire through page-owned callbacks (the copy
+// rides the SHARED CopyButton's own lifecycle since R158). The move only
+// changes its address; DOM, classes, aria labels and Arabic copy are
+// byte-identical.
 
 export function WhatsappSessionsList({
   sessions,
@@ -24,7 +32,6 @@ export function WhatsappSessionsList({
   pairTarget,
   pairCode,
   pairCodeStale,
-  pairCopied,
   qrImage,
   phone,
   onPhoneChange,
@@ -32,7 +39,6 @@ export function WhatsappSessionsList({
   onLoadQr,
   onDeleteSession,
   onRequestPairCode,
-  onCopyPairCode,
   onOpenPairForm,
 }: {
   sessions: WhatsAppSession[];
@@ -40,7 +46,6 @@ export function WhatsappSessionsList({
   pairTarget: string | null;
   pairCode: string | null;
   pairCodeStale: boolean;
-  pairCopied: boolean;
   qrImage: string | null;
   phone: string;
   onPhoneChange: (value: string) => void;
@@ -48,7 +53,6 @@ export function WhatsappSessionsList({
   onLoadQr: (session: WhatsAppSession) => void | Promise<void>;
   onDeleteSession: (session: WhatsAppSession) => void | Promise<void>;
   onRequestPairCode: (event: FormEvent<HTMLFormElement>) => void;
-  onCopyPairCode: (code: string) => void | Promise<void>;
   onOpenPairForm: (sessionId: string) => void;
 }) {
   return (
@@ -183,15 +187,12 @@ export function WhatsappSessionsList({
                     >
                       {pairCode}
                     </code>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void onCopyPairCode(pairCode)}
-                    >
-                      {pairCopied ? <Check /> : <Copy />}
-                      {pairCopied ? "تم النسخ" : "نسخ"}
-                    </Button>
+                    {/* R158 (admin polish): the shared CopyButton (md)
+                        owns the copy lifecycle — idle/copied/failed —
+                        with the tracked reset timer the page hand-roll
+                        lacked; the staleness cue span below stays
+                        independent (pairCodeStale is page-timer-driven). */}
+                    <CopyButton text={pairCode} size="md" />
                     {pairCodeStale && (
                       <span role="status" className="text-xs font-bold text-status-warning">
                         انتهت صلاحية الرمز على الأرجح — أعد إصدار رمز جديد

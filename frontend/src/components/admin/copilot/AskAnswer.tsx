@@ -63,7 +63,7 @@ export function AskAnswer({
             <Sparkles className="w-3 h-3" />
             مصدر البيانات ({toolUses.length})
           </summary>
-          <div className="mt-1.5 space-y-1 pr-3 border-r-2 border-primary/20">
+          <div className="mt-1.5 space-y-1 ps-3 border-s-2 border-primary/20">
             {toolUses.map((tu, i) => (
               <div key={i} className="font-mono leading-5 text-3xs">
                 {/* R139 (precision): text-primary → text-primary-text —

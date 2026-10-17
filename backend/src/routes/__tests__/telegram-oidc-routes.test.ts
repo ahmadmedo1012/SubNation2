@@ -1,8 +1,9 @@
-import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from "vitest";
 import express, { type Express } from "express";
 import { sql } from "drizzle-orm";
 import { db, initTestDb, resetTestDb } from "../../test/db";
 import { authProviderPublicRouter } from "../auth-settings";
+import { completeTelegramOidcLogin } from "../../services/telegram-oidc-flow";
 
 /**
  * R154 (P2) — the OIDC route pair's transport contract:
@@ -15,7 +16,25 @@ import { authProviderPublicRouter } from "../auth-settings";
  * telegram-oidc-states.test.ts; this file pins the HTTP surface: the
  * redirect envelopes, the honest unconfigured path, and that no route
  * ever mints a session without the full flow behind it.
+ *
+ * R158 (B-F5): the happy-path gap — the file previously covered ONLY
+ * failure/cancel branches (the one cookie assertion expected NULL).
+ * completeTelegramOidcLogin is now mocked (default = the real
+ * implementation, so the failure-path cases keep exercising the true
+ * service) so the two mint paths are pinnable at the route layer: the
+ * httpOnly auth_token cookie + the 302 target (default /auth/callback,
+ * or the flow's stored redirect when one survives sanitization).
  */
+vi.mock("../../services/telegram-oidc-flow", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../services/telegram-oidc-flow")>();
+  return {
+    ...actual,
+    // Default = the REAL implementation (the forged-state case below must
+    // keep hitting the true state-store check); happy-path cases override
+    // it per-test with mockResolvedValueOnce, which self-reverts.
+    completeTelegramOidcLogin: vi.fn(actual.completeTelegramOidcLogin),
+  };
+});
 
 const ORIGIN = "https://subnation.ly";
 const CLIENT_ID = "1234567890";
@@ -161,6 +180,54 @@ describe("R154 — GET /api/auth/telegram/oidc/callback", () => {
       expect(res.location).toBe("/login?error=oidc_state");
       // Never a mint on a forged state.
       expect(res.setCookie).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  // R158 (B-F5): the happy path — the ONLY mint surface in the pair. The
+  // service is mocked per-case (mockResolvedValueOnce) because its real
+  // battery needs a live Telegram token endpoint; what matters HERE is
+  // the route wiring: cookie transport + redirect target.
+  it("R158: a completed flow mints the httpOnly auth_token cookie and 302s to /auth/callback (no redirect stored)", async () => {
+    vi.mocked(completeTelegramOidcLogin).mockResolvedValueOnce({
+      ok: true,
+      token: "oidc.happy.path.jwt",
+      isNewUser: false,
+      redirect: null,
+    });
+    const { url, close } = await listen();
+    try {
+      const res = await get(url, "/api/auth/telegram/oidc/callback?code=x&state=y");
+      expect(res.status).toBe(302);
+      // The cookie-bounce default post-login path — the JWT never rides
+      // the URL (F-010 parity).
+      expect(res.location).toBe("/auth/callback");
+      expect(res.location).not.toContain("token");
+      expect(res.setCookie).toContain("auth_token=oidc.happy.path.jwt");
+      expect(res.setCookie).toContain("HttpOnly");
+      expect(res.setCookie).toContain("Path=/");
+    } finally {
+      close();
+    }
+  });
+
+  it("R158: the flow's stored redirect target round-trips — 302 lands on it, cookie still minted", async () => {
+    vi.mocked(completeTelegramOidcLogin).mockResolvedValueOnce({
+      ok: true,
+      token: "oidc.redirect.jwt",
+      isNewUser: true,
+      redirect: "/checkout",
+    });
+    const { url, close } = await listen();
+    try {
+      const res = await get(url, "/api/auth/telegram/oidc/callback?code=x&state=y");
+      expect(res.status).toBe(302);
+      // The sanitized ?redirect= the login hop stored — honored on
+      // completion (the service's sanitizeInternalPath pins the policy).
+      expect(res.location).toBe("/checkout");
+      expect(res.setCookie).toContain("auth_token=oidc.redirect.jwt");
+      expect(res.setCookie).toContain("HttpOnly");
     } finally {
       close();
     }

@@ -32,7 +32,7 @@ import { correlationMiddleware } from "./middlewares/correlation";
 import { instrumentationIsolation } from "./middlewares/instrumentation-isolation";
 import { metricsMiddleware } from "./middlewares/metrics";
 import router from "./routes";
-import seoRouter from "./routes/seo";
+import { seoRouter } from "./routes/seo";
 // R136 (app.ts decomposition): lib/csrf is imported AFTER the route tree so
 // its SEC-92-01 boot assertion evaluates with the whole route tree already
 // loaded — the exact module-eval order of the pre-R136 app.ts, where the
@@ -46,6 +46,18 @@ import { csrfAllowedOrigins, createCsrfGate } from "./lib/csrf";
 // decomposition keeps its name and export shape here — NO existing test
 // needed an edit. The implementations live in the lib/ extracts noted
 // per name.
+//
+// R158 (B#5): re-verified the whole shim with a repo-wide grep. LIVE
+// importers, all through `await import("../app")` + property access in
+// the gate/rewrite suites: createCsrfGate (csrf-gate.test.ts),
+// createCorsOriginGate + createCorsCredentialsHeader (cors-origin-gate.
+// test.ts), zodIssuesToClient + applySpaShellMeta (spa-shell-rewrite.
+// test.ts), isIndexerUserAgent (share-card-bot-split.test.ts),
+// shellCommentsBalance (spa-shell-comment-guard.test.ts), plus the
+// static-import surface: server.ts (isUnfurlerUserAgent) and the
+// route-parity suites (SHELL_*_META). resolveSpaShellMeta and the
+// SpaShellMeta type re-export had ZERO importers (the shell consumes
+// its own lib/spa-shell definitions directly) and are deleted.
 export { createCsrfGate } from "./lib/csrf";
 export { createCorsCredentialsHeader, createCorsOriginGate } from "./lib/cors-gate";
 export { zodIssuesToClient } from "./lib/error-handler";
@@ -53,13 +65,11 @@ export {
   applySpaShellMeta,
   isIndexerUserAgent,
   isUnfurlerUserAgent,
-  resolveSpaShellMeta,
   shellCommentsBalance,
   SHELL_CATEGORY_META,
   SHELL_HOME_META,
   SHELL_STATIC_ROUTE_META,
 } from "./lib/spa-shell";
-export type { SpaShellMeta } from "./lib/spa-shell";
 
 // A7-2 (R116): boot-time hygiene warn on split-era origin env vars
 // (VERCEL_FRONTEND_ORIGIN / FRONTEND_ORIGINS). f10bb9b accidentally

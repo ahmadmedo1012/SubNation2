@@ -146,8 +146,12 @@ describe("R-140-l — the admin real-table register: scope + accessible name", (
     // their line adjacency (the component's own note: «Classes
     // byte-identical»).
     const squash = (s: string): string => s.replace(/\s+/g, "");
-    expect(squash(src)).toContain(squash('text-right font-semibold">الباقة'));
-    expect(squash(src)).toContain(squash('text-left font-semibold">السعر الحالي'));
+    // R158 (A3) re-pin: the physical text-right/text-left on the header
+    // cells became the logical text-start/text-end (the admin RTL sweep);
+    // alignment is unchanged under dir=rtl, the pin tracks the logical
+    // contract now.
+    expect(squash(src)).toContain(squash('text-start font-semibold">الباقة'));
+    expect(squash(src)).toContain(squash('text-end font-semibold">السعر الحالي'));
     expect(src).toContain('"border-b border-border/60 bg-muted/30 text-muted-foreground"');
   });
 });

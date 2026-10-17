@@ -2,19 +2,18 @@ import { db, ordersTable, usersTable } from "@workspace/db";
 import { and, count, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
-import { logger } from "../../lib/logger";
 import { escapeLikeTerm, intParam, pageParam, queryString } from "../../lib/http";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { idempotency } from "../../middlewares/idempotency";
+import { notifyAdminStats } from "../../lib/socket";
 import { AdjustmentError, AdjustmentService } from "../../services/adjustment.service";
 import { findIdempotencyClaimed, scopeIdempotencyKey } from "../../lib/idempotency";
 // R134 (A7-F4): the shared body-hash definition + reuse envelope.
-import {
-  canonicalBodyHash,
-  IDEMPOTENCY_KEY_REUSE_CODE,
-  IDEMPOTENCY_KEY_REUSE_MESSAGE,
-} from "../../lib/idempotency-body-hash";
+// R158 (B#3): the reuse 409 body comes from the shared factory — the
+// shape was copy-pasted at five sites (this one + wallet/orders/loyalty
+// + the middleware's own).
+import { canonicalBodyHash, idempotencyReuseBody } from "../../lib/idempotency-body-hash";
 import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
 import { insertPointsLedgerEntry } from "../../lib/points-ledger";
 
@@ -388,12 +387,7 @@ router.patch(
             // legacy claim (pre-R134 writer) → the friendly answer (the
             // ≤48h transition window).
             if (claimedRow.bodyHash !== null && claimedRow.bodyHash !== adjBodyHash) {
-              return res.status(409).json({
-                success: false,
-                error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-                message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-                code: IDEMPOTENCY_KEY_REUSE_CODE,
-              });
+              return res.status(409).json(idempotencyReuseBody());
             }
             return res
               .status(409)
@@ -467,12 +461,10 @@ router.patch(
     // out their staleTime. Same room/payload shape as admin/orders.ts;
     // fire-and-forget, never blocks the response (and fires only on the
     // paths that reached a real mutation — the no-change 400 above
-    // returns before this line).
-    import("../../lib/socket")
-      .then(({ emitToAdmins }) => {
-        emitToAdmins("admin-stats-update", { type: "user-update" });
-      })
-      .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+    // returns before this line). R158: the shared notifyAdminStats
+    // helper (lib/socket.ts) carries the exact idiom this used to
+    // inline.
+    notifyAdminStats("user-update");
 
     return res.json({
       id: updated.id,

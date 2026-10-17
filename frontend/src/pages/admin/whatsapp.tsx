@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 // and nothing here auto-triggers session operations.
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 import { getErrorMessage } from "@/lib/errors";
-import { copyToClipboard } from "@/lib/utils";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد جلسات بعد"
 // empty state adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
@@ -30,10 +29,11 @@ import { Wifi, XCircle } from "lucide-react";
 // (verbatim moves — the mutation path stays HERE: loadSessions (the
 // session-aware list GET + the hasLoadedRef first-load/refresh split),
 // createSession, startSession, requestPairCode, loadQr, deleteSession
-// (the confirm-gated DELETE) and copyPairCode, plus every session/
-// pair/QR atom and the pair-code staleness timer; the extracts render
-// the byte-identical DOM they rendered inline yesterday). Import
-// surface:
+// (the confirm-gated DELETE), plus every session/pair/QR atom and the
+// pair-code staleness timer (R158: the pair-code COPY left the page —
+// it rides the shared CopyButton the sessions-list renders); the
+// extracts render the byte-identical DOM they rendered inline
+// yesterday). Import surface:
 //   • whatsapp-meta — the pure module (the session/response contracts,
 //     OPENWA_DOCS_URL, STATUS_META/statusMeta, PAIR_CODE_STALE_AFTER_MS)
 //   • WhatsappHeader — the page intro (header + docs deep-link +
@@ -77,12 +77,13 @@ export default function AdminWhatsAppPage() {
   const [phone, setPhone] = useState("");
   const [pairTarget, setPairTarget] = useState<string | null>(null);
   const [pairCode, setPairCode] = useState<string | null>(null);
-  // B5-30 (round-92 audit): copied feedback for the pair-code copy
-  // button (check-icon swap, same as the topups CopyButton idiom).
-  const [pairCopied, setPairCopied] = useState(false);
   // R125-I5 (A3-12): staleness cue for the pair-code block — see
   // PAIR_CODE_STALE_AFTER_MS above. `issuedAt` drives a timeout that
   // flips `stale`; every code-issuing/reset path clears both.
+  // R158 (admin polish): the copied-feedback atom is GONE — the copy
+  // affordance rides the shared CopyButton (its own idle→copied→
+  // failed lifecycle with the tracked reset timer this page's
+  // hand-roll lacked).
   const [pairCodeIssuedAt, setPairCodeIssuedAt] = useState<number | null>(null);
   const [pairCodeStale, setPairCodeStale] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
@@ -152,7 +153,6 @@ export default function AdminWhatsAppPage() {
   // path that nulls the code also disarms the staleness cue.
   const clearPairCode = useCallback(() => {
     setPairCode(null);
-    setPairCopied(false);
     setPairCodeIssuedAt(null);
     setPairCodeStale(false);
   }, []);
@@ -316,20 +316,13 @@ export default function AdminWhatsAppPage() {
     }
   };
 
-  // B6 + B5-30 (round-92 audit): the pair-code copy was a raw
-  // `navigator.clipboard?.writeText` fire-and-forget — bypassed the
-  // shared helper (no secure-context fallback), gave no copied
-  // feedback, and swallowed failures. Now: shared helper, check-icon
-  // swap, and a destructive toast when the copy genuinely fails.
-  const copyPairCode = async (code: string) => {
-    const ok = await copyToClipboard(code);
-    if (!ok) {
-      toast({ title: "تعذّر نسخ الرمز", variant: "destructive" });
-      return;
-    }
-    setPairCopied(true);
-    setTimeout(() => setPairCopied(false), 1800);
-  };
+  // R158 (admin polish): the page-owned copy handler (the copied
+  // feedback atom + shared clipboard helper + an UNTRACKED 1800ms
+  // setTimeout that could fire after the row unmounted) is DELETED —
+  // the pair-code copy now rides the shared CopyButton inside the
+  // sessions-list extract, which owns the whole lifecycle (idle→
+  // copied→failed, tracked reset timer, 44px hit box, aria-live label
+  // swap).
 
   // R137 (FE decomposition): the pair-form opener — the exact body the
   // «ربط برمز الهاتف» button's inline onClick had (setPairTarget +
@@ -442,7 +435,6 @@ export default function AdminWhatsAppPage() {
               pairTarget={pairTarget}
               pairCode={pairCode}
               pairCodeStale={pairCodeStale}
-              pairCopied={pairCopied}
               qrImage={qrImage}
               phone={phone}
               onPhoneChange={setPhone}
@@ -450,7 +442,6 @@ export default function AdminWhatsAppPage() {
               onLoadQr={loadQr}
               onDeleteSession={deleteSession}
               onRequestPairCode={requestPairCode}
-              onCopyPairCode={copyPairCode}
               onOpenPairForm={openPairForm}
             />
           )}

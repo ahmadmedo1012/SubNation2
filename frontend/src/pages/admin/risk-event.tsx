@@ -308,7 +308,7 @@ export default function AdminRiskEventPage() {
                       <span className="text-muted-foreground">
                         {l.labeled_by_username ?? `admin#${l.labeled_by}`}
                       </span>
-                      <span className="text-muted-foreground mr-auto">
+                      <span className="text-muted-foreground ms-auto">
                         {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits. */}
                         {formatDate(l.labeled_at)}
                       </span>

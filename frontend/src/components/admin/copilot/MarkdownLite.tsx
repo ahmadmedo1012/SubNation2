@@ -40,7 +40,7 @@ export function MarkdownLite({ text }: { text: string }) {
         // List
         if (isBulletListBlock(lines)) {
           return (
-            <ul key={i} className="list-disc pr-4 space-y-0.5">
+            <ul key={i} className="list-disc ps-4 space-y-0.5">
               {lines
                 .filter((l) => l.trim())
                 .map((l, j) => (
@@ -54,7 +54,7 @@ export function MarkdownLite({ text }: { text: string }) {
         // Numbered list
         if (isNumberedListBlock(lines)) {
           return (
-            <ol key={i} className="list-decimal pr-4 space-y-0.5">
+            <ol key={i} className="list-decimal ps-4 space-y-0.5">
               {lines
                 .filter((l) => l.trim())
                 .map((l, j) => (

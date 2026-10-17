@@ -60,6 +60,9 @@ const LOYALTY_HISTORY = stripComments(read("src/components/loyalty/LedgerHistory
 const REFERRALS = stripComments(read("src/pages/referrals.tsx"));
 const ORDERS = stripComments(read("src/pages/orders.tsx"));
 const ORDER_DETAIL = stripComments(read("src/pages/order-detail.tsx"));
+// R158 (ledger b): the shared tray/pill primitive the orders chips now
+// ride — the chip-dial chrome pins follow the markup into this file.
+const FILTER_TABS = stripComments(read("src/components/ui/filter-tabs.tsx"));
 
 describe("R139-l — wallet: the balance hero is the page's ONE atmosphere moment", () => {
   it("rides the solid /60 card + the two-layer calm elevation + the ambient-wash/hairline-glow pair", () => {
@@ -244,15 +247,24 @@ describe("R139-l — referrals: colorless stats, canonical share CTA, list regis
 
 describe("R139-l — orders: the calm filter-pill dialect + the family card hover", () => {
   it("the status chips: active = tinted trio (no shadows, no inverted fill), idle = the family muted box", () => {
-    expect(ORDERS).toContain('"bg-primary/15 text-primary-text border-primary/30"');
+    // R158 (ledger b): the chip dial moved into ui/filter-tabs (the
+    // audit's 7-twin dialect extraction) — the page keeps the bucket
+    // semantics (the tones below) + the ?filter= URL mirror. The trio
+    // fill, the muted-box idle and aria-pressed are re-pinned on the
+    // primitive; the page-side guards are the per-bucket tones and the
+    // retired stacks staying retired.
+    expect(ORDERS).toContain("<FilterTabs");
+    expect(ORDERS).toContain('tone: "warning"');
+    expect(ORDERS).toContain('tone: "success"');
+    expect(ORDERS).toContain('tone: "info"');
+    expect(FILTER_TABS).toContain('"bg-primary/15 text-primary-text border-primary/30"');
+    expect(FILTER_TABS).toContain("aria-pressed={active}");
+    expect(
+      FILTER_TABS.match(/bg-muted\/30 border-border\/30 text-muted-foreground/g) ?? [],
+    ).toHaveLength(1);
     expect(ORDERS).not.toContain("bg-foreground text-background");
     expect(ORDERS).not.toContain("shadow-sm shadow-status-");
     expect(ORDERS).not.toContain("border-status-info/45");
-    expect(
-      ORDERS.match(/bg-muted\/30 border-border\/30 text-muted-foreground/g) ?? [],
-    ).toHaveLength(5);
-    // aria-pressed survives the dialect migration.
-    expect(ORDERS).toContain("aria-pressed={active}");
   });
 
   it("the order card rides the unified card-spring hover (no hand-rolled lift/transition-all)", () => {

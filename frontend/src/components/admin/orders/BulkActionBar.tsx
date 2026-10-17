@@ -58,7 +58,7 @@ export function BulkActionBar({
           on dark — the text floor is 4.5:1; the Zap icon keeps
           text-primary: icons only need the 3:1 non-text floor). */}
       <span className="text-sm font-bold text-primary-text">{selectedCount} طلب محدد</span>
-      <div className="flex gap-2 mr-auto flex-wrap items-center">
+      <div className="flex gap-2 ms-auto flex-wrap items-center">
         {/* Bulk status dropdown */}
         {/* R120-B4 (A2-F19): menu semantics on the hand-rolled
             dropdown — role="menu"/menuitem, ESC closes + returns
@@ -128,7 +128,7 @@ export function BulkActionBar({
                     role="menuitem"
                     autoFocus={i === 0}
                     onClick={() => onApplyStatus(s.value)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-muted/40 focus:bg-muted/40 focus:outline-none transition-colors text-right ${s.color}`}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold hover:bg-muted/40 focus:bg-muted/40 focus:outline-none transition-colors text-start ${s.color}`}
                   >
                     <span
                       className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.color.replace("text-", "bg-")}`}
@@ -154,7 +154,7 @@ export function BulkActionBar({
           className="h-7 text-xs text-muted-foreground"
           onClick={onClearSelection}
         >
-          <X className="w-3 h-3 ml-1" /> إلغاء
+          <X className="w-3 h-3 me-1" /> إلغاء
         </Button>
       </div>
     </div>

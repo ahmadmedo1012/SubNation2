@@ -19,7 +19,7 @@ export function SocketJobsSection({ metrics }: { metrics: MetricsSnapshot }) {
           <div className="flex items-center gap-2 mb-3">
             <Wifi className="w-4 h-4 text-status-info" />
             <h3 className="text-sm font-bold">Socket.IO</h3>
-            <span className="text-3xs text-muted-foreground mr-auto">واجهات لحظية</span>
+            <span className="text-3xs text-muted-foreground ms-auto">واجهات لحظية</span>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -42,7 +42,7 @@ export function SocketJobsSection({ metrics }: { metrics: MetricsSnapshot }) {
           <div className="flex items-center gap-2 mb-3">
             <TimerReset className="w-4 h-4 text-status-success" />
             <h3 className="text-sm font-bold">المهام الخلفية</h3>
-            <span className="text-3xs text-muted-foreground mr-auto">
+            <span className="text-3xs text-muted-foreground ms-auto">
               cron · watchers · heartbeat
             </span>
           </div>
@@ -72,7 +72,7 @@ export function SocketJobsSection({ metrics }: { metrics: MetricsSnapshot }) {
                         {job}
                       </span>
                       <span className="text-3xs text-muted-foreground shrink-0">{status}</span>
-                      <span className="font-bold tabular-nums shrink-0 mr-auto">{count}</span>
+                      <span className="font-bold tabular-nums shrink-0 ms-auto">{count}</span>
                     </div>
                   );
                 })}

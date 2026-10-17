@@ -146,7 +146,7 @@ export function CopilotHistoryView({ onClose }: { onClose: () => void }) {
                      one phrase across the two adjacent surfaces. */
                   <span className="text-3xs text-status-warning">عالية الخطورة</span>
                 )}
-                <span className="mr-auto text-3xs text-muted-foreground">
+                <span className="ms-auto text-3xs text-muted-foreground">
                   {/* 96-F7 (R96 A6 #6): -u-nu-latn pins Latin digits —
                       engines without ar-LY data fall back to the "ar"
                       root and emit Arabic-Indic numerals otherwise. */}

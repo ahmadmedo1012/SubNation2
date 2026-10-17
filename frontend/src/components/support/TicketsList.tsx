@@ -31,7 +31,7 @@ export function TicketsList({
               float-in stagger-${Math.min(i, 8)}
               w-full bg-card border border-border/60 border-r-[3px] rounded-2xl p-4
               hover:border-border hover:shadow-xl hover:-translate-y-0.5
-              transition-all duration-220 text-right group active:scale-[0.995] active:translate-y-0
+              transition-all duration-200 text-right group active:scale-[0.995] active:translate-y-0
               ${t.status === "open" ? "border-r-status-info/55" : t.status === "in_progress" ? "border-r-status-warning/55" : "border-r-border/40"}
             `}
           >

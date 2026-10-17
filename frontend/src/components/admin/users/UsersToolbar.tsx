@@ -58,7 +58,7 @@ export function UsersToolbar({
             aria-label="بحث برقم الهاتف"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pr-9 h-9 w-full sm:w-56 text-sm"
+            className="ps-9 h-9 w-full sm:w-56 text-sm"
             dir="ltr"
           />
         </div>

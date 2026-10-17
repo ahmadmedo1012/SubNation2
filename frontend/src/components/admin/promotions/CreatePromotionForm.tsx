@@ -11,22 +11,33 @@ import { type PromotionForm } from "@/components/admin/promotions/promotions-met
 // expiry / the live price preview / the cancel + create CTAs). EVERYTHING
 // that mutates stays in the page — the form atom (EMPTY_FORM
 // identity-compare dirty guard + the success-only reset), the submitting
-// busy flag and the flash-sale create POST (with the 0–95% + 5-minute +
-// 30-day guards); the inputs call the page's setForm setter, and the
-// submit/cancel fire through the page-owned onSubmit/onCancel callbacks.
-// The move only changes its address; DOM, classes, ids and Arabic copy
-// are byte-identical.
+// busy flag, the R158 inline field-guard error atoms and the flash-sale
+// create POST (with the 0–95% + 5-minute + 30-day guards); the inputs
+// call the page's setForm/error setters, and the submit/cancel fire
+// through the page-owned onSubmit/onCancel callbacks. The move only
+// changes its address; DOM, classes, ids and Arabic copy are
+// byte-identical.
 
 export function CreatePromotionForm({
   form,
   setForm,
   submitting,
+  discountError,
+  endsAtError,
+  onDiscountErrorChange,
+  onEndsAtErrorChange,
   onSubmit,
   onCancel,
 }: {
   form: PromotionForm;
   setForm: Dispatch<SetStateAction<PromotionForm>>;
   submitting: boolean;
+  /** R158: the inline field-guard errors (page-owned atoms — the
+   *  coupons valueError idiom) + their clear-on-edit setters. */
+  discountError: string | null;
+  endsAtError: string | null;
+  onDiscountErrorChange: (error: string | null) => void;
+  onEndsAtErrorChange: (error: string | null) => void;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
 }) {
@@ -72,13 +83,27 @@ export function CreatePromotionForm({
             max="95"
             step="1"
             value={form.discount_percent}
-            onChange={(e) => setForm((f) => ({ ...f, discount_percent: e.target.value }))}
+            onChange={(e) => {
+              // R158: any edit clears the stale guard error
+              // (re-validated on the next submit — the coupons value
+              // idiom).
+              onDiscountErrorChange(null);
+              setForm((f) => ({ ...f, discount_percent: e.target.value }));
+            }}
             required
             dir="ltr"
           />
           <p className="text-3xs text-muted-foreground mt-1">
             الحد الأقصى 95% — يحمي من بيع المنتج مجاناً عند تجمّع الكوبونات.
           </p>
+          {/* R158 (admin polish): the 0–95 guard renders INLINE under its
+              field (role="alert" + text-status-error) instead of a toast
+              far from the input it rejected. */}
+          {discountError && (
+            <p className="text-xs text-status-error mt-1" role="alert">
+              {discountError}
+            </p>
+          )}
         </div>
         <div>
           <Label
@@ -91,13 +116,26 @@ export function CreatePromotionForm({
             id="promotion-form-ends-at"
             type="datetime-local"
             value={form.ends_at}
-            onChange={(e) => setForm((f) => ({ ...f, ends_at: e.target.value }))}
+            onChange={(e) => {
+              // R158: any edit clears the stale guard error
+              // (re-validated on the next submit).
+              onEndsAtErrorChange(null);
+              setForm((f) => ({ ...f, ends_at: e.target.value }));
+            }}
             required
             dir="ltr"
           />
           <p className="text-3xs text-muted-foreground mt-1">
             يجب أن يكون بعد 5 دقائق من الآن على الأقل، وأقل من 30 يوماً.
           </p>
+          {/* R158 (admin polish): the 5-minute + 30-day guards render
+              INLINE under their field (the toast channel stays reserved
+              for server errors). */}
+          {endsAtError && (
+            <p className="text-xs text-status-error mt-1" role="alert">
+              {endsAtError}
+            </p>
+          )}
         </div>
       </div>
 

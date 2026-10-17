@@ -47,7 +47,7 @@ export function RiskFilterChips({
               }`}
             >
               {f.label}
-              <span className="mr-1.5">({counts[f.value]})</span>
+              <span className="ms-1.5">({counts[f.value]})</span>
             </button>
           );
         })}

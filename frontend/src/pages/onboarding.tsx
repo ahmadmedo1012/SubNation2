@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { useOnScreen } from "@/hooks/use-on-screen";
+import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe, customFetch } from "@workspace/api-client-react";
 import { ShieldCheck, ShoppingBag, Sparkles, Truck } from "lucide-react";
@@ -30,6 +31,20 @@ import { useLocation } from "wouter";
  * keeps working unchanged.
  */
 export function OnboardingPage() {
+  // R158-IMPL-D (P3): the last non-admin page without useSeo — the
+  // fallback home title rode the URL (routes.tsx), so a screen-reader
+  // hop into the post-signup welcome announced the WRONG page
+  // (RouteAnnouncer reads document.title, the R146 audit-frontend-pages
+  // F4 class). profile.tsx's block shape; a transitional post-auth
+  // page needs no index — robotsForPath already noindexed the path,
+  // the page-level block makes it explicit + titled.
+  const seoBlock = useSeo({
+    title: "مرحباً بك — SubNation",
+    description:
+      "مرحباً بك في SubNation — سوق الاشتراكات الرقمية في ليبيا: تسليم فوري، دفع آمن، وبالدينار الليبي.",
+    path: "/onboarding",
+    robots: "noindex,follow",
+  });
   const { token } = useAuth();
   const [, navigate] = useLocation();
   const [step, setStep] = useState<1 | 2>(1);
@@ -96,6 +111,7 @@ export function OnboardingPage() {
       className="min-h-[100dvh] bg-background flex items-center justify-center p-4 relative overflow-hidden"
       dir="rtl"
     >
+      {seoBlock}
       {/* Ambient glow layers — match the auth pages for visual continuity. */}
       <div
         className="absolute top-[-10%] right-[15%] w-80 h-80 bg-primary/5 rounded-full blur-[80px] pointer-events-none blob-drift"

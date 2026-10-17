@@ -52,6 +52,7 @@
 import { Counter, Histogram } from "prom-client";
 import { createClient, type RedisClientType } from "redis";
 import { logger } from "./logger";
+import { readEnvNumber } from "./env";
 import { captureSubsystemException } from "./sentry";
 import { getRegistry, redisErrorsTotal, redisOpsTotal, safeInc, safeObserve } from "./metrics";
 
@@ -73,13 +74,13 @@ const DEFAULT_CONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_COMMAND_TIMEOUT_MS = 500;
 
 function redisConnectTimeoutMs(): number {
-  const raw = Number(process.env.REDIS_CONNECT_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_CONNECT_TIMEOUT_MS;
+  // R158 (B#7): the shared reader — same positive predicate + the new warn.
+  return readEnvNumber("REDIS_CONNECT_TIMEOUT_MS", DEFAULT_CONNECT_TIMEOUT_MS, (n) => n > 0);
 }
 
 function redisCommandTimeoutMs(): number {
-  const raw = Number(process.env.REDIS_COMMAND_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_COMMAND_TIMEOUT_MS;
+  // R158 (B#7): the shared reader — same positive predicate + the new warn.
+  return readEnvNumber("REDIS_COMMAND_TIMEOUT_MS", DEFAULT_COMMAND_TIMEOUT_MS, (n) => n > 0);
 }
 
 /** Rejection used when a Redis command exceeds REDIS_COMMAND_TIMEOUT_MS. */

@@ -26,7 +26,7 @@ export function TelegramCardHeader({ settings }: { settings: TelegramSettings | 
         <h2 className="font-bold text-sm">تيليجرام</h2>
         <p className="text-xs text-muted-foreground">إشعارات فورية للمشرفين</p>
       </div>
-      <div className="mr-auto">
+      <div className="ms-auto">
         {settings && (
           <StatusBadge variant={settings.telegram_configured ? "success" : "neutral"} size="xs">
             {settings.telegram_configured ? "مفعّل" : "غير مفعّل"}

@@ -100,7 +100,7 @@ export function TicketDetailPane({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0 mr-3">
+        <div className="flex items-center gap-2 shrink-0 ms-3">
           {selected.status !== "closed" ? (
             <button
               onClick={() => onStatus(selected.id, "closed")}
@@ -241,7 +241,10 @@ export function TicketDetailPane({
             type="submit"
             size="icon"
             aria-label="إرسال الرد"
-            className="bg-primary hover:bg-primary/90 h-10 w-10 shrink-0 active:scale-90 transition-transform"
+            /* R158 (A6 tail): the flat-fill override retires —
+             * buttonVariants owns the canonical fill + press-spring
+             * (the send affordance keeps its h-10 w-10 square). */
+            className="h-10 w-10 shrink-0"
             disabled={sending || !replyText.trim() || selected.status === "closed"}
           >
             {sending ? (

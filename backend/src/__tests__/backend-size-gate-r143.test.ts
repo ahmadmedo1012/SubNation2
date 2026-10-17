@@ -24,15 +24,29 @@ import { describe, expect, it } from "vitest";
  *   • alerting.service.ts / spa-shell.ts / admin/auth.ts — over the line
  *     today, growth-BANNED at their pinned maxima (+5 buffer for comment
  *     hygiene). Leaving the register requires dropping below 1,000.
+ *   • routes/admin/products.ts (R158) — TRIPWIRE class: pinned BELOW the
+ *     ceiling at its R158 post-dedup size + buffer (962 + 5). The file
+ *     has a history of riding the line (R143 already had to carve
+ *     products-field-limits.ts out of it mid-round when it crossed
+ *     1,000), so any feature addition now FAILS the register branch
+ *     with a named offender instead of quietly spending the remaining
+ *     headroom to the cliff. Promote to the over-line class (or retire
+ *     it entirely) only together with a real split that moves it well
+ *     under the ceiling.
  */
 
 const SRC_ROOT = path.resolve(import.meta.dirname, "..");
 
-/** [file, ceiling] — the growth-banned register (reasons in the header). */
+/** [file, ceiling] — the growth-banned register (reasons in the header).
+ * Entries pinned ABOVE the 1,000 ceiling are legacy over-the-line
+ * members; entries pinned at/below it are R158 tripwires (see header). */
 const GROWTH_BANNED: Array<[string, number]> = [
   ["services/alerting.service.ts", 1_083],
   ["lib/spa-shell.ts", 1_039],
   ["routes/admin/auth.ts", 1_026],
+  // R158 (B#1): tripwire — 962/1,000 after the notifyAdminStats dedup;
+  // any growth past the pin names this file in the CI failure.
+  ["routes/admin/products.ts", 967],
 ];
 const MIGRATE_CEILING = 5_000;
 const CEILING = 1_000;
@@ -85,14 +99,25 @@ describe("R143 (L16-1) — the backend no-monolith gate", () => {
   });
 
   it("the register itself stays honest (members still exist; still over the line)", () => {
-    for (const [r] of GROWTH_BANNED) {
+    for (const [r, pin] of GROWTH_BANNED) {
       const count = lineCount(path.join(SRC_ROOT, r));
-      // A member that dropped below the ceiling should be REMOVED from
-      // the register (the ceiling test ignores it either way, but the
-      // doc value of the register depends on it being current).
-      expect(count, `${r} shrank below 1,000 — remove it from the register`).toBeGreaterThan(
-        CEILING,
-      );
+      if (pin > CEILING) {
+        // Legacy over-the-line member: still over the line, else remove
+        // (the ceiling test ignores it either way, but the doc value of
+        // the register depends on it being current).
+        expect(count, `${r} shrank below 1,000 — remove it from the register`).toBeGreaterThan(
+          CEILING,
+        );
+      } else {
+        // R158 tripwire member: pinned at/below the ceiling so growth
+        // fails with a register-specific message. It stays honest while
+        // the file still rides near the line; a real split that drops it
+        // comfortably under 900 means the tripwire is stale — remove it.
+        expect(
+          count,
+          `${r} was split well below the ceiling — remove it from the register`,
+        ).toBeGreaterThan(CEILING - 100);
+      }
     }
   });
 

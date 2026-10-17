@@ -4,12 +4,14 @@
  *   1. B5-05: session delete previously used a raw `window.confirm`;
  *      it now goes through the shared `useConfirm` AlertDialog with the
  *      ORIGINAL message text — cancelling performs no request.
- *   2. B6 + B5-30: the pair-code copy was a fire-and-forget
+ *   2. B6 + B5-30 + R158: the pair-code copy was a fire-and-forget
  *      `navigator.clipboard?.writeText` — it bypassed the shared
  *      `copyToClipboard` helper (no secure-context fallback, no boolean
  *      result), gave zero copied feedback, and swallowed failures.
- *      It now routes through the helper: success swaps the button to
- *      "تم النسخ", failure surfaces a destructive toast.
+ *      It now rides the shared CopyButton (md) rendered by the
+ *      sessions-list extract: the button owns the whole lifecycle —
+ *      success swaps to "تم النسخ", failure swaps to "تعذّر النسخ"
+ *      (aria-live + destructive ink) with a tracked reset timer.
  *
  * `@/lib/auth`, the admin shell and the toast hook are mocked at the
  * module boundary (vitest-config pattern).
@@ -120,7 +122,7 @@ describe("AdminWhatsAppPage — delete confirm + pair-code copy feedback (B5-05 
     );
   });
 
-  it("pair-code copy uses the shared helper: failure toasts, success swaps to تم النسخ (B6 + B5-30)", async () => {
+  it("pair-code copy rides the shared CopyButton: failure surfaces تعذّر النسخ on the button, success swaps to تم النسخ (B6 + B5-30 + R158)", async () => {
     renderPage();
 
     // Open the pair form and issue a code.
@@ -131,9 +133,11 @@ describe("AdminWhatsAppPage — delete confirm + pair-code copy feedback (B5-05 
     fireEvent.click(screen.getByRole("button", { name: "إصدار رمز الاقتران" }));
     expect(await screen.findByText("ABCD-1234")).toBeInTheDocument();
 
-    // Failure: the clipboard API DENIES the write. The old raw call
-    // swallowed the rejection with zero feedback; the shared helper
-    // resolves false → destructive toast.
+    // Failure: the clipboard API DENIES the write. R158: the copy rides
+    // the shared CopyButton — the old page-owned handler toasted a
+    // destructive «تعذّر نسخ الرمز» while the button sat silent; the
+    // shared button now announces the failure ITSELF (aria-live label
+    // swap to «تعذّر النسخ», destructive ink) and no toast fires.
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
     Object.defineProperty(navigator, "clipboard", {
@@ -143,17 +147,16 @@ describe("AdminWhatsAppPage — delete confirm + pair-code copy feedback (B5-05 
 
     fireEvent.click(screen.getByRole("button", { name: "نسخ" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("ABCD-1234"));
-    await waitFor(() =>
-      expect(toastMock).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "تعذّر نسخ الرمز", variant: "destructive" }),
-      ),
-    );
+    expect(await screen.findByRole("button", { name: "تعذّر النسخ" })).toBeInTheDocument();
+    // No failure toast — the button is the feedback channel now (the
+    // pair-issue success toast above is unrelated and stays).
+    expect(toastMock.mock.calls.map((c) => c[0]?.title)).not.toContain("تعذّر نسخ الرمز");
     // No false success feedback.
     expect(screen.queryByRole("button", { name: "تم النسخ" })).not.toBeInTheDocument();
 
     // Success: the helper resolves true → the check-icon swap label.
     writeText.mockResolvedValue(undefined);
-    fireEvent.click(screen.getByRole("button", { name: "نسخ" }));
+    fireEvent.click(screen.getByRole("button", { name: "تعذّر النسخ" }));
     expect(await screen.findByRole("button", { name: "تم النسخ" })).toBeInTheDocument();
   });
 });

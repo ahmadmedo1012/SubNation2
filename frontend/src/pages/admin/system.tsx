@@ -474,7 +474,7 @@ export default function AdminSystemPage(): ReactElement | null {
                   <div className="flex items-center gap-2 mb-3">
                     <Activity className="w-4 h-4 text-primary" />
                     <h3 className="text-sm font-bold">معدل الطلبات (طلب/ث)</h3>
-                    <span className="text-3xs text-muted-foreground mr-auto">
+                    <span className="text-3xs text-muted-foreground ms-auto">
                       آخر {Math.min(samples.length, 60)} عيّنة · ~
                       {Math.min(samples.length, 60) * 15}ث
                     </span>

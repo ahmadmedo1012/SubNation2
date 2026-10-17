@@ -234,7 +234,7 @@ function RiskRow({ row }: { row: AtRiskRow }) {
         /* R125-I3 (A2-9): the expandable row's state was visual-only —
            aria-expanded exposes it (the orders-row-expansion idiom). */
         aria-expanded={open}
-        className="w-full flex items-center gap-3 text-right group"
+        className="w-full flex items-center gap-3 text-start group"
       >
         {/* R139 (precision): the product thumb joins the shelf family —
            bg-muted/40 → bg-muted/60 (the GlobalSearch thumb / image-well
@@ -325,7 +325,7 @@ function ExplainDrawer({
 }) {
   const e = detail?.forecast?.explanation;
   return (
-    <div className="mt-2 mr-12 rounded-xl border border-border/40 bg-muted/20 p-3 text-xs space-y-2">
+    <div className="mt-2 ms-12 rounded-xl border border-border/40 bg-muted/20 p-3 text-xs space-y-2">
       <div className="flex items-center gap-1.5 text-muted-foreground">
         <Sparkles className="w-3 h-3" />
         ما الذي أنتج هذا التوقع؟

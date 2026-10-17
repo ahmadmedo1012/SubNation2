@@ -500,7 +500,7 @@ export default function CategoryPage() {
                 <Link
                   key={c.slug}
                   href={`/category/${c.slug}`}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 border ${t.chipBg} ${t.chipText} ${t.chipBorder}`}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-150 press-spring min-h-11 border ${t.chipBg} ${t.chipText} ${t.chipBorder}`}
                 >
                   <t.Icon className="w-3.5 h-3.5" />
                   {c.label}
@@ -515,7 +515,7 @@ export default function CategoryPage() {
                category-chip inactive state, byte-for-byte; was bg-card +
                border-border/50 + hover /80 + hover:bg-secondary/40 — the
                pre-dialect chip register). aria/handler byte-identical. */
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 border bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-150 press-spring min-h-11 border bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
           >
             كل المنتجات
           </button>

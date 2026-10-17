@@ -76,6 +76,12 @@ export default function AdminPromotionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  // R158 (admin polish): the create-form field guards go INLINE (the
+  // coupons.tsx valueError idiom) — a toast-only validation fired far
+  // from the field it rejected; toasts stay reserved for server
+  // errors. One error atom per guarded field, cleared on edit.
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [endsAtError, setEndsAtError] = useState<string | null>(null);
   // R147 (2-c D3): per-row busy guard for the store-repricing
   // activate/stop PATCH and the permanent DELETE — a double-click fired
   // two requests; the coupons.tsx `toggling`/`archiving` idiom (armed
@@ -136,20 +142,24 @@ export default function AdminPromotionsPage() {
     e.preventDefault();
     if (!adminToken) return;
     const discount = parseFloat(form.discount_percent);
+    // R158 (admin polish): the field guards render INLINE under their
+    // fields (the coupons valueError idiom) — role="alert" +
+    // text-status-error; the toast channel stays reserved for server
+    // errors.
     if (!Number.isFinite(discount) || discount <= 0 || discount > 95) {
-      toast({ title: "نسبة الخصم بين 0 و 95.", variant: "destructive" });
+      setDiscountError("نسبة الخصم بين 0 و 95.");
       return;
     }
     const endsAt = new Date(form.ends_at);
     if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() < Date.now() + 5 * 60 * 1000) {
-      toast({ title: "وقت الانتهاء يجب أن يكون بعد 5 دقائق على الأقل.", variant: "destructive" });
+      setEndsAtError("وقت الانتهاء يجب أن يكون بعد 5 دقائق على الأقل.");
       return;
     }
     // R125-I3 (A2-21): mirror the backend's 30-day ceiling client-side
     // (same message wording as the server's 400) — the hint promised it,
     // the round-trip no longer has to.
     if (endsAt.getTime() > Date.now() + MAX_DURATION_MS) {
-      toast({ title: "أقصى مدة للعرض 30 يوماً.", variant: "destructive" });
+      setEndsAtError("أقصى مدة للعرض 30 يوماً.");
       return;
     }
 
@@ -191,6 +201,8 @@ export default function AdminPromotionsPage() {
       toast({ title: "تم إنشاء العرض", variant: "success" });
       setShowForm(false);
       setForm(EMPTY_FORM);
+      setDiscountError(null);
+      setEndsAtError(null);
       void load();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
@@ -336,10 +348,16 @@ export default function AdminPromotionsPage() {
             form={form}
             setForm={setForm}
             submitting={submitting}
+            discountError={discountError}
+            endsAtError={endsAtError}
+            onDiscountErrorChange={setDiscountError}
+            onEndsAtErrorChange={setEndsAtError}
             onSubmit={handleCreate}
             onCancel={() => {
               setShowForm(false);
               setForm(EMPTY_FORM);
+              setDiscountError(null);
+              setEndsAtError(null);
             }}
           />
         )}

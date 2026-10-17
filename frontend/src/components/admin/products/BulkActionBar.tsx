@@ -29,7 +29,7 @@ export function BulkActionBar({
     <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-150">
       <Zap className="w-4 h-4 text-primary shrink-0" />
       <span className="text-sm font-bold text-primary-text">{selectedCount} منتج محدد</span>
-      <div className="flex gap-2 mr-auto flex-wrap">
+      <div className="flex gap-2 ms-auto flex-wrap">
         <Button
           size="sm"
           variant="outline"
@@ -63,7 +63,7 @@ export function BulkActionBar({
           className="h-7 text-xs text-muted-foreground"
           onClick={onClear}
         >
-          <X className="w-3 h-3 ml-1" /> إلغاء
+          <X className="w-3 h-3 me-1" /> إلغاء
         </Button>
       </div>
     </div>

@@ -288,7 +288,7 @@ export function ProviderCard({
                         /* R130 (A4-F1): the reveal sat `left-2.5` — the START
                          of the LTR secret text (the input is dir=ltr +
                          text-left) — so a revealed key's first characters
-                         rendered under the eye while the pr-9 reservation
+                         rendered under the eye while the ps-9 reservation
                          on the END side sat dead. The button belongs at
                          the physical end the input already reserves.
                          R133 (A4-F6 family): 14px icon-only hit box →

@@ -81,6 +81,7 @@
 import { randomUUID } from "node:crypto";
 import type { RedisClientType } from "redis";
 import { logger } from "./logger";
+import { readEnvNumber } from "./env";
 import { getRedisClient, noteRedisDegradedMode, withRedisCommandTimeout } from "./redis-client";
 import {
   getSchedulerLeaderLeaseBackend,
@@ -143,8 +144,8 @@ const DEFAULT_ACQUIRE_RETRY_MS = 20_000;
 // shutdown force-exit so `release()` can never wedge the drain.
 // SCHEDULER_OP_TIMEOUT_MS is a test/ops override.
 const LEADERSHIP_OP_TIMEOUT_MS = (() => {
-  const raw = Number(process.env.SCHEDULER_OP_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 2_000;
+  // R158 (B#7): the shared reader — same positive predicate + the new warn.
+  return readEnvNumber("SCHEDULER_OP_TIMEOUT_MS", 2_000, (n) => n > 0);
 })();
 
 export interface SchedulerLeadership {

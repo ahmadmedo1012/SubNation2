@@ -102,6 +102,9 @@ const TICKETS_LIST = stripComments(SUPPORT("TicketsList.tsx"));
 const FAQ = stripComments(SUPPORT("FaqSection.tsx"));
 const ONBOARDING = stripComments(PAGE("onboarding.tsx"));
 const TERMS = stripComments(PAGE("terms.tsx"));
+// R158 (ledger b): the shared tray/pill primitive the terms tab row now
+// rides — the tab chrome pins follow the markup into this file.
+const FILTER_TABS = stripComments(read("src/components/ui/filter-tabs.tsx"));
 const TG_CALLBACK = stripComments(PAGE("telegram-callback.tsx"));
 const AUTH_CALLBACK = stripComments(PAGE("auth-callback.tsx"));
 
@@ -205,17 +208,21 @@ describe("R139 recipe — quiet danger at rest (severity lives in the confirm di
 });
 
 describe("R139 recipe — calm active pill on the lane's two tab/filter rows", () => {
-  it("terms.tsx: the tab pair migrates off the raised-segment register onto the login twin", () => {
+  it("terms.tsx: the tab pair rides the shared FilterTabs primitive (the calm-pill family)", () => {
     // R139 (precision): active = the tinted trio + font-bold, inactive
-    // = boxed-transparent + muted; the tray is the auth family's
-    // bg-muted/30 + border/40 + rounded-2xl. Both states carry the
-    // border box (1px toggle jitter dies). aria-pressed untouched.
-    expect(TERMS).toContain("bg-muted/30 border border-border/40 rounded-2xl p-1");
-    expect(TERMS).toContain('"bg-primary/15 text-primary-text border border-primary/30 font-bold"');
-    expect(TERMS).toContain(
-      '"border border-transparent text-muted-foreground font-semibold hover:text-foreground"',
+    //   = boxed-transparent + muted — the raised-segment register
+    //   retired. R158 (ledger b): the hand-rolled markup moved INTO
+    //   ui/filter-tabs (the audit's 7-twin dialect extraction) — the
+    //   page passes the tab data + the hash write-back handler. The
+    //   trio/idle fills + aria-pressed are pinned on the primitive
+    //   itself; terms keeps the URL contract and the retirement bans.
+    expect(TERMS).toContain("<FilterTabs");
+    expect(TERMS).toContain("onSelect={handleTabClick}");
+    expect(FILTER_TABS).toContain('"bg-primary/15 text-primary-text border-primary/30"');
+    expect(FILTER_TABS).toContain(
+      "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30",
     );
-    expect(TERMS).toContain("aria-pressed={tab === id}");
+    expect(FILTER_TABS).toContain("aria-pressed={active}");
     // The retired raised-segment vocabulary is gone file-wide.
     expect(TERMS).not.toContain("bg-card shadow-sm");
     expect(TERMS).not.toContain("bg-secondary/50");

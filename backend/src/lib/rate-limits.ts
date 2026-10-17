@@ -287,3 +287,49 @@ export const loyaltyConvertPointsLimiter = createMoneyIntentLimiter(
   "loyalty-convert",
   "عدد كبير من محاولات تحويل النقاط. حاول مجدداً بعد دقيقة.",
 );
+
+// ── R158 (B#6): the support-route per-user limiters ───────────────────────────
+//
+// V3-C5a: ticket-creation spam guard — the global userLimiter (1200/min)
+// was the only ceiling on this route; 5 tickets/hour/user is far above
+// any human cadence. Keyed by userId (requireUser has already run when
+// the limiter fires), so the express-rate-limit IPv6 keyGenerator
+// validation does not apply.
+//
+// Moved VERBATIM from routes/support.ts (R158 organization round): same
+// window, limit, key and Arabic message body — including the DELIBERATE
+// absence of a `store` (the in-memory default the route shipped with;
+// every limiter mounted in app.ts gets a resilient Redis store instead).
+// SEC-92-07: per-user reply limiter, mirroring ticketCreateLimiter —
+// 30 replies/hour/user is two orders of magnitude above any honest
+// conversation cadence while capping the storage-DoS amplifier (each
+// reply is a ticket_replies row + a status update).
+import type { AuthenticatedRequest } from "../middlewares/requireUser";
+
+export const ticketCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  // R158 (B#6): the family chrome — every limiter in this home emits
+  // the draft-8 standard headers; the route-file locals the definitions
+  // moved from predate that contract. Headers only, no limiting change.
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req) => `ticket:${(req as AuthenticatedRequest).userId}`,
+  message: {
+    error:
+      "لقد أنشأت عدداً كافياً من التذاكر في هذه الساعة. انتظر قليلاً أو أضف رداً على تذكرة قائمة.",
+    code: "RATE_LIMITED",
+  },
+});
+
+export const ticketReplyLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req) => `ticket-reply:${(req as AuthenticatedRequest).userId}`,
+  message: {
+    error: "لقد أرسلت عدداً كافياً من الردود في هذه الساعة. انتظر قليلاً قبل المحاولة مجدداً.",
+    code: "RATE_LIMITED",
+  },
+});

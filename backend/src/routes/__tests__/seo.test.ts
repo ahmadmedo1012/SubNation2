@@ -48,7 +48,8 @@ import { db, initTestDb, productsTable, resetTestDb } from "../../test/db";
 
 const TEST_ORIGIN = "https://seo-contract-test.example";
 
-let seoRouter: (typeof import("../seo"))["default"];
+// R158 (B#9): seo.ts joined the named-export convention.
+let seoRouter: (typeof import("../seo"))["seoRouter"];
 let bumpSitemapCache: (typeof import("../seo"))["bumpSitemapCache"];
 
 beforeAll(async () => {
@@ -56,7 +57,7 @@ beforeAll(async () => {
   // Dynamic import so APP_URL is read at module load (seo.ts resolves
   // the origin once, at import time).
   const mod = await import("../seo");
-  seoRouter = mod.default;
+  seoRouter = mod.seoRouter;
   bumpSitemapCache = mod.bumpSitemapCache;
   await initTestDb();
 });

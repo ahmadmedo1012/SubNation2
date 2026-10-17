@@ -112,7 +112,7 @@ export function OrdersFilters({
         </button>
       )}
 
-      <span className="text-xs text-muted-foreground mr-auto">{filteredCount} نتيجة</span>
+      <span className="text-xs text-muted-foreground ms-auto">{filteredCount} نتيجة</span>
     </div>
   );
 }

@@ -67,7 +67,7 @@ export function TopupsToolbar({
           aria-label="بحث برقم التحويل أو الهاتف"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pr-9 h-9 w-full sm:w-52 text-sm"
+          className="ps-9 h-9 w-full sm:w-52 text-sm"
         />
         {search && (
           <button
@@ -91,9 +91,11 @@ export function TopupsToolbar({
              * emerald label. Outline keeps the success ink on the
              * card surface (the reject sibling's recipe). R128
              * (A1-F1): the ink/border/hover triple moves to the
-             * theme-aware --status-* tokens. */
+             * theme-aware --status-* tokens.
+             * R158 (admin polish): h-9 → min-h-11 — the 44px
+             * money-action floor (the dialogs' min-h-11 recipe). */
             variant="outline"
-            className="h-9 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
+            className="min-h-11 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
             onClick={() => setBulkAction("approve")}
           >
             <CheckCircle className="w-3.5 h-3.5" />
@@ -108,11 +110,13 @@ export function TopupsToolbar({
                surfaces on hover only, and the severity itself lives in
                BulkConfirmModal's destructive confirm step (the cart's
                إفراغ السلة recipe). The approve sibling keeps its
-               success ink — money-creating, not destructive. */
-            className="h-9 border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10 text-xs"
+               success ink — money-creating, not destructive.
+               R158 (admin polish): h-9 → min-h-11 — the 44px
+               money-action floor. */
+            className="min-h-11 border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10 text-xs"
             onClick={() => setBulkAction("reject")}
           >
-            <XCircle className="w-3.5 h-3.5 ml-1.5" />
+            <XCircle className="w-3.5 h-3.5 me-1.5" />
             رفض ({selectedPendingCount})
           </Button>
         </>
@@ -148,7 +152,9 @@ export function TopupsToolbar({
         <Button
           size="sm"
           variant="outline"
-          className="h-9 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
+          /* R158 (admin polish): h-9 → min-h-11 — the 44px
+             money-action floor. */
+          className="min-h-11 gap-1.5 text-status-success border-status-success/25 hover:bg-status-success/10 text-xs"
           onClick={() => setBulkAction("approveAll")}
           disabled={isApproveAllBusy}
         >

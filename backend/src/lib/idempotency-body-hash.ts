@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+// R158 (B-F3): the reuse code is single-sourced through the shared
+// typed ErrorCode registry (shared/error-codes) — the same member the
+// route/middleware envelopes compare against.
+import { ErrorCode } from "./errors";
 
 /**
  * Canonical request-body hash — the ONE definition of "the same request"
@@ -77,4 +81,27 @@ export function canonicalBodyHash(body: unknown): string {
  */
 export const IDEMPOTENCY_KEY_REUSE_MESSAGE =
   "تمت إعادة استخدام معرف العملية مع طلب مختلف. استخدم معرفًا جديدًا للعمليات الجديدة.";
-export const IDEMPOTENCY_KEY_REUSE_CODE = "IDEMPOTENCY_KEY_REUSE";
+/**
+ * R158 (B-F3): derived from the typed ErrorCode member instead of a
+ * duplicated string literal. The export itself is KEPT — the durable
+ * claim writers (services/checkout.service.ts, routes/admin/users.ts)
+ * still import it as their failure-envelope code.
+ */
+export const IDEMPOTENCY_KEY_REUSE_CODE = ErrorCode.IDEMPOTENCY_KEY_REUSE;
+
+/**
+ * R158 (B5): the durable-reuse 409 envelope as ONE factory — the shape
+ * was copy-pasted at five call sites (routes/wallet.ts ×2, orders.ts,
+ * loyalty.ts, admin/users.ts + the middleware's own), so a future
+ * envelope edit would have to land five times to keep "clients see ONE
+ * shape" true. Byte-identical to the previous literals; call sites keep
+ * their `res.status(409).json(idempotencyReuseBody())`.
+ */
+export function idempotencyReuseBody() {
+  return {
+    success: false as const,
+    error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+    message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
+    code: IDEMPOTENCY_KEY_REUSE_CODE,
+  };
+}

@@ -1,4 +1,5 @@
 import { Bot, CheckCircle, Loader2, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { TelegramTestResult } from "./settings-page-meta";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/settings.tsx —
@@ -32,18 +33,20 @@ export function TelegramDiagnosticPing({
             يُرسل رسالة فعلية للمحادثة المُعدّة للتحقق من قابلية وصول البوت.
           </p>
         </div>
-        <button
-          onClick={onRunTest}
-          disabled={tgTesting}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold text-xs transition-all press-spring"
-        >
+        {/* R158 (admin polish): the raw hand-rolled flat-fill primary
+            button with raw white ink (the settings-page lane dodged the
+            R139/R157 canonical-CTA sweeps) retires for the canonical
+            Button (sm) — buttonVariants owns the fill, ink, focus ring
+            and press behavior; icon + label + disabled contract
+            byte-identical. */}
+        <Button size="sm" onClick={onRunTest} disabled={tgTesting}>
           {tgTesting ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
           ) : (
             <Bot className="w-3.5 h-3.5" />
           )}
           {tgTesting ? "جارٍ الإرسال…" : "اختبار اتصال البوت"}
-        </button>
+        </Button>
       </div>
 
       {tgTestResult && (

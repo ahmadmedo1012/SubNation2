@@ -12,6 +12,12 @@
  *      clear after a successful send (the inline ref callback re-fires
  *      on every commit), not just user keystrokes.
  *
+ * R158-IMPL-D (ledger a): extended with the closed-ticket inline CTA —
+ * the thread's closed notice now carries a real «تذكرة جديدة» Button
+ * wired through the page-owned onNewTicket callback (the R157-IMPL-B
+ * #10 follow-up: the text-only hint was a dead end, and the wouter
+ * same-route /support Link was refused as provably dead).
+ *
  * jsdom has no layout, so scrollHeight is stubbed with a value-aware
  * getter for the resize assertions.
  */
@@ -47,6 +53,7 @@ function mount(replyText: string, onReply: (e: React.FormEvent) => void) {
       sending={false}
       onReply={onReply}
       messagesEndRef={{ current: null } as RefObject<HTMLDivElement | null>}
+      onNewTicket={vi.fn()}
     />,
   );
   const composer = () => screen.getByLabelText("نص الرد على التذكرة") as HTMLTextAreaElement;
@@ -103,11 +110,44 @@ describe("R157 #9 — the reply composer is a multi-line, auto-growing textarea"
           sending={false}
           onReply={onReply}
           messagesEndRef={{ current: null } as RefObject<HTMLDivElement | null>}
+          onNewTicket={vi.fn()}
         />,
       );
       expect(composer().style.height).toBe("44px");
     } finally {
       if (desc) Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", desc);
     }
+  });
+});
+
+describe("R158-D ledger a — the closed notice carries a wired «تذكرة جديدة» CTA", () => {
+  it("a closed ticket renders the notice CTA and it fires the page-owned onNewTicket callback", () => {
+    const CLOSED_TICKET = {
+      ...OPEN_TICKET,
+      id: 2,
+      status: "closed",
+      replies: [],
+    };
+    const onNewTicket = vi.fn();
+    render(
+      <TicketThread
+        selectedTicket={CLOSED_TICKET as never}
+        ticketLoading={false}
+        replyText=""
+        onReplyTextChange={vi.fn()}
+        sending={false}
+        onReply={vi.fn()}
+        messagesEndRef={{ current: null } as RefObject<HTMLDivElement | null>}
+        onNewTicket={onNewTicket}
+      />,
+    );
+
+    // The closed notice (not the reply composer) is on screen…
+    expect(screen.getByText(/التذكرة مغلقة/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("نص الرد على التذكرة")).not.toBeInTheDocument();
+    // …and inside it sits the CTA, which fires the callback once tapped.
+    const cta = screen.getByRole("button", { name: "تذكرة جديدة" });
+    fireEvent.click(cta);
+    expect(onNewTicket).toHaveBeenCalledTimes(1);
   });
 });

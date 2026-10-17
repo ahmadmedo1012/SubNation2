@@ -27,7 +27,7 @@ export function EmptyState({ flags, onPick }: { flags: PhaseFlags; onPick: (s: s
         </div>
       </div>
       <div className="space-y-2">
-        <div className="text-2xs text-muted-foreground font-bold pr-1">أمثلة سريعة</div>
+        <div className="text-2xs text-muted-foreground font-bold ps-1">أمثلة سريعة</div>
         {ASK_SUGGESTIONS.map((s) => (
           <SuggestionRow key={s} text={s} onPick={onPick} />
         ))}

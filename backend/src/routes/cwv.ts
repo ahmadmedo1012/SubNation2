@@ -287,4 +287,5 @@ router.post("/cwv", cwvBodyParser, (req, res) => {
   res.status(204).end();
 });
 
-export default router;
+// R158 (B#9): joined the layer's majority export convention.
+export { router as cwvRouter };

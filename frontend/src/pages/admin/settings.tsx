@@ -479,7 +479,7 @@ export default function AdminSettingsPage() {
                       <Shield className="w-4 h-4 text-muted-foreground shrink-0" />
                       <span className="font-semibold text-sm">{item.label}</span>
                     </div>
-                    <span className="text-xs font-mono text-muted-foreground text-left">
+                    <span className="text-xs font-mono text-muted-foreground text-end">
                       {item.value}
                     </span>
                   </div>

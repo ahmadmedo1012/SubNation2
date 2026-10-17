@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import express from "express";
 import { cwvSamplesTotal } from "../../lib/metrics";
-import cwvRouter, { normalizeCwvRouteLabel } from "../cwv";
+// R158 (B#9): cwv.ts joined the named-export convention.
+import { cwvRouter, normalizeCwvRouteLabel } from "../cwv";
 
 /**
  * SEC-92-05 (round-92 B1 security audit) — CWV beacon route-label

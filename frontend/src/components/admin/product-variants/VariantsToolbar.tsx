@@ -38,9 +38,13 @@ export function VariantsToolbar({
         size="sm"
         onClick={startAdd}
         disabled={busy}
-        className="h-8 text-xs bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
+        /* R158 (admin polish): the flat bg-primary/hover-darken/
+           active:scale overrides retire — buttonVariants owns the
+           canonical fill (gradient + shadow + press-spring); the
+           h-8 text-xs sizing is kept (the toolbar's compact rhythm). */
+        className="h-8 text-xs"
       >
-        <Plus className="w-3.5 h-3.5 ml-1" /> إضافة باقة
+        <Plus className="w-3.5 h-3.5 me-1" /> إضافة باقة
       </Button>
     </div>
   );

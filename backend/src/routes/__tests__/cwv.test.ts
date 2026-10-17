@@ -1,6 +1,7 @@
 import express from "express";
 import { describe, expect, it } from "vitest";
-import cwvRouter from "../cwv";
+// R158 (B#9): cwv.ts joined the named-export convention.
+import { cwvRouter } from "../cwv";
 
 /**
  * Regression coverage for the `POST /api/cwv` ingestion path.

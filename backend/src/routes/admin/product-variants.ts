@@ -4,8 +4,8 @@ import { bumpCatalogCache } from "../../lib/catalog-cache";
 import { Router } from "express";
 import { computeRetailLYD, getPricingConfig, round2 } from "../../lib/pricing-config";
 import { intParam } from "../../lib/http";
-import { logger } from "../../lib/logger";
 import { writeAuditLog } from "../../lib/audit";
+import { notifyAdminStats } from "../../lib/socket";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 
@@ -172,21 +172,13 @@ router.post("/products/:id/variants", async (req, res) => {
     return res
       .status(400)
       .json(
-        createErrorResponse(
-          "مدة الصلاحية غير صالحة (0 - 100,000 يوم)",
-          ErrorCode.INVALID_DATA,
-        ),
+        createErrorResponse("مدة الصلاحية غير صالحة (0 - 100,000 يوم)", ErrorCode.INVALID_DATA),
       );
   }
   if (typeof body.sort_order === "number" && body.sort_order > SORT_ORDER_MAX) {
     return res
       .status(400)
-      .json(
-        createErrorResponse(
-          "ترتيب العرض غير صالح (0 - 10,000)",
-          ErrorCode.INVALID_DATA,
-        ),
-      );
+      .json(createErrorResponse("ترتيب العرض غير صالح (0 - 10,000)", ErrorCode.INVALID_DATA));
   }
 
   // The pricing engine is the single source of truth: price always derives
@@ -252,16 +244,12 @@ router.post("/products/:id/variants", async (req, res) => {
   // R126-L4 (A4-B2): the products-family admin-stats-update emit — variant
   // mutations refresh the parent product's display price (and can flip its
   // active set), moving catalog stats (lowest_price / available_products).
-  // Same fire-and-forget idiom as orders.ts:702-705.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", {
-        type: "product-variant-create",
-        product_id: id,
-        variant_id: created.id,
-      });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  // Same fire-and-forget idiom as orders.ts. R158: carried by the shared
+  // notifyAdminStats helper (lib/socket.ts).
+  notifyAdminStats("product-variant-create", {
+    product_id: id,
+    variant_id: created.id,
+  });
 
   bumpCatalogCache();
   return res.status(201).json(await formatVariant(created));
@@ -348,10 +336,7 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
       return res
         .status(400)
         .json(
-          createErrorResponse(
-            "مدة الصلاحية غير صالحة (0 - 100,000 يوم)",
-            ErrorCode.INVALID_DATA,
-          ),
+          createErrorResponse("مدة الصلاحية غير صالحة (0 - 100,000 يوم)", ErrorCode.INVALID_DATA),
         );
     }
     updates.durationDays =
@@ -368,12 +353,7 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
     if (body.sort_order > SORT_ORDER_MAX) {
       return res
         .status(400)
-        .json(
-          createErrorResponse(
-            "ترتيب العرض غير صالح (0 - 10,000)",
-            ErrorCode.INVALID_DATA,
-          ),
-        );
+        .json(createErrorResponse("ترتيب العرض غير صالح (0 - 10,000)", ErrorCode.INVALID_DATA));
     }
     updates.sortOrder = Math.round(body.sort_order);
   }
@@ -396,15 +376,10 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
 
   // R126-L4 (A4-B2): same emit class as create — price/is_active edits
   // move catalog stats via refreshProductDisplayPrice.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", {
-        type: "product-variant-update",
-        product_id: id,
-        variant_id: variantId,
-      });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  notifyAdminStats("product-variant-update", {
+    product_id: id,
+    variant_id: variantId,
+  });
 
   bumpCatalogCache();
   return res.json(await formatVariant(updated));
@@ -452,15 +427,10 @@ router.delete("/products/:id/variants/:variantId", async (req, res) => {
 
   // R126-L4 (A4-B2): same emit class as create/update — the delete also
   // reruns refreshProductDisplayPrice.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", {
-        type: "product-variant-delete",
-        product_id: id,
-        variant_id: variantId,
-      });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  notifyAdminStats("product-variant-delete", {
+    product_id: id,
+    variant_id: variantId,
+  });
 
   bumpCatalogCache();
   return res.json({ success: true, message: "تم حذف الباقة" });

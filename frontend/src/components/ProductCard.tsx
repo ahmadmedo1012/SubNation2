@@ -714,7 +714,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
       )}
 
       {product.is_available && (
-        <div className="hidden md:block absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 group-focus-within:translate-y-0 transition-transform duration-220 ease-out">
+        <div className="hidden md:block absolute inset-x-0 bottom-0 translate-y-full group-hover:translate-y-0 group-focus-within:translate-y-0 transition-transform duration-200 ease-out">
           <Button
             type="button"
             onClick={handleAddToCart}

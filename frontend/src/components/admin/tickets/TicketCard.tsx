@@ -43,7 +43,7 @@ export function TicketCard({
          decision this round; no row elevation in the queue. The
          staggered float-in, the open-status pulse dot and the
          awaiting-reply cue are sanctioned motion, byte-identical. */
-      className={`float-in stagger-${Math.min(idx + 1, 8)} w-full bg-card border rounded-2xl p-4 text-right transition-all duration-150 group ${isActive ? "border-primary/40 bg-primary/8" : "border-border/60 hover:border-border"}`}
+      className={`float-in stagger-${Math.min(idx + 1, 8)} w-full bg-card border rounded-2xl p-4 text-start transition-all duration-150 group ${isActive ? "border-primary/40 bg-primary/8" : "border-border/60 hover:border-border"}`}
     >
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">

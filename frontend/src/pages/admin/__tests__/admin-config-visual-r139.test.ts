@@ -151,11 +151,32 @@ describe("R139 — settings: calm pill + canonical forms + calm error frames", (
     // storefront OTP field.
     expect(twofa).toContain("tracking-[0.2em]");
     expect(twofa).not.toContain("tracking-widest");
-    expect(twofa).toContain("border border-muted-foreground/75 rounded-xl px-4 text-center");
-    expect(twofa).toContain("focus:border-primary/50 focus:ring-2 focus:ring-ring");
+    // R158: the OTP field joins the SHARED Input (the admin login
+    // OTP twin's register) — the bare <input> + its hand-rolled
+    // border/focus classes retire; the appended geometry keeps the
+    // centered/mono/tracked OTP shape and the max-w pairing with the
+    // verify CTA beside it.
+    expect(twofa).not.toMatch(/<input\s/);
+    expect(twofa).toContain(
+      'className="max-w-[200px] h-11 text-center text-lg tracking-[0.2em] font-mono"',
+    );
+    expect(twofa).not.toContain("focus:ring-1");
     expect(twofa).not.toContain("ring-primary/20");
-    // The rotate password field rides the shared Input.
-    expect(twofa.match(/<Input/g)?.length).toBe(1);
+    expect(twofa).not.toContain("outline-none");
+    // The rotate password field + the OTP field both ride the shared
+    // Input now (was 1).
+    expect(twofa.match(/<Input/g)?.length).toBe(2);
+    // The two quiet rotate CTAs (متابعة + إعادة الإعداد) join the
+    // canonical Button family too — outline/sm (the fresh-enrollment
+    // CTA's R126-L5 primary-tint register is untouched by design).
+    // Whitespace-free matching: prettier wraps the multi-attribute
+    // JSX onto separate lines (the R141 idiom).
+    const flat = twofa.replace(/\s+/g, " ");
+    expect(flat).toContain('<Button type="submit" variant="outline" size="sm"');
+    expect(flat).toContain(
+      '<Button variant="outline" size="sm" onClick={() => setShowRotate(true)}>',
+    );
+    expect(twofa).not.toContain("bg-muted/40");
     // The verify CTA keeps its h-11 pairing with the OTP field while
     // riding buttonVariants.
     expect(twofa).toContain('className="h-11 px-6"');

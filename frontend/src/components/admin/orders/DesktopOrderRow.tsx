@@ -159,16 +159,28 @@ export const DesktopOrderRow = React.memo(function DesktopOrderRow({
                   fetch (the list no longer decrypts) — masking + copy UX
                   unchanged (96-F7). */}
               {order.has_credentials && !creds && !credsFailed && (
-                <span className="text-muted-foreground">جارٍ تحميل بيانات التسليم…</span>
+                /* R158 (admin polish): role="status" — the async
+                   credentials load was silent to AT (the admin-list
+                   live-regions contract the sibling list surfaces
+                   ride). */
+                <span role="status" className="text-muted-foreground">
+                  جارٍ تحميل بيانات التسليم…
+                </span>
               )}
               {order.has_credentials && credsFailed && (
-                <span className="text-destructive">تعذّر تحميل بيانات التسليم</span>
+                /* R158 (admin polish): role="alert" + the one-red
+                   channel — text-destructive → text-status-error (the
+                   §6 status-source decision; the shadcn destructive
+                   channel stays on hover-ink fills + confirm buttons). */
+                <span role="alert" className="text-status-error">
+                  تعذّر تحميل بيانات التسليم
+                </span>
               )}
               {/* R117 (A1-P6): raw columns populated but every decrypt
                   null — the operator needs the ENCRYPTION_KEY signal,
                   not a misleading "no data". */}
               {order.has_credentials && creds?.decrypt_failed && (
-                <span role="alert" className="text-destructive font-bold">
+                <span role="alert" className="text-status-error font-bold">
                   تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير الأصلي
                 </span>
               )}
@@ -191,7 +203,7 @@ export const DesktopOrderRow = React.memo(function DesktopOrderRow({
                     {order.coupon_code}
                   </span>
                   {(order.discount_amount ?? 0) > 0 && (
-                    <span className="text-muted-foreground mr-1">
+                    <span className="text-muted-foreground ms-1">
                       (خصم {formatCurrency(order.discount_amount ?? 0)})
                     </span>
                   )}

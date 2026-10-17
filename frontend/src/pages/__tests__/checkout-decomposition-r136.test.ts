@@ -25,9 +25,19 @@
  *      and its Idempotency-Key lifecycle (load/persist/clearCheckoutUnitKey)
  *      stay IN the page: a stale closure in a presentational extract
  *      could charge the wrong intent;
- *   4. state ownership — all 11 cross-section atoms stay centralized in
+ *   4. state ownership — the cross-section atoms stay centralized in
  *      the page (canSubmit spans five of them); the extracts take values
  *      + callbacks only.
+ *
+ * R158 (hooks lane): the 98-F2 requote trio — pricingRecheckInFlight /
+ * pricesUpdatedNotice / droppedLineNotices (+ quotedProductIdsRef and
+ * the settle/requote loop) — moved CONSCIOUSLY out of the page into
+ * @/hooks/useCheckoutRequote (the page was 974 lines, 26 under this
+ * ceiling; the requote cluster was the audit's extraction candidate).
+ * The pin follows the ownership: the atoms are now pinned at the
+ * HOOK's address, and a new delegation pin asserts the page consumes
+ * useCheckoutRequote — the same follow-the-surface move the r137
+ * closing round made for the product extracts.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -43,11 +53,15 @@ describe("R136 (FE-2) — checkout.tsx decomposition: page stays an orchestratio
   });
 
   it("the page imports every extract (deletion guard — a dropped import is a vanished section)", () => {
+    // R158 (hooks lane): live-requote left the PAGE's import list — its
+    // only consumer is now @/hooks/useCheckoutRequote (the requote
+    // machine's quoteLineFromProduct); its deletion guard moved to the
+    // delegation test below, mirroring how wallet's nested-atom pins
+    // read the CONSUMER's import instead of the page's.
     const extracts = [
       "@/components/checkout/checkout-errors",
       "@/components/checkout/checkout-unit-key",
       "@/components/checkout/coupon-quote",
-      "@/components/checkout/live-requote",
       "@/components/checkout/PaymentMethodCard",
       "@/components/checkout/CouponCard",
       "@/components/checkout/OrderErrorBanner",
@@ -84,19 +98,59 @@ describe("R136 (FE-2) — checkout.tsx decomposition: page stays an orchestratio
     expect(unitKeyModule).toContain("export function clearCheckoutUnitKey(");
   });
 
+  it("the page delegates its requote state machine to @/hooks/useCheckoutRequote (R158 hooks lane)", () => {
+    // R158: the 98-F2 live-requote machine (the three requote atoms +
+    // quotedProductIdsRef + the settle/requote loop) is HOOK-owned now —
+    // the page consumes it like any other hook and stays the
+    // orchestration core (deletion guard mirrors the extracts list:
+    // a dropped import = the requote gate silently vanished from
+    // canSubmit and the CTA would unlock on stale snapshot totals).
+    expect(page).toContain('from "@/hooks/useCheckoutRequote";');
+    expect(page).toContain(
+      "const { pricingRecheckInFlight, pricesUpdatedNotice, droppedLineNotices } = useCheckoutRequote({",
+    );
+
+    // The hook owns the state machine the page used to declare inline.
+    const requote = read("src/hooks/useCheckoutRequote.ts");
+    for (const atom of [
+      "const [pricingRecheckInFlight, setPricingRecheckInFlight] = useState(",
+      "const [pricesUpdatedNotice, setPricesUpdatedNotice] = useState<string | null>(",
+      "const [droppedLineNotices, setDroppedLineNotices] = useState<string[]>(",
+    ]) {
+      expect(requote, atom).toContain(atom);
+    }
+    expect(requote).toContain("const quotedProductIdsRef = useRef<Set<number>>(new Set());");
+    // The settle/requote loop itself — the once-per-visit quote set, the
+    // allSettled fan-out and the G-3 same-intent drop guard. The pure
+    // quoteLineFromProduct extract the loop rides is imported at the
+    // HOOK's address now (its deletion guard moved here from the page
+    // list above).
+    expect(requote).toContain('from "@/components/checkout/live-requote";');
+    expect(requote).toContain("quotedProductIdsRef.current.has(id)");
+    expect(requote).toContain("Promise.allSettled(pending.map((id) => getProduct(id)))");
+    expect(requote).toContain(
+      "const removeIfStillSameIntent = (line: LocalCartItem): boolean => {",
+    );
+    // And the hook is a state machine, not a render unit — it returns
+    // values only (no JSX island may grow in it).
+    expect(requote).not.toMatch(/return\s*\(\s*</);
+  });
+
   it("the cross-section state atoms stay centralized in the page (values + callbacks flow down)", () => {
     // One source: the balance chip, the coupon math, the summary totals
     // and the canSubmit gate all key off the same atoms — canSubmit
     // spans five of them (token/isEmpty/submitting/insufficient/
     // pricingRecheckInFlight/items).
+    //
+    // R158 (hooks lane): the three requote atoms moved to
+    // @/hooks/useCheckoutRequote (pinned at the hook's address in the
+    // delegation test above) — the page consumes them through the
+    // hook's return value; every other atom stays declared here.
     for (const atom of [
       "const [coupon, setCoupon] = useState(",
       "const [appliedCoupon, setAppliedCoupon] = useState<",
       "const [couponChecking, setCouponChecking] = useState(",
       "const [couponNotice, setCouponNotice] = useState<string | null>(",
-      "const [pricingRecheckInFlight, setPricingRecheckInFlight] = useState(",
-      "const [pricesUpdatedNotice, setPricesUpdatedNotice] = useState<string | null>(",
-      "const [droppedLineNotices, setDroppedLineNotices] = useState<string[]>(",
       "const [submitting, setSubmitting] = useState(",
       "const [orderError, setOrderError] = useState<string | null>(",
       "const [partialCount, setPartialCount] = useState(",
@@ -106,7 +160,8 @@ describe("R136 (FE-2) — checkout.tsx decomposition: page stays an orchestratio
     }
     // The refs and the five-cluster gate stay with them.
     expect(page).toContain("const couponGenerationRef = useRef(0);");
-    expect(page).toContain("const quotedProductIdsRef = useRef<Set<number>>(new Set());");
+    // R158 (hooks lane): quotedProductIdsRef moved with the requote
+    // machine into @/hooks/useCheckoutRequote (pinned there above).
     expect(page).toContain("const abandonedRef = useRef(false);");
     expect(page).toContain("const canSubmit = useMemo(() => {");
     // And the page is typed — no `any` state sneaks back in (the coupon
@@ -121,7 +176,7 @@ describe("R136 (FE-2) — checkout.tsx decomposition: page stays an orchestratio
     // shapes at their new address so the union pins stay meaningful.
     const aside = read("src/components/checkout/CartSummaryAside.tsx");
     expect(aside).toContain("<Button asChild");
-    expect(aside).toContain('تصفح المنتجات');
+    expect(aside).toContain("تصفح المنتجات");
     expect(aside).toMatch(/<div[^>]*dir="auto"[^>]*>\s*\{it\.name\}/);
   });
 });

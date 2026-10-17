@@ -85,37 +85,37 @@ export function OrdersTable({
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 رقم الطلب
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 المستخدم
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 المنتج
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 المبلغ
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 الحالة
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 التاريخ
               </th>

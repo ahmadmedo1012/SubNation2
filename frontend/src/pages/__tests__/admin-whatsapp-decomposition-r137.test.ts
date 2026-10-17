@@ -27,11 +27,12 @@
  *   3. mutation-path ownership — loadSessions (the hasLoadedRef
  *      first-load/refresh split), createSession, startSession,
  *      requestPairCode, loadQr, deleteSession (the confirm-gated
- *      DELETE with its pair-surface cleanup) and copyPairCode stay IN
- *      the page: a stale closure in a presentational extract could
- *      delete the wrong session or copy a code the operator believes
- *      expired;
- *   4. state ownership — all 13 atoms (the pair-code quartet
+ *      DELETE with its pair-surface cleanup) stay IN the page: a
+ *      stale closure in a presentational extract could delete the
+ *      wrong session (R158: the pair-code copy LEFT the page — it
+ *      rides the shared CopyButton the sessions-list renders, so a
+ *      stale copy closure is no longer possible at all);
+ *   4. state ownership — the 12 atoms (the pair-code staleness trio
  *      included) stay centralized in the page; the extracts take
  *      values + callbacks only;
  *   5. purity — the metadata module is React-free, and no extract
@@ -90,11 +91,14 @@ describe("R137 (FE) — admin/whatsapp.tsx decomposition: page stays an orchestr
     expect(page).toContain('title: "حذف الجلسة؟",');
     expect(page).toContain("if (pairTarget === session.id) {");
     expect(page).toContain("<ConfirmDialog />");
-    // B6 + B5-30: the pair-code copy routes through the shared helper
-    // with the check-icon swap — the feedback atom stays page-side.
-    expect(page).toContain("const copyPairCode = async (code: string) => {");
-    expect(page).toContain("const ok = await copyToClipboard(code);");
-    expect(page).toContain("setTimeout(() => setPairCopied(false), 1800);");
+    // R158 (admin polish): the page-owned copyPairCode re-implementation
+    // (pairCopied atom + shared helper + an UNTRACKED 1800ms reset
+    // timer) is GONE — the pair-code copy rides the shared CopyButton
+    // the sessions-list extract renders (pinned below); the page keeps
+    // zero copy machinery.
+    expect(page).not.toContain("copyPairCode");
+    expect(page).not.toContain("pairCopied");
+    expect(page).not.toContain("copyToClipboard");
     // R125-I5 (A3-12): the staleness timer + the one-place reset.
     expect(page).toContain("PAIR_CODE_STALE_AFTER_MS - (Date.now() - pairCodeIssuedAt)");
     expect(page).toContain("const clearPairCode = useCallback(() => {");
@@ -116,7 +120,7 @@ describe("R137 (FE) — admin/whatsapp.tsx decomposition: page stays an orchestr
       'const [phone, setPhone] = useState("");',
       "const [pairTarget, setPairTarget] = useState<string | null>(null);",
       "const [pairCode, setPairCode] = useState<string | null>(null);",
-      "const [pairCopied, setPairCopied] = useState(false);",
+      // R158: the pairCopied atom retired with the shared CopyButton.
       "const [pairCodeIssuedAt, setPairCodeIssuedAt] = useState<number | null>(null);",
       "const [pairCodeStale, setPairCodeStale] = useState(false);",
       "const [qrImage, setQrImage] = useState<string | null>(null);",
@@ -193,8 +197,14 @@ describe("R137 (FE) — the moved markup rides along verbatim (spot-pins at the 
     expect(list).toContain("onSubmit={onRequestPairCode}");
     expect(list).toContain('aria-label="رقم واتساب بصيغة دولية"');
     expect(list).toContain("إصدار رمز الاقتران");
-    expect(list).toContain("onClick={() => void onCopyPairCode(pairCode)}");
-    expect(list).toContain('{pairCopied ? "تم النسخ" : "نسخ"}');
+    // R158 (admin polish): the copy affordance rides the shared
+    // CopyButton (md) — the extract's Button+pairCopied hand-roll is
+    // gone; the md size keeps the exact «نسخ/تم النسخ/تعذّر النسخ»
+    // label contract the render suite pins.
+    expect(list).toContain('<CopyButton text={pairCode} size="md" />');
+    expect(list).toContain('import { CopyButton } from "@/components/CopyButton";');
+    expect(list).not.toContain("onCopyPairCode");
+    expect(list).not.toContain("pairCopied");
     expect(list).toContain('pairCodeStale ? "opacity-50" : ""');
     expect(list).toContain("انتهت صلاحية الرمز على الأرجح — أعد إصدار رمز جديد");
     expect(list).toContain("onClick={() => onOpenPairForm(session.id)}");
@@ -220,7 +230,7 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
       const src = read(`src/components/admin/whatsapp/${name}.tsx`);
       expect(src, name).not.toMatch(/useState\(|useRef\(|useEffect\(|useMemo\(/);
       expect(src, name).not.toMatch(
-        /const \[(sessions|name|phone|pairTarget|pairCode|pairCopied|pairCodeIssuedAt|pairCodeStale|qrImage|loading|refreshing|busy|error), set/,
+        /const \[(sessions|name|phone|pairTarget|pairCode|pairCodeIssuedAt|pairCodeStale|qrImage|loading|refreshing|busy|error), set/,
       );
     }
   });
@@ -241,7 +251,7 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
       expect(src, name).not.toMatch(/@\/lib\/admin-session/);
       expect(src, name).not.toMatch(/adminFetchJson|adminFetch\b/);
       expect(src, name).not.toMatch(
-        /loadSessions|createSession|startSession|requestPairCode|loadQr|deleteSession|copyPairCode/,
+        /loadSessions|createSession|startSession|requestPairCode|loadQr|deleteSession/,
       );
     }
   });

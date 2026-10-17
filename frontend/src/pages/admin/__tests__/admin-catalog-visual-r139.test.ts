@@ -59,7 +59,9 @@ describe("R139 (139-f) — the calm pill dialect on the catalog filters", () => 
     // R139: shadow-md shadow-primary/20 dropped — brand-tinted shadows
     // read as glow on .light (the r138 retirement).
     expect(header).not.toContain("shadow-primary");
-    expect(header).toContain("bg-primary hover:bg-primary/90 h-9");
+    // R158 (A6 tail) re-pin: the flat-fill override retired —
+    // buttonVariants owns the fill; sizing-only override remains.
+    expect(header).toContain('className="h-9"');
   });
 });
 

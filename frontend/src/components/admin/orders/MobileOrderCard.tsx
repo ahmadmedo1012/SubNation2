@@ -60,7 +60,7 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
             {displayUserName(userFromRow(order))}
           </div>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-start shrink-0">
           {/* R125-I2 (A6-B6): money cell — --primary-text (see the desktop
            * row's money-cell note). */}
           <div className="font-bold text-primary-text tabular-nums">
@@ -98,7 +98,7 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
            meta rule + the three expansion separators below) soften
            /30→/20 — the r138 receipt hairline value at section
            seams. */
-        className="w-full flex items-center gap-2 text-2xs text-muted-foreground border-t border-border/20 pt-2 mt-2 text-right hover:text-foreground transition-colors"
+        className="w-full flex items-center gap-2 text-2xs text-muted-foreground border-t border-border/20 pt-2 mt-2 text-start hover:text-foreground transition-colors"
       >
         <span className="font-mono">{order.order_code}</span>
         {order.created_at && (
@@ -114,7 +114,13 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
       {expanded &&
         order.has_credentials &&
         (credsFailed ? (
-          <div className="mt-2 pt-2 border-t border-border/20 text-xs text-destructive">
+          /* R158 (admin polish): role="alert" + the one-red channel —
+             text-destructive → text-status-error (the desktop row's
+             twin fix). */
+          <div
+            role="alert"
+            className="mt-2 pt-2 border-t border-border/20 text-xs text-status-error"
+          >
             تعذّر تحميل بيانات التسليم
           </div>
         ) : creds ? (
@@ -129,7 +135,7 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
               /* R117 (A1-P6): mobile card parity — the decrypt-failure
                  signal must reach the phone too, not just the desktop
                  row. */
-              <span role="alert" className="text-xs text-destructive font-bold">
+              <span role="alert" className="text-xs text-status-error font-bold">
                 تعذّر فك التشفير — راجع مطابقة ENCRYPTION_KEY مع مفتاح التشفير الأصلي
               </span>
             )}
@@ -138,7 +144,12 @@ export const MobileOrderCard = React.memo(function MobileOrderCard({
             )}
           </div>
         ) : (
-          <div className="mt-2 pt-2 border-t border-border/20 text-xs text-muted-foreground">
+          /* R158 (admin polish): role="status" — the async credentials
+             load was silent to AT (the desktop row's twin fix). */
+          <div
+            role="status"
+            className="mt-2 pt-2 border-t border-border/20 text-xs text-muted-foreground"
+          >
             جارٍ تحميل بيانات التسليم…
           </div>
         ))}

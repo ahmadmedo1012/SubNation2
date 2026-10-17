@@ -66,7 +66,7 @@ export function ProductsToolbar({
           aria-label="البحث في المنتجات"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="pr-9 h-9 w-52 text-sm"
+          className="ps-9 h-9 w-52 text-sm"
         />
         {search && (
           <button
@@ -121,7 +121,7 @@ export function ProductsToolbar({
           (PRODUCT_COUNT_FORMS — the same plural engine the
           ProductsHeader counter above uses) instead of the frozen
           «N منتج»: 2 → «منتجان», 3 → «منتجات». */}
-      <span className="text-xs text-muted-foreground mr-auto">
+      <span className="text-xs text-muted-foreground ms-auto">
         {formatCount(filteredCount, PRODUCT_COUNT_FORMS)}
       </span>
     </div>

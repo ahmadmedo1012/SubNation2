@@ -232,19 +232,23 @@ export function VariantFormPanel({
             variant="outline"
             onClick={resetForm}
             disabled={busy}
-            className="h-9 active:scale-[0.97] transition-transform"
+            className="h-9"
           >
             إلغاء
           </Button>
           <Button
             type="submit"
             disabled={busy}
-            className="h-9 bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
+            /* R158 (admin polish): the flat bg-primary/hover-darken/
+             * active:scale overrides retire — buttonVariants owns the
+             * canonical fill (gradient + shadow + press-spring); the
+             * h-9 sizing is kept (the panel's compact footer rhythm). */
+            className="h-9"
           >
             {busy ? (
-              <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+              <Loader2 className="w-4 h-4 me-1.5 animate-spin" />
             ) : (
-              <Plus className="w-4 h-4 ml-1.5" />
+              <Plus className="w-4 h-4 me-1.5" />
             )}
             {editingId != null ? "حفظ التعديلات" : "إضافة الباقة"}
           </Button>

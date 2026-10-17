@@ -58,7 +58,7 @@ export function CopyField({
             type="button"
             onClick={() => setRevealed((r) => !r)}
             aria-label={revealed ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-180 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary-text hover:border-primary/22"
+            className="mt-2 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-xl text-xs font-bold transition-all duration-150 border press-spring bg-muted/40 text-muted-foreground border-border/35 hover:bg-primary/10 hover:text-primary-text hover:border-primary/22"
           >
             {revealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             {revealed ? "إخفاء" : "إظهار"}

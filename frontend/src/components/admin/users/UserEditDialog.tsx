@@ -98,7 +98,13 @@ export function UserEditDialog({
           <Button
             type="submit"
             form="user-edit-form"
-            className="flex-1 h-10 bg-primary hover:bg-primary/90 active:scale-[0.97]"
+            /* R158 (admin polish): the flat bg-primary/hover-darken/
+             * active:scale overrides retire — buttonVariants owns the
+             * canonical fill (gradient + shadow + press-spring) — and
+             * h-10 → min-h-11 joins the 44px money-action floor the
+             * RejectModal/useConfirm confirms already enforce (the
+             * wallet PATCH is the console's most dangerous trigger). */
+            className="flex-1 min-h-11"
             // (r110 + R115) Contract gate: a wallet OR points edit is
             // submittable only with a valid (≥3 trimmed chars) note —
             // the backend 400s otherwise (round-94 wallet contract,
@@ -110,7 +116,7 @@ export function UserEditDialog({
             // instead of 403ing after the confirm.
             disabled={saving || !canEditMoney || (noteRequired && !noteValid)}
           >
-            <CheckCircle className="w-4 h-4 ml-1.5" />
+            <CheckCircle className="w-4 h-4 me-1.5" />
             {saving ? "جارٍ الحفظ..." : "حفظ"}
           </Button>
         </>

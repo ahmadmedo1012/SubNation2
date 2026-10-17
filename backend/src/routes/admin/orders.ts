@@ -1,6 +1,7 @@
 import { db, notificationsTable, ordersTable, productsTable, usersTable } from "@workspace/db";
 import { z } from "zod";
 import { logger } from "../../lib/logger";
+import { notifyAdminStats } from "../../lib/socket";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
@@ -561,16 +562,14 @@ router.patch(
       // trip instead of ≤200.
       await notifyOrderStatusChangedBatch(refundNotifications, status);
 
-      import("../../lib/socket")
-        .then(({ emitToAdmins }) => {
-          emitToAdmins("admin-stats-update", {
-            type: "order-bulk-update",
-            status,
-            succeeded: successes.length,
-            failed: failures.length,
-          });
-        })
-        .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+      // R125-I6/R136: the admin dashboards' stats families refresh on
+      // event (the shared notifyAdminStats helper carries the exact
+      // fire-and-forget idiom + payload shape this used to inline).
+      notifyAdminStats("order-bulk-update", {
+        status,
+        succeeded: successes.length,
+        failed: failures.length,
+      });
 
       void writeAuditLog(req, "order.bulk_refund", "order", null, {
         ids: numIds,
@@ -696,11 +695,10 @@ router.patch(
         })
         .catch((err) => logger.warn({ err }, "socket notify failed (bulk status)"));
     }
-    import("../../lib/socket")
-      .then(({ emitToAdmins }) => {
-        emitToAdmins("admin-stats-update", { type: "order-bulk-update", status });
-      })
-      .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+    // R125-I6/R136: same emit as the refund branch above — the shared
+    // notifyAdminStats helper (lib/socket.ts) carries the exact
+    // fire-and-forget idiom this file used to inline per block.
+    notifyAdminStats("order-bulk-update", { status });
 
     void writeAuditLog(req, "order.bulk_status_update", "order", null, {
       ids: numIds,

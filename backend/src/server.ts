@@ -6,6 +6,7 @@ import "./instrument";
 
 import { ErrorCode } from "@workspace/error-codes";
 import { pool, lockPool } from "@workspace/db";
+import { readEnvNumber } from "./lib/env";
 import * as Sentry from "@sentry/node";
 import { createServer, type Server } from "http";
 import express from "express";
@@ -47,7 +48,11 @@ const DEFAULT_FALLBACK_ATTEMPTS = 25;
 // Sentry flush + exit(0) — always wins over SIGKILL.
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = Math.max(
   1_000,
-  Number.parseInt(process.env.GRACEFUL_SHUTDOWN_TIMEOUT_MS ?? "", 10) || 25_000,
+  // R158 (B#7): readEnvNumber — a set-but-malformed value now warns at
+  //  boot instead of silently answering the default; strict Number()
+  //  semantics also retire the parseInt partial-parse hazard ("25 000"
+  //  used to become 25ms -> clamped to 1s; it now warns -> 25s default).
+  readEnvNumber("GRACEFUL_SHUTDOWN_TIMEOUT_MS", 25_000, Number.isInteger),
 );
 
 // ── B7-P1-8: early-bind readiness gate ───────────────────────────────────

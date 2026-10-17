@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Shield, FileText, ChevronLeft } from "lucide-react";
 import { Link } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
+import { FilterTabs } from "@/components/ui/filter-tabs";
 
 type Tab = "terms" | "privacy";
 
@@ -277,38 +278,22 @@ export default function TermsPage() {
       </div>
 
       {/* Tab switcher */}
-      {/* R139 (precision): the tab row migrates to the calm active pill
-          — the raised-segment register (bg-card + shadow-sm active,
-          borderless inactive) was the pre-r138 segmented-control idiom
-          every r139 lane retired; the storefront twin is login.tsx's
-          tab pair (bg-muted/30 track + border-border/40 + rounded-2xl,
-          chips rounded-xl, active trio, inactive boxed-transparent).
-          BOTH states carry the border box — the 1px login↔register-
-          style toggle jitter dies. aria-pressed + handleTabClick
-          byte-identical; min-h-11 (R123-E4b P3-f) keeps the 44px floor. */}
-      <div className="flex gap-1 bg-muted/30 border border-border/40 rounded-2xl p-1 mb-8">
-        {TABS.map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            onClick={() => handleTabClick(id)}
-            /* R124-I4 (A5 #2): the active tab was conveyed by bg/bold
-               only — aria-pressed per the tested toggle-pill idiom
-               (home.tsx category chips). */
-            aria-pressed={tab === id}
-            /* R123-E4b (P3-f): min-h-11 — the old px-4 py-2.5 chip measured
-                ≈40px, under the 44px touch floor the app enforces on every
-                other control. */
-            className={`min-h-11 flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all duration-150 ${
-              tab === id
-                ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
-                : "border border-transparent text-muted-foreground font-semibold hover:text-foreground"
-            }`}
-          >
-            <Icon className="w-3.5 h-3.5 shrink-0" />
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* R139 (precision): the tab row migrated to the calm active pill
+          (the raised-segment register retired).
+          R158-IMPL-D (ledger b): the row now rides the shared
+          ui/FilterTabs primitive — the r138 pill dialect the seven
+          tray/chip twins speak (the audit's census), one source instead
+          of a page-local hand-roll. aria-pressed + the hash write-back
+          (handleTabClick) are byte-identical; the primitive carries the
+          44px floor (min-h-11) the R123-E4b P3-f pin set. */}
+      <FilterTabs
+        items={TABS.map(({ id, label, Icon }) => ({ value: id, label, icon: Icon }))}
+        value={tab}
+        onSelect={handleTabClick}
+        variant="tray"
+        ariaLabel="أقسام المعلومات القانونية"
+        className="mb-8"
+      />
 
       {/* Content */}
       {/* R125-I7 (A7 B-13): the prose column is capped at ~65ch (the

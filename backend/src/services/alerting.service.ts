@@ -41,6 +41,7 @@
 import { createHash } from "node:crypto";
 import { getCorrelationId } from "../lib/correlation";
 import { alertingLogger } from "../lib/logger";
+import { readEnvNumber } from "../lib/env";
 import { getRegistry } from "../lib/metrics";
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
 import { captureException } from "./../lib/sentry";
@@ -175,8 +176,9 @@ const RETRY_DELAY_MS = 5_000;
  * non-finite value.
  */
 function alertThresholdEnv(name: string, fallback: number): number {
-  const raw = Number(process.env[name]);
-  return Number.isFinite(raw) ? raw : fallback;
+  // R158 (B#7): the shared reader — same isFinite predicate, plus the
+  // set-but-malformed warn the hand-rolled guard never had.
+  return readEnvNumber(name, fallback);
 }
 
 // ── F1 (round-98, 98-F5): bounded in-memory dedup fallback ───────────────────
@@ -430,8 +432,7 @@ export class AlertingService {
   private evalCounterDelta(counterName: string, threshold: number, rule: AlertRuleSpec): boolean {
     try {
       const counter = getRegistry().getSingleMetric(counterName) as
-        | import("prom-client").Counter<string>
-        | undefined;
+        import("prom-client").Counter<string> | undefined;
       if (!counter) return false;
 
       // Aggregate across all label combinations.
@@ -465,13 +466,11 @@ export class AlertingService {
   ): boolean {
     try {
       const counter = getRegistry().getSingleMetric(counterName) as
-        | import("prom-client").Counter<string>
-        | undefined;
+        import("prom-client").Counter<string> | undefined;
       if (!counter) return false;
 
       const collected = counter.get?.() as
-        | { values?: Array<{ value: number; labels?: Record<string, string> }> }
-        | undefined;
+        { values?: Array<{ value: number; labels?: Record<string, string> }> } | undefined;
       const matchEntry = (entryLabels: Record<string, string> | undefined): boolean => {
         if (!entryLabels) return false;
         for (const [k, v] of Object.entries(labelMatch)) {
@@ -507,13 +506,11 @@ export class AlertingService {
   private evalHttp5xxRate(rule: AlertRuleSpec): boolean {
     try {
       const counter = getRegistry().getSingleMetric("http_requests_total") as
-        | import("prom-client").Counter<string>
-        | undefined;
+        import("prom-client").Counter<string> | undefined;
       if (!counter) return false;
 
       const collected = counter.get?.() as
-        | { values?: Array<{ value: number; labels?: Record<string, string> }> }
-        | undefined;
+        { values?: Array<{ value: number; labels?: Record<string, string> }> } | undefined;
       const entries = collected?.values ?? [];
       const is5xx = (entry: { labels?: Record<string, string> }): boolean =>
         (entry.labels?.status ?? "").startsWith("5");
@@ -563,8 +560,7 @@ export class AlertingService {
   private evalHttpP95Latency(rule: AlertRuleSpec): boolean {
     try {
       const histogram = getRegistry().getSingleMetric("http_request_duration_seconds") as
-        | import("prom-client").Histogram<string>
-        | undefined;
+        import("prom-client").Histogram<string> | undefined;
       if (!histogram?.get) return false;
 
       const collected = histogram.get() as {

@@ -48,7 +48,7 @@ export function NotificationsTabPanel() {
           >
             <Bell className="w-4 h-4 text-muted-foreground shrink-0" />
             <span className="text-sm">{event}</span>
-            <span className="mr-auto text-xs text-muted-foreground">عبر تيليجرام</span>
+            <span className="ms-auto text-xs text-muted-foreground">عبر تيليجرام</span>
           </div>
         ))}
       </div>

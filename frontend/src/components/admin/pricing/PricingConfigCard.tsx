@@ -238,9 +238,9 @@ export function PricingConfigCard({
              byte-identical. */
         >
           {saveConfigPending ? (
-            <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+            <Loader2 className="w-4 h-4 me-1.5 animate-spin" />
           ) : (
-            <Save className="w-4 h-4 ml-1.5" />
+            <Save className="w-4 h-4 me-1.5" />
           )}
           {saveConfigPending ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
         </Button>
@@ -258,9 +258,9 @@ export function PricingConfigCard({
           disabled={dryRunLoading || recomputePending}
         >
           {dryRunLoading ? (
-            <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+            <Loader2 className="w-4 h-4 me-1.5 animate-spin" />
           ) : (
-            <Eye className="w-4 h-4 ml-1.5" />
+            <Eye className="w-4 h-4 me-1.5" />
           )}
           {dryRunLoading ? "جارٍ المعاينة…" : "معاينة التغييرات"}
         </Button>
@@ -278,9 +278,9 @@ export function PricingConfigCard({
           className="border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10"
         >
           {recomputePending ? (
-            <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+            <Loader2 className="w-4 h-4 me-1.5 animate-spin" />
           ) : (
-            <RefreshCw className="w-4 h-4 ml-1.5" />
+            <RefreshCw className="w-4 h-4 me-1.5" />
           )}
           {recomputePending ? "جارٍ الاحتساب…" : "إعادة احتساب أسعار الكتالوج"}
         </Button>

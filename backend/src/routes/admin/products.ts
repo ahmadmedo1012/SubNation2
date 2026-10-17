@@ -10,6 +10,7 @@ import { and, count, desc, eq, inArray, asc, isNotNull, isNull, or, sql } from "
 import { Router } from "express";
 import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
+import { notifyAdminStats } from "../../lib/socket";
 import { computeRetailLYD, getPricingConfig } from "../../lib/pricing-config";
 import { encrypt, safeDecrypt } from "../../lib/encryption";
 import { escapeLikeTerm, intParam } from "../../lib/http";
@@ -256,16 +257,13 @@ router.post("/products", requireAdmin, async (req, res) => {
   // otherwise — the audit round proved the emit never landed), so a
   // catalog write on one tab left every other tab's dashboard stats
   // (and the storefront catalog) stale until their poll intervals.
-  // Same fire-and-forget idiom as orders.ts:702-705 — the frontend's
+  // Same fire-and-forget idiom as orders.ts — the frontend's
   // SocketInitializer handler ignores the payload and prefix-invalidates
   // the admin stats/orders/topups/users families. A create moves the
   // catalog stats (total_products / available_products on /api/products/
-  // stats).
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "product-create", product_id: product.id });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  // stats). R158: the shared notifyAdminStats helper (lib/socket.ts)
+  // carries the exact idiom this used to inline.
+  notifyAdminStats("product-create", { product_id: product.id });
 
   return res.status(201).json({
     id: product.id,
@@ -362,11 +360,7 @@ router.patch("/products/:id", requireAdmin, async (req, res) => {
 
   // R126-L4 (A4-B2): same emit as create — an is_active/price flip moves
   // available_products / lowest_price on the catalog stats surface.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "product-update", product_id: id });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  notifyAdminStats("product-update", { product_id: id });
 
   return res.json({
     id: product.id,
@@ -407,11 +401,7 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
 
   // R126-L4 (A4-B2): archiving deactivates the row — available_products /
   // total_products on the catalog stats surface move with it.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "product-archive", product_id: id });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  notifyAdminStats("product-archive", { product_id: id });
 
   return res.json({ success: true, message: "تم أرشفة المنتج" });
 });
@@ -618,15 +608,10 @@ router.post("/products/:id/inventory/set-count", requireAdmin, async (req, res) 
   // not mere API success). A real deletion moves available_stock /
   // unsold_rows on /api/admin/stats.
   if (surplus > 0) {
-    import("../../lib/socket")
-      .then(({ emitToAdmins }) => {
-        emitToAdmins("admin-stats-update", {
-          type: "product-stock-set-count",
-          product_id: productId,
-          removed: surplus,
-        });
-      })
-      .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+    notifyAdminStats("product-stock-set-count", {
+      product_id: productId,
+      removed: surplus,
+    });
   }
 
   // 2026-09-20 (free-infrastructure round): admin inventory write —
@@ -952,15 +937,10 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
   // R126-L4 (A4-B2): an upload inserts unsold deliverable units — both
   // available_stock and unsold_rows on /api/admin/stats move, plus
   // total_units / available_products on the public catalog stats.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", {
-        type: "product-inventory-upload",
-        product_id: productId,
-        added: inserted.length,
-      });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  notifyAdminStats("product-inventory-upload", {
+    product_id: productId,
+    added: inserted.length,
+  });
 
   // 2026-09-20 (free-infrastructure round): admin inventory write —
   // trigger the low/zero-stock sweep (throttled 10 min; was a

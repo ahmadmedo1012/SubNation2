@@ -233,7 +233,7 @@ export function CatalogFiltersBar({
                    active state caused on toggle. The quiet resting
                    chip keeps text-muted-foreground — the contract's AA
                    floor — over a muted/30 wash with a /30 edge. */
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring min-h-11 shrink-0 ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-150 press-spring min-h-11 shrink-0 ${
                   active
                     ? "bg-primary/15 text-primary-text border border-primary/30 font-bold"
                     : "bg-muted/30 border border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
@@ -252,7 +252,7 @@ export function CatalogFiltersBar({
                an already-clear state); only the inactive branch joins
                the category chips' softened resting treatment so the
                whole row speaks one quiet language. */
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-11 shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-180 press-spring ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-11 shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-150 press-spring ${
               availableOnly
                 ? "bg-status-success/15 text-status-success border border-status-success/30 font-bold"
                 : "bg-muted/30 border border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"

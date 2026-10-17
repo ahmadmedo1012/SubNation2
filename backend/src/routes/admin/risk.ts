@@ -32,6 +32,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
+import { notifyAdminStats } from "../../lib/socket";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
 import { parseDsl } from "../../lib/risk-dsl";
 import { recordLabel } from "../../lib/risk-metrics";
@@ -351,12 +352,9 @@ router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
   // label changes the event's review state on every open risk queue;
   // other open admin tabs refresh on event instead of waiting out their
   // staleTime. Same room/payload shape as admin/orders.ts; fire-and-
-  // forget, never blocks the response.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "risk-label" });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  // forget, never blocks the response. R158: carried by the shared
+  // notifyAdminStats helper (lib/socket.ts).
+  notifyAdminStats("risk-label");
 
   res.json({ id: row?.id, success: true });
 });
@@ -433,11 +431,7 @@ router.post("/risk/events/bulk-label", requireAdmin, async (req, res) => {
   // R125-I6 (I4 cross-lane handoff): mirror the orders-bulk emit — the
   // bulk variant carries the applied count (same extra-field style as
   // order-bulk-update's succeeded/failed counts).
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "risk-bulk-label", applied: valid.length });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  notifyAdminStats("risk-bulk-label", { applied: valid.length });
 
   res.json({
     applied: valid.length,

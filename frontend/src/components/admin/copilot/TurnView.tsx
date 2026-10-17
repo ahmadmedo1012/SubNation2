@@ -43,7 +43,7 @@ export function TurnView({
       </div>
 
       {turn.loading && (
-        <div className="space-y-1 pr-1">
+        <div className="space-y-1 ps-1">
           {(turn.progress ?? []).map((line, i) => (
             <ProgressTraceLine key={i} line={line} />
           ))}

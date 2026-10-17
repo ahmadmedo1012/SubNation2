@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { CheckCircle, Clock, Loader2, MessageSquare, Send, Shield, User } from "lucide-react";
+import { CheckCircle, Clock, Loader2, MessageSquare, Plus, Send, Shield, User } from "lucide-react";
 import type { RefObject } from "react";
 import { STATUS_CONFIG, categoryIcon, categoryLabel, type TicketDetail } from "./support-meta";
 
@@ -25,6 +25,7 @@ export function TicketThread({
   sending,
   onReply,
   messagesEndRef,
+  onNewTicket,
 }: {
   selectedTicket: TicketDetail;
   ticketLoading: boolean;
@@ -35,6 +36,12 @@ export function TicketThread({
   /** The page-owned auto-scroll anchor (the openTicket + poll scroll
    * effects live beside the state they observe, in the page). */
   messagesEndRef: RefObject<HTMLDivElement | null>;
+  /** R158-IMPL-D (ledger a): the closed notice's «تذكرة جديدة» CTA —
+   * page-owned (setSelectedTicket(null) + setShowCreate(true)). The
+   * extract stays stateless (the R137 pin): the showCreate/selectedTicket
+   * atoms live in pages/support.tsx and flow down as this one callback,
+   * exactly like the header CTA's own onClick. */
+  onNewTicket: () => void;
 }) {
   return (
     // R143 (L2-1): the thread shell rides the two-layer calm elevation
@@ -185,9 +192,25 @@ export function TicketThread({
             receipt hairline (/20 — the admin pane's reply-seam value,
             139-h); was /25. */}
         {selectedTicket.status === "closed" ? (
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/25 border border-border/30 rounded-xl px-4 py-3">
+          /* R158-IMPL-D (ledger a): the closed notice ends its dead-end —
+             the text-only «أنشئ تذكرة جديدة…» hint is now a real
+             secondary CTA wired to the page's create-form path
+             (onNewTicket = setSelectedTicket(null) + setShowCreate(true),
+             byte-identical to the header CTA's 2-tap path, one tap fewer).
+             R157-IMPL-B #9 refused the wouter same-route /support Link
+             as provably dead — the parent-side prop is the fix. */
+          <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/25 border border-border/30 rounded-xl px-4 py-3">
             <CheckCircle className="w-3.5 h-3.5 text-status-success shrink-0" />
             التذكرة مغلقة — أنشئ تذكرة جديدة إذا احتجت مساعدة إضافية
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onNewTicket}
+              className="gap-1.5 font-bold"
+            >
+              <Plus className="w-4 h-4" />
+              تذكرة جديدة
+            </Button>
           </div>
         ) : (
           <form onSubmit={onReply} className="flex gap-2 items-end">

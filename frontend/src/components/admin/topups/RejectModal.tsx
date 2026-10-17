@@ -99,7 +99,7 @@ export function RejectModal({
             onClick={() => onConfirm(note)}
             disabled={loading}
           >
-            <XCircle className="w-3.5 h-3.5 ml-1.5" />
+            <XCircle className="w-3.5 h-3.5 me-1.5" />
             {loading ? "جارٍ الرفض..." : "تأكيد الرفض"}
           </Button>
         </>
@@ -137,7 +137,7 @@ export function RejectModal({
           <p className="text-3xs text-muted-foreground mt-1">
             <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded">⌘↵</kbd>{" "}
             للتأكيد ·
-            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded mr-1">
+            <kbd className="font-mono bg-muted/60 border border-border/50 px-1 rounded ms-1">
               Esc
             </kbd>{" "}
             للإلغاء

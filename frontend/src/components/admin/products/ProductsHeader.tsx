@@ -65,9 +65,12 @@ export function ProductsHeader({
            a colored shadow reads as a glow on .light (the r138 family
            retired brand-tinted shadows); the primary fill alone carries
            the CTA. h-9 stays (≥24px admin edge floor). */
-        className="bg-primary hover:bg-primary/90 h-9 active:scale-[0.97] transition-transform"
+        /* R158 (A6 tail): the flat bg-primary/hover-darken/active:scale
+           override retires — buttonVariants owns the canonical fill
+           (gradient + shadow + press-spring). */
+        className="h-9"
       >
-        <Plus className="w-4 h-4 ml-1.5" /> منتج جديد
+        <Plus className="w-4 h-4 me-1.5" /> منتج جديد
       </Button>
     </div>
   );

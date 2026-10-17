@@ -8,6 +8,7 @@ import {
   User,
   Wrench,
 } from "lucide-react";
+import { statusLabel } from "@/lib/utils";
 
 // R137 (FE decomposition): extracted verbatim from pages/support.tsx —
 // the ticket taxonomy shared by the page and its extracts: the category
@@ -33,8 +34,13 @@ export const STATUS_CONFIG: Record<
   string,
   { label: string; color: string; icon: React.ReactNode; border: string }
 > = {
+  // R158-IMPL-D (P3): the labels derive from lib/utils' statusLabel —
+  // the ONE Arabic source for open/in_progress/closed (93-C7's
+  // unification map; the three values matched verbatim, so no local
+  // overrides). color/icon/border stay local — they're the support
+  // surfaces' chrome, not status vocabulary.
   open: {
-    label: "مفتوحة",
+    label: statusLabel("open"),
     // R94-A1 #5 (P2, WCAG AA): raw blue-400/yellow-400 on white cards
     // measured 2.54:1 / 1.53:1 in the light theme — the shared --status-*
     // tokens carry theme-aware values tuned for card surfaces.
@@ -43,13 +49,13 @@ export const STATUS_CONFIG: Record<
     border: "border-status-info/25",
   },
   in_progress: {
-    label: "قيد المعالجة",
+    label: statusLabel("in_progress"),
     color: "text-status-warning bg-status-warning/10",
     icon: <AlertCircle className="w-3 h-3" />,
     border: "border-status-warning/25",
   },
   closed: {
-    label: "مغلقة",
+    label: statusLabel("closed"),
     color: "text-muted-foreground bg-muted/30",
     icon: <CheckCircle className="w-3 h-3" />,
     // R139 (precision): full-strength border-border → /50 — the

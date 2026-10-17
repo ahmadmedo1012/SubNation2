@@ -139,7 +139,7 @@ export const TopupCard = React.memo(function TopupCard({
           </StatusBadge>
           <MethodBadge method={t.payment_method ?? "mobile_transfer"} />
           {t.payment_method !== "lypay" && <NetworkBadge net={t.payment_network} />}
-          <span className="mr-auto text-xs text-muted-foreground tabular-nums flex items-center gap-1">
+          <span className="ms-auto text-xs text-muted-foreground tabular-nums flex items-center gap-1">
             <Calendar className="w-3 h-3" />
             {t.created_at ? formatDate(t.created_at) : ""}
           </span>
@@ -225,11 +225,14 @@ export const TopupCard = React.memo(function TopupCard({
                  * press-spring owns the press (the hand-rolled
                  * active:scale retired with the fill). */
                 variant="success"
-                className="flex-1 h-9 font-bold"
+                /* R158 (admin polish): h-9 → min-h-11 — the money-action
+                 * triggers join the 44px floor the dialogs already
+                 * enforce (RejectModal/useConfirm min-h-11). */
+                className="flex-1 min-h-11 font-bold"
                 onClick={() => onApprove(t.id)}
                 disabled={isProcessing}
               >
-                <CheckCircle className="w-3.5 h-3.5 ml-1.5" />
+                <CheckCircle className="w-3.5 h-3.5 me-1.5" />
                 {isProcessing && !isRejecting ? "جارٍ..." : "موافقة"}
               </Button>
               <Button
@@ -240,12 +243,14 @@ export const TopupCard = React.memo(function TopupCard({
                    muted ink at rest; the error ink surfaces on hover
                    and the severity lives in RejectModal's destructive
                    confirm. The solid-success approve sibling stays
-                   the loud one (the money-creating action). */
-                className="h-9 border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10 font-bold active:scale-[0.97] transition-transform px-5"
+                   the loud one (the money-creating action).
+                   R158 (admin polish): h-9 → min-h-11 — the 44px
+                   money-action floor (see the approve sibling). */
+                className="min-h-11 border-border/60 text-muted-foreground hover:text-status-error hover:border-status-error/30 hover:bg-status-error/10 font-bold active:scale-[0.97] transition-transform px-5"
                 onClick={() => onReject(t)}
                 disabled={isProcessing}
               >
-                <XCircle className="w-3.5 h-3.5 ml-1.5" />
+                <XCircle className="w-3.5 h-3.5 me-1.5" />
                 رفض
               </Button>
             </div>

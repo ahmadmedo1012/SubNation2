@@ -51,6 +51,7 @@
  *   - registerGatewayCacheBuster(() => bust readySession + readiness)
  */
 import { logger } from "../../lib/logger";
+import { readEnvNumber } from "../../lib/env";
 // 96-F1 (R96-A4 §1.3A): ready-since mirror — Redis shares the settle-gate
 // observation across restarts and sibling instances. Reuses the same
 // resilient singleton + bounded-command helpers as idempotency.ts.
@@ -79,8 +80,9 @@ const POST_LINK_SETTLE_MAX_MS = 300_000;
  * 45 s covers both while staying under the 60 s resend cooldown.
  */
 function readPostLinkSettleMs(): number {
-  const raw = Number(process.env.WHATSAPP_OTP_SETTLE_MS);
-  if (!Number.isFinite(raw)) return POST_LINK_SETTLE_DEFAULT_MS;
+  // R158 (B#7): the shared reader — the clamp stays HERE (it is this
+  // module's range contract), the reader adds the set-but-malformed warn.
+  const raw = readEnvNumber("WHATSAPP_OTP_SETTLE_MS", POST_LINK_SETTLE_DEFAULT_MS);
   return Math.min(Math.max(Math.trunc(raw), 0), POST_LINK_SETTLE_MAX_MS);
 }
 export const POST_LINK_SETTLE_MS = readPostLinkSettleMs();

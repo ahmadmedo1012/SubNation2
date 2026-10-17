@@ -281,23 +281,23 @@ export function InventoryUploadDialog({
             className="mt-2 text-2xs leading-relaxed text-muted-foreground space-y-1 text-left font-mono"
           >
             <li>
-              <Mail className="w-3 h-3 inline mr-1" />
+              <Mail className="w-3 h-3 inline ms-1" />
               <code>email|password</code> — حساب بسيط
             </li>
             <li>
-              <Mail className="w-3 h-3 inline mr-1" />
+              <Mail className="w-3 h-3 inline ms-1" />
               <code>email|password|extra</code> — حساب مع تفاصيل (مثل recovery email)
             </li>
             <li>
-              <Key className="w-3 h-3 inline mr-1" />
+              <Key className="w-3 h-3 inline ms-1" />
               <code>XBOX-12345-ABCDE</code> — كود/مفتاح فقط (سطر واحد)
             </li>
             <li>
-              <FileText className="w-3 h-3 inline mr-1" />
+              <FileText className="w-3 h-3 inline ms-1" />
               <code>email,password,extra</code> — TSV/CSV من Sheets
             </li>
             <li>
-              <FileText className="w-3 h-3 inline mr-1" />
+              <FileText className="w-3 h-3 inline ms-1" />
               <code>{`{"email":"a@x.com","password":"p"}`}</code> — JSON
             </li>
           </ul>
@@ -438,16 +438,16 @@ export function InventoryUploadDialog({
                     {/* 96-F7 (R96 A6 #15): scope="col" — screen readers
                         announce the header↔cell relation on vertical
                         sweeps instead of a bare "خلية". */}
-                    <th scope="col" className="text-right font-semibold px-2 py-1.5 w-10">
+                    <th scope="col" className="text-start font-semibold px-2 py-1.5 w-10">
                       #
                     </th>
-                    <th scope="col" className="text-right font-semibold px-2 py-1.5 w-20">
+                    <th scope="col" className="text-start font-semibold px-2 py-1.5 w-20">
                       النوع
                     </th>
-                    <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                    <th scope="col" className="text-start font-semibold px-2 py-1.5">
                       المعرّف
                     </th>
-                    <th scope="col" className="text-right font-semibold px-2 py-1.5">
+                    <th scope="col" className="text-start font-semibold px-2 py-1.5">
                       حالة
                     </th>
                   </tr>
@@ -475,16 +475,22 @@ export function InventoryUploadDialog({
         {/* Error list */}
         {parsed.errors.length > 0 && (
           <div>
-            <h3 className="text-xs font-bold flex items-center gap-1.5 mb-2 text-destructive">
+            {/* R158 (admin polish): the one-red channel — the
+                destructive/5 + /25 wash and the in-box destructive
+                inks join the status-error family (VariantRows's
+                load-error banner idiom: bg-status-error/10 +
+                /25 edge + status-error ink; the shadcn destructive
+                channel stays reserved for hover-inks + confirms). */}
+            <h3 className="text-xs font-bold flex items-center gap-1.5 mb-2 text-status-error">
               <AlertCircle className="w-3.5 h-3.5" />
               أسطر تعذّر تحليلها ({parsed.errors.length})
             </h3>
-            <div className="bg-destructive/5 border border-destructive/25 rounded-xl px-3 py-2 space-y-1 max-h-32 overflow-y-auto">
+            <div className="bg-status-error/10 border border-status-error/25 rounded-xl px-3 py-2 space-y-1 max-h-32 overflow-y-auto">
               {parsed.errors.slice(0, 10).map((err, i) => (
                 <div key={i} className="text-2xs flex items-start gap-2">
-                  <span className="font-mono text-destructive/70 shrink-0">L{err.line}</span>
+                  <span className="font-mono text-status-error/70 shrink-0">L{err.line}</span>
                   <span className="text-muted-foreground flex-1 truncate">{err.raw}</span>
-                  <span className="text-destructive font-bold shrink-0">{err.reason}</span>
+                  <span className="text-status-error font-bold shrink-0">{err.reason}</span>
                 </div>
               ))}
               {parsed.errors.length > 10 && (

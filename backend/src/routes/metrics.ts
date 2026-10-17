@@ -125,4 +125,5 @@ router.get("/metrics", requireMetricsAuth, async (_req, res) => {
   }
 });
 
-export default router;
+// R158 (B#9): joined the layer's majority export convention.
+export { router as metricsRouter };

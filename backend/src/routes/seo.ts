@@ -352,4 +352,6 @@ export function bumpSitemapCache(): void {
   sitemapCache = null;
 }
 
-export default router;
+// R158 (B#9): joined the layer's majority export convention
+// (export { router as xRouter }) — the default export was the drift.
+export { router as seoRouter };

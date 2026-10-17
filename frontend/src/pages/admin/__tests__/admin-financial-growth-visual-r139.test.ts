@@ -221,8 +221,10 @@ describe("R139 (139-j) — pricing: the §6 destructive contract (dry-run previe
     // on pure layout (classes + cell text unchanged; the component's own
     // note: «Classes byte-identical»).
     const squash = (s: string): string => s.replace(/\s+/g, "");
-    expect(squash(previewCard)).toContain(squash('text-right font-semibold">الباقة'));
-    expect(squash(previewCard)).toContain(squash('text-left font-semibold">السعر الحالي'));
+    // R158 (A3) re-pin: physical text-right/text-left became the logical
+    // text-start/text-end (the admin RTL sweep); alignment unchanged.
+    expect(squash(previewCard)).toContain(squash('text-start font-semibold">الباقة'));
+    expect(squash(previewCard)).toContain(squash('text-end font-semibold">السعر الحالي'));
     expect(previewCard.split('className="font-bold text-lg tabular-nums"').length - 1).toBe(2);
     expect(previewCard).not.toContain("text-lg tabular-nums text-status-warning");
     expect(stripComments(previewCard)).not.toContain("text-destructive");

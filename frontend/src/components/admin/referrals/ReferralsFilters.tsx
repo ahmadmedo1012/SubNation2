@@ -31,7 +31,7 @@ export function ReferralsFilters({
             placeholder="بحث برقم المُحيل أو المُحال..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pr-9 h-9 text-sm"
+            className="ps-9 h-9 text-sm"
           />
         </div>
         <div className="flex gap-1.5">

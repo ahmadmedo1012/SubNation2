@@ -47,7 +47,7 @@ export function AuditTrailTable({
                  (the UsersDesktopTable / OrdersTable idiom) — a solid
                  bg-muted/30 quiet band + the /60 seam; th cells already
                  ride font-semibold + muted ink. */
-              className="text-right text-xs text-muted-foreground border-b border-border/60 bg-muted/30"
+              className="text-start text-xs text-muted-foreground border-b border-border/60 bg-muted/30"
             >
               <th scope="col" className="py-2 px-3 font-semibold">
                 المسؤول
@@ -146,7 +146,7 @@ export function AuditTrailTable({
             disabled={auditPage <= 1 || isFetching}
             onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
           >
-            <ChevronRight className="w-3.5 h-3.5 ml-1" />
+            <ChevronRight className="w-3.5 h-3.5 me-1" />
             السابقة
           </Button>
           <Button
@@ -156,7 +156,7 @@ export function AuditTrailTable({
             onClick={() => setAuditPage((p) => p + 1)}
           >
             التالية
-            <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+            <ChevronLeft className="w-3.5 h-3.5 ms-1" />
           </Button>
         </div>
       </div>

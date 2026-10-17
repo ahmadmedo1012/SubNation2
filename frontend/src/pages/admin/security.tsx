@@ -349,7 +349,7 @@ export function AdminSecurityDashboard() {
                 : "تصدير الأحداث المطابقة للفلاتر الحالية ضمن النافذة المعروضة — أحدث 100 حدث كحد أقصى"
             }
           >
-            <Download className="w-4 h-4 ml-2" />
+            <Download className="w-4 h-4 me-2" />
             تصدير CSV
           </Button>
         </div>

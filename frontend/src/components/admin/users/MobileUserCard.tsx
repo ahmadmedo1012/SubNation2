@@ -41,7 +41,7 @@ export const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit 
           <span>{user.order_count} طلب</span>
         </div>
       </div>
-      <div className="text-right shrink-0">
+      <div className="text-start shrink-0">
         <div className="font-bold text-primary-text tabular-nums text-sm">
           {formatCurrency(user.wallet_balance)}
         </div>

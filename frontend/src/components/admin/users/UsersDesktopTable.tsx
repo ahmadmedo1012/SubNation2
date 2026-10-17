@@ -46,49 +46,49 @@ export function UsersDesktopTable({
                   sweeps instead of a bare "خلية". */}
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 المستخدم
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 المصدر
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 الرصيد
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 المستوى
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 النقاط
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 الإجمالي المنفق
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 الطلبات
               </th>
               <th
                 scope="col"
-                className="text-right px-4 py-3 font-semibold text-muted-foreground text-2xs"
+                className="text-start px-4 py-3 font-semibold text-muted-foreground text-2xs"
               >
                 التسجيل
               </th>

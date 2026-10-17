@@ -106,7 +106,7 @@ export function NavItem({
       </Link>
 
       {active && !collapsed && contextActions.length > 0 && (
-        <div className="mt-1 mr-3 space-y-0.5 border-r border-primary/15 pr-2">
+        <div className="mt-1 ms-3 space-y-0.5 border-r border-primary/15 ps-2">
           {contextActions.map((action) => (
             <Link key={action.href + action.label} href={action.href} onClick={onNavigate}>
               {/* R125 (A6 B-6): hover:text-primary on a muted link is

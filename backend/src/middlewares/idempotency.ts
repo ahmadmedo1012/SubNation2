@@ -58,7 +58,7 @@ import { logger } from "../lib/logger";
 // hash with the SAME definition — one equivalence relation across the
 // Redis and durable layers. The middleware re-imports them; the direct
 // idempotency.test.ts suite stays green (import-parity is pinned there).
-import { canonicalBodyHash, IDEMPOTENCY_KEY_REUSE_MESSAGE } from "../lib/idempotency-body-hash";
+import { canonicalBodyHash, idempotencyReuseBody } from "../lib/idempotency-body-hash";
 // R136 (SEC-1, F5): the length-cap rejection answers with the repo's
 // standard INVALID_DATA envelope (createErrorResponse), mirroring the
 // paymentReference 100-char handler bound in routes/wallet.ts.
@@ -157,10 +157,11 @@ function answerInFlightConflict(res: Response): void {
   res.status(409).json({
     success: false,
     // Round-3 envelope drift fix: `message` → `error` (message kept
-    // for any client still reading the old field).
+    // for any client still reading the old field). R158 (B-F3): the
+    // code is the typed ErrorCode member (was a raw string literal).
     error: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
     message: "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل.",
-    code: "IDEMPOTENCY_IN_FLIGHT",
+    code: ErrorCode.IDEMPOTENCY_IN_FLIGHT,
   });
 }
 
@@ -272,14 +273,11 @@ export function idempotency(opts: IdempotencyOptions) {
       // rounds ago, so it could never match again.
       if (cached.hash !== reqHash) {
         // R134 (A7-F4): the message constant is the SHARED one — the durable
-        // layer's 409 answers with the identical envelope.
-        res.status(409).json({
-          success: false,
-          // Round-3 envelope drift fix: `message` → `error` (kept).
-          error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-          message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-          code: "IDEMPOTENCY_KEY_REUSE",
-        });
+        // layer's 409 answers with the identical envelope. R158 (B-F2):
+        // the envelope body now comes from the ONE factory
+        // (idempotencyReuseBody) — byte-identical to the previous
+        // literals (success/error/message/code, same message + code).
+        res.status(409).json(idempotencyReuseBody());
         return;
       }
       // Replay the original successful response.

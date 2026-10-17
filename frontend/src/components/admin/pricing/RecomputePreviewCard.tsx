@@ -80,19 +80,19 @@ export function RecomputePreviewCard({
             <table aria-label="عينة الأسعار قبل وبعد" className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border/60 bg-muted/30 text-muted-foreground">
-                  <th scope="col" className="px-3 py-2 text-right font-semibold">
+                  <th scope="col" className="px-3 py-2 text-start font-semibold">
                     الباقة
                   </th>
-                  <th scope="col" className="px-3 py-2 text-right font-semibold">
+                  <th scope="col" className="px-3 py-2 text-start font-semibold">
                     المنتج
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold">
+                  <th scope="col" className="px-3 py-2 text-end font-semibold">
                     السعر الحالي
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold">
+                  <th scope="col" className="px-3 py-2 text-end font-semibold">
                     السعر الجديد
                   </th>
-                  <th scope="col" className="px-3 py-2 text-left font-semibold">
+                  <th scope="col" className="px-3 py-2 text-end font-semibold">
                     الفرق
                   </th>
                 </tr>

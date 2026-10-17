@@ -1,5 +1,7 @@
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import {
@@ -47,18 +49,36 @@ import { adminProductVariantsRouter } from "../admin/product-variants";
  * payload and prefix-invalidates the four admin families, so cross-tab
  * dashboards/lists refresh on event instead of waiting out staleTime.
  *
- * lib/socket is mocked at the module boundary (importOriginal spread —
- * only emitToAdmins is replaced; the real module no-ops without a live
- * io anyway) so the fire-and-forget dynamic-import chain in the routes
- * is observable. The emit is NOT awaited by the routes — assertions wait
+ * lib/socket is mocked at the module boundary (importOriginal spread
+ * — only emitToAdmins is replaced; the real module no-ops without a live
+ * io anyway) so the fire-and-forget notify chain in the routes is
+ * observable. The emit is NOT awaited by the routes — assertions wait
  * via vi.waitFor.
+ *
+ * R158 (B#2): the 15 inlined route blocks collapsed into the shared
+ * notifyAdminStats(type, extra) helper (lib/socket.ts). The mock
+ * factory below replaces the helper with a shim that reproduces its
+ * exact contract THROUGH the mocked emitToAdmins, so the assertions
+ * below keep pinning the WIRE format (event name + payload shape) at
+ * the route level; a source-scan describe (bottom of this file) pins
+ * the real helper body to the same contract so the shim cannot drift
+ * from it silently.
  */
 
 const { emitToAdminsMock } = vi.hoisted(() => ({ emitToAdminsMock: vi.fn() }));
 
 vi.mock("../../lib/socket", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/socket")>();
-  return { ...actual, emitToAdmins: emitToAdminsMock };
+  return {
+    ...actual,
+    emitToAdmins: emitToAdminsMock,
+    // Test-side mirror of the real helper's body (lib/socket.ts) — the
+    // real one calls the module-internal emitToAdmins, which a module-
+    // boundary mock cannot intercept; the source pin at the bottom of
+    // this file keeps this shim honest against the real helper.
+    notifyAdminStats: (type: string, extra: Record<string, unknown> = {}) =>
+      emitToAdminsMock("admin-stats-update", { type, ...extra }),
+  };
 });
 
 const RISK_DDL = `
@@ -515,5 +535,24 @@ describe("admin-stats-update emits — products/variants/stock mutations (R126-L
     } finally {
       close();
     }
+  });
+});
+
+describe("R158 (B#2) — the shared notifyAdminStats helper contract (source pin)", () => {
+  // The mock factory above swaps the real helper for a test-side shim
+  // (the real one's module-internal emitToAdmins call cannot be
+  // intercepted at the boundary), so the REAL body is pinned against
+  // its source the same way rate-limits-intent.test.ts pins app.ts's
+  // mounts: event name, payload assembly and the degrade-to-warn
+  // message must stay byte-identical to the inlined blocks it
+  // replaced.
+  const helperSrc = readFileSync(path.resolve(import.meta.dirname, "../../lib/socket.ts"), "utf8");
+
+  it("emits admin-stats-update with { type, ...extra }", () => {
+    expect(helperSrc).toContain('emitToAdmins("admin-stats-update", { type, ...extra })');
+  });
+
+  it("keeps the degrade-to-warn contract (same message the inlined blocks used)", () => {
+    expect(helperSrc).toContain('"socket admin-stats notify failed"');
   });
 });

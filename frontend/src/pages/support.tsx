@@ -451,6 +451,15 @@ export default function SupportPage() {
           sending={sending}
           onReply={handleReply}
           messagesEndRef={messagesEndRef}
+          /* R158-IMPL-D (ledger a): the closed notice's «تذكرة جديدة»
+             CTA — the header CTA's own path (close the thread + open
+             the create form) as one callback, so the extract stays
+             stateless (the R137 pin: showCreate/selectedTicket stay
+             page-owned atoms). */
+          onNewTicket={() => {
+            setSelectedTicket(null);
+            setShowCreate(true);
+          }}
         />
       )}
 

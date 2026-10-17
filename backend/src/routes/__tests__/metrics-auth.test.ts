@@ -5,7 +5,8 @@ import { eq } from "drizzle-orm";
 import { signAdminToken } from "../../lib/jwt";
 import { createAdminSession, revokeAdminSession } from "../../lib/admin-session";
 import { adminUsersTable, adminSessionsTable, db, initTestDb, resetTestDb } from "../../test/db";
-import metricsRouter from "../metrics";
+// R158 (B#9): metrics.ts joined the named-export convention.
+import { metricsRouter } from "../metrics";
 
 /**
  * SEC-92-02 (round-92 B1 security audit) — /api/metrics auth gate.

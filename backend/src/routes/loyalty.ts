@@ -16,12 +16,10 @@ import {
   isIdempotencyKeyViolation,
   scopeIdempotencyKey,
 } from "../lib/idempotency";
-// R134 (A7-F4): the shared body-hash definition + reuse envelope.
-import {
-  canonicalBodyHash,
-  IDEMPOTENCY_KEY_REUSE_CODE,
-  IDEMPOTENCY_KEY_REUSE_MESSAGE,
-} from "../lib/idempotency-body-hash";
+// R134 (A7-F4): the shared body-hash definition. R158 (B-F2): the
+// durable-reuse 409 envelope comes from the ONE factory — byte-identical
+// to the previous literals.
+import { canonicalBodyHash, idempotencyReuseBody } from "../lib/idempotency-body-hash";
 import {
   POINTS_PER_LYD,
   POINTS_PER_REFERRAL,
@@ -198,12 +196,9 @@ router.post(
         // legacy claim (pre-R134 writer) → the friendly already-converted
         // answer (the ≤48h transition window).
         if (claimedRow.bodyHash !== null && claimedRow.bodyHash !== idemBodyHash) {
-          return res.status(409).json({
-            success: false,
-            error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-            message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-            code: IDEMPOTENCY_KEY_REUSE_CODE,
-          });
+          // R158 (B-F2): the shared factory envelope — byte-identical to
+          // the previous literals.
+          return res.status(409).json(idempotencyReuseBody());
         }
         return res
           .status(409)

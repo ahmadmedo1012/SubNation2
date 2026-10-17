@@ -41,9 +41,11 @@ export function CouponsHeader({
           /* R139 (precision): the primary-tinted md drop shadow is
              dropped — a colored shadow reads as a glow on .light
              (the r138 family retired brand-tinted shadows; the
-             products header CTA made the same cut this round); the
-             flat primary fill + press-spring carry the CTA. */
-          className="gap-1.5 text-sm bg-primary hover:bg-primary/90 press-spring"
+             products header CTA made the same cut this round).
+             R158 (admin polish): the flat primary fill + its
+             hover-darken retire too — buttonVariants owns the
+             canonical fill (gradient, shadow and the press behavior). */
+          className="gap-1.5 text-sm"
         >
           <Plus className="w-3.5 h-3.5" />
           كوبون جديد

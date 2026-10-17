@@ -103,7 +103,9 @@ export function EditAdminDialog({
           <Button
             type="submit"
             disabled={saving}
-            className="h-9 bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
+            /* R158 (A6 tail): the flat-fill override retires —
+             * buttonVariants owns the canonical fill + press-spring. */
+            className="h-9"
           >
             {saving ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />

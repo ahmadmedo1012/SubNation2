@@ -3,13 +3,23 @@ import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { insertLedgerEntry } from "../lib/ledger";
 import { POINTS_PER_REFERRAL, WELCOME_BONUS_LYD } from "../lib/loyalty-policy";
 import { insertPointsLedgerEntry } from "../lib/points-ledger";
-import { roundLyd, formatLyd } from "../lib/money";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
-import { notifyTopupApproved, notifyTopupRejected } from "../telegram";
 import { settleTopupCard } from "../lib/telegram-cards";
 
-// ── Topup Service ─────────────────────────────────────────────────────────────
+import { roundLyd, formatLyd } from "../lib/money";
+import { notifyTopupApproved, notifyTopupRejected } from "../telegram";
+// R158 (B-F1 split): the creation pipeline (validation battery → durable
+// idempotency replay → advisory-lock tx → auto-reject heuristic → notify)
+// lives in ./topup-create.service.ts — the file pair stays under the R143
+// 1,000-line no-monolith gate. The class keeps the facade so routes, the
+// telegram webhook, and the test suites read ONE TopupService surface.
+import { createPendingTopup } from "./topup-create.service";
+export type {
+  CreatePendingTopupInput,
+  CreatePendingTopupResult,
+  CreateTopupFailureReason,
+} from "./topup-create.service";
 
 /**
  * B2-02 (round-92 audit): detect a Postgres unique-constraint violation
@@ -33,30 +43,19 @@ function isDuplicatePaymentReferenceViolation(err: unknown): boolean {
 
 export class TopupService {
   /**
-   * Create and immediately approve a topup (for automated gateways).
+   * Create a PENDING topup request (the manual mobile-transfer /
+   * lypay submission flow).
    *
-   * F5 (round-94 A4): this entry point previously accepted (userId,
-   * amount, provider, ref) with ZERO of the validation battery that
-   * approve() carries — no finiteness/ bounds, no required reference,
-   * no advisory lock, no in-tx duplicate check, and no 23505 mapping.
-   * No production caller today (tests only), but the first payment
-   * gateway wired here would have accepted `amount=-50` (a wallet
-   * DEBIT mislabeled topup), `Infinity` (raw 500 from numeric), and a
-   * gateway retry on the same reference would hit the V1-M9 partial
-   * unique index as an unclassified 23505 → 500 → infinite retry loop.
-   *
-   * Now mirrors approve()'s guard battery:
-   *   - amount: finite, 0 < amount ≤ 5,000 LYD (gateway-appropriate
-   *     bound — the manual approve() window is 0.01..10,000 for
-   *     operator-reviewed receipts; an automated gateway has no human
-   *     in the loop, so the ceiling is tighter);
-   *   - ref: required non-blank (a gateway callback without a
-   *     reference carries no dedup signal);
-   *   - pg_advisory_xact_lock on the reference + in-tx duplicate
-   *     check + the 23505 catch → stable 409 (same operator/gateway
-   *     -facing message approve() returns), so a gateway retry maps
-   *     to a classified conflict instead of a 500 retry storm.
+   * R158 (B-F1): this sequence lived inline in routes/wallet.ts POST
+   * /topups (~542 lines) while every sibling money path delegated
+   * (orders.ts → CheckoutService.purchase; admin/users.ts →
+   * AdjustmentService). It moved verbatim into the service layer — and
+   * at R158's split into ./topup-create.service.ts (the size gate), with
+   * this static as the facade: byte-identical behavior, ONE import
+   * surface for every caller.
    */
+  static readonly createPendingTopup = createPendingTopup;
+
   static async createApprovedTopup(userId: number, amount: number, provider: string, ref: string) {
     // ── Input guards (fail before any DB touch) ─────────────────────────
     if (!Number.isFinite(amount) || amount <= 0 || amount > 5000) {

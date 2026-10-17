@@ -7,13 +7,9 @@ import {
   walletLedgerTable,
   walletTopupsTable,
 } from "@workspace/db";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { Router } from "express";
 import { pageParam } from "../lib/http";
-import { roundLydString, formatLyd } from "../lib/money";
-import { normalizeLibyanPhone } from "../lib/crypto";
-import { scoreEventFireAndForget } from "../lib/risk-emit";
-import { derivePrimaryProvider } from "../lib/user-provider";
 import { requireUser, type AuthenticatedRequest } from "../middlewares/requireUser";
 // 98-B3 (round-98 wave B): the hard-block refusal layer — mounted before
 // the soft guard, see the mount comment at POST /topups below.
@@ -22,42 +18,18 @@ import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 // 96-F1 (R96-A5 M2): POST /topups is the last unprotected money path —
 // same Redis-backed replay guard checkout already mounts.
 import { idempotency } from "../middlewares/idempotency";
-// R134 (A7-F4): the shared body-hash definition + reuse envelope.
-import {
-  canonicalBodyHash,
-  IDEMPOTENCY_KEY_REUSE_CODE,
-  IDEMPOTENCY_KEY_REUSE_MESSAGE,
-} from "../lib/idempotency-body-hash";
-import {
-  claimIdempotencyKey,
-  findIdempotentOrderId,
-  isIdempotencyKeyViolation,
-  scopeIdempotencyKey,
-} from "../lib/idempotency";
-import { notifyNewTopup } from "../telegram";
-import { createNotification } from "../notify";
+// R134 (A7-F4): the shared body-hash definition. R158 (B-F2): the
+// durable-reuse 409 envelope now comes from the ONE factory
+// (byte-identical to the previous literals).
+import { canonicalBodyHash, idempotencyReuseBody } from "../lib/idempotency-body-hash";
+// R158 (B-F1): the topup-creation pipeline owner (validation battery →
+// durable idempotency replay → advisory-lock transaction → auto-reject
+// heuristic → operator/customer notify) — extracted from this handler.
+import { TopupService } from "../services/topup.service";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { toNumber } from "../lib/numeric";
 
 const router = Router();
-
-/**
- * B2-F2 (R111, round-111 B2 audit): wallet_topups.payment_network is
- * varchar(50) with NO schema bound, and the field was free-form — an
- * over-long or arbitrary string 500'd (22001) on the money path instead
- * of answering 400. Allowlist = the networks the wallet UI offers plus
- * every value present in the live table (verified 2026-09-24):
- * libyana / madar (frontend), sadad + lypay (legacy rows). Normalized
- * (trimmed + lowercased) BEFORE the membership check so " Madar " is
- * canonicalized, not rejected — the same normalization discipline the
- * payment_reference F-03 fix applies.
- */
-const PAYMENT_NETWORK_ALLOWLIST = new Set(["libyana", "madar", "sadad", "lypay"]);
-
-/** B2-F2: sender_phone column is varchar(20) — bound for EVERY method. */
-const SENDER_PHONE_MAX = 20;
-/** B2-F2: sender_account column is varchar(255). */
-const SENDER_ACCOUNT_MAX = 255;
 
 // A7 (round-94): explicit no-store on the user-scoped wallet surface —
 // balance/pending-topup responses are per-user money state; an
@@ -263,526 +235,93 @@ router.post(
       payment_reference,
     } = parse.data;
 
-    // F-03 (round-93 A2 §"Duplicate-transfer double-credit"): normalize the
-    // transfer receipt/reference HERE so every downstream dedup layer
-    // (V1-M9 partial unique index, the B2-02 in-tx exact check, the advisory
-    // lock, the composite soft-dedup) compares canonical values — a raw
-    // "  REF-1  " would dodge every exact-match guard while still being the
-    // same transfer. Handler-enforced semantic bound (the same pattern the
-    // CreateTopupBody openapi description documents for the other conditional
-    // rules): trimmed + ≤ 100 chars; the generated zod schema remains the
-    // looser 255-char outer perimeter. Blank-after-trim → null (the partial
-    // index exempts blank refs as the legacy class).
-    const paymentReference =
-      typeof payment_reference === "string" && payment_reference.trim().length > 0
-        ? payment_reference.trim()
-        : null;
-    if (paymentReference !== null && paymentReference.length > 100) {
-      return res.status(400).json(
-        // L8a residual (R127-L11, B14 §1): «رمز التحويل» canon — same
-        // rename wallet.ts:383-386 (A8 F4) already documented.
-        createErrorResponse("رمز التحويل طويل جداً (الحد الأقصى 100 حرف)", ErrorCode.INVALID_DATA),
-      );
-    }
-
-    if (amount <= 0 || amount > 10000) {
-      return res
-        .status(400)
-        .json(createErrorResponse("قيمة الشحن غير صالحة", ErrorCode.INVALID_DATA));
-    }
-
-    const method = payment_method ?? "mobile_transfer";
-
-    // B2-F2: normalize + allowlist the network before any use (it is
-    // stored verbatim below, rendered on the Telegram approval card, and
-    // compared by the composite dedup — canonical values keep all three
-    // honest).
-    let network: string | null = null;
-    if (payment_network !== undefined && payment_network !== null) {
-      network = String(payment_network).trim().toLowerCase() || null;
-    }
-    if (network !== null && !PAYMENT_NETWORK_ALLOWLIST.has(network)) {
-      return res.status(400).json(
-        createErrorResponse(
-          // L8a residual (R127-L11, B14 §1): the copy listed 2 of the
-          // 4 allowlist values — sadad/lypay also pass the check above,
-          // so the message lied about what the route accepts. All 4
-          // now listed with their canonical labels (the
-          // PAYMENT_NETWORK_LABELS names from telegram.ts A8 F1).
-          "شبكة الدفع غير صالحة (المسموح: ليبيانا، مدار، سداد، LyPay)",
-          ErrorCode.INVALID_DATA,
-        ),
-      );
-    }
-
-    if (method === "mobile_transfer" && !network) {
-      return res
-        .status(400)
-        .json(createErrorResponse("يرجى اختيار الشبكة", ErrorCode.INVALID_DATA));
-    }
-    // B2-F2: sender_account is only required for lypay, but ANY method may
-    // carry one — bound it to the column so a long value is a 400, not a
-    // 22001 500 on the money path.
-    if (sender_account !== undefined && sender_account !== null) {
-      if (String(sender_account).trim().length === 0 && method === "lypay") {
-        return res
-          .status(400)
-          .json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
-      }
-      if (String(sender_account).length > SENDER_ACCOUNT_MAX) {
-        return res
-          .status(400)
-          .json(
-            createErrorResponse(
-              `رقم حساب المُرسل طويل جداً (الحد الأقصى ${SENDER_ACCOUNT_MAX} حرف)`,
-              ErrorCode.INVALID_DATA,
-            ),
-          );
-      }
-    }
-    if (method === "lypay" && (sender_account === undefined || sender_account === null)) {
-      return res
-        .status(400)
-        .json(createErrorResponse("يرجى إدخال رقم حساب المُرسل", ErrorCode.INVALID_DATA));
-    }
-
-    // B2-F2: sender_phone is validated as a Libyan number for
-    // mobile_transfer below, but a lypay submission may carry ANY string
-    // (the Telegram approval-card comment) — bound both to the varchar(20)
-    // column before the shape check so neither can overflow.
-    if (sender_phone !== undefined && sender_phone !== null) {
-      if (String(sender_phone).length > SENDER_PHONE_MAX) {
-        return res
-          .status(400)
-          .json(
-            createErrorResponse(
-              `رقم هاتف المُرسل طويل جداً (الحد الأقصى ${SENDER_PHONE_MAX} رقماً)`,
-              ErrorCode.INVALID_DATA,
-            ),
-          );
-      }
-    }
-
-    // R151: hoisted NORMALIZED sender phone — stored normalized (see the
-    // insert below), so the R154 duplicate-risk probe must compare against
-    // the SAME canonical 9-digit form, not the raw input.
-    const normalizedSenderPhone = sender_phone
-      ? (normalizeLibyanPhone(sender_phone) ?? sender_phone)
-      : null;
-
-    if (method === "mobile_transfer" && sender_phone) {
-      if (!normalizeLibyanPhone(sender_phone)) {
-        return res
-          .status(400)
-          .json(createErrorResponse("رقم هاتف المُرسل غير صالح", ErrorCode.INVALID_DATA));
-      }
-    }
-
-    // ── R104 (AG9-1, F10 mirror): durable idempotency for topup CREATION ──
-    //
-    // The HTTP middleware above is the fast Redis layer; without Redis
-    // (the production shape) it is a pass-through, so a double-submit /
-    // post-timeout retry created DUPLICATE pending rows. Money still
-    // only moves at approval (dedup battery: advisory lock + in-tx
-    // exact check + V1-M9 partial unique + composite soft-dedup), but
-    // that battery requires a payment_reference — an OPTIONAL field —
-    // so two ref-less pending rows for one real transfer could both be
-    // approved by an operator. The DB-backed claim closes that window:
-    // a retry of the same Idempotency-Key now replays the original
-    // pending row instead of inserting a second one.
-    const scopedIdemKey = scopeIdempotencyKey(userId, req.header("Idempotency-Key"));
     // R134 (A7-F4): the durable reuse predicate's input — hashed HERE at
     // the route layer off req.body (the SAME definition the Redis layer
     // uses; the services never re-derive it).
     const idemBodyHash = canonicalBodyHash(req.body);
-    if (scopedIdemKey) {
-      const replayedClaim = await findIdempotentOrderId(scopedIdemKey, "topup.create");
-      if (replayedClaim !== null) {
-        // R134 (A7-F4): hash mismatch = same key, DIFFERENT submission —
-        // the classified 409 (the Redis layer's envelope verbatim), NOT
-        // a replay of a different intent's result. NULL hash = a legacy
-        // claim (pre-R134 writer) → replay (the ≤48h transition window).
-        if (replayedClaim.bodyHash !== null && replayedClaim.bodyHash !== idemBodyHash) {
-          return res.status(409).json({
-            success: false,
-            error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-            message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-            code: IDEMPOTENCY_KEY_REUSE_CODE,
-          });
-        }
-        const replayedTopupId = replayedClaim.orderId;
-        // R134 (A7-F4): orderId is nullable on the polymorphic column —
-        // a NULL (malformed) claim falls through to the fresh path.
-        if (replayedTopupId !== null) {
-          const [existing] = await db
-            .select()
-            .from(walletTopupsTable)
-            .where(
-              and(eq(walletTopupsTable.id, replayedTopupId), eq(walletTopupsTable.userId, userId)),
-            )
-            .limit(1);
-          if (existing) {
-            // Same contract as the checkout replay (orders.ts): 200 (not
-            // 201 — nothing new was created), Idempotent-Replayed header,
-            // the ORIGINAL formatted DTO, and NO new operator notification.
-            res.setHeader("Idempotent-Replayed", "true");
-            return res.json(formatTopup(existing));
-          }
-        }
-        // Key points at a topup this user no longer owns (cascade-deleted
-        // user row): fall through; the in-tx claim surfaces a still-live
-        // stale key as a classified conflict below.
-      }
-    }
 
-    // Anti-abuse: max 3 pending requests per user.
-    //
-    // B2-09 (round-92 audit): the count-then-insert pair runs inside ONE
-    // transaction guarded by a per-user advisory lock. The old
-    // check-then-insert allowed N parallel POSTs to all count 0 pending and
-    // all insert (cap bypassed — no direct money impact since each request
-    // still needs manual approval, but the anti-abuse invariant was soft).
-    // The advisory lock serializes same-user submissions; count + auto-reject
-    // heuristic + insert now see a consistent snapshot and commit atomically.
-    const MAX_PENDING = 3;
-    const submission = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtextextended(${"topup:" + userId}, 0))`,
-      );
-
-      // ── PERF #12 (R136): three serial in-tx SELECTs → one guard statement ──
-      // The advisory-lock transaction used to run the B4-R1 duplicate
-      // probe → pendingCount → rejectedCount as THREE sequential round
-      // trips while holding the per-user pg_advisory_xact_lock. They now
-      // collapse into ONE statement: the two counts share a single
-      // wallet_topups scan via count(*) FILTER arms (the admin/stats.ts
-      // idiom), and the duplicate-receipt probe rides the same statement
-      // as a scalar subquery (an EXISTS alone would lose the existing
-      // row's id, which the 409 body surfaces as existing_topup_id).
-      // Guard semantics identical — the checks below keep their exact
-      // order (duplicate 409 BEFORE the pending-cap 429 BEFORE the
-      // auto-reject heuristic), and folding into one statement makes the
-      // three guards read ONE snapshot instead of three consecutive
-      // per-statement snapshots (the advisory lock already serializes
-      // same-user submissions, so no observable difference).
-      // Round trips inside the lock: 3 → 1.
-      //
-      // R154 (P1-A): the guard statement now also computes the
-      // DUPLICATE-RISK probe for ref-less mobile transfers — the
-      // B4-R1 hard-required reference is retired with the storefront
-      // field, so mobile_transfer pendings arrive reference-less again.
-      // Exact uniqueness CANNOT be claimed from (amount, network,
-      // sender) alone — a legitimate customer can top up the same
-      // amount twice in a day — so the evidence is surfaced as an
-      // operator-visible REVIEW signal (admin note on the pending row
-      // + the ⚠ line on the Telegram card), never a blanket rejection.
-      // The idempotency-key replay + pending-cap + reference-based
-      // guards (for legacy/referenced rows) are unchanged.
-      const [guards] = await tx
-        .select({
-          pendingCount:
-            sql<number>`count(*) filter (where ${walletTopupsTable.status} = 'pending')`.mapWith(
-              Number,
-            ),
-          rejectedCount:
-            sql<number>`count(*) filter (where ${walletTopupsTable.status} = 'rejected')`.mapWith(
-              Number,
-            ),
-          duplicateId:
-            paymentReference !== null
-              ? sql<
-                  number | null
-                >`(select id from ${walletTopupsTable} where ${walletTopupsTable.userId} = ${userId} and ${walletTopupsTable.paymentReference} = ${paymentReference} and ${walletTopupsTable.amount} = ${roundLydString(amount)} and ${walletTopupsTable.status} = 'pending' limit 1)`
-              : // No reference (lypay optional-ref class) → the B4-R1 probe
-                // never ran pre-fold; a SQL null literal keeps the guard
-                // inert without a subquery.
-                sql<number | null>`null`,
-          duplicateRiskIds:
-            method === "mobile_transfer" && paymentReference === null && normalizedSenderPhone
-              ? sql<
-                  string | null
-                >`(select string_agg(t.id::text, ',') from (select id from ${walletTopupsTable} where ${walletTopupsTable.userId} = ${userId} and ${walletTopupsTable.amount} = ${roundLydString(amount)} and ${walletTopupsTable.paymentNetwork} = ${network} and ${walletTopupsTable.senderPhone} = ${normalizedSenderPhone} and (${walletTopupsTable.status} = 'pending' or (${walletTopupsTable.status} = 'approved' and ${walletTopupsTable.createdAt} >= now() - interval '24 hours')) order by id limit 3) t)`
-              : sql<string | null>`null`,
-        })
-        .from(walletTopupsTable)
-        .where(eq(walletTopupsTable.userId, userId));
-
-      // B4-R1: creation-time duplicate-receipt guard (referenced records —
-      // R154 keeps this intact for any submission that still carries a
-      // reference, e.g. legacy clients and lypay receipts). The duplicate
-      // shape it closes: the SAME receipt resubmitted under a DIFFERENT
-      // idempotency key (or no key at all) — two identical pending cards
-      // in the operator queue for one real transfer. Same user + same
-      // reference + same (rounded) amount + still pending → 409 with an
-      // honest message. Same reference with a DIFFERENT amount is left
-      // through: the approval battery (exact-ref check + V1-M9 partial
-      // unique) still guarantees the second approval 409s, and blocking it
-      // here would false-positive on a bank that reuses receipt strings.
-      // Runs inside the per-user advisory lock, so a double-submit race
-      // cannot slip two rows past this check.
-      if (guards.duplicateId != null) {
-        return { kind: "duplicate" as const, existingId: guards.duplicateId };
-      }
-
-      if (guards.pendingCount >= MAX_PENDING) {
-        return { kind: "limited" as const, pendingCount: guards.pendingCount };
-      }
-
-      // (Typed to the topup_status enum — replaces the legacy `as any`.)
-      let initialStatus: "pending" | "rejected" = "pending";
-      let initialAdminNote: string | null = null;
-
-      // Recharge Verification Heuristic: Auto-reject serial abusers
-      if (guards.rejectedCount >= 3) {
-        initialStatus = "rejected";
-        initialAdminNote = "رفض تلقائي: تاريخ من الطلبات المرفوضة المتكررة (احتيال محتمل)";
-      }
-
-      // R154 (P1-A): parse the ref-less duplicate-risk probe (≤3 sibling
-      // ids, comma-joined) — pending-or-recently-approved twins on
-      // (amount, network, sender). Signal only, never a rejection.
-      const duplicateRiskSiblingIds =
-        typeof guards.duplicateRiskIds === "string" && guards.duplicateRiskIds.length > 0
-          ? guards.duplicateRiskIds
-              .split(",")
-              .map((s) => Number(s))
-              .filter((n) => Number.isInteger(n) && n > 0)
-          : [];
-
-      if (duplicateRiskSiblingIds.length > 0 && initialStatus === "pending") {
-        const siblingList = duplicateRiskSiblingIds.map((id) => `#${id}`).join("، ");
-        initialAdminNote = `⚠️ خطر تكرار محتمل: يوجد طلب آخر بنفس المبلغ والشبكة والمُرسل قيد المراجعة أو معتمد خلال 24 ساعة (${siblingList}) — تحقق من إيصال التحويل قبل الاعتماد`;
-      }
-
-      const [topup] = await tx
-        .insert(walletTopupsTable)
-        .values({
-          userId,
-          // R102 (money display-vs-storage parity): zod accepts up to 3+
-          // decimals but numeric(10,2) rounds SILENTLY — the operator
-          // would approve 10.555 while 10.56 is what gets credited.
-          // Round at the boundary so the approval card, the credited
-          // amount, and the ledger agree. AUD103 (r103): roundLydString —
-          // +toFixed(2) missed the exact half-cent case (binary
-          // 10.554999… → "10.55"); the epsilon-corrected rounding yields
-          // the intended 10.56.
-          amount: roundLydString(amount),
-          paymentMethod: method,
-          paymentNetwork: network,
-          // R151: store the NORMALIZED sender phone, not the raw input.
-          // The composite soft-dedup (topup.service.ts:360) matches
-          // senderPhone as a raw string — two submissions of the same
-          // number with different formatting ("0913456789" vs
-          // "+218913456789", both valid, both normalize to "913456789")
-          // bypassed the dedup and could both be approved, crediting the
-          // wallet twice for one real transfer. normalizeLibyanPhone
-          // returns the canonical 9-digit form (validated upstream for
-          // mobile_transfer; the fallback keeps the raw value for any
-          // non-Libyan edge case). sender_account is trimmed for the
-          // same reason (the lypay dedup at topup.service.ts:404).
-          senderPhone: normalizedSenderPhone,
-          senderAccount:
-            typeof sender_account === "string"
-              ? sender_account.trim() || null
-              : (sender_account ?? null),
-          paymentReference,
-          status: initialStatus,
-          adminNote: initialAdminNote,
-        })
-        .returning();
-
-      // R104 (AG9-1): claim the key INSIDE this transaction — commits
-      // atomically with the pending row; a rollback releases it for the
-      // client's retry. A concurrent same-key winner throws 23505.
-      if (scopedIdemKey) {
-        try {
-          await claimIdempotencyKey(
-            tx as unknown as typeof db,
-            scopedIdemKey,
-            topup.id,
-            "topup.create",
-            idemBodyHash, // R134 (A7-F4)
-          );
-        } catch (err) {
-          // R108 (FH-A7 P3-2): the manual `code === "23505"` check missed
-          // drizzle-wrapped errors (node-postgres exposes the SQLSTATE on
-          // the wrapped .cause — see lib/idempotency.ts); the race loser
-          // got a raw 500 instead of the designed replay envelope.
-          if (isIdempotencyKeyViolation(err)) {
-            return { kind: "replayed" as const };
-          }
-          throw err;
-        }
-      }
-
-      return {
-        kind: "ok" as const,
-        topup,
-        initialStatus,
-        duplicateRiskSiblingIds,
-      };
+    // R158 (B-F1): the creation pipeline (validation battery → durable
+    // idempotency replay → advisory-lock transaction → auto-reject
+    // heuristic → operator/customer notify → risk emit) lives in
+    // TopupService.createPendingTopup — the same delegation the sibling
+    // money paths already use (orders.ts → CheckoutService.purchase;
+    // admin/users.ts → AdjustmentService). The route keeps the parse,
+    // the request-context translation, and the response mapping below.
+    const result = await TopupService.createPendingTopup({
+      userId,
+      amount,
+      paymentMethod: payment_method,
+      paymentNetwork: payment_network,
+      senderPhone: sender_phone,
+      senderAccount: sender_account,
+      paymentReference: payment_reference,
+      // F10 (round-94 C4→C5 wiring), checkout-parity: the raw
+      // Idempotency-Key header passes through — the service scopes it
+      // per-user, replays the original topup on a retry, and claims it
+      // atomically with the pending row.
+      idempotencyKey: req.header("Idempotency-Key"),
+      idempotencyBodyHash: idemBodyHash,
+      ipAddress: req.ip ?? null,
+      userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
     });
 
-    if (submission.kind === "replayed") {
-      // Lost the same-key race to a concurrent duplicate (double-click
-      // with two in-flight POSTs): the winner's row is the real one —
-      // replay it exactly like the pre-tx path above.
-      if (scopedIdemKey) {
-        const winnerClaim = await findIdempotentOrderId(scopedIdemKey, "topup.create");
-        if (winnerClaim !== null) {
-          // R134 (A7-F4): the committed-concurrently twin — a winner that
-          // wrote a DIFFERENT body under this key is the classified 409,
-          // never a replay of a different intent's result.
-          if (winnerClaim.bodyHash !== null && winnerClaim.bodyHash !== idemBodyHash) {
-            return res.status(409).json({
-              success: false,
-              error: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-              message: IDEMPOTENCY_KEY_REUSE_MESSAGE,
-              code: IDEMPOTENCY_KEY_REUSE_CODE,
-            });
-          }
-          const winnerId = winnerClaim.orderId;
-          if (winnerId !== null) {
-            const [existing] = await db
-              .select()
-              .from(walletTopupsTable)
-              .where(and(eq(walletTopupsTable.id, winnerId), eq(walletTopupsTable.userId, userId)))
-              .limit(1);
-            if (existing) {
-              res.setHeader("Idempotent-Replayed", "true");
-              return res.json(formatTopup(existing));
-            }
-          }
-        }
+    if (!result.ok) {
+      // R158 (B-F2): the idempotency-reuse 409 — the shared factory
+      // envelope (byte-identical to the Redis layer's; ONE shape across
+      // both idempotency layers). The two former emission sites (the
+      // pre-tx replay predicate + the post-tx race-loser re-check, both
+      // now in the service) collapse into this single mapping.
+      if (result.reason === "IDEMPOTENCY_KEY_REUSE") {
+        return res.status(409).json(idempotencyReuseBody());
       }
-      return res
-        .status(409)
-        .json(
-          createErrorResponse("طلب مكرر قيد المعالجة — أعد المحاولة بعد لحظات", ErrorCode.CONFLICT),
+      if (result.reason === "VALIDATION_ERROR") {
+        return res.status(400).json(createErrorResponse(result.message, ErrorCode.INVALID_DATA));
+      }
+      if (result.reason === "IN_FLIGHT_CONFLICT") {
+        return res
+          .status(409)
+          .json(
+            createErrorResponse(
+              "طلب مكرر قيد المعالجة — أعد المحاولة بعد لحظات",
+              ErrorCode.CONFLICT,
+            ),
+          );
+      }
+      if (result.reason === "DUPLICATE_PENDING_REFERENCE") {
+        // B4-R1: the same receipt (user + reference + amount) already
+        // has a PENDING row — a resubmission under a different
+        // idempotency key. 409 with the existing request's id so the
+        // user can see it in their list; nothing was inserted (the tx
+        // returned before the insert).
+        return res.status(409).json(
+          createErrorResponse(result.message, ErrorCode.CONFLICT, {
+            reason: "DUPLICATE_PENDING_REFERENCE",
+            existing_topup_id: result.existingTopupId,
+          }),
         );
-    }
-
-    if (submission.kind === "duplicate") {
-      // B4-R1: the same receipt (user + reference + amount) already has a
-      // PENDING row — a resubmission under a different idempotency key.
-      // 409 with the existing request's id so the user can see it in their
-      // list; nothing was inserted (the tx returned before the insert).
-      return res
-        .status(409)
-        .json(
-          createErrorResponse(
-            `يوجد طلب شحن قيد المراجعة بنفس المرجع والمبلغ (#${submission.existingId}) — انتظر مراجعته أو أرسل تحويلاً جديداً`,
-            ErrorCode.CONFLICT,
-            { reason: "DUPLICATE_PENDING_REFERENCE", existing_topup_id: submission.existingId },
-          ),
-        );
-    }
-
-    if (submission.kind === "limited") {
+      }
+      // TOPUP_LIMIT_EXCEEDED
       return res.status(429).json({
         error: "لديك طلبات قيد المراجعة، يرجى الانتظار حتى يتم اعتمادها",
         // V4-P1: the code field is what the frontend getErrorMessage maps
         // to the Arabic message — without it this fell to the raw string.
         code: ErrorCode.TOPUP_LIMIT_EXCEEDED,
-        pending_count: submission.pendingCount,
-        limit: MAX_PENDING,
+        pending_count: result.pendingCount,
+        limit: result.limit,
       });
     }
 
-    const { topup, initialStatus, duplicateRiskSiblingIds } = submission;
-    // AUD103-2-F6 (r103): display-vs-storage parity — everything the
-    // operator card, the user notification, and the risk pipeline SEE
-    // downstream must be the STORED (rounded) amount, not the raw
-    // submission (10.555 → stored/credited 10.56 — the approval card used
-    // to show the un-rounded value to the human checkpoint).
-    const storedAmount = Number(topup.amount);
-
-    // B6-03 (R116) hygiene: projected identity read — notifyNewTopup needs
-    // phone and derivePrimaryProvider needs telegramId/firebaseUid (the
-    // other identity fields ride the projection for future notify use; a
-    // bare select() pulled every users column for nothing).
-    const [currentUser] = await db
-      .select({
-        id: usersTable.id,
-        phone: usersTable.phone,
-        displayName: usersTable.displayName,
-        authProvider: usersTable.authProvider,
-        googleId: usersTable.googleId,
-        telegramId: usersTable.telegramId,
-        firebaseUid: usersTable.firebaseUid,
-      })
-      .from(usersTable)
-      .where(eq(usersTable.id, userId))
-      .limit(1);
-    // R128 (B8-D2): ONE operator card per PENDING topup — notifyNewTopup
-    // now carries the ✅/❌ approve/reject inline keyboard (canon labels,
-    // mapped network names, formatLyd amount, «رمز التحويل» — the field
-    // set this route's deleted bespoke approval card leaked raw enums
-    // through) and rides telegram.ts's shared dispatch pipeline
-    // (metrics + retry) instead of a bespoke fetch. An auto-rejected
-    // row (serial-abuser heuristic) is NOT awaiting approval and sends
-    // no card — its «⏳ بانتظار الموافقة» shape would be false
-    // information in a money-approval context.
-    if (currentUser && initialStatus === "pending")
-      notifyNewTopup({
-        phone: currentUser.phone,
-        amount: storedAmount,
-        network: method === "lypay" ? "LyPay" : (network ?? ""),
-        topupId: topup.id,
-        provider: derivePrimaryProvider(currentUser),
-        paymentReference,
-        // R154 (P1-A): the ⚠ duplicate-risk line rides the operator card
-        // for ref-less mobile transfers — the review evidence that
-        // retired the customer-facing receipt field.
-        duplicateRiskSiblingIds:
-          duplicateRiskSiblingIds.length > 0 ? duplicateRiskSiblingIds : null,
-      });
-
-    // R154 (P5): the CUSTOMER's side of the topup loop — the first
-    // notifications row used to appear only on approve/reject, so the
-    // bell + history stayed silent between submission and the operator's
-    // verdict (the waiting modal covers the open tab only). Now every
-    // GENUINE submission (replays return earlier) writes a persistent
-    // «قيد المراجعة» row, and the serial-abuser auto-reject writes its
-    // own honest row (previously NOBODY was notified on that path).
-    // Best-effort — createNotification never fails the 201.
-    if (initialStatus === "pending") {
-      await createNotification(
-        userId,
-        "wallet",
-        "تم استلام طلب الشحن",
-        `طلب شحن بقيمة ${formatLyd(storedAmount)} قيد المراجعة الآن — سنعلمك فور اعتماده.`,
-        "/wallet",
-      );
-    } else {
-      await createNotification(
-        userId,
-        "wallet",
-        "تعذّر قبول طلب الشحن",
-        `لم يُقبل طلب الشحن بقيمة ${formatLyd(storedAmount)} (سجلّ طلبات مرفوضة متكررة). تواصل مع الدعم لأي استفسار.`,
-        "/support",
-      );
+    // Same contract as the checkout replay (orders.ts): a REPLAYED topup
+    // answers 200 (not 201 — nothing new was created), gets the
+    // Idempotent-Replayed header, and returns the ORIGINAL formatted DTO —
+    // the service already skipped every new-topup side effect (operator
+    // card, customer notification, risk emit).
+    if (result.idempotentReplay) {
+      res.setHeader("Idempotent-Replayed", "true");
+      return res.json(formatTopup(result.topup));
     }
 
-    // Risk pipeline (003-anomaly-detection) — emit topup_attempt. Never
-    // blocks; gated on RISK_PIPELINE_ENABLED inside scoreEvent.
-    scoreEventFireAndForget({
-      eventType: "topup_attempt",
-      userId,
-      ipAddress: req.ip ?? null,
-      userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
-      phone: currentUser?.phone ?? null,
-      ruleContext: {
-        event: {
-          eventType: "topup_attempt",
-          ipAddress: req.ip ?? null,
-          amount: storedAmount,
-        },
-        user: { id: userId },
-      },
-    });
-
-    return res.status(201).json(formatTopup(topup));
+    return res.status(201).json(formatTopup(result.topup));
   },
 );
 

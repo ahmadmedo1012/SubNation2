@@ -3,8 +3,8 @@ import { and, count, desc, eq, sql } from "drizzle-orm";
 import { Router } from "express";
 import { z } from "zod";
 import { intParam, pageParam, queryString } from "../../lib/http";
-import { logger } from "../../lib/logger";
 import { writeAuditLog } from "../../lib/audit";
+import { notifyAdminStats } from "../../lib/socket";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { createNotification } from "../../notify";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -257,12 +257,9 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
   // admin reply flips the ticket to in_progress (moves the dashboard's
   // open_tickets stat); other open admin tabs refresh on event instead
   // of waiting out their staleTime. Same room/payload shape as
-  // admin/orders.ts; fire-and-forget, never blocks the response.
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "ticket-reply" });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  // admin/orders.ts; fire-and-forget, never blocks the response. R158:
+  // carried by the shared notifyAdminStats helper (lib/socket.ts).
+  notifyAdminStats("ticket-reply");
 
   // R126-L4 (A7-F4, P3): an admin reply is a customer-facing mutation —
   // the admin speaks AS the store in the thread and flips the ticket to
@@ -308,12 +305,9 @@ router.patch("/tickets/:id/status", requireAdmin, async (req, res) => {
   // status flip (open/in_progress ↔ closed) moves the dashboard's
   // open_tickets stat; other open admin tabs refresh on event. Same
   // room/payload shape as admin/orders.ts (status rides the payload,
-  // exactly like order-bulk-update).
-  import("../../lib/socket")
-    .then(({ emitToAdmins }) => {
-      emitToAdmins("admin-stats-update", { type: "ticket-status-update", status });
-    })
-    .catch((err) => logger.warn({ err }, "socket admin-stats notify failed"));
+  // exactly like order-bulk-update). R158: carried by the shared
+  // notifyAdminStats helper (lib/socket.ts).
+  notifyAdminStats("ticket-status-update", { status });
 
   // R126-L4 (A7-F4, P3): the status flip is the same un-audited write
   // class as the reply above — an incident review ("who closed this

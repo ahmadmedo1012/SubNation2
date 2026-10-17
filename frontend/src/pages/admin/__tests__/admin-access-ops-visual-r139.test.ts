@@ -269,7 +269,10 @@ describe("R139 (139-g) — well family, quiet danger, canonical recipes (admins)
   it("the header CTA rides the shared Button (the console header-CTA recipe)", () => {
     const src = stripped(`${ADMINS}/AdminsHeader.tsx`);
     expect(src).toContain("<Button");
-    expect(src).toContain('className="bg-primary hover:bg-primary/90 h-9');
+    // R158 (A6 tail) re-pin: the flat bg-primary/hover-darken override
+    // retired — buttonVariants owns the fill; the pin now asserts the
+    // sizing-only override instead of the hand-rolled fill.
+    expect(src).toContain('className="h-9"');
     expect(src).not.toMatch(/<button/);
     expect(src).not.toContain("shadow-sm");
   });
@@ -288,7 +291,8 @@ describe("R139 (139-g) — well family, quiet danger, canonical recipes (admins)
       const src = stripped(`${ADMINS}/${name}.tsx`);
       expect(src, name).toContain('<Button type="button" variant="ghost" onClick={onClose}>');
       expect(src, name).toContain('type="submit"');
-      expect(src, name).toContain('className="h-9 bg-primary hover:bg-primary/90');
+      // R158 (A6 tail) re-pin: flat-fill override retired — sizing only.
+      expect(src, name).toContain('className="h-9"');
       expect(src, name).not.toMatch(/<button\s/);
     }
   });

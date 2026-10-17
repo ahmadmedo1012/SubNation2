@@ -6,9 +6,10 @@ import {
   usersTable,
   walletTopupsTable,
 } from "@workspace/db";
-import { count, eq, inArray, isNotNull, or, sql, sum } from "drizzle-orm";
+import { count, eq, inArray, sql, sum } from "drizzle-orm";
 import { Router } from "express";
 import { cacheWrap } from "../../lib/cache";
+import { deliverableUnitCondition } from "../../services/catalog.service";
 import { requirePermission } from "../../lib/permissions";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 
@@ -38,20 +39,18 @@ function tripoliDayStartUtc(now: number): number {
 }
 
 /** R120-B4 (A6-F5): a unit counts as available stock only when it is
- *  DELIVERABLE — at least one credential field present. Mirrors
- *  routes/products.ts:83 `deliverableUnitCondition` (R102) verbatim; the
- *  admin count previously counted ALL unsold rows, so ghost rows
- *  (zero credentials — refused at checkout by the INVENTORY_CORRUPT
- *  gate) inflated the dashboard's stock KPI above what the public
- *  stats reported for the same catalog. Defined locally because the
- *  public route's helper is not exported (importing across route
- *  modules would couple the two routers). */
-const deliverableUnitCondition = () =>
-  or(
-    isNotNull(inventoryTable.accountPassword),
-    isNotNull(inventoryTable.accountEmail),
-    isNotNull(inventoryTable.extraDetails),
-  );
+ *  DELIVERABLE — at least one credential field present. The admin count
+ *  previously counted ALL unsold rows, so ghost rows (zero credentials
+ *  — refused at checkout by the INVENTORY_CORRUPT gate) inflated the
+ *  dashboard's stock KPI above what the public stats reported for the
+ *  same catalog.
+ *
+ *  R158 (B#4): imports the ONE definition from catalog.service.ts — the
+ *  local copy existed only because the helper once lived unexported in
+ *  routes/products.ts; it has been exported (and routes/products.ts
+ *  itself imports it) since the R118 catalog-service extraction, so
+ *  the "not exported" rationale was stale. Definitions were verified
+ *  identical before the merge. */
 
 /** YYYY-MM-DD Tripoli calendar key from a UTC day-start instant. */
 function tripoliKey(dayStartUtcMs: number): string {

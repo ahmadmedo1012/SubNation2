@@ -56,7 +56,7 @@ export function ProductEditorCard({
           <p className="text-3xs text-muted-foreground mt-0.5">
             <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded">⌘S</kbd>{" "}
             للحفظ ·
-            <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded mr-1">
+            <kbd className="font-mono bg-muted/80 border border-border/60 px-1 rounded ms-1">
               Esc
             </kbd>{" "}
             للإغلاق
@@ -373,7 +373,9 @@ export function ProductEditorCard({
           </Button>
           <Button
             type="submit"
-            className="h-9 bg-primary hover:bg-primary/90 active:scale-[0.97] transition-transform"
+            /* R158 (A6 tail): the flat-fill override retires —
+             * buttonVariants owns the canonical fill + press-spring. */
+            className="h-9"
             disabled={createPending || updatePending}
             /* R148 (D1): the in-flight save now carries a busy register
                the bare disabled never had — Loader2 swap (the
@@ -385,9 +387,9 @@ export function ProductEditorCard({
             aria-busy={createPending || updatePending}
           >
             {createPending || updatePending ? (
-              <Loader2 className="w-4 h-4 ml-1.5 animate-spin" />
+              <Loader2 className="w-4 h-4 me-1.5 animate-spin" />
             ) : (
-              <CheckCircle className="w-4 h-4 ml-1.5" />
+              <CheckCircle className="w-4 h-4 me-1.5" />
             )}
             {createPending || updatePending
               ? "جارٍ الحفظ…"

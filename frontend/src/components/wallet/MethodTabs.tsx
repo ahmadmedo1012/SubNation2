@@ -39,7 +39,7 @@ export function MethodTabs({
                 variant pills (home.tsx / product.tsx), not
                 class-only state. */
             aria-pressed={method === m.id}
-            className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border transition-all duration-180 text-center sm:text-right press-spring min-w-0 ${
+            className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border transition-all duration-150 text-center sm:text-right press-spring min-w-0 ${
               /* R139 (precision): the money-path selector joins the PDP
                  VariantSelector trio — active = the tinted pill
                  (bg-primary/15 + border-primary/30 + primary-text ink,

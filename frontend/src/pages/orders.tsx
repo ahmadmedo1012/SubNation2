@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { useSeo } from "@/hooks/useSeo";
+import { FilterTabs, type FilterTabItem } from "@/components/ui/filter-tabs";
 
 type OrderFilter = "all" | "pending" | "completed" | "failed";
 
@@ -91,80 +92,15 @@ function statusAccentBorder(status: string): string {
   return "border-r-status-warning/45";
 }
 
-const FILTER_TONES: Record<
-  "neutral" | "info" | "warning" | "success" | "error",
-  { active: string; idle: string }
-> = {
-  /* R139 (precision): the filter chips join the calm pill dialect —
-     active = the tinted trio ("الكل" rides the primary trio; the
-     status buckets ride their status token at the same alphas), with
-     NO shadow anywhere on either state; idle = the family muted box
-     (bg-muted/30 + border/30 + the /60 hover wash — the tone reveals
-     only on the active state). The old inverted "all" fill, the
-     per-tone /45 edges and the tone-tinted idle hovers were the
-     pre-r138 raised-toggle register. Both states keep the border box
-     (the base className's `border`) — no 1px toggle jitter. aria-pressed
-     is pinned by orders-filter-url. */
-  neutral: {
-    active: "bg-primary/15 text-primary-text border-primary/30",
-    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
-  },
-  // R116-S2 (P3): the refunded/failed bucket rides the INFO tone — a
-  // refund is not a failure (the money came back; the pill + row accent
-  // already carry status-info). Pure «فشل» red mislabeled every
-  // refunded order in the list.
-  info: {
-    active: "bg-status-info/15 text-status-info border-status-info/30",
-    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
-  },
-  warning: {
-    active: "bg-status-warning/15 text-status-warning border-status-warning/30",
-    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
-  },
-  success: {
-    active: "bg-status-success/15 text-status-success border-status-success/30",
-    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
-  },
-  error: {
-    active: "bg-status-error/15 text-status-error border-status-error/30",
-    idle: "bg-muted/30 border-border/30 text-muted-foreground hover:text-foreground hover:bg-muted/60",
-  },
-};
-
-function FilterChip({
-  active,
-  onClick,
-  icon: Icon,
-  label,
-  count,
-  tone,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: typeof Clock;
-  label: string;
-  count: number;
-  tone: "neutral" | "info" | "warning" | "success" | "error";
-}) {
-  const styles = FILTER_TONES[tone];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      /* R116-S2 (P2/P3): 44px touch floor on the filter chips (was
-         ~30px — a mis-tap while scrolling the list dropped a filter
-         silently). */
-      className={`flex items-center gap-1.5 min-h-11 text-xs font-bold border px-3 py-1.5 rounded-full whitespace-nowrap shrink-0 transition-all duration-150 press-spring ${
-        active ? styles.active : styles.idle
-      }`}
-    >
-      <Icon className="w-3 h-3" />
-      <span>{label}</span>
-      <span className={`tabular-nums font-bold ${active ? "" : "opacity-60"}`}>{count}</span>
-    </button>
-  );
-}
+// R158-IMPL-D (ledger b): the filter chips now ride the shared
+// ui/FilterTabs primitive (variant="chips") — the page-local
+// FilterChip + FILTER_TONES hand-roll (the r138 calm-pill dialect,
+// tone fills + counts) moved INTO the primitive, so the tones/counts
+// stay page-owned HERE and only the dial ships down as data. The
+// ?filter= URL write-back stays in the [filter] replaceState effect
+// (onSelect receives the raw setter — the A9-3 deep-link contract
+// orders-filter-url pins); aria-pressed + the 44px floor ride the
+// primitive's pill.
 
 // R136 (UX-1): OrderCardSkeleton moved verbatim into ui/Skeleton's
 // SkeletonCard (the geometry this page's card skeleton defined — tile +
@@ -312,6 +248,46 @@ export default function OrdersPage() {
     [orders],
   );
 
+  // R158-IMPL-D (ledger b): the chips dial for the shared FilterTabs —
+  // the buckets (memoized above) stay the single truth; empty buckets
+  // simply don't push a chip (the old JSX conditionals, as data).
+  // R116-S2 (P3) rides on: the refunded/failed bucket keeps the INFO
+  // tone (a refund is not a failure), pending rides warning, completed
+  // success, «الكل» the primary trio.
+  const filterItems: FilterTabItem<OrderFilter>[] = [
+    { value: "all", label: "الكل", icon: Layers, count: orders.length },
+  ];
+  if (pending.length > 0) {
+    filterItems.push({
+      value: "pending",
+      label: "قيد الانتظار",
+      icon: Clock,
+      count: pending.length,
+      tone: "warning",
+    });
+  }
+  if (completed.length > 0) {
+    filterItems.push({
+      value: "completed",
+      label: "مكتمل",
+      icon: CheckCircle,
+      count: completed.length,
+      tone: "success",
+    });
+  }
+  if (failed.length > 0) {
+    filterItems.push({
+      value: "failed",
+      /* R116-S2 (P3): «مُسترد» leads — most rows in this bucket are
+         refunds (the money came back), not failures; info tone matches
+         the row pill/accent (R115-I1 A8 P2-3). */
+      label: "مُسترد / فشل",
+      icon: Undo2,
+      count: failed.length,
+      tone: "info",
+    });
+  }
+
   // Apply the active filter chip. The "all" chip preserves the
   // existing default behaviour (every order, sorted by the API).
   const visibleOrders = useMemo(() => {
@@ -388,52 +364,18 @@ export default function OrdersPage() {
           once there are at least two non-empty buckets, so a fresh
           user with one pending order doesn't see redundant filtering
           UI. Each tone-specific chip lights up when active using its
-          status token; inactive chips are muted and unclickable when
-          their bucket is empty. */}
+          status token (FilterTabs' tone prop); empty buckets stay
+          hidden (the items array below only pushes non-empty ones). */}
       {!isLoading && orders.length > 0 && (
-        <div className="flex gap-2 mb-5 flex-wrap slide-up overflow-x-auto scrollbar-none">
-          <FilterChip
-            active={filter === "all"}
-            onClick={() => setFilter("all")}
-            icon={Layers}
-            label="الكل"
-            count={orders.length}
-            tone="neutral"
-          />
-          {pending.length > 0 && (
-            <FilterChip
-              active={filter === "pending"}
-              onClick={() => setFilter("pending")}
-              icon={Clock}
-              label="قيد الانتظار"
-              count={pending.length}
-              tone="warning"
-            />
-          )}
-          {completed.length > 0 && (
-            <FilterChip
-              active={filter === "completed"}
-              onClick={() => setFilter("completed")}
-              icon={CheckCircle}
-              label="مكتمل"
-              count={completed.length}
-              tone="success"
-            />
-          )}
-          {failed.length > 0 && (
-            <FilterChip
-              active={filter === "failed"}
-              onClick={() => setFilter("failed")}
-              icon={Undo2}
-              /* R116-S2 (P3): «مُسترد» leads — most rows in this bucket are
-                 refunds (the money came back), not failures; info tone
-                 matches the row pill/accent (R115-I1 A8 P2-3). */
-              label="مُسترد / فشل"
-              count={failed.length}
-              tone="info"
-            />
-          )}
-        </div>
+        <FilterTabs
+          variant="chips"
+          scrollable
+          ariaLabel="تصفية الطلبات حسب الحالة"
+          className="mb-5 slide-up"
+          items={filterItems}
+          value={filter}
+          onSelect={setFilter}
+        />
       )}
 
       {/* Loading */}

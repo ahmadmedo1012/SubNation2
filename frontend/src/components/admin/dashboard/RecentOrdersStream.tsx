@@ -121,7 +121,7 @@ export function RecentOrdersStream({
                   )}
                 </div>
               </div>
-              <div className="shrink-0 text-right">
+              <div className="shrink-0 text-start">
                 {/* R125-I2 (A6-B6): raw --primary on a dark card is
                     3.76:1 — under the 4.5:1 text floor (dark is the
                     admin default). --primary-text (348 80% 65%) is

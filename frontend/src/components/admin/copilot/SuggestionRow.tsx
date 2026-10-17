@@ -17,7 +17,7 @@ export function SuggestionRow({
   return (
     <button
       onClick={() => onPick(text)}
-      className="w-full text-right text-xs px-3 py-2.5 rounded-xl bg-muted/30 hover:bg-muted/60 border border-border/30 hover:border-primary/30 transition-all flex items-center gap-2 group"
+      className="w-full text-start text-xs px-3 py-2.5 rounded-xl bg-muted/30 hover:bg-muted/60 border border-border/30 hover:border-primary/30 transition-all flex items-center gap-2 group"
     >
       {/* R139 (precision): VERIFIED calm at rest — the chip already rides
           the family's inactive pill register (bg-muted/30 + border/30 +

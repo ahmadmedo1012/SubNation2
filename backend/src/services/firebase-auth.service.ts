@@ -1,5 +1,6 @@
 import { db, referralEventsTable, userAuthIdentitiesTable, usersTable } from "@workspace/db";
 import { createHash, randomBytes } from "crypto";
+import { readEnvNumber } from "../lib/env";
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import jwt from "jsonwebtoken";
@@ -40,8 +41,12 @@ export class FirebaseAuthError extends Error {
 const DEFAULT_FIREBASE_VERIFY_TIMEOUT_MS = 10_000;
 
 function firebaseVerifyTimeoutMs(): number {
-  const raw = Number(process.env.FIREBASE_VERIFY_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_FIREBASE_VERIFY_TIMEOUT_MS;
+  // R158 (B#7): the shared reader — same positive predicate + the new warn.
+  return readEnvNumber(
+    "FIREBASE_VERIFY_TIMEOUT_MS",
+    DEFAULT_FIREBASE_VERIFY_TIMEOUT_MS,
+    (n) => n > 0,
+  );
 }
 
 /** R143 (L6-3): verifyIdToken exceeded FIREBASE_VERIFY_TIMEOUT_MS. */

@@ -45,25 +45,25 @@ export function RiskEventsTable({ events }: { events: RiskEventRow[] }) {
                           readers; dates pinned to -u-nu-latn so engines
                           without ar-LY data never emit Arabic-Indic
                           numerals. */}
-                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   المستوى
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   النوع
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   المستخدم
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   القاعدة
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   النقاط
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   الإجراء
                 </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-semibold">
+                <th scope="col" className="px-4 py-2.5 text-start font-semibold">
                   الوقت
                 </th>
               </tr>

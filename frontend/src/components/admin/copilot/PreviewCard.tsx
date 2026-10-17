@@ -78,7 +78,7 @@ export function PreviewCard({
         )}
 
         {preview.payload.side_effects.length > 0 && (
-          <ul className="text-2xs text-status-warning list-disc pr-4 space-y-0.5">
+          <ul className="text-2xs text-status-warning list-disc ps-4 space-y-0.5">
             {preview.payload.side_effects.map((s, i) => (
               <li key={i}>{s}</li>
             ))}
@@ -181,7 +181,7 @@ export function PreviewCard({
                 /* R139 (precision): text-primary → text-primary-text — the
                    12px result link rides the text-safe brand ink (the
                    R126-L5 sweep class). */
-                className="text-primary-text hover:underline flex items-center gap-1 mr-auto"
+                className="text-primary-text hover:underline flex items-center gap-1 ms-auto"
               >
                 فتح <ExternalLink className="w-3 h-3" />
               </a>

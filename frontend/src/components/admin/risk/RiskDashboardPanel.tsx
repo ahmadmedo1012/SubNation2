@@ -122,7 +122,7 @@ export function RiskDashboardPanel({
                 className="text-2xs font-mono bg-muted/40 border border-border/40 rounded-lg px-2 py-1"
               >
                 {r.rule}
-                <span className="opacity-60 mr-1.5">×{r.count}</span>
+                <span className="opacity-60 ms-1.5">×{r.count}</span>
               </span>
             ))}
           </div>

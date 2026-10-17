@@ -62,7 +62,11 @@ export function CreateCouponDialog({
           <Button
             onClick={onSubmit}
             disabled={creating}
-            className="flex-1 bg-primary hover:bg-primary/90 press-spring gap-1.5 sm:flex-none"
+            /* R158 (admin polish): the flat bg-primary fill +
+               hover-darken retire — buttonVariants owns the canonical
+               fill (gradient + shadow + press-spring); the flex
+               sizing classes are kept (the footer's mobile split). */
+            className="flex-1 gap-1.5 sm:flex-none"
           >
             {creating ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -131,12 +135,12 @@ export function CreateCouponDialog({
                 >
                   {t === "percentage" ? (
                     <>
-                      <Percent className="w-3 h-3 inline ml-1" />
+                      <Percent className="w-3 h-3 inline me-1" />
                       نسبة
                     </>
                   ) : (
                     <>
-                      <Hash className="w-3 h-3 inline ml-1" />
+                      <Hash className="w-3 h-3 inline me-1" />
                       مبلغ
                     </>
                   )}
