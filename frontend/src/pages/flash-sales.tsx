@@ -97,12 +97,14 @@ function FlashCard({
     <Link href={product.slug ? `/product/${product.slug}` : `/product/${product.id}`}>
       {/* R116-S1 card convergence: ProductCard's hover physics
           (card-spring + token shadow) and aspect-square ratio replace
-          the ad-hoc -translate-y-1 / shadow-black / active-scale stack. */}
+          the ad-hoc -translate-y-1 / raw black shadow / active-scale stack. */}
       {/* R139 (precision): the card shell joins the r138-b ProductCard
           register byte-for-byte — resting border /50 → /60, hover
           border/80 → full border (the 60→100 step), and the two-layer
           calm elevation at rest (1px contact line + contained ambient,
-          neutral black) + hover:shadow-xl hover:shadow-black/25 +
+          neutral black) + the bare themed hover:shadow-xl (R157-C
+          retired the raw-black hover color override; the ladder's
+          .light step stays inside the 6–14% ceiling) +
           transition duration-280. Same grid, same datum, same card
           language on / and /flash-sales. */}
       <div
@@ -110,7 +112,7 @@ function FlashCard({
           bg-card border border-border/60 rounded-2xl overflow-hidden
           transition-all duration-280 ease-out
           shadow-calm
-          card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
+          card-spring hover:border-border hover:shadow-xl
           cursor-pointer group`}
       >
         <div className="relative">
@@ -370,7 +372,7 @@ export default function FlashSalesPage() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-5">
           {/* R139 (precision): the skeleton grid mirrors the page's own grid
               byte-for-byte (GridShell — the route-level "grid" shape built
               for this page — rides the same classes; 139-a verified the
@@ -478,7 +480,7 @@ export default function FlashSalesPage() {
               })}
             </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-5">
             {onSale.map((p, i) => (
               <FlashCard
                 key={p.id}

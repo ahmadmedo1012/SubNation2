@@ -12,6 +12,25 @@ import { networkLabel, topupStatusIcon, topupStatusLabel } from "@/components/wa
 // flow down as values + one retry callback. The move only changes its
 // address; DOM, classes and aria are byte-identical.
 
+/**
+ * R157-IMPL-B #1: the topup row's CHANNEL label, derived from the DTO's
+ * payment_method. lypay rows carry payment_network=null, so the old
+ * `payment_network && …` guard rendered NO channel at all for bank
+ * transfers — the method the DTO always names is the honest source.
+ * mobile_transfer keeps the network vocabulary (with a plain
+ * «تحويل موبايل» fallback for a null network); lypay names its channel
+ * the way the method tab does. Unknown/absent method → no label (the
+ * pre-R157 shape for legacy rows).
+ */
+export function topupChannelLabel(
+  paymentMethod?: string | null,
+  paymentNetwork?: string | null,
+): string | null {
+  if (paymentMethod === "lypay") return "LyPay";
+  if (paymentMethod === "mobile_transfer") return networkLabel(paymentNetwork) || "تحويل موبايل";
+  return null;
+}
+
 export function TopupHistoryCard({
   topups,
   loading,
@@ -98,48 +117,67 @@ export function TopupHistoryCard({
                 id: number;
                 status: string;
                 amount: number;
+                payment_method: string;
                 payment_network: string;
+                admin_note?: string | null;
                 created_at: string;
               }>
-            ).map((t, i: number) => (
-              <div
-                key={t.id}
-                /* R139 (precision): the queue rows keep their boxed-chip
-                   register (they are the topup QUEUE, not the statement —
-                   status icons + badges live here); only the nonstandard
-                   /18 fill joins the family's /20 value. */
-                className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/20 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors group`}
-              >
-                <div className="shrink-0">{topupStatusIcon(t.status)}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <span className="text-xs font-bold tabular-nums">
-                      {formatCurrency(t.amount)}
-                    </span>
-                    {t.payment_network && (
-                      <span className="text-3xs text-muted-foreground font-semibold">
-                        · {networkLabel(t.payment_network)}
+            ).map((t, i: number) => {
+              const channel = topupChannelLabel(t.payment_method, t.payment_network);
+              return (
+                <div
+                  key={t.id}
+                  /* R139 (precision): the queue rows keep their boxed-chip
+                     register (they are the topup QUEUE, not the statement —
+                     status icons + badges live here); only the nonstandard
+                     /18 fill joins the family's /20 value. */
+                  className={`float-in stagger-${Math.min(i, 8)} flex items-center gap-3 p-3 bg-muted/20 border border-border/30 rounded-xl hover:bg-muted/30 transition-colors group`}
+                >
+                  <div className="shrink-0">{topupStatusIcon(t.status)}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-xs font-bold tabular-nums">
+                        {formatCurrency(t.amount)}
                       </span>
+                      {/* R157-IMPL-B #1: the channel span now derives from
+                          payment_method — lypay rows used to render NO
+                          channel (payment_network null ⇒ the ·-label
+                          vanished). */}
+                      {channel && (
+                        <span className="text-3xs text-muted-foreground font-semibold">
+                          · {channel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {/* R116: shared StatusBadge (STATUS_TONE) replaces
+                          the deprecated statusColor() — 93-C7 follow-up. */}
+                      <StatusBadge
+                        variant={
+                          STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE
+                        }
+                        size="xs"
+                      >
+                        {topupStatusLabel(t.status)}
+                      </StatusBadge>
+                      <span className="text-3xs text-muted-foreground">
+                        {formatDate(t.created_at)}
+                      </span>
+                    </div>
+                    {/* R157-IMPL-B #2: the rejection reason used to live
+                        ONLY in TopupWaitingModal and vanished the moment
+                        it closed — the row that permanently says «مرفوض»
+                        now carries the admin's note (clamped to 2 lines;
+                        null/empty notes keep the row unchanged). */}
+                    {t.status === "rejected" && t.admin_note && (
+                      <div className="mt-1.5 pt-1.5 border-t border-border/20 text-3xs text-muted-foreground leading-relaxed line-clamp-2">
+                        {t.admin_note}
+                      </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    {/* R116: shared StatusBadge (STATUS_TONE) replaces
-                        the deprecated statusColor() — 93-C7 follow-up. */}
-                    <StatusBadge
-                      variant={
-                        STATUS_TONE[t.status as keyof typeof STATUS_TONE] ?? UNKNOWN_STATUS_TONE
-                      }
-                      size="xs"
-                    >
-                      {topupStatusLabel(t.status)}
-                    </StatusBadge>
-                    <span className="text-3xs text-muted-foreground">
-                      {formatDate(t.created_at)}
-                    </span>
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -141,8 +141,12 @@ export function BuyPanelColumn({
           </div>
         )}
 
-        {/* CTA — desktop only (mobile uses sticky bar) */}
-        <div className="order-12 max-lg:px-5 hidden sm:block">
+        {/* CTA — large screens (≤1024px uses the sticky bar) */}
+        {/* R157: the band between sm (640px) and lg (1024px) — landscape
+            phones and small tablets — had NEITHER affordance: the sticky
+            bar was sm:hidden and this panel CTA only ≥sm. Now exactly one
+            buy affordance is sticky at every width: bar <lg, panel ≥lg. */}
+        <div className="order-12 max-lg:px-5 hidden lg:block">
           <CtaBlock
             token={token}
             product={product}

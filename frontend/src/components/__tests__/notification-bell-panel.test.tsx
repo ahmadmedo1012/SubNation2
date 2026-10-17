@@ -122,9 +122,12 @@ describe("NotificationPanel footer — honest count at the 40-row cap (A9-2, R12
     );
     await openPanel();
 
-    // The endpoint caps history at 40 (routes/notifications.ts .limit(40),
-    // no pagination) — the old label read «40 إشعاراً» like a total.
-    expect(await screen.findByText(/^آخر 40 إشعاراً$/)).toBeInTheDocument();
+    // The footer count is now a LINK to /notifications (R157: the cap
+    // count used to be a dead end) — the count text is UNCHANGED, the
+    // link appends «· عرض الكل".
+    const footerLink = await screen.findByRole("link", { name: /آخر 40 إشعاراً/ });
+    expect(footerLink).toHaveAttribute("href", "/notifications");
+    expect(footerLink).toHaveTextContent(/عرض الكل/);
   });
 
   it("below the cap the plain count stays (it IS the total — every row the user has is loaded)", async () => {
@@ -134,8 +137,13 @@ describe("NotificationPanel footer — honest count at the 40-row cap (A9-2, R12
     );
     await openPanel();
 
-    expect(await screen.findByText(/^3 إشعارات$/)).toBeInTheDocument();
+    expect(await screen.findByText(/3 إشعارات/)).toBeInTheDocument();
     expect(screen.queryByText(/آخر/)).not.toBeInTheDocument();
+    // R157: the footer is now a link to the paged full history.
+    expect(screen.getByRole("link", { name: /3 إشعارات/ })).toHaveAttribute(
+      "href",
+      "/notifications",
+    );
   });
 });
 
@@ -212,11 +220,12 @@ describe("NotificationPanel dialog contract — focus return + Tab trap (A4-F7, 
     })) as HTMLElement;
 
     // Focusables in the panel: [mark-all, close, row1 body, row1 action,
-    // row1 mark-read, row2 body, ...] — the last one is row 2's
-    // «تحديد كمقروء».
-    const lastMarkRead = screen.getAllByRole("button", { name: "تحديد كمقروء" }).pop()!;
-    lastMarkRead.focus();
-    expect(lastMarkRead).toHaveFocus();
+    // row1 mark-read, row2 body, ...] — the last one is the FOOTER's
+    // «عرض الكل» link (R157: the footer count became a link to
+    // /notifications — the panel's last focusable).
+    const footerLink = screen.getByRole("link", { name: /عرض الكل/ });
+    footerLink.focus();
+    expect(footerLink).toHaveFocus();
 
     // Tab from the last → must wrap to the FIRST focusable inside the
     // panel (the mark-all button), never escape to the page behind
@@ -229,7 +238,7 @@ describe("NotificationPanel dialog contract — focus return + Tab trap (A4-F7, 
     // Shift+Tab from the first → wraps back to the last.
     fireEvent.keyDown(panel, { key: "Tab", shiftKey: true });
     await waitFor(() => {
-      expect(lastMarkRead).toHaveFocus();
+      expect(footerLink).toHaveFocus();
     });
   });
 });

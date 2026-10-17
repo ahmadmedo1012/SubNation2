@@ -2,6 +2,7 @@ import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { CATEGORY_OPTIONS, type ProductForm } from "@/components/admin/products/products-meta";
 import { formatCurrency } from "@/lib/utils";
 import { CheckCircle, Loader2, X } from "lucide-react";
@@ -250,22 +251,21 @@ export function ProductEditorCard({
           >
             الفئة
           </Label>
-          <select
+          {/* R157-C: the hand-rolled secondary-filled select rides the
+              shared ui/select primitive — one form-control recipe on
+              the editor (the input.tsx focus idiom + geometry move
+              into the primitive). */}
+          <Select
             id="product-editor-category"
             value={form.category}
             onChange={(e) => onFormChange((f) => ({ ...f, category: e.target.value }))}
-            /* R143 (L2-5): joins the input.tsx focus idiom — the old
-               focus:ring-1 focus:ring-primary was a 1px ring compositing
-               under the 3:1 indicator floor; 2px ring-ring +
-               ring-offset-background matches the shared Input (F3-01). */
-            className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm h-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
           >
             {CATEGORY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="md:col-span-2">
           <Label

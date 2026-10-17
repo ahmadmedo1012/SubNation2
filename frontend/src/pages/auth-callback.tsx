@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSeo } from "@/hooks/useSeo";
 
 const HANG_TIMEOUT_MS = 12_000;
 
@@ -32,6 +33,15 @@ const HANG_TIMEOUT_MS = 12_000;
 export default function AuthCallbackPage() {
   const [, navigate] = useLocation();
   const [hangVisible, setHangVisible] = useState(false);
+  // R157: a transient-screen title (the R146 login class) — the page is
+  // mounted during the cookie-bounce, and the RouteAnnouncer reading the
+  // previous page's title was a stale announcement after this navigation.
+  const seoBlock = useSeo({
+    title: "جارٍ تسجيل الدخول — SubNation",
+    description: "جارٍ إكمال تسجيل الدخول بأمان عبر SubNation.",
+    path: "/auth/callback",
+    robots: "noindex,nofollow",
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -57,7 +67,18 @@ export default function AuthCallbackPage() {
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
-      <div className="flex flex-col items-center gap-3 text-muted-foreground max-w-sm text-center">
+      {seoBlock}
+      {/* R157: the loading/hang states announced to assistive tech
+          (role=status polite while polling; the 12s hang swap flips to
+          role=alert so the verdict is heard) + a document title so the
+          RouteAnnouncer stops reading the PREVIOUS page's title after
+          the navigation to this transient screen (the R146 login fix's
+          class — this page had none). */}
+      <div
+        role={hangVisible ? "alert" : "status"}
+        aria-live={hangVisible ? undefined : "polite"}
+        className="flex flex-col items-center gap-3 text-muted-foreground max-w-sm text-center"
+      >
         {hangVisible ? (
           <>
             <div className="w-12 h-12 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center">

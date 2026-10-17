@@ -727,7 +727,7 @@ export default function ProductPage() {
 
       {/* ── Sticky mobile buy bar ─────────────────────────── */}
       <div
-        className={`sm:hidden z-[45] bg-card border-t border-border/35 px-4 pt-3 shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)] ${
+        className={`lg:hidden z-[45] bg-card border-t border-border/35 px-4 pt-3 shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)] ${
           stickyBarHiddenByKeyboard
             ? /* R117 (F-2): the iOS virtual keyboard was covering the fixed
                  buy bar — the hook value existed since R116 but was never

@@ -4,6 +4,7 @@ import type { AdminProduct, AdminProductVariant } from "@workspace/api-client-re
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { formatCurrency } from "@/lib/utils";
 import { fmt } from "@/components/admin/pricing/pricing-format";
@@ -62,8 +63,10 @@ export function CalculatorInputsCard({
   return (
     /* R139 (precision): border/55 → /60 — the inputs card joins the
        resting one-edge register (bg-card already solid; flat — the
-       PricingConfigCard owns the page's elevated register). The two
-       native selects' /55 edges follow so the card speaks one value. */
+       PricingConfigCard owns the page's elevated register).
+       R157-C: the two native selects ride the shared ui/select
+       primitive — the /55 muted inset was one of the five divergent
+       hand-rolled recipes the audit retired. */
     <div className="bg-card border border-border/60 rounded-2xl p-5 space-y-4">
       <h2 className="font-bold text-sm flex items-center gap-2">
         <Tag className="w-4 h-4 text-primary" /> المدخلات
@@ -77,7 +80,7 @@ export function CalculatorInputsCard({
         >
           المنتج
         </Label>
-        <select
+        <Select
           id="pricing-calc-product"
           value={productId === "custom" ? "custom" : String(productId)}
           onChange={(e) => {
@@ -86,7 +89,6 @@ export function CalculatorInputsCard({
             // always reset to the auto (cheapest-active) mode.
             setVariantId("");
           }}
-          className="w-full bg-muted/20 border border-border/60 rounded-xl px-3 py-2 text-sm"
         >
           <option value="custom">— سعر مخصّص (للاختبار) —</option>
           {products.map((p) => {
@@ -103,7 +105,7 @@ export function CalculatorInputsCard({
               </option>
             );
           })}
-        </select>
+        </Select>
       </div>
 
       {/* R115 (Part 13): the variant selector — the sellable unit
@@ -118,11 +120,10 @@ export function CalculatorInputsCard({
           >
             الباقة (الخيار الفعلي عند الدفع)
           </Label>
-          <select
+          <Select
             id="pricing-calc-variant"
             value={variantId === "" ? "" : String(variantId)}
             onChange={(e) => setVariantId(e.target.value === "" ? "" : Number(e.target.value))}
-            className="w-full bg-muted/20 border border-border/60 rounded-xl px-3 py-2 text-sm"
             disabled={selectedVariants.length === 0}
           >
             <option value="">تلقائي — أرخص باقة نشطة</option>
@@ -136,7 +137,7 @@ export function CalculatorInputsCard({
                 </option>
               );
             })}
-          </select>
+          </Select>
           {selectedVariants.length === 0 && (
             <p className="text-3xs text-status-warning mt-1">
               لا باقات لهذا المنتج — اختر منتجًا آخر أو استخدم السعر المخصّص.

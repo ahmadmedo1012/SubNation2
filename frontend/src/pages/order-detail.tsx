@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 // page's receipt chrome via rowClassName (byte-identical DOM; the shared
 // component's own docblock notes it was ported FROM order-detail V2-H10).
 import { CopyField } from "@/components/product/CopyField";
+import { CopyButton } from "@/components/CopyButton";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -488,7 +489,19 @@ export default function OrderDetailPage() {
                 <h2 id="order-credentials-heading" className="font-bold text-sm">
                   بيانات الحساب
                 </h2>
-                <div className="text-3xs text-muted-foreground">انسخ بياناتك بأمان</div>
+                <div className="text-3xs text-muted-foreground">
+                  انسخ بياناتك بأمان
+                  {/* R157-IMPL-B #4: the receipt states WHEN the delivery
+                      landed — delivered_at rides the Order DTO but was
+                      never rendered (the created_at row above is the only
+                      timestamp on the page). */}
+                  {order.delivered_at && (
+                    <span title={formatDate(order.delivered_at)}>
+                      {" "}
+                      · سُلّمت {formatRelativeTime(order.delivered_at)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="divide-y divide-border/20">
@@ -508,16 +521,24 @@ export default function OrderDetailPage() {
                 />
               )}
               {order.delivered_extra_details && (
-                /* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-
-                   direction runs (activation links / PIN codes inside Arabic
-                   sentences) — dir="auto" + start alignment let the bidi
-                   algorithm pick the base direction from the first strong
-                   character instead of scrambling the visual order. */
-                <div
-                  dir="auto"
-                  className="px-5 py-3.5 text-sm text-muted-foreground leading-relaxed text-start"
-                >
-                  {order.delivered_extra_details}
+                <div className={RECEIPT_ROW}>
+                  {/* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-
+                      direction runs (activation links / PIN codes inside Arabic
+                      sentences) — dir="auto" + start alignment let the bidi
+                      algorithm pick the base direction from the first strong
+                      character instead of scrambling the visual order.
+                      R157-IMPL-B #3: the row gains the SAME CopyButton the
+                      email/password rows ride, but stays its own free-text
+                      register (NOT CopyField's dir="ltr" mono — that would
+                      scramble Arabic sentences; the field is not a secret,
+                      so no reveal-toggle semantics). */}
+                  <div
+                    dir="auto"
+                    className="min-w-0 flex-1 text-sm text-muted-foreground leading-relaxed text-start break-words"
+                  >
+                    {order.delivered_extra_details}
+                  </div>
+                  <CopyButton text={order.delivered_extra_details} size="md" />
                 </div>
               )}
             </div>

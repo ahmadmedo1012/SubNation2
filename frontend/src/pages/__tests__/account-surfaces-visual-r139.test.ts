@@ -256,9 +256,11 @@ describe("R139-l — orders: the calm filter-pill dialect + the family card hove
   });
 
   it("the order card rides the unified card-spring hover (no hand-rolled lift/transition-all)", () => {
-    expect(ORDERS).toContain(
-      "card-spring hover:border-border hover:shadow-xl hover:shadow-black/25",
-    );
+    // R157-C: the hover shadow rides the bare themed ladder — the
+    // raw-black/25 color override retired (.light rendered ~2× the
+    // 6–14% ceiling; the ladder's own xl step sits inside it).
+    expect(ORDERS).toContain("card-spring hover:border-border hover:shadow-xl");
+    expect(ORDERS).not.toContain("shadow-black");
     expect(ORDERS).not.toContain("hover:-translate-y-0.5");
     expect(ORDERS).not.toContain("active:scale-[0.995]");
     // The refunded accent edge stays token-info (§4 — pinned with

@@ -114,7 +114,7 @@ export function CategoryRail({
                     live catalog) + the sr-only Arabic forms for the
                     crawler (the old chips' SEO contract, preserved). */}
                 {examples.length > 0 && (
-                  <p className="text-2xs text-muted-foreground mt-1 truncate" dir="ltr">
+                  <p className="text-2xs text-muted-foreground mt-1 truncate text-right" dir="ltr">
                     <span lang="en">{examples.map((e) => e.latin).join(" · ")}</span>
                     <span className="sr-only">{examples.map((e) => e.ar).join("، ")}</span>
                   </p>

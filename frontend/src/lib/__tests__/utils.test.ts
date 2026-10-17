@@ -46,13 +46,15 @@ describe("formatCurrency", () => {
     expect(formatCurrency(1000000)).toBe("1,000,000.00 د.ل");
   });
 
-  it("returns the zero-Libyan-dinar fallback for null / undefined / NaN", () => {
+  it("returns the honest em-dash fallback for null / undefined / NaN", () => {
     // The historical bug this guards: `${NaN.toFixed(2)} د.ل` rendered
     // "NaN د.ل" on product cards when an inventory record arrived
-    // without a price. Defensive default is the contract.
-    expect(formatCurrency(null)).toBe("0.00 د.ل");
-    expect(formatCurrency(undefined)).toBe("0.00 د.ل");
-    expect(formatCurrency(Number.NaN)).toBe("0.00 د.ل");
+    // without a price. R157: the fallback stopped FABRICATING a
+    // confident "0.00 د.ل" (a real-looking price on a money surface) —
+    // an unavailable amount reads as the honest em-dash instead.
+    expect(formatCurrency(null)).toBe("— د.ل");
+    expect(formatCurrency(undefined)).toBe("— د.ل");
+    expect(formatCurrency(Number.NaN)).toBe("— د.ل");
   });
 
   it("handles negative numbers (e.g. wallet adjustment reversals)", () => {

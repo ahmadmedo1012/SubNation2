@@ -137,7 +137,9 @@ export function LyPayFlow({
                     : "border-border/30 bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:border-border/70"
                 }`}
               >
-                {p}
+                {/* R157-IMPL-B #8: the lypay twin of the mobile flow's
+                    unit-suffixed preset chips. */}
+                {p} د.ل
               </button>
             ))}
           </div>
@@ -161,8 +163,17 @@ export function LyPayFlow({
             onBlur={onAmountBlur}
             required
             dir="ltr"
+            /* R157-IMPL-B #7: the lypay twin of the mobile flow's
+               persistent amount-bound hint. */
+            aria-describedby="topup-amount-lypay-hint"
             className="text-left h-11 rounded-xl bg-card"
           />
+          <p
+            id="topup-amount-lypay-hint"
+            className="text-3xs text-muted-foreground mt-1.5 leading-relaxed"
+          >
+            بين 1 و 10,000 د.ل — مبالغ صحيحة فقط
+          </p>
           {/* 93-C5 / F-03: optional receipt reference (bank-transfer
               flow) — lypay keeps it optional (B4-R1 backend note). */}
           <PaymentReferenceField

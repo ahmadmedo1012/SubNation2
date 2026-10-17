@@ -157,7 +157,10 @@ export function MobileTransferForm({
                   : "border-border/30 bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground hover:border-border/70"
               }`}
             >
-              {p}
+              {/* R157-IMPL-B #8: the preset numerals ride the codebase's
+                  inline unit idiom ("{fmt(x)} د.ل" — CalculatorOutputsCard)
+                  so a chip can't read as points/units. */}
+              {p} د.ل
             </button>
           ))}
         </div>
@@ -188,6 +191,11 @@ export function MobileTransferForm({
           onBlur={onAmountBlur}
           required
           dir="ltr"
+          /* R157-IMPL-B #7: the 1–10,000 whole-dinar bound used to
+             surface ONLY as a post-submit error banner — the persistent
+             hint below (bound via aria-describedby like the phone-error
+             hint) states it up front. */
+          aria-describedby="topup-amount-mobile-hint"
           className="text-left h-11 bg-card"
           /* R139 (precision): border-border/50 + focus:border-primary/45
              overrides stripped — the shared Input family owns the
@@ -196,6 +204,12 @@ export function MobileTransferForm({
              already rode exactly this canonical form. h-11 = the 44px
              storefront floor, bg-card = the solid-surface idiom. */
         />
+        <p
+          id="topup-amount-mobile-hint"
+          className="text-3xs text-muted-foreground mt-1.5 leading-relaxed"
+        >
+          بين 1 و 10,000 د.ل — مبالغ صحيحة فقط
+        </p>
       </div>
 
       <div className="border-t border-border/20" />

@@ -24,10 +24,11 @@ import {
   Crown,
   Gift,
   Link as LinkIcon,
+  Loader2,
   LogOut,
   Mail,
   Phone,
-  Shield,
+  ShoppingBag,
   Smartphone,
   Star,
   Unlink,
@@ -316,9 +317,10 @@ export default function ProfilePage() {
             className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-calm ${TIER_GRADIENTS[tier] ?? TIER_GRADIENTS.bronze}`}
           >
             {/* R139 (precision): the identity card is the page's ONE
-                prominent card — shadow-lg shadow-black/8 retires for the
-                r138 two-layer calm elevation (CartSummaryAside/
-                PaymentMethodCard register). The tier gradient itself
+                prominent card — the old shadow-lg + raw-black/8 color
+                override retired for the r138 two-layer calm elevation
+                (CartSummaryAside/PaymentMethodCard register). The tier
+                gradient itself
                 stays: TIER_GRADIENTS rides the theme-aware --tier-*
                 tokens (R128 A1-F3) — semantic identity, not decoration. */}
             <div className="absolute inset-0 dot-grid opacity-25 pointer-events-none" />
@@ -468,7 +470,10 @@ export default function ProfilePage() {
             },
             {
               href: "/orders",
-              icon: Shield,
+              // R157-C: «طلباتي» rides ShoppingBag (the orders-page
+              // vocabulary — R157-B's icon-consistency finding); Shield
+              // read as a security affordance.
+              icon: ShoppingBag,
               label: "طلباتي",
               color: "text-status-info",
               bg: "bg-status-info/10",
@@ -493,13 +498,14 @@ export default function ProfilePage() {
           ].map((item) => (
             <Link key={item.href} href={item.href}>
               <div
-                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border bg-card hover:border-border hover:shadow-md hover:shadow-black/8 hover:-translate-y-0.5 transition-all cursor-pointer group press-spring text-center ${item.border}`}
+                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border bg-card hover:border-border hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group press-spring text-center ${item.border}`}
               >
                 {/* R139 (precision): hover:border-border/80 → full — the
                     r138 hover step (resting tint edge → /100 neutral).
-                    The soft neutral lift (shadow-md black/8 + -translate)
-                    stays: the storefront's interactive-card hover
-                    vocabulary (orders rows ride shadow-xl/black/20,
+                    The soft neutral lift (the bare themed shadow-md +
+                    -translate; R157-C retired the raw-black/8 color
+                    override) stays: the storefront's interactive-card
+                    hover vocabulary (orders rows ride shadow-xl,
                     home's quick-action chips shadow-lg) — only the
                     admin dialect retires card hovers. */}
                 <div
@@ -584,7 +590,10 @@ export default function ProfilePage() {
                           money-path-chrome-r139). Severity lives in the
                           useConfirm destructive dialog above. */}
                       {unlinkingProvider === id.providerUid ? (
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        /* R157-C: the hand-rolled CSS spinner retired for
+                           the app-wide Loader2 idiom (the audit's one
+                           spinner outlier; same w-4 h-4 + currentColor). */
+                        <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <Unlink className="w-4 h-4" />
                       )}

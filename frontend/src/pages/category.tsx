@@ -380,7 +380,7 @@ export default function CategoryPage() {
             </p>
           ))}
         {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
             {Array.from({ length: 8 }).map((_, i) => (
               <ProductCardShell key={i} />
             ))}
@@ -418,7 +418,7 @@ export default function CategoryPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
             {displayProducts.map((product, i) => (
               <ProductCard key={product.id} product={product} index={i} />
             ))}

@@ -17,6 +17,14 @@ const buttonVariants = cva(
         // surface pair keeps ink tokens untouched.
         destructive:
           "bg-destructive-surface text-destructive-foreground shadow-sm border border-destructive-border",
+        // R157-C (design-system): the success twin of destructive — the
+        // topups approve composition (TopupCard's R125-I2/R128 A1-F2
+        // hand-roll, promoted to the family): --status-success-surface
+        // is the AA pair (white ink 5.05:1 in BOTH themes); shadow-sm +
+        // the token's own /20 contact shadow; hover rides the family's
+        // /90 idiom.
+        success:
+          "bg-status-success-surface text-white shadow-sm shadow-status-success-surface/20 hover:bg-status-success-surface/90",
         outline:
           "border [border-color:var(--button-outline)] shadow-xs active:shadow-none bg-transparent",
         secondary: "border bg-secondary text-secondary-foreground border border-secondary-border",

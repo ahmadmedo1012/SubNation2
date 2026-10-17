@@ -166,7 +166,7 @@ export function TicketDetailPane({
                 className={`flex gap-2.5 ${isAdmin ? "flex-row-reverse" : "flex-row"}`}
               >
                 <div
-                  className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold mt-0.5 ${isAdmin ? "bg-primary text-white" : "bg-muted text-muted-foreground"}`}
+                  className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold mt-0.5 ${isAdmin ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
                 >
                   {isAdmin ? <Shield className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                 </div>
@@ -185,7 +185,7 @@ export function TicketDetailPane({
                        shelf ride the same bg-muted/60 + /40 pair; the
                        old /50 was a between-value nowhere else in the
                        family). */
-                    className={`rounded-2xl px-4 py-2.5 ${isAdmin ? "bg-primary text-white rounded-tl-sm" : "bg-muted/60 border border-border/40 rounded-tr-sm"}`}
+                    className={`rounded-2xl px-4 py-2.5 ${isAdmin ? "bg-primary text-primary-foreground rounded-tl-sm" : "bg-muted/60 border border-border/40 rounded-tr-sm"}`}
                   >
                     <p className="text-sm leading-relaxed">{r.message}</p>
                   </div>

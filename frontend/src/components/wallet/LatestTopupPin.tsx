@@ -1,5 +1,6 @@
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
+import { topupChannelLabel } from "@/components/wallet/TopupHistoryCard";
 import { topupStatusIcon, topupStatusLabel } from "@/components/wallet/topup-meta";
 
 // R136 (FE-1 decomposition): extracted verbatim from pages/wallet.tsx —
@@ -15,6 +16,10 @@ export interface LatestTopup {
   amount: number;
   created_at: string;
   payment_network?: string;
+  /** R157-IMPL-B #1: present on every Topup DTO row at runtime (the
+   *  backend zod-enums it); optional here so the page's projection
+   *  cast needs no change — an absent value simply renders no channel. */
+  payment_method?: string;
 }
 
 /**
@@ -26,6 +31,10 @@ export interface LatestTopup {
  * their request is queued.
  */
 export function LatestTopupPin({ topup }: { topup: LatestTopup }) {
+  // R157-IMPL-B #1: the same channel derivation the history card rides
+  // — a lypay topup used to show NO channel here (payment_network null
+  // ⇒ no ·-label at all).
+  const channel = topupChannelLabel(topup.payment_method, topup.payment_network);
   return (
     /* R139 (precision): /55 → /60 — the family resting edge. */
     <div className="lg:hidden flex items-center gap-3 p-3 bg-card border border-border/60 rounded-xl">
@@ -33,6 +42,9 @@ export function LatestTopupPin({ topup }: { topup: LatestTopup }) {
       <div className="flex-1 min-w-0">
         <div className="text-xs font-bold tabular-nums">
           آخر طلب: {formatCurrency(topup.amount)}
+          {channel && (
+            <span className="text-3xs text-muted-foreground font-semibold">· {channel}</span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           {/* R116: shared StatusBadge (STATUS_TONE) replaces the

@@ -84,15 +84,12 @@ export function BulkConfirmModal({
           {/* R143 (L2-3): the reject branch rides variant="destructive"
               (the J-1 AA --destructive-surface pair — ONE register with
               RejectModal's confirm; the hand-rolled fill + /20 shadow
-              retire); the approve branch keeps the success-surface
-              composition (button.tsx ships no success variant). */}
+              retire); R157-C: the approve branch rides the NEW
+              variant="success" (the same --status-success-surface
+              composition TopupCard hand-rolled, now in button.tsx). */}
           <Button
-            variant={action === "reject" ? "destructive" : "default"}
-            className={`flex-1 min-h-11 ${
-              action === "approve"
-                ? "bg-status-success-surface hover:bg-status-success-surface/90 text-white shadow-sm shadow-status-success-surface/20"
-                : ""
-            }`}
+            variant={action === "reject" ? "destructive" : "success"}
+            className="flex-1 min-h-11"
             onClick={() => onConfirm(note)}
             disabled={loading}
           >

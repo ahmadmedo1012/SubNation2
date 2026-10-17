@@ -157,11 +157,14 @@ describe("ProductCard — chrome + imagery + type regressions (R120-B1)", () => 
     // this guard, hence the leading boundary.
     expect(card.className).not.toMatch(/(^|\s)shadow-black\/25(\s|$)/);
     // Hover progression preserved verbatim (R120-B1): full-strength
-    // border + xl geometry, with the 25% black color carried at hover
-    // scope so the hover render is byte-identical to the pre-R138 one.
+    // border + the bare themed xl geometry. R157-C: the black/25
+    // shadow-color override retired — a bare shadow utility resolves
+    // through the theme's own ladder (index.css), so .light renders
+    // the ladder's xl (≈13%, inside DESIGN.md's 6–14% ceiling) instead
+    // of the literal 25% black; dark is byte-identical (the 55% step).
     expect(card.className).toContain("hover:border-border");
     expect(card.className).toContain("hover:shadow-xl");
-    expect(card.className).toContain("hover:shadow-black/25");
+    expect(card.className).not.toContain("shadow-black");
   });
 
   it("R138: the image well is a muted/60 shelf plane, not a bare bg-card tile", () => {

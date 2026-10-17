@@ -104,7 +104,11 @@ describe("R139 — dashboard: one atmosphere moment + one elevated register", ()
     // R143 (L2-1): the calm elevation tokenized — shadow-calm (index.css,
     // theme-aware: dark byte-identical to the r138 literal, .light inside
     // DESIGN.md's 6–14% ceiling); the literal must not come back.
-    expect(tile).toContain("shadow-calm hover:shadow-xl hover:shadow-black/25");
+    // R157-C: the hover shadow rides the bare themed ladder (the
+    // raw-black color override retired — .light rendered 25% black,
+    // ~2× the 6–14% ceiling; the ladder's own xl sits inside it).
+    expect(tile).toContain("shadow-calm hover:shadow-xl");
+    expect(tile).not.toContain("shadow-black");
     expect(tile).not.toContain("0_10px_28px");
     // The R128 colored hover-shadow tints are retired — the token BORDER
     // carries the state signal.

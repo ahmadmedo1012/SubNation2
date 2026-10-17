@@ -23,7 +23,10 @@ import { formatCount, formatCurrency } from "@/lib/utils";
  */
 export function InstructionsPanel() {
   const steps = [
-    "قم بتحويل الرصيد باستخدام الزر.",
+    /* R157-IMPL-B #6: written before R154's installments existed — the
+       singular «بالزر» pointed at one generic dial that R154 honestly
+       retired. The pluralized line covers N transfers. */
+    "اتصل بكل رمز تحويل أعلاه لإتمام جميع التحويلات.",
     "بعد نجاح التحويل قم بإرسال الطلب.",
     "سيتم مراجعته من الإدارة.",
   ];
@@ -86,7 +89,9 @@ function InstallmentRow({
       </div>
       <a
         href={href}
-        className="mt-2 flex items-center justify-center gap-2 w-full h-10 rounded-xl font-bold text-xs transition-all press-spring bg-primary text-primary-foreground"
+        /* R157-IMPL-B #5: h-10 → h-11 — the app's 44px money-action
+           floor (the single-transfer CTA below already rides it). */
+        className="mt-2 flex items-center justify-center gap-2 w-full h-11 rounded-xl font-bold text-xs transition-all press-spring bg-primary text-primary-foreground"
       >
         <PhoneCall className="w-4 h-4" />
         اتصال بالتحويل {index + 1}

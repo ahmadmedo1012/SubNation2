@@ -2,6 +2,7 @@ import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useSeo } from "@/hooks/useSeo";
@@ -87,7 +88,7 @@ export default function RegisterPage() {
     },
     [redirectTarget, navigate],
   );
-  const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
+  const { whatsappEnabled, whatsappStatus, fetched: providersFetched } = usePublicAuthProviders();
   // R115-A10: pause the ambient blobs when the auth card scrolls away.
   const glow = useOnScreen<HTMLDivElement>();
 
@@ -244,14 +245,20 @@ export default function RegisterPage() {
               owned by the component's own new-user default
               (navigate("/onboarding") on is_new_user); passing this
               handler unconditionally would flatten that to "/". */}
-          {whatsappEnabled && (
+          {whatsappEnabled ? (
             <div className="mt-2.5">
               <WhatsAppPhoneSignIn
                 channelStatus={whatsappStatus}
                 onSuccess={redirectTarget ? handleRegisterSuccess : undefined}
               />
             </div>
-          )}
+          ) : !providersFetched ? (
+            /* R157: same double-pop fix as login.tsx — the row's height
+               is held by a skeleton until the probe settles. */
+            <div className="mt-2.5">
+              <Skeleton className="h-11 rounded-xl border border-border/60" />
+            </div>
+          ) : null}
 
           {/* R124-I4 (A1 F13): registration — the moment the account
               (wallet, points, referral balance) is created — never

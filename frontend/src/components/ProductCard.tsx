@@ -275,7 +275,7 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
         float-in ${staggerClass}
         transition-all duration-280 ease-out
         shadow-calm
-        card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
+        card-spring hover:border-border hover:shadow-xl
         ${unavailable ? "opacity-45 saturate-[0.3]" : ""}
       `}
     >
@@ -292,8 +292,8 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           (1) border 70→60 — the container read now leans on elevation +
           the muted image well below, and the wider 60→100% border gap
           makes the hover affordance legible in a static screenshot
-          (hover:border-border unchanged). (2) shadow-sm
-          shadow-black/25 → ONE two-layer calm elevation, the
+          (hover:border-border unchanged). (2) the flat shadow-sm
+          stack → ONE two-layer calm elevation, the
           premium-toast recipe at resting scale: a tight contact line
           (1px 2px @30%) + a contained ambient wash (10px 28px −14px
           @40%) that reads as mass on a shelf — resting < hover-xl <
@@ -302,11 +302,13 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
           hair this round considered: a primary tint at 4–6% reads as
           COLOR on .light and skirts the banned glow-halo language,
           while black reads as pure depth on both themes. (3)
-          shadow-black/25 moved to the hover scope — v4 shadow-COLOR
-          utilities re-color every layer through --tw-shadow-color, so
-          keeping it at base would flatten both resting layers to 25%;
-          hover:shadow-black/25 keeps the hover render (xl @ 25% black)
-          byte-identical to the R120 progression.
+          R157-C: the hover scope's black/25 shadow-color override
+          retired for the bare themed `hover:shadow-xl` — a bare
+          shadow utility resolves through the theme's own shadow
+          ladder (index.css), so .light rendered the literal 25%
+          black (~2× the documented 6–14% ceiling) while the
+          ladder's xl step sits inside it; dark is byte-identical
+          (55% ladder).
           R143 (L2-1): the resting recipe is now the theme-aware
           `shadow-calm` token in index.css — dark byte-identical
           (1px 2px @30% + 10px 28px −14px @40%), .light re-tuned inside

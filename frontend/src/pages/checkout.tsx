@@ -960,6 +960,7 @@ export default function CheckoutPage() {
               submitProgress={submitProgress}
               pricingRecheckInFlight={pricingRecheckInFlight}
               stockBlocked={stockBlocked}
+              insufficient={insufficient}
               appliedCoupon={appliedCoupon}
               totalLYD={totalLYD}
               comparisonTotal={comparisonTotal}

@@ -274,7 +274,9 @@ describe("R145 (D3) — source pins: the panel order chain + the sticky bar's ve
     // around it. money-path-chrome-r139 owns the fuller contract.
     const page = read("src/pages/product.tsx");
     expect(page).toContain(
-      "sm:hidden z-[45] bg-card border-t border-border/35 px-4 pt-3 shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)]",
+      // R157: lg:hidden — the 640–1024px band gets the sticky bar
+      // (the BuyPanelColumn CTA is hidden lg:block now).
+      "lg:hidden z-[45] bg-card border-t border-border/35 px-4 pt-3 shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)]",
     );
     // The solid default-variant buy CTA (never outline/ghost on the
     // primary money path) is pinned by money-path-chrome-r139's

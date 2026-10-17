@@ -207,7 +207,7 @@ describe("product page — sticky buy bar keyboard wiring (R117 F-2)", () => {
     keyboardVisible = false;
     const { container } = await renderReady();
     const bar = Array.from(container.querySelectorAll("div")).find(
-      (d) => d.className.includes("z-[45]") && d.className.includes("sm:hidden"),
+      (d) => d.className.includes("z-[45]") && d.className.includes("lg:hidden"),
     );
     expect(bar).toBeTruthy();
     // NOT hidden via the keyboard branch…

@@ -93,6 +93,10 @@ export function PaymentMethodCard({
       {insufficient && (
         <div
           role="alert"
+          /* R157: the anchor CheckoutCta's aria-describedby points at —
+             the CTA label names the problem, this alert carries the
+             full verdict + the topup link. */
+          id="checkout-insufficient-alert"
           className="mt-3 p-3 rounded-xl bg-status-error/10 border border-status-error/22 text-status-error text-xs font-bold flex items-start gap-2"
         >
           <X className="w-4 h-4 shrink-0 mt-px" />

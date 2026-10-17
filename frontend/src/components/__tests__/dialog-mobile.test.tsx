@@ -52,8 +52,10 @@ describe("ui/alert-dialog — 96-F5 (R96-M09 + P2-4) geometry + 44px actions", (
     const dialog = renderConfirm();
     const cls = dialog.className;
     expect(cls).toContain("w-[calc(100vw-2rem)]");
+    // R157-C: the 16px radius at every size (the sm:rounded-lg 8px step
+    // was the AppDialog drift — DESIGN.md's dialog surface contract).
     expect(cls).toContain("rounded-2xl");
-    expect(cls).toContain("sm:rounded-lg");
+    expect(cls).not.toContain("sm:rounded-lg");
     expect(cls).toContain("max-h-[85dvh]");
     expect(cls).toContain("overflow-y-auto");
   });

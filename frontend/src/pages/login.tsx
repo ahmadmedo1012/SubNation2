@@ -2,6 +2,7 @@ import { AuthErrorBanner } from "@/components/AuthErrorBanner";
 import { AuthProviders } from "@/components/AuthProviders";
 import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
 import { useOnScreen } from "@/hooks/use-on-screen";
 import { useSeo } from "@/hooks/useSeo";
@@ -117,7 +118,7 @@ export default function LoginPage() {
     path: "/login",
     robots: "noindex,follow",
   });
-  const { whatsappEnabled, whatsappStatus } = usePublicAuthProviders();
+  const { whatsappEnabled, whatsappStatus, fetched: providersFetched } = usePublicAuthProviders();
   const intent = useMemo(() => readLoginIntent(), []);
   const redirectTarget = useMemo(
     () => sanitizeInternalPath(new URLSearchParams(window.location.search).get("redirect")),
@@ -298,14 +299,22 @@ export default function LoginPage() {
               path too — it used to always navigate("/"), so a guarded
               checkout funnel entry broke for phone-first users (the
               majority provider in Libya). */}
-          {whatsappEnabled && (
+          {whatsappEnabled ? (
             <div className="mt-2.5">
               <WhatsAppPhoneSignIn
                 channelStatus={whatsappStatus}
                 onSuccess={redirectTarget ? handleLoginSuccess : undefined}
               />
             </div>
-          )}
+          ) : !providersFetched ? (
+            /* R157: the WhatsApp row used to appear ~100-800ms after
+               paint (the providers probe flipping the flag) — the card
+               grew a second time after the provider buttons settled.
+               The skeleton holds the row's height until the verdict. */
+            <div className="mt-2.5">
+              <Skeleton className="h-11 rounded-xl border border-border/60" />
+            </div>
+          ) : null}
         </div>
 
         {/* Footer link to register */}

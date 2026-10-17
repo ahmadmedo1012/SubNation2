@@ -19,7 +19,8 @@ export function ProductMediaSection({ product }: { product: Product }) {
   const gradientClass =
     CATEGORY_GRADIENTS[product.category ?? "streaming"] ??
     "from-primary/20 via-primary/8 to-transparent";
-  const initialColorClass = CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "text-white/30";
+  const initialColorClass =
+    CATEGORY_INITIAL_COLOR[product.category ?? ""] ?? "text-muted-foreground";
 
   return (
     // ── START column (RTL first = right): media + description ──
@@ -106,11 +107,12 @@ export function ProductMediaSection({ product }: { product: Product }) {
           {/* R138 (visual): the glass pair retired — backdrop-blur-sm (the
               banned glass vocabulary; over the WASH, not over imagery, so
               no scrim legibility was ever at stake) and shadow-lg → the
-              card-fallback tile's shadow-sm; the translucent white/5 +
-              white/10 chip character stays (reads on the tinted wash in
-              dark, neutral-quiet in light — the big cat-hued glyph carries
-              the identity either way). */}
-          <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/5 border border-white/10 shadow-sm">
+              card-fallback tile's shadow-sm. R157-C: the raw white/5 +
+              white/10 chip (invisible on .light — the audit's
+              light-mode-invisible tile) rides the themed muted well +
+              border/60 edge; the big cat-hued glyph carries the
+              identity either way. */}
+          <div className="flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-muted border border-border/60 shadow-sm">
             <span
               className={`text-5xl sm:text-6xl font-bold select-none drop-shadow-lg ${initialColorClass}`}
             >

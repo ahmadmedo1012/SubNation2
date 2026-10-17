@@ -55,15 +55,17 @@ export function MetricCard({
            −14px @40%), deliberately NEUTRAL black (status-tinted
            shadows read as color on .light, the same reason
            ProductCard's elevation went neutral). The hover ladder
-           rides the family's neutral step — hover:shadow-xl
-           hover:shadow-black/25 — which RETIRES the R128 colored
+           rides the family's neutral step — the bare themed
+           hover:shadow-xl (R157-C retired the black/25 shadow-color
+           override; the ladder's own .light xl sits inside the 6–14%
+           ceiling, dark identical) — which RETIRES the R128 colored
            hover-shadow tints (/10–/15 barely registered and a colored
            haze is not how a quiet-premium surface says "hover"); the
            state signal stays where it always lived: the token BORDER
            (warning/low-stock/primary edges below + their hover
            steps). Charts-column cards stay flat on purpose — one
            elevated register per page. */
-        className={`float-in stagger-${index + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group shadow-calm hover:shadow-xl hover:shadow-black/25 ${card.urgent ? "border-status-warning/25 hover:border-status-warning/40" : card.lowStock ? "border-status-low-stock/30 hover:border-status-low-stock/45" : card.highlight ? "border-primary/20 hover:border-primary/35" : "border-border/60 hover:border-border"}`}
+        className={`float-in stagger-${index + 1} bg-card border rounded-2xl p-4 card-spring cursor-pointer group shadow-calm hover:shadow-xl ${card.urgent ? "border-status-warning/25 hover:border-status-warning/40" : card.lowStock ? "border-status-low-stock/30 hover:border-status-low-stock/45" : card.highlight ? "border-primary/20 hover:border-primary/35" : "border-border/60 hover:border-border"}`}
       >
         <div className="flex items-start justify-between gap-2 mb-2.5">
           <div

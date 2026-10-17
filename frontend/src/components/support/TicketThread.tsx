@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { CheckCircle, Clock, Loader2, MessageSquare, Send, Shield, User } from "lucide-react";
@@ -128,7 +127,7 @@ export function TicketThread({
                   <div
                     className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-1 border ${
                       isUser
-                        ? "bg-primary border-primary/30 text-white"
+                        ? "bg-primary border-primary/30 text-primary-foreground"
                         : "bg-muted border-border/40 text-muted-foreground"
                     }`}
                   >
@@ -149,7 +148,7 @@ export function TicketThread({
                       rounded-2xl px-4 py-2.5 text-sm leading-relaxed
                       ${
                         isUser
-                          ? "bg-primary text-white rounded-tl-md"
+                          ? "bg-primary text-primary-foreground rounded-tl-md"
                           : "bg-muted/60 border border-border/40 rounded-tr-md text-foreground/90"
                       }
                     `}
@@ -191,25 +190,39 @@ export function TicketThread({
             التذكرة مغلقة — أنشئ تذكرة جديدة إذا احتجت مساعدة إضافية
           </div>
         ) : (
-          <form onSubmit={onReply} className="flex gap-2">
-            <Input
+          <form onSubmit={onReply} className="flex gap-2 items-end">
+            <textarea
               value={replyText}
               onChange={(e) => onReplyTextChange(e.target.value)}
+              rows={1}
               placeholder="اكتب ردك هنا…"
               aria-label="نص الرد على التذكرة"
               /* 96-F6 (R96 A2 P2-6 + P3-3): 44px row (matches the send
                  button) + mobile Enter key labelled “send” + the
                  backend's reply cap (TicketMessageBody, 4000 chars) as
                  a live client-side limit instead of a server
-                 round-trip error. */
+                 round-trip error.
+                 R157-IMPL-B #9: the single-line Input is now an
+                 auto-growing textarea (Enter=send, Shift+Enter=newline —
+                 the keydown contract is byte-identical; jsdom's keyDown
+                 never inserts text, so the guard suite's shape holds).
+                 The INLINE ref callback (not useRef — the extract is
+                 stateless by the R137 pin) re-fires on every commit, so
+                 the page's post-send draft clear collapses the box too,
+                 not just user keystrokes; min-h-11 keeps the 44px floor
+                 and max-h-[40vh] + overflow-y-auto own the ceiling. */
               maxLength={4000}
               enterKeyHint="send"
-              /* R139 (precision): the field register returns to the shared
-                 Input — the border-border/50 override sat under the
-                 A4-F12 3:1 border floor and focus:border-primary/40
-                 competed with the ONE focus system; the component owns
-                 both now (only the 44px row geometry stays). */
-              className="flex-1 h-11"
+              ref={(el) => {
+                if (!el) return;
+                el.style.height = "auto";
+                el.style.height = `${el.scrollHeight}px`;
+              }}
+              /* R139 (precision): the field register stays the shared
+                 field family (CreateTicketForm's textarea idiom — the
+                 A4-F12 3:1 edge + the ONE focus ring); the composer keeps
+                 the 44px row geometry via min-h-11 (it grows now). */
+              className="input-premium flex-1 w-full min-h-11 max-h-[40vh] overflow-y-auto resize-none rounded-xl border border-muted-foreground/75 bg-card/60 px-3 py-2.5 text-base shadow-sm transition-all hover:border-muted-foreground/90 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:border-primary/45 disabled:cursor-not-allowed disabled:opacity-50 [@media(min-width:48rem)_and_(pointer:fine)]:text-sm"
               dir="rtl"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {

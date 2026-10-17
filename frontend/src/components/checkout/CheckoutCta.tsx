@@ -17,6 +17,7 @@ export function CheckoutCta({
   submitProgress,
   pricingRecheckInFlight,
   stockBlocked,
+  insufficient,
   appliedCoupon,
   totalLYD,
   comparisonTotal,
@@ -28,6 +29,11 @@ export function CheckoutCta({
   submitProgress: { current: number; total: number } | null;
   pricingRecheckInFlight: boolean;
   stockBlocked: boolean;
+  /** R157: the confirmed insufficient-balance verdict — the CTA says
+   * WHY it is disabled instead of rendering the plain label the user
+   * taps at a dead button; the full alert (with the topup link) rides
+   * the PaymentMethodCard and is referenced via aria-describedby. */
+  insufficient: boolean;
   appliedCoupon: AppliedCoupon | null;
   totalLYD: number;
   /** R94-A1 #1: the cent-rounded (coupon-adjusted) total — the same
@@ -40,6 +46,7 @@ export function CheckoutCta({
     <Button
       onClick={onConfirm}
       disabled={!canSubmit}
+      aria-describedby={insufficient ? "checkout-insufficient-alert" : undefined}
       /* R135 (FE-4): aria-busy rides `submitting` — the
          create-order loop was invisible to screen readers
          until a toast fired (repo audit: aria-busy lived
@@ -102,6 +109,14 @@ export function CheckoutCta({
         // page's per-line verdicts («نفد المخزون» /
         // «متبقٍ N فقط — عدّل الكمية»).
         <>بعض العناصر نفد مخزونها — راجع السلة</>
+      ) : insufficient ? (
+        // R157: the insufficient-balance branch — a below-balance
+        // shopper used to see the plain «إتمام الطلب (X د.ل)» label on
+        // a disabled button with the reason living in the other grid
+        // column (scrolled away on mobile). Mirrors the stockBlocked
+        // idiom: the label says WHY; aria-describedby points at the
+        // PaymentMethodCard alert that carries the topup link.
+        <>رصيد المحفظة غير كافٍ — اشحن المحفظة</>
       ) : appliedCoupon ? (
         // R111-F2 N1: unified CTA verb — the page title, the
         // error banner and this button all say «إتمام الطلب»

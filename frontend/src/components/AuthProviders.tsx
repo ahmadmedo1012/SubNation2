@@ -12,6 +12,7 @@ import { useLocation } from "wouter";
 import { apiUrl } from "@/lib/api-config";
 import { getErrorMessage } from "@/lib/errors";
 import { fetchPublicAuthProviders } from "@/hooks/use-public-auth-providers";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { LinkConsentModal } from "./LinkConsentModal";
 import { TelegramLoginButton } from "./TelegramLoginButton";
 
@@ -259,6 +260,11 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
   // /api/auth/providers round-trip resolves. The fetch below then merges
   // the full server list (Telegram, etc.) in place.
   const [providers, setProviders] = useState<Provider[]>(() => includeFirebaseGoogleProvider([]));
+  // R157: whether the /api/auth/providers round-trip settled (success OR
+  // error). While it runs, a skeleton row reserves the next provider's
+  // slot — Telegram used to pop the card taller ~100-800ms after paint
+  // (the first screen every guest sees).
+  const [settled, setSettled] = useState(false);
   // R111-F2 N4: ReactNode so the Firebase-Google fallback message can
   // carry the <span lang="en"> brand wrapping.
   const [error, setError] = useState<ReactNode>("");
@@ -300,9 +306,11 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
         // renderable and the seed skips (id collision); not configured ⇒
         // the row drops and the seed is a no-op anyway.
         setProviders(includeFirebaseGoogleProvider(renderableProviders(d.providers as Provider[])));
+        setSettled(true);
       })
       .catch(() => {
         if (cancelled) return;
+        setSettled(true);
         // Offline / outage: the synchronously-seeded Firebase Google button
         // still works as the degraded single-provider list (unchanged UX).
         if (isFirebaseAuthConfigured()) {
@@ -385,6 +393,17 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
         </p>
       );
     }
+    // R157: no seed either (Firebase unconfigured) — two skeleton rows
+    // hold the card's height while the fetch runs, instead of a dead
+    // zone that grows when the server list lands.
+    if (!settled) {
+      return (
+        <div className="space-y-2.5" aria-busy="true">
+          <Skeleton className="h-11 rounded-xl border border-border/60" />
+          <Skeleton className="h-11 rounded-xl border border-border/60" />
+        </div>
+      );
+    }
     return null;
   }
 
@@ -445,6 +464,11 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
           />
         );
       })}
+      {/* R157: while the providers round-trip runs, one skeleton row
+          reserves the next slot (Telegram arrives from the server list
+          after the seeded Google button) — the auth card stopped
+          popping taller after paint. */}
+      {!settled && <Skeleton className="h-11 rounded-xl border border-border/60" />}
       {error && (
         <p role="alert" className="text-xs text-destructive text-center pt-1">
           {error}

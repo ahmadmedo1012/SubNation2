@@ -58,4 +58,21 @@ describe("Button — keyboard-focus a11y contract (J-4 / J-2)", () => {
     // either (border/ink tokens use it deliberately and stay allowed).
     expect(buttonVariants({ variant: "destructive" })).not.toMatch(/(?<!-)bg-destructive(?![-\w])/);
   });
+
+  it("the success variant rides the AA --status-success-surface channel, never the raw lightness-50 one (R157-C)", () => {
+    // The topups approve composition (TopupCard's R125-I2/R128 A1-F2
+    // hand-roll) promoted to the family — the pin follows it here.
+    render(<Button variant="success">موافقة</Button>);
+    const btn = screen.getByRole("button", { name: "موافقة" });
+
+    // The AA pair: --status-success-surface holds white at 5.05:1 in
+    // BOTH themes (152 65% 30% dark / 152 60% 28% light)…
+    expect(btn.className).toContain("bg-status-success-surface");
+    expect(btn.className).toContain("hover:bg-status-success-surface/90");
+    expect(btn.className).toContain("text-white");
+    // …and NOT the raw 50%-lightness channel as the FILL (2.7:1 with
+    // white — the A1-F2 fail class). Same lookahead shape as J-1.
+    expect(btn.className).not.toMatch(/(?<!-)bg-status-success(?![-\w])/);
+    expect(buttonVariants({ variant: "success" })).not.toMatch(/(?<!-)bg-status-success(?![-\w])/);
+  });
 });

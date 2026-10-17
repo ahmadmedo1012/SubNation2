@@ -150,10 +150,10 @@ function renderPage() {
   );
 }
 
-/** The compact sticky bar container (sm:hidden + z-[45] chrome). */
+/** The compact sticky bar container (lg:hidden + z-[45] chrome — R157). */
 function stickyBar(container: HTMLElement): HTMLElement {
   const bar = Array.from(container.querySelectorAll("div")).find(
-    (d) => d.className.includes("z-[45]") && d.className.includes("sm:hidden"),
+    (d) => d.className.includes("z-[45]") && d.className.includes("lg:hidden"),
   );
   expect(bar).toBeTruthy();
   return bar as HTMLElement;

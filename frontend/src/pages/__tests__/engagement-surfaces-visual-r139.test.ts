@@ -237,7 +237,10 @@ describe("R139 recipe — the thread pair + the support chrome register", () => 
     // R139 (precision): the calm-pair treatment the admin
     // TicketDetailPane operator/customer twins canonized — no
     // elevation on a chat bubble, paper on bg-muted/60 + /40.
-    expect(THREAD).toContain('"bg-primary text-white rounded-tl-md"');
+    // R157-IMPL-B #9: the customer bubble's ink rides the AA token
+    // (text-primary-foreground) — the last raw text-white-on-fill pair
+    // on the support lane (the avatar twin rode the same stroke).
+    expect(THREAD).toContain('"bg-primary text-primary-foreground rounded-tl-md"');
     expect(THREAD).not.toContain("shadow-md shadow-primary/22");
     expect(THREAD).toContain('"bg-muted/60 border border-border/40 rounded-tr-md');
   });
@@ -266,12 +269,12 @@ describe("R139 recipe — the thread pair + the support chrome register", () => 
   it("TicketsList rows rhyme with their documented twin (orders' statusAccentBorder idiom)", () => {
     // R139 (precision): orders.tsx's comment names THIS ticket-card
     // idiom as the shared one — the twins now ride one register:
-    // /60 edge, hover:border-border, shadow-xl/black/20 lift. The
-    // 3px status stripe + tints stay (the shared idiom).
+    // /60 edge, hover:border-border, the bare themed shadow-xl lift
+    // (R157-C retired the raw-black color override on both twins).
+    // The 3px status stripe + tints stay (the shared idiom).
     expect(TICKETS_LIST).toContain("bg-card border border-border/60 border-r-[3px]");
-    expect(TICKETS_LIST).toContain(
-      "hover:border-border hover:shadow-xl hover:shadow-black/20 hover:-translate-y-0.5",
-    );
+    expect(TICKETS_LIST).toContain("hover:border-border hover:shadow-xl hover:-translate-y-0.5");
+    expect(TICKETS_LIST).not.toContain("shadow-black");
     expect(TICKETS_LIST).not.toContain("border-border/50");
     expect(TICKETS_LIST).not.toContain("shadow-lg shadow-black/12");
   });

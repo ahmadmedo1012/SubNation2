@@ -219,10 +219,13 @@ export const TopupCard = React.memo(function TopupCard({
                  * — under the 4.5:1 floor (bold 14px is NOT large text);
                  * the emerald-700 hand-roll was the stopgap. R128
                  * (A1-F2): --status-success-surface (152 65% 30% dark /
-                 * 152 60% 28% light) = 5.05:1 with white in BOTH themes
-                 * — the token replaces the raw pair. hover rides the
-                 * Button family's /90 idiom. */
-                className="flex-1 h-9 bg-status-success-surface hover:bg-status-success-surface/90 text-white font-bold shadow-sm shadow-status-success-surface/20 active:scale-[0.97] transition-transform"
+                 * 152 60% 28% light) = 5.05:1 with white in BOTH themes.
+                 * R157-C: the composition moved into the Button
+                 * success variant (button.tsx cva); the base's
+                 * press-spring owns the press (the hand-rolled
+                 * active:scale retired with the fill). */
+                variant="success"
+                className="flex-1 h-9 font-bold"
                 onClick={() => onApprove(t.id)}
                 disabled={isProcessing}
               >

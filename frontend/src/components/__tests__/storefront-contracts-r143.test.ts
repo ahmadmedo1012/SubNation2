@@ -55,6 +55,9 @@ describe("R143 (L2-5) — the admin field family rides the shared focus idiom", 
     "src/components/admin/products/ProductEditorCard.tsx",
     "src/components/admin/topups/BulkConfirmModal.tsx",
     "src/components/admin/topups/RejectModal.tsx",
+    // R157-C: the shared native-select primitive carries the idiom
+    // (the five retired hand-rolled selects converged on it).
+    "src/components/ui/select.tsx",
   ])("%s: every focus ring rides the input.tsx idiom", (rel) => {
     const src = stripComments(read(rel));
     for (const token of FOCUS_IDIOM) {
@@ -64,9 +67,13 @@ describe("R143 (L2-5) — the admin field family rides the shared focus idiom", 
     expect(src, `${rel} still carries a raw destructive ring`).not.toContain("ring-destructive");
   });
 
-  it("ProductEditorCard carries the idiom on BOTH its hand-rolled fields (select + textarea)", () => {
+  it("ProductEditorCard's hand-rolled fields ride the idiom (textarea locally + select via the shared primitive)", () => {
+    // R157-C: the select moved onto ui/select (which carries the full
+    // idiom — pinned in the it.each above); only the textarea remains
+    // hand-rolled locally.
     const src = stripComments(read("src/components/admin/products/ProductEditorCard.tsx"));
-    expect(src.match(/focus-visible:ring-2/g)).toHaveLength(2);
+    expect(src.match(/focus-visible:ring-2/g)).toHaveLength(1);
+    expect(src).toContain("<Select");
   });
 });
 
@@ -112,7 +119,9 @@ describe("R143 (L3-4) — components-side fields ride the A13-F7 pointer:fine zo
 
   it.each([
     "src/components/product/CouponField.tsx",
-    "src/components/home/CatalogFiltersBar.tsx",
+    // R157-C: CatalogFiltersBar's sort select moved onto ui/select —
+    // the guard rides the primitive now (the call site inherits it).
+    "src/components/ui/select.tsx",
     "src/components/support/CreateTicketForm.tsx",
   ])("%s: no bare md:text-sm on the form control", (rel) => {
     const src = stripComments(read(rel));

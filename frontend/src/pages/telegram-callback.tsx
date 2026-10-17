@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { readApiError } from "@/components/checkout/checkout-errors";
 import { Button } from "@/components/ui/button";
+import { useSeo } from "@/hooks/useSeo";
 
 const HANG_TIMEOUT_MS = 12_000;
 
@@ -127,6 +128,15 @@ export default function TelegramCallbackPage() {
   const handled = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [hangVisible, setHangVisible] = useState(false);
+  // R157: a transient-screen title (the R146 login class) — the
+  // RouteAnnouncer used to keep reading the PREVIOUS page's title
+  // during this screen.
+  const seoBlock = useSeo({
+    title: "جارٍ تسجيل الدخول — SubNation",
+    description: "جارٍ إكمال تسجيل الدخول عبر تيليجرام.",
+    path: "/auth/telegram/callback",
+    robots: "noindex,nofollow",
+  });
 
   useEffect(() => {
     const t = setTimeout(() => setHangVisible(true), HANG_TIMEOUT_MS);
@@ -227,6 +237,7 @@ export default function TelegramCallbackPage() {
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-background">
+      {seoBlock}
       <div className="flex flex-col items-center gap-3 text-muted-foreground max-w-sm text-center">
         {hangVisible ? (
           <>

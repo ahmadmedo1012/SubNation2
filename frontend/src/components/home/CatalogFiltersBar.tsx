@@ -1,7 +1,8 @@
 import { CATEGORIES, SORTS } from "@/components/home/catalog-filters";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { ChevronDown, Clock, Package, Search, SlidersHorizontal } from "lucide-react";
+import { Clock, Package, Search, SlidersHorizontal } from "lucide-react";
 
 // R136 (FE-3 decomposition): extracted verbatim from pages/home.tsx —
 // the sticky catalog filter bar (search input + history dropdown, sort
@@ -145,7 +146,7 @@ export function CatalogFiltersBar({
                   </span>
                   <button
                     onClick={handleClearHistory}
-                    className="min-h-11 px-2 -my-2 text-xs text-muted-foreground hover:text-destructive transition-colors"
+                    className="min-h-11 px-2 -my-2 text-xs text-muted-foreground hover:text-status-error transition-colors"
                   >
                     مسح
                   </button>
@@ -176,33 +177,28 @@ export function CatalogFiltersBar({
         </div>
         <div className="relative shrink-0">
           <SlidersHorizontal className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-          <select
+          {/* R157-C: the sort control rides the shared ui/select
+              primitive (one form-control recipe app-wide). The
+              call-site keeps the R138 quiet-nav overrides so the row
+              reads as one tool: the /50 resting edge + /70 hover step
+              of its search-field sibling (the AA /75 form border is
+              for money-path forms — this is nav chrome receding so
+              products lead), and the Sliders start-icon keeps the sort
+              affordance (ps-9 reserves its slot; the primitive's own
+              chevron takes the inline-end). */}
+          <Select
             value={sort}
             onChange={(e) => setSort(e.target.value)}
             aria-label="ترتيب المنتجات"
             title="ترتيب المنتجات"
-            /* R138 (visual): rhymed with the search field sibling —
-               same card/60 wash, same border-border/50 resting alpha;
-               the hover step calms one notch (/80→/70) and the focus
-               tint matches the field's primary/45. Visual siblings
-               share one border family so the row reads as a single
-               quiet tool, not two heavy boxes.
-               R143 (L3-4): md:text-sm → the A13-F7 pointer:fine guard
-               (input.tsx:43 idiom) — a native select never had the
-               guard, so an iPad-class ≥768px coarse-pointer viewport
-               computed 14px and iOS Safari zoomed the page on every
-               focus. Desktop fine-pointer rendering is unchanged. */
-            className="h-10 appearance-none bg-card/60 border border-border/50 rounded-xl pr-8 pl-7 text-base [@media(min-width:48rem)_and_(pointer:fine)]:text-sm font-semibold focus:border-primary/45 cursor-pointer transition-all hover:border-border/70"
-            /* 96-F5 (R96-M03): same iOS focus-zoom fix as the search
-               field — raw select rode text-sm at every breakpoint. */
+            className="ps-9 font-semibold border-border/50 hover:border-border/70"
           >
             {SORTS.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
               </option>
             ))}
-          </select>
-          <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          </Select>
         </div>
       </div>
 

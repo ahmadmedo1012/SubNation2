@@ -255,7 +255,7 @@ export default function NotificationsPage() {
           subline, count badge. */}
       <div className="flex items-center justify-between gap-3 mb-7 page-in flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-primary/12 border border-primary/20 flex items-center justify-center shrink-0 shadow-inner">
+          <div className="w-11 h-11 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
             <CheckCheck className="w-5 h-5 text-primary" aria-hidden="true" />
           </div>
           <div>
@@ -370,7 +370,15 @@ export default function NotificationsPage() {
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
-                    onClick={() => actionHref && openNotification(n, actionHref)}
+                    /* R157: the bell's click contract mirrored — mark-read
+                       ALWAYS (a link-less system row used to render an
+                       inert pointer-cursor button: no mark-read, no
+                       navigation), navigate only when the type carries
+                       a deep link. */
+                    onClick={() => {
+                      void markRead(n.id);
+                      if (actionHref) navigate(actionHref);
+                    }}
                     className="flex items-start gap-3 text-start flex-1 min-w-0 cursor-pointer hover:opacity-85 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl -m-1 p-1"
                     aria-label={`${n.title}${actionHref ? " — افتح" : ""}`}
                   >

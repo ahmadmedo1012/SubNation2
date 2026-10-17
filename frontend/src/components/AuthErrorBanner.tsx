@@ -162,7 +162,12 @@ export function AuthErrorBanner() {
       <button
         type="button"
         onClick={() => setCode(null)}
-        className="-my-2.5 -mr-1.5 flex h-11 w-11 shrink-0 items-center justify-center touch-target rounded-lg opacity-70 hover:opacity-100 transition-opacity"
+        /* R157: logical inline-end margin — the OLD physical -mr-1.5
+          pulled the close button INTO the message text in RTL (the
+          only directional negative physical margin in src; the app
+          is RTL, the X sits at inline-end = left). -me-1.5 pulls the
+          hit-area toward the banner edge in any direction. */
+        className="-my-2.5 -me-1.5 flex h-11 w-11 shrink-0 items-center justify-center touch-target rounded-lg opacity-70 hover:opacity-100 transition-opacity"
         aria-label="إغلاق"
       >
         <X className="w-3.5 h-3.5" />

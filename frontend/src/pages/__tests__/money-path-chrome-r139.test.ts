@@ -475,7 +475,10 @@ describe("R138 recipe — the PDP sticky buy bar (premium-checkout-bar chrome, t
     // Navbar/MobileNav/Footer family; z-[45] preserves the R116 z-scale
     // layer between the bottom nav (40) and modals (50).
     expect(PRODUCT_CODE).toContain(
-      "sm:hidden z-[45] bg-card border-t border-border/35 px-4 pt-3 shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)]",
+      // R157: lg:hidden — the bar now covers the 640–1024px band too
+      // (the panel CTA is ≥lg only; exactly one sticky affordance at every
+      // width).
+      "lg:hidden z-[45] bg-card border-t border-border/35 px-4 pt-3 shadow-[0_-1px_2px_rgb(0_0_0/0.3),0_-10px_28px_-14px_rgb(0_0_0/0.4)]",
     );
   });
 
@@ -498,7 +501,7 @@ describe("R138 recipe — the PDP sticky buy bar (premium-checkout-bar chrome, t
     // top edge, above the CTA content. The no-"<"-between guard proves
     // nothing renders before it (only the rationale comment, which does
     // not render, sits in the gap).
-    const barIdx = PRODUCT_CODE.indexOf("sm:hidden z-[45]");
+    const barIdx = PRODUCT_CODE.indexOf("lg:hidden z-[45]");
     expect(barIdx).toBeGreaterThanOrEqual(0);
     const glowIdx = PRODUCT_CODE.indexOf('<div className="hairline-glow" />', barIdx);
     expect(glowIdx).toBeGreaterThan(barIdx);

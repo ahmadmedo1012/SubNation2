@@ -105,13 +105,19 @@ describe("admin palette discipline — flagship migration pins (R128 A1-F1)", ()
     // components/admin/topups/* extracts — the pin follows the surface
     // and reads the page ∪ extracts union (the r136 checkout-surface
     // idiom in a4-f1-nesting-sweep).
+    // R157-C: the composition moved into the Button success variant
+    // (button.tsx cva) — the topups files now say variant="success" and
+    // the AA token pair is pinned where it lives.
     const topupsSurface = [
       read("src/pages/admin/topups.tsx"),
       ...readdirSync(resolve(process.cwd(), "src/components/admin/topups")).map((f) =>
         read(`src/components/admin/topups/${f}`),
       ),
     ].join("\n");
-    expect(topupsSurface).toContain("bg-status-success-surface hover:bg-status-success-surface/90");
+    expect(topupsSurface).toContain('variant="success"');
+    expect(read("src/components/ui/button.tsx")).toContain(
+      "bg-status-success-surface text-white shadow-sm shadow-status-success-surface/20 hover:bg-status-success-surface/90",
+    );
     // Class-shaped ban (the historical comment may name the retired
     // hand-roll; the CLASS must be gone — the negative guard above
     // already bans every bg-emerald-* shape).

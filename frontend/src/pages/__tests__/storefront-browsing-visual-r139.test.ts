@@ -118,9 +118,11 @@ describe("R139 — flash-sales: urgency loud-but-compliant + the ProductCard rhy
   it("the FlashCard shell rhymes with ProductCard byte-for-byte (/60 + two-layer calm elevation + the 60→100 hover step)", () => {
     expect(flash).toContain("bg-card border border-border/60 rounded-2xl overflow-hidden");
     expect(flash).toContain("shadow-calm");
-    expect(flash).toContain(
-      "card-spring hover:border-border hover:shadow-xl hover:shadow-black/25",
-    );
+    // R157-C: the hover shadow rides the bare themed ladder — the
+    // raw-black color override retired (.light rendered ~2× the
+    // 6–14% ceiling; the ladder's own xl step sits inside it).
+    expect(flash).toContain("card-spring hover:border-border hover:shadow-xl");
+    expect(flash).not.toContain("shadow-black");
     expect(flash).not.toContain("hover:border-border/80");
   });
 

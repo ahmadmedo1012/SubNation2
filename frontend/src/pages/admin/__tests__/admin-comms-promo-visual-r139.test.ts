@@ -114,7 +114,9 @@ describe("R139 (139-h) — tickets: the queue register + the detail pane", () =>
       '"flex items-start justify-between px-5 py-4 border-b border-border/60 bg-muted/30"',
     );
     expect(detailPane).toContain(
-      '"bg-primary text-white rounded-tl-sm" : "bg-muted/60 border border-border/40 rounded-tr-sm"',
+      // R157: text-white → text-primary-foreground (the ink token —
+      // equal today, drift-proof if the token ever retunes).
+      '"bg-primary text-primary-foreground rounded-tl-sm" : "bg-muted/60 border border-border/40 rounded-tr-sm"',
     );
     expect(detailPane).toContain('className="border-t border-border/20 p-4"');
     expect(detailPane).toContain("bg-muted/30 border border-border/40 rounded-lg px-3 py-2 mb-3");

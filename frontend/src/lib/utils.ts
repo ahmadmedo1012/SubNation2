@@ -20,7 +20,10 @@ const CURRENCY_NUMBER_FORMATTER = new Intl.NumberFormat("en-US", {
 });
 
 export function formatCurrency(amount: number | null | undefined): string {
-  if (amount === null || amount === undefined || isNaN(amount)) return "0.00 د.ل";
+  // R157: NaN/null never fabricates a confident "0.00 د.ل" on a money
+  // surface — an unavailable amount reads as the honest em-dash (callers
+  // that already guard with Number.isFinite keep their behavior).
+  if (amount === null || amount === undefined || isNaN(amount)) return "— د.ل";
   return `${CURRENCY_NUMBER_FORMATTER.format(amount)} د.ل`;
 }
 

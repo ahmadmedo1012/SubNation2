@@ -58,7 +58,7 @@ const ProductCard = React.memo(function ProductCard({
 }: ProductCardProps) {
   return (
     <div
-      className={`bg-card border rounded-2xl overflow-hidden transition-all hover:shadow-lg hover:shadow-black/10 ${
+      className={`bg-card border rounded-2xl overflow-hidden transition-all hover:shadow-lg ${
         /* R139 (precision): the selected card drops the ring + colored
            md-shadow stack (a selection state wearing BOTH a ring and a
            brand-colored shadow — row elevation + glow) for the calm

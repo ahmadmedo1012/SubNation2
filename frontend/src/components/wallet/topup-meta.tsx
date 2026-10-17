@@ -30,24 +30,26 @@ export const NETWORKS = [
     // R94-A1 #5 (P2, WCAG AA): green-300/blue-300 on white cards
     // measured 1.40:1 / 2.30:1 in the light theme — the selected network
     // name was near-invisible. The shared --status-* tokens are
-    // theme-aware; the bg tint stays brand-hued (non-text decoration —
-    // the AA text carries the state).
+    // theme-aware.
     // R124-I1 (A3 P2, WCAG 1.4.11): the selected border is the visible
     // state boundary and must clear 3:1 in BOTH themes. The raw
     // green-500/45 / blue-500/45 borders measured 2.55:1 / 1.96:1 on the
     // dark chip (light worse) — the theme-aware --status-* pair at the
     // Input recipe's calibrated /75 alpha (input.tsx A4-F12) measures
     // ≈5.2:1 dark / ≈3.5:1 light (success) and ≈3.5:1 in both (info).
+    // R157-C: the bg tints also ride the status tokens (the raw
+    // Tailwind green/blue hues were theme-blind — the audit's raw-value
+    // finding; the /10 wash keeps the same quiet tint on both themes).
     color: "text-status-success",
     border: "border-status-success/75",
-    bg: "bg-green-500/10",
+    bg: "bg-status-success/10",
   },
   {
     value: "madar",
     label: "مدار",
     color: "text-status-info",
     border: "border-status-info/75",
-    bg: "bg-blue-500/10",
+    bg: "bg-status-info/10",
   },
 ];
 

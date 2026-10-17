@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { customFetch } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import {
   ArrowLeft,
   Bell,
@@ -359,6 +360,27 @@ export function NotificationBell() {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // R157: close on page scroll — the panel is position:fixed computed at
+  // open (resize deliberately ignored), so scrolling the page left it
+  // floating mid-air while the bell scrolled away. Closing is cheaper
+  // and more honest than repositioning; passive — it never blocks the
+  // scroll. The same one-gesture dismissal class as the outside-click.
+  // NOTE capture:true + the panel-body guard: the panel's own list is
+  // overflow-y-auto (line ~679) — a scroll INSIDE the panel must not
+  // close it, so the handler ignores scrolls whose target sits within
+  // [data-notification-panel], exactly like the mousedown handler.
+  useEffect(() => {
+    if (!open) return;
+    const onScroll = (e: Event) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.('[data-notification-panel="1"]')) return;
+      setOpen(false);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () =>
+      window.removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
   }, [open]);
 
   // Close on Escape.
@@ -774,7 +796,14 @@ function NotificationPanel({
       {/* Footer */}
       {notifs.length > 0 && (
         <div className="px-4 py-2.5 border-t border-border/30 bg-muted/10 text-center shrink-0">
-          <p className="text-xs text-muted-foreground">
+          {/* R157: the footer count is now a LINK to the paged full
+              history — at the 40-row cap the panel used to be a dead
+              end (the full page was reachable only via the drawer). */}
+          <Link
+            href="/notifications"
+            onClick={() => onClose()}
+            className="inline-flex min-h-8 items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+          >
             {/* 93-C8 (A11 §3): Arabic plural paradigm via formatCount.
                 A9-2 (R126-L6): at the backend's 40-row cap the count is
                 the LOADED slice, not the lifetime total — prefix
@@ -786,7 +815,9 @@ function NotificationPanel({
               many: "إشعاراً",
               other: "إشعار",
             })}
-          </p>
+            <span aria-hidden="true">·</span>
+            عرض الكل
+          </Link>
         </div>
       )}
     </div>

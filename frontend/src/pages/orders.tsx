@@ -566,7 +566,7 @@ export default function OrdersPage() {
                   float-in ${staggerClass}
                   bg-card border border-border/60 border-r-[3px] ${statusAccentBorder(order.status)}
                   rounded-xl p-4
-                  card-spring hover:border-border hover:shadow-xl hover:shadow-black/25
+                  card-spring hover:border-border hover:shadow-xl
                   cursor-pointer group
                 `}
                 >
@@ -575,9 +575,11 @@ export default function OrdersPage() {
                       active: overrides) is replaced by the family's
                       unified .card-spring — the exact ProductCard recipe
                       (one sanctioned spring: hover lift + active press,
-                      border step + the calm neutral xl elevation).
-                      hover:shadow-black/20 → /25 matches that family
-                      value. The status accent edge + StatusBadge tokens
+                      border step + the calm neutral xl elevation;
+                      R157-C retired the hover black/25 color override
+                      for the bare themed hover:shadow-xl
+                      (the theme ladder's .light step stays inside the
+                      6–14% ceiling). The status accent edge + StatusBadge tokens
                       are untouched (pinned by order-refund-receipt). */}
                   <div className="flex items-center gap-3.5">
                     {/* Product image */}

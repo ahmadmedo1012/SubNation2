@@ -162,7 +162,14 @@ export default function ReferralsPage() {
       (eventsQ.isError && eventsQ.failureCount === 1)
     ) {
       errorToastShown.current = true;
-      toast({ title: "خطأ في التحميل", variant: "destructive" });
+      // R157: the action-specific copy bar (R111-F2) — the generic
+      // «خطأ في التحميل» duplicated the page's FetchErrorCard without
+      // saying WHAT failed; the description names the surface.
+      toast({
+        title: "خطأ في التحميل",
+        description: "تعذّر تحميل بيانات الإحالات — أعد المحاولة",
+        variant: "destructive",
+      });
     }
   }, [overviewQ.isError, overviewQ.failureCount, eventsQ.isError, eventsQ.failureCount, toast]);
 
