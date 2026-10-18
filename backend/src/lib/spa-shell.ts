@@ -293,23 +293,12 @@ async function lookupProductForShareSurfaces(
           seoTitle: productsTable.seoTitle,
           seoDescription: productsTable.seoDescription,
           // R163: the deliverable-stock scalar — the catalog's own
-          // is_available predicate (is_sold=false AND at least one
-          // credential field present), so the JSON-LD below and the
-          // public API can never disagree on stock.
-          //
-          // ⚠ CORRELATION MUST BE HAND-QUALIFIED: drizzle renders an
-          // interpolated COLUMN inside a raw sql`` template BARE
-          // (`"product_id"`, not `"inventory"."product_id"`), so the
-          // original `${inventoryTable.productId} = ${productsTable.id}`
-          // rendered as `"product_id" = "id"` — and inside the subquery
-          // BOTH names resolve against its own FROM, making the
-          // predicate `inventory.product_id = inventory.id` (the live
-          // bug: the only in-stock product asserted OutOfStock; the
-          // tests passed coincidentally — fresh test DBs give both
-          // tables id=1). Hand-qualified `inventory.x = products.y`
-          // keeps the correlation real; the condition re-inlined for
-          // the same reason (deliverableUnitCondition's columns render
-          // bare too — harmless for its own OR, but kept explicit).
+          // is_available predicate, so the JSON-LD and the API can never
+          // disagree on stock. ⚠ Columns are HAND-QUALIFIED: drizzle
+          // renders interpolated columns in raw sql`` templates BARE — the
+          // first draft's correlation became "product_id" = "id", both
+          // resolving against the subquery's own FROM (the live bug;
+          // tests passed while both tables' ids were 1 — d745567 story).
           stockCount: sql<number>`(
             SELECT COUNT(*)::int FROM inventory
             WHERE inventory.product_id = products.id
