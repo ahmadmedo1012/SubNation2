@@ -151,6 +151,18 @@ export interface CheckoutInput {
    * legacy replay-on-key-match behavior (the ≤48h transition window).
    */
   idempotencyBodyHash?: string | null;
+  /**
+   * R165 (the R162 ADR): client-minted checkout-attempt token — the
+   * multi-order grouping key. INFORMATIONAL ONLY: recorded verbatim on
+   * the order row (never minted, validated beyond the route's length
+   * cap, or interpreted) and never in money math, idempotency claims,
+   * refunds, or inventory. Absent/null = no group (legacy clients,
+   * pre-feature rows). One more column in the SAME M4 transaction's
+   * INSERT — atomicity unchanged, no new failure reason, no new side
+   * effects; replayOriginalOrder needs zero changes (selects the whole
+   * row — the group rides the order, not the idempotency claim).
+   */
+  orderGroupKey?: string | null;
 }
 
 /**
@@ -652,6 +664,11 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
           orderCode: generateOrderCode(),
           userId,
           productId,
+          // R165 (the R162 ADR): the client-minted checkout-attempt token,
+          // recorded verbatim — informational grouping only (see
+          // CheckoutInput.orderGroupKey). Same INSERT, same transaction:
+          // atomicity + failure surface unchanged.
+          orderGroupId: input.orderGroupKey ?? null,
           // Catalog-2026-09-20: the purchased option, plus its label as an
           // immutable historical copy (delivered_* contract — order history
           // must never rewrite itself even if the variant is later edited

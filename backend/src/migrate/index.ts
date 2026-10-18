@@ -37,6 +37,7 @@ export {
 export {
   applyDomainCheckConstraintsStage,
   applyIdempotencyBodyHashStage,
+  applyOrdersGroupColumnStage,
   applyOrganizationsRemovalStage,
   applyR135IndexWaveStage,
   applyReferralFksRestrictStage,

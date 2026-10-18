@@ -54,6 +54,7 @@ import {
   applyDomainCheckConstraintsStage,
   applyIdempotencyBodyHashStage,
   applyOrganizationsRemovalStage,
+  applyOrdersGroupColumnStage,
   applyR135IndexWaveStage,
   applyReferralFksRestrictStage,
   applyRetentionPruneIndexesStage,
@@ -1999,7 +2000,14 @@ export async function runMigrations() {
     // zero DDL on steady-state boots). See applyR135IndexWaveStage docs.
     await applyR135IndexWaveStage();
 
-    // R146-F5: moved from after the seed blocks — V1-M9..M34 (money
+    // ── V1-M35 (R165, the R162 ADR): orders.order_group_id — the ──
+    // client-minted checkout-attempt token (multi-order grouping,
+    // informational only). Catalog-probe gated + the additive partial
+    // idx_orders_user_group (zero-DDL steady state). See
+    // applyOrdersGroupColumnStage docs.
+    await applyOrdersGroupColumnStage();
+
+    // R146-F5: moved from after the seed blocks — V1-M9..M35 (money
     // constraints, points ledger, index waves) still executed below it,
     // so an operator tailing a slow deploy read "completed" mid-run.
     logger.info("Migrations completed");
@@ -2021,7 +2029,7 @@ export async function runMigrations() {
 }
 
 // R144-B2-GEN:BEGIN re-exports — the historical migrate.ts contract
-// R144-B2-GEN: (35 exported symbols: 2 defined here, 33 re-exported from the family)
+// R144-B2-GEN: (36 exported symbols: 2 defined here, 34 re-exported from the family)
 export { getConstraintSkipAlerts } from "./migrate/alerts";
 export {
   __setMigrationsFingerprintForTests,
@@ -2057,6 +2065,7 @@ export {
 export {
   applyDomainCheckConstraintsStage,
   applyIdempotencyBodyHashStage,
+  applyOrdersGroupColumnStage,
   applyOrganizationsRemovalStage,
   applyR135IndexWaveStage,
   applyReferralFksRestrictStage,

@@ -183,6 +183,10 @@ CREATE TABLE orders (
   refunded_at timestamptz,
   refund_amount numeric(10,2),
   refunded_by_admin_id integer,
+  -- R165 (V1-M35, the R162 ADR): client-minted checkout-attempt token
+  -- — prod parity (migrate.ts applyOrdersGroupColumnStage). Nullable, no
+  -- default: NULL = pre-feature singleton/legacy.
+  order_group_id varchar(36),
   CONSTRAINT chk_orders_refund_amount_range CHECK (refund_amount IS NULL OR (refund_amount > 0 AND refund_amount <= amount)),
   -- R122 (A4-P2-5): prod parity — V1-M26 (migrate.ts
   -- applyMoneyArithmeticChecksStage) applies this live; checkout's
@@ -194,6 +198,10 @@ CREATE TABLE orders (
 -- V1-M16 (R98-DB-01): live-only in boot SQL until round-98 — mirrored so
 -- the harness matches production's post-boot shape.
 CREATE INDEX idx_orders_variant ON orders (variant_id);
+-- R165 (V1-M35, the R162 ADR): the ownership-scoped partial group lookup
+-- — live in boot SQL (migrate.ts applyOrdersGroupColumnStage), mirrored so
+-- the harness matches production's post-boot shape.
+CREATE INDEX idx_orders_user_group ON orders (user_id, order_group_id) WHERE order_group_id IS NOT NULL;
 
 -- V1-M21 (R115): points_ledger — append-only loyalty attribution.
 -- Same constraint set as the boot stage (migrate.ts applyPointsLedgerStage):

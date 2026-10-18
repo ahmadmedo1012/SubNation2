@@ -183,6 +183,13 @@
       "when": 1792185693918,
       "tag": "0025_zippy_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792322138642,
+      "tag": "0026_freezing_kid_colt",
+      "breakpoints": true
     }
   ]
 }

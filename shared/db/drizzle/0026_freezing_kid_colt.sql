@@ -1,0 +1,31 @@
+-- R165 (the R162 ADR): Drizzle 0026 — the mirror of boot stage V1-M35
+-- (migrate.ts applyOrdersGroupColumnStage): orders.order_group_id — the
+-- client-minted checkout-attempt token for multi-order grouping
+-- (informational only: never in money math, idempotency claims, refunds,
+-- or inventory) + the ownership-scoped partial lookup
+-- idx_orders_user_group ON orders (user_id, order_group_id) WHERE
+-- order_group_id IS NOT NULL (the V1-M31/V1-M34 partial idiom —
+-- historical NULL rows stay out of the index entirely).
+--
+-- Same conventions as 0013/0016/0017/0018/0019/0020/0021/0022/0023 (r110
+-- idiom): the file as emitted by `drizzle-kit generate` is
+-- DECLARATIVE-ONLY — nothing in the repo executes it at runtime (prod
+-- schema flows exclusively through migrate.ts: V1-M35 converges the
+-- column probe-gated + creates the additive partial at boot), and CI
+-- only regenerates + diffs. The statements below are hand-hardened so
+-- the chain is ALSO safe the day it IS applied (manual
+-- `drizzle-kit migrate`, a chain-built fresh environment, or a future
+-- wiring):
+--
+--   - ADD COLUMN carries IF NOT EXISTS (the V1-M19 belt-on-probe idiom):
+--     on the runtime shape the boot twin has already added the column,
+--     so the ALTER no-ops; on a chain-built database it is the apply;
+--
+--   - CREATE INDEX carries IF NOT EXISTS (V1-M21/B8-10 idiom) — on the
+--     runtime shape the partial already exists under this exact name;
+--
+--   - no backfill, no NOT NULL, no default: NULL = a pre-feature
+--     singleton/legacy order (backfill could only fabricate groups —
+--     the ADR §7 permanence decision).
+ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "order_group_id" varchar(36);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_orders_user_group" ON "orders" USING btree ("user_id","order_group_id") WHERE order_group_id IS NOT NULL;

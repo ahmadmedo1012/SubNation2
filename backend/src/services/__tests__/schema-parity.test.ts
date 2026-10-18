@@ -620,3 +620,46 @@ describe("R122: schema TS declares the V1-M25/V1-M26 objects (compile-level)", (
     );
   });
 });
+
+describe("R165 (V1-M35, the R162 ADR): orders.order_group_id — harness + TS parity", () => {
+  it("the harness DDL carries the column varchar(36) nullable, no default", async () => {
+    const result = await db.execute(
+      sql`SELECT data_type, character_maximum_length, is_nullable, column_default
+          FROM information_schema.columns
+          WHERE table_name = 'orders' AND column_name = 'order_group_id'`,
+    );
+    const rows = (result as unknown as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].data_type).toBe("character varying");
+    expect(String(rows[0].character_maximum_length)).toBe("36");
+    expect(rows[0].is_nullable).toBe("YES");
+    expect(rows[0].column_default).toBeNull();
+  });
+
+  it("the harness DDL carries the partial idx_orders_user_group by name + predicate", async () => {
+    const result = await db.execute(
+      sql`SELECT indexdef AS def FROM pg_indexes
+          WHERE schemaname = current_schema()
+            AND tablename = 'orders' AND indexname = 'idx_orders_user_group'`,
+    );
+    const rows = (result as unknown as { rows?: Array<{ def: string }> }).rows ?? [];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].def).toContain("ON public.orders");
+    expect(rows[0].def).toContain("(user_id, order_group_id)");
+    expect(rows[0].def).toContain("(order_group_id IS NOT NULL)");
+  });
+
+  it("the schema TS declares orderGroupId + the partial user-group index (compile-level)", () => {
+    const config = getTableConfig(ordersTable);
+    const col = config.columns.find((c) => c.name === "order_group_id");
+    expect(col).toBeDefined();
+    expect(col!.notNull).toBe(false);
+    expect((col as unknown as { columnType?: string }).columnType).toBe("PgVarchar");
+
+    const idx = config.indexes.find((i) => i.config.name === "idx_orders_user_group");
+    expect(idx).toBeDefined();
+    expect(indexColumns(idx!)).toEqual(["user_id", "order_group_id"]);
+    // Partial predicate verbatim from the boot stage (V1-M35).
+    expect(sqlText(idx!.config.where)).toBe("order_group_id IS NOT NULL");
+  });
+});

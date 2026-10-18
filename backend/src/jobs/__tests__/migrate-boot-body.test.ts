@@ -29,8 +29,9 @@ import { decrypt, isEncrypted } from "../../lib/encryption";
  *   2. the second run is a clean idempotent no-op (boot-resilience's
  *      transient retry re-runs from the top — that path must converge);
  *   3. the end shape matches the lane-L9 boot dry-run: 41 tables /
- *      29 CHECKs / 39 FKs / 139 indexes (pg_trgm degrades exactly like
- *      ensurePgTrgmExtension does on this engine);
+ *      29 CHECKs / 39 FKs / 140 indexes (pg_trgm degrades exactly like
+ *      ensurePgTrgmExtension does on this engine; R165/V1-M35 raised
+ *      139 → 140 with idx_orders_user_group);
  *   4. Stage C applied (users.password_hash gone) and the money guards
  *      the M1–M15 invariants depend on exist.
  */
@@ -142,13 +143,15 @@ describe("R143 (L9-2): the full runMigrations() body boots a fresh database", ()
     },
   );
 
-  it("the documented end shape holds (41 tables / 29 CHECKs / 39 FKs / 139 indexes)", async () => {
+  it("the documented end shape holds (41 tables / 29 CHECKs / 39 FKs / 140 indexes)", async () => {
     const tables = await scalar("SELECT count(*) AS c FROM pg_tables WHERE schemaname = 'public'");
     expect(tables).toBe(41);
     expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(29);
     expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(39);
+    // R165 (V1-M35): 139 → 140 — idx_orders_user_group (the order-group
+    // partial lookup, applyOrdersGroupColumnStage).
     expect(await scalar("SELECT count(*) AS c FROM pg_indexes WHERE schemaname = 'public'")).toBe(
-      139,
+      140,
     );
   });
 

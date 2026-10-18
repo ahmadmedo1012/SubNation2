@@ -162,14 +162,16 @@ describe("R143 (L9-2): the drizzle chain replays cleanly on a fresh database", (
       expect(tables.has(t), `chain-built schema is missing table ${t}`).toBe(true);
     }
     // The L9 fresh-replay shape WITH the L9-1 fix applied: 41 tables /
-    // 29 CHECKs / 39 FKs / 139 indexes — exactly the boot dry-run's shape
+    // 29 CHECKs / 39 FKs / 140 indexes — exactly the boot dry-run's shape
     // (L9's 138 was measured with the singleton statement failing; the
     // two pg_trgm GIN indexes are the one environmental delta vs real
-    // Postgres, skipped exactly like ensurePgTrgmExtension degrades).
+    // Postgres, skipped exactly like ensurePgTrgmExtension degrades;
+    // R165/V1-M35 raised 139 → 140 — chain 0026 carries
+    // idx_orders_user_group).
     expect(tables.size).toBe(41);
     expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(29);
     expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(39);
-    expect((await objectNames("index")).length).toBe(139);
+    expect((await objectNames("index")).length).toBe(140);
   });
 
   it("the money guards the invariants depend on are all present", async () => {

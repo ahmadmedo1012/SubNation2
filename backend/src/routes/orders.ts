@@ -83,6 +83,10 @@ function formatOrder(
   return {
     id: order.id,
     order_code: order.orderCode,
+    // R165 (the R162 ADR): the client-minted checkout-attempt token,
+    // additive — NULL on orders placed before the feature or by clients
+    // that omit it. Informational grouping only.
+    order_group_id: order.orderGroupId ?? null,
     product_id: order.productId,
     variant_id: order.variantId ?? null,
     // Catalog-2026-09-20: immutable copy of the purchased option's label
@@ -279,7 +283,7 @@ router.post(
     // old raw re-read of req.body.coupon_code was a split-brain (it
     // bypassed the tightened maxLength 64 + re-accepted shapes safeParse
     // had just rejected). Trim + uppercase normalization is unchanged.
-    const { product_id, variant_id, coupon_code } = parse.data;
+    const { product_id, variant_id, coupon_code, order_group_id } = parse.data;
     const couponCode: string | undefined =
       typeof coupon_code === "string" ? coupon_code.trim().toUpperCase() : undefined;
 
@@ -288,6 +292,14 @@ router.post(
       productId: product_id,
       variantId: variant_id ?? null,
       couponCode,
+      // R165 (the R162 ADR): the client-minted checkout-attempt token —
+      // recorded verbatim by the service on the order row (informational
+      // grouping only, never in money math / idempotency / refunds). The
+      // parsed-body read is the R120-B6/A6-F7 discipline (maxLength 36
+      // already enforced by CreateOrderBody's generated zod — a 37-char
+      // value dies HERE at the 400 INVALID_DATA perimeter, never reaching
+      // the money path).
+      orderGroupKey: order_group_id ?? null,
       // F10 (round-94 C4→C5 wiring): pass the raw Idempotency-Key header
       // through to the service — the durable in-tx guard (lib/idempotency.ts)
       // scopes it per-user, replays the original order on a retry, and

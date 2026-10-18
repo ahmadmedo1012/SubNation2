@@ -31,6 +31,17 @@
 | M16 | **Money events fire only after commit** — no pre-commit emission can survive a rollback as a false positive | checkout signal-object (`checkout.service.ts:363-367` decl, `:842-846` post-commit fire); topup notifications post-tx (`topup.service.ts:612-635`); refund post-commit (`refund.service.ts:396-402`) | `checkout-coupon-maxed-postcommit.test.ts`, `telegram-webhook-topup-money-path.test.ts` (12) |
 | M17 | **Every LYD display uses ONE formatting idiom** — en-US grouping + two decimals + «د.ل» on every surface; zero raw-`toFixed` LYD display regressions (residuals are USD/percent/SEO-plain-string, justified in-code) | frontend `formatCurrency` (`frontend/src/lib/utils.ts:22`, ~167 refs) + backend `formatLyd`/`formatLydNumber` (`backend/src/lib/money.ts`, grouped since R128 — B8-D3) | UI suites; grep-audited R128-B4 §7 |
 
+**R165 note (the order-group column, 2026-10-18):** `orders.order_group_id`
+(V1-M35) is **informational-only** by contract — it never participates in
+money math, idempotency claims, refunds, or inventory, so it adds NO
+invariant and weakens none: M4 gains one column in the SAME transaction's
+INSERT, M5/M6 are untouched (the body-hash predicate now also covers the
+group — a re-minted token under a live unit key classifies 409), M10 has
+zero new amount writers (pinned: amounts/balances identical with and
+without the token). Money-slice re-verified at R165: backend 2,699 /
+frontend 2,103 green (`checkout-order-group` + `orders-order-group-route`
+added to the suite index below).
+
 ## 2. The money-path suite index (45 files; re-verified R134 — cart's
 variant-parity + half-cent blocks and `variant-availability-pricing`
 added; the routes dir alone now holds 74 files)
@@ -42,6 +53,8 @@ added; the routes dir alone now holds 74 files)
 `checkout-coupon-maxed-postcommit` · `price-snapshot-immutability` (M10) ·
 `checkout-inventory-corrupt` · `checkout-product-stale` ·
 `checkout-points-award` · `checkout-invariant-order` (M15) ·
+`checkout-order-group` (R165 — the group token through the real purchase:
+replay-verbatim / re-mint-409 / N-units-one-group / group-never-money) ·
 `wallet-never-negative` (M9, R123) · `refund.service` ·
 `refund-points-race` · `refund-revocation` · `refund-coupon-slot` ·
 `refund-extra-details` · `refund-reversal-precision` (R123) ·
@@ -52,6 +65,8 @@ added; the routes dir alone now holds 74 files)
 `wallet-topups-payment-reference` · `wallet-topups-durable-idempotency` ·
 `wallet-topups-telegram-card` (the folded operator card, R123 E1) ·
 `orders-idempotency-route` · `orders-credentials-serialization` ·
+`orders-order-group-route` (R165 — the 37-char perimeter / GET surfaces /
+legacy-null parity / the re-mint 409 through the REAL route hash) ·
 `checkout` (route level) · `checkout-coupon-expiry-in-tx` ·
 `coupons-validate` (the R123 cap-parity battery) ·
 `telegram-webhook-topup-money-path` (R127, 12) ·

@@ -30,6 +30,14 @@ import {
   persistCheckoutUnitKey,
   purgeLegacyCheckoutUnitKeys,
 } from "@/components/checkout/checkout-unit-key";
+// R165 (the R162 ADR): the per-CONFIRM group token — ONE UUID reused by
+// every unit-order of an attempt (incl. partial-failure retries), riding
+// CreateOrderBody.order_group_id.
+import {
+  clearCheckoutGroupKey,
+  loadCheckoutGroupKey,
+  persistCheckoutGroupKey,
+} from "@/components/checkout/checkout-group-key";
 import { couponQuoteLines, validateCouponForLines } from "@/components/checkout/coupon-quote";
 import { CouponCard, type AppliedCoupon } from "@/components/checkout/CouponCard";
 import { CartSummaryAside } from "@/components/checkout/CartSummaryAside";
@@ -369,6 +377,13 @@ export default function CheckoutPage() {
     // AUD103-2-F1 (r103): sweep inert pre-r103 slot entries (hygiene,
     // off the money path).
     purgeLegacyCheckoutUnitKeys();
+    // R165 (the R162 ADR §2.1.1): ONE group token per confirm attempt —
+    // minted here (or reused from a live partial-failure retry of the
+    // same basket — the subset-tolerant load), persisted for the next
+    // retry, and sent on EVERY unit body below. Cleared ONLY at the
+    // full-resolution point (liveAfterSync empty) or by TTL.
+    const groupToken = loadCheckoutGroupKey(items) ?? generateIdempotencyKey();
+    persistCheckoutGroupKey(items, groupToken);
     const created: Order[] = [];
     let firstOrderCode: string | null = null;
     let failureMessage: string | null = null;
@@ -475,6 +490,12 @@ export default function CheckoutPage() {
             }
           }
           const body: CreateOrderBody = { product_id: it.productId };
+          // R165 (the R162 ADR): the attempt's group token rides EVERY
+          // unit body — the server records it verbatim on the order row
+          // (informational grouping; never money math / idempotency /
+          // refunds). Same token for all units + the partial-retry path,
+          // so one logical checkout stays ONE group server-side.
+          body.order_group_id = groupToken;
           // R115-I1 (A7 P3-5): reflect the unit about to be charged in
           // the CTA label («جارٍ المعالجة… 2/3») — the counter is the
           // existing loop's unit index, accumulated across lines.
@@ -698,7 +719,14 @@ export default function CheckoutPage() {
         // delete. A null live read (storage unavailable) falls back to
         // the old unconditional clear.
         const liveAfterSync = readLiveCartItems();
-        if (liveAfterSync === null || liveAfterSync.length === 0) clear();
+        if (liveAfterSync === null || liveAfterSync.length === 0) {
+          clear();
+          // R165 (the R162 ADR §2.1.1): the attempt fully resolved — the
+          // group token's lifecycle ends with the basket that minted it
+          // (same guard as clear(); partial failures keep it so the
+          // retry's remaining units stay in the SAME group).
+          clearCheckoutGroupKey();
+        }
         toast({
           title: "تم إتمام الطلب",
           description: `تم إنشاء ${formatCount(created.length, {

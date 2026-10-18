@@ -638,3 +638,62 @@ export async function applyR135IndexWaveStage(
   }
   logger.info({ category: "storage" }, "V1-M34: R135 serving-index wave (idempotent)");
 }
+
+// ── V1-M35 (R165, the R162 ADR): orders.order_group_id ──────────────────────
+//
+// The multi-order money lane (R165, implementing the R162 ADR
+// docs/engineering/R162/adr-order-batch.md §3): an *order group* is the set
+// of order rows created by ONE logical checkout attempt — the client mints
+// one UUID per confirm intent and reuses it across every unit-order of
+// that attempt (including partial-failure retries); the server records it
+// verbatim and never mints, validates beyond the length cap, or
+// interprets it. INFORMATIONAL ONLY: it never participates in money math,
+// idempotency claims, refunds, or inventory (ADR §2).
+//
+// Shape: the V1-M32 catalog-probe idiom — probe
+// information_schema.columns; ALTER only when absent. Nullable, no
+// default, NO backfill: NULL = a pre-feature singleton/legacy order
+// (backfill could only guess — created_at proximity would fabricate
+// groups, ADR §7). IF NOT EXISTS stays on the ALTER as the belt against
+// catalog drift between probe and DDL (the V1-M19/M32 house idiom).
+// Steady-state boots issue zero DDL.
+//
+// Index: idx_orders_user_group — PARTIAL on (user_id, order_group_id)
+// WHERE order_group_id IS NOT NULL (the V1-M31 partial idiom, same shape
+// as idx_coupons_expires_at in V1-M34): composite because every consumer
+// query is ownership-scoped (user_id + group), the group ids are random
+// UUIDs so the second column is highly selective, and historical NULL
+// rows stay out of the index entirely (zero write amplification for the
+// legacy majority). Additive CREATE INDEX IF NOT EXISTS — one guarded
+// statement covers the fresh install and the steady state.
+//
+// Drizzle mirror: shared/db/src/schema/orders.ts orderGroupId + chain 0026.
+export async function applyOrdersGroupColumnStage(
+  execute: SqlExecutor = defaultExecutor,
+): Promise<void> {
+  const probeRows = extractRows(
+    await execute(sql`
+      SELECT column_name AS column_name
+      FROM information_schema.columns
+      WHERE table_name = 'orders'
+    `),
+  );
+  const present = new Set(probeRows.map((row) => String(row.column_name)));
+  if (!present.has("order_group_id")) {
+    // Belt-on-probe (V1-M19/M32 idiom): every statement idempotent even
+    // if the catalog drifted between the probe and the DDL.
+    await execute(
+      sql.raw(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_group_id VARCHAR(36)`),
+    );
+    logger.info(
+      { category: "storage" },
+      "V1-M35: added orders.order_group_id (client-minted checkout-attempt token, R165)",
+    );
+  }
+  // One statement per execute: pglite's extended-protocol parser rejects
+  // multi-statement batches (42601), and stage tests run against pglite.
+  await execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_orders_user_group
+      ON orders (user_id, order_group_id) WHERE order_group_id IS NOT NULL;
+  `);
+}

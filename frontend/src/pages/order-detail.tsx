@@ -33,6 +33,7 @@ import {
   Copy,
   ExternalLink,
   Info,
+  Layers,
   Package,
   ShieldAlert,
   ShieldCheck,
@@ -389,6 +390,22 @@ export default function OrderDetailPage() {
                         plain text); hover only strengthens it on md+. */}
                     <Copy className="w-2.5 h-2.5 opacity-60 md:group-hover/code:opacity-100 transition-opacity" />
                   </button>
+                  {/* R165 (the R162 ADR §6.3): this order belongs to a
+                      multi-order checkout attempt — the v1 shape links to
+                      /orders (where the attempt's siblings cluster under
+                      the «عملية شراء واحدة» divider). Absent/null on
+                      single orders + historical rows — rendered exactly
+                      as before. */}
+                  {order.order_group_id && (
+                    <Link
+                      href="/orders"
+                      className="inline-flex items-center gap-1 mt-1.5 text-2xs font-bold text-primary-text bg-muted/40 border border-border/35 rounded-full px-2.5 py-1 hover:bg-muted/70 hover:border-border/60 transition-colors"
+                    >
+                      <Layers className="w-3 h-3" />
+                      جزء من عملية شراء متعددة
+                      <ArrowRight className="w-2.5 h-2.5 opacity-70" />
+                    </Link>
+                  )}
                 </div>
               </div>
               {/* R116: shared StatusBadge (STATUS_TONE) replaces the

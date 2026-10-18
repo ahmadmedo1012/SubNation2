@@ -800,6 +800,12 @@ export const ListOrdersResponseItem = zod
       .string()
       .nullish()
       .describe("Immutable historical copy of the purchased option's display label."),
+    order_group_id: zod
+      .string()
+      .nullish()
+      .describe(
+        "Client-minted checkout-attempt token; NULL on orders placed before the feature or by clients that omit it (R165, the R162 ADR). Informational grouping only — one logical multi-order checkout shares one value across its order rows.\n",
+      ),
     product_name: zod.string(),
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
@@ -858,6 +864,8 @@ export const CreateOrderHeader = zod.object({
 
 export const createOrderBodyCouponCodeMax = 64;
 
+export const createOrderBodyOrderGroupIdMax = 36;
+
 export const CreateOrderBody = zod.object({
   product_id: zod.number().int().min(1),
   variant_id: zod
@@ -868,6 +876,13 @@ export const CreateOrderBody = zod.object({
       "The selected catalog variant (product_variants.id). Optional: when omitted and the product has active variants, the cheapest active one is charged (matching the storefront display price).\n",
     ),
   coupon_code: zod.string().max(createOrderBodyCouponCodeMax).nullish(),
+  order_group_id: zod
+    .string()
+    .max(createOrderBodyOrderGroupIdMax)
+    .nullish()
+    .describe(
+      "Client-minted checkout-attempt token (one UUID per confirm intent, reused across that attempt's unit-orders and partial-failure retries). Informational grouping only. NULL on orders placed before the feature or by clients that omit it.\n",
+    ),
 });
 
 export const CreateOrderResponse = zod
@@ -884,6 +899,12 @@ export const CreateOrderResponse = zod
       .string()
       .nullish()
       .describe("Immutable historical copy of the purchased option's display label."),
+    order_group_id: zod
+      .string()
+      .nullish()
+      .describe(
+        "Client-minted checkout-attempt token; NULL on orders placed before the feature or by clients that omit it (R165, the R162 ADR). Informational grouping only — one logical multi-order checkout shares one value across its order rows.\n",
+      ),
     product_name: zod.string(),
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
@@ -934,6 +955,12 @@ export const GetOrderResponse = zod
       .string()
       .nullish()
       .describe("Immutable historical copy of the purchased option's display label."),
+    order_group_id: zod
+      .string()
+      .nullish()
+      .describe(
+        "Client-minted checkout-attempt token; NULL on orders placed before the feature or by clients that omit it (R165, the R162 ADR). Informational grouping only — one logical multi-order checkout shares one value across its order rows.\n",
+      ),
     product_name: zod.string(),
     product_image_url: zod.string().nullish(),
     amount: zod.number(),
@@ -986,6 +1013,12 @@ export const GetWalletResponse = zod.object({
           .string()
           .nullish()
           .describe("Immutable historical copy of the purchased option's display label."),
+        order_group_id: zod
+          .string()
+          .nullish()
+          .describe(
+            "Client-minted checkout-attempt token; NULL on orders placed before the feature or by clients that omit it (R165, the R162 ADR). Informational grouping only — one logical multi-order checkout shares one value across its order rows.\n",
+          ),
         product_name: zod.string(),
         product_image_url: zod.string().nullish(),
         amount: zod.number(),

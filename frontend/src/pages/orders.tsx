@@ -9,6 +9,9 @@ import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { customFetch, type Order } from "@workspace/api-client-react";
+// R165 (the R162 ADR §6.2): the pure cluster computation — runs of
+// consecutive rows sharing one non-null order_group_id.
+import { computeOrderGroupClusters } from "@/lib/order-groups";
 import {
   CheckCircle,
   ChevronLeft,
@@ -297,6 +300,12 @@ export default function OrdersPage() {
     return failed;
   }, [filter, orders, pending, completed, failed]);
 
+  // R165 (the R162 ADR §6.2): the cluster runs over the VISIBLE list —
+  // runs of ≥2 consecutive rows sharing one non-null order_group_id get
+  // the «عملية شراء واحدة» divider. Pure module (lib/order-groups.ts)
+  // so the tests pin the same definition the page renders.
+  const groupClusters = useMemo(() => computeOrderGroupClusters(visibleOrders), [visibleOrders]);
+
   // R122 (A1-P2): guests get the list-shaped RouteSkeleton instead of
   // a bare null — checkout.tsx's R115-I1 guard (the white frame between
   // the lazy-skeleton swap-out and the redirect tick read as a blank
@@ -501,18 +510,45 @@ export default function OrdersPage() {
         <div className="space-y-2.5">
           {visibleOrders.map((order, i: number) => {
             const staggerClass = STAGGER[Math.min(i, 12)] ?? "";
+            // R165 (the R162 ADR §6.2): the cluster divider — rendered
+            // ABOVE the run's first row only (presentational; every row
+            // keeps its own identity/amount/status + link).
+            const clusterRun = groupClusters.get(i);
             return (
-              <Link key={order.id} href={`/orders/${order.order_code}`}>
-                <div
-                  className={`
+              <div key={order.id} className="space-y-2">
+                {clusterRun !== undefined && (
+                  <div
+                    className="flex items-center justify-center gap-1.5 pt-1"
+                    aria-label="عملية شراء واحدة"
+                  >
+                    <span className="flex items-center gap-1 text-2xs font-bold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2.5 py-1">
+                      <Layers className="w-3 h-3" />
+                      عملية شراء واحدة
+                      <span className="text-muted-foreground/80 tabular-nums">
+                        (
+                        {formatCount(clusterRun, {
+                          one: "طلب",
+                          two: "طلبين",
+                          few: "طلبات",
+                          many: "طلباً",
+                          other: "طلب",
+                        })}
+                        )
+                      </span>
+                    </span>
+                  </div>
+                )}
+                <Link href={`/orders/${order.order_code}`}>
+                  <div
+                    className={`
                   float-in ${staggerClass}
                   bg-card border border-border/60 border-r-[3px] ${statusAccentBorder(order.status)}
                   rounded-xl p-4
                   card-spring hover:border-border hover:shadow-xl
                   cursor-pointer group
                 `}
-                >
-                  {/* R139 (precision): the card's hand-rolled hover lift
+                  >
+                    {/* R139 (precision): the card's hand-rolled hover lift
                       (hover:-translate-y-0.5 + transition-all + the
                       active: overrides) is replaced by the family's
                       unified .card-spring — the exact ProductCard recipe
@@ -523,128 +559,131 @@ export default function OrdersPage() {
                       (the theme ladder's .light step stays inside the
                       6–14% ceiling). The status accent edge + StatusBadge tokens
                       are untouched (pinned by order-refund-receipt). */}
-                  <div className="flex items-center gap-3.5">
-                    {/* Product image */}
-                    <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
-                      {order.product_image_url ? (
-                        <img
-                          src={order.product_image_url}
-                          alt={order.product_name}
-                          loading="lazy"
-                          decoding="async"
-                          /* R-140-a (image discipline): width/height
+                    <div className="flex items-center gap-3.5">
+                      {/* Product image */}
+                      <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
+                        {order.product_image_url ? (
+                          <img
+                            src={order.product_image_url}
+                            alt={order.product_name}
+                            loading="lazy"
+                            decoding="async"
+                            /* R-140-a (image discipline): width/height
                              mirror the catalog art's measured 450×450
                              intrinsic (all 45 /products/*.webp, the
                              R132 L4-F9 census re-probed this round) —
                              the fixed w-12 h-12 well already pins CLS
                              at zero; the attrs keep the aspect-ratio
                              reserve honest pre-CSS. */
-                          width={450}
-                          height={450}
-                          className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
-                        />
-                      ) : (
-                        /* R125-I7 (A7 B-6 class, computed): sibling of the
+                            width={450}
+                            height={450}
+                            className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
+                          />
+                        ) : (
+                          /* R125-I7 (A7 B-6 class, computed): sibling of the
                            cart fallback — text-primary/50 measured
                            1.65:1 dark / 2.35:1 light on the muted/60
                            tile; full --muted-foreground: 7.44:1 / 6.09:1. */
-                        <span className="text-xl font-bold text-muted-foreground select-none">
-                          {(order.product_name ?? "؟")[0]}
-                        </span>
-                      )}
-                    </div>
+                          <span className="text-xl font-bold text-muted-foreground select-none">
+                            {(order.product_name ?? "؟")[0]}
+                          </span>
+                        )}
+                      </div>
 
-                    {/* Main content */}
-                    <div className="flex-1 min-w-0">
-                      {/* R124-I4 (A5 #1): hover tint rides the text-safe
+                      {/* Main content */}
+                      <div className="flex-1 min-w-0">
+                        {/* R124-I4 (A5 #1): hover tint rides the text-safe
                           token — raw text-primary is 3.76:1 on the dark
                           card (AA fail on the hover state of small text). */}
-                      {/* R143 (L3-2): dir="auto" + text-right — the
+                        {/* R143 (L3-2): dir="auto" + text-right — the
                           ProductCard F-1 recipe; order product names are
                           Latin by design and truncate from the wrong end
                           in an RTL block (the ellipsis eats the brand
                           head on the money-history surface). */}
-                      <div
-                        dir="auto"
-                        className="font-bold text-sm leading-snug truncate text-right group-hover:text-primary-text transition-colors duration-150"
-                      >
-                        {order.product_name}
-                      </div>
-                      {/* R116-S2 (P2): the purchased option under the product
+                        <div
+                          dir="auto"
+                          className="font-bold text-sm leading-snug truncate text-right group-hover:text-primary-text transition-colors duration-150"
+                        >
+                          {order.product_name}
+                        </div>
+                        {/* R116-S2 (P2): the purchased option under the product
                           name — the same chip idiom as cart.tsx (the
                           shopper's mental model of WHAT the line is, not just
                           which brand). Null for legacy pre-variant orders. */}
-                      {order.variant_label && (
-                        <div className="text-2xs font-semibold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2 py-0.5 mt-0.5 inline-block leading-tight">
-                          {order.variant_label}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span
-                          dir="ltr"
-                          className="font-mono text-2xs bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30"
-                        >
-                          {order.order_code}
-                        </span>
-                        {order.created_at && (
-                          <span className="text-2xs text-muted-foreground">
-                            {formatDateShort(order.created_at)}
-                          </span>
+                        {order.variant_label && (
+                          <div className="text-2xs font-semibold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2 py-0.5 mt-0.5 inline-block leading-tight">
+                            {order.variant_label}
+                          </div>
                         )}
-                        {(order as { coupon_code?: string }).coupon_code && (
-                          <span className="flex items-center gap-0.5 text-3xs font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
-                            <Tag className="w-2.5 h-2.5" />
-                            <span dir="ltr">{(order as { coupon_code?: string }).coupon_code}</span>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span
+                            dir="ltr"
+                            className="font-mono text-2xs bg-muted/50 text-muted-foreground px-1.5 py-0.5 rounded border border-border/30"
+                          >
+                            {order.order_code}
                           </span>
-                        )}
-                        {/* R115-I1 (A8 P2-3c): the refund receipt on the row —
+                          {order.created_at && (
+                            <span className="text-2xs text-muted-foreground">
+                              {formatDateShort(order.created_at)}
+                            </span>
+                          )}
+                          {(order as { coupon_code?: string }).coupon_code && (
+                            <span className="flex items-center gap-0.5 text-3xs font-bold text-status-success bg-status-success/10 border border-status-success/22 px-1.5 py-0.5 rounded-full">
+                              <Tag className="w-2.5 h-2.5" />
+                              <span dir="ltr">
+                                {(order as { coupon_code?: string }).coupon_code}
+                              </span>
+                            </span>
+                          )}
+                          {/* R115-I1 (A8 P2-3c): the refund receipt on the row —
                             RefundService credits the FULL orders.amount
                             back to the wallet (terminal-state guarded), so
                             the amount IS available on the row. Info tone,
                             never error red: the money came back. */}
-                        {order.status === "refunded" && (
-                          <span className="flex items-center gap-0.5 text-3xs font-bold text-status-info bg-status-info/10 border border-status-info/22 px-1.5 py-0.5 rounded-full whitespace-nowrap tabular-nums">
-                            <Undo2 className="w-2.5 h-2.5" />
-                            استُرد {formatCurrency(order.amount)} إلى محفظتك
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right side */}
-                    <div className="flex items-center gap-2 shrink-0 max-w-[42%] sm:max-w-none">
-                      <div className="text-right min-w-0">
-                        {((order as { discount_amount?: number }).discount_amount ?? 0) > 0 && (
-                          <div className="text-3xs text-muted-foreground line-through tabular-nums">
-                            {formatCurrency(
-                              (order.amount ?? 0) +
-                                ((order as { discount_amount?: number }).discount_amount ?? 0),
-                            )}
-                          </div>
-                        )}
-                        <div className="font-bold text-sm tabular-nums">
-                          {formatCurrency(order.amount)}
+                          {order.status === "refunded" && (
+                            <span className="flex items-center gap-0.5 text-3xs font-bold text-status-info bg-status-info/10 border border-status-info/22 px-1.5 py-0.5 rounded-full whitespace-nowrap tabular-nums">
+                              <Undo2 className="w-2.5 h-2.5" />
+                              استُرد {formatCurrency(order.amount)} إلى محفظتك
+                            </span>
+                          )}
                         </div>
-                        {/* R116: shared StatusBadge (STATUS_TONE)
+                      </div>
+
+                      {/* Right side */}
+                      <div className="flex items-center gap-2 shrink-0 max-w-[42%] sm:max-w-none">
+                        <div className="text-right min-w-0">
+                          {((order as { discount_amount?: number }).discount_amount ?? 0) > 0 && (
+                            <div className="text-3xs text-muted-foreground line-through tabular-nums">
+                              {formatCurrency(
+                                (order.amount ?? 0) +
+                                  ((order as { discount_amount?: number }).discount_amount ?? 0),
+                              )}
+                            </div>
+                          )}
+                          <div className="font-bold text-sm tabular-nums">
+                            {formatCurrency(order.amount)}
+                          </div>
+                          {/* R116: shared StatusBadge (STATUS_TONE)
                             replaces the deprecated statusColor() — 93-C7
                             follow-up; the status glyph stays a child. */}
-                        <StatusBadge
-                          variant={
-                            STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
-                            UNKNOWN_STATUS_TONE
-                          }
-                          size="sm"
-                          className="mt-1 justify-end"
-                        >
-                          <StatusIcon status={order.status} />
-                          <span>{statusLabel(order.status)}</span>
-                        </StatusBadge>
+                          <StatusBadge
+                            variant={
+                              STATUS_TONE[order.status as keyof typeof STATUS_TONE] ??
+                              UNKNOWN_STATUS_TONE
+                            }
+                            size="sm"
+                            className="mt-1 justify-end"
+                          >
+                            <StatusIcon status={order.status} />
+                            <span>{statusLabel(order.status)}</span>
+                          </StatusBadge>
+                        </div>
+                        <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-primary-text group-hover:translate-x-[-2px] transition-all duration-150 shrink-0" />
                       </div>
-                      <ChevronLeft className="w-4 h-4 text-muted-foreground group-hover:text-primary-text group-hover:translate-x-[-2px] transition-all duration-150 shrink-0" />
                     </div>
                   </div>
-                </div>
-              </Link>
+                </Link>
+              </div>
             );
           })}
 

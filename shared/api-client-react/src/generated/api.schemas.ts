@@ -426,6 +426,12 @@ export interface CreateOrderBody {
    * @nullable
    */
   coupon_code?: string | null;
+  /**
+   * Client-minted checkout-attempt token (one UUID per confirm intent, reused across that attempt's unit-orders and partial-failure retries). Informational grouping only. NULL on orders placed before the feature or by clients that omit it.
+   * @maxLength 36
+   * @nullable
+   */
+  order_group_id?: string | null;
 }
 
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
@@ -466,6 +472,11 @@ export interface Order {
    * @nullable
    */
   variant_label?: string | null;
+  /**
+   * Client-minted checkout-attempt token; NULL on orders placed before the feature or by clients that omit it (R165, the R162 ADR). Informational grouping only — one logical multi-order checkout shares one value across its order rows.
+   * @nullable
+   */
+  order_group_id?: string | null;
   product_name: string;
   /** @nullable */
   product_image_url?: string | null;

@@ -6079,6 +6079,22 @@ components:
           # (the route still normalizes trim+uppercase after parse).
           type: ["string", "null"]
           maxLength: 64
+        order_group_id:
+          # R165 (money lane, the R162 ADR): client-minted checkout-attempt
+          # token — ONE logical confirm (including its partial-failure
+          # retries) reuses the same UUID across every unit-order of the
+          # attempt. Informational only: never in money math, idempotency
+          # claims, refunds, or inventory. maxLength 36 bounds the UUID
+          # shape (orders.order_group_id varchar(36)); NOT required — absent
+          # = NULL group (legacy clients + historical rows byte-compatible).
+          type: ["string", "null"]
+          maxLength: 36
+          description: >
+            Client-minted checkout-attempt token (one UUID per confirm
+            intent, reused across that attempt's unit-orders and
+            partial-failure retries). Informational grouping only. NULL
+            on orders placed before the feature or by clients that omit
+            it.
       required: [product_id]
 
     Order:
@@ -6110,6 +6126,13 @@ components:
         variant_label:
           type: ["string", "null"]
           description: Immutable historical copy of the purchased option's display label.
+        order_group_id:
+          type: ["string", "null"]
+          description: >
+            Client-minted checkout-attempt token; NULL on orders placed
+            before the feature or by clients that omit it (R165, the R162
+            ADR). Informational grouping only — one logical multi-order
+            checkout shares one value across its order rows.
         product_name:
           type: string
         product_image_url:

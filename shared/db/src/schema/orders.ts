@@ -91,6 +91,17 @@ export const ordersTable = pgTable(
       .notNull()
       .default("0.00"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * R165 (the R162 ADR): client-minted checkout-attempt token — ONE
+     * logical confirm (including its partial-failure retries) reuses the
+     * same UUID across every unit-order of that attempt. Informational
+     * only: never in money math, idempotency claims, refunds, or
+     * inventory. Nullable, no default, NO backfill — NULL = a pre-feature
+     * singleton/legacy order. Boot twin: V1-M35 (migrate.ts
+     * applyOrdersGroupColumnStage, catalog-probe gated); drizzle mirror:
+     * chain 0026.
+     */
+    orderGroupId: varchar("order_group_id", { length: 36 }),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow()
@@ -130,6 +141,16 @@ export const ordersTable = pgTable(
     // variant_id). Declared here so the drizzle chain + snapshot carry it
     // and a future push can't drop a live serving index.
     variantIdx: index("idx_orders_variant").on(t.variantId),
+    // R165 (V1-M35, the R162 ADR): the order-group lookup — PARTIAL on
+    // (user_id, order_group_id) WHERE order_group_id IS NOT NULL (the
+    // V1-M31/V1-M34 partial idiom — same shape as idx_coupons_expires_at):
+    // every consumer query is ownership-scoped (user_id + group), the
+    // group ids are random UUIDs so the second column is highly selective,
+    // and historical NULL rows stay out of the index entirely. Boot twin:
+    // migrate.ts applyOrdersGroupColumnStage; drizzle mirror: chain 0026.
+    userGroupIdx: index("idx_orders_user_group")
+      .on(t.userId, t.orderGroupId)
+      .where(sql`order_group_id IS NOT NULL`),
     // R118-A3 F3: refund reconciliation guard the boot SQL (V1-M22)
     // applies live — a refund is either absent or strictly positive and
     // never exceeds the order's own amount. Pinned verbatim to the boot

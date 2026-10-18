@@ -1,10 +1,18 @@
 # ADR — Order Group (batch) identifier for multi-order checkouts
 
 - **Task**: R162-F (Lane F — multi-order acknowledgement and money-path architecture)
-- **Status**: PROPOSED — DEFERRED (do not implement in R162; designed for a
-  dedicated money round)
-- **Decision**: this round ships this ADR only. No code, no schema, no API
-  change. Read-only analysis; the only file written is this document.
+- **Status**: **IMPLEMENTED BY R165** (2026-10-18 — `docs/engineering/R165/round-close.md`;
+  the semantics below shipped as designed: stage V1-M35 + chain 0026, the
+  body-field transport, the parsed-body route wiring, the §5 matrix pinned.
+  The ONE disclosed deviation: the group-token load's subset-tolerant
+  fingerprint — `frontend/src/components/checkout/checkout-group-key.ts` +
+  R165 §3). Historical status: PROPOSED — DEFERRED (do not implement in
+  R162; designed for a dedicated money round — which R163/R164's SEO and
+  GA-activation rounds then outlived, taking the round numbers while this
+  ADR waited).
+- **Decision** (historical, R162): this round shipped this ADR only. No
+  code, no schema, no API change. Read-only analysis; the only file
+  written was this document.
 - **Effort estimate for the implementing round**: ~1.5–2 focused agent-days
   as a single dedicated lane (breakdown in §11).
 
