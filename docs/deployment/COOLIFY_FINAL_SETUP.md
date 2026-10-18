@@ -72,8 +72,15 @@ GIT_SHA=6f14bc3              # the EXACT short SHA being deployed — lands in
                              # healthz carries no version — status-only)
 VITE_APP_ORIGIN=https://subnation.ly
 
-# optional, public-only (empty default = feature cleanly off):
+# optional, public-only:
 VITE_SENTRY_DSN=
+# R164: GA4 is ACTIVE by default — the operator's public measurement id
+# (G-RKRV3ZC3MF) ships baked as the Dockerfile build default (a RUN-line
+# shell `:-` fallback that fires even when this panel entry is empty).
+# Leave this entry EMPTY to keep the baked id; set a DIFFERENT G-… id
+# here to override it; set any non-matching value (e.g. `off`) to disable
+# GA on a production build. Local docker-compose builds pass "off" (out
+# of the production property by design).
 VITE_GA_TRACKING_ID=
 VITE_GSC_VERIFICATION=
 VITE_GOOGLE_CLIENT_ID=

@@ -101,7 +101,14 @@ services:
         # Public, non-secret build-time overrides only (optional):
         VITE_APP_ORIGIN: ${VITE_APP_ORIGIN:-}
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
-        VITE_GA_TRACKING_ID: ${VITE_GA_TRACKING_ID:-}
+        # R164: "off" keeps the LOCAL stack out of the production GA4
+        # property — the Dockerfile bakes the operator's public measurement
+        # ID as the build default (it fires on an EMPTY arg), so compose
+        # passes this non-matching sentinel instead; the frontend loader's
+        # shape gate (G-/UA-/GTM- prefix) rejects it → no fetch, no
+        # dataLayer. Export VITE_GA_TRACKING_ID=<a real id> to opt a local
+        # build into analytics.
+        VITE_GA_TRACKING_ID: ${VITE_GA_TRACKING_ID:-off}
         VITE_GSC_VERIFICATION: ${VITE_GSC_VERIFICATION:-}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
         VITE_FIREBASE_AUTH_ENABLED: ${VITE_FIREBASE_AUTH_ENABLED:-}

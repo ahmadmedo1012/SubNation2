@@ -185,7 +185,27 @@ RUN pnpm run typecheck
 ARG SENTRY_AUTH_TOKEN=""
 ARG SENTRY_ORG=""
 ARG SENTRY_PROJECT=""
-RUN VITE_RELEASE_SHA="${GIT_SHA:-${SOURCE_COMMIT:-${VITE_RELEASE_SHA}}}" \
+# R164 — Google Analytics activation. The operator's GA4 measurement ID
+# (property created 2026-10-18, pasted by the operator as the standard
+# gtag.js snippet) is PUBLIC, non-secret config by design: it ships in the
+# client bundle for every visitor anyway and is listed in §2.2's
+# "public, non-secret values only" class — so it lives HERE as the
+# build-time default instead of depending on a Coolify panel entry.
+# Why the RUN-line shell fallback (the VITE_RELEASE_SHA idiom in the same
+# RUN block) and NOT a bare `ARG VITE_GA_TRACKING_ID="G-…"` default: the
+# Coolify build-args panel already lists VITE_GA_TRACKING_ID among the
+# keys the operator entered (COOLIFY_FINAL_SETUP §2.2) — a panel key
+# carrying an EMPTY value OVERRIDES an ARG default with "", silently
+# killing the ID, while the shell `:-` fallback fires on empty-or-unset
+# regardless. A real panel value (re-entered later) still WINS — this is
+# an override-able default, not a duplicate source of truth. The frontend
+# loader (frontend/src/lib/analytics.ts) already gates the shape
+# (G-/UA-/GTM- prefix), loads gtag.js idle (never on the LCP path) and is
+# CSP-allowlisted — only this build-time value was missing. To disable GA
+# on a production build: pass any non-matching value (e.g. `off`) as the
+# build arg, or remove the fallback from the RUN line below.
+RUN VITE_GA_TRACKING_ID="${VITE_GA_TRACKING_ID:-G-RKRV3ZC3MF}" \
+    VITE_RELEASE_SHA="${GIT_SHA:-${SOURCE_COMMIT:-${VITE_RELEASE_SHA}}}" \
     SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN}" \
     SENTRY_ORG="${SENTRY_ORG}" \
     SENTRY_PROJECT="${SENTRY_PROJECT}" \
