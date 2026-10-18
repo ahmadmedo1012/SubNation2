@@ -605,14 +605,31 @@ describe("SPA shell rewrite — PDP JSON-LD in the initial HTML (R163)", () => {
     expect(offers.availability).toBe("https://schema.org/OutOfStock");
   });
 
-  it("a product with deliverable stock asserts InStock", async () => {
+  it("a product with deliverable stock asserts InStock (ids forced to diverge — the correlation-where regression)", async () => {
     // Stock the active product with one deliverable unit (the catalog's
     // own is_available semantics: is_sold=false + a credential field).
-    await db.insert(inventoryTable).values({
-      productId: activeProduct.id,
-      accountEmail: "shell-ld-stock@example.com",
-      accountPassword: "plainpass",
-    });
+    // R163 hardening: the correlated subquery once rendered
+    // `"product_id" = "id"` (both names resolving against inventory),
+    // which coincidentally PASSED while product.id == inventory.id —
+    // so this test seeds 5 filler rows first, forcing the inventory
+    // id ≠ product id, making any correlation regression FAIL loudly.
+    for (let i = 0; i < 5; i += 1) {
+      await db.insert(inventoryTable).values({
+        productId: activeProduct.id,
+        accountEmail: `filler-${i}@never-matching.example`,
+        accountPassword: "filler",
+        isSold: true, // sold filler rows never count as stock
+      });
+    }
+    const [stockRow] = await db
+      .insert(inventoryTable)
+      .values({
+        productId: activeProduct.id,
+        accountEmail: "shell-ld-stock@example.com",
+        accountPassword: "plainpass",
+      })
+      .returning({ id: inventoryTable.id });
+    expect(stockRow.id, "the test's validity precondition: ids diverge").not.toBe(activeProduct.id);
     bumpCatalogCache();
     const r = await get(`/product/${activeProduct.slug}`);
     const blocks = ldBlocks(r.body);

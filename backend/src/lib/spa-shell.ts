@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
-import { db, inventoryTable, productsTable } from "@workspace/db";
+import { db, productsTable } from "@workspace/db";
 import { logger } from "./logger";
 // R122 (A3-P1): the /product/:slug shell + share-card lookups ride the
 // catalog cache (60 s TTL, generation-bumped by admin CRUD) — they are
@@ -10,10 +10,6 @@ import { logger } from "./logger";
 import { withCatalogCache } from "./catalog-cache";
 import { applyFlashSale } from "./pricing";
 import { formatLydNumber } from "./money";
-// R163: the deliverable-stock predicate the public catalog's is_available
-// rides (services/catalog.service.ts) — imported so the shell's JSON-LD
-// Offer asserts availability from the SAME stock semantics as the API.
-import { deliverableUnitCondition } from "../services/catalog.service";
 // R163: the IndexNow key-file route mounts here (the shell layer owns
 // root-level non-API GET routing) — fully env-gated.
 import { indexNowKey } from "./indexnow";
@@ -296,15 +292,33 @@ async function lookupProductForShareSurfaces(
           // hydrated page renders (frontend/src/pages/product.tsx).
           seoTitle: productsTable.seoTitle,
           seoDescription: productsTable.seoDescription,
-          // R163: the deliverable-stock scalar — a correlated subquery
-          // with the catalog's own is_available predicate (is_sold=false
-          // AND at least one credential field present), so the JSON-LD
-          // below and the public API can never disagree on stock.
+          // R163: the deliverable-stock scalar — the catalog's own
+          // is_available predicate (is_sold=false AND at least one
+          // credential field present), so the JSON-LD below and the
+          // public API can never disagree on stock.
+          //
+          // ⚠ CORRELATION MUST BE HAND-QUALIFIED: drizzle renders an
+          // interpolated COLUMN inside a raw sql`` template BARE
+          // (`"product_id"`, not `"inventory"."product_id"`), so the
+          // original `${inventoryTable.productId} = ${productsTable.id}`
+          // rendered as `"product_id" = "id"` — and inside the subquery
+          // BOTH names resolve against its own FROM, making the
+          // predicate `inventory.product_id = inventory.id` (the live
+          // bug: the only in-stock product asserted OutOfStock; the
+          // tests passed coincidentally — fresh test DBs give both
+          // tables id=1). Hand-qualified `inventory.x = products.y`
+          // keeps the correlation real; the condition re-inlined for
+          // the same reason (deliverableUnitCondition's columns render
+          // bare too — harmless for its own OR, but kept explicit).
           stockCount: sql<number>`(
-            SELECT COUNT(*)::int FROM ${inventoryTable}
-            WHERE ${inventoryTable.productId} = ${productsTable.id}
-              AND ${inventoryTable.isSold} = false
-              AND ${deliverableUnitCondition()}
+            SELECT COUNT(*)::int FROM inventory
+            WHERE inventory.product_id = products.id
+              AND inventory.is_sold = false
+              AND (
+                inventory.account_password IS NOT NULL
+                OR inventory.account_email IS NOT NULL
+                OR inventory.extra_details IS NOT NULL
+              )
           )`,
         })
         .from(productsTable)
