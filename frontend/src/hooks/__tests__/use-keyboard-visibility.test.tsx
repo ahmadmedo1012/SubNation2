@@ -11,7 +11,7 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
+import { useKeyboardVisibility } from "@/hooks/useKeyboardVisibility";
 
 interface FakeViewport {
   height: number;

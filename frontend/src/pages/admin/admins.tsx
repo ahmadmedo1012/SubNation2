@@ -1,4 +1,4 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 // R125-I5 (A3-4b): the bare spinner row adopts the shared TableSkeleton
 // (role="status" + sr-only «جارٍ التحميل…» ride along) — the accounts
@@ -8,8 +8,8 @@ import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // list page left with a bare text line (visual weight drifted from
 // every other console list: no icon tile, no card, no border).
 import { EmptyState } from "@/components/admin/EmptyState";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 // R123 (E3 item 1): the four raw fetches ride the session-aware
 // wrappers — the inline isAdminUnauthorized checks fold into
 // adminFetch's AdminSessionExpiredError sentinel, and adminFetchJson
@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 // owns its 401) — the wrapper only acts on it via non-OK errors.
 import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
 // R123 (E3 P3c): the create/edit dialogs' dirty guards (below).
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { RefreshCw, ShieldCheck } from "lucide-react";

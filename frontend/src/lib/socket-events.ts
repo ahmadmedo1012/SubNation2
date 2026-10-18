@@ -4,7 +4,7 @@
  *
  * Round-4 (perf P1-4/P1-5): the server now pushes `notification-new` and
  * `admin-alert-new` the moment rows are inserted. The socket listeners
- * (hooks/use-socket.ts user branch, SocketInitializer admin branch)
+ * (hooks/useSocket.ts user branch, SocketInitializer admin branch)
  * translate them into these window events so the owning components
  * (NotificationBell, AdminLayout's alert-toast poller) can refetch
  * immediately and keep their own dedupe/toast logic in one place — the

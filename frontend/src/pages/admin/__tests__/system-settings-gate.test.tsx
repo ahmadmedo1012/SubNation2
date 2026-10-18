@@ -36,7 +36,7 @@ vi.mock("@workspace/api-client-react", () => ({
   customFetch: vi.fn(),
 }));
 
-vi.mock("@/hooks/use-admin-headers", () => ({
+vi.mock("@/hooks/useAdminHeaders", () => ({
   useAdminHeaders: () => ({ Authorization: "Bearer test-admin-token" }),
 }));
 

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { displayUserName, userFromRow } from "@/lib/admin/user-display";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage, NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { formatCurrency, formatDate, statusLabel } from "@/lib/utils";
 import type { AdminOrder } from "@workspace/api-client-react";
 
@@ -86,8 +86,7 @@ export function RecentOrdersStream({
             <div>
               <p className="text-sm font-bold text-foreground/80">تعذّر تحميل الطلبات</p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                {getErrorMessage(errorDetail) ||
-                  "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
+                {getErrorMessage(errorDetail) || NETWORK_ERROR_DESCRIPTION}
               </p>
             </div>
             <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={onRetry}>

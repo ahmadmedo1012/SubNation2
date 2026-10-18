@@ -1269,6 +1269,38 @@ export interface AdminProduct {
 }
 
 /**
+ * The anomaly class the validator reports.
+ */
+export type AdminProductVariantWriteResultWarningsItemKind =
+  (typeof AdminProductVariantWriteResultWarningsItemKind)[keyof typeof AdminProductVariantWriteResultWarningsItemKind];
+
+export const AdminProductVariantWriteResultWarningsItemKind = {
+  equalized: "equalized",
+  inverted: "inverted",
+} as const;
+
+export type AdminProductVariantWriteResultWarningsItem = {
+  /** The anomaly class the validator reports. */
+  kind: AdminProductVariantWriteResultWarningsItemKind;
+  /** Operator-facing Arabic warning copy. */
+  message: string;
+};
+
+/**
+ * R167-D (B3 wiring): the create/update variant success body — the
+ * variant projection plus an ADDITIVE, WARN-FIRST tier-price anomaly
+ * report (findTierPriceAnomalies over the post-write ACTIVE variant
+ * matrix). `warnings` is present IFF the write left an anomaly behind;
+ * absent when the matrix is clean. The report never blocks the write
+ * (operators must be able to fix existing bad rows); deactivating the
+ * offending variant is the documented silencer.
+ */
+export type AdminProductVariantWriteResult = AdminProductVariant & {
+  /** Tier-price anomalies detected after the write (warn-first — never a rejection). */
+  warnings?: AdminProductVariantWriteResultWarningsItem[];
+};
+
+/**
  * At least one of plan_label / duration_label must be non-empty.
  * Provide EITHER cost_price (price computed via the pricing engine)
  * OR price_lyd directly (cost stored as 0 — discouraged).

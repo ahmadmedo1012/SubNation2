@@ -1,10 +1,10 @@
-import { AuthErrorBanner } from "@/components/AuthErrorBanner";
-import { AuthProviders } from "@/components/AuthProviders";
-import { WhatsAppPhoneSignIn } from "@/components/WhatsAppPhoneSignIn";
+import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
+import { AuthProviders } from "@/components/auth/AuthProviders";
+import { WhatsAppPhoneSignIn } from "@/components/auth/WhatsAppPhoneSignIn";
 import { Logo } from "@/components/layout/Logo";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { usePublicAuthProviders } from "@/hooks/use-public-auth-providers";
-import { useOnScreen } from "@/hooks/use-on-screen";
+import { usePublicAuthProviders } from "@/hooks/usePublicAuthProviders";
+import { useOnScreen } from "@/hooks/useOnScreen";
 import { useSeo } from "@/hooks/useSeo";
 import { sanitizeInternalPath } from "@/lib/utils";
 import { Gift, Package, ShieldCheck, ShoppingBag, Users, Wallet } from "lucide-react";

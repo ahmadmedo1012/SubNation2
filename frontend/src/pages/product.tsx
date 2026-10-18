@@ -37,13 +37,13 @@ import { ProductMediaSection } from "@/components/product/ProductMediaSection";
 import { productSeoInput } from "@/components/product/product-seo";
 import { RecommendationsSection } from "@/components/product/RecommendationsSection";
 import { useSeo } from "@/hooks/useSeo";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
+import { useKeyboardVisibility } from "@/hooks/useKeyboardVisibility";
 import { quietNextScrollToTopReset } from "@/lib/navigation-quiet";
 import {
   createOrder,
@@ -195,7 +195,7 @@ export default function ProductPage() {
 
   // R116-S2 (P2): hide the sticky mobile buy bar while the virtual
   // keyboard is open (visualViewport pattern — see
-  // hooks/use-keyboard-visibility.ts; the paired CSS fallback rides the
+  // hooks/useKeyboardVisibility.ts; the paired CSS fallback rides the
   // bar itself). Called before ANY early return, per the rules of hooks.
   const stickyBarHiddenByKeyboard = useKeyboardVisibility();
 

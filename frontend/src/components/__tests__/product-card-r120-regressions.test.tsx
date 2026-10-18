@@ -19,7 +19,7 @@
  *   • A1-F10/A7-F13: h3 name with 2 clamp lines below sm; the 11px
  *     description row is hidden below sm.
  *
- * `@/lib/cart` and `@/hooks/use-toast` are mocked at the module
+ * `@/lib/cart` and `@/hooks/useToast` are mocked at the module
  * boundary (product-card-touch.test.tsx pattern).
  */
 
@@ -38,7 +38,7 @@ vi.mock("@/lib/cart", () => ({
   LOW_STOCK_THRESHOLD: 3,
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: (...args: unknown[]) => toastMock(...args) }),
 }));
 const toastMock = vi.fn();

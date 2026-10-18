@@ -6,7 +6,7 @@
  * expiry tickers, the 6-digit auto-submit effect, the start/verify
  * POSTs and the paste/normalizer helpers) AND the two-step form that
  * renders it, all in one function. R158 split it along that seam:
- * presentation (components/WhatsAppPhoneSignIn.tsx) + state machine
+ * presentation (components/auth/WhatsAppPhoneSignIn.tsx) + state machine
  * (@/hooks/useWhatsAppOtp).
  *
  * These are SOURCE-scan pins (the storefront-r128-sweep / r136-r137
@@ -36,11 +36,11 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const read = (rel: string): string => readFileSync(resolve(process.cwd(), rel), "utf8");
-const component = read("src/components/WhatsAppPhoneSignIn.tsx");
+const component = read("src/components/auth/WhatsAppPhoneSignIn.tsx");
 const hook = read("src/hooks/useWhatsAppOtp.ts");
 
 describe("R158 (hooks lane) — WhatsAppPhoneSignIn stays a presentational shell", () => {
-  it("components/WhatsAppPhoneSignIn.tsx stays under the 600-line ceiling (was 881 at extraction)", () => {
+  it("components/auth/WhatsAppPhoneSignIn.tsx stays under the 600-line ceiling (was 881 at extraction)", () => {
     const lines = component.split("\n").length;
     expect(lines).toBeLessThan(600);
   });

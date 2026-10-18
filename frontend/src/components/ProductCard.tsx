@@ -1,7 +1,7 @@
 import { memo, useRef } from "react";
 import { Link } from "wouter";
 import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useCartCommands, LOW_STOCK_THRESHOLD } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
 import {

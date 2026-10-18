@@ -23,7 +23,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   toast: toastMock,
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));

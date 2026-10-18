@@ -1,11 +1,11 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { StaleListErrorBanner } from "@/components/admin/orders/StaleListErrorBanner";
 import { EmptyState } from "@/components/admin/EmptyState";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage, NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { formatCurrency } from "@/lib/utils";
 // R127-L1 (B1 §3.3): the list + credit ride the generated client from
@@ -257,7 +257,7 @@ export default function AdminReferralsPage() {
             size="page"
             retryIcon={RefreshCw}
             title="تعذّر تحميل الإحالات"
-            description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+            description={NETWORK_ERROR_DESCRIPTION}
             onRetry={() => void listQuery.refetch()}
           />
         ) : list.length === 0 ? (

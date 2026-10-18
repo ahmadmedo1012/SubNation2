@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
+import { NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { useLocation, Link } from "wouter";
 import { copyToClipboard, formatRelativeTime } from "@/lib/utils";
 import {
@@ -23,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useSeo } from "@/hooks/useSeo";
 
 interface LoyaltyOverview {
@@ -286,7 +287,7 @@ export default function ReferralsPage() {
           size="page"
           className="reveal-up"
           title="تعذّر تحميل بيانات الإحالات"
-          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          description={NETWORK_ERROR_DESCRIPTION}
           onRetry={() => {
             void overviewQ.refetch();
             void eventsQ.refetch();

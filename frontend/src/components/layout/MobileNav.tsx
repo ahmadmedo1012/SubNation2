@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useCartState } from "@/lib/cart";
 import { formatCount } from "@/lib/utils";
-import { useKeyboardVisibility } from "@/hooks/use-keyboard-visibility";
+import { useKeyboardVisibility } from "@/hooks/useKeyboardVisibility";
 import { Home, LayoutGrid, LogIn, ShoppingBag, ShoppingCart, User, Wallet } from "lucide-react";
 
 const AUTHED_TABS = [

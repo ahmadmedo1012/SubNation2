@@ -1,7 +1,7 @@
-import { useConfirm } from "@/hooks/use-confirm";
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
+import { useToast } from "@/hooks/useToast";
 // R123 (E3 item 1): load/create/delete ride the session-aware wrappers
 // (a 401 mid-work gets the global «انتهت الجلسة» toast + redirect);
 // toggleActive keeps its R122 isAdminUnauthorized shape — plus the

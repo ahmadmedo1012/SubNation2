@@ -5,7 +5,7 @@ import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { SkeletonText } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage, NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { formatCount, formatRelativeTime } from "@/lib/utils";
 import { TYPE_CONFIG } from "@/components/layout/NotificationBell";
 import { CheckCheck } from "lucide-react";
@@ -151,7 +151,7 @@ export default function NotificationsPage() {
   });
 
   // R153: NOTIFICATION_NEW_EVENT → immediate refetch (the bell's twin —
-  // the event fires from hooks/use-socket.ts wherever a storefront socket
+  // the event fires from hooks/useSocket.ts wherever a storefront socket
   // is mounted in this tab).
   useEffect(() => {
     const onNew = () => void refetch();
@@ -319,7 +319,7 @@ export default function NotificationsPage() {
           size="page"
           className="py-20 reveal-up"
           title="تعذّر تحميل الإشعارات"
-          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          description={NETWORK_ERROR_DESCRIPTION}
           retryClassName="min-h-11 gap-2"
           onRetry={() => refetch()}
         />

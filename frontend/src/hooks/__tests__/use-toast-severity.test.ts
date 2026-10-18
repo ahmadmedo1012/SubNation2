@@ -27,7 +27,7 @@ vi.mock("sonner", () => {
 });
 
 import { toast as sonnerToast } from "sonner";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/useToast";
 
 beforeEach(() => {
   vi.mocked(sonnerToast).mockClear();

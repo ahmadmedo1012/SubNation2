@@ -1,4 +1,4 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { Button } from "@/components/ui/button";
 import { SkeletonText } from "@/components/ui/Skeleton";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled bare "لا توجد أنشطة" empty

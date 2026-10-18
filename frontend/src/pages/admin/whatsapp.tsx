@@ -1,6 +1,6 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 // R123 (E3 item 1): the six raw fetches ride the session-aware wrapper
 // — a settings cookie expiring mid-work now gets the global «انتهت
 // الجلسة» toast + redirect instead of an inline banner on a page the

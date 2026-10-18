@@ -1,16 +1,16 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useConfirm } from "@/hooks/use-confirm";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useConfirm } from "@/hooks/useConfirm";
 // R123 (E3 item 1): the dry-run preview fetch rides the session-aware
 // wrapper — a mid-work 401 now gets the global «انتهت الجلسة» toast +
 // redirect instead of a local «تعذّرت المعاينة» on a page the operator
 // is leaving, and adminFetchJson owns the ok-guard + safe parse.
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 // R123 (E3 P3c): see the configDirty guard below.
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   type AdminPricingCalculateBody,

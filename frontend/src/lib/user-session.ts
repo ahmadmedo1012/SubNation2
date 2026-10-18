@@ -192,7 +192,7 @@ export function handleUserUnauthorized(url: string): boolean {
   // window); the dynamic import resolves from the module cache after
   // the first call. The toast fires a microtask later — imperceptible
   // next to the navigation below, which stays synchronous.
-  void import("@/hooks/use-toast")
+  void import("@/hooks/useToast")
     .then(({ toast }) => {
       toast({
         title: USER_SESSION_EXPIRED_MESSAGE,

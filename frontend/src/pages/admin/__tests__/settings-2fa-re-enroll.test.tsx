@@ -67,7 +67,7 @@ vi.mock("@/pages/admin/layout", () => ({
   AdminLayout: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
   // admin-session.ts imports the module-level toast (the global 401
   // handler's copy) — expose the same spy so any accidental firing is

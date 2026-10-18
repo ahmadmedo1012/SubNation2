@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetPublicAuthProvidersCacheForTests,
   usePublicAuthProviders,
-} from "@/hooks/use-public-auth-providers";
+} from "@/hooks/usePublicAuthProviders";
 
 const fetchMock = vi.fn();
 

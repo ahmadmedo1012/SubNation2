@@ -2,9 +2,9 @@ import { apiErrorData } from "@/components/checkout/checkout-errors";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { SkeletonText } from "@/components/ui/Skeleton";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
-import { ErrorCode, getErrorMessage } from "@/lib/errors";
+import { ErrorCode, getErrorMessage, NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -366,7 +366,7 @@ export default function LoyaltyPage() {
           size="page"
           className="reveal-up"
           title="تعذّر تحميل بيانات الولاء"
-          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          description={NETWORK_ERROR_DESCRIPTION}
           onRetry={() => void overviewQ.refetch()}
         />
       ) : data && isLoyaltyPayload(data) ? (

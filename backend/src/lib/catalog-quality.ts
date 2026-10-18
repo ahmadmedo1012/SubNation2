@@ -31,10 +31,12 @@
  *     e.g. storage tiers / license SKUs) have nothing to cross-check;
  *   - sale_price/discount are ignored — flash discounts are uniform per
  *     product, so they preserve the listed-price ordering anyway;
- *   - not yet wired into any route: consumed by the R162 test suite
- *     (lib/__tests__/catalog-quality.test.ts) and ready for the admin
- *     variants route / a scripts/src live validator as a follow-up
- *     decision (this round's mandate was new-files-only).
+ *   - wired (R167, audit item B3) into the admin variant write path
+ *     (routes/admin/product-variants.ts) as a WARN-FIRST, never-blocking
+ *     additive `warnings` response field over the ACTIVE variant matrix —
+ *     this test suite remains the rule's behavioral pin;
+ *   - a scripts/src live sweep over the whole catalog remains a possible
+ *     follow-up (the R162 end-to-end probe lives only in /tmp).
  */
 
 /** The public variant DTO's price-relevant projection. */

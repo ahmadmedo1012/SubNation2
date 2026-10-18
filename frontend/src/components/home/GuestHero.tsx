@@ -1,6 +1,6 @@
 import { ShelfRail } from "@/components/home/ShelfRail";
 import { buttonVariants } from "@/components/ui/button";
-import { useOnScreen } from "@/hooks/use-on-screen";
+import { useOnScreen } from "@/hooks/useOnScreen";
 import { cn } from "@/lib/utils";
 import { formatCount, formatCurrency } from "@/lib/utils";
 import type { ProductListItem, CatalogStats } from "@workspace/api-client-react";

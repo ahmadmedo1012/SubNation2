@@ -138,6 +138,10 @@ const ARABIC_SCRIPT_RE = /[\u0600-\u06FF]/;
  *  user-language (network-level failures and middleware English). */
 const GENERIC_SERVER_ERROR_AR = "تعذّر الاتصال بالخدمة. تحقق من اتصالك وحاول مرة أخرى.";
 
+// R167-E (F15): THE single source for the generic network-error copy —
+// page-level fetch-failure descriptions import this constant, never re-type it.
+export const NETWORK_ERROR_DESCRIPTION = "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة";
+
 /** Pass through only messages that visibly carry Arabic script (the
  *  server's own wording); everything else gets the Arabic fallback. */
 function trustedServerMessage(raw: string): string {

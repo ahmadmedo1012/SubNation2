@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
-import { useOnScreen } from "@/hooks/use-on-screen";
+import { useOnScreen } from "@/hooks/useOnScreen";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import { getGetMeQueryKey, useGetMe, customFetch } from "@workspace/api-client-react";

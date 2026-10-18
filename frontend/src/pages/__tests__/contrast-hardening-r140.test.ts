@@ -38,7 +38,7 @@
  * coordinates; the orchestrator's fix comments shifted a few lines —
  * the pins are content-exact, not line-exact.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -65,7 +65,18 @@ const WHATSAPP_HEADER = live("src/components/admin/whatsapp/WhatsappHeader.tsx")
 const ENRICHMENT = live("src/pages/admin/enrichment.tsx");
 const INVENTORY_DIALOG = live("src/components/admin/InventoryUploadDialog.tsx");
 const RISK_META = live("src/components/admin/risk/risk-meta.ts");
-const ORDER_DETAIL = live("src/pages/order-detail.tsx");
+// R167 (F12 wave 2): order-detail decomposes into the shared
+// components/orders/ family — the F3 refund-points line moved with the
+// terminal card, so the pin reads the page ∪ family dir (the R146
+// CopyField precedent; the /75 ban is stronger over the union).
+const ORDER_DETAIL = [
+  "src/pages/order-detail.tsx",
+  ...readdirSync(resolve(process.cwd(), "src/components/orders"))
+    .filter((f) => f.endsWith(".tsx"))
+    .map((f) => `src/components/orders/${f}`),
+]
+  .map((f) => live(f))
+  .join("\n");
 const TRANSFER_CODE_PANEL = live("src/components/wallet/TransferCodePanel.tsx");
 const ACCOUNT_TAB = live("src/pages/admin/settings/account-tab.tsx");
 const ERROR_BOUNDARY = live("src/components/ErrorBoundary.tsx");
@@ -208,6 +219,8 @@ describe("R140-i F8 — the admin hover sweep: hover:text-primary → hover:text
 
 describe("R140-i F3–F6 — light-theme opacity steps corrected inside the existing ramp", () => {
   it("F3 order-detail :649 — «كما خُصمت نقاط الشراء…» steps /75 → /85 (3.71 → 4.65 light)", () => {
+    // R167 (F12 wave 2): the line rides the terminal-card extract —
+    // the pin reads the page ∪ family surface.
     expect(ORDER_DETAIL).toContain("text-2xs text-muted-foreground/85 leading-relaxed mt-1 mb-4");
     expect(ORDER_DETAIL).not.toContain("muted-foreground/75");
   });

@@ -1,8 +1,8 @@
 import { EmptyState } from "@/components/admin/EmptyState";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
+import { useToast } from "@/hooks/useToast";
 // R123 (E3 item 1): the four raw fetches ride the session-aware wrapper
 // — this is the page that made admin-session.ts's /api/coupons/admin
 // 401 extension (isAdminApiUrl) LIVE: a finance cookie expiring mid-work

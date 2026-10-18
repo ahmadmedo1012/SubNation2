@@ -88,8 +88,27 @@ const strippedRealTables = Object.fromEntries(
   Object.keys(REAL_TABLES).map((f) => [f, stripComments(read(f))]),
 );
 
-const ORDERS_PAGE = stripComments(read("src/pages/orders.tsx"));
-const ORDER_DETAIL = stripComments(read("src/pages/order-detail.tsx"));
+// R167 (F11/F12 wave 2): both orders pages decompose into the ONE
+// shared src/components/orders/ family. The censuses below (h1/h2
+// counts, the section binding, the dir isolations) need per-page
+// precision — the two pages share one family dir, so each surface
+// names ITS extracts explicitly (the R146 CopyField union precedent;
+// a dir walk would blur the page-owned censuses).
+const surfaceOf = (...files: string[]): string =>
+  files.map((f) => stripComments(read(f))).join("\n");
+const ORDERS_SURFACE = surfaceOf(
+  "src/pages/orders.tsx",
+  "src/components/orders/OrderClusterDivider.tsx",
+  "src/components/orders/OrdersEmptyResults.tsx",
+  "src/components/orders/OrderRow.tsx",
+);
+const ORDER_DETAIL_SURFACE = surfaceOf(
+  "src/pages/order-detail.tsx",
+  "src/components/orders/StatusSteps.tsx",
+  "src/components/orders/OrderGroupChip.tsx",
+  "src/components/orders/OrderCredentialsCard.tsx",
+  "src/components/orders/OrderTerminalCard.tsx",
+);
 const PROFILE = stripComments(read("src/pages/profile.tsx"));
 const ONBOARDING = stripComments(read("src/pages/onboarding.tsx"));
 const FLASH_SALES = stripComments(read("src/pages/flash-sales.tsx"));
@@ -268,10 +287,10 @@ describe("R-140-l — the div-grid register members stay div-grids (frozen decis
  * B. STOREFRONT HEADINGS
  * ══════════════════════════════════════════════════════════════════ */
 describe("R-140-l — h1-once + sequential ladder per owned page (source census)", () => {
-  it("orders.tsx: exactly one h1, no deeper headings (the list rows are lines, not sections)", () => {
-    expect(count(ORDERS_PAGE, /<h1[\s>]/g)).toBe(1);
-    expect(count(ORDERS_PAGE, /<h[23456][\s>]/g)).toBe(0);
-    expect(ORDERS_PAGE).toContain('<h1 className="text-2xl font-bold">طلباتي</h1>');
+  it("orders surface (page ∪ extracts): exactly one h1, no deeper headings (the list rows are lines, not sections)", () => {
+    expect(count(ORDERS_SURFACE, /<h1[\s>]/g)).toBe(1);
+    expect(count(ORDERS_SURFACE, /<h[23456][\s>]/g)).toBe(0);
+    expect(ORDERS_SURFACE).toContain('<h1 className="text-2xl font-bold">طلباتي</h1>');
   });
 
   it("profile.tsx: one h1, two h2 card titles, h1 precedes the h2s (sequential)", () => {
@@ -286,17 +305,23 @@ describe("R-140-l — h1-once + sequential ladder per owned page (source census)
     expect(count(FLASH_SALES, /<h[23456][\s>]/g)).toBe(0);
   });
 
-  it("order-detail.tsx: 3 branch-exclusive h1s (main + two error views) + 4 branch-exclusive h2 card titles", () => {
+  it("order-detail surface (page ∪ extracts): 3 branch-exclusive h1s (main + two error views) + 4 branch-exclusive h2 card titles", () => {
     // Each RENDERED view carries exactly one h1 — the source holds three
     // because the connection-error / 404 branches replace the whole page
     // (family precedent: category's error branch + not-found ride h1).
     // The h2s: the credentials card, the decrypt-failure alert, the prep
-    // card and the refund/fail terminal — one per mutually-exclusive card.
-    expect(count(ORDER_DETAIL, /<h1[\s>]/g)).toBe(3);
-    expect(count(ORDER_DETAIL, /<h2[\s>]/g)).toBe(4);
-    expect(count(ORDER_DETAIL, /<h[3456][\s>]/g)).toBe(0);
-    expect(ORDER_DETAIL).toContain('<h1 className="font-bold text-lg mb-1">تعذّر تحميل الطلب</h1>');
-    expect(ORDER_DETAIL).toContain('<h1 className="font-bold text-lg mb-1">الطلب غير موجود</h1>');
+    // card and the refund/fail terminal — one per mutually-exclusive card
+    // (the latter four ride the components/orders/ extracts since the
+    // R167 F12 wave-2 cut; the surface keeps the census honest).
+    expect(count(ORDER_DETAIL_SURFACE, /<h1[\s>]/g)).toBe(3);
+    expect(count(ORDER_DETAIL_SURFACE, /<h2[\s>]/g)).toBe(4);
+    expect(count(ORDER_DETAIL_SURFACE, /<h[3456][\s>]/g)).toBe(0);
+    expect(ORDER_DETAIL_SURFACE).toContain(
+      '<h1 className="font-bold text-lg mb-1">تعذّر تحميل الطلب</h1>',
+    );
+    expect(ORDER_DETAIL_SURFACE).toContain(
+      '<h1 className="font-bold text-lg mb-1">الطلب غير موجود</h1>',
+    );
   });
 
   it("onboarding.tsx: 2 branch-exclusive h1s (one per step view), no orphaned h2", () => {
@@ -314,18 +339,18 @@ describe("R-140-l — h1-once + sequential ladder per owned page (source census)
 });
 
 describe("R-140-l — order-detail: the credentials card is a bound section (WalletStatementCard idiom)", () => {
-  it("section aria-labelledby + the h2 id pair, exactly once", () => {
-    expect(count(ORDER_DETAIL, /aria-labelledby="order-credentials-heading"/g)).toBe(1);
-    expect(count(ORDER_DETAIL, /id="order-credentials-heading"/g)).toBe(1);
-    expect(ORDER_DETAIL).toContain("<section");
+  it("section aria-labelledby + the h2 id pair, exactly once (on the page ∪ extracts surface)", () => {
+    expect(count(ORDER_DETAIL_SURFACE, /aria-labelledby="order-credentials-heading"/g)).toBe(1);
+    expect(count(ORDER_DETAIL_SURFACE, /id="order-credentials-heading"/g)).toBe(1);
+    expect(ORDER_DETAIL_SURFACE).toContain("<section");
     // The family's ONE section-binding idiom — no other section on the page.
-    expect(count(ORDER_DETAIL, /<section[\s>]/g)).toBe(1);
+    expect(count(ORDER_DETAIL_SURFACE, /<section[\s>]/g)).toBe(1);
   });
 });
 
 describe("R-140-l — receipt-row semantics frozen (the div label/value idiom, not tables)", () => {
-  it("orders.tsx + order-detail.tsx ship NO table markup (no bare unnamed money tables)", () => {
-    for (const src of [ORDERS_PAGE, ORDER_DETAIL]) {
+  it("the orders surfaces ship NO table markup (no bare unnamed money tables)", () => {
+    for (const src of [ORDERS_SURFACE, ORDER_DETAIL_SURFACE]) {
       expect(src).not.toContain("<table");
       expect(src).not.toContain("<th");
       expect(src).not.toContain('role="table"');
@@ -333,8 +358,8 @@ describe("R-140-l — receipt-row semantics frozen (the div label/value idiom, n
     }
   });
   it("the receipt hairline rhythm rides the money rows (the r139 /20 register)", () => {
-    expect(ORDER_DETAIL).toContain("divide-y divide-border/20");
-    expect(ORDER_DETAIL).toContain("border-t border-border/20");
+    expect(ORDER_DETAIL_SURFACE).toContain("divide-y divide-border/20");
+    expect(ORDER_DETAIL_SURFACE).toContain("border-t border-border/20");
   });
 });
 
@@ -351,7 +376,7 @@ describe("R-140-l — one <main> app-wide (the app shell owns it)", () => {
     expect(ADMIN_LAYOUT).toContain('<div className="flex-1 overflow-auto min-w-0">');
   });
   it("no owned page nests main/nav/header/footer elements (chrome is the shell's job)", () => {
-    for (const src of [ORDERS_PAGE, ORDER_DETAIL, PROFILE, ONBOARDING, FLASH_SALES]) {
+    for (const src of [ORDERS_SURFACE, ORDER_DETAIL_SURFACE, PROFILE, ONBOARDING, FLASH_SALES]) {
       expect(src).not.toContain("<main");
       expect(src).not.toContain("<nav");
       expect(src).not.toMatch(/<header[\s>]/);
@@ -364,19 +389,25 @@ describe("R-140-l — one <main> app-wide (the app shell owns it)", () => {
  * D. RTL isolations (structural, leaf-level)
  * ══════════════════════════════════════════════════════════════════ */
 describe("R-140-l — bidi isolations on codes/phones/countdowns", () => {
-  it("orders.tsx: the order-code chip + the coupon chip isolate their LTR runs", () => {
-    expect(count(ORDERS_PAGE, /dir="ltr"/g)).toBeGreaterThanOrEqual(2);
-    expect(ORDERS_PAGE).toContain("{order.order_code}");
-    expect(ORDERS_PAGE).toContain('<span dir="ltr">');
+  it("orders surface (page ∪ extracts): the order-code chip + the coupon chip isolate their LTR runs", () => {
+    // R167 (F11 wave 2): the row — and with it both dir="ltr" chips —
+    // moved to components/orders/OrderRow; the pin follows the surface.
+    expect(count(ORDERS_SURFACE, /dir="ltr"/g)).toBeGreaterThanOrEqual(2);
+    expect(ORDERS_SURFACE).toContain("{order.order_code}");
+    expect(ORDERS_SURFACE).toContain('<span dir="ltr">');
   });
-  it("order-detail.tsx: the copyable order code, the coupon token and the credential values isolate; free text rides dir=auto", () => {
+  it("order-detail surface: the copyable order code, the coupon token and the credential values isolate; free text rides dir=auto", () => {
     // R146 (F6 pin update): the credential values' dir="ltr" rides the
     // shared components/product/CopyField now — the pin follows the
     // page ∪ extract surface (product-decomposition-r135's idiom) after
     // the near-duplicate merge; the count and intent are unchanged.
-    const surface = ORDER_DETAIL + stripComments(read("src/components/product/CopyField.tsx"));
+    // R167 (F12 wave 2): the credentials card + the extra-details
+    // dir="auto" row ride components/orders/OrderCredentialsCard — the
+    // same union treatment, one level further out.
+    const surface =
+      ORDER_DETAIL_SURFACE + stripComments(read("src/components/product/CopyField.tsx"));
     expect(count(surface, /dir="ltr"/g)).toBeGreaterThanOrEqual(3);
-    expect(count(ORDER_DETAIL, /dir="auto"/g)).toBeGreaterThanOrEqual(1);
+    expect(count(ORDER_DETAIL_SURFACE, /dir="auto"/g)).toBeGreaterThanOrEqual(1);
   });
   it("profile.tsx: phone run, Latin brand token and the mono referral code isolate", () => {
     expect(count(PROFILE, /dir="ltr"/g)).toBeGreaterThanOrEqual(3);
@@ -402,7 +433,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const toastSpy = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 

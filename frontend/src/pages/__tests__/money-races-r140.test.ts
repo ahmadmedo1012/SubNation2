@@ -2,7 +2,7 @@
  * R-140-o — the money-path race/retry final audit pin suite.
  *
  * Lane files audited this round: lib/idempotency.ts, lib/api-config.ts,
- * lib/errors.ts, hooks/use-socket.ts + lib/socket-resync.ts (the four
+ * lib/errors.ts, hooks/useSocket.ts + lib/socket-resync.ts (the four
  * storefront money mutations live in the PAGES — audited verify-only,
  * their gate chains pinned here as SOURCE-scan contracts per the
  * admin-products-decomposition-r137 idiom).
@@ -59,7 +59,7 @@ vi.mock("@/lib/socket", () => ({
   connectSocket: connectSocketMock,
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   toast: toastMock,
 }));
 
@@ -73,7 +73,7 @@ import {
   getGetWalletQueryKey,
   getListTopupsQueryKey,
 } from "@workspace/api-client-react";
-import { useSocket } from "@/hooks/use-socket";
+import { useSocket } from "@/hooks/useSocket";
 import { invalidateStorefrontTransactionalFamilies } from "@/lib/socket-resync";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
@@ -658,7 +658,7 @@ describe("R-140-o D — topup-updated → wallet query invalidation: keys align 
   });
 
   it("source parity: use-socket and socket-resync import the SAME generated key functions (one definition per family)", () => {
-    const hook = read("src/hooks/use-socket.ts");
+    const hook = read("src/hooks/useSocket.ts");
     const resync = read("src/lib/socket-resync.ts");
     for (const keyFn of [
       "getGetWalletQueryKey",

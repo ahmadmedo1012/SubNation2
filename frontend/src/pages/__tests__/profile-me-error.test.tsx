@@ -51,11 +51,11 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ token: "test token", logout: vi.fn() }),
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
-vi.mock("@/hooks/use-confirm", () => ({
+vi.mock("@/hooks/useConfirm", () => ({
   useConfirm: () => ({
     confirm: vi.fn(async () => false),
     ConfirmDialog: () => null,
@@ -63,7 +63,7 @@ vi.mock("@/hooks/use-confirm", () => ({
 }));
 
 vi.mock("@/components/SessionManager", () => ({ SessionManager: () => null }));
-vi.mock("@/components/AuthProviders", () => ({ AuthProviders: () => null }));
+vi.mock("@/components/auth/AuthProviders", () => ({ AuthProviders: () => null }));
 
 type MeResult = ReturnType<typeof useGetMe>;
 

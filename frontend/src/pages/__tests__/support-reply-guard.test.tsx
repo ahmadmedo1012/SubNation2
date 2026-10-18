@@ -25,7 +25,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const toastSpy = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 

@@ -21,7 +21,7 @@
  *
  * Page-test conventions (vitest.config.ts header + profile/orders page
  * tests): `@workspace/api-client-react` (only `customFetch` is
- * consumed by this page) and `@/lib/auth`/`@/hooks/use-toast` are
+ * consumed by this page) and `@/lib/auth`/`@/hooks/useToast` are
  * mocked at the module boundary; the REAL react-query engine runs
  * behind a fresh QueryClient (retry: false) so the error/retry
  * transitions are exercised for real. Real timers throughout — the
@@ -47,7 +47,7 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ token: "test-token" }),
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 

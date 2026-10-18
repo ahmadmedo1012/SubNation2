@@ -19,7 +19,7 @@
 
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 
 function Harness({ dirty }: { dirty: boolean }) {
   useDirtyGuard(dirty);

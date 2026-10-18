@@ -1,6 +1,6 @@
 import type { Socket } from "socket.io-client";
 import { useEffect, useRef } from "react";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/useToast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetMeQueryKey,
@@ -35,7 +35,7 @@ import { formatCurrency, statusLabel } from "@/lib/utils";
  * tab is hidden ≥ 15 min or idle ≥ 30 min
  * (SessionActivityManager) and revives on user presence.
  *
- * All toasts route through the unified `@/hooks/use-toast` shim (Sonner
+ * All toasts route through the unified `@/hooks/useToast` shim (Sonner
  * under the hood) so a single Toaster instance owns the stack — no
  * duplicates, no stuck-on-screen failures.
  *

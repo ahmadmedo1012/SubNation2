@@ -5,7 +5,7 @@
  * destructive storefront action, yet its confirmation was a hand-rolled
  * overlay with NO role="dialog", NO aria-modal, NO Escape, NO
  * outside-click — a keyboard user couldn't cancel it at all. Meanwhile
- * hooks/use-confirm.tsx (Radix AlertDialog, full a11y) already existed.
+ * hooks/useConfirm.tsx (Radix AlertDialog, full a11y) already existed.
  *
  * The conversion keeps the exact message text and only changes the
  * dialog mechanics. These tests pin: the AlertDialog opens with
@@ -26,7 +26,7 @@ vi.mock("@/lib/auth", () => ({
 // hermetic — the confirmation-path test below deliberately answers
 // ok:false, which exercises the toast call in the real component.
 const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 

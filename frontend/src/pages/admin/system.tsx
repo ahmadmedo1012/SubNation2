@@ -1,4 +1,4 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { AdminSessionExpiredError, adminFetch, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";

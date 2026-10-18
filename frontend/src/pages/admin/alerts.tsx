@@ -1,12 +1,12 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 // R136 (UX-1): the page-shaped loading skeleton stays inline — the
 // skeleton-primitives adoption floor pins THIS file as a SkeletonText
 // importer (components/__tests__/skeleton-primitives.test.tsx SWEPT_FILES).
 import { SkeletonText } from "@/components/ui/Skeleton";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 // R123→R126-L8b: the five mutation fetches ride the orval-generated
 // client from the batch-1 spec exposure — the list is a typed
 // listAdminAlerts fetcher inside the SAME accumulating useInfiniteQuery

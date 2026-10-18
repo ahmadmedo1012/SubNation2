@@ -8,7 +8,7 @@
  * backend's S5 change requires to rotate an enabled secret. Byte-move:
  * no behavior, prop, or copy change; see A3's split plan D.
  */
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
 import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";

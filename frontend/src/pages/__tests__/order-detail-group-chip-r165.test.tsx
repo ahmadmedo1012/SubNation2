@@ -48,7 +48,7 @@ vi.mock("@/lib/cart", () => ({
 }));
 
 const toastSpy = vi.hoisted(() => vi.fn());
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
   // use-socket (imported by order-detail) imports the bare `toast`.
   toast: toastSpy,

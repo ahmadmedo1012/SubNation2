@@ -11,7 +11,7 @@
  * counts, dates) inside inline-LTR spans.
  */
 
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 // R123 (E3 item 1): the three raw fetches ride the session-aware
 // adminFetchJson wrapper — an inventory cookie expiring mid-review now
 // gets the global «انتهت الجلسة» toast + redirect, and the card's inline
@@ -32,7 +32,7 @@ import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { TableSkeleton } from "@/components/admin/TableSkeleton";
 // R123 (E3 P3d): the publish action gains the shared styled confirm —
 // it overwrites the product's LIVE catalog content in one tap.
-import { useConfirm } from "@/hooks/use-confirm";
+import { useConfirm } from "@/hooks/useConfirm";
 // 93-C7 / C-UX3 (A12 §1.3 + §11.2): the enrichment reject reason was
 // collected via native window.prompt — English browser chrome inside an
 // Arabic RTL admin, no validation, ambiguous "" vs null semantics. It

@@ -1,4 +1,4 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { useAuth } from "@/lib/auth";
 // R122 (A2-P2): GlobalSearch's three raw fetches ride the session-aware
 // wrapper (401 → global toast + redirect instead of a silent "no

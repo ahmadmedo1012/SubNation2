@@ -1,6 +1,7 @@
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { ProductCard } from "@/components/admin/products/ProductCard";
+import { NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import type { AdminProduct } from "@workspace/api-client-react";
 import { Package, RefreshCw, WifiOff } from "lucide-react";
 
@@ -87,7 +88,7 @@ export function ProductsGrid({
           size="page"
           retryIcon={RefreshCw}
           title="تعذّر تحميل المنتجات"
-          description={loadErrorMessage ?? "حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"}
+          description={loadErrorMessage ?? NETWORK_ERROR_DESCRIPTION}
           onRetry={onRetry}
         />
       ) : filtered.length === 0 ? (

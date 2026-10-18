@@ -3,128 +3,35 @@ import { getGetMeQueryKey, useGetMe } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { cartChangeAnnouncement, useCart } from "@/lib/cart";
 import { useTheme } from "@/lib/theme";
-import { categoryLabel, cn, formatCount, formatCurrency, LIVE_CATEGORY_SLUGS } from "@/lib/utils";
-import {
-  Wallet,
-  LogOut,
-  Menu,
-  X,
-  Sun,
-  Moon,
-  User,
-  ShoppingCart,
-  // R135 (FE-1): the authed drawer's row icons — ShoppingBag is MobileNav's
-  // «طلباتي» tab idiom; Crown/Gift mirror /profile's quick-links table;
-  // Bell the NotificationBell trigger; MessageSquare the bell's support
-  // TYPE_CONFIG. One per-route vocabulary across every nav surface.
-  ShoppingBag,
-  Crown,
-  Gift,
-  Bell,
-  MessageSquare,
-  ChevronLeft,
-  ChevronDown,
-} from "lucide-react";
+import { cn, formatCount } from "@/lib/utils";
+import { Menu, Moon, ShoppingCart, Sun, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
 import { Suspense } from "react";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 // R146 (components audit F1): the drawer’s Tab trap rides the shared
 // React-free helper (lib/a11y) — importing it drags no admin shell.
 import { trapTabKey } from "@/lib/a11y/trap-tab-key";
 import { Logo } from "./Logo";
+// R167 (layout decomposition — F13): the presentation seams moved
+// verbatim to ./navbar/ — the two drawer panels (GuestDrawer /
+// AuthedDrawer, sharing this file's drawer machinery via props), the
+// «الفئات» section (DrawerCategoriesSection), the desktop «الأقسام»
+// disclosure (DesktopCategoriesMenu — a self-contained unit in the
+// GlobalSearch precedent), the desktop authed/guest action cluster
+// (DesktopUserActions), the mobile wallet chip (MobileWalletChip) and
+// the shared drawer data tables (drawer-data.ts). The header keeps the
+// orchestration: the cart announcer, the drawer state + Esc/Tab/focus/
+// scroll-lock effects, the viewport-meta guard, the /me query and the
+// row chrome (theme toggle, bell mount, hamburger, cart link).
+import { AuthedDrawer } from "./navbar/AuthedDrawer";
+import { DesktopCategoriesMenu } from "./navbar/DesktopCategoriesMenu";
+import { DesktopUserActions } from "./navbar/DesktopUserActions";
+import { GuestDrawer } from "./navbar/GuestDrawer";
+import { MobileWalletChip } from "./navbar/MobileWalletChip";
 
 const NotificationBell = lazyWithRetry(() =>
   import("./NotificationBell").then((m) => ({ default: m.NotificationBell })),
 );
-
-// R120-B1 (A3-F1): the guest drawer's category shortcuts. Mirrors the
-// live slugs in lib/categories.ts (verified against the catalog).
-// R134 (A2-F1): labels DERIVE from categoryLabel() (lib/utils — the
-// canonical chip-brevity map; home.tsx's chips derive from it too) —
-// the hand-rolled table was the drifting fourth source («ذكاء اصطناعي»
-// vs the canonical «أدوات ذكاء اصطناعي», «VPN وشبكات» vs «شبكات
-// VPN», …). No bundle cost: Navbar already imports lib/utils (cn/
-// formatCount), and CATEGORY_META itself stays out of the eager chunk.
-// R146 (components audit F2): the slug ORDER now rides utils'
-// LIVE_CATEGORY_SLUGS — the eager-safe twin of lib/category-registry's
-// live rows (sync pinned by category-registry.test.ts). Importing the
-// registry itself here would hoist its lucide icon set into the eager
-// entry chunk (the R120-B5 eager-sum budget) for icons this surface
-// never renders — the drawer's rows are text links.
-const DRAWER_CATEGORIES = LIVE_CATEGORY_SLUGS.map((slug) => ({
-  slug,
-  label: categoryLabel(slug),
-}));
-
-// R135 (FE-1 / R124-A4 #5): the authed drawer's account rows — the escape
-// hatch an authed phone needs once the bottom nav hides (landscape
-// <480px height — MobileNav's max-height fallback) and, before this round,
-// the hamburger was guest-only, leaving «المحفظة/طلباتي/حسابي» unreachable
-// until rotation. Order is money-first (wallet → orders → cart → profile),
-// then the engagement cluster (loyalty/referrals/notifications/support).
-const AUTHED_DRAWER_LINKS = [
-  { href: "/wallet", icon: Wallet, label: "المحفظة" },
-  { href: "/orders", icon: ShoppingBag, label: "طلباتي" },
-  { href: "/cart", icon: ShoppingCart, label: "السلة" },
-  { href: "/profile", icon: User, label: "حسابي" },
-  { href: "/loyalty", icon: Crown, label: "الولاء" },
-  { href: "/referrals", icon: Gift, label: "الإحالات" },
-  { href: "/notifications", icon: Bell, label: "الإشعارات" },
-  { href: "/support", icon: MessageSquare, label: "الدعم الفني" },
-] as const;
-
-// R135 (FE-1): BOTH drawers scroll internally — the authed variant (8
-// account rows + the category grid + logout ≈ 700px of rows) outgrows a
-// landscape viewport while the body is scroll-locked (an open drawer owns
-// the whole scroll), so without an internal scroller the tail rows
-// (تسجيل الخروج) sit unreachable exactly in the stranding scenario the
-// drawer exists to fix; the guest drawer rides the same scroll-lock and
-// has the same latent geometry, so both share one cap. The portrait cap
-// mirrors the codebase's below-header offset (home.tsx
-// top-[calc(3.5rem_+_env(safe-area-inset-top))]) PLUS the MobileNav
-// clearance idiom (mobile-sticky-above-nav: --mobile-nav-h + env inset)
-// so the panel stops above the fixed bottom nav instead of running under
-// it; the ≤480px variant drops that reservation because the nav itself
-// hides there — the keyboard fallback pinned by mobile-nav-clearance.
-const DRAWER_SCROLL_CAP =
-  "max-h-[calc(100dvh_-_3.5rem_-_env(safe-area-inset-top)_-_var(--mobile-nav-h)_-_env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain [@media(max-height:480px)]:max-h-[calc(100dvh_-_3.5rem_-_env(safe-area-inset-top))]";
-
-/**
- * R135 (FE-1): the «الفئات» section BOTH drawers render — factored out of
- * the guest drawer's inline markup (R120-B1/A3-F1) so the authed variant
- * carries the category shortcuts + العروض from ONE source instead of a
- * hand-copied twin (the R134-A2-F1 lesson: parallel tables drift). The
- * output is element-for-element identical to the former inline guest JSX.
- */
-function DrawerCategoriesSection() {
-  return (
-    <>
-      {/* R124-A3 #3: full token — the /80 alpha measured 4.14:1 in
-          light mode (sub-AA for the 11px bold label); full
-          --muted-foreground measures 6.67:1 (light) / 8.03:1 (dark). */}
-      <div className="px-4 pt-1 pb-0.5 text-3xs font-bold text-muted-foreground">الفئات</div>
-      <div className="grid grid-cols-2 gap-x-2">
-        {DRAWER_CATEGORIES.map((c) => (
-          <Link
-            key={c.slug}
-            href={`/category/${c.slug}`}
-            className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors"
-          >
-            {c.label}
-          </Link>
-        ))}
-        <Link
-          href="/flash-sales"
-          className="flex items-center px-4 py-2.5 min-h-11 rounded-2xl text-sm font-semibold text-status-warning hover:bg-status-warning/10 transition-colors"
-        >
-          العروض
-        </Link>
-      </div>
-      <div className="h-px bg-border/25 my-1" aria-hidden="true" />
-    </>
-  );
-}
 
 /**
  * R126 (A13-F2): the Tab half of the drawer's aria-modal promise — the
@@ -172,14 +79,6 @@ export function Navbar() {
   }, [itemCount, isLoaded]);
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
-  // R132 (L2-F4): the desktop categories dropdown — the one desktop nav
-  // surface that had NO category entry point (the hero brand chips and
-  // the footer were the only paths to /category/* pages; mobile had the
-  // drawer's shortcuts since R120-B1). A disclosure popover over the
-  // same DRAWER_CATEGORIES data.
-  const [catMenuOpen, setCatMenuOpen] = useState(false);
-  const catMenuRef = useRef<HTMLDivElement>(null);
-  const catMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [scrolled, setScrolled] = useState(false);
   // R126 (A13-F2): the drawer panel + its toggle, wired by ref for the
   // dialog focus contract below (move-in on open, return on close).
@@ -196,42 +95,6 @@ export function Navbar() {
   useEffect(() => {
     setOpen(false);
   }, [location]);
-
-  // R132 (L2-F4): the categories dropdown closes on route change too —
-  // navigating via one of its links must not leave an open popover
-  // behind over the new page.
-  useEffect(() => {
-    setCatMenuOpen(false);
-  }, [location]);
-
-  // R132 (L2-F4): click/pointer-outside closes the dropdown (the
-  // wrapper contains the trigger + panel, so any target outside it is
-  // outside the disclosure). passive pointerdown — no preventDefault.
-  useEffect(() => {
-    if (!catMenuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (catMenuRef.current && !catMenuRef.current.contains(e.target as Node)) {
-        setCatMenuOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown, { passive: true });
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [catMenuOpen]);
-
-  // R132 (L2-F4): ESC closes the dropdown and returns focus to its
-  // trigger (the disclosure contract — same as the drawer's ESC above,
-  // minus the modal machinery since this popover is non-modal).
-  useEffect(() => {
-    if (!catMenuOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setCatMenuOpen(false);
-        catMenuButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [catMenuOpen]);
 
   // R126 (A13-F2): ESC closes the drawer + Tab is trapped inside it
   // while it is open — the exact admin-console drawer contract (layout.tsx,
@@ -438,62 +301,7 @@ export function Navbar() {
               hero brand chips / footer / mobile drawer. Non-modal popover:
               aria-expanded trigger + list of links, ESC/click-outside/
               route-change close, aria-current on the active category. */}
-          <div ref={catMenuRef} className="relative">
-            <button
-              ref={catMenuButtonRef}
-              type="button"
-              aria-expanded={catMenuOpen}
-              aria-haspopup="true"
-              aria-controls="desktop-categories-menu"
-              onClick={() => setCatMenuOpen((v) => !v)}
-              className={`relative px-3.5 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 flex items-center gap-1 ${
-                catMenuOpen || location.startsWith("/category/")
-                  ? "text-primary-text font-bold"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
-              }`}
-            >
-              الأقسام
-              <ChevronDown
-                className={`w-3 h-3 transition-transform duration-200 ${
-                  catMenuOpen ? "rotate-180" : ""
-                }`}
-                aria-hidden="true"
-              />
-            </button>
-            {catMenuOpen && (
-              <div
-                id="desktop-categories-menu"
-                /* R138 (visual — chrome consistency): the menu's ghost-card
-                   pairing (near-invisible border/60 under shadow-xl
-                   shadow-black/20 — raw black forced on light mode) is the
-                   exact pairing R124-A3 #10 deleted from the bell panel in
-                   this same header row; it now rides the repo's defensible
-                   dropdown recipe (visible border/70 + theme-toned
-                   shadow-sm) so the two desktop popovers read as one
-                   family. Geometry (top-full/start-0/z-50/float-in) is
-                   untouched. */
-                className="absolute top-full mt-2 start-0 z-50 min-w-[190px] bg-card border border-border/70 rounded-xl shadow-sm py-2 float-in"
-              >
-                {DRAWER_CATEGORIES.map((c) => {
-                  const active = location === `/category/${c.slug}`;
-                  return (
-                    <Link
-                      key={c.slug}
-                      href={`/category/${c.slug}`}
-                      aria-current={active ? "page" : undefined}
-                      className={`flex items-center px-4 py-2.5 min-h-11 rounded-lg mx-1.5 text-sm font-semibold transition-colors ${
-                        active
-                          ? "text-primary-text bg-primary/8 font-bold"
-                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
-                      }`}
-                    >
-                      {c.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <DesktopCategoriesMenu />
           {token && (
             <>
               {navLink("/wallet", "المحفظة")}
@@ -534,67 +342,7 @@ export function Navbar() {
           )}
 
           {/* Desktop: user actions */}
-          {token ? (
-            <div className="hidden md:flex items-center gap-1.5">
-              <Link
-                href="/wallet"
-                aria-label={
-                  user ? `المحفظة، الرصيد ${formatCurrency(user.wallet_balance ?? 0)}` : "المحفظة"
-                }
-              >
-                <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group min-w-[80px] h-9">
-                  <Wallet className="w-3.5 h-3.5 text-primary-text transition-transform group-hover:scale-110 duration-200" />
-                  {user ? (
-                    <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
-                  ) : (
-                    <div className="w-10 h-4 rounded skeleton-shimmer" />
-                  )}
-                </div>
-              </Link>
-              <Link href="/profile" aria-label="حسابي" title="حسابي">
-                <div className="p-2 rounded-xl hover:bg-secondary/70 press-spring transition-all text-muted-foreground hover:text-foreground cursor-pointer touch-target flex items-center justify-center h-9 w-9">
-                  <User className="w-4 h-4" />
-                </div>
-              </Link>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={logout}
-                aria-label="تسجيل الخروج"
-                className="text-muted-foreground hover:text-foreground press-spring transition-all rounded-xl h-9 w-9 p-0 flex items-center justify-center"
-                title="تسجيل الخروج"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
-            </div>
-          ) : (
-            <div className="hidden md:flex items-center gap-1.5">
-              {/* R120-B1 (A4-F1): the Links wear buttonVariants directly
-                  (cn-merged so overrides win) instead of nesting a
-                  <Button> inside a <Link> — invalid interactive nesting
-                  + a doubled tab stop per CTA. R120-B1 (A1-F6): the
-                  register CTA is outline now — its pink gradient
-                  competed with the hero primary on every guest page. */}
-              <Link
-                href="/login"
-                className={cn(
-                  buttonVariants({ variant: "ghost", size: "sm" }),
-                  "font-semibold rounded-xl h-9",
-                )}
-              >
-                دخول
-              </Link>
-              <Link
-                href="/register"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "font-bold rounded-xl h-9",
-                )}
-              >
-                حساب مجاني
-              </Link>
-            </div>
-          )}
+          <DesktopUserActions token={token} user={user} logout={logout} />
 
           {/* Mobile menu button — guests always; authed wherever the row
               can afford it. R135 (FE-1) closes R124-A4 #5: an authed phone
@@ -649,26 +397,7 @@ export function Navbar() {
                remains reachable via MobileNav «المحفظة» + the home hero
                wallet card + /wallet. Visible again in the 640–768px band
                where the row has ≥608px of room. */
-            <div className="hidden sm:block md:hidden">
-              <Link href="/wallet" aria-label="المحفظة">
-                {/* 94-C3 (A3 P1-3): h-8 (32px) → min-h-11 (44px) hit box —
-                    wallet is a money path; the chip stays visually compact. */}
-                <div className="flex min-h-11 items-center gap-1.5 bg-secondary/60 border border-border/40 px-2.5 py-1.5 rounded-xl text-xs font-bold press-spring transition-all min-w-[60px]">
-                  <Wallet className="w-3 h-3 text-primary-text" />
-                  {user ? (
-                    /* 96-F5 (R96-M01): capped + truncated so a long
-                       balance can never re-overflow the sm…md row. The
-                       span is a flex item (blockified) so max-w +
-                       truncate apply. */
-                    <span className="tabular-nums max-w-[96px] truncate">
-                      {formatCurrency(user.wallet_balance ?? 0)}
-                    </span>
-                  ) : (
-                    <div className="w-8 h-3 rounded skeleton-shimmer" />
-                  )}
-                </div>
-              </Link>
-            </div>
+            <MobileWalletChip user={user} />
           )}
 
           {/* Cart icon — always visible */}
@@ -773,45 +502,7 @@ export function Navbar() {
           scroller meant every row-wheel repaint re-rasterized a 64px
           backdrop-filter across the full panel width. The border-t /50
           edge + the float-in entrance are untouched. */}
-      {!token && open && (
-        <div
-          id="guest-menu"
-          ref={drawerRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="القائمة"
-          tabIndex={-1}
-          className={`md:hidden border-t border-border/50 bg-card px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
-        >
-          {/* R135 (FE-1): the category shortcuts + العروض + divider render
-              from the shared DrawerCategoriesSection — one source for both
-              drawers (see its note); element-for-element the former inline
-              markup, so the guest flow is unchanged. */}
-          <DrawerCategoriesSection />
-          <Link
-            href="/support"
-            className="flex items-center px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
-          >
-            الدعم الفني
-          </Link>
-          <Link
-            href="/login"
-            className="flex items-center px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
-          >
-            تسجيل الدخول
-          </Link>
-          <Link
-            href="/register"
-            className="flex items-center px-4 py-3 rounded-2xl text-sm font-bold text-primary-text bg-primary/8 hover:bg-primary/14 transition-colors min-h-[48px]"
-          >
-            {/* B6-P2-1: the last remaining text-glyph arrow — replaced with
-                the same inline ChevronLeft idiom the icon-audit rows
-                (#14/#19, category.tsx) standardized on. Forward = LEFT in
-                RTL, and a glyph can bidi-reposition inside mixed runs. */}
-            إنشاء حساب مجاني <ChevronLeft className="w-3 h-3 inline" />
-          </Link>
-        </div>
-      )}
+      {!token && open && <GuestDrawer drawerRef={drawerRef} />}
 
       {/* Mobile authed menu — R135 (FE-1 / R124-A4 #5): the drawer that
           ends the authed-landscape stranding (token complement of the
@@ -830,47 +521,7 @@ export function Navbar() {
           R138 (visual): solid bg-card — the same glass diet the guest
           twin + the header took this round (see the guest drawer's
           note above for the rationale). */}
-      {token && open && (
-        <div
-          id="authed-menu"
-          ref={drawerRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="القائمة"
-          tabIndex={-1}
-          className={`md:hidden border-t border-border/50 bg-card px-4 py-3 space-y-1 float-in ${DRAWER_SCROLL_CAP}`}
-        >
-          {AUTHED_DRAWER_LINKS.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold hover:bg-secondary/60 transition-colors min-h-[48px]"
-            >
-              <l.icon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-              {l.label}
-            </Link>
-          ))}
-          <DrawerCategoriesSection />
-          {/* R135 (FE-1): close BEFORE logout — setOpen(false) and the
-              token teardown land in the same commit, so the guest drawer's
-              `!token && open` render can never flash open mid-logout, and
-              the shared close path restores body scroll + focus. logout
-              itself is the desktop user-menu flow verbatim (the useAuth
-              logout: fire-and-forget POST /api/auth/logout + local
-              identity teardown). */}
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              logout();
-            }}
-            className="flex w-full items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold text-status-error hover:bg-status-error/10 transition-colors min-h-[48px]"
-          >
-            <LogOut className="w-4 h-4" aria-hidden="true" />
-            تسجيل الخروج
-          </button>
-        </div>
-      )}
+      {token && open && <AuthedDrawer drawerRef={drawerRef} setOpen={setOpen} logout={logout} />}
     </header>
   );
 }

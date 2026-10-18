@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { TelegramLoginButton } from "@/components/TelegramLoginButton";
+import { TelegramLoginButton } from "@/components/auth/TelegramLoginButton";
 
 /**
  * R154 (P2) — the Telegram button's OIDC transport switch.

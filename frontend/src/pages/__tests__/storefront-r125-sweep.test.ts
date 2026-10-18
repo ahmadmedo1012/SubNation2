@@ -59,7 +59,9 @@ const PRODUCT_COMPONENTS = readdirSync(resolve(process.cwd(), "src/components/pr
 const pageExtracts = (page: string): string[] => {
   const dir = resolve(process.cwd(), `src/components/${page}`);
   return existsSync(dir)
-    ? readdirSync(dir).filter((f) => f.endsWith(".tsx")).map((f) => `src/components/${page}/${f}`)
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith(".tsx"))
+        .map((f) => `src/components/${page}/${f}`)
     : [];
 };
 /** Raw (unstripped) page ∪ extracts source — liveLines strips
@@ -74,6 +76,13 @@ const SWEPT_FILES = [
   "src/pages/product.tsx",
   ...PRODUCT_COMPONENTS,
   "src/pages/orders.tsx",
+  // R167 (F11/F12 wave 2): BOTH orders pages decompose into the ONE
+  // shared src/components/orders/ family — the row (OrderRow), the
+  // credentials/terminal cards and the wave-1 extracts join the
+  // swept list so the B-2 net keeps covering the same rendered
+  // markup wherever it lives (the R135 product / R136 home
+  // precedents; order-detail.tsx itself stays listed below).
+  ...pageExtracts("orders"),
   "src/pages/order-detail.tsx",
   "src/pages/cart.tsx",
   "src/pages/terms.tsx",
@@ -89,6 +98,24 @@ function liveLines(src: string, pattern: RegExp): string[] {
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && pattern.test(l));
 }
+
+/** R136 (parent pre-patch) + R167 (F11/F12 wave 2): home/wallet read
+ *  their page surfaces; the two orders pages read the FAMILY surface —
+ *  both decompose into the one shared src/components/orders/ dir, so
+ *  the absence nets below keep holding wherever the markup lives. */
+const ordersFamilySurface = (): string =>
+  ["src/pages/orders.tsx", "src/pages/order-detail.tsx", ...pageExtracts("orders")]
+    .map((f) => read(f))
+    .join("\n");
+
+const sourceFor = (file: string): string =>
+  file === "src/pages/home.tsx"
+    ? pageSurface("home")
+    : file === "src/pages/wallet.tsx"
+      ? pageSurface("wallet")
+      : file === "src/pages/orders.tsx" || file === "src/pages/order-detail.tsx"
+        ? ordersFamilySurface()
+        : read(file);
 
 describe("storefront R125 sweep — text hovers ride the text-safe token (A7 B-2)", () => {
   // Raw hover:text-primary (NOT -text/…) as a text hover is sub-AA
@@ -109,6 +136,10 @@ describe("storefront R125 sweep — text hovers ride the text-safe token (A7 B-2
 
 describe("storefront R125 sweep — fallback glyphs ride --muted-foreground (A7 B-6)", () => {
   it("cart/orders/order-detail/product first-letter fallbacks carry no half-alpha ink", () => {
+    // R167 (F11/F12 wave 2): the orders ROW (its letter-fallback tile)
+    // moved to components/orders/OrderRow — the orders entry reads the
+    // family surface (page ∪ extracts) so the net keeps covering the
+    // same rendered markup.
     const sites: Array<[file: string, gone: RegExp]> = [
       ["src/pages/cart.tsx", /text-primary\/50/],
       ["src/pages/orders.tsx", /text-primary\/50/],
@@ -116,7 +147,7 @@ describe("storefront R125 sweep — fallback glyphs ride --muted-foreground (A7 
       ["src/pages/product.tsx", /muted-foreground\/55/],
     ];
     for (const [file, gone] of sites) {
-      const hits = liveLines(read(file), gone);
+      const hits = liveLines(sourceFor(file), gone);
       expect(hits, `${file}: ${hits.join(" | ")}`).toHaveLength(0);
     }
   });
@@ -144,13 +175,9 @@ describe("storefront R125 sweep — craft-floor REFUSE residue (A7 B-12)", () =>
   // R136 (parent pre-patch): the home/wallet entries read their page
   // SURFACES (page ∪ extracts) — absence pins over the union are
   // strictly stronger, so the craft floor keeps holding wherever the
-  // markup lives after the decomposition.
-  const sourceFor = (file: string): string =>
-    file === "src/pages/home.tsx"
-      ? pageSurface("home")
-      : file === "src/pages/wallet.tsx"
-        ? pageSurface("wallet")
-        : read(file);
+  // markup lives after the decomposition. R167 (F11/F12 wave 2): the
+  // orders entry joins them via the shared sourceFor (the row card
+  // moved to components/orders/OrderRow).
 
   it("no colored side stripe exceeds 1px on the swept storefront files", () => {
     const sites: Array<[file: string, pattern: RegExp, label: string]> = [

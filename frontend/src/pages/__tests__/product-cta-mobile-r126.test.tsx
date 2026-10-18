@@ -126,13 +126,13 @@ vi.mock("@/lib/cart", () => ({
   useCart: () => ({ addItem: (...args: unknown[]) => (addItemMock(...args), true) }),
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
 // The sticky bar's keyboard-visibility hook rides visualViewport, which
 // jsdom lacks — pin the bar visible (the r117-contracts idiom).
-vi.mock("@/hooks/use-keyboard-visibility", () => ({
+vi.mock("@/hooks/useKeyboardVisibility", () => ({
   useKeyboardVisibility: () => false,
 }));
 

@@ -75,7 +75,7 @@ vi.mock("@/lib/cart", () => ({
   }),
 }));
 
-vi.mock("@/hooks/use-keyboard-visibility", () => ({
+vi.mock("@/hooks/useKeyboardVisibility", () => ({
   useKeyboardVisibility: () => false,
 }));
 

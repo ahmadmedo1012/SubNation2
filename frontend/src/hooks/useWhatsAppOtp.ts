@@ -1,5 +1,6 @@
 // R158 (hooks lane — decomposition): extracted verbatim from
-// components/WhatsAppPhoneSignIn.tsx — the phone/code/cooldown/
+// components/auth/WhatsAppPhoneSignIn.tsx (moved there by R167-C/F19) —
+// the phone/code/cooldown/
 // settling/expiry OTP state machine (the 10 useState atoms, the 3 refs,
 // the 4 effects and the sendCode/verifyCode/resetFlow/paste handlers)
 // moved here; the component is a presentational shell consuming this

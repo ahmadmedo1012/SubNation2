@@ -44,7 +44,7 @@ import { CartSummaryAside } from "@/components/checkout/CartSummaryAside";
 import { CheckoutCta } from "@/components/checkout/CheckoutCta";
 import { OrderErrorBanner } from "@/components/checkout/OrderErrorBanner";
 import { PaymentMethodCard } from "@/components/checkout/PaymentMethodCard";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useSeo } from "@/hooks/useSeo";
 import { useCheckoutRequote } from "@/hooks/useCheckoutRequote";
 import { useAuth } from "@/lib/auth";

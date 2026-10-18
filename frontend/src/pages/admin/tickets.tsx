@@ -1,13 +1,13 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 // R120-B5 (A2-F9): the hand-rolled card-list skeleton joins the shared
 // admin TableSkeleton (the orders/users/coupons console idiom).
 import { TableSkeleton } from "@/components/admin/TableSkeleton";
-import { useToast } from "@/hooks/use-toast";
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { useToast } from "@/hooks/useToast";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 import { useAuth } from "@/lib/auth";
-import { getErrorMessage } from "@/lib/errors";
+import { getErrorMessage, NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { formatCount } from "@/lib/utils";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 // R127-L1 (B1 §3.4 / A4 §C batch-A): the four adminFetchJson calls ride
@@ -480,7 +480,7 @@ export default function AdminTicketsPage() {
                 size="page"
                 className="flex-1"
                 title="تعذّر تحميل التذاكر"
-                description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+                description={NETWORK_ERROR_DESCRIPTION}
                 onRetry={() => void refetch()}
               />
             ) : visibleTickets.length === 0 ? (

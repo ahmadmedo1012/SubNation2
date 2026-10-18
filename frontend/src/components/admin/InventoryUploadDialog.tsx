@@ -1,5 +1,5 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useToast } from "@/hooks/use-toast";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useToast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/errors";
 // R123 (E3 item 1): the two raw fetches ride the session-aware wrappers
 // — a 401 mid-upload gets the global «انتهت الجلسة» toast + redirect

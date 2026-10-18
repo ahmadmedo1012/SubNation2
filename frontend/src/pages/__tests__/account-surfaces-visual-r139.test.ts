@@ -30,7 +30,7 @@
  * carry no `/*`-bearing string literals (verified; the one `https://`
  * string on /status sits below every pinned region).
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -53,13 +53,25 @@ const METHOD_TABS = stripComments(read("src/components/wallet/MethodTabs.tsx"));
 const MOBILE_FORM = stripComments(read("src/components/wallet/MobileTransferForm.tsx"));
 const LYPAY = stripComments(read("src/components/wallet/LyPayFlow.tsx"));
 const CODE_PANEL = stripComments(read("src/components/wallet/TransferCodePanel.tsx"));
-const WAITING = stripComments(read("src/components/TopupWaitingModal.tsx"));
+const WAITING = stripComments(read("src/components/wallet/TopupWaitingModal.tsx"));
 const LOYALTY_REFBOX = stripComments(read("src/components/loyalty/ReferralBox.tsx"));
 const LOYALTY_CONVERT = stripComments(read("src/components/loyalty/ConvertPointsCard.tsx"));
 const LOYALTY_HISTORY = stripComments(read("src/components/loyalty/LedgerHistoryCard.tsx"));
 const REFERRALS = stripComments(read("src/pages/referrals.tsx"));
-const ORDERS = stripComments(read("src/pages/orders.tsx"));
-const ORDER_DETAIL = stripComments(read("src/pages/order-detail.tsx"));
+// R167 (F11/F12 wave 2): both orders pages decompose into the ONE
+// shared src/components/orders/ family — the chrome pins read each
+// page ∪ the family dir now (the R146 CopyField / R158 filter-tabs
+// “pin follows the surface” precedent): the row card + its
+// statusAccentBorder moved to OrderRow, the credentials/terminal
+// blocks to OrderCredentialsCard/OrderTerminalCard, and every absence
+// guard below is strictly STRONGER over the union.
+const ORDERS_EXTRACTS = readdirSync(resolve(process.cwd(), "src/components/orders"))
+  .filter((f) => f.endsWith(".tsx"))
+  .map((f) => `src/components/orders/${f}`);
+const pageWithFamily = (page: string): string =>
+  stripComments([page, ...ORDERS_EXTRACTS].map((f) => read(f)).join("\n"));
+const ORDERS = pageWithFamily("src/pages/orders.tsx");
+const ORDER_DETAIL = pageWithFamily("src/pages/order-detail.tsx");
 // R158 (ledger b): the shared tray/pill primitive the orders chips now
 // ride — the chip-dial chrome pins follow the markup into this file.
 const FILTER_TABS = stripComments(read("src/components/ui/filter-tabs.tsx"));
@@ -271,6 +283,9 @@ describe("R139-l — orders: the calm filter-pill dialect + the family card hove
     // R157-C: the hover shadow rides the bare themed ladder — the
     // raw-black/25 color override retired (.light rendered ~2× the
     // 6–14% ceiling; the ladder's own xl step sits inside it).
+    // R167 (F11 wave 2): the row — card-spring + statusAccentBorder —
+    // moved to components/orders/OrderRow; the pins read the page ∪
+    // family surface.
     expect(ORDERS).toContain("card-spring hover:border-border hover:shadow-xl");
     expect(ORDERS).not.toContain("shadow-black");
     expect(ORDERS).not.toContain("hover:-translate-y-0.5");
@@ -308,6 +323,8 @@ describe("R139-l — order-detail: the receipt terminal + de-hand-rolled CTAs", 
   });
 
   it("the credential rows + coupon seam ride the /20 receipt hairlines", () => {
+    // R167 (F12 wave 2): divide-y rides the credentials extract —
+    // the pin reads the page ∪ family surface.
     expect(ORDER_DETAIL).toContain("divide-y divide-border/20");
     expect(ORDER_DETAIL).toContain("border-t border-border/20");
     expect(ORDER_DETAIL).not.toContain("divide-border/15");
@@ -315,6 +332,8 @@ describe("R139-l — order-detail: the receipt terminal + de-hand-rolled CTAs", 
   });
 
   it("§4: refunds stay info-blue — the refund branch is untouched by the polish", () => {
+    // R167 (F12 wave 2): the refund vocabulary rides the terminal
+    // card extract; the pins read the page ∪ family surface.
     expect(ORDER_DETAIL).toContain('"border-status-info/22"');
     expect(ORDER_DETAIL).toContain('"bg-status-info/8 border-status-info/22"');
     expect(ORDER_DETAIL).toContain("استُرد ${formatCurrency(order.amount ?? 0)}");

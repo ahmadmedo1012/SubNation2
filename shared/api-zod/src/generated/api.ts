@@ -2647,6 +2647,26 @@ export const CreateProductVariantResponse = zod
   })
   .describe(
     "ADMIN-ONLY variant projection — includes internal fields\n(cost_price USD, sku). This schema must never be referenced by a\npublic (non-/admin) path.\n",
+  )
+  .and(
+    zod.object({
+      warnings: zod
+        .array(
+          zod.object({
+            kind: zod
+              .enum(["equalized", "inverted"])
+              .describe("The anomaly class the validator reports."),
+            message: zod.string().describe("Operator-facing Arabic warning copy."),
+          }),
+        )
+        .optional()
+        .describe(
+          "Tier-price anomalies detected after the write (warn-first — never a rejection).",
+        ),
+    }),
+  )
+  .describe(
+    "R167-D (B3 wiring): the create/update variant success body — the\nvariant projection plus an ADDITIVE, WARN-FIRST tier-price anomaly\nreport (findTierPriceAnomalies over the post-write ACTIVE variant\nmatrix). `warnings` is present IFF the write left an anomaly behind;\nabsent when the matrix is clean. The report never blocks the write\n(operators must be able to fix existing bad rows); deactivating the\noffending variant is the documented silencer.\n",
   );
 
 /**
@@ -2720,6 +2740,26 @@ export const UpdateProductVariantResponse = zod
   })
   .describe(
     "ADMIN-ONLY variant projection — includes internal fields\n(cost_price USD, sku). This schema must never be referenced by a\npublic (non-/admin) path.\n",
+  )
+  .and(
+    zod.object({
+      warnings: zod
+        .array(
+          zod.object({
+            kind: zod
+              .enum(["equalized", "inverted"])
+              .describe("The anomaly class the validator reports."),
+            message: zod.string().describe("Operator-facing Arabic warning copy."),
+          }),
+        )
+        .optional()
+        .describe(
+          "Tier-price anomalies detected after the write (warn-first — never a rejection).",
+        ),
+    }),
+  )
+  .describe(
+    "R167-D (B3 wiring): the create/update variant success body — the\nvariant projection plus an ADDITIVE, WARN-FIRST tier-price anomaly\nreport (findTierPriceAnomalies over the post-write ACTIVE variant\nmatrix). `warnings` is present IFF the write left an anomaly behind;\nabsent when the matrix is clean. The report never blocks the write\n(operators must be able to fix existing bad rows); deactivating the\noffending variant is the documented silencer.\n",
   );
 
 /**

@@ -36,9 +36,7 @@ import { type ReactNode } from "react";
 import AdminTicketsPage from "@/pages/admin/tickets";
 
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ adminToken: "test-admin-token",
-    hasAdminPermission: () => true,
-  }),
+  useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
 vi.mock("@/pages/admin/layout", () => ({
@@ -46,7 +44,7 @@ vi.mock("@/pages/admin/layout", () => ({
 }));
 
 const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 

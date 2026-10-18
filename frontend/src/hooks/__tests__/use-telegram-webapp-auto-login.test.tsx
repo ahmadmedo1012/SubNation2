@@ -32,7 +32,7 @@ vi.mock("@workspace/api-client-react", () => ({
   customFetch: customFetchMock,
 }));
 
-import { useTelegramWebAppAutoLogin } from "../use-telegram-webapp-auto-login";
+import { useTelegramWebAppAutoLogin } from "../useTelegramWebAppAutoLogin";
 
 /** The initData Telegram injects inside the Mini App WebView. */
 const INIT_DATA =

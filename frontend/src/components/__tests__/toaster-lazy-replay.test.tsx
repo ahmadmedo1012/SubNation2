@@ -30,7 +30,7 @@ vi.mock("@/lib/theme", () => ({
   useTheme: () => ({ theme: "light" }),
 }));
 
-import { toast as shimToast } from "@/hooks/use-toast";
+import { toast as shimToast } from "@/hooks/useToast";
 import { Toaster } from "@/components/ui/sonner";
 
 beforeEach(() => {

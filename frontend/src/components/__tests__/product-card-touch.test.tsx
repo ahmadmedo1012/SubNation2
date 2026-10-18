@@ -12,7 +12,7 @@
  * «نفد» status text uses the full-opacity muted token (was /80 ≈ 4.14:1
  * on the light card — AA failure for a 10px text).
  *
- * `@/lib/cart` and `@/hooks/use-toast` are mocked at the module
+ * `@/lib/cart` and `@/hooks/useToast` are mocked at the module
  * boundary; Date.now is spied for deterministic lock-window math.
  */
 
@@ -36,7 +36,7 @@ vi.mock("@/lib/cart", () => ({
 }));
 
 const toastMock = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: (...args: unknown[]) => toastMock(...args) }),
 }));
 

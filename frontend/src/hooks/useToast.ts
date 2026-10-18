@@ -9,7 +9,7 @@
  *     "stuck on screen" behaviour reported in production.
  *   - It also coexisted with `components/ui/sonner.tsx`, leaving the codebase
  *     with two parallel toast systems where Sonner-based callers (e.g.
- *     `hooks/use-socket.ts`) were silently no-op'd because the Sonner
+ *     `hooks/useSocket.ts`) were silently no-op'd because the Sonner
  *     `<Toaster />` was never mounted.
  *
  * Migration: 22 files call `toast({ title, description, variant?: "destructive" })`.

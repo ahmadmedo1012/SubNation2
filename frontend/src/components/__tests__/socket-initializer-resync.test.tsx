@@ -49,7 +49,7 @@ const { connectAdminSocketMock } = vi.hoisted(() => ({
 
 const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   // R127-B6-4: SocketInitializer's connection_limited handler routes
   // through the same Sonner shim use-socket.ts uses.
   toast: toastMock,

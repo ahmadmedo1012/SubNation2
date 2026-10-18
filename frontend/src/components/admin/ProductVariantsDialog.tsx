@@ -1,6 +1,6 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 // catalog-recon (2026-09-20): per-product variant manager — the admin twin
 // of InventoryUploadDialog (same AppDialog shell, toast idioms and
 // useConfirm guard). cost_price/sku are intentionally rendered here: this

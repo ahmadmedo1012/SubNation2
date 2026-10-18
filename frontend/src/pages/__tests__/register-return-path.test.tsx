@@ -38,8 +38,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import RegisterPage from "@/pages/register";
 import LoginPage from "@/pages/login";
 
-vi.mock("@/components/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
-vi.mock("@/components/AuthProviders", () => ({
+vi.mock("@/components/auth/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
+vi.mock("@/components/auth/AuthProviders", () => ({
   // The probe: clicking it invokes whatever onSuccess register passed
   // (undefined renders a dead button — exactly the pre-R123 state).
   AuthProviders: ({ onSuccess }: { onSuccess?: () => void }) => (
@@ -48,9 +48,9 @@ vi.mock("@/components/AuthProviders", () => ({
     </button>
   ),
 }));
-vi.mock("@/components/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
+vi.mock("@/components/auth/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
 vi.mock("@/components/layout/Logo", () => ({ Logo: () => null }));
-vi.mock("@/hooks/use-public-auth-providers", () => ({
+vi.mock("@/hooks/usePublicAuthProviders", () => ({
   usePublicAuthProviders: () => ({ whatsappEnabled: false, whatsappStatus: "disabled" }),
 }));
 

@@ -31,11 +31,11 @@ import { Router } from "wouter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LoginPage from "@/pages/login";
 
-vi.mock("@/components/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
-vi.mock("@/components/AuthProviders", () => ({ AuthProviders: () => null }));
-vi.mock("@/components/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
+vi.mock("@/components/auth/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
+vi.mock("@/components/auth/AuthProviders", () => ({ AuthProviders: () => null }));
+vi.mock("@/components/auth/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
 vi.mock("@/components/layout/Logo", () => ({ Logo: () => null }));
-vi.mock("@/hooks/use-public-auth-providers", () => ({
+vi.mock("@/hooks/usePublicAuthProviders", () => ({
   usePublicAuthProviders: () => ({ whatsappEnabled: false, whatsappStatus: "disabled" }),
 }));
 

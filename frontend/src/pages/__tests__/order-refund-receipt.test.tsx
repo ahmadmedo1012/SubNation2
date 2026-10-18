@@ -60,7 +60,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const toastSpy = vi.hoisted(() => vi.fn());
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
   // use-socket imports the bare `toast` from the same shim.
   toast: toastSpy,

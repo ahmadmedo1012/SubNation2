@@ -1,4 +1,4 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { useChartColors } from "@/lib/chart-theme";
 import { useAuth } from "@/lib/auth";
 import { formatCount, formatCurrency } from "@/lib/utils";

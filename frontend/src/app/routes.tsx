@@ -20,7 +20,7 @@ import { Suspense, useEffect, useRef, useState, type ComponentType } from "react
 import { Route, Switch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { useTelegramWebAppAutoLogin } from "@/hooks/use-telegram-webapp-auto-login";
+import { useTelegramWebAppAutoLogin } from "@/hooks/useTelegramWebAppAutoLogin";
 import { consumeQuietScrollToTopReset } from "@/lib/navigation-quiet";
 import { robotsForPath, shapeForRoute } from "@/app/route-shapes";
 import {

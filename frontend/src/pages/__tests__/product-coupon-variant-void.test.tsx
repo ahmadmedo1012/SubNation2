@@ -148,7 +148,7 @@ vi.mock("@/lib/cart", () => ({
 }));
 
 const toastSpy = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 

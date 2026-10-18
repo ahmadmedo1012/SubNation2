@@ -1,4 +1,4 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { Button } from "@/components/ui/button";
 import { SkeletonText } from "@/components/ui/Skeleton";
 // R123 (E3 item 1): the seven raw fetches ride the session-aware

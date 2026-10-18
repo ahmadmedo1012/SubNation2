@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyState } from "@/components/EmptyState";
 import { SkeletonText } from "@/components/ui/Skeleton";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCount, formatRelativeTime } from "@/lib/utils";

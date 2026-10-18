@@ -33,7 +33,7 @@ const { toastMock, disconnectMock, addHandlerMock } = vi.hoisted(() => ({
   addHandlerMock: vi.fn((): ReturnType<typeof vi.fn> => vi.fn()),
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   toast: toastMock,
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));

@@ -1,11 +1,16 @@
 import { Package } from "lucide-react";
 
+import { NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
+
 // R137 (closing decomposition): extracted verbatim from pages/product.tsx —
 // the outage card (the isError early return that is NOT a 404). The page
 // keeps the branch condition and passes the two recovery callbacks down;
 // DOM, classes, Arabic copy and the R125-I7 tap-floor comments are
 // byte-identical (the only substitution is the documented prop rebind:
 // refetchProduct/navigate → onRetry/onNavigateHome arrows).
+// R167-E (F15): the network-error line now renders NETWORK_ERROR_DESCRIPTION
+// (the single source for generic network-error copy) — rendered bytes
+// byte-identical to the former inline literal.
 export function ProductOutageCard({
   onRetry,
   onNavigateHome,
@@ -19,7 +24,7 @@ export function ProductOutageCard({
         <Package className="w-7 h-7 text-status-error" aria-hidden="true" />
       </div>
       <p className="font-bold mb-1 text-foreground/80">تعذّر تحميل المنتج</p>
-      <p className="text-sm mb-3">حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة</p>
+      <p className="text-sm mb-3">{NETWORK_ERROR_DESCRIPTION}</p>
       <div className="flex items-center justify-center gap-2.5">
         {/* R125-I7 (A7 B-4): both recovery buttons ride the 44px tap
             floor (min-h-11) — the drifted px-5 py-2 measured ~37px.

@@ -1,5 +1,5 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 import { StockoutRiskPanel } from "@/components/admin/forecast/StockoutRiskPanel";
 import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog";
 // catalog-recon (2026-09-20): per-product variant manager dialog (plan /
@@ -7,8 +7,8 @@ import { InventoryUploadDialog } from "@/components/admin/InventoryUploadDialog"
 import { ProductVariantsDialog } from "@/components/admin/ProductVariantsDialog";
 // 93-C7 / C-UX3 (A12 §1.3 + §11.2): the bulk-archive window.confirm is
 // replaced by the shared styled confirm.
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 // R123 (E3 item 1): the inline stock edit rides the session-aware wrapper
 // (a 401 mid-save now gets the global «انتهت الجلسة» toast + redirect
 // instead of a per-row failure toast); the two bulk loops keep their

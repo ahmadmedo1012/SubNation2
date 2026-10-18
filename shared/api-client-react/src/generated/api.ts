@@ -88,6 +88,7 @@ import type {
   AdminPricingCalculateBody,
   AdminProduct,
   AdminProductVariant,
+  AdminProductVariantWriteResult,
   AdminReferralsResponse,
   AdminReplyTicketBody,
   AdminRiskDashboard,
@@ -7754,7 +7755,7 @@ export const createProductVariant = async (
   id: number,
   createVariantBody: CreateVariantBody,
   options?: Parameters<typeof customFetch>[1],
-): Promise<AdminProductVariant> => {
+): Promise<AdminProductVariantWriteResult> => {
   const getHeaders = (
     h?: NonNullable<RequestInit["headers"]>,
   ): Record<string, string | readonly string[]> => {
@@ -7774,7 +7775,7 @@ export const createProductVariant = async (
     }
     return headers;
   };
-  return customFetch<AdminProductVariant>(getCreateProductVariantUrl(id), {
+  return customFetch<AdminProductVariantWriteResult>(getCreateProductVariantUrl(id), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
@@ -7865,7 +7866,7 @@ export const updateProductVariant = async (
   variantId: number,
   updateVariantBody: UpdateVariantBody,
   options?: Parameters<typeof customFetch>[1],
-): Promise<AdminProductVariant> => {
+): Promise<AdminProductVariantWriteResult> => {
   const getHeaders = (
     h?: NonNullable<RequestInit["headers"]>,
   ): Record<string, string | readonly string[]> => {
@@ -7885,7 +7886,7 @@ export const updateProductVariant = async (
     }
     return headers;
   };
-  return customFetch<AdminProductVariant>(getUpdateProductVariantUrl(id, variantId), {
+  return customFetch<AdminProductVariantWriteResult>(getUpdateProductVariantUrl(id, variantId), {
     ...options,
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },

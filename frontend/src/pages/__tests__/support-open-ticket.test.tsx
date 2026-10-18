@@ -15,7 +15,7 @@
  * `fetch` is stubbed per-test with REAL Response objects (L6-1/R143:
  * the page rides the generated orval client, whose customFetch reads
  * .headers + .text() — the old ok/json-only stubs lacked both);
- * `@/lib/auth` and `@/hooks/use-toast` are mocked at the
+ * `@/lib/auth` and `@/hooks/useToast` are mocked at the
  * module boundary.
  */
 
@@ -29,7 +29,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const toastSpy = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 

@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { customFetch } from "@workspace/api-client-react";
 import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
 import { SOCKET_RESYNC_EVENT } from "@/lib/socket";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/useToast";
 
 export interface Notif {
   id: number;

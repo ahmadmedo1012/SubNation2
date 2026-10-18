@@ -1,13 +1,13 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
-import { formatCount, formatCurrency } from "@/lib/utils";
+import { ORDER_COUNT_FORMS_OBJECT, formatCount, formatCurrency } from "@/lib/utils";
 import { useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import {
   approveTopup,
@@ -551,7 +551,16 @@ export default function AdminTopupsPage() {
           // successCount === ids.length, so «N/N» carried no extra
           // information (the partial-failure toast above keeps the
           // honest «N من M» shape).
-          description: `تمت معالجة ${formatCount(successCount, TOPUP_COUNT_FORMS)}`,
+          // R167-E (F16-note): «تمت معالجة …» — the noun is the masdar's
+          // object (oblique position), so the dual is «طلبين»
+          // (ORDER_COUNT_FORMS_OBJECT), not TOPUP_COUNT_FORMS's nominative
+          // «طلبان» (its TopupsHeader / BulkConfirmModal consumers are
+          // subjects). Only `two` is overridden; zero/many stay local —
+          // every other rendered byte unchanged.
+          description: `تمت معالجة ${formatCount(successCount, {
+            ...TOPUP_COUNT_FORMS,
+            two: ORDER_COUNT_FORMS_OBJECT.two,
+          })}`,
           variant: "success",
         });
       }
@@ -631,7 +640,16 @@ export default function AdminTopupsPage() {
       // Summary toast: "X نجحت / Y فشلت" + per-item failure reasons.
       if (failures.length === 0) {
         toast({
-          title: `تمت الموافقة على ${formatCount(approvedCount, TOPUP_COUNT_FORMS)}`,
+          // R167-E (F16-note): «تمت الموافقة على …» — post-preposition
+          // object (oblique position), so the dual is «طلبين»
+          // (ORDER_COUNT_FORMS_OBJECT), not TOPUP_COUNT_FORMS's nominative
+          // «طلبان» (its TopupsHeader / BulkConfirmModal consumers are
+          // subjects). Only `two` is overridden; zero/many stay local —
+          // every other rendered byte unchanged.
+          title: `تمت الموافقة على ${formatCount(approvedCount, {
+            ...TOPUP_COUNT_FORMS,
+            two: ORDER_COUNT_FORMS_OBJECT.two,
+          })}`,
           variant: "success",
         });
       } else {

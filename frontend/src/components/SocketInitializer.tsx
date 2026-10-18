@@ -1,4 +1,4 @@
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
 import { connectAdminSocket, SOCKET_RESYNC_EVENT } from "@/lib/socket";
 import { invalidateAdminRealtimeFamilies } from "@/lib/socket-resync";
@@ -95,7 +95,7 @@ export function SocketInitializer() {
     // (Libyan mobile carriers NAT many users behind one address; the
     // 6th connection behind a carrier IP is politely capped, ignored,
     // hard-disconnected, retried, re-capped… until the manager
-    // surrenders). Mirrors hooks/use-socket.ts exactly: ONE toast with
+    // surrenders). Mirrors hooks/useSocket.ts exactly: ONE toast with
     // a stable id per occurrence (sonner refreshes instead of stacking
     // — no toast spam), connect_error warned to the console for
     // DevTools/Sentry forensics without disturbing the operator.

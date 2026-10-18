@@ -6,7 +6,7 @@
  * fraud / mark false positive — both POST to /api/admin/risk/events/:id/label.
  */
 
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 // R123 (E3 item 1): the two raw fetches ride the session-aware wrapper
 // — a users-scope cookie expiring mid-investigation now gets the global
 // «انتهت الجلسة» toast + redirect; the label mutation's inline error

@@ -5,6 +5,10 @@ import { Router } from "express";
 import { computeRetailLYD, getPricingConfig, round2 } from "../../lib/pricing-config";
 import { intParam } from "../../lib/http";
 import { writeAuditLog } from "../../lib/audit";
+// R167 (B3): the R162 cross-duration tier-price validator — warn-first
+// advisory on the write path below (see the R167 block above the helper).
+import { findTierPriceAnomalies, type TierPriceAnomaly } from "../../lib/catalog-quality";
+import { logger } from "../../lib/logger";
 import { notifyAdminStats } from "../../lib/socket";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -89,6 +93,107 @@ async function refreshProductDisplayPrice(productId: number): Promise<void> {
       .update(productsTable)
       .set({ price: String(row.minPrice) })
       .where(eq(productsTable.id, productId));
+  }
+}
+
+// ── R167 (B3): warn-first tier-price sweep on the variant write path ───────
+//
+// PRODUCT DECISION (coordinator, final — the only backend item deferred
+// from R166): WARN-FIRST, ADDITIVE, NEVER BLOCKING. After a successful
+// create/update the route re-runs the R162 cross-duration tier-price
+// validator (lib/catalog-quality.ts — two plan labels ordered strictly at
+// one shared duration must stay strictly ordered at every other shared
+// duration; catches the live Ahrefs defect class: قياسي/متقدم equalized at
+// سنوي) over the affected product's ACTIVE variant matrix. When the write
+// leaves such an inconsistency behind, the SUCCESS response carries an
+// additive `warnings` array (below) plus exactly one warn-level log line.
+// A clean write carries NO warnings field at all — the additive contract.
+//
+// Why never blocking (the audit's risk note): a 4xx/5xx gate here would
+// strand every product that ALREADY carries the defect class with no
+// in-app remediation path — operators must be able to fix existing bad
+// rows through this exact surface. Deactivating the offending row is the
+// documented silencer: the sweep validates the ACTIVE matrix (the same
+// projection the public storefront renders — catalog.service.ts
+// fetchVariantPoolData), so hiding a row drops its warnings; the write
+// itself always succeeds. Warnings are response payload, NOT error codes
+// (shared/error-codes and the parity gates stay untouched).
+
+/** One additive response warning item — see the R167 block above. */
+interface VariantWriteWarning {
+  /** The validator finding class — mirrors TierPriceAnomaly.kind. */
+  kind: "equalized" | "inverted";
+  /** Operator-facing Arabic copy, ready for a toast as-is. */
+  message: string;
+}
+
+// R167: en-US grouping + 2 decimals — the site's money numeral language
+// (mirrors the frontend formatCurrency CURRENCY_NUMBER_FORMATTER contract).
+const LYD_COPY_FORMATTER = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** R167: map one validator finding to the operator-facing Arabic copy. */
+function tierPriceWarningMessage(a: TierPriceAnomaly): string {
+  const duration = a.duration ?? "بدون مدة";
+  if (a.kind === "equalized") {
+    return `تحذير: سعر الباقتين «${a.planA}» و«${a.planB}» متساوٍ (${LYD_COPY_FORMATTER.format(
+      a.price,
+    )} د.ل) عند مدة «${duration}» رغم اختلاف ترتيب سعرهما عند المدد الأخرى للمنتج نفسه — تحقّق من صحة الأسعار.`;
+  }
+  return `تحذير: ترتيب سعر الباقتين «${a.planA}» و«${a.planB}» معكوس عند مدة «${duration}» («${
+    a.planA
+  }» بسعر ${LYD_COPY_FORMATTER.format(a.priceA)} د.ل و«${a.planB}» بسعر ${LYD_COPY_FORMATTER.format(
+    a.priceB,
+  )} د.ل) خلافًا لترتيبهما عند المدد الأخرى للمنتج نفسه — تحقّق من صحة الأسعار.`;
+}
+
+/**
+ * R167 (B3): re-run the R162 validator over the product's ACTIVE variant
+ * matrix after a successful create/update and map findings to response
+ * warnings. Defensive by contract: ANY failure (the DB read or the
+ * validator itself) degrades to one logged warn line and an empty array —
+ * the write has already committed, so the sweep must never 5xx the request.
+ */
+async function collectTierPriceWarnings(
+  productId: number,
+  variantId: number,
+): Promise<VariantWriteWarning[]> {
+  try {
+    const rows = await db
+      .select({
+        planLabel: productVariantsTable.planLabel,
+        durationLabel: productVariantsTable.durationLabel,
+        priceLyd: productVariantsTable.priceLyd,
+      })
+      .from(productVariantsTable)
+      .where(
+        and(eq(productVariantsTable.productId, productId), eq(productVariantsTable.isActive, true)),
+      )
+      // Same order as the public projection (catalog.service.ts) — keeps
+      // the anchor-duration pick deterministic for pathological matrices.
+      .orderBy(asc(productVariantsTable.sortOrder), asc(productVariantsTable.priceLyd));
+    const anomalies = findTierPriceAnomalies(
+      rows.map((v) => ({
+        plan_label: v.planLabel?.trim() || null,
+        duration_label: v.durationLabel?.trim() || null,
+        price: parseFloat(String(v.priceLyd)),
+      })),
+    );
+    if (anomalies.length === 0) return [];
+    // R167: exactly ONE warn-level line per offending write (repo idiom).
+    logger.warn(
+      { productId, variantId, anomalies },
+      "tier-price anomaly left behind by admin variant write (warn-first, never blocking)",
+    );
+    return anomalies.map((a) => ({ kind: a.kind, message: tierPriceWarningMessage(a) }));
+  } catch (err) {
+    logger.warn(
+      { err, productId, variantId },
+      "tier-price anomaly sweep failed (non-fatal — the variant write stays committed)",
+    );
+    return [];
   }
 }
 
@@ -258,7 +363,13 @@ router.post("/products/:id/variants", async (req, res) => {
   // ping it (numeric-id URL; its shell canonicalizes to the slug form, so
   // the engine consolidates onto the sitemap URL).
   notifyIndexNow(`/product/${id}`);
-  return res.status(201).json(await formatVariant(created));
+
+  // R167 (B3): warn-first sweep AFTER the committed write — see
+  // collectTierPriceWarnings' docblock; `warnings` rides the success body
+  // only when the write left an anomaly behind (absent = clean).
+  const warnings = await collectTierPriceWarnings(id, created.id);
+  const payload = await formatVariant(created);
+  return res.status(201).json(warnings.length > 0 ? { ...payload, warnings } : payload);
 });
 
 // ── PATCH /products/:id/variants/:variantId ────────────────────────────────
@@ -390,7 +501,11 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
   bumpCatalogCache();
   // R163: variant price/label edits change the PDP's rendered offer.
   notifyIndexNow(`/product/${id}`);
-  return res.json(await formatVariant(updated));
+
+  // R167 (B3): same warn-first sweep as create — see the POST block above.
+  const warnings = await collectTierPriceWarnings(id, variantId);
+  const payload = await formatVariant(updated);
+  return res.json(warnings.length > 0 ? { ...payload, warnings } : payload);
 });
 
 // ── DELETE /products/:id/variants/:variantId ───────────────────────────────

@@ -63,6 +63,17 @@ POST /api/admin/referrals/:id/credit (+50 points, idempotent),
 PATCH /api/admin/users/:id (wallet adjust/set via ledger-backed
 AdjustmentService, idempotent; 400/401/403/404/409),
 POST /api/admin/topups/:id/approve|reject (finance scope, idempotent).
+GET/POST/PATCH/DELETE /api/admin/products/:id/variants(/:variantId)  catalog
+     variant CRUD (inventory scope). R167-D: POST/PATCH SUCCESS bodies carry an
+     ADDITIVE `warnings` array — items `{kind: "equalized"|"inverted",
+     message: "تحذير: …" (Arabic operator copy)}` — IFF the write left the
+     product's ACTIVE variant matrix with a cross-duration tier-price
+     inconsistency (the R162 rule: two plan labels ordered at one shared
+     duration must stay ordered at every other shared duration). Absent when
+     clean; NEVER blocks the write (warn-first product decision — operators
+     must be able to fix existing bad rows); deactivating the offending
+     variant is the documented silencer; exactly one warn-level log line per
+     offending write. Response payload only — no error code involved.
 POST /api/webhook/telegram — Telegram topup approve/reject callbacks
 (secret-token header + TELEGRAM_ADMIN_IDS allowlist; 200/403/503).
 Observability: /api/metrics (token-gated), /api/healthz/{ready,redis,neon,worker,socket,firebase} (admin).

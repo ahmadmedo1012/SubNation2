@@ -22,7 +22,7 @@
  *      an unresolved key never replays onto changed data.
  *   6. The 100-point minimum gate (no request below it).
  *
- * `@workspace/api-client-react`, `@/lib/auth` and `@/hooks/use-toast` are
+ * `@workspace/api-client-react`, `@/lib/auth` and `@/hooks/useToast` are
  * mocked at the module boundary; global fetch is stubbed per-test with a
  * router that serves GET /api/loyalty (mutable balance) and the convert
  * POST from a scripted queue.
@@ -53,7 +53,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const toastSpy = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 

@@ -41,8 +41,8 @@ const setTokenMock = vi.fn();
 // real AuthProviders reads it off the session mint's response.
 const probeState = { isNewUser: false };
 
-vi.mock("@/components/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
-vi.mock("@/components/AuthProviders", () => ({
+vi.mock("@/components/auth/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
+vi.mock("@/components/auth/AuthProviders", () => ({
   // The probe (register-return-path's idiom, extended with the L1-1
   // second arg): clicking invokes the page's onSuccess with
   // (token, isNewUser) — the value the provider threads from the
@@ -57,9 +57,9 @@ vi.mock("@/components/AuthProviders", () => ({
     </button>
   ),
 }));
-vi.mock("@/components/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
+vi.mock("@/components/auth/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
 vi.mock("@/components/layout/Logo", () => ({ Logo: () => null }));
-vi.mock("@/hooks/use-public-auth-providers", () => ({
+vi.mock("@/hooks/usePublicAuthProviders", () => ({
   usePublicAuthProviders: () => ({ whatsappEnabled: false, whatsappStatus: "disabled" }),
 }));
 vi.mock("@/lib/auth", () => ({

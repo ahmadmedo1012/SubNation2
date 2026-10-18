@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyHero } from "@/components/EmptyState";
 import { useSeo } from "@/hooks/useSeo";
+import { NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { buildItemListLd } from "@/lib/seo-builders";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
 import { CATEGORY_ACCENT, CATEGORY_ICON, DEFAULT_ACCENT } from "@/components/ProductCard";
@@ -402,7 +403,7 @@ export default function FlashSalesPage() {
           size="page"
           className="py-20 px-4 reveal-up"
           title="تعذّر تحميل العروض"
-          description="حدث خطأ في الاتصال — تحقّق من شبكتك ثم أعد المحاولة"
+          description={NETWORK_ERROR_DESCRIPTION}
           /* R116-S1 CTA recipe: size="lg" + w-full sm:w-auto — no
              per-page bg/shadow/press overrides on the gradient variant. */
           retrySize="lg"

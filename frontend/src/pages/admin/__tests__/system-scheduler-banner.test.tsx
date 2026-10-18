@@ -46,7 +46,7 @@ vi.mock("@/lib/auth", () => ({
   }),
 }));
 
-vi.mock("@/hooks/use-admin-headers", () => ({
+vi.mock("@/hooks/useAdminHeaders", () => ({
   useAdminHeaders: () => ({ Authorization: "Bearer test-admin-token" }),
 }));
 

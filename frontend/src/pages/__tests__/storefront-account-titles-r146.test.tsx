@@ -141,12 +141,12 @@ vi.mock("@/lib/auth", () => ({
 // mock factory must own the spy before any importer evaluates (the
 // order-refund-receipt.test.tsx idiom).
 const toastMock = vi.hoisted(() => vi.fn());
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock }),
   toast: toastMock,
 }));
 
-vi.mock("@/hooks/use-confirm", () => ({
+vi.mock("@/hooks/useConfirm", () => ({
   useConfirm: () => ({
     confirm: vi.fn(async () => false),
     ConfirmDialog: () => null,
@@ -154,11 +154,11 @@ vi.mock("@/hooks/use-confirm", () => ({
 }));
 
 vi.mock("@/components/SessionManager", () => ({ SessionManager: () => null }));
-vi.mock("@/components/AuthProviders", () => ({ AuthProviders: () => null }));
-vi.mock("@/components/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
-vi.mock("@/components/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
+vi.mock("@/components/auth/AuthProviders", () => ({ AuthProviders: () => null }));
+vi.mock("@/components/auth/AuthErrorBanner", () => ({ AuthErrorBanner: () => null }));
+vi.mock("@/components/auth/WhatsAppPhoneSignIn", () => ({ WhatsAppPhoneSignIn: () => null }));
 vi.mock("@/components/layout/Logo", () => ({ Logo: () => null }));
-vi.mock("@/hooks/use-public-auth-providers", () => ({
+vi.mock("@/hooks/usePublicAuthProviders", () => ({
   usePublicAuthProviders: () => ({ whatsappEnabled: false, whatsappStatus: "disabled" }),
 }));
 

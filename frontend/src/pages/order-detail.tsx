@@ -1,13 +1,19 @@
 import { Button } from "@/components/ui/button";
-// R146 (audit-frontend-pages F6): the near-duplicate page-local CopyField
-// is deleted — the shared product/CopyField renders these rows with this
-// page's receipt chrome via rowClassName (byte-identical DOM; the shared
-// component's own docblock notes it was ported FROM order-detail V2-H10).
-import { CopyField } from "@/components/product/CopyField";
-import { CopyButton } from "@/components/CopyButton";
+// R167 (F12 — the order-detail extract family): wave 1 moved the
+// StatusSteps tracker + the R165/R166 group chip; wave 2 (R167-A2)
+// moved the delivery/credentials region (the receipt card + the
+// decrypt-failure + prep fallbacks + RECEIPT_ROW) and the
+// failed/refunded terminal card verbatim to components/orders/ — the
+// three source-scan suites that owned their markup at the PAGE
+// address now read the page ∪ family surface (semantics-depth /
+// account-surfaces / contrast-hardening + storefront-r125).
+import { OrderCredentialsCard } from "@/components/orders/OrderCredentialsCard";
+import { OrderGroupChip } from "@/components/orders/OrderGroupChip";
+import { OrderTerminalCard } from "@/components/orders/OrderTerminalCard";
+import { StatusSteps } from "@/components/orders/StatusSteps";
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
 import {
   copyToClipboard,
@@ -24,82 +30,21 @@ import {
   useGetOrder,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSocket } from "@/hooks/use-socket";
+import { useSocket } from "@/hooks/useSocket";
 import { useSeo } from "@/hooks/useSeo";
 import {
-  ArrowLeft,
   ArrowRight,
-  CheckCircle,
   Clock,
   Copy,
   ExternalLink,
-  Info,
-  Layers,
   Package,
-  ShieldAlert,
-  ShieldCheck,
   ShoppingCart,
   Sparkles,
   Tag,
-  Undo2,
   XCircle,
 } from "lucide-react";
 import { useEffect } from "react";
 import { Link, useLocation, useParams } from "wouter";
-
-/** The receipt-card row chrome for the shared CopyField — verbatim the
- * row classes the deleted page-local CopyField carried. R139
- * (precision): the /30 hover wash is earned (the rows carry the
- * interactive CopyButton/reveal controls); the /20 hairlines between
- * rows come from the parent's divide-y below. */
-const RECEIPT_ROW =
-  "group flex items-start justify-between gap-3 px-5 py-3.5 hover:bg-muted/30 transition-colors";
-
-function StatusSteps({ status }: { status: string }) {
-  if (status === "failed" || status === "refunded") return null;
-  const done = status === "completed";
-  // R138 (visual): the completed ladder reads success at every rung
-  // (/15 fill, /45 ring, /40 connector, full-ink glyphs at lucide
-  // stroke 2) — the sanctioned status-success vocabulary; verified,
-  // unchanged this round (the 700ms connector fill is the state-flip
-  // transition, existing motion under the reduced-motion kill-switch).
-  return (
-    <div className="flex items-center gap-0 my-4">
-      {/* Step 1 */}
-      <div className="flex flex-col items-center gap-1.5 shrink-0">
-        <div className="w-7 h-7 rounded-full flex items-center justify-center bg-status-success/15 border-2 border-status-success/45 text-status-success">
-          <CheckCircle className="w-3.5 h-3.5" />
-        </div>
-        <span className="text-3xs font-bold text-status-success whitespace-nowrap">
-          استُلم الطلب
-        </span>
-      </div>
-
-      {/* Connector */}
-      <div
-        className={`flex-1 h-[2.5px] mb-4 mx-2 rounded-full transition-all duration-700 ${done ? "bg-status-success/40" : "bg-border/35"}`}
-      />
-
-      {/* Step 2 */}
-      <div className="flex flex-col items-center gap-1.5 shrink-0">
-        <div
-          className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
-            done
-              ? "bg-status-success/15 border-status-success/45 text-status-success"
-              : "bg-muted/40 border-border/40 text-muted-foreground"
-          }`}
-        >
-          {done ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-        </div>
-        <span
-          className={`text-3xs font-bold whitespace-nowrap ${done ? "text-status-success" : "text-muted-foreground"}`}
-        >
-          تم التسليم
-        </span>
-      </div>
-    </div>
-  );
-}
 
 export default function OrderDetailPage() {
   const { orderCode } = useParams<{ orderCode: string }>();
@@ -266,21 +211,10 @@ export default function OrderDetailPage() {
       </div>
     );
 
-  const hasDelivery = !!(
-    order.delivered_email ||
-    order.delivered_password ||
-    order.delivered_extra_details
-  );
-  // R118-B2 (A2 fix, buyer side — mirrors admin orders.tsx:1267): the
-  // backend sets decrypt_failed:true on a COMPLETED order whose raw
-  // credential columns are populated but could not be decrypted with
-  // the current key (every safeDecrypt returned null). Without this
-  // branch the page fell through to the «قيد الإعداد» card — telling
-  // the buyer their data is still being prepared when it will never
-  // arrive that way. The honest message points at support instead.
-  // Local cast: the flag ships on the buyer Order response
-  // independently of the generated schema revision.
-  const decryptFailed = !hasDelivery && !!(order as { decrypt_failed?: boolean }).decrypt_failed;
+  // R167 (F12, wave 2 — R167-A2): the delivery gates (hasDelivery +
+  // decryptFailed) moved WITH the delivery/credentials region into
+  // components/orders/OrderCredentialsCard — they read only the order
+  // fields that region renders. The header card's derived amounts stay.
   const discountAmount = (order as { discount_amount?: number }).discount_amount;
   const couponCode = (order as { coupon_code?: string }).coupon_code;
   const originalAmount = discountAmount ? (order.amount ?? 0) + discountAmount : null;
@@ -391,29 +325,12 @@ export default function OrderDetailPage() {
                         plain text); hover only strengthens it on md+. */}
                     <Copy className="w-2.5 h-2.5 opacity-60 md:group-hover/code:opacity-100 transition-opacity" />
                   </button>
-                  {/* R165 (the R162 ADR §6.3) + R166-A F01 (copy honesty):
-                      checkout mints the group token on EVERY confirm (no
-                      unit-count gate), so the id rides single-unit
-                      purchases too — the neutral copy «ضمن عملية شراء
-                      واحدة» is true for a run of 1 AND multi-unit
-                      groups, and reuses the exact vocabulary the
-                      /orders divider ships (one mental model). R166-A
-                      F03: the trailing arrow is a view-siblings
-                      affordance — ArrowLeft per the app's RTL
-                      forward/view convention (right is reserved for
-                      رجوع/العودة back verbs). Absent/null on single
-                      orders + historical rows — rendered exactly as
-                      before. */}
-                  {order.order_group_id && (
-                    <Link
-                      href="/orders"
-                      className="inline-flex items-center gap-1 mt-1.5 text-2xs font-bold text-primary-text bg-muted/40 border border-border/35 rounded-full px-2.5 py-1 hover:bg-muted/70 hover:border-border/60 transition-colors"
-                    >
-                      <Layers className="w-3 h-3" />
-                      ضمن عملية شراء واحدة
-                      <ArrowLeft className="w-2.5 h-2.5 opacity-70" />
-                    </Link>
-                  )}
+                  {/* R167 (F12): the chip is a verbatim extract
+                      (components/orders/OrderGroupChip) — the gate
+                      stays with the order data it reads; the copy
+                      honesty + RTL forward-arrow rationale moved
+                      with the chip. */}
+                  {order.order_group_id && <OrderGroupChip />}
                 </div>
               </div>
               {/* R116: shared StatusBadge (STATUS_TONE) replaces the
@@ -483,257 +400,18 @@ export default function OrderDetailPage() {
         </div>
 
         {/* ── Delivery credentials ────────────────────────────────── */}
-        {hasDelivery ? (
-          /* R138 (visual — the success-reading verification): this card
-             is the page's payoff moment and already speaks the round's
-             language — float-in stagger-1 is the sanctioned calm
-             entrance (header → credentials → actions, one stagger
-             ladder), and the ink is the status-success ladder at rest
-             (/22 card edge, /5 header wash, /12+/22 ShieldCheck tile
-             with the full-ink glyph). success-ring is deliberately NOT
-             imported here: OrderSuccessScreen (checkout) owns that
-             one-shot signature, and the animation-count rule says the
-             stagger entrance already carries the moment. Verified —
-             no chrome change needed. */
-          /* R-140-l (semantics): the credentials card is this page's
-             statement region — bound to its h2 the WalletStatementCard
-             way (section + aria-labelledby="…-heading", the family's
-             ONE section-binding idiom for money/list cards). The
-             h2 follows the card-title family (wallet's «شحن المحفظة» /
-             profile's «الحسابات المرتبطة» — font-bold h2, classes
-             verbatim; only the tag + binding are new). */
-          <section
-            aria-labelledby="order-credentials-heading"
-            className="bg-card border border-status-success/22 rounded-2xl overflow-hidden float-in stagger-1"
-          >
-            <div className="flex items-center gap-3 px-5 py-3.5 border-b border-status-success/15 bg-status-success/5">
-              <div className="w-7 h-7 rounded-lg bg-status-success/12 border border-status-success/22 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-3.5 h-3.5 text-status-success" />
-              </div>
-              <div>
-                <h2 id="order-credentials-heading" className="font-bold text-sm">
-                  بيانات الحساب
-                </h2>
-                <div className="text-3xs text-muted-foreground">
-                  انسخ بياناتك بأمان
-                  {/* R157-IMPL-B #4: the receipt states WHEN the delivery
-                      landed — delivered_at rides the Order DTO but was
-                      never rendered (the created_at row above is the only
-                      timestamp on the page). */}
-                  {order.delivered_at && (
-                    <span title={formatDate(order.delivered_at)}>
-                      {" "}
-                      · سُلّمت {formatRelativeTime(order.delivered_at)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="divide-y divide-border/20">
-              {order.delivered_email && (
-                <CopyField
-                  label="البريد الإلكتروني"
-                  value={order.delivered_email}
-                  rowClassName={RECEIPT_ROW}
-                />
-              )}
-              {order.delivered_password && (
-                <CopyField
-                  label="كلمة المرور"
-                  value={order.delivered_password}
-                  secret
-                  rowClassName={RECEIPT_ROW}
-                />
-              )}
-              {order.delivered_extra_details && (
-                <div className={RECEIPT_ROW}>
-                  {/* 96-F4 (R96 A6 #7): free-text delivery details carry mixed-
-                      direction runs (activation links / PIN codes inside Arabic
-                      sentences) — dir="auto" + start alignment let the bidi
-                      algorithm pick the base direction from the first strong
-                      character instead of scrambling the visual order.
-                      R157-IMPL-B #3: the row gains the SAME CopyButton the
-                      email/password rows ride, but stays its own free-text
-                      register (NOT CopyField's dir="ltr" mono — that would
-                      scramble Arabic sentences; the field is not a secret,
-                      so no reveal-toggle semantics). */}
-                  <div
-                    dir="auto"
-                    className="min-w-0 flex-1 text-sm text-muted-foreground leading-relaxed text-start break-words"
-                  >
-                    {order.delivered_extra_details}
-                  </div>
-                  <CopyButton text={order.delivered_extra_details} size="md" />
-                </div>
-              )}
-            </div>
-            {order.delivered_usage_terms && (
-              <div className="mx-5 mb-5 flex gap-2.5 text-sm bg-status-warning/8 border border-status-warning/22 rounded-xl p-3.5">
-                <Info className="w-4 h-4 text-status-warning shrink-0 mt-0.5" />
-                <span className="text-status-warning leading-relaxed">
-                  {order.delivered_usage_terms}
-                </span>
-              </div>
-            )}
-          </section>
-        ) : order.status !== "failed" && order.status !== "refunded" ? (
-          decryptFailed ? (
-            /* R118-B2 (A2): honest decrypt-failure card — same visual
-                idiom as the «قيد الإعداد» card it replaces (icon tile /
-                bold title / muted body), warning-toned because the
-                order itself completed fine: only the delivery payload
-                is undecryptable, and support holds the recovery path. */
-            <div
-              role="alert"
-              className="bg-card border border-status-warning/30 rounded-2xl p-7 text-center float-in stagger-1"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-status-warning/10 border border-status-warning/25 mx-auto mb-3 flex items-center justify-center">
-                <ShieldAlert className="w-5 h-5 text-status-warning" />
-              </div>
-              {/* R-140-l (semantics): card-title h2 (the family's
-                  font-bold h2 register) — the alert region names
-                  itself for heading-navigation. */}
-              <h2 className="font-bold text-sm mb-1">تعذّر فك تشفير بيانات التسليم</h2>
-              <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto mb-4">
-                طلبك مكتمل ومحفوظ، لكن بيانات الحساب تعذّر فك تشفيرها حالياً. تواصل مع الدعم وستصلك
-                بياناتك فوراً.
-              </p>
-              {/* R120-B7 (reviewer finding — A4-F1 sweep completion):
-                  asChild composition (cart.tsx ghost-CTA idiom) instead of
-                  Link>Button nesting — one anchor, one tab stop, identical
-                  styling. */}
-              <Button
-                asChild
-                /* R139 (precision): de-hand-rolled — the bg-primary/
-                   hover:bg-primary/90 + shadow-md shadow-primary/22
-                   overrides re-implemented buttonVariants on top of
-                   Button (the R116-S1 ban); the default variant owns the
-                   fill/hover/press/ONE focus system. h-10 → min-h-11:
-                   the 44px storefront floor (the error-card recovery
-                   pair above already rides it). */
-                className="gap-1.5 rounded-xl min-h-11 px-5 font-bold"
-              >
-                <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  تواصل مع الدعم
-                </Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="bg-card border border-border/60 rounded-2xl p-7 text-center float-in stagger-1">
-              {/* R139 (precision): the prep tile joins the well family
-                  (muted/60 + /40); card edge /50 → /60. */}
-              <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border/40 mx-auto mb-3 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-muted-foreground pulse-dot" />
-              </div>
-              {/* R-140-l (semantics): card-title h2 (the family's
-                  font-bold h2 register) — heading order stays
-                  sequential h1→h2 on every branch. */}
-              <h2 className="font-bold text-sm mb-1">قيد الإعداد</h2>
-              {/* R125-I7 (A7 B-8): the delivery window is UNIFIED with the
-                  storefront's dominant honest promise — «فور تأكيد الدفع،
-                  وخلال 24 ساعة كحد أقصى» (home's trust strip,
-                  onboarding's feature row, terms §2). The drifted
-                  «عادةً خلال 5 إلى 15 دقيقة» figure appeared nowhere
-                  else and «ستصلك إشعار» presumed a notification path a
-                  completed order never fires. */}
-              <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto">
-                سيتم تسليم بيانات الحساب فور اكتمال الطلب — عادةً فوراً، وبحد أقصى 24 ساعة. سنُشعرك
-                عند الجاهزية.
-              </p>
-            </div>
-          )
-        ) : null}
+        {/* R167 (F12, wave 2 — R167-A2): the delivery/credentials region
+            — the receipt card, the decrypt-failure alert and the prep
+            card, with their hasDelivery/decryptFailed gates — moved
+            verbatim to components/orders/OrderCredentialsCard. */}
+        <OrderCredentialsCard order={order} />
 
         {/* ── Failed / Refunded ──────────────────────────────────── */}
-        {(order.status === "failed" || order.status === "refunded") && (
-          /* R115-I1 (A8 P2-3a): the refund branch gets a CALM info tone +
-             the AMOUNT — RefundService credits the full orders.amount
-             back to the wallet (terminal-state guarded, credited once),
-             so the figure is available on the order itself. The old
-             error-red card said «تم إعادة المبلغ…» while showing NO
-             amount — an unreceipted money movement.
-             R138 (visual): verified — refunds stay status-info per §4
-             (never restyled toward success/failure); untouched this
-             round, money rows byte-identical. */
-          <div
-            className={`bg-card border rounded-2xl p-6 text-center float-in stagger-1 ${
-              order.status === "refunded" ? "border-status-info/22" : "border-status-error/22"
-            }`}
-          >
-            <div
-              className={`w-12 h-12 rounded-2xl border mx-auto mb-3 flex items-center justify-center ${
-                order.status === "refunded"
-                  ? "bg-status-info/8 border-status-info/22"
-                  : "bg-status-error/8 border-status-error/22"
-              }`}
-            >
-              {order.status === "refunded" ? (
-                <Undo2 className="w-5 h-5 text-status-info" />
-              ) : (
-                <XCircle className="w-5 h-5 text-status-error" />
-              )}
-            </div>
-            {/* R-140-l (semantics): card-title h2 (the family's
-                font-bold h2 register, tone classes verbatim) — the
-                terminal state names itself for heading-navigation;
-                one heading per mutually-exclusive card. */}
-            <h2
-              className={`font-bold text-sm mb-1 ${
-                order.status === "refunded" ? "text-status-info" : "text-status-error"
-              }`}
-            >
-              {order.status === "refunded" ? "تم الاسترداد" : "فشل الطلب"}
-            </h2>
-            <p className="text-xs text-muted-foreground leading-relaxed tabular-nums">
-              {order.status === "refunded"
-                ? `استُرد ${formatCurrency(order.amount ?? 0)} إلى محفظتك تلقائياً`
-                : "يرجى التواصل مع الدعم الفني إن احتجت مساعدة"}
-            </p>
-            {order.status === "refunded" && (
-              /* R115-I1 (A8 P2-3a, honest tail): the refund ALSO reverses
-                 the purchase-award points for this order (refund.service
-                 reclaims them, clamped at zero). The old copy said
-                 nothing — points silently vanished from /loyalty with no
-                 explanation on any page; this line closes that promise
-                 gap («خُصمت نقاط الشراء المستردة»). */
-              <p className="text-2xs text-muted-foreground/85 leading-relaxed mt-1 mb-4">
-                كما خُصمت نقاط الشراء المستردة — نقاط هذا الطلب من رصيد نقاطك.
-              </p>
-            )}
-            {order.status === "failed" && <div className="mb-4" />}
-            {/*
-              Promote the support link inside the failure card itself
-              when the order failed. Failed/refunded is exactly the
-              moment the user is most likely to need help, and burying
-              the support link as a subtle text link at the very
-              bottom of the page (below all other cards) means many
-              users miss it.
-              R151: widened to `refunded` too — a refunded order renders
-              the same failure/refunded card (with the refund amount +
-              points-reversal notice) but the in-card CTA stayed gated on
-              `failed` only, leaving refunded users with just the
-              bottom text link (which itself carried no order context).
-            */}
-            {(order.status === "failed" || order.status === "refunded") && (
-              /* R120-B7 (reviewer finding — A4-F1 sweep completion): same
-                 asChild composition as the decrypt-failure card above —
-                 one anchor, one tab stop. */
-              <Button
-                asChild
-                /* R139 (precision): the failed-state twin of the
-                   decrypt-failure CTA above — same de-hand-roll, same
-                   44px floor. */
-                className="gap-1.5 rounded-xl min-h-11 px-5 font-bold"
-              >
-                <Link href={`/support?ref=${encodeURIComponent(order.order_code ?? "")}`}>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  تواصل مع الدعم
-                </Link>
-              </Button>
-            )}
-          </div>
-        )}
+        {/* R167 (F12, wave 2 — R167-A2): the failed/refunded terminal
+            card moved verbatim to components/orders/OrderTerminalCard —
+            it returns null on every other status (the StatusSteps
+            null-branch idiom). */}
+        <OrderTerminalCard order={order} />
 
         {/* ── Actions ───────────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 float-in stagger-2">

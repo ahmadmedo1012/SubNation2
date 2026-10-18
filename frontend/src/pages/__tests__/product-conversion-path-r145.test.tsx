@@ -110,7 +110,7 @@ vi.mock("@/lib/cart", () => ({
   useCart: () => ({ addItem: vi.fn() }),
 }));
 
-vi.mock("@/hooks/use-keyboard-visibility", () => ({
+vi.mock("@/hooks/useKeyboardVisibility", () => ({
   useKeyboardVisibility: () => false,
 }));
 

@@ -55,7 +55,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WalletPage from "@/pages/wallet";
 import CheckoutPage from "@/pages/checkout";
 import { CartProvider } from "@/lib/cart";
-import { TopupWaitingModal } from "@/components/TopupWaitingModal";
+import { TopupWaitingModal } from "@/components/wallet/TopupWaitingModal";
 import { useCreateTopup, useListTopups } from "@workspace/api-client-react";
 // ─────────────────────────────────────────────────────────────────────
 // Source-scan helpers (the account-surfaces-visual-r139 idiom —
@@ -79,7 +79,7 @@ const LANE = [
   "src/pages/checkout.tsx",
   "src/pages/wallet.tsx",
   "src/components/wallet/MobileTransferForm.tsx",
-  "src/components/TopupWaitingModal.tsx",
+  "src/components/wallet/TopupWaitingModal.tsx",
   "src/components/wallet/PendingLimitBanner.tsx",
   "src/components/wallet/topup-meta.tsx",
 ];
@@ -406,7 +406,7 @@ describe("R140-j — MAX_PENDING: the frozen form card is inert (not just visual
 // ─────────────────────────────────────────────────────────────────────
 
 const toastSpy = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastSpy }),
 }));
 
@@ -576,7 +576,7 @@ describe("R140-j — source pins: ZERO tabIndex>0 in the money-path lane", () =>
 
 describe("R140-j — source pins: the Radix dialog shell owns focus (trap + restore stay library-owned)", () => {
   it("TopupWaitingModal rides the shared AppDialog (never a hand-rolled overlay) with deliberate ESC gating", () => {
-    const waiting = s("src/components/TopupWaitingModal.tsx");
+    const waiting = s("src/components/wallet/TopupWaitingModal.tsx");
     expect(waiting).toContain("<AppDialog");
     // ESC / backdrop / header close are all gated on the ~10 s agency
     // window (R116-S2) — Escape behavior is DELIBERATE, not accidental.
@@ -643,7 +643,7 @@ describe("R140-j — source pins: the money CTAs stay mounted while disabled (PE
   });
 
   it("the waiting modal's decision-flip focus retention is wired", () => {
-    const waiting = s("src/components/TopupWaitingModal.tsx");
+    const waiting = s("src/components/wallet/TopupWaitingModal.tsx");
     expect(waiting).toContain("prevStatusRef");
     expect(waiting).toContain("bodyAnchorRef");
   });

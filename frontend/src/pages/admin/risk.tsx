@@ -6,7 +6,7 @@
  * for chrome and useAdminHeaders for auth.
  */
 
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { EmptyState } from "@/components/admin/EmptyState";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";

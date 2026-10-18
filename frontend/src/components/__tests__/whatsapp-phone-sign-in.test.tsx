@@ -48,7 +48,7 @@ import {
   normalizePhoneInput,
   toLatinDigits,
   WhatsAppPhoneSignIn,
-} from "@/components/WhatsAppPhoneSignIn";
+} from "@/components/auth/WhatsAppPhoneSignIn";
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ setToken: vi.fn() }),

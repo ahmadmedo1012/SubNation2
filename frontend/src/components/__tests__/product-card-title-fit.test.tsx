@@ -30,7 +30,7 @@
  * trace, B4 §B/D5). The App.tsx boot-catalog image warming is the other
  * half (lane L10).
  *
- * `@/lib/cart` and `@/hooks/use-toast` are mocked at the module
+ * `@/lib/cart` and `@/hooks/useToast` are mocked at the module
  * boundary (product-card-touch test pattern).
  */
 
@@ -49,7 +49,7 @@ vi.mock("@/lib/cart", () => ({
 }));
 
 const toastMock = vi.fn();
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: (...args: unknown[]) => toastMock(...args) }),
 }));
 

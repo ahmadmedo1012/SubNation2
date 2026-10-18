@@ -1,5 +1,5 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { toast } from "@/hooks/use-toast";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { toast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
 import { adminFetch, adminFetchJson } from "@/lib/admin-session";
 import { useTheme } from "@/lib/theme";

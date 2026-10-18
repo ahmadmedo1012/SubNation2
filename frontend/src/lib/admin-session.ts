@@ -48,7 +48,7 @@
  *     of an admin page — the per-page token guards handle that).
  */
 
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/useToast";
 // D-3 (R142): ONE timeout constant with the storefront client — the
 // generated client exports the canonical 20 s default. Read ONCE at
 // module init inside a guard: 70+ test suites partially mock

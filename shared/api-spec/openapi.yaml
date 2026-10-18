@@ -3099,11 +3099,14 @@ paths:
               $ref: "#/components/schemas/CreateVariantBody"
       responses:
         "201":
-          description: Variant created
+          description: |
+            Variant created. May carry an additive `warnings` array
+            (R167-D tier-price anomalies, warn-first — see
+            AdminProductVariantWriteResult).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminProductVariant"
+                $ref: "#/components/schemas/AdminProductVariantWriteResult"
         "400":
           description: Validation error (INVALID_DATA)
           content:
@@ -3162,11 +3165,14 @@ paths:
               $ref: "#/components/schemas/UpdateVariantBody"
       responses:
         "200":
-          description: Variant updated
+          description: |
+            Variant updated. May carry an additive `warnings` array
+            (R167-D tier-price anomalies, warn-first — see
+            AdminProductVariantWriteResult).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminProductVariant"
+                $ref: "#/components/schemas/AdminProductVariantWriteResult"
         "400":
           description: Validation error (INVALID_DATA)
           content:
@@ -7035,6 +7041,34 @@ components:
         created_at:
           type: string
       required: [id, product_id, cost_price, price_lyd, is_active, sort_order]
+
+    AdminProductVariantWriteResult:
+      description: |
+        R167-D (B3 wiring): the create/update variant success body — the
+        variant projection plus an ADDITIVE, WARN-FIRST tier-price anomaly
+        report (findTierPriceAnomalies over the post-write ACTIVE variant
+        matrix). `warnings` is present IFF the write left an anomaly behind;
+        absent when the matrix is clean. The report never blocks the write
+        (operators must be able to fix existing bad rows); deactivating the
+        offending variant is the documented silencer.
+      allOf:
+        - $ref: "#/components/schemas/AdminProductVariant"
+        - type: object
+          properties:
+            warnings:
+              type: array
+              description: Tier-price anomalies detected after the write (warn-first — never a rejection).
+              items:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                    enum: [equalized, inverted]
+                    description: The anomaly class the validator reports.
+                  message:
+                    type: string
+                    description: Operator-facing Arabic warning copy.
+                required: [kind, message]
 
     CreateVariantBody:
       type: object

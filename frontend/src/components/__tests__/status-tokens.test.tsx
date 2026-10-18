@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TYPE_CONFIG } from "@/components/layout/NotificationBell";
-import { AuthErrorBanner } from "@/components/AuthErrorBanner";
+import { AuthErrorBanner } from "@/components/auth/AuthErrorBanner";
 
 // Vitest's jsdom environment doesn't expose import.meta.url with a
 // file: scheme — resolve from the runner cwd (always the frontend/

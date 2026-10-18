@@ -20,7 +20,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
-import { useConfirm } from "@/hooks/use-confirm";
+import { useConfirm } from "@/hooks/useConfirm";
 
 /** Minimal consumer mirroring the real call-sites (cart clear, admin
  *  bulk actions): a trigger button that awaits confirm() + one mounted

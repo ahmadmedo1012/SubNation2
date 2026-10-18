@@ -122,7 +122,7 @@ void (() => {
     }
     if (prompted) return;
     prompted = true;
-    void import("./hooks/use-toast").then(({ toast }) => {
+    void import("./hooks/useToast").then(({ toast }) => {
       toast({
         title: "تحديث جديد متاح",
         description: "صدر تحديث للتطبيق — أعد التحميل للحصول على أحدث نسخة.",

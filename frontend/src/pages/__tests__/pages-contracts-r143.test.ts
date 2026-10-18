@@ -7,7 +7,10 @@
  *   • L3-2 — the pages-side truncation sites (orders row name,
  *     flash-sales card name, profile identity row) ride dir="auto" +
  *     text-right (the ProductCard F-1 recipe) so Latin product/display
- *     names truncate from the correct end.
+ *     names truncate from the correct end. R167 (F11 wave 2): the
+ *     orders row moved verbatim to components/orders/OrderRow — its
+ *     pin follows the markup to the extract's address (the R146
+ *     CopyField precedent; the recipe itself is unchanged).
  *   • L2-2 — the auth family (login/register/onboarding) + the PDP's
  *     mobile card-frame carry the r139 resting edge /60; the /55 the
  *     sweep missed must not come back.
@@ -31,12 +34,14 @@ function stripComments(src: string): string {
     .replace(/^\s*\*.*$/gm, "");
 }
 
-describe("R143 (L3-2) — pages-side truncation sites isolate bidi (dir=auto + text-right)", () => {
+describe("R143 (L3-2) — the orders/flash-sales/profile truncation sites isolate bidi (dir=auto + text-right)", () => {
   // The ProductCard F-1 recipe: pure-Latin names truncate from the wrong
   // end in an RTL block (the ellipsis eats the brand head — the uniquely
   // identifying token); text-right re-anchors the visual edge.
+  // R167 (F11 wave 2): the orders ROW moved to components/orders/OrderRow
+  // — the pin reads the extract (the page kept no truncating element).
   it.each([
-    { rel: "src/pages/orders.tsx", needle: "order.product_name" },
+    { rel: "src/components/orders/OrderRow.tsx", needle: "order.product_name" },
     { rel: "src/pages/flash-sales.tsx", needle: "product.name" },
     { rel: "src/pages/profile.tsx", needle: "user.display_name" },
   ])("$rel: the $needle element truncates under dir=auto", ({ rel, needle }) => {

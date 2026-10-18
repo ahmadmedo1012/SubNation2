@@ -1,6 +1,7 @@
 import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { Button } from "@/components/ui/button";
-import { TopupWaitingModal } from "@/components/TopupWaitingModal";
+// R167-C (F18): TopupWaitingModal moved into the wallet family folder.
+import { TopupWaitingModal } from "@/components/wallet/TopupWaitingModal";
 // R136 (FE-1 decomposition): the page's self-contained subcomponents and
 // pure helpers moved to @/components/wallet/* (verbatim moves — the
 // money path, the 96-F6/98-F2 idempotency-key machinery, every state
@@ -42,8 +43,8 @@ import { MobileTransferForm } from "@/components/wallet/MobileTransferForm";
 import { PendingLimitBanner } from "@/components/wallet/PendingLimitBanner";
 import { TopupHistoryCard } from "@/components/wallet/TopupHistoryCard";
 import { WalletStatementCard } from "@/components/wallet/WalletStatementCard";
-import { useOnScreen } from "@/hooks/use-on-screen";
-import { useSocket } from "@/hooks/use-socket";
+import { useOnScreen } from "@/hooks/useOnScreen";
+import { useSocket } from "@/hooks/useSocket";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { generateIdempotencyKey } from "@/lib/idempotency";

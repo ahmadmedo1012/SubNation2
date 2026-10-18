@@ -24,7 +24,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/pages/admin/layout";
 import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/useToast";
 
 const { authState } = vi.hoisted(() => ({
   authState: { finance: true, support: true } as Record<string, boolean>,
@@ -42,7 +42,7 @@ vi.mock("@/lib/theme", () => ({
   useTheme: () => ({ theme: "dark", toggleTheme: vi.fn() }),
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
 }));
 

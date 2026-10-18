@@ -35,7 +35,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 // R123 (E3 item 1): the copilot's six raw fetches ride the session-aware
 // adminFetch wrapper. NOTE the SSE site (ask): adminFetch returns the
 // Response UNTOUCHED on every non-401 path, so the streaming reader +

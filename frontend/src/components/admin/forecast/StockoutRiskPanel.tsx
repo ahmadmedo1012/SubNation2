@@ -14,7 +14,7 @@
  *     admin can act on each correctly.
  */
 
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 // R123 (E3 item 1): the two raw fetches ride the session-aware wrapper —
 // a mid-work 401 gets the global «انتهت الجلسة» toast + redirect (the
 // panel's null-on-error renders stay intact for real failures), with

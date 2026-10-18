@@ -21,7 +21,7 @@
 import { render, screen } from "@testing-library/react";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { AuthProviders } from "@/components/AuthProviders";
+import { AuthProviders } from "@/components/auth/AuthProviders";
 
 const firebaseConfigured = vi.hoisted(() => ({ configured: false }));
 
@@ -39,7 +39,7 @@ vi.mock("@/lib/firebase-auth", () => ({
   signInWithFirebaseGoogle: vi.fn(),
 }));
 
-vi.mock("@/components/TelegramLoginButton", () => ({
+vi.mock("@/components/auth/TelegramLoginButton", () => ({
   TelegramLoginButton: () => <div data-testid="telegram-button" />,
 }));
 
@@ -64,7 +64,7 @@ const fetchMock = vi.fn();
 // R104 (AG2-5): AuthProviders now rides the shared module-level
 // single-flight cache (fetchPublicAuthProviders) — reset it between
 // cases so each one observes ITS OWN mocked response.
-import { __resetPublicAuthProvidersCacheForTests } from "@/hooks/use-public-auth-providers";
+import { __resetPublicAuthProvidersCacheForTests } from "@/hooks/usePublicAuthProviders";
 
 function renderProviders() {
   return render(

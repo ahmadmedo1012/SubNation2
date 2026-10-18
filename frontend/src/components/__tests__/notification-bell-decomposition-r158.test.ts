@@ -9,9 +9,21 @@
  * open/close UI wiring + portal'd panel, all in one file. R158 split
  * it along that seam: presentation + dialog wiring
  * (components/layout/NotificationBell.tsx) + data machine
- * (@/hooks/useNotifications). NotificationPanel deliberately stays
- * IN-FILE — it is presentation (its own vw/resize + focus-management
- * effects render the dialog, they fetch nothing).
+ * (@/hooks/useNotifications). NotificationPanel deliberately stayed
+ * IN-FILE through R166 — it is presentation (its own vw/resize +
+ * focus-management effects render the dialog, they fetch nothing).
+ *
+ * R167 (layout decomposition — F13) superseded that locality: the bell
+ * was STILL a 635-line two-in-one (trigger wiring + the whole portal'd
+ * panel), so the panel moved verbatim to
+ * components/layout/bell/NotificationPanel.tsx as a self-contained
+ * feature component (the GlobalSearch R137 precedent — its vw state +
+ * focus refs are overlay-local), with the per-item row (NotificationRow),
+ * the footer link (PanelFooter) and the TYPE_CONFIG table (type-config)
+ * in sibling extracts. The status-tokens import address survives via the
+ * re-export. The seam this family guards is unchanged: the trigger keeps
+ * wiring + chrome; the data machine stays in the hook; the presentation
+ * extracts fetch nothing.
  *
  * These are SOURCE-scan pins (the storefront-r128-sweep / r136-r137
  * decomposition idiom — structural invariants a render test only
@@ -31,9 +43,13 @@
  *   3. hook ownership — useNotifications owns the poll/loadState/
  *      mark-read machine: the atoms, the 60 s interval, the socket
  *      accelerators, the fetch-seq guard and the optimistic rollbacks;
- *   4. panel locality — NotificationPanel + TYPE_CONFIG stay in the
- *      component file (TYPE_CONFIG's export address is pinned by
- *      status-tokens.test.tsx).
+ *   4. presentation locality — NotificationPanel + TYPE_CONFIG live at
+ *      their R167 extract addresses (bell/NotificationPanel.tsx +
+ *      bell/type-config.ts), with the bell's module boundary re-exporting
+ *      TYPE_CONFIG so the pinned status-tokens import address (the
+ *      @/components/layout/NotificationBell specifier) still resolves
+ *      (the NAV_SECTIONS re-export idiom). The R167 sibling family
+ *      (layout-decomposition-r167.test.ts) pins the extract-side shape.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -42,6 +58,9 @@ import { describe, expect, it } from "vitest";
 const read = (rel: string): string => readFileSync(resolve(process.cwd(), rel), "utf8");
 const component = read("src/components/layout/NotificationBell.tsx");
 const hook = read("src/hooks/useNotifications.ts");
+// R167: the presentation extracts the moved code now calls home.
+const panel = read("src/components/layout/bell/NotificationPanel.tsx");
+const typeConfig = read("src/components/layout/bell/type-config.ts");
 
 describe("R158 (hooks lane) — NotificationBell stays presentation + dialog wiring", () => {
   it("components/layout/NotificationBell.tsx stays under the 700-line ceiling (was 825 at extraction)", () => {
@@ -71,9 +90,20 @@ describe("R158 (hooks lane) — NotificationBell stays presentation + dialog wir
     expect(component).not.toContain('"/api/notifications"');
   });
 
-  it("NotificationPanel + TYPE_CONFIG stay in-file (presentation — the status-tokens pin reads this address)", () => {
-    expect(component).toContain("function NotificationPanel({");
-    expect(component).toContain("export const TYPE_CONFIG");
+  it("R167: NotificationPanel + TYPE_CONFIG live at their extract addresses (the bell re-exports the table — the status-tokens import specifier still resolves)", () => {
+    // The bell's module boundary keeps TYPE_CONFIG reachable at the
+    // pinned address (status-tokens.test.tsx + pages/notifications.tsx
+    // import it from @/components/layout/NotificationBell) via the
+    // NAV_SECTIONS re-export idiom; the real declaration moved verbatim
+    // to the React-free data module.
+    expect(component).toContain('export { TYPE_CONFIG } from "./bell/type-config";');
+    expect(typeConfig).toContain("export const TYPE_CONFIG");
+    // The panel moved verbatim as a feature component (GlobalSearch
+    // precedent) and is consumed by the bell's portal mount.
+    expect(panel).toContain("export function NotificationPanel({");
+    expect(component).toContain('import { NotificationPanel } from "./bell/NotificationPanel";');
+    // The panel fetches nothing — presentation only (the r158 seam).
+    expect(panel).not.toContain('"/api/notifications"');
   });
 });
 

@@ -8,12 +8,12 @@
  * semantics (all sessions end → deliberate /admin/login landing).
  * Byte-move: no behavior, prop, or copy change; see A3's split plan D.
  */
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admin-session";
 import { getErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { useToast } from "@/hooks/useToast";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

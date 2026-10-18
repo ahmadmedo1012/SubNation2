@@ -38,11 +38,11 @@ vi.mock("@/lib/socket", () => ({
   connectSocket: connectSocketMock,
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   toast: toastMock,
 }));
 
-import { useSocket } from "../use-socket";
+import { useSocket } from "../useSocket";
 
 /** Minimal socket stand-in: capture .on(event, handler) registrations. */
 function fakeSocket() {

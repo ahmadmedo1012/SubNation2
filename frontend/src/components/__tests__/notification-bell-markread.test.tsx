@@ -40,7 +40,7 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ token: "test-token" }),
 }));
 
-vi.mock("@/hooks/use-toast", () => ({
+vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
 }));
 

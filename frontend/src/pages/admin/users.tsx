@@ -1,4 +1,4 @@
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { LoadMoreButton } from "@/components/ui/load-more-button";
 import { EmptyState } from "@/components/admin/EmptyState";
@@ -35,8 +35,8 @@ import { UsersStatsStrip } from "@/components/admin/users/UsersStatsStrip";
 import { UserEditDialog } from "@/components/admin/users/UserEditDialog";
 import { UsersDesktopTable } from "@/components/admin/users/UsersDesktopTable";
 import { MobileUserCard } from "@/components/admin/users/MobileUserCard";
-import { useConfirm } from "@/hooks/use-confirm";
-import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useToast } from "@/hooks/useToast";
 import { AdminSessionExpiredError, adminFetch, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 // R128 (B3-F2): the shared guarded CSV escaper (was the local csvCell).
@@ -62,7 +62,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 // idiom — useSearch re-renders on ?tier=/?sort=/?filters= changes.
 import { useLocation, useSearch } from "wouter";
 // R123 (E3 P3c): the wallet-edit dialog's dirty guard (below).
-import { useDirtyGuard } from "@/hooks/use-dirty-guard";
+import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 

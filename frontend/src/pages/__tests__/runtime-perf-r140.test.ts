@@ -39,7 +39,7 @@ const read = (rel: string): string => readFileSync(resolve(process.cwd(), rel), 
 const PAGE = read("src/pages/home.tsx");
 const GUEST_HERO = read("src/components/home/GuestHero.tsx");
 const CHARTS_LOADER = read("src/components/admin/dashboard/ChartsLoader.tsx");
-const HOOK = read("src/hooks/use-on-screen.ts");
+const HOOK = read("src/hooks/useOnScreen.ts");
 const CSS = read("src/index.css");
 
 /* ── The blob-pause fleet (R140-d census of every blob-drift render site) ──
@@ -76,7 +76,7 @@ const BLOB_PAUSE_FLEET: ReadonlyArray<{
       {
         file: "src/pages/login.tsx",
         pins: [
-          'import { useOnScreen } from "@/hooks/use-on-screen";',
+          'import { useOnScreen } from "@/hooks/useOnScreen";',
           "ref={glow.ref}",
           "style={glow.style}",
         ],
@@ -90,7 +90,7 @@ const BLOB_PAUSE_FLEET: ReadonlyArray<{
       {
         file: "src/pages/register.tsx",
         pins: [
-          'import { useOnScreen } from "@/hooks/use-on-screen";',
+          'import { useOnScreen } from "@/hooks/useOnScreen";',
           "ref={glow.ref}",
           "style={glow.style}",
         ],
@@ -104,7 +104,7 @@ const BLOB_PAUSE_FLEET: ReadonlyArray<{
       {
         file: "src/pages/onboarding.tsx",
         pins: [
-          'import { useOnScreen } from "@/hooks/use-on-screen";',
+          'import { useOnScreen } from "@/hooks/useOnScreen";',
           "ref={glow.ref}",
           "style={glow.style}",
         ],
@@ -167,7 +167,7 @@ function listSourceFiles(dir: string, acc: string[] = []): string[] {
  * file extension walk). */
 const blobDriftSites = listSourceFiles(resolve(process.cwd(), "src")).filter(
   (f) =>
-    f !== resolve(process.cwd(), "src/hooks/use-on-screen.ts") &&
+    f !== resolve(process.cwd(), "src/hooks/useOnScreen.ts") &&
     readFileSync(f, "utf8").includes("blob-drift"),
 );
 

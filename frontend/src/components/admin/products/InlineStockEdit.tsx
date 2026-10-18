@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useAdminHeaders } from "@/hooks/use-admin-headers";
-import { useToast } from "@/hooks/use-toast";
+import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+import { useToast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/errors";
 // R123 (E3 item 1): the inline stock edit rides the session-aware wrapper
 // (a 401 mid-save now gets the global «انتهت الجلسة» toast + redirect

@@ -52,7 +52,9 @@
  *     components/product/ProductMediaSection.tsx ·
  *     components/product/RecommendationsSection.tsx ·
  *     components/checkout/CartSummaryAside.tsx · pages/cart.tsx ·
- *     pages/orders.tsx · pages/order-detail.tsx ·
+ *     components/orders/OrderRow.tsx (the row moved there from
+ *     pages/orders.tsx in R167 F11 wave 2 — the pin follows the
+ *     markup) · pages/order-detail.tsx ·
  *     components/home/RecentOrdersStrip.tsx
  *   admin: pages/admin/settings/two-factor-setup.tsx ·
  *     components/admin/layout/GlobalSearch.tsx ·
@@ -125,7 +127,9 @@ const SITES: Site[] = [
   { file: "src/components/product/RecommendationsSection.tsx" },
   { file: "src/components/checkout/CartSummaryAside.tsx" },
   { file: "src/pages/cart.tsx" },
-  { file: "src/pages/orders.tsx" },
+  // R167 (F11 wave 2): the orders-list row (its product thumb is the
+  // page's only <img>) moved verbatim to components/orders/OrderRow.
+  { file: "src/components/orders/OrderRow.tsx" },
   { file: "src/pages/order-detail.tsx" },
   { file: "src/components/home/RecentOrdersStrip.tsx" },
   // ── admin ──

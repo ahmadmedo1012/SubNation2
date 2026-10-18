@@ -111,7 +111,7 @@ vi.mock("@/lib/cart", () => ({
 
 // F-2: controllable keyboard-visibility verdicts.
 let keyboardVisible = false;
-vi.mock("@/hooks/use-keyboard-visibility", () => ({
+vi.mock("@/hooks/useKeyboardVisibility", () => ({
   useKeyboardVisibility: () => keyboardVisible,
 }));
 
