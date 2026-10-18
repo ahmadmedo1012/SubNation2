@@ -156,8 +156,15 @@ describe("getErrorMessage — specific server message outranks the code map (R12
 
 describe("getErrorMessage — code mapping and shape guards (regression pins)", () => {
   it("mapped codes still resolve to their Arabic message when no server message is present", () => {
-    expect(getErrorMessage({ code: ErrorCode.INVALID_OTP })).toBe(
-      "رمز التحقق غير صحيح أو منتهي الصلاحية",
+    // R166: INVALID_OTP was retired (zero backend emission) — the pin
+    // rides a surviving validation code instead, and asserts one of
+    // the R166-added checkout staleness codes (PRODUCT_STALE) so the
+    // new truth is pinned here too.
+    expect(getErrorMessage({ code: ErrorCode.INVALID_PASSWORD_LENGTH })).toBe(
+      "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
+    );
+    expect(getErrorMessage({ code: ErrorCode.PRODUCT_STALE })).toBe(
+      "تغيّر سعر المنتج أو تفاصيله — راجع السلة ثم أعد المحاولة",
     );
     expect(getErrorMessage({ data: { code: "INSUFFICIENT_BALANCE" } })).toBe(
       "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً",

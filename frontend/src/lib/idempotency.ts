@@ -50,8 +50,9 @@
  *     ref) — a fresh key per attempt pierces the idempotency layer
  *     exactly when the first attempt actually committed server-side.
  *
- * R-140-o (money race/retry audit — the canonical storefront map):
- * ALL FOUR user-facing money mutations ride the SAME mint-replay-clear
+ * R-140-o (money race/retry audit — the canonical storefront map; R166
+ * correction: FIVE consumers since R165):
+ * ALL user-facing money mutations ride the SAME mint-replay-clear
  * lifecycle; only the storage slot + fingerprint differ. The envelope is
  * {k, t, f} — key, mint-time TTL stamp (10 min), intent fingerprint —
  * and every access is try/catch-guarded so storage failures degrade to

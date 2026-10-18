@@ -1,4 +1,4 @@
-import { statusLabel } from "@/lib/utils";
+import { ORDER_COUNT_FORMS_SUBJECT, statusLabel } from "@/lib/utils";
 import type { AdminTopup } from "@workspace/api-client-react";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/topups.tsx —
@@ -40,11 +40,18 @@ export const STATUS_FILTERS = [
  *  to what the route already returned. */
 export const TOPUPS_PAGE_SIZE = 100;
 
-/** Arabic plural forms for the queue counter (formatCount, A2 P3-4). */
+/** Arabic plural forms for the queue counter (formatCount, A2 P3-4).
+ *  R166-A (F16): the queue's count surfaces (TopupsHeader's
+ *  «… إجمالاً» / «عرض …» / «نتائج البحث: …» and BulkConfirmModal's
+ *  «… سيتم معالجته» — the noun is the sentence SUBJECT there) are
+ *  nominative contexts — the dual «طلبان», now sourced from the shared
+ *  SUBJECT registry instead of a hand-typed literal (zero/many stay
+ *  local: this file's forms differ from the storefront's). Rendered
+ *  bytes unchanged. */
 export const TOPUP_COUNT_FORMS = {
   zero: "طلبات",
   one: "طلب",
-  two: "طلبان",
+  two: ORDER_COUNT_FORMS_SUBJECT.two,
   few: "طلبات",
   many: "طلبًا",
   other: "طلب",

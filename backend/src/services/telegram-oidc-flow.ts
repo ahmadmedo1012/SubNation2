@@ -60,11 +60,13 @@ import {
 } from "../lib/telegram-oidc-states";
 import type { TelegramAuthFields } from "../lib/telegram-auth";
 
-/** Official endpoints (core.telegram.org/bots/telegram-login). */
-export const TELEGRAM_OIDC_AUTH_ENDPOINT = "https://oauth.telegram.org/auth";
-export const TELEGRAM_OIDC_TOKEN_ENDPOINT = "https://oauth.telegram.org/token";
-export const TELEGRAM_OIDC_JWKS_ENDPOINT = "https://oauth.telegram.org/.well-known/jwks.json";
-export const TELEGRAM_OIDC_ISSUER = "https://oauth.telegram.org";
+/** Official endpoints (core.telegram.org/bots/telegram-login).
+ * R166-B6: unexported — consumed only inside this module + tests (via
+ * `__test` below); routes touch only the flow entry-points. */
+const TELEGRAM_OIDC_AUTH_ENDPOINT = "https://oauth.telegram.org/auth";
+const TELEGRAM_OIDC_TOKEN_ENDPOINT = "https://oauth.telegram.org/token";
+const TELEGRAM_OIDC_JWKS_ENDPOINT = "https://oauth.telegram.org/.well-known/jwks.json";
+const TELEGRAM_OIDC_ISSUER = "https://oauth.telegram.org";
 
 /**
  * Telegram's documented ID-token algorithms (core.telegram.org/bots/
@@ -112,7 +114,7 @@ async function resolveOidcConfig(): Promise<TelegramOidcClientConfig | null> {
  * first configured origin. The operator registers this exact URL in
  * BotFather → Login Widget → Allowed URLs.
  */
-export function resolveOidcCallbackUrl(originHeader: string | undefined): string | null {
+function resolveOidcCallbackUrl(originHeader: string | undefined): string | null {
   const configured = getConfiguredOrigins();
   if (configured.length === 0) return null;
   const own =
@@ -129,7 +131,7 @@ function base64url(buf: Buffer): string {
 }
 
 /** PKCE pair — verifier 43-128 chars (RFC 7636 §4.1) + S256 challenge. */
-export function generatePkcePair(): { verifier: string; challenge: string } {
+function generatePkcePair(): { verifier: string; challenge: string } {
   const verifier = base64url(randomBytes(48)); // 64 chars — inside 43..128
   const challenge = base64url(createHash("sha256").update(verifier).digest());
   return { verifier, challenge };
@@ -241,7 +243,7 @@ interface Jwk {
 let jwksCache: { keys: Jwk[]; fetchedAt: number } | null = null;
 
 /** Fetch (and cache) Telegram's JWKS. Exported for test injection. */
-export async function fetchTelegramJwks(): Promise<Jwk[]> {
+async function fetchTelegramJwks(): Promise<Jwk[]> {
   if (jwksCache && Date.now() - jwksCache.fetchedAt < JWKS_CACHE_TTL_MS) {
     return jwksCache.keys;
   }
@@ -386,7 +388,7 @@ function validationDetail(jwt: JwtParts | null): Record<string, unknown> {
  * Returns the verified identity or the specific failure reason with
  * bounded type-only diagnostics (never token contents).
  */
-export async function verifyTelegramOidcIdToken(
+async function verifyTelegramOidcIdToken(
   idToken: string,
   expected: { clientId: string; nonce: string },
 ): Promise<
@@ -695,7 +697,22 @@ export async function completeTelegramOidcLogin(input: {
   return { ok: true, token, isNewUser, redirect: stored.redirect };
 }
 
-/** Re-exported for the settings route's enabled probe. */
-export async function isTelegramOidcConfigured(): Promise<boolean> {
-  return (await resolveOidcConfig()) !== null;
-}
+// R166-B6: `isTelegramOidcConfigured` (a resolveOidcConfig() !== null probe
+// whose "settings route" consumer no longer exists — the route computes
+// `oidc_enabled` inline from the settings row) is DELETED: zero references
+// repo-wide, and keeping it unexported-but-present tripped the unused-var
+// lint gate. resolveOidcConfig() remains the module's internal probe.
+
+// ── Test-only surface (R166-B6) ──────────────────────────────────────────────
+
+/**
+ * Test-only hooks — the pure OIDC primitives the test suite pins directly
+ * (endpoint constants, PKCE generation, ID-token verification). The module's
+ * production surface is `startTelegramOidcFlow` + `completeTelegramOidcLogin`
+ * (+ their result types) only.
+ */
+export const __test = {
+  TELEGRAM_OIDC_AUTH_ENDPOINT,
+  generatePkcePair,
+  verifyTelegramOidcIdToken,
+};

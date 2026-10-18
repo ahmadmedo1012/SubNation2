@@ -30,9 +30,14 @@ export function injectJsonLdScript(segment: string, jsonLd: string): string {
  * so Google merges them), same sku dialect (`subnation-<slug>`), same
  * Brand honesty (SubNation the SELLER), same description preference
  * (descriptionLong ?? description ?? name, sliced 5000), same Offer
- * shape (LYD, 2-dp, priceValidUntil end-of-next-year, NewCondition)
- * and the same stock honesty (OutOfStock when the deliverable pool is
- * empty — never InStock against a «نفد المخزون» page).
+ * shape (LYD, 2-dp, priceValidUntil end-of-next-year, NewCondition,
+ * the same Offer seller Organization — R166 F2, Google's recommended
+ * field, SubNation IS the seller) and the same stock honesty
+ * (OutOfStock when the deliverable pool is empty — never InStock
+ * against a «نفد المخزون» page). R166 (F3): the raw category slug
+ * ships as Product.category — schema-legal text provable from the row
+ * without importing the frontend categoryLabel map (the hydrated
+ * page's LD carries the Arabic label; the @id merge reconciles them).
  *
  * Returns undefined when the numeric price is not finite — a price we
  * cannot honestly assert means NO Offer block ships (the hydrated
@@ -59,6 +64,9 @@ export function buildShellProductLd(args: {
     image: absoluteImage,
     sku: row.slug ? `subnation-${row.slug}` : String(row.id),
     brand: { "@type": "Brand", name: "SubNation" },
+    // R166 (F3): the raw slug (e.g. "vpn") — dependency-free and
+    // schema-legal; do NOT duplicate the frontend categoryLabel map.
+    ...(row.category ? { category: row.category } : {}),
     offers: {
       "@type": "Offer",
       price: numericPrice.toFixed(2),
@@ -70,6 +78,10 @@ export function buildShellProductLd(args: {
           ? "https://schema.org/OutOfStock"
           : "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
+      // R166 (F2): Google's Product docs list Offer.seller among the
+      // recommended fields — SubNation IS the seller (no fabrication;
+      // field-mirrored with the frontend buildProductLd Offer).
+      seller: { "@type": "Organization", name: "SubNation" },
     },
   };
   return JSON.stringify(ld);

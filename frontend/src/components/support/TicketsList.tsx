@@ -81,7 +81,7 @@ export function TicketsList({
                         : "bg-muted/35 text-muted-foreground border-border/35"
                     }`}
                   >
-                    <span className="font-bold ml-1">{hasAdminReply ? "فريق الدعم:" : "أنت:"}</span>
+                    <span className="font-bold me-1">{hasAdminReply ? "فريق الدعم:" : "أنت:"}</span>
                     {t.last_reply.message}
                   </div>
                 )}

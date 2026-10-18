@@ -39,12 +39,19 @@ INSERT, M5/M6 are untouched (the body-hash predicate now also covers the
 group — a re-minted token under a live unit key classifies 409), M10 has
 zero new amount writers (pinned: amounts/balances identical with and
 without the token). Money-slice re-verified at R165: backend 2,699 /
-frontend 2,103 green (`checkout-order-group` + `orders-order-group-route`
+frontend **2,659 green across 286 files** [R166 correction: first
+recorded here as 2,103 — the by-directory partial
+(lib+hooks+components+pages); the full-suite run measures 286 files /
+2,659, reconciling exactly with R163's 283/2,643 + R165's own +16. The
+backend 2,699 is the same partial methodology — it excludes
+`backend/src/__tests__` (15 files); a full recount is pending]
+(`checkout-order-group` + `orders-order-group-route`
 added to the suite index below).
 
-## 2. The money-path suite index (45 files; re-verified R134 — cart's
-variant-parity + half-cent blocks and `variant-availability-pricing`
-added; the routes dir alone now holds 74 files)
+## 2. The money-path suite index (47 files; re-verified R134, extended
+R165 — cart's variant-parity + half-cent blocks and
+`variant-availability-pricing` added; the routes dir alone now holds 74
+files)
 
 `backend/src/services/__tests__/`:
 `topup.service` · `topup-auto-guards` · `topup-composite-dedup` ·

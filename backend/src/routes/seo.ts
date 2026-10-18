@@ -288,17 +288,21 @@ async function buildSitemap(): Promise<string> {
     urlEntry(`${APP_ORIGIN}${r.path}`, lastmodFor(r), r.changefreq, r.priority),
   );
 
-  const productEntries = products.map((p) =>
-    urlEntry(
-      // Prefer slug over id for SEO crawlability. Defensive fallback to
-      // `product-<id>` for any (impossible-post-migration) row whose
-      // slug is null — keeps the sitemap valid.
-      `${APP_ORIGIN}/product/${p.slug ?? `product-${p.id}`}`,
-      (p.updatedAt instanceof Date ? p.updatedAt : new Date()).toISOString(),
-      "weekly",
-      "0.8",
-    ),
-  );
+  const productEntries = products
+    // R166 (F6): null-slug rows are OMITTED, not minted a
+    // /product/product-<id> URL — the shell layer itself would 404 that
+    // form ("product-5" is not digit-only → slug lookup → miss), so the
+    // defensive fallback minted dead URLs. Honest omission (the same
+    // rule the lastmod policy follows); runtime-impossible post-backfill.
+    .filter((p): p is { id: number; slug: string; updatedAt: Date } => p.slug !== null)
+    .map((p) =>
+      urlEntry(
+        `${APP_ORIGIN}/product/${p.slug}`,
+        (p.updatedAt instanceof Date ? p.updatedAt : new Date()).toISOString(),
+        "weekly",
+        "0.8",
+      ),
+    );
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',

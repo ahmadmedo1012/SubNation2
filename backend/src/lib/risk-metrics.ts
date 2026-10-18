@@ -14,29 +14,33 @@ import { Counter, Histogram } from "prom-client";
 import { getRegistry, monitoringErrorsTotal, safeInc, safeObserve } from "./metrics";
 
 // ---------- Counters ------------------------------------------------------
+// R166-B7: the collectors below are module-private — the `record*` wrappers
+// are the only API anyone uses (they self-register with the default
+// registry regardless of the export keyword). riskAlertDeliveryFailedTotal
+// keeps its export: risk-alerts.service.ts increments it directly.
 
-export const riskEventsScoredTotal = new Counter({
+const riskEventsScoredTotal = new Counter({
   name: "risk_events_scored_total",
   help: "Total number of events scored by the risk pipeline",
   labelNames: ["event_type", "level"] as const,
   registers: [getRegistry()],
 });
 
-export const riskRuleFiredTotal = new Counter({
+const riskRuleFiredTotal = new Counter({
   name: "risk_rule_fired_total",
   help: "Total number of times a risk rule fired",
   labelNames: ["rule_name"] as const,
   registers: [getRegistry()],
 });
 
-export const riskAlertsSentTotal = new Counter({
+const riskAlertsSentTotal = new Counter({
   name: "risk_alerts_sent_total",
   help: "Total number of risk alerts dispatched",
   labelNames: ["channel", "level"] as const,
   registers: [getRegistry()],
 });
 
-export const riskLabelsTotal = new Counter({
+const riskLabelsTotal = new Counter({
   name: "risk_labels_total",
   help: "Total number of human labels recorded for risk events",
   labelNames: ["label"] as const,
@@ -50,7 +54,7 @@ export const riskAlertDeliveryFailedTotal = new Counter({
   registers: [getRegistry()],
 });
 
-export const riskPipelineFallbacksTotal = new Counter({
+const riskPipelineFallbacksTotal = new Counter({
   name: "risk_pipeline_fallbacks_total",
   help: "Risk pipeline degraded to rules-only after an internal error",
   labelNames: ["reason"] as const,
@@ -59,7 +63,7 @@ export const riskPipelineFallbacksTotal = new Counter({
 
 // ---------- Histograms ----------------------------------------------------
 
-export const riskScoringDurationSeconds = new Histogram({
+const riskScoringDurationSeconds = new Histogram({
   name: "risk_scoring_duration_seconds",
   help: "Time taken to compute a risk score for an event",
   labelNames: ["event_type"] as const,
@@ -67,7 +71,7 @@ export const riskScoringDurationSeconds = new Histogram({
   registers: [getRegistry()],
 });
 
-export const riskAlertDeliverySeconds = new Histogram({
+const riskAlertDeliverySeconds = new Histogram({
   name: "risk_alert_delivery_seconds",
   help: "Latency from critical-event detection to alert delivery (per channel)",
   labelNames: ["channel"] as const,

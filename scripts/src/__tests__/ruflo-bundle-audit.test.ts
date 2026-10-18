@@ -1,7 +1,9 @@
 /**
- * Unit tests for `backend/src/lib/audits/ruflo-audit.ts` — the bundle +
+ * Unit tests for `scripts/src/audits/ruflo-audit.ts` — the bundle +
  * route trace audit added by task 4.2 of the
- * `observability-seo-cwv-maturity` spec.
+ * `observability-seo-cwv-maturity` spec (moved from
+ * `backend/src/lib/audits/` to the dev-scripts workspace in R166-B1:
+ * dev tooling, not server code).
  *
  * These tests validate:
  *   - the main-entry chunk is located deterministically (rejecting
@@ -26,7 +28,7 @@ import {
   McpInvocationError,
   McpInvocationRecorder,
   type McpInvocationRecord,
-} from "../../inspection-runner";
+} from "../inspection-runner";
 import {
   BUNDLE_BUDGET_FAIL_BYTES,
   BUNDLE_BUDGET_WARN_BYTES,
@@ -39,7 +41,7 @@ import {
   runRufloBundleAudit,
   type RufloBundleBaseline,
   type RufloMcpClient,
-} from "../ruflo-audit";
+} from "../audits/ruflo-audit";
 
 const gunzip = promisify(gunzipCb);
 const stableNow = () => new Date("2025-01-01T00:00:00.000Z");

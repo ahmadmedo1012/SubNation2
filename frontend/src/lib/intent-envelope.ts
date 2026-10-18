@@ -9,6 +9,15 @@
  * deliberately rotation-only, no clear) and delegates the mechanics
  * here. lib/idempotency.ts's R-140-o map documents the four flows.
  *
+ * R165: FIVE consumers now. The fifth — components/checkout/
+ * checkout-group-key.ts (the multi-order group token, R162 ADR §2.1.1)
+ * — reuses persistIntentKey/clearIntentKey but hand-rolls its LOAD by
+ * documented design: the group token is informational (never a
+ * double-charge guard), so its fingerprint check is the subset-tolerant
+ * overlap form (a partial-failure retry's remaining lines stay in the
+ * SAME group) instead of the exact match below; its envelope-shape,
+ * TTL and corruption guards mirror loadIntentKey verbatim.
+ *
  * Guards preserved from every former copy (they must never diverge
  * again — this is the code that stops double charges):
  *   • a corrupted entry / raw pre-envelope key JSON.parse-fails → the

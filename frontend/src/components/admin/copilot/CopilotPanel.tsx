@@ -772,11 +772,12 @@ export function CopilotPanel() {
               if (panelRef.current) trapTabKey(panelRef.current, e);
             }}
             /* R139 (precision): declare elevation once — the panel's
-               shadow-2xl → shadow-sm + border-l border-border → /60 (the
-               139-d drawer/GlobalSearch modal recipe, R124-A3 #10); the
-               trap wiring, dialog semantics and slide-in ride
-               byte-identical. */
-            className={`fixed top-0 bottom-0 left-0 ${panelWidth} ${panelHeight} bg-card border-l border-border/60 z-50 shadow-sm animate-in slide-in-from-left-8 duration-200 flex outline-none`}
+               shadow-2xl → shadow-sm + the content-facing border
+               (border-r on the left-docked drawer; R166 F6 fix) →
+               border-border/60 (the 139-d drawer/GlobalSearch modal
+               recipe, R124-A3 #10); the trap wiring, dialog semantics
+               and slide-in ride byte-identical. */
+            className={`fixed top-0 bottom-0 left-0 ${panelWidth} ${panelHeight} bg-card border-r border-border/60 z-50 shadow-sm animate-in slide-in-from-left-8 duration-200 flex outline-none`}
           >
             {/* History sidebar (collapsible) */}
             {showHistory && (

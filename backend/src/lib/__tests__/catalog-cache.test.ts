@@ -158,7 +158,7 @@ describe("withCatalogCache — read-through behavior (R104 AG5-3/AG5-7/AG10)", (
     // payloads ≈ 100-300 KB each.)
     const { cacheSet, cacheGet } = await import("../cache").then((m) => ({
       cacheSet: m.cacheSet,
-      cacheGet: m.cacheGet,
+      cacheGet: m.__cacheGetForTests,
     }));
 
     // 32 entries × ~300 KB payload → ~600 KB accounted each (the byte

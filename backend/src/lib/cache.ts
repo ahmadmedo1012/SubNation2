@@ -116,8 +116,12 @@ function memoryDelete(key: string): void {
 
 /**
  * Get a value by key. Returns null on miss. JSON-decoded.
+ *
+ * R166-B8: unexported — production readers go through `cacheWrap`/
+ * `withCatalogCache`; direct gets are a test-only need (cache-behavior
+ * assertions), served by the `__cacheGetForTests` seam below.
  */
-export async function cacheGet<T>(key: string): Promise<T | null> {
+async function cacheGet<T>(key: string): Promise<T | null> {
   const redis = getRedisClient();
   if (redis) {
     try {
@@ -200,6 +204,10 @@ const inflightLoads = new Map<string, Promise<unknown>>();
 export function __inflightLoadCountForTests(): number {
   return inflightLoads.size;
 }
+
+/** Test seam (R166-B8): direct cache reads for assertions — the production
+ * read surface is `cacheWrap`/`withCatalogCache`. */
+export const __cacheGetForTests = cacheGet;
 
 /**
  * Read-through pattern: return cached value if present, else compute via

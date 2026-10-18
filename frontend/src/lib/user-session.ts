@@ -224,7 +224,7 @@ export function handleUserUnauthorized(url: string): boolean {
  * observer registry (cannot be clobbered by the admin single-slot
  * registration). Returns the unsubscribe function.
  */
-export function installUserUnauthorizedHandler(): () => void {
+function installUserUnauthorizedHandler(): () => void {
   return addUnauthorizedHandler(({ url }) => {
     handleUserUnauthorized(url);
   });

@@ -31,10 +31,10 @@ import { useEffect } from "react";
 export type AppLanguage = "ar" | "en";
 export type Direction = "rtl" | "ltr";
 
-export const DEFAULT_LANG: AppLanguage = "ar";
+const DEFAULT_LANG: AppLanguage = "ar";
 
 /** Resolve the canonical direction for a language. */
-export function directionFor(lang: AppLanguage): Direction {
+function directionFor(lang: AppLanguage): Direction {
   return lang === "ar" ? "rtl" : "ltr";
 }
 

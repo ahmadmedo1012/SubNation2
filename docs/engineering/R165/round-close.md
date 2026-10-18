@@ -126,6 +126,11 @@ comment.
   failed.
 - **Frontend vitest (full, by directory)**: lib+hooks 398 + components
   518 + pages 1,187 = **2,103 passed**, 0 failed.
+- **Errata (added R166, the docs-audit correction — never rewrite the
+  record):** the frontend count above is the by-directory partial; the
+  full-suite run is **286 files / 2,659 passed** (reconciles exactly with
+  R163's 283/2,643 + this round's +16). The backend 2,699 is the same
+  partial methodology — it excludes `backend/src/__tests__` (15 files).
 - **Production build** (`pnpm --filter @workspace/api-server run build`):
   green — eager path **146,810 B gz** (+15 vs R162's 146,795 — the group
   module in the eager chunk; budget gate: warn > 150 KiB, fail > 160 KiB).

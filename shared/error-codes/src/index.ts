@@ -15,11 +15,7 @@
 export const ErrorCode = {
   // Validation errors
   INVALID_DATA: "INVALID_DATA",
-  INVALID_PHONE: "INVALID_PHONE",
   INVALID_PASSWORD_LENGTH: "INVALID_PASSWORD_LENGTH",
-  INVALID_PASSWORD_WEAK: "INVALID_PASSWORD_WEAK",
-  INVALID_OTP: "INVALID_OTP",
-  INVALID_CREDENTIAL: "INVALID_CREDENTIAL",
 
   // Authentication errors
   UNAUTHORIZED: "UNAUTHORIZED",
@@ -27,7 +23,6 @@ export const ErrorCode = {
   SESSION_EXPIRED: "SESSION_EXPIRED",
   ACCOUNT_LOCKED: "ACCOUNT_LOCKED",
   ACCOUNT_NOT_FOUND: "ACCOUNT_NOT_FOUND",
-  PHONE_ALREADY_REGISTERED: "PHONE_ALREADY_REGISTERED",
   FEATURE_DISABLED: "FEATURE_DISABLED",
 
   // Authorization errors
@@ -39,7 +34,6 @@ export const ErrorCode = {
   ALREADY_EXISTS: "ALREADY_EXISTS",
   CONFLICT: "CONFLICT",
   OUT_OF_STOCK: "OUT_OF_STOCK",
-  PRODUCT_UNAVAILABLE: "PRODUCT_UNAVAILABLE",
 
   // Wallet errors
   INSUFFICIENT_BALANCE: "INSUFFICIENT_BALANCE",
@@ -48,12 +42,6 @@ export const ErrorCode = {
 
   // Order errors
   ORDER_NOT_FOUND: "ORDER_NOT_FOUND",
-  ORDER_ALREADY_COMPLETED: "ORDER_ALREADY_COMPLETED",
-  ORDER_CANNOT_CANCEL: "ORDER_CANNOT_CANCEL",
-
-  // Google OAuth errors
-  GOOGLE_TOKEN_INVALID: "GOOGLE_TOKEN_INVALID",
-  GOOGLE_VERIFICATION_FAILED: "GOOGLE_VERIFICATION_FAILED",
 
   // Server errors
   INTERNAL_ERROR: "INTERNAL_ERROR",
@@ -115,6 +103,29 @@ export const ErrorCode = {
   // the backend actually emits.
   COPILOT_PHASE_DISABLED: "COPILOT_PHASE_DISABLED",
   COPILOT_SECRET_LEAK: "COPILOT_SECRET_LEAK",
+
+  // Round-R166 (B10+B11): the error-code truth reconciliation.
+  // ADDED (B11): five codes the backend actually emits that existed
+  // in no registry/spec/map — PRODUCT_STALE / VARIANT_STALE (the
+  // checkout in-tx product/variant freshness re-checks riding the
+  // retryable CONCURRENCY_ERROR envelope;
+  // backend/src/services/checkout.service.ts, shaped at
+  // backend/src/routes/orders.ts) and the copilot admin-request tool
+  // loop trio (path-allowlist refusal, the SEC-92-03
+  // mutation-confirmation gate, loopback fetch failure;
+  // backend/src/services/copilot/admin-request-tool.ts).
+  // RETIRED (B10): ten registered codes with ZERO backend emission
+  // (verified per-code grep of both `ErrorCode.<NAME>` and string
+  // literal sites): INVALID_PHONE, INVALID_PASSWORD_WEAK,
+  // INVALID_OTP, INVALID_CREDENTIAL, PHONE_ALREADY_REGISTERED,
+  // ORDER_ALREADY_COMPLETED, ORDER_CANNOT_CANCEL,
+  // PRODUCT_UNAVAILABLE, GOOGLE_TOKEN_INVALID,
+  // GOOGLE_VERIFICATION_FAILED.
+  PRODUCT_STALE: "PRODUCT_STALE",
+  VARIANT_STALE: "VARIANT_STALE",
+  COPILOT_PATH_BLOCKED: "COPILOT_PATH_BLOCKED",
+  COPILOT_CONFIRMATION_REQUIRED: "COPILOT_CONFIRMATION_REQUIRED",
+  COPILOT_LOOPBACK_FAILED: "COPILOT_LOOPBACK_FAILED",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

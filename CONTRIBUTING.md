@@ -28,8 +28,8 @@ locally first so the PR lands green:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm --filter @workspace/api-server exec vitest run      # backend suite (~255 files, R142)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (~244 files, R142)
+pnpm --filter @workspace/api-server exec vitest run      # backend suite (~289 files, R165)
+pnpm --filter @workspace/subnation run test:run          # frontend suite (~286 files, R165)
 pnpm build                                               # includes the bundle budget gate
 ```
 
@@ -66,10 +66,11 @@ Contract rules the gates enforce:
   same round (house rules in `docs/README.md`). New current-state docs carry
   `Status: CURRENT @ <date>`.
 - **Round reports**: rounds are recorded in `CHANGELOG.md` (one entry per
-  round, newest first) with audit/inspection reports under
-  `docs/engineering/R###/` while the round runs — executed rounds archived
-  to `docs/history/inspection-r###/` (the pre-R141 legacy name). Don't edit
-  past entries — corrections land as bracketed notes in the current round.
+  round, newest first) with the round's working records under
+  `docs/engineering/R###/` (R142+; indexed by `docs/engineering/README.md`);
+  pre-R142 inspections are archived in `docs/history/inspection-r###/`.
+  Don't edit past entries — corrections land as bracketed notes in the
+  current round.
 
 ## Reporting issues
 

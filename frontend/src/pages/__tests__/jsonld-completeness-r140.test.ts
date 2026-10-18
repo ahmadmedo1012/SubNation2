@@ -273,6 +273,10 @@ describe("R-140-g — buildProductLd (pure): the required Product/Offer keys", (
     expect(offers.itemCondition).toBe("https://schema.org/NewCondition");
     expect(offers.availability).toBe("https://schema.org/InStock");
     expect(offers.url).toBe(`${ORIGIN}/product/expressvpn-12m`);
+    // R166 (F2): the seller Organization — Google's recommended Offer
+    // field; SubNation IS the seller (field-mirrored with the backend
+    // shell builder so raw and hydrated LD agree).
+    expect(offers.seller).toEqual({ "@type": "Organization", name: "SubNation" });
     // Fractional API prices stay Western digits (never ٤٩٫٥٠).
     expect((buildProductLd({ ...BASE, price: 49.5 }).offers as Json).price).toBe("49.50");
     // priceValidUntil: end-of-current-year + 1 (the Merchant-required
@@ -453,6 +457,9 @@ describe("R-140-g — product.tsx: Product + Offer + BreadcrumbList end-to-end",
     expect(offers.price).toBe("49.00"); // the API number, stringified — never a constant
     expect(offers.priceCurrency).toBe("LYD");
     expect(offers.availability).toBe("https://schema.org/InStock");
+    // R166 (F2): the Offer seller rides the emitted page LD too (the
+    // same Organization node the backend shell builder mirrors).
+    expect(offers.seller).toEqual({ "@type": "Organization", name: "SubNation" });
   });
 
   it("BreadcrumbList: the الرئيسية → الفئة → المنتج chain with absolute items", () => {

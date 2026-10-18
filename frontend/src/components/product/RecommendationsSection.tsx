@@ -41,7 +41,7 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
       {/* A4-F9 (R120-B2): h2 (was h3) — this section heading sat directly
           under the page h1, skipping a level; the card titles below are
           h3 (one under their own section heading). */}
-      <h2 className="text-lg font-bold pr-1">قد يعجبك أيضاً</h2>
+      <h2 className="text-lg font-bold ps-1">قد يعجبك أيضاً</h2>
       <div className="grid grid-cols-2 gap-3">
         {isLoading
           ? Array.from({ length: 2 }).map((_, i) => (

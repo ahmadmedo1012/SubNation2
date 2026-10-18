@@ -489,7 +489,9 @@ describe("R139 (139-j) — copilot: canonical chrome + the coherent pair treatme
       '"fixed inset-0 bg-black/70 z-40 backdrop-blur-sm animate-in fade-in duration-150"',
     );
     expect(panel).toContain(
-      "bg-card border-l border-border/60 z-50 shadow-sm animate-in slide-in-from-left-8 duration-200 flex outline-none",
+      // R166 (F06): border-l → border-r — the left-docked drawer's border
+      // belongs on the content-facing edge (the admin/layout.tsx recipe).
+      "bg-card border-r border-border/60 z-50 shadow-sm animate-in slide-in-from-left-8 duration-200 flex outline-none",
     );
     const code = stripComments(panel);
     expect(code).not.toContain("shadow-2xl");

@@ -1,7 +1,7 @@
 import { Clock, TrendingUp } from "lucide-react";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
-import { formatCount, formatCurrency, formatDate } from "@/lib/utils";
+import { ORDER_COUNT_FORMS_SUBJECT, formatCount, formatCurrency, formatDate } from "@/lib/utils";
 import type { Topup } from "@workspace/api-client-react";
 import { networkLabel, topupStatusIcon, topupStatusLabel } from "@/components/wallet/topup-meta";
 
@@ -53,14 +53,10 @@ export function TopupHistoryCard({
             <span className="mr-auto text-xs text-muted-foreground font-semibold">
               {/* R94-A1 #11 (P3): Arabic pluralization via formatCount
                   (line 680 in this file already uses it for the pending
-                  counter). */}
-              {formatCount(topups.length, {
-                one: "طلب",
-                two: "طلبان",
-                few: "طلبات",
-                many: "طلباً",
-                other: "طلب",
-              })}
+                  counter). R166-A (F16): standalone count chip → the
+                  shared SUBJECT registry form («طلبان»); rendered bytes
+                  unchanged. */}
+              {formatCount(topups.length, ORDER_COUNT_FORMS_SUBJECT)}
             </span>
           )}
         </div>

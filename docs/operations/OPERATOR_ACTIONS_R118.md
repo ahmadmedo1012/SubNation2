@@ -10,7 +10,12 @@
 > a 302 — one-flag fix to 301) and 12 (copilot_actions retention policy
 > decision — currently unbounded).** **R134 refresh: #11 is DONE (the
 > standalone Traefik file router answers 301 — live-verified R130;
-> runbook §14) — the open set is now 4–7, 9–10, 12.** Read this first.
+> runbook §14) — the open set is now 4–7, 9–10, 12.** **R166: the
+> CURRENT open set lives in `OPERATIONS_RUNBOOK.md` §14 + the R165
+> round-close §9 (`docs/engineering/R165/round-close.md`) — the
+> post-R163 owner actions (INDEXNOW_KEY, GA4 spot-check, GSC sitemap
+> submission, the 24 catalog fixes) are tracked there, not here.** Read
+> this first.
 > Every item carries its evidence anchor (`docs/inspection-r118/*` — moved
 > to `docs/history/inspection-r118/` by the R122 docs reorg). Live
 > truth this list was written against (verified R118, 2026-10-06;

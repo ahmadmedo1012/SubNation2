@@ -170,6 +170,10 @@ export async function getFlashSaleHandler(_req: Request, res: Response) {
   return res.json({ flash_sale: payload });
 }
 
+// R166-B12: both URL forms are FIRST-CLASS public mounts — these canonical
+// /api/products/{stats,flash-sale} mounts and the /api/catalog/stats +
+// /api/flash-sale aliases (routes/index.ts) share the same handlers and
+// edge-cache windows; the SPA merely happens to consume the alias forms.
 router.get("/stats", catalogCache, getProductStatsHandler);
 router.get("/flash-sale", flashSaleCache, getFlashSaleHandler);
 

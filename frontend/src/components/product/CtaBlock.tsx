@@ -252,7 +252,7 @@ export function CtaBlock({
           size="lg"
           className={compact ? "shrink-0 min-w-[7.5rem] px-5" : "w-full"}
         >
-          <Loader2 className={`${compact ? "w-4 h-4" : "w-5 h-5"} ml-2 animate-spin`} />
+          <Loader2 className={`${compact ? "w-4 h-4" : "w-5 h-5"} me-2 animate-spin`} />
           {compact ? "جارٍ التحقق…" : "جارٍ التحقق من رصيدك…"}
         </Button>
       </div>

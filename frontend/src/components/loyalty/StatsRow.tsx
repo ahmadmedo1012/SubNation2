@@ -126,7 +126,7 @@ export function StatsRow({
         </div>
         <div className="text-sm text-muted-foreground">
           {data.referrals_pending > 0 && (
-            <span className="text-status-warning font-bold ml-1">
+            <span className="text-status-warning font-bold me-1">
               {/* R123-E4a (P2): pending-terminology canon — a
                   pending referral is «قيد الانتظار» (waiting on the
                   friend's first topup), matching referrals.tsx's

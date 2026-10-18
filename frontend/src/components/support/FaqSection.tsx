@@ -13,7 +13,7 @@ import { SUPPORT_FAQ } from "./support-faq";
 export function FaqSection() {
   return (
     <section className="mt-10 mb-6">
-      <h2 className="text-base font-bold mb-3 flex items-center gap-2 border-r-2 border-primary pr-3">
+      <h2 className="text-base font-bold mb-3 flex items-center gap-2 border-r-2 border-primary ps-3">
         الأسئلة الشائعة
       </h2>
       <p className="text-xs text-muted-foreground mb-4">

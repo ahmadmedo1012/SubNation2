@@ -1,4 +1,4 @@
-import { statusLabel } from "@/lib/utils";
+import { ORDER_COUNT_FORMS_SUBJECT, statusLabel } from "@/lib/utils";
 
 // R137 (FE): extracted verbatim from pages/admin/orders.tsx — the page's
 // pure module constants (the r136 checkout idiom: filter-option lists,
@@ -58,11 +58,17 @@ export const DATE_RANGES = [
 export const ORDERS_PAGE_SIZE = 100;
 
 /** Arabic plural forms for the orders counter (formatCount — the
- *  shared Arabic-plural helper had zero admin usage, A2 P3-4). */
+ *  shared Arabic-plural helper had zero admin usage, A2 P3-4).
+ *  R166-A (F16): the admin surfaces consuming this (OrdersHeader's
+ *  «… إجمالاً» / «عرض …» counts, OrdersStatsPanel's parenthetical,
+ *  OrdersTable's chip) are STANDALONE counts — the nominative dual
+ *  «طلبان», now sourced from the shared SUBJECT registry instead of a
+ *  hand-typed literal (zero/many stay local: the admin sites' forms
+ *  differ from the storefront's). Rendered bytes unchanged. */
 export const ORDER_COUNT_FORMS = {
   zero: "طلبات",
   one: "طلب",
-  two: "طلبان",
+  two: ORDER_COUNT_FORMS_SUBJECT.two,
   few: "طلبات",
   many: "طلبًا",
   other: "طلب",

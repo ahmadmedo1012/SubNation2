@@ -53,6 +53,29 @@ export function formatCount(count: number, forms: ArabicPluralForms): string {
   return `${COUNT_FORMATTER.format(count)} ${arabicCountWord(count, forms)}`;
 }
 
+// R166-A (F16): Arabic's dual has TWO variants by syntactic position —
+// nominative «طلبان» for standalone counts (chips, parentheticals, and
+// delayed subjects like «لديك طلبان») vs oblique «طلبين» after a verb,
+// masdar or preposition («تم إنشاء طلبين بنجاح»). The order-noun plural
+// was re-typed at 8 sites and drifted between the two (F02's divider);
+// both labelled forms now live here so a site adopts the grammatically
+// correct variant instead of hand-typing it.
+export const ORDER_COUNT_FORMS_SUBJECT = {
+  one: "طلب",
+  two: "طلبان",
+  few: "طلبات",
+  many: "طلباً",
+  other: "طلب",
+} satisfies ArabicPluralForms;
+
+export const ORDER_COUNT_FORMS_OBJECT = {
+  one: "طلب",
+  two: "طلبين",
+  few: "طلبات",
+  many: "طلباً",
+  other: "طلب",
+} satisfies ArabicPluralForms;
+
 // R134 (A2-F2): the word-only half of formatCount, for the two-tone count
 // sites (bold number + muted noun in separate spans, the wallet points
 // cluster and the loyalty ledger deltas) where the combined string would

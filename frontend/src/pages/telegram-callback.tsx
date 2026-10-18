@@ -238,7 +238,15 @@ export default function TelegramCallbackPage() {
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 bg-background">
       {seoBlock}
-      <div className="flex flex-col items-center gap-3 text-muted-foreground max-w-sm text-center">
+      {/* R166-A (F04): the R157 auth-callback contract, mirrored on the
+          bridge twin — role=status/polite while polling (the spinner
+          swap announces the pending state); the hang timeout flips to
+          role=alert so the verdict is heard. */}
+      <div
+        role={hangVisible ? "alert" : "status"}
+        aria-live={hangVisible ? undefined : "polite"}
+        className="flex flex-col items-center gap-3 text-muted-foreground max-w-sm text-center"
+      >
         {hangVisible ? (
           <>
             <div className="w-12 h-12 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center">

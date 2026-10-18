@@ -66,7 +66,7 @@ import {
   type Order,
 } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
-import { formatCount } from "@/lib/utils";
+import { ORDER_COUNT_FORMS_OBJECT, formatCount } from "@/lib/utils";
 
 /**
  * Checkout — the money path.
@@ -729,13 +729,11 @@ export default function CheckoutPage() {
         }
         toast({
           title: "تم إتمام الطلب",
-          description: `تم إنشاء ${formatCount(created.length, {
-            one: "طلب",
-            two: "طلبين",
-            few: "طلبات",
-            many: "طلباً",
-            other: "طلب",
-          })} بنجاح`,
+          /* R166-A (F16): the toast's count is a post-verb object
+             («تم إنشاء … بنجاح») — the shared OBJECT registry form
+             («طلبين»); rendered bytes unchanged (pinned by
+             checkout-idempotency-keys.test.tsx). */
+          description: `تم إنشاء ${formatCount(created.length, ORDER_COUNT_FORMS_OBJECT)} بنجاح`,
         });
         if (firstOrderCode && !abandonedRef.current) {
           // R161-G (multi-order honesty, the R160 NO-GO): with >1 created

@@ -203,8 +203,10 @@ const baseLogger = pino({
 /**
  * Child logger factory that auto-binds correlation context from AsyncLocalStorage.
  * All convenience helpers (alertingLogger, cwvLogger, etc.) use this internally.
+ * R166-B4: unexported — zero external consumers; the convenience helpers below
+ * are the module's public logger surface.
  */
-export function childLogger(bindings: Partial<StructuredLogFields>): pino.Logger {
+function childLogger(bindings: Partial<StructuredLogFields>): pino.Logger {
   return baseLogger.child(bindings);
 }
 

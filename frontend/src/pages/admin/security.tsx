@@ -82,7 +82,7 @@ const SECURITY_TABS = [
 
 type SecurityTabId = (typeof SECURITY_TABS)[number]["id"];
 
-export function AdminSecurityDashboard() {
+function AdminSecurityDashboard() {
   const { adminToken, hasAdminPermission } = useAuth();
   // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
   const canView = hasAdminPermission("admins");

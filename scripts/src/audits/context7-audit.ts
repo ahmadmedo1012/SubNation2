@@ -83,13 +83,7 @@ export const CONTEXT7_TOOL_QUERY = "query-docs";
  * (task 7.1) groups citations by `topic`.
  */
 export type Context7Topic =
-  | "sentry"
-  | "opentelemetry"
-  | "grafana"
-  | "lighthouse"
-  | "schema-org"
-  | "react"
-  | "vite";
+  "sentry" | "opentelemetry" | "grafana" | "lighthouse" | "schema-org" | "react" | "vite";
 
 // ---------------------------------------------------------------------------
 // On-disk record shape (mirrors task 5.1's existing file verbatim)

@@ -48,7 +48,7 @@ function channelTriplet(varName: string, fallback: string): string {
   return raw || fallback;
 }
 
-export function readChartColors(): ChartColors {
+function readChartColors(): ChartColors {
   return {
     primary: `hsl(${channelTriplet("--primary", "348 80% 48%")})`,
     success: `hsl(${channelTriplet("--status-success", "152 65% 50%")})`,

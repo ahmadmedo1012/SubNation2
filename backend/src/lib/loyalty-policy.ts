@@ -55,15 +55,21 @@ export function purchaseAwardPoints(finalPaidPrice: number): number {
   return Math.floor(finalPaidPrice);
 }
 
-/** Redemption: whole bundles of POINTS_PER_LYD only (enforced by the route). */
+/**
+ * Redemption: whole bundles of POINTS_PER_LYD only. THE single source for
+ * the convert-points route's validation predicate (R166-B2 — the route's
+ * former inline copy is deleted; its threshold pre-check is this helper's
+ * first conjunct, split only for the distinct minimum-balance message).
+ */
 export function isConvertibleBundle(points: number): boolean {
   return points >= POINTS_PER_LYD && points % POINTS_PER_LYD === 0;
 }
 
-/** LYD wallet credit a bundle conversion yields (rate pinned in the ledger row). */
-export function conversionCreditLyd(points: number): number {
-  return +(points / POINTS_PER_LYD).toFixed(2);
-}
+// R166-B2: conversionCreditLyd (toFixed(2)-based) is DELETED — it was dead
+// (zero refs) and its rounding idiom diverged from the money-canonical
+// roundLyd the convert route uses for the credit computation; a future
+// wiring would have silently changed money rounding behavior. The credit
+// is computed on the route as roundLyd(points / POINTS_PER_LYD).
 
 /** Full-redemption LYD liability of a points balance (accounting view). */
 export function pointsLiabilityLyd(points: number): number {

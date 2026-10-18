@@ -9,19 +9,13 @@ export { ErrorCode };
 // Arabic error messages for each error code
 // 93-C8 (A11 §10 + A8 F-8/F-15): wording follows A11 — user-facing
 // nouns instead of developer jargon (المورد/العنصر), a next step on
-// UNAUTHORIZED, passwordless-honest INVALID_CREDENTIAL, and the two
-// newly-enumerated codes (COPILOT_RATE_LIMITED, CSRF_CONFIG).
+// UNAUTHORIZED, passwordless-honest INVALID_CREDENTIAL (the code itself
+// retired R166 — zero backend emission), and the two newly-enumerated
+// codes (COPILOT_RATE_LIMITED, CSRF_CONFIG).
 const errorMessages: Record<ErrorCode, string> = {
   // Validation errors
   [ErrorCode.INVALID_DATA]: "بيانات غير صالحة",
-  [ErrorCode.INVALID_PHONE]: "رقم الهاتف غير صالح. يجب أن يبدأ بـ 091 أو 092 أو 093 أو 094",
   [ErrorCode.INVALID_PASSWORD_LENGTH]: "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
-  [ErrorCode.INVALID_PASSWORD_WEAK]: "كلمة المرور ضعيفة جداً. يرجى استخدام كلمة مرور أقوى",
-  [ErrorCode.INVALID_OTP]: "رمز التحقق غير صحيح أو منتهي الصلاحية",
-  // A11 §2: the storefront is passwordless (OTP/providers) — this code
-  // reaches users from the admin password path, so the message must
-  // not promise a user password that does not exist.
-  [ErrorCode.INVALID_CREDENTIAL]: "بيانات الدخول غير صحيحة",
 
   // Authentication errors
   // A11 §10: bare «غير مصرح» gave the user no next step.
@@ -29,7 +23,6 @@ const errorMessages: Record<ErrorCode, string> = {
   [ErrorCode.SESSION_EXPIRED]: "جلسة منتهية. يرجى تسجيل الدخول مرة أخرى",
   [ErrorCode.ACCOUNT_LOCKED]: "الحساب مقفل مؤقتاً بسبب محاولات فاشلة. حاول مرة أخرى بعد قليل",
   [ErrorCode.ACCOUNT_NOT_FOUND]: "المستخدم غير موجود",
-  [ErrorCode.PHONE_ALREADY_REGISTERED]: "رقم الهاتف مسجل مسبقاً",
 
   // Authorization errors
   // A11 §10: «المورد» is developer jargon — users understand pages.
@@ -40,7 +33,6 @@ const errorMessages: Record<ErrorCode, string> = {
   [ErrorCode.NOT_FOUND]: "الصفحة أو العنصر المطلوب غير موجود",
   [ErrorCode.ALREADY_EXISTS]: "هذا الحساب أو الطلب موجود بالفعل",
   [ErrorCode.OUT_OF_STOCK]: "المنتج غير متوفر حالياً. حاول مرة أخرى لاحقاً",
-  [ErrorCode.PRODUCT_UNAVAILABLE]: "المنتج غير متاح حالياً",
 
   // Wallet errors
   [ErrorCode.INSUFFICIENT_BALANCE]: "رصيد المحفظة غير كافٍ. يرجى شحن المحفظة أولاً",
@@ -49,12 +41,6 @@ const errorMessages: Record<ErrorCode, string> = {
 
   // Order errors
   [ErrorCode.ORDER_NOT_FOUND]: "الطلب غير موجود",
-  [ErrorCode.ORDER_ALREADY_COMPLETED]: "الطلب مكتمل بالفعل",
-  [ErrorCode.ORDER_CANNOT_CANCEL]: "لا يمكن إلغاء هذا الطلب",
-
-  // Google OAuth errors
-  [ErrorCode.GOOGLE_TOKEN_INVALID]: "رمز Google غير صالح",
-  [ErrorCode.GOOGLE_VERIFICATION_FAILED]: "فشل التحقق من Google. حاول مرة أخرى",
 
   // Server errors
   [ErrorCode.INTERNAL_ERROR]: "حدث خطأ في الخادم. حاول مرة أخرى",
@@ -107,6 +93,19 @@ const errorMessages: Record<ErrorCode, string> = {
   // (Record<ErrorCode, string> breaks typecheck otherwise).
   [ErrorCode.COPILOT_PHASE_DISABLED]: "هذه المرحلة من المساعد معطّلة حالياً",
   [ErrorCode.COPILOT_SECRET_LEAK]: "تم إيقاف الرد لأنه تضمّن معلومات حساسة. سُجِّل الحدث للمراجعة",
+
+  // Round-R166 (B11): five codes the backend actually emits that were
+  // previously in no registry/spec/map — the map stays exhaustive
+  // over the shared enum. The checkout in-tx staleness pair first
+  // (user-facing register — the retryable 409 re-price guidance):
+  [ErrorCode.PRODUCT_STALE]: "تغيّر سعر المنتج أو تفاصيله — راجع السلة ثم أعد المحاولة",
+  [ErrorCode.VARIANT_STALE]: "تغيّر تفاصيل الخيار المحدد — راجع السلة ثم أعد المحاولة",
+  // Then the copilot admin-request tool loop trio (admin-facing
+  // register — surfaced inside the admin copilot panel's error
+  // paths via getErrorMessage, same as the other COPILOT_* codes).
+  [ErrorCode.COPILOT_PATH_BLOCKED]: "المسار المطلوب غير مسموح للمساعد الذكي",
+  [ErrorCode.COPILOT_CONFIRMATION_REQUIRED]: "العملية تتطلب تأكيدًا صريحًا من المشرف قبل التنفيذ",
+  [ErrorCode.COPILOT_LOOPBACK_FAILED]: "تعذّر تنفيذ طلب المساعد الذكي داخلياً. حاول مرة أخرى",
 };
 
 type ErrorLike = {

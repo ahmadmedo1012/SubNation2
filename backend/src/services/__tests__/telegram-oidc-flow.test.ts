@@ -3,14 +3,16 @@ import { createHash, createSign, generateKeyPairSync, sign as cryptoSign } from 
 import { eq, sql } from "drizzle-orm";
 import { db, initTestDb, resetTestDb, userAuthIdentitiesTable, usersTable } from "../../test/db";
 import {
-  TELEGRAM_OIDC_AUTH_ENDPOINT,
+  __test,
   __testResetJwksCache,
   completeTelegramOidcLogin,
-  generatePkcePair,
   startTelegramOidcFlow,
-  verifyTelegramOidcIdToken,
 } from "../telegram-oidc-flow";
 import { consumeTelegramOidcState, __test as stateTestHooks } from "../../lib/telegram-oidc-states";
+
+// R166-B6: the OIDC primitives are test-only surface now — the production
+// export surface is the two flow entry-points (+ their result types).
+const { TELEGRAM_OIDC_AUTH_ENDPOINT, generatePkcePair, verifyTelegramOidcIdToken } = __test;
 
 /**
  * R154 (P2) — the modern Telegram Login OIDC flow, per the official

@@ -1,5 +1,5 @@
 import { Lock } from "lucide-react";
-import { formatCount, formatRelativeTime } from "@/lib/utils";
+import { ORDER_COUNT_FORMS_SUBJECT, formatCount, formatRelativeTime } from "@/lib/utils";
 import { MAX_PENDING } from "@/components/wallet/topup-preferences";
 
 // R136 (FE-1 decomposition): extracted verbatim from pages/wallet.tsx —
@@ -38,15 +38,11 @@ export function PendingLimitBanner({
             warning text measured ≈2.07:1 on white in light mode
             (AA fail). Background tints stay as-is. */}
         <p className="text-xs text-status-warning mt-0.5">
-          لديك{" "}
-          {formatCount(pendingCount, {
-            one: "طلب",
-            two: "طلبان",
-            few: "طلبات",
-            many: "طلباً",
-            other: "طلب",
-          })}{" "}
-          قيد المراجعة (الحد الأقصى {MAX_PENDING})
+          {/* R166-A (F16): «لديك …» — the counted noun is the delayed
+             SUBJECT of the nominal sentence → the shared SUBJECT registry
+             form («طلبان»); rendered bytes unchanged. */}
+          لديك {formatCount(pendingCount, ORDER_COUNT_FORMS_SUBJECT)} قيد المراجعة (الحد الأقصى{" "}
+          {MAX_PENDING})
         </p>
         {oldestPending && (
           <p className="text-2xs text-status-warning mt-1">

@@ -123,7 +123,7 @@ A **pnpm monorepo** — pnpm is enforced (installs via npm/yarn fail fast):
 backend/    Express 5 API — routes, services, jobs, middlewares, idempotent boot migrations (src/migrate.ts)
 frontend/   Vite + React 19 SPA (Arabic RTL) — pages, components, hooks; vitest suites + Playwright e2e
 shared/     db (Drizzle schema + SQL mirror) · api-spec (OpenAPI) · api-zod + api-client-react (orval-generated) · error-codes
-docs/       docs index (README.md) + 4-bucket tree (CURRENT/HISTORY/DEPRECATED/PENDING) + engineering/R###/ round reports, executed rounds archived to history/inspection-r###/ (pre-R141)
+docs/       docs index (README.md) + bucket tree (CURRENT/HISTORY/DEPRECATED/PENDING + ENGINEERING) + engineering/R###/ round records (indexed by engineering/README.md); pre-R142 inspections archived in history/inspection-r###/
 deploy/     env.compose.example — full-stack Docker Compose contract (app + WhatsApp gateway)
 scripts/    local orchestration (dev, seed, backup), cutover preflight, docker-verify
 config/     env.example — the fully annotated environment reference
@@ -157,14 +157,14 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (approximate at R143 — the suites grow every round; each
-round's CHANGELOG entry carries the exact centrally-verified counts;
-CI runs both unit suites on every code push): **frontend ≈254
-test files / ≈2,400 tests** · **backend ≈880 suites / ≈2,470 tests**
-(266 test files; 3 backend tests are the
-documented load-flaky timing class — all pass in isolation) ·
-guest-only e2e **21+ tests / 10 spec files** (desktop + mobile-390
-projects; dispatch + weekly heartbeat only — not per-push).
+Current suite (at R165 — the suites grow every round; each round's
+CHANGELOG entry carries the exact centrally-verified counts; CI runs
+both unit suites on every code push): **frontend 286 test files /
+2,659 tests** · **backend ≥2,699 tests across 289 test files** (the
+2,699 is the by-directory count; `backend/src/__tests__` — 15 files —
+sits outside it; a full recount is pending) · guest-only e2e **14 spec
+files / 135 runs** (135/135 green on production at R163 — desktop +
+mobile-390 projects; dispatch + weekly heartbeat only — not per-push).
 
 > **Schema note:** schema changes flow exclusively through the idempotent
 > boot migrations (`backend/src/migrate.ts`), which the dev server runs
@@ -258,21 +258,19 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   gates, both unit suites, production build, a CVE gate on prod deps, and
   an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy jobs
   via the workflow's path filter). Round-by-round deployment + audit
-  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest deep rounds: **R129**
-  (verification fleet over the R128 wave: adversarial review SHIP + a11y
-  contrast census + token integrity + security delta + test-truth; the
-  unwired stock-honest-cart P1 wired end-to-end, the red CI impeccable
-  gate repaired, 15 AA closes), **R128**
-  (المظهر appearance round: 15 auditors — 7 visual dimensions — + 9
-  implementation lanes; admin palette unification 227→0 raw hues, one
-  coherent brand-asset suite, PWA leaks killed, cross-surface money/copy
-  truth), **R127** (17-agent fleet: boot performance, sockets,
-  supply-chain, audit-trail UI) and **R126** (13 agents incl. Arabic
-  quality + live a11y); reports in
-  [`docs/history/inspection-r128/`](./docs/history/inspection-r128/),
-  [`docs/history/inspection-r127/`](./docs/history/inspection-r127/) and
-  [`docs/history/inspection-r126/`](./docs/history/inspection-r126/)
-  (archived R135 — the executed rounds are HISTORY).
+  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R165**
+  (the multi-order money lane — `orders.order_group_id`, the R162 ADR
+  implemented whole: the client-minted informational-only grouping
+  token, /orders clustering + the order-detail chip, 34 new pins),
+  **R164** (the Google Analytics activation — the operator's GA4 id
+  baked as the Dockerfile build default; the panel entry is an
+  override), and **R163** (the end-to-end SEO completion — robots/
+  sitemap/canonical redesign, initial-HTML product structured data,
+  IndexNow, e2e 135/135 on production); round records in
+  [`docs/engineering/R165/`](./docs/engineering/R165/),
+  [`docs/engineering/R164/`](./docs/engineering/R164/) and
+  [`docs/engineering/R163/`](./docs/engineering/R163/) — indexed by
+  [`docs/engineering/README.md`](./docs/engineering/README.md).
 - **Nightly backups are automated** (`scripts/backup-cron.sh`) — see
   [`docs/DISASTER_RECOVERY.md`](./docs/DISASTER_RECOVERY.md).
 

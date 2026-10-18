@@ -2,7 +2,7 @@
 // Valid prefixes: 091, 092, 093, 094 (Libyana & Almadar)
 // Total: 10 digits (0 + prefix digit + 7 more)
 
-export const LIBYAN_PHONE_REGEX = /^(091|092|093|094)\d{7}$/;
+const LIBYAN_PHONE_REGEX = /^(091|092|093|094)\d{7}$/;
 
 export function isValidLibyanPhone(phone: string): boolean {
   const digits = phone.replace(/\D/g, "");

@@ -15,7 +15,7 @@ function getApiBaseUrl(): string {
   return resolveApiBaseUrl();
 }
 
-export async function requireFirebaseAuth(): Promise<Auth> {
+async function requireFirebaseAuth(): Promise<Auth> {
   const auth = await getFirebaseAuth();
   if (!auth) throw new Error("تسجيل الدخول عبر Firebase غير مفعّل حالياً");
   return auth;
@@ -111,7 +111,7 @@ export async function exchangeFirebaseIdToken(
   return data;
 }
 
-export async function refreshFirebaseSession(idToken: string) {
+async function refreshFirebaseSession(idToken: string) {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/api/auth/firebase/refresh`, {
     method: "POST",
@@ -138,7 +138,7 @@ let circuitBreakUntil = 0;
 
 /** Call this immediately after a successful exchange to prevent the listener
  *  from racing the just-created session by re-calling /refresh. */
-export function suppressNextTokenRefresh() {
+function suppressNextTokenRefresh() {
   suppressNextRefresh = true;
   lastRefreshTime = Date.now();
   // A fresh exchange means the bridge is healthy — reset the circuit breaker.

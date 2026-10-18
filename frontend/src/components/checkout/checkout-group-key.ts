@@ -46,7 +46,7 @@ function lineKey(line: Pick<LocalCartItem, "productId" | "variantId">): string {
 /** The basket's line-key SET at confirm time (no quantities, no coupon —
  * the group binds to WHAT lines the attempt covers, not how many units
  * each still holds mid-retry). */
-export function checkoutGroupFingerprint(
+function checkoutGroupFingerprint(
   lines: Array<Pick<LocalCartItem, "productId" | "variantId">>,
 ): string {
   return [...new Set(lines.map(lineKey))].sort().join("|");

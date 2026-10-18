@@ -256,7 +256,7 @@ export function CatalogFiltersBar({
                returns transiently, unchanged: the family's
                hover:border-muted-foreground/90 step, this focus tint
                and the one global focus-visible ring. */
-            className="pr-9 h-11 md:h-10 bg-card/60 border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
+            className="ps-9 h-11 md:h-10 bg-card/60 border-border/50 focus:border-primary/45 transition-all duration-200 rounded-xl"
             /* 96-F5 (R96-M03): the `text-sm` override is GONE — twMerge
                let it beat the shared Input's iOS-zoom-safe
                text-base/md:text-sm baseline, so focusing the catalog

@@ -165,3 +165,52 @@ test.describe("SEO — the PDP crawler shell's structured data (R163)", () => {
     }
   });
 });
+
+test.describe("SEO — the home crawler shell's structured data (R166)", () => {
+  test("/ initial HTML carries the Organization + WebSite ld+json pair (the hydrated page's graph, pre-JS)", async ({
+    request,
+  }) => {
+    // The crawler-shell HTML (no JS execution — a plain request context;
+    // Playwright's UA is neither an unfurler nor an indexer, so this is
+    // the SPA fallback the shell-rewrite layer owns).
+    const res = await request.get("/");
+    expect(res.status()).toBe(200);
+    const html = await res.text();
+    const blocks = [
+      ...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((m) => m[1] as string);
+    // Deploy-race discipline (the PDP test's idiom): the production home's
+    // Organization/WebSite LD is CLIENT-ONLY until the R166 backend deploys
+    // — a plain request context sees zero ld+json on "/" today, so this
+    // feature-detects and skips LOUDLY instead of failing on the race.
+    if (blocks.length === 0) {
+      test.skip(true, "live home shell carries no ld+json yet — the R166 deploy is not live");
+    } else {
+      const parsed = blocks.map((b) => JSON.parse(b) as Record<string, unknown>);
+      const org = parsed.find((b) => b["@type"] === "Organization");
+      const site = parsed.find((b) => b["@type"] === "WebSite");
+      expect(org, "an Organization ld+json block").toBeDefined();
+      expect(site, "a WebSite ld+json block").toBeDefined();
+      const organization = org as Record<string, unknown>;
+      const website = site as Record<string, unknown>;
+      // The same @ids the hydrated page re-emits — the pair merges, never
+      // forks (the R163 PDP @id-merge contract, applied to the home).
+      expect(organization["@id"]).toBe("https://subnation.ly/#organization");
+      expect(organization.name).toBe("SubNation");
+      expect(organization.url).toBe("https://subnation.ly");
+      expect(website["@id"]).toBe("https://subnation.ly/#website");
+      expect(website.inLanguage).toBe("ar");
+      expect((website.publisher as Record<string, unknown>)["@id"]).toBe(
+        "https://subnation.ly/#organization",
+      );
+      // The sitelinks SearchAction target: the ?search= param home.tsx
+      // actually drives its catalog filter from.
+      const action = website.potentialAction as Record<string, unknown>;
+      expect(action["@type"]).toBe("SearchAction");
+      expect((action.target as Record<string, unknown>).urlTemplate).toBe(
+        "https://subnation.ly/?search={search_term_string}",
+      );
+      expect(action["query-input"]).toBe("required name=search_term_string");
+    }
+  });
+});

@@ -87,6 +87,7 @@ export function shapeForRoute(path: string): RouteSkeletonShape {
 const NOINDEX_ROUTES: RegExp[] = [
   /^\/login$/,
   /^\/register$/,
+  // /forgot-password — route retired (no <Route> mounts it); kept as belt (R166 F7).
   /^\/forgot-password$/,
   /^\/onboarding/,
   /^\/auth\//,

@@ -15,7 +15,7 @@ export function isFirebaseAuthConfigured() {
   );
 }
 
-export async function getFirebaseApp() {
+async function getFirebaseApp() {
   if (app !== undefined) return app;
   if (!isFirebaseAuthConfigured()) {
     app = null;

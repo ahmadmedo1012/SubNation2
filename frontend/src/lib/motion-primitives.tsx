@@ -18,14 +18,14 @@ import { m } from "motion/react";
 import type { Variants } from "motion/react";
 
 /** The sanctioned ease — one curve app-wide for reveals. */
-export const EASE_OUT_QUIET = [0.23, 1, 0.32, 1] as const;
+const EASE_OUT_QUIET = [0.23, 1, 0.32, 1] as const;
 
 /** The rise distance: 14px. Under 24px reads as a fade-with-intent;
  *  over it reads as a slide. */
 const RISE_PX = 14;
 
 /** One reveal, 620ms. `delay` is the stagger slot (multiples of 48ms). */
-export const revealVariants: Variants = {
+const revealVariants: Variants = {
   hidden: { opacity: 0, y: RISE_PX },
   shown: (delay: number = 0) => ({
     opacity: 1,
@@ -35,13 +35,13 @@ export const revealVariants: Variants = {
 };
 
 /** Group container that staggers its Reveal children by 48ms. */
-export const staggerVariants: Variants = {
+const staggerVariants: Variants = {
   hidden: {},
   shown: { transition: { staggerChildren: 0.048 } },
 };
 
 /** Child of RevealGroup — inherits the stagger, same quiet recipe. */
-export const staggerChildVariants: Variants = {
+const staggerChildVariants: Variants = {
   hidden: { opacity: 0, y: RISE_PX },
   shown: {
     opacity: 1,

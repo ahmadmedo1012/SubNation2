@@ -6,7 +6,13 @@ import { RouteSkeleton } from "@/components/ui/route-skeleton";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
-import { formatCount, formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
+import {
+  ORDER_COUNT_FORMS_SUBJECT,
+  formatCount,
+  formatCurrency,
+  formatDateShort,
+  statusLabel,
+} from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
 import { customFetch, type Order } from "@workspace/api-client-react";
 // R165 (the R162 ADR §6.2): the pure cluster computation — runs of
@@ -349,22 +355,12 @@ export default function OrdersPage() {
                 singular «طلب» after every count. R120-B7 (A6-F1): once a
                 second page may exist the count is what the list SHOWS
                 («عرض N (الأحدث أولاً)», admin/orders.tsx honesty idiom),
-                never a grand total the plain-array contract can't know. */}
+                never a grand total the plain-array contract can't know.
+                R166-A F16: the standalone count chip adopts the shared
+                SUBJECT registry form («طلبان» — nominative). */}
             {knownTotal
-              ? formatCount(orders.length, {
-                  one: "طلب",
-                  two: "طلبان",
-                  few: "طلبات",
-                  many: "طلباً",
-                  other: "طلب",
-                })
-              : `عرض ${formatCount(orders.length, {
-                  one: "طلب",
-                  two: "طلبان",
-                  few: "طلبات",
-                  many: "طلباً",
-                  other: "طلب",
-                })} (الأحدث أولاً)`}
+              ? formatCount(orders.length, ORDER_COUNT_FORMS_SUBJECT)
+              : `عرض ${formatCount(orders.length, ORDER_COUNT_FORMS_SUBJECT)} (الأحدث أولاً)`}
           </div>
         )}
       </div>
@@ -517,23 +513,22 @@ export default function OrdersPage() {
             return (
               <div key={order.id} className="space-y-2">
                 {clusterRun !== undefined && (
-                  <div
-                    className="flex items-center justify-center gap-1.5 pt-1"
-                    aria-label="عملية شراء واحدة"
-                  >
+                  /* R166-A (F05): the wrapper carries NO aria-label —
+                     aria-label on a role-less generic div is ignored
+                     (and would hide the run count if honored); the
+                     chip's own text carries the full information. */
+                  <div className="flex items-center justify-center gap-1.5 pt-1">
                     <span className="flex items-center gap-1 text-2xs font-bold text-muted-foreground bg-muted/40 border border-border/35 rounded-full px-2.5 py-1">
                       <Layers className="w-3 h-3" />
                       عملية شراء واحدة
                       <span className="text-muted-foreground/80 tabular-nums">
                         (
-                        {formatCount(clusterRun, {
-                          one: "طلب",
-                          two: "طلبين",
-                          few: "طلبات",
-                          many: "طلباً",
-                          other: "طلب",
-                        })}
-                        )
+                        {/* R166-A (F02 + F16): the run count is a standalone
+                            parenthetical — the nominative dual «طلبان» via
+                            the shared SUBJECT registry (was the oblique
+                            «طلبين», contradicting the same page's header
+                            chip). */}
+                        {formatCount(clusterRun, ORDER_COUNT_FORMS_SUBJECT)})
                       </span>
                     </span>
                   </div>

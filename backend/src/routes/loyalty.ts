@@ -24,6 +24,7 @@ import {
   POINTS_PER_LYD,
   POINTS_PER_REFERRAL,
   TIER_THRESHOLDS,
+  isConvertibleBundle,
   nextTier,
 } from "../lib/loyalty-policy";
 import { insertPointsLedgerEntry } from "../lib/points-ledger";
@@ -162,7 +163,13 @@ router.post(
           createErrorResponse(`الحد الأدنى للتحويل ${POINTS_PER_LYD} نقطة`, ErrorCode.INVALID_DATA),
         );
     }
-    if (pointsToConvert % POINTS_PER_LYD !== 0) {
+    // R166-B2: the bundle rule comes from loyalty-policy's single source
+    // now — `isConvertibleBundle` ≡ `points >= POINTS_PER_LYD && points %
+    // POINTS_PER_LYD === 0`, and the threshold conjunct is already proven
+    // true by the check above (kept separate ONLY so a low balance gets
+    // the friendlier minimum message above), so here its failure is
+    // exactly the old `pointsToConvert % POINTS_PER_LYD !== 0`.
+    if (!isConvertibleBundle(pointsToConvert)) {
       return res
         .status(400)
         .json(

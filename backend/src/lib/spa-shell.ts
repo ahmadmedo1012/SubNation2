@@ -19,6 +19,8 @@ import { indexNowKey } from "./indexnow";
 // re-exports + the parity suites) keeps its import path.
 import { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
 import { buildShellProductLd, injectJsonLdScript } from "./shell-product-ld";
+// R166 (F4): the home's Organization + WebSite LD pair (frontend mirror).
+import { buildShellOrganizationLd, buildShellWebsiteLd } from "./shell-website-ld";
 export { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
 import type { Express, NextFunction, Request, Response } from "express";
 import express from "express";
@@ -228,8 +230,7 @@ function clampSeoTitleForShell(title: string): string {
  * /product/<slug> bursts reached Neon directly. Now the row + display
  * price ride the catalog cache idiom (lib/catalog-cache.ts): 60 s TTL,
  * generation-bumped by admin product/variant/flash-sale/pricing CRUD —
- * the same freshness contract the /api/products detail routes accept
- * (their DTO prices are equally flash-sale-derived at 60 s).
+ * the same freshness contract the /api/products detail routes accept.
  *
  * Dead-slug misses ARE cached ({ found: false }): the A3 attack rotates
  * unique garbage slugs, and an uncached 404 path would leave that DoS
@@ -256,6 +257,8 @@ export interface ShareSurfaceProduct {
    * claim InStock against a page whose UI says «نفد المخزون».
    */
   stockCount: number;
+  /** R166 (F3): raw category slug — the shell LD's Product.category field. */
+  category: string | null;
 }
 
 async function lookupProductForShareSurfaces(
@@ -292,6 +295,7 @@ async function lookupProductForShareSurfaces(
           // hydrated page renders (frontend/src/pages/product.tsx).
           seoTitle: productsTable.seoTitle,
           seoDescription: productsTable.seoDescription,
+          category: productsTable.category,
           // R163: the deliverable-stock scalar — the catalog's own
           // is_available predicate, so the JSON-LD and the API can never
           // disagree on stock. ⚠ Columns are HAND-QUALIFIED: drizzle
@@ -344,6 +348,7 @@ async function lookupProductForShareSurfaces(
 const SHELL_NOINDEX_RES: RegExp[] = [
   /^\/login$/,
   /^\/register$/,
+  // /forgot-password — route retired (no <Route> mounts it); kept as belt (R166 F7).
   /^\/forgot-password$/,
   /^\/onboarding(\/|$)/,
   /^\/auth(\/|$)/,
@@ -389,12 +394,11 @@ export interface SpaShellMeta {
    *  static baseline says `website` on every route). */
   ogType?: string;
   /**
-   * R163: serialized JSON-LD object to inject as ONE
-   * <script type="application/ld+json"> before </head> (the PDP's
-   * initial-HTML Product/Offer structured data — see
-   * buildShellProductLd). Undefined = no injection.
+   * R163 (R166: array form): serialized JSON-LD block(s), each injected as a
+   * <script type="application/ld+json"> before </head> — the PDP's Product/
+   * Offer, the home's Organization + WebSite pair. Undefined = no injection.
    */
-  jsonLd?: string;
+  jsonLd?: string | string[];
 }
 
 /**
@@ -461,32 +465,27 @@ function rewriteOutsideComments(html: string, rewrite: (segment: string) => stri
 // ── R136 (PERF #10): bounded memoization of applySpaShellMeta ────────────────
 //
 // The shell rewrite is a PURE function of (html, meta) — html is the
-// boot-time SPA_SHELL_HTML snapshot, meta comes from the small closed
-// set resolveSpaShellMeta produces (home/category/static metas, the
-// shared noindex stamp, per-product rows riding the 60 s catalog
-// cache). Yet every non-API GET paid the full pipeline — a
-// comment-boundary split over the whole ~20-30 KB document plus 5+
-// regex passes per non-comment segment (title, og:title, description,
-// og:description, robots, og:image ± dimension strips, canonical) —
-// just to rebuild a byte-identical string. This block memoizes the
+// boot-time SPA_SHELL_HTML snapshot, meta comes from the small closed set
+// resolveSpaShellMeta produces (home/category/static metas, the shared
+// noindex stamp, per-product rows riding the 60 s catalog cache). Yet
+// every non-API GET paid the full pipeline — a comment-boundary split over
+// the whole ~20-30 KB document plus 5+ regex passes per non-comment segment
+// — just to rebuild a byte-identical string. This block memoizes the
 // output: a bounded LRU (~200 entries) keyed by the SERIALIZED meta,
 // guarded by an html identity check.
 //
 //   - Key: JSON.stringify(meta). Undefined/absent fields stringify
-//     identically AND behave identically in the rewriter, so the key
-//     is a faithful equivalence class; field-order permutations at
-//     worst duplicate an entry (harmless — same output).
-//   - Guard: `html !== memoHtml` (string VALUE equality; O(1) for the
-//     hot path, where every caller passes the SAME SPA_SHELL_HTML
-//     reference). A different html — the unit tests' stub shells —
-//     resets the map, so a cached output can never be served for a
-//     different shell. This is the correctness invariant that makes
-//     keying on meta alone safe.
-//   - Bound: Map insertion order = LRU age; the oldest key is evicted
-//     at 200 entries. Real cardinality is ~60 (7 categories + 3
-//     statics + home + noindex stamp + 404 stamp + live product rows),
-//     so eviction is a safety valve against pathological URL shapes,
-//     not an expected event.
+//     identically AND behave identically in the rewriter, so the key is a
+//     faithful equivalence class; field-order permutations at worst
+//     duplicate an entry (harmless — same output).
+//   - Guard: `html !== memoHtml` (string VALUE equality; O(1) for the hot
+//     path, where every caller passes the SAME SPA_SHELL_HTML reference). A
+//     different html — the unit tests' stub shells — resets the map, so a
+//     cached output can never be served for a different shell. This is the
+//     correctness invariant that makes keying on meta alone safe.
+//   - Bound: Map insertion order = LRU age; the oldest key is evicted at
+//     200 entries. Real cardinality is ~60, so eviction is a safety valve
+//     against pathological URL shapes, not an expected event.
 //   - Miss path: byte-identical to the pre-R136 rewriter.
 const SHELL_META_CACHE_MAX_ENTRIES = 200;
 let memoHtml: string | null = null;
@@ -563,17 +562,17 @@ function rewriteSpaShellMeta(html: string, meta: SpaShellMeta): string {
     if (meta.canonical !== undefined) {
       out = rewriteCanonical(out, meta.canonical);
     }
-    // R163: the initial-HTML Product structured-data arm. Google's
-    // product-snippet technical guidance explicitly recommends putting
-    // Product structured data in the initial HTML "for best results" —
-    // JS-only markup makes Shopping crawls less reliable for exactly
-    // the fields that change (price, availability). The block is a
-    // serialized JSON object (@id-anchored to the same node the
-    // hydrated page's JsonLd component re-emits, so the two merge into
-    // one entity); it is inert data, not executable script — CSP
-    // script-src never applies to application/ld+json.
+    // R163: the initial-HTML structured-data arm (Google's product-snippet
+    // guidance: initial-HTML markup beats JS-only for the fields that
+    // change — price, availability). Each block is @id-anchored to the
+    // same node the hydrated page's JsonLd re-emits (the pair merges into
+    // one entity); inert data, not executable script — CSP script-src
+    // never applies to application/ld+json. R166 (F4): string[] = the
+    // home's multi-block pair, injected in order before </head>.
     if (meta.jsonLd !== undefined) {
-      out = injectJsonLdScript(out, meta.jsonLd);
+      for (const block of Array.isArray(meta.jsonLd) ? meta.jsonLd : [meta.jsonLd]) {
+        out = injectJsonLdScript(out, block);
+      }
     }
     return out;
   });
@@ -586,17 +585,19 @@ function rewriteSpaShellMeta(html: string, meta: SpaShellMeta): string {
 export async function resolveSpaShellMeta(pathname: string, origin: string): Promise<SpaShellMeta> {
   const norm = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   if (norm === "" || norm === "/") {
-    // B12-F1 (R127-L9): the static baseline (index.html) ships the
-    // generic brand-first default while the hydrated home page renders
-    // the keyword-forward copy above — the split meta signal R122
-    // (A7-P1-1) eliminated for products. Rewrites <title> + og:title +
-    // description + og:description; the static apex canonical,
-    // index,follow robots and the og:image set are already correct for
-    // "/" and stay untouched (parity-pinned by spa-shell-route-parity).
+    // B12-F1 (R127-L9): the static baseline ships the generic brand-first
+    // default while the hydrated page renders the keyword-forward copy —
+    // the split meta signal R122 (A7-P1-1) eliminated for products.
+    // Rewrites <title> + og:title + description + og:description; the
+    // static apex canonical, robots and og:image set stay untouched
+    // (parity-pinned by spa-shell-route-parity). R166 (F4): the raw shell
+    // also carries the home's Organization + WebSite LD pair (the static
+    // constants the hydrated page emits — same @ids, so WRS merges them).
     return {
       status: 200,
       title: SHELL_HOME_META.title,
       description: SHELL_HOME_META.description,
+      jsonLd: [buildShellOrganizationLd(origin), buildShellWebsiteLd(origin)],
     };
   }
 
@@ -755,13 +756,11 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
  * The unfurler list stays a STRICT allowlist — nothing gets the card
  * unless it is a known link-preview fetcher. The indexer list exists
  * so the card middleware can EXCLUDE crawlers explicitly (belt and
- * suspenders against future list drift); its tokens are chosen to
- * never match a normal browser UA — verified against real strings:
- * Googlebot Smartphone is
- * "… (Linux; Android 6.0.1…) … Chrome/120 … Mobile Safari/537.36
- * (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" —
- * matched by `googlebot`, while ordinary Chrome/Safari/Firefox UAs
- * contain none of these tokens.
+ * suspenders against future list drift); its tokens are chosen to never
+ * match a normal browser UA (verified against real strings: Googlebot
+ * Smartphone's "… (compatible; Googlebot/2.1; …)" is matched by
+ * `googlebot`, while ordinary Chrome/Safari/Firefox UAs contain none
+ * of these tokens).
  *
  * server.ts's boot gate imports the UNFURLER half (via app.ts's
  * re-export) so the gated set can never drift from the set the
@@ -834,14 +833,12 @@ export function mountSpaShellRoutes(app: Express): void {
       // B12-F1 (R127-L9): index:false — the DEFAULT directory-index serve
       // made GET / resolve to index.html HERE, so the homepage bypassed
       // the per-route shell rewrite below (resolveSpaShellMeta never saw
-      // "/" — its old "homepage shell is already correct" early return
-      // was dead code for real traffic, and the raw baseline shipped
-      // while every other route got its rewritten meta). Directory
-      // requests now fall through to the SPA fallback, which owns ALL
-      // html route-serving; the dist root is the only directory with an
-      // index.html, so "/" is the one path whose behavior changes.
-      // Direct file hits (manifest, icons, robots.txt, and /index.html —
-      // the known A11-F6 canonical-consolidation item) are unaffected.
+      // "/", and the raw baseline shipped while every other route got its
+      // rewritten meta). Directory requests now fall through to the SPA
+      // fallback, which owns ALL html route-serving; the dist root is the
+      // only directory with an index.html, so "/" is the one path whose
+      // behavior changes. Direct file hits (manifest, icons, robots.txt,
+      // /index.html) are unaffected.
       index: false,
       // A11-F2 (R126-L6): redirect:false — the art directory
       // (frontend/public/products → dist/products) made express.static
@@ -849,9 +846,8 @@ export function mountSpaShellRoutes(app: Express): void {
       // a +1-RTT double hop for every direct/external hit (and
       // 302+301 from http). With redirects off, a directory hit falls
       // through to the SPA fallback below, which serves the route
-      // directly (same shell family /products/ already serves). Real
-      // files under /products/<file> are unaffected — only the
-      // no-slash DIRECTORY redirect changes.
+      // directly; real files under /products/<file> are unaffected —
+      // only the no-slash DIRECTORY redirect changes.
       redirect: false,
       setHeaders(res, filePath) {
         // HTML, SW, and robots must never be cached aggressively.
@@ -931,7 +927,11 @@ export function mountSpaShellRoutes(app: Express): void {
       const product = lookup.row;
       const esc = escapeHtmlAttr;
       const origin = appOrigin();
-      const canonical = `${origin}/product/${slugOrId}`;
+      // R166 (F5): the card's canonical follows the row's slug (the same
+      // URL the crawler shell + hydrated page canonicalize a numeric share
+      // to) — the old raw-slugOrId form claimed /product/10 on a numeric
+      // share while every other surface said the slug URL.
+      const canonical = `${origin}/product/${product.slug ?? slugOrId}`;
       // 110-F (R110 — 109-n P2): r103 absolutized og:image in MetaTags but
       // missed this no-JS surface — unfurlers (WhatsApp/Facebook, the
       // dominant share channel in Libya) drop RELATIVE image URLs, so

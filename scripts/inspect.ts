@@ -5,7 +5,8 @@
  * Spec: .kiro/specs/observability-seo-cwv-maturity
  *   - Requirements: R1.1–R1.10, R10.1–R10.9
  *   - Design:       §3.1.16 Phase 1 inspection runner
- *   - Tasks:        1.2 (this file), 1.1 (companion `backend/src/lib/inspection-runner.ts`)
+ *   - Tasks:        1.2 (this file), 1.1 (companion `scripts/src/inspection-runner.ts`,
+ *                   moved from backend/src/lib in R166-B1 — dev tooling, not server code)
  *
  * Responsibilities of this entry point (R1.9):
  *   1. Import `runInspection` from the Phase 1 runner module.
@@ -56,7 +57,7 @@ import {
   runInspection,
   type InspectionReport,
   type MasterExecutionPlan,
-} from "../backend/src/lib/inspection-runner.ts";
+} from "./src/inspection-runner.ts";
 
 // ── Repo root resolution ─────────────────────────────────────────────────────
 

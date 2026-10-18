@@ -5606,17 +5606,12 @@ components:
       type: string
       enum:
         - INVALID_DATA
-        - INVALID_PHONE
         - INVALID_PASSWORD_LENGTH
-        - INVALID_PASSWORD_WEAK
-        - INVALID_OTP
-        - INVALID_CREDENTIAL
         - UNAUTHORIZED
         - INVALID_TOKEN
         - SESSION_EXPIRED
         - ACCOUNT_LOCKED
         - ACCOUNT_NOT_FOUND
-        - PHONE_ALREADY_REGISTERED
         - FEATURE_DISABLED
         - FORBIDDEN
         - INSUFFICIENT_PERMISSIONS
@@ -5624,15 +5619,10 @@ components:
         - ALREADY_EXISTS
         - CONFLICT
         - OUT_OF_STOCK
-        - PRODUCT_UNAVAILABLE
         - INSUFFICIENT_BALANCE
         - INVALID_AMOUNT
         - TOPUP_LIMIT_EXCEEDED
         - ORDER_NOT_FOUND
-        - ORDER_ALREADY_COMPLETED
-        - ORDER_CANNOT_CANCEL
-        - GOOGLE_TOKEN_INVALID
-        - GOOGLE_VERIFICATION_FAILED
         - INTERNAL_ERROR
         - SERVICE_UNAVAILABLE
         - RATE_LIMITED
@@ -5668,6 +5658,26 @@ components:
         # outbound secret-scan 502 abort (ask/draft routes).
         - COPILOT_PHASE_DISABLED
         - COPILOT_SECRET_LEAK
+        # Round-R166 (B10+B11): the error-code truth reconciliation.
+        # ADDED (B11): five emitted-but-previously-unenumerated codes —
+        # the checkout in-tx product/variant freshness re-checks
+        # (PRODUCT_STALE/VARIANT_STALE, checkout.service.ts, shaped as
+        # the retryable 409 at routes/orders.ts) and the copilot
+        # admin-request tool loop trio (path-allowlist refusal,
+        # SEC-92-03 mutation-confirmation gate, loopback fetch
+        # failure — admin-request-tool.ts).
+        # RETIRED (B10): ten registered codes with zero backend
+        # emission, removed from the enum in the same round
+        # (INVALID_PHONE, INVALID_PASSWORD_WEAK, INVALID_OTP,
+        # INVALID_CREDENTIAL, PHONE_ALREADY_REGISTERED,
+        # ORDER_ALREADY_COMPLETED, ORDER_CANNOT_CANCEL,
+        # PRODUCT_UNAVAILABLE, GOOGLE_TOKEN_INVALID,
+        # GOOGLE_VERIFICATION_FAILED).
+        - PRODUCT_STALE
+        - VARIANT_STALE
+        - COPILOT_PATH_BLOCKED
+        - COPILOT_CONFIRMATION_REQUIRED
+        - COPILOT_LOOPBACK_FAILED
 
     # 409 body returned by the idempotency middleware
     # (backend/src/middlewares/idempotency.ts): the same Idempotency-Key

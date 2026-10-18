@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-  ALERT_RULES,
-  buildRunbookUrl,
-  formatDiscordPayload,
-  formatTelegramMessage,
-  redactSensitive,
-  type AlertEvent,
-} from "../alerting.service";
+import { ALERT_RULES, __test, type AlertEvent } from "../alerting.service";
+
+// R166-B5: the pure formatters are test-only surface now — the production
+// import surface is the singleton + AlertEvent + dispatchTestAlert.
+const { buildRunbookUrl, formatDiscordPayload, formatTelegramMessage, redactSensitive } = __test;
 
 function eventFor(ruleName: string, summary: string): AlertEvent {
   const rule = ALERT_RULES.find((r) => r.name === ruleName)!;

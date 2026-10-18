@@ -179,7 +179,7 @@ export function SessionManager() {
                     current chip only, exactly what the API honestly knows. */}
               </div>
               {session.current && (
-                <span className="text-3xs bg-primary/15 text-primary-text border border-primary/30 px-2 py-0.5 rounded-full font-bold shrink-0 mr-2">
+                <span className="text-3xs bg-primary/15 text-primary-text border border-primary/30 px-2 py-0.5 rounded-full font-bold shrink-0 ms-2">
                   {/* R139 (precision): chip edge /25 → /30 — the one
                       static-badge border value the family converged on
                       (139-f's variant-count badge decision). */}

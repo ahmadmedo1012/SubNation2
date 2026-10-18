@@ -164,6 +164,10 @@ export function buildProductLd(p: ProductLdInput) {
           ? "https://schema.org/OutOfStock"
           : "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
+      // R166 (F2): Google's Product docs list Offer.seller among the
+      // recommended fields — SubNation IS the seller (no fabrication;
+      // field-mirrored with the backend shell builder, shell-product-ld.ts).
+      seller: { "@type": "Organization", name: "SubNation" },
     },
   };
 }

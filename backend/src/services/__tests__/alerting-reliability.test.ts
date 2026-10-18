@@ -71,7 +71,9 @@ afterEach(() => {
 
 describe("F1 — evaluator re-entrancy guard", () => {
   it("skips an overlapping 60 s tick while the previous cycle is still in flight, then resumes", async () => {
-    const { AlertingService } = await importAlerting();
+    const { __test } = await importAlerting();
+    // R166-B5: the class ships as test-only surface via __test.
+    const { AlertingService } = __test;
 
     let hangRelease!: () => void;
     let firstRuleChecks = 0;
@@ -117,7 +119,8 @@ describe("F1 — evaluator re-entrancy guard", () => {
 
 describe("F1 — bounded in-memory dedup fallback (no Redis)", () => {
   it("same dedupeKey within the 300 s TTL → deduped; a different key is not", async () => {
-    const { AlertingService, __test } = await importAlerting();
+    const { __test } = await importAlerting();
+    const { AlertingService } = __test;
     __test.resetDedupMemoryStore();
     const isDeduped = isDedupedOf(new AlertingService());
 
@@ -130,7 +133,8 @@ describe("F1 — bounded in-memory dedup fallback (no Redis)", () => {
 
   it("entries expire after the 300 s TTL and become re-claimable", async () => {
     vi.useFakeTimers();
-    const { AlertingService, __test } = await importAlerting();
+    const { __test } = await importAlerting();
+    const { AlertingService } = __test;
     __test.resetDedupMemoryStore();
     const isDeduped = isDedupedOf(new AlertingService());
 
@@ -141,7 +145,8 @@ describe("F1 — bounded in-memory dedup fallback (no Redis)", () => {
   });
 
   it("store is capped at 128 entries — inserting #129 evicts the OLDEST claim (FIFO)", async () => {
-    const { AlertingService, __test } = await importAlerting();
+    const { __test } = await importAlerting();
+    const { AlertingService } = __test;
     __test.resetDedupMemoryStore();
     const isDeduped = isDedupedOf(new AlertingService());
 
@@ -160,7 +165,8 @@ describe("F1 — bounded in-memory dedup fallback (no Redis)", () => {
   });
 
   it("the fallback engages end-to-end: a second dispatch of the same alert is deduped without Redis", async () => {
-    const { AlertingService, __test } = await importAlerting();
+    const { __test } = await importAlerting();
+    const { AlertingService } = __test;
     __test.resetDedupMemoryStore();
 
     globalThis.fetch = vi.fn(async () => tgResponse({ ok: true })) as unknown as typeof fetch;
@@ -185,7 +191,8 @@ function tgResponse(body: unknown, status = 200): Response {
 
 describe("F5 — Telegram 200 ok:false is a failure, not a delivery", () => {
   it("200 with body.ok:false → counted as failed after the retry (2 attempts, ok:false in the error)", async () => {
-    const { AlertingService, __test } = await importAlerting();
+    const { __test } = await importAlerting();
+    const { AlertingService } = __test;
     __test.resetDedupMemoryStore();
 
     const fetchMock = vi.fn(async () =>
@@ -216,7 +223,8 @@ describe("F5 — Telegram 200 ok:false is a failure, not a delivery", () => {
   });
 
   it("200 with body.ok:true → delivered on the first attempt (regression)", async () => {
-    const { AlertingService, __test } = await importAlerting();
+    const { __test } = await importAlerting();
+    const { AlertingService } = __test;
     __test.resetDedupMemoryStore();
 
     const fetchMock = vi.fn(async () => tgResponse({ ok: true, result: { message_id: 1 } }));
@@ -232,7 +240,8 @@ describe("F5 — Telegram 200 ok:false is a failure, not a delivery", () => {
   });
 
   it("200 with an unparseable body → still a failure (never counted as delivered)", async () => {
-    const { AlertingService, __test } = await importAlerting();
+    const { __test } = await importAlerting();
+    const { AlertingService } = __test;
     __test.resetDedupMemoryStore();
 
     const fetchMock = vi.fn(async () => new Response("not json", { status: 200 }));

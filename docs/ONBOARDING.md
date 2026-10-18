@@ -1,6 +1,8 @@
 # SubNation — Developer Onboarding
 
-> Status: CURRENT @ 2026-10-10 (R128). The ordered path for a new developer:
+> Status: CURRENT @ 2026-10-18 (R166 — §6 rewritten to the
+> engineering/R### round-record world; originally added R126, suite-size
+> counts restamped R128). The ordered path for a new developer:
 > read top-to-bottom, ~30 minutes of reading before the first commit. The
 > docs front door (buckets, house rules) is [`docs/README.md`](./README.md);
 > this page is the developer journey through it.
@@ -16,7 +18,7 @@ A **pnpm monorepo** (`pnpm` is enforced — npm/yarn installs fail fast):
 | `shared/db` | Drizzle schema + SQL migration mirror |
 | `shared/api-spec` | The OpenAPI contract (`openapi.yaml`) — the source of the generated clients |
 | `shared/api-zod` · `shared/api-client-react` | **orval-generated** from the spec (committed; drift-gated in CI) |
-| `docs/` | 4-bucket docs tree (CURRENT / HISTORY / DEPRECATED / PENDING) + `inspection-r###/` round reports |
+| `docs/` | docs tree — CURRENT / HISTORY / DEPRECATED / PENDING buckets + the ENGINEERING round records (`engineering/R###/`, R142+; indexed by `engineering/README.md`) |
 | `specs/` | Dated spec-driven working directories (spec / plan / priorities / checklists) |
 | `config/` · `deploy/` · `scripts/` | `env.example` reference · compose contract · local orchestration (dev, seed, backup) |
 
@@ -100,15 +102,22 @@ This repo ships by **round** (no semver), and every round leaves an
 evidence trail:
 
 - [`CHANGELOG.md`](../CHANGELOG.md) — one entry per round, newest first:
-  changes + measured evidence + gates run on the merged tree.
-- `docs/inspection-r###/` — the round's audit reports (A1–A12 style), one
-  file per auditor; once the round is executed the whole directory is
-  archived under `docs/history/inspection-r###/` (R122/R135 policy — the
-  r94–r130 + r134 evidence lives there).
+  changes + measured evidence + gates run on the merged tree. The round
+  **ledger**.
+- `docs/engineering/R###/` — the round's working records (**R142+**):
+  one `round-close.md` per round (the convention since R146; R142–R145
+carry findings ledgers / defect maps / lane `.jsonl` evidence instead),
+  plus ADRs + verification docs. Indexed by
+  [`docs/engineering/README.md`](./engineering/README.md) (the round
+  table + conventions + the R155/R159 gap note).
+- `docs/history/inspection-r###/` — the **pre-R142 archive** of executed
+  inspection rounds (the r94–r130 + r134 audit evidence, moved there by
+  the R122/R135 sweeps; `docs/history/README.md` is the move map). Dated
+  records, append-only.
 - `docs/project-plan/10-progress-log.md` — the append-only progress ledger.
-- `docs/README.md` — round records + the pointer hierarchy of record:
-  this index → `docs/project-state/source-of-truth.md` (current live
-  state) → `docs/architecture/FINAL_*` (topology).
+- `docs/README.md` — the docs front door + the pointer hierarchy of
+  record: this index → `docs/project-state/source-of-truth.md` (current
+  live state) → `docs/architecture/FINAL_*` (topology).
 
 Conventional commits carry the round tag: `fix(backend): … (R126)`.
 Claimed behavior in docs/PRs is evidence-stamped (file:line, command

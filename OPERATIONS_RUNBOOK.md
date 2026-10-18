@@ -709,7 +709,7 @@ accounts can press them.
   unaffected. **Rollback = delete the file** (Traefik watches the directory
   and live-reloads).
 
-## 14. Pending operator actions (living list — R122 base, additions through R134)
+## 14. Pending operator actions (living list — R122 base, additions through R166)
 
 - **GSC verification token** — `VITE_GSC_VERIFICATION` is still unset (the
   `Dockerfile` ARG exists at the build). Paste-and-go: operator pastes the
@@ -770,6 +770,29 @@ accounts can press them.
   the live rows into the JSON or your edits will fight the DB
   (keep-unless-force means the DB wins by default). The importer itself
   warns about this now (its header, R134 A7-F3).
+- **R163 — IndexNow activation (minutes):** `openssl rand -hex 16` → set
+  `INDEXNOW_KEY` in the Coolify runtime env → **restart** (the key-file
+  route mounts at boot; unset = the whole feature is inert — a test
+  submission already answered HTTP 202 from api.indexnow.org, pending
+  the key). Rationale + steps:
+  `docs/engineering/R165/round-close.md` §9.4 (carried from
+  `docs/engineering/R164/round-close.md` §6.4).
+- **R164 — GA4 post-deploy spot-check (optional, minutes):** the
+  activation is bundle-proven live (the id rides the deployed production
+  bundle); glance at the GA4 Realtime report or DevTools → Network →
+  `gtag/js?id=G-RKRV3ZC3MF` + a `collect` beacon to confirm collection.
+  `docs/engineering/R165/round-close.md` §9.2.
+- **R163 — Google Search Console (minutes, owner-only):** verify sitemap
+  status + request indexing for the homepage + categories (no
+  authenticated GSC session exists in the agent environment).
+  `docs/engineering/R163/round-close.md` §11.1 +
+  `docs/engineering/R165/round-close.md` §9.5.
+- **R162/R163 — the 24 mechanical catalogue fixes (one sitting):** apply
+  via the admin panel per the census document's application paths (live
+  facts re-verified 24/24 at R163; needs an authorized admin session —
+  the census is `docs/engineering/R162/catalog-content-review.md`).
+  `docs/engineering/R163/round-close.md` §11.3 +
+  `docs/engineering/R165/round-close.md` §9.6.
 
 ## 15. Backups & restore drills (pointer)
 

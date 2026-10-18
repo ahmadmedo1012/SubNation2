@@ -240,7 +240,9 @@ function numericLe(le: string): number {
 
 // ── Service ──────────────────────────────────────────────────────────────────
 
-export class AlertingService {
+// R166-B5: unexported — production consumers use the `alertingService`
+// singleton; tests reach the class/formatters via `__test` below.
+class AlertingService {
   private readonly alertsDispatchedTotal = getRegistry().getSingleMetric(
     "alerts_dispatched_total",
   ) as import("prom-client").Counter<string> | undefined;
@@ -956,7 +958,7 @@ const REDACTION_PATTERNS: Array<{ kind: string; re: RegExp }> = [
   },
 ];
 
-export function redactSensitive(input: string): string {
+function redactSensitive(input: string): string {
   if (!input) return input;
   let out = input;
   for (const { kind, re } of REDACTION_PATTERNS) {
@@ -974,7 +976,7 @@ function parseThreshold(threshold: string): number {
   return match ? parseFloat(match[1]!) : 0;
 }
 
-export function buildRunbookUrl(section: string): string {
+function buildRunbookUrl(section: string): string {
   // R104 (AG12-5): default to the GitHub blob URL — the old default
   // (`${APP_URL}/OPERATIONS_RUNBOOK.md`) pointed at a path the origin
   // never served (the runbook lives at the repo root, not in the
@@ -987,7 +989,7 @@ export function buildRunbookUrl(section: string): string {
   return `${base}${section}`;
 }
 
-export function formatTelegramMessage(event: AlertEvent): string {
+function formatTelegramMessage(event: AlertEvent): string {
   const sevEmoji =
     event.severity === "critical" ? "🔴" : event.severity === "warning" ? "🟡" : "🔵";
   const lines = [
@@ -1001,7 +1003,7 @@ export function formatTelegramMessage(event: AlertEvent): string {
   return lines.join("\n");
 }
 
-export function formatDiscordPayload(event: AlertEvent): unknown {
+function formatDiscordPayload(event: AlertEvent): unknown {
   const colorBySeverity: Record<AlertSeverity, number> = {
     info: 0x3b82f6,
     warning: 0xeab308,
@@ -1028,8 +1030,13 @@ export function formatDiscordPayload(event: AlertEvent): unknown {
 
 export const alertingService = new AlertingService();
 
-/** Test-only hooks: isolate + shrink the F1 in-memory dedup store between cases. */
+/** Test-only hooks: dedup-store isolation + R166-B5 unexport surface. */
 export const __test = {
+  AlertingService,
+  redactSensitive,
+  buildRunbookUrl,
+  formatTelegramMessage,
+  formatDiscordPayload,
   resetDedupMemoryStore(): void {
     dedupMemoryStore.clear();
     dedupPruneCounter = 0;

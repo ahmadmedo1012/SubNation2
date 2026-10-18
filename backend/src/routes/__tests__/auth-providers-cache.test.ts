@@ -5,7 +5,7 @@ import { adminUsersTable, db, initTestDb, resetTestDb } from "../../test/db";
 import { createAdminSession } from "../../lib/admin-session";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { requirePermission } from "../../lib/permissions";
-import { cacheDelete, cacheGet, cacheSet } from "../../lib/cache";
+import { __cacheGetForTests as cacheGet, cacheDelete, cacheSet } from "../../lib/cache";
 import { authProviderAdminRouter, authProviderPublicRouter } from "../auth-settings";
 
 /**

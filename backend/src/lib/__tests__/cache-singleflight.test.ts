@@ -78,13 +78,14 @@ describe("cacheWrap single-flight (F-2, R118-A6)", () => {
   });
 
   it("after the shared load settles the entry is removed and the value is served from cache (no stale promise reuse)", async () => {
-    const { cacheWrap, __inflightLoadCountForTests, cacheGet } = await importCache();
+    const {
+      cacheWrap,
+      __inflightLoadCountForTests,
+      __cacheGetForTests: cacheGet,
+    } = await importCache();
     const loader = vi.fn(async () => ({ n: 1 }));
 
-    await Promise.all([
-      cacheWrap("sf:settle", 60, loader),
-      cacheWrap("sf:settle", 60, loader),
-    ]);
+    await Promise.all([cacheWrap("sf:settle", 60, loader), cacheWrap("sf:settle", 60, loader)]);
     expect(loader).toHaveBeenCalledTimes(1);
     expect(__inflightLoadCountForTests()).toBe(0);
 
@@ -107,7 +108,11 @@ describe("cacheWrap single-flight (F-2, R118-A6)", () => {
   });
 
   it("loader failure: both concurrent awaiters see the rejection, the entry is cleared, and the next call retries live", async () => {
-    const { cacheWrap, __inflightLoadCountForTests, cacheGet } = await importCache();
+    const {
+      cacheWrap,
+      __inflightLoadCountForTests,
+      __cacheGetForTests: cacheGet,
+    } = await importCache();
     const boom = vi.fn(async () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
       throw new Error("db down");

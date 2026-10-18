@@ -19,9 +19,9 @@ import { db, initTestDb, productsTable, resetTestDb } from "../../test/db";
  *     sitemap;
  *   - sitemap.xml: content-type application/xml; every <loc> carries
  *     the canonical APP_ORIGIN; ARCHIVED and INACTIVE products are
- *     excluded while active ones are listed by SLUG (id fallback only
- *     for slug-less rows); the static route set (home, 7 categories,
- *     support, terms, flash-sales) is present;
+ *     excluded while active ones are listed by SLUG (slug-less rows
+ *     are omitted — the R166 honest-omission rule); the static route
+ *     set (home, 7 categories, support, terms, flash-sales) is present;
  *   - cache headers on both endpoints.
  *
  * r140-m (lane: sitemap/robots freshness + parity) added:
@@ -264,8 +264,10 @@ describe("GET /sitemap.xml (R118-A5 #16)", () => {
 
       // Canonical host on product urls.
       expect(res.text).toContain(`<loc>${TEST_ORIGIN}/product/live-one</loc>`);
-      // Slug-less row falls back to the id form (never an "null" url).
-      expect(res.text).toMatch(new RegExp(`<loc>${TEST_ORIGIN}/product/product-\\d+</loc>`));
+      // Slug-less row: R166 (F6) honest omission — the old `product-<id>`
+      // fallback minted a URL the shell layer itself would 404 ("product-5"
+      // is not digit-only → slug lookup → miss), worse than omitting it.
+      expect(res.text).not.toMatch(new RegExp(`<loc>${TEST_ORIGIN}/product/product-\\d+</loc>`));
 
       // Excluded: archived + inactive products NEVER appear.
       expect(res.text).not.toContain("/archived-one");

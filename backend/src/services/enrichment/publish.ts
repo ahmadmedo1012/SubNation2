@@ -8,13 +8,12 @@
  * apply uniformly.
  */
 
-import {
-  auditLogsTable,
-  db,
-  enrichmentDraftsTable,
-  productsTable,
-} from "@workspace/db";
+import { auditLogsTable, db, enrichmentDraftsTable, productsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+// R166 (F1): enrichment publishes rewrite the heaviest PDP content — the
+// IndexNow ping the R163 wiring list missed (products/variants/inventory/
+// flash/pricing were wired; enrichment was not).
+import { notifyProductChanged } from "../../lib/indexnow";
 import { logger } from "../../lib/logger";
 import { getById, markPublished, type DraftField } from "./draft-store";
 import { tryParseFaq } from "./prompts";
@@ -87,10 +86,7 @@ export async function publishDraft(args: {
           publishedBy: args.adminId,
         })
         .where(
-          and(
-            eq(enrichmentDraftsTable.id, draft.id),
-            eq(enrichmentDraftsTable.state, "drafted"),
-          ),
+          and(eq(enrichmentDraftsTable.id, draft.id), eq(enrichmentDraftsTable.state, "drafted")),
         );
       const rowCount =
         (updated as unknown as { rowCount?: number }).rowCount ??
@@ -117,13 +113,27 @@ export async function publishDraft(args: {
         }),
       });
 
-      void before;
-      return { productId: draft.productId };
+      return {
+        productId: draft.productId,
+        // R166 (F1): the pre-change identity the post-commit IndexNow
+        // ping needs — captured IN the tx so it is exactly what changed.
+        slug: before.slug,
+        category: before.category,
+      };
     });
 
+    // R166 (F1): fire-and-forget AFTER the commit only — a rollback or
+    // failure path must never ping (notifyProductChanged is env-gated
+    // inert without INDEXNOW_KEY; same call shape as the admin product
+    // CRUD wiring — slug fallback to the numeric id, category landing
+    // pinged alongside the PDP).
+    notifyProductChanged(txResult.slug ?? String(draft.productId), txResult.category);
     return { kind: "success", productId: txResult.productId, field };
   } catch (err) {
-    logger.error({ err, draftId: draft.id, category: "enrichment.publish" }, "[enrichment] publish failed");
+    logger.error(
+      { err, draftId: draft.id, category: "enrichment.publish" },
+      "[enrichment] publish failed",
+    );
     return { kind: "failure", reason: err instanceof Error ? err.message : String(err) };
   }
 }

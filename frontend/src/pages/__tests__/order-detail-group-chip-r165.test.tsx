@@ -1,8 +1,13 @@
 /**
  * R165 (the R162 ADR §6.3) — the order-detail sibling-awareness chip:
- * an order carrying order_group_id shows «جزء من عملية شراء متعددة»
- * linking to /orders (the v1 shape); an order WITHOUT one (single,
- * historical) renders exactly as before — no chip.
+ * an order carrying order_group_id shows «ضمن عملية شراء واحدة» linking
+ * to /orders (the v1 shape); an order WITHOUT one (single, historical)
+ * renders exactly as before — no chip.
+ *
+ * R166-A F01/F10c: the copy is NEUTRAL — checkout mints the group token
+ * on every confirm (no unit-count gate), so the id rides single-unit
+ * purchases too; the old «جزء من عملية شراء متعددة» claimed a multi-order
+ * purchase on the majority of receipts.
  */
 
 import { render, screen } from "@testing-library/react";
@@ -75,6 +80,16 @@ const SINGLE_ORDER: Order = {
   order_group_id: null,
 };
 
+/** R166-A F01/F10c: the single-unit checkout case — checkout.tsx mints
+ * the token on EVERY confirm, so a run-of-1 order carries the group id;
+ * the chip copy must stay TRUE for it. */
+const SINGLE_UNIT_GROUPED_ORDER: Order = {
+  ...GROUPED_ORDER,
+  id: 97,
+  order_code: "SNR166A",
+  order_group_id: "11111111-2222-3333-4444-555555555555",
+};
+
 beforeEach(() => {
   vi.mocked(useGetOrder).mockReset();
   toastSpy.mockReset();
@@ -103,17 +118,28 @@ function renderDetail(order: Order) {
 }
 
 describe("OrderDetailPage — the multi-purchase chip (R165, ADR §6.3)", () => {
-  it("an order with a group shows «جزء من عملية شراء متعددة» linking to /orders", () => {
+  it("an order with a group shows «ضمن عملية شراء واحدة» linking to /orders", () => {
     renderDetail(GROUPED_ORDER);
 
-    const chip = screen.getByRole("link", { name: /جزء من عملية شراء متعددة/ });
+    const chip = screen.getByRole("link", { name: /ضمن عملية شراء واحدة/ });
     expect(chip).toHaveAttribute("href", "/orders");
   });
 
   it("an order WITHOUT a group (single / historical) renders no chip — today's DOM", () => {
     renderDetail(SINGLE_ORDER);
 
-    expect(screen.queryByText(/جزء من عملية شراء متعددة/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ضمن عملية شراء واحدة/)).not.toBeInTheDocument();
     expect(screen.getByText("SNR165B")).toBeInTheDocument();
+  });
+
+  it("R166 (F01/F10c): a group id on a SINGLE order (run of 1 — the token is minted on every confirm) renders the NEUTRAL copy, never a multiplicity claim", () => {
+    renderDetail(SINGLE_UNIT_GROUPED_ORDER);
+
+    const chip = screen.getByRole("link", { name: /ضمن عملية شراء واحدة/ });
+    expect(chip).toHaveAttribute("href", "/orders");
+    // The honesty pin: the copy must be true for a run of 1 — no
+    // «متعددة» (the pre-R166 chip claimed a multi-order purchase on
+    // every single-unit checkout receipt).
+    expect(chip.textContent).not.toMatch(/متعددة/);
   });
 });

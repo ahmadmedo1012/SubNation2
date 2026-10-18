@@ -69,7 +69,7 @@ export function CouponField({
                the guard form below restores the input.tsx:43 contract. */
             autoComplete="off"
             enterKeyHint="send"
-            className="pr-9 h-11 text-base [@media(min-width:48rem)_and_(pointer:fine)]:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
+            className="ps-9 h-11 text-base [@media(min-width:48rem)_and_(pointer:fine)]:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
             disabled={!!couponResult}
           />
         </div>

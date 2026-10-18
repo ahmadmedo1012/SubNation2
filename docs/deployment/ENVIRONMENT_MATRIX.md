@@ -57,6 +57,7 @@
 | `RISK_PIPELINE_ENABLED` | ✖ | dormant unless `true` | `lib/risk-emit.ts` | dark-launch gate; keep unset unless operating the risk pipeline |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_RESET_PASSWORD` | PASSWORD ✔ | — | seed script only | never needed at runtime |
 | `ALLOW_DEMO_SEED` | ✖ | — | seed guard | keep unset in prod |
+| `INDEXNOW_KEY` | ✖ (the key file is served publicly at `/<key>.txt` — protocol-mandated) | unset = feature inert | `lib/indexnow.ts` + `routes/seo.ts` (R163) | Bing/IndexNow change-notifications: serves the key file + pings api.indexnow.org on product/variant/inventory/flash/pricing changes. **Requires a restart after setting — the route mounts at boot** (R165 round-close §9.4; what/where split: `config/env.example` owns the semantics, `COOLIFY_FINAL_SETUP.md` §2.3 owns the panel) |
 
 ## 3. SubNation frontend — BUILD-TIME (baked into the SPA; Vite ARGs in the Dockerfile)
 
@@ -67,7 +68,8 @@
 | `VITE_APP_ORIGIN` / `VITE_APP_VERSION` | ✖ | `https://subnation.ly` fallback in SEO builders | product domain, not hosting |
 | `VITE_SENTRY_DSN` | ✖ (DSNs are public) | Sentry off | |
 | `VITE_RELEASE_SHA` | ✖ | — | Dockerfile resolves `GIT_SHA ?? RENDER_GIT_COMMIT` (r107) |
-| `VITE_GA_TRACKING_ID` / `VITE_GSC_VERIFICATION` | ✖ | loader off / no tag | |
+| `VITE_GA_TRACKING_ID` | ✖ (ids are public) | **R164: production Docker builds bake `G-RKRV3ZC3MF`** (Dockerfile RUN shell fallback) — the Coolify panel entry is an OVERRIDE: empty keeps the baked id, a different `G-…` overrides, a non-matching value disables; non-Docker builds: unset = loader off (`COOLIFY_FINAL_SETUP.md` §2.2) | |
+| `VITE_GSC_VERIFICATION` | ✖ | no tag | runbook §14 |
 | `VITE_GOOGLE_CLIENT_ID` / `VITE_FIREBASE_*` (9 vars) | ✖ | provider hidden | public-by-design web config |
 | `VITE_OPENWA_DOCS_URL` | ✖ | gateway docs deep-link (admin surfaces) | admin deep-link only; the built-in Render URL died with the 2026-10 cutover — set it to the live gateway origin (or a static page) |
 
@@ -104,4 +106,6 @@
 
 Dead variables (kept out of confusion): `BASE_PATH`, `WORKER_ROLE`,
 `SENTRY_DSN_BACKEND/FRONTEND`, `VITE_FIREBASE_MEASUREMENT_ID` — documented
-DEAD in `config/env.example`; do not resurrect.
+DEAD in `config/env.example` (the MEASUREMENT_ID var + its DEAD block were
+deleted from there R166, per the block's own "safe to delete"
+instruction); do not resurrect.

@@ -38,10 +38,11 @@
 > R116–R126 entries (plus the mission-waves/merge records of that span)
 > cut verbatim to `docs/history/CHANGELOG-rounds-r116-r126.md`, the front
 > door keeping R127+ and the pre-R116 compact summary; every live-surface
-> citation repointed at the new homes (CHANGELOG R127+, the progress log,
-> the runbook, the READMEs, PERFORMANCE, OPERATOR_ACTIONS — this index
-> included; archived files keep their dated in-report citations as
-> records, `docs/project-state/` deliberately untouched). Truth fixes:
+> citation repointed at the new homes (CHANGELOG R127+, the progress log's
+> live rows, the runbook, the READMEs, PERFORMANCE, OPERATOR_ACTIONS — this
+> index included; archived files keep their dated in-report citations as
+> records, `docs/project-state/` deliberately untouched — its dated
+> wave-345 citation gained a bracketed repoint R166). Truth fixes:
 > the R134 "push blocked" note below re-stamped resolved (live wins),
 > and the stale `.specify/feature.json` pointer (nothing in the tree
 > read it) deleted — the README Notes section updated with it.
@@ -238,7 +239,10 @@
 Not an incident but "what do I do next?" →
 **`docs/operations/OPERATOR_ACTIONS_R118.md`** (status refreshed R122:
 actions 1 & 8 DONE — 8: permanent redirect live, **301 since the R124
-redeploy, was 308**; 2/3 unverified; 4–7, 9–12 open).
+redeploy, was 308**; 2/3 unverified; 4–7, 9–12 open). **The current
+open set (R166): `OPERATIONS_RUNBOOK.md` §14 + the R165 round-close §9**
+(`docs/engineering/R165/round-close.md` — IndexNow key, GA4 spot-check,
+GSC sitemap, the 24 catalog fixes).
 
 New developer? → **[`docs/ONBOARDING.md`](./ONBOARDING.md)** — the ordered
 path: repo map → setup → the law docs (money invariants, no-`db:push`,
@@ -253,7 +257,7 @@ missing third journey, after incidents + auditing.)
 `OPERATIONS_RUNBOOK.md` owns on-call ops; `CHANGELOG.md` owns the round
 ledger; `docs/API.md` owns the API surface.
 
-## CURRENT (operator-facing) — 50 files in place
+## CURRENT (operator-facing) — 52 files in place
 
 ### operations/ (the runbooks you actually open)
 
@@ -323,20 +327,41 @@ ledger; `docs/API.md` owns the API surface.
 |---|---|
 | `specs/003-anomaly-detection` · `specs/004-security-audit` · `specs/008-audit-coverage-gaps` · `specs/010-ai-admin-copilot` · `specs/011-inventory-demand-forecast` · `specs/012-arabic-catalog-enrichment` | Dated spec-driven working directories (spec / plan / research / checklists / contracts per dir) — evidence records of executed work (e.g. the risk engine, the admin copilot, the forecast panel), not maintained docs. Read as history with a date, not as CURRENT guidance. |
 
-## The 4-bucket layout (R122, 2026-10-07)
+### engineering/ (round records — the ENGINEERING bucket, R142+)
+
+The working records of the R142+ rounds — `round-close.md` per round
+(the convention since R146; R142–R145 carry findings ledgers / defect
+maps / lane `.jsonl` evidence instead), plus ADRs + verification docs
+(e.g. R162's `adr-order-batch.md` + 5 verification docs). **Indexed by
+[`engineering/README.md`](./engineering/README.md)** — the round table
+(folder · date · title · contents shape), the R155/R159 CHANGELOG-only
+gap note, and the pre-R142 → `docs/history/inspection-r###/` pointer.
+The round **ledger** stays `CHANGELOG.md`; this area is counted as its
+own bucket below (111 files — not part of the 52 above).
+
+## The bucket layout (R122, 2026-10-07; counts restamped + the ENGINEERING bucket added R166, 2026-10-18)
 
 | Bucket | Files | Location |
 |---|---|---|
-| **CURRENT** | 50 (36 md incl. this index + 13 mmd + 1 json) | in place (this index's tables above) |
-| **HISTORY** | 204 files — 165 md + 39 jpg (74 md from R122 + the R135 wave: 90 md / 39 jpg of inspection evidence r124–r130 + r134 + the ledger split; incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r130 + r134, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit`, `CHANGELOG-rounds-r116-r126.md` |
-| **DEPRECATED** | 16 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set |
-| **PENDING** | 1 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design; `FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands). The R150 round REMOVED `docs/pending/whatsapp-cloud-api-migration.md` — WhatsApp Cloud API is permanently excluded from the architecture (R150 mission decision); the supported integration is the self-hosted Baileys gateway, and the R149 record that recommended Cloud API as a future target is superseded by `docs/engineering/R150/round-close.md` (the R149 report itself stays in HISTORY as an audit record) |
+| **CURRENT** | 52 (38 md incl. this index + 13 mmd + 1 json) | in place (this index's tables above) |
+| **HISTORY** | 205 files — 166 md + 39 jpg (74 md from R122 + the R135 wave: 90 md / 39 jpg of inspection evidence r124–r130 + r134 + the ledger split; incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r130 + r134, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit`, `CHANGELOG-rounds-r116-r126.md` |
+| **DEPRECATED** | 17 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set + the bucket README |
+| **PENDING** | 2 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design) + the bucket `README.md` (`FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands). The R150 round REMOVED `docs/pending/whatsapp-cloud-api-migration.md` — WhatsApp Cloud API is permanently excluded from the architecture (R150 mission decision); the supported integration is the self-hosted Baileys gateway, and the R149 record that recommended Cloud API as a future target is superseded by `docs/engineering/R150/round-close.md` (the R149 report itself stays in HISTORY as an audit record) |
+| **ENGINEERING** | 111 (79 md + 32 `.jsonl` lane records) | `docs/engineering/` — the R142+ round records (22 folders, R142→R165), indexed by **`docs/engineering/README.md`** (added R166) |
 
 Move map for dated ledger entries: `docs/history/README.md`.
 
 ## House rules (from A7 §5, binding for new docs)
 
-1. `FINAL_*` is the only naming pattern for CURRENT operator docs.
+1. Naming: `FINAL_*` marks the **policy/runbook-grade** CURRENT
+   operator docs — the de-facto convention (amended R166: the
+   "only pattern" wording had already been contradicted by 8 equally
+   CURRENT descriptive-named docs — `ENVIRONMENT_MATRIX`,
+   `EXPOSURE_REMEDIATION_R144`, `GSC_VERIFICATION_R144`,
+   `NEON_IDLE_ECONOMICS`, `CONTABO_COOLIFY_OPERATIONS`,
+   `OPERATOR_ACTIONS_R118`, `NEON_COLD_START_RUNBOOK`,
+   `WWW_TO_APEX_301`). Dated/matrix docs carry descriptive names instead;
+   whichever pattern, rule 4 applies.
 2. Dated files get an `ARCHIVED (date)` first line instead of deletion —
    now enforced by the R122 banners on every moved file (and the R135
    banners on the eight post-R122 inspection rounds).

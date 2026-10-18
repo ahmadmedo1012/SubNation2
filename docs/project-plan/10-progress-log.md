@@ -79,8 +79,9 @@ Append-only. One entry per verified unit of work. Times +02 (VPS local).
   **Only remaining step is operator-only: QR/phone-code pairing on a WhatsApp phone** at
   https://subnation.ly/admin/whatsapp (session `subnation-otp` already created).
 
-- **22:0x–23:0x** WAVES 3–8 executed (details in `docs/project-state/wave-345-audit.md` and
-  `docs/project-state/embronic-adapter-design.md`):
+- **22:0x–23:0x** WAVES 3–8 executed (details in `docs/history/wave-345-audit.md` and
+  `docs/pending/embronic-adapter-design.md` — [both moved out of
+  `docs/project-state/` by the R122 reorg; repointed R166]):
   - W3: provider boundary verified coherent — no cleanup needed; Embronic design prepared.
   - W4: no manual provider-selection UI exists (env-driven); inventory upload confirmed as the
     stopgap supply model with the provider-migration boundary documented.

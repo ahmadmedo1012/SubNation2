@@ -284,7 +284,7 @@ export function MobileTransferForm({
             aria-describedby={
               senderPhoneTouched && senderPhoneErr ? "topup-sender-phone-error" : undefined
             }
-            className={`text-left pl-10 h-11 bg-card transition-all ${
+            className={`text-left ps-10 h-11 bg-card transition-all ${
               senderPhoneTouched && senderPhoneErr
                 ? "border-destructive/60"
                 : senderPhoneTouched && senderPhone.length === 10 && !senderPhoneErr

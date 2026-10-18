@@ -101,6 +101,7 @@
 | `GOOGLE_CLIENT_ID` | Backend Google OAuth client id (`auth-settings.ts`) | ✖ | ✖ | SubNation | runtime | unset = provider hidden | Optional |
 | `ENRICHMENT_RUNNER_ENABLED` / `ENRICHMENT_DAILY_TOKEN_CAP` / `ENRICHMENT_PER_RUN_CAP` / `FORECAST_RUNNER_ENABLED` | Predictive runners (also need `WORKER_TIER=true`) | ✖ | ✖ | SubNation | runtime | `false` / `50000` / `50` / `false` | Leave unset (inert without a worker) |
 | `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` | Source-map upload in `backend/build.mjs` + frontend vite plugin | ✖ | ✔ | SubNation | **build-time only** | unset = upload skipped | **Coolify build-time since R121-B (2026-10-07)** — never Coolify **runtime** env |
+| `INDEXNOW_KEY` | IndexNow change-notifications (Bing et al.): serves the key file at `/<key>.txt` + pings api.indexnow.org on catalog changes (R163 — the key file is protocol-public) | ✖ | ✖ | SubNation | runtime | unset = feature inert | Optional: `openssl rand -hex 16` → Coolify env → **restart** (the route mounts at boot) — `docs/engineering/R165/round-close.md` §9.4 |
 
 ## 5. SubNation build-time — VITE_* (baked into the SPA at `docker build`)
 
@@ -115,7 +116,7 @@ Declared as `ARG` in the Dockerfile; pass via Coolify build args (or compose
 | `VITE_APP_ORIGIN` | Canonical origin for SEO/OG tags | recommended | ✖ | SubNation build | build-time | `https://subnation.ly` fallback | Set = `APP_URL` (validator checks membership) |
 | `VITE_APP_VERSION` | Sentry release tag override | ✖ | ✖ | SubNation build | build-time | falls to `VITE_RELEASE_SHA` | Leave unset |
 | `VITE_SENTRY_DSN` | Frontend Sentry (public by design) | ✖ | ✖ | SubNation build | build-time | unset = off | Optional |
-| `VITE_GA_TRACKING_ID` | GA4 loader | ✖ | ✖ | SubNation build | build-time | unset = loader off | Optional |
+| `VITE_GA_TRACKING_ID` | GA4 loader — **R164: the production Docker build bakes `G-RKRV3ZC3MF`** via a RUN-line shell fallback; the Coolify panel entry is an OVERRIDE (empty keeps the baked id, a different `G-…` overrides, a non-matching value disables — `COOLIFY_FINAL_SETUP.md` §2.2). Non-Docker builds: unset = loader off | ✖ | ✖ | SubNation build | build-time | baked id (production Docker) / off (non-Docker) | Panel entry = override; leave empty to keep the baked id |
 | `VITE_GSC_VERIFICATION` | Search Console meta tag — read by `frontend/vite.config.ts` (index.html), **zero `import.meta.env` readers by design** | ✖ | ✖ | SubNation build | build-time | unset = the plugin still emits an EMPTY `<meta name="google-site-verification">` tag (live + `index.html:19-23` comment; harmless but nonzero — R134 A7-F10 corrected the "no tag" claim). Verification needs the real token: runbook §14 | Optional |
 | `VITE_GOOGLE_CLIENT_ID` | Google OAuth button config | ✖ | ✖ | SubNation build | build-time | unset = hidden | Optional |
 | `VITE_FIREBASE_AUTH_ENABLED` + `VITE_FIREBASE_API_KEY` / `_AUTH_DOMAIN` / `_PROJECT_ID` / `_APP_ID` / `_STORAGE_BUCKET` / `_MESSAGING_SENDER_ID` | Firebase web SDK config (public-by-design) | ✖ | ✖ | SubNation build | build-time | unset = provider hidden | Optional, as a set |

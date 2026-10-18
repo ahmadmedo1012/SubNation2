@@ -63,12 +63,23 @@ describe("buildProductLd — offers.availability follows real stock (D2-F2)", ()
 
   it("the rest of the Offer shape is untouched by the availability change", () => {
     const ld = buildProductLd({ ...BASE, isActive: true, isAvailable: false });
-    const offers = ld.offers as Record<string, string>;
+    // R166 (F2): the seller object joined the Offer, so the flat-string
+    // cast became a Record<string, unknown>.
+    const offers = ld.offers as Record<string, unknown>;
     expect(offers.price).toBe("49.00");
     expect(offers.priceCurrency).toBe("LYD");
     expect(offers.url).toBe("https://subnation.ly/product/netflix-1m");
     expect(offers.itemCondition).toBe("https://schema.org/NewCondition");
     expect(offers.priceValidUntil).toMatch(/^\d{4}-12-31$/);
+  });
+
+  it("carries Offer.seller = the SubNation Organization (R166 F2, mirrored with the backend shell builder)", () => {
+    const offers = buildProductLd(BASE).offers as Record<string, unknown>;
+    // Google's Product docs list seller among the recommended Offer
+    // fields; SubNation IS the seller — an honest identity claim, the
+    // same class as the Brand field (never a fabricated one like
+    // aggregateRating).
+    expect(offers.seller).toEqual({ "@type": "Organization", name: "SubNation" });
   });
 
   it("carries the canonical product URL at the top level (R123-E4b P3-n)", () => {

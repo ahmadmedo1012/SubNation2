@@ -11,7 +11,11 @@
  *      holds the line — same basket, same intent);
  *   4. full success (live cart fully resolved) clears the group token
  *      with the cart — the next basket mints a fresh one;
- *   5. TTL expiry: a stale envelope is treated as absent (fresh mint).
+ *   5. TTL expiry: a stale envelope is treated as absent (fresh mint);
+ *   6. a CORRUPT envelope (unparseable JSON) is treated as absent —
+ *      a fresh mint, never a throw on the money path;
+ *   7. an f:"" envelope is the never-persisted-by-us shape — fresh
+ *      mint (its k is never replayed).
  *
  * Same harness as checkout-idempotency-keys.test.tsx (the module
  * boundary mock + the real CartProvider seeded via localStorage).
@@ -232,6 +236,53 @@ describe("CheckoutPage — the per-confirm group token (R165, the R162 ADR)", ()
     await clickConfirm();
     await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
     expect(bodyGroupOf(1)).not.toBe(firstGroup); // fresh group, fresh mint
+    await waitFor(() => expect(storedGroupEntry()).toBeNull()); // full resolution
+  });
+
+  it("a CORRUPT envelope (unparseable JSON) is treated as absent — fresh mint, no throw", async () => {
+    seedCart([{ productId: 5, variantId: 101, quantity: 1 }]);
+    renderPage();
+
+    createOrderMock.mockRejectedValueOnce(new TypeError("failed to fetch"));
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
+    const firstGroup = bodyGroupOf(0);
+
+    // Corrupt the stored envelope between attempts — the load's catch
+    // must treat it as absent (the intent-envelope corruption guard):
+    // a fresh mint, never a throw on the money path.
+    localStorage.setItem(GROUP_SLOT, "{corrupt-envelope");
+
+    createOrderMock.mockResolvedValueOnce({ order_code: "SN-GRP-CORRUPT" });
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+    expect(typeof bodyGroupOf(1)).toBe("string");
+    expect(bodyGroupOf(1)).not.toBe(firstGroup); // fresh mint, not the corrupt entry
+    await waitFor(() => expect(readCart()).toHaveLength(0));
+    await waitFor(() => expect(storedGroupEntry()).toBeNull()); // full resolution
+  });
+
+  it('an f:"" envelope is the never-persisted-by-us shape — fresh mint (its k is never replayed)', async () => {
+    seedCart([{ productId: 5, variantId: 101, quantity: 1 }]);
+    renderPage();
+
+    createOrderMock.mockRejectedValueOnce(new TypeError("failed to fetch"));
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(1));
+    const firstGroup = bodyGroupOf(0);
+
+    // Empty fingerprint = an envelope this module never wrote — the
+    // parsed.f === "" guard must reject it even though k/t are still
+    // well-formed (the stored k must NOT be replayed onto it).
+    const entry = storedGroupEntry();
+    expect(entry).not.toBeNull();
+    localStorage.setItem(GROUP_SLOT, JSON.stringify({ ...entry, f: "" }));
+
+    createOrderMock.mockResolvedValueOnce({ order_code: "SN-GRP-EMPTYF" });
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(2));
+    expect(bodyGroupOf(1)).not.toBe(firstGroup); // fresh mint — k not replayed
+    await waitFor(() => expect(readCart()).toHaveLength(0));
     await waitFor(() => expect(storedGroupEntry()).toBeNull()); // full resolution
   });
 

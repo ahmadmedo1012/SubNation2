@@ -36,7 +36,10 @@ GET  /api/products?category=&search=&sort=&available_only=
      (62.6% of catalog wire bytes, measured) + usage_terms; grid cards
      read `price` + `variant_count` instead. Absent = full Product shape.
 GET  /api/products/:id | /by-slug/:slug
-GET  /api/products/stats | /flash-sale
+GET  /api/products/stats | /flash-sale  canonical public mounts (R166-B12):
+     the SPA consumes the ALIAS forms GET /api/catalog/stats +
+     GET /api/flash-sale — both forms are first-class public mounts on the
+     same handlers + edge-cache windows (stats 60s / flash-sale 30s CDN).
 POST  /api/orders                     atomic purchase (wallet; Idempotency-Key header, 409 IDEMPOTENCY_*)
 GET   /api/orders                     latest 200 for user
 GET   /api/wallet                     balance + ledger summary
@@ -63,4 +66,49 @@ POST /api/admin/topups/:id/approve|reject (finance scope, idempotent).
 POST /api/webhook/telegram — Telegram topup approve/reject callbacks
 (secret-token header + TELEGRAM_ADMIN_IDS allowlist; 200/403/503).
 Observability: /api/metrics (token-gated), /api/healthz/{ready,redis,neon,worker,socket,firebase} (admin).
+
+Admin operator/curl surface — mounted, authenticated, NO SPA consumer
+(R166-B13..B15; reachable via curl with an admin session or the copilot
+admin-request tool):
+  GET/PUT /api/admin/risk/config        singleton thresholds/allowlist/auto-block (users scope)
+  GET    /api/admin/risk/rules          full rule catalog (users scope)
+  PUT    /api/admin/risk/rules/:id      toggle enabled / replace expression (users scope)
+  POST   /api/admin/risk/synth          TEST-DATA INJECTION (users scope): inserts a synthetic
+                                       risk_events row ({level?, event_type?, user_id?}; level
+                                       defaults critical, event_type topup_attempt) to verify the
+                                       alerting/label flow — hard-403 when NODE_ENV=production.
+  GET /api/admin/observability/deploys/recent  retired Render placeholder: stable pending state
+                                              by design (deploy history lives in Coolify)
+  GET /api/admin/observability/sentry/summary  pending until SENTRY_AUTH_TOKEN is provisioned
+  GET /api/admin/diagnostics/sentry-debug?mode=snapshot|message|subsystem|throw
+                                              Sentry pipeline verification (settings scope;
+                                              mode=throw → captured 500 response)
+  POST /api/admin/alerts/test           dispatchTestAlert {rule?} (support scope): fires a synthetic
+                                       alert and returns the REAL per-channel delivery outcomes
+                                       (telegram/discord/webhook), not hardcoded ok flags.
+```
+
+## Operator curl examples (no-SPA-consumer routes)
+
+```bash
+# Risk config + rules (users scope) — R166-B13
+curl -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/admin/risk/config
+curl -X PUT -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
+  -d '{"auto_block":{"hard_block":true}}' https://subnation.ly/api/admin/risk/config
+curl -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/admin/risk/rules
+curl -X PUT -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
+  -d '{"enabled":false}' https://subnation.ly/api/admin/risk/rules/3
+# Synthetic event — dev/staging ONLY (403 in production):
+curl -X POST -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
+  -d '{"event_type":"topup_attempt","level":"critical"}' https://subnation.ly/api/admin/risk/synth
+
+# Observability + diagnostics probes (settings scope) — R166-B14
+curl -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/admin/observability/deploys/recent
+curl -H "Authorization: Bearer $ADMIN_JWT" https://subnation.ly/api/admin/observability/sentry/summary
+curl -H "Authorization: Bearer $ADMIN_JWT" \
+  "https://subnation.ly/api/admin/diagnostics/sentry-debug?mode=message"
+
+# Test-alert dispatch (support scope) — R166-B15
+curl -X POST -H "Authorization: Bearer $ADMIN_JWT" -H 'Content-Type: application/json' \
+  -d '{"rule":"api_5xx_rate_high"}' https://subnation.ly/api/admin/alerts/test
 ```

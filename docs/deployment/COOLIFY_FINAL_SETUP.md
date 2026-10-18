@@ -40,9 +40,12 @@
       dashboard: `DASHBOARD_ENABLED=1`).
 - [ ] Neon reachable FROM the VM: `DATABASE_URL` (app) and
       `PERSISTENCE_URL` (gateway sessions — same DB is fine).
-- [ ] The exact short SHA being deployed — `git rev-parse --short HEAD` (R115
-      release: `6f14bc3`) for GIT_SHA (§2.2) + the openwa `sha-` tag (§3:
-      `sha-ba6a843`, verified multi-arch on GHCR 2026-10-01).
+- [ ] The exact short SHA being deployed — `git rev-parse --short HEAD` —
+      for GIT_SHA (§2.2) + the openwa `sha-` tag (§3: the per-commit
+      `sha-<short>` tag from the openwa repo's Actions run / GHCR package
+      page; verify multi-arch with `docker manifest inspect`).
+      [R166: the r115-era example SHAs here were 50 rounds stale — the
+      rule is always the SHA being deployed right now.]
 
 ## 2. Resource 1 — SubNation (Git repository, Docker build pack)
 
@@ -66,7 +69,8 @@ through build args)
 
 ```
 # required for release identity:
-GIT_SHA=6f14bc3              # the EXACT short SHA being deployed — lands in
+GIT_SHA=<short-sha>          # the EXACT short SHA being deployed — e.g.
+                             # `git rev-parse --short HEAD` — lands in
                              # logs, the Sentry release tag, + the admin-gated
                              # /api/healthz/ready .version (R143: the PUBLIC
                              # healthz carries no version — status-only)
@@ -145,9 +149,20 @@ docker exec <subnation-container> \
 Optional integrations (unset = cleanly off; full list:
 `ENVIRONMENT_MATRIX.md` §2): `SENTRY_DSN`, `TELEGRAM_BOT_TOKEN` +
 `TELEGRAM_CHAT_ID`, `DISCORD_WEBHOOK_URL`, `COPILOT_*`,
-`FIREBASE_SERVICE_ACCOUNT_JSON`, `METRICS_ADMIN_TOKEN`. Leave at default:
-`DISABLE_BOOT_MIGRATIONS` (emergency hatch — keep false). No `VITE_*` here
-(build-time, §2.2); no `PORT` override (Dockerfile pins 8080).
+`FIREBASE_SERVICE_ACCOUNT_JSON`, `METRICS_ADMIN_TOKEN`, `INDEXNOW_KEY`
+(R163 IndexNow — `openssl rand -hex 16` → this panel → **restart: the
+key-file route mounts at boot**; unset = the whole feature is inert).
+Leave at default: `DISABLE_BOOT_MIGRATIONS` (emergency hatch — keep
+false). No `VITE_*` here (build-time, §2.2); no `PORT` override
+(Dockerfile pins 8080).
+
+Env-var authority split (the R166 canonical rule): **this §2.3 owns the
+*where*** — which Coolify panel an env var lives on + the restart
+semantics; **`config/env.example` owns the *what*** — the annotated
+per-variable semantics; the **round-close owner-actions sections** carry
+the *dated rationale* for each addition (the section number varies by
+round: R163 §11, R164 §6, R165 §9 — `docs/engineering/R163/round-close.md`,
+`R164/round-close.md`, `R165/round-close.md`).
 
 Emergency fallback (Coolify builder broken): redeploy this resource as a
 registry image `ghcr.io/ahmadmedo1012/subnation2:sha-<short>` — private

@@ -1,6 +1,6 @@
 import { AlertCircle, X } from "lucide-react";
 import { Link } from "wouter";
-import { formatCount } from "@/lib/utils";
+import { ORDER_COUNT_FORMS_OBJECT, formatCount } from "@/lib/utils";
 
 // R136 (FE-2 decomposition): extracted verbatim from pages/checkout.tsx —
 // the persistent money-failure banner (the partial-success bookkeeping
@@ -46,14 +46,10 @@ export function OrderErrorBanner({
             <>
               <p>
                 تم إنشاء{" "}
-                {formatCount(partialCount, {
-                  one: "طلب",
-                  two: "طلبين",
-                  few: "طلبات",
-                  many: "طلباً",
-                  other: "طلب",
-                })}{" "}
-                بنجاح قبل توقف العملية.
+                {/* R166-A (F16): post-verb object («تم إنشاء … بنجاح
+                   قبل توقف العملية») — the shared OBJECT registry form
+                   («طلبين»); rendered bytes unchanged. */}
+                {formatCount(partialCount, ORDER_COUNT_FORMS_OBJECT)} بنجاح قبل توقف العملية.
               </p>
               <p className="mt-1 font-normal">{orderError}</p>
               <Link

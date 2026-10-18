@@ -597,6 +597,12 @@ describe("SPA shell rewrite — PDP JSON-LD in the initial HTML (R163)", () => {
     expect(offers.price).toBe("100.00");
     expect(offers.priceCurrency).toBe("LYD");
     expect(offers.itemCondition).toBe("https://schema.org/NewCondition");
+    // R166 (F2): Offer.seller — Google's recommended field; SubNation IS
+    // the seller (field-mirrored with the frontend buildProductLd Offer).
+    expect(offers.seller).toEqual({ "@type": "Organization", name: "SubNation" });
+    // R166 (F3): the raw category slug — schema-legal text the row
+    // proves without importing the frontend categoryLabel map.
+    expect(ld.category).toBe("vpn");
     // priceValidUntil: end of NEXT year (never an expired-offer signal).
     expect(offers.priceValidUntil).toBe(`${new Date().getUTCFullYear() + 1}-12-31`);
     expect(offers.url).toBe("https://subnation.ly/product/expressvpn-shell-test");
@@ -650,9 +656,43 @@ describe("SPA shell rewrite — PDP JSON-LD in the initial HTML (R163)", () => {
     expect((blocks[0] as Record<string, unknown>).description).toBe("الوصف الطويل الكامل للاختبار");
   });
 
-  it("NON-product routes ship NO ld+json (home, category, statics, noindex families, unknowns)", async () => {
+  it("the HOME shell carries the Organization + WebSite LD pair (R166 F4)", async () => {
+    const r = await get("/");
+    expect(r.status).toBe(200);
+    const blocks = ldBlocks(r.body);
+    // Exactly the two static constants the hydrated home emits (the
+    // ItemList stays client-only — it needs the loaded catalog).
+    expect(blocks).toHaveLength(2);
+    const org = blocks.find(
+      (b) => (b as Record<string, unknown>)["@type"] === "Organization",
+    ) as Record<string, unknown>;
+    const site = blocks.find(
+      (b) => (b as Record<string, unknown>)["@type"] === "WebSite",
+    ) as Record<string, unknown>;
+    expect(org).toBeDefined();
+    expect(site).toBeDefined();
+    // The exact JSON mirror of seo-builders' buildOrganizationLd() —
+    // same @ids the hydrated page re-emits, so the pair merges.
+    expect(org["@id"]).toBe("https://subnation.ly/#organization");
+    expect(org.name).toBe("SubNation");
+    expect(org.url).toBe("https://subnation.ly");
+    expect(org.logo).toBe("https://subnation.ly/subnation-logo.png");
+    expect((org.address as Record<string, unknown>).addressCountry).toBe("LY");
+    expect((org.areaServed as Record<string, unknown>).name).toBe("Libya");
+    expect(site["@id"]).toBe("https://subnation.ly/#website");
+    expect(site.inLanguage).toBe("ar");
+    expect((site.publisher as Record<string, unknown>)["@id"]).toBe(
+      "https://subnation.ly/#organization",
+    );
+    const action = site.potentialAction as Record<string, unknown>;
+    expect((action.target as Record<string, unknown>).urlTemplate).toBe(
+      "https://subnation.ly/?search={search_term_string}",
+    );
+    expect(action["query-input"]).toBe("required name=search_term_string");
+  });
+
+  it("NON-product, NON-home routes ship NO ld+json (category, statics, noindex families, unknowns)", async () => {
     for (const pathname of [
-      "/",
       "/category/vpn",
       "/flash-sales",
       "/support",

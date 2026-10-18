@@ -10,7 +10,7 @@
  *      order code + link (grouping is presentational).
  */
 
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import OrdersPage from "@/pages/orders";
@@ -151,5 +151,37 @@ describe("OrdersPage — the cluster affordance (R165 render)", () => {
     expect(screen.queryByText("عملية شراء واحدة")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /SN-G0001/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /SN-G0002/ })).toBeInTheDocument();
+  });
+
+  it("R166 (F10b): same-group rows split across filter buckets → NO divider inside the filtered bucket", () => {
+    // One attempt (g-1) whose two units landed in different buckets
+    // (completed + pending): the cluster runs over the VISIBLE list
+    // (orders.tsx computeOrderGroupClusters(visibleOrders)), so the
+    // completed bucket sees a run of 1 — and a run of 1 never clusters.
+    window.history.pushState(null, "", "/orders");
+    mockOrders([
+      orderRow(1, "g-1", { status: "completed" }),
+      orderRow(2, "g-1", { status: "pending" }),
+    ]);
+    renderPage();
+
+    // The «الكل» view: the 2-row run clusters, and the honest count
+    // rides the nominative dual «2 طلبان» (R166-A F02).
+    const dividers = screen.getAllByText("عملية شراء واحدة");
+    expect(dividers).toHaveLength(1);
+    const chip = dividers[0].closest("span")!;
+    expect(within(chip as HTMLElement).getByText(/2 طلبان/)).toBeInTheDocument();
+
+    // Switch to the completed bucket: only row 1 is visible — run of 1,
+    // no divider inside the filtered bucket.
+    fireEvent.click(screen.getByRole("button", { name: /^مكتمل/ }));
+
+    expect(screen.queryByText("عملية شراء واحدة")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /SN-G0001/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /SN-G0002/ })).not.toBeInTheDocument();
+
+    // Reset the ?filter= mirror so any later test mounts on the
+    // canonical bare /orders URL again.
+    window.history.pushState(null, "", "/orders");
   });
 });
