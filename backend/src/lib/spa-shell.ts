@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { and, eq } from "drizzle-orm";
-import { db, productsTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
+import { db, inventoryTable, productsTable } from "@workspace/db";
 import { logger } from "./logger";
 // R122 (A3-P1): the /product/:slug shell + share-card lookups ride the
 // catalog cache (60 s TTL, generation-bumped by admin CRUD) — they are
@@ -10,6 +10,20 @@ import { logger } from "./logger";
 import { withCatalogCache } from "./catalog-cache";
 import { applyFlashSale } from "./pricing";
 import { formatLydNumber } from "./money";
+// R163: the deliverable-stock predicate the public catalog's is_available
+// rides (services/catalog.service.ts) — imported so the shell's JSON-LD
+// Offer asserts availability from the SAME stock semantics as the API.
+import { deliverableUnitCondition } from "../services/catalog.service";
+// R163: the IndexNow key-file route mounts here (the shell layer owns
+// root-level non-API GET routing) — fully env-gated.
+import { indexNowKey } from "./indexnow";
+// R163 size-gate carve: the static meta constants + the Product-LD
+// builders live in their own modules (this file is growth-banned at
+// 1,039 lines); re-exported below so every existing consumer (app.ts
+// re-exports + the parity suites) keeps its import path.
+import { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
+import { buildShellProductLd, injectJsonLdScript } from "./shell-product-ld";
+export { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
 import type { Express, NextFunction, Request, Response } from "express";
 import express from "express";
 
@@ -156,15 +170,20 @@ function escapeHtmlAttr(s: string): string {
  * the catalog + checkout apply) when one is live and lower than the
  * list price; the list price otherwise. Mirrors product.tsx's seoPrice
  * rule (sale_price preferred only when it is actually lower).
+ *
+ * R163: returns BOTH forms — the grouped display string (the canon the
+ * WhatsApp card and the page price read identically) and the raw
+ * numeric (the shell's Product JSON-LD Offer needs a bare number).
  */
-async function shareDisplayPrice(listPrice: string): Promise<string> {
+async function shareDisplayPrice(listPrice: string): Promise<{ display: string; numeric: number }> {
   const base = Number(listPrice);
-  if (!Number.isFinite(base)) return listPrice;
+  if (!Number.isFinite(base)) return { display: listPrice, numeric: base };
   const { flashSale, basePrice } = await applyFlashSale(base);
+  const numeric = flashSale && basePrice < base ? basePrice : base;
   // R128 (B8-D3): the grouped en-US display form («1,380.00», not
   // «1380.00») — the same canon as the web's formatCurrency, so the
   // WhatsApp/TG card price and the page price read identically.
-  return formatLydNumber(flashSale && basePrice < base ? basePrice : base);
+  return { display: formatLydNumber(numeric), numeric };
 }
 
 /**
@@ -222,21 +241,36 @@ function clampSeoTitleForShell(title: string): string {
  * (lib/cache.ts B6-02) — entries here are ~200 B, so a garbage-slug flood
  * evicts old entries instead of growing memory.
  */
-interface ShareSurfaceProduct {
+export interface ShareSurfaceProduct {
+  id: number;
   slug: string | null;
   name: string;
   description: string | null;
+  /** R163: the long-form copy the hydrated page's Product LD prefers — kept out of the shell LD only when null. */
+  descriptionLong: string | null;
   imageUrl: string | null;
   price: string;
   isActive: boolean;
   seoTitle: string | null;
   seoDescription: string | null;
+  /**
+   * R163: deliverable-stock count — the SAME stock semantics the public
+   * API's is_available rides (stock > 0). The shell's Product JSON-LD
+   * Offer asserts OutOfStock from this, so the initial HTML can never
+   * claim InStock against a page whose UI says «نفد المخزون».
+   */
+  stockCount: number;
 }
 
 async function lookupProductForShareSurfaces(
   slugOrId: string,
   numeric: number | null,
-): Promise<{ found: false } | { found: true; row: ShareSurfaceProduct; displayPrice: string }> {
+): Promise<
+  | {
+      found: false;
+    }
+  | { found: true; row: ShareSurfaceProduct; displayPrice: string; numericPrice: number }
+> {
   // R122 (A3-P1): products.slug is varchar(160) — an over-long slug can
   // NEVER match a row, so answering the miss without a query ALSO keeps
   // attacker-minted multi-KB slugs from becoming LRU KEYS (the byte
@@ -250,9 +284,11 @@ async function lookupProductForShareSurfaces(
     async () => {
       const [row] = await db
         .select({
+          id: productsTable.id,
           slug: productsTable.slug,
           name: productsTable.name,
           description: productsTable.description,
+          descriptionLong: productsTable.descriptionLong,
           imageUrl: productsTable.imageUrl,
           price: productsTable.price,
           isActive: productsTable.isActive,
@@ -260,6 +296,16 @@ async function lookupProductForShareSurfaces(
           // hydrated page renders (frontend/src/pages/product.tsx).
           seoTitle: productsTable.seoTitle,
           seoDescription: productsTable.seoDescription,
+          // R163: the deliverable-stock scalar — a correlated subquery
+          // with the catalog's own is_available predicate (is_sold=false
+          // AND at least one credential field present), so the JSON-LD
+          // below and the public API can never disagree on stock.
+          stockCount: sql<number>`(
+            SELECT COUNT(*)::int FROM ${inventoryTable}
+            WHERE ${inventoryTable.productId} = ${productsTable.id}
+              AND ${inventoryTable.isSold} = false
+              AND ${deliverableUnitCondition()}
+          )`,
         })
         .from(productsTable)
         .where(
@@ -272,127 +318,19 @@ async function lookupProductForShareSurfaces(
         )
         .limit(1);
       if (!row) return { found: false as const };
-      // Flash-aware display price folded INTO the cached entry — the
-      // 60 s staleness budget matches the share card's own
-      // Cache-Control max-age=60 and the detail routes' cached sale_price.
-      return { found: true as const, row, displayPrice: await shareDisplayPrice(row.price) };
+      // Flash-aware price folded INTO the cached entry — the 60 s
+      // staleness budget matches the share card's own Cache-Control
+      // max-age=60 and the detail routes' cached sale_price.
+      const share = await shareDisplayPrice(row.price);
+      return {
+        found: true as const,
+        row,
+        displayPrice: share.display,
+        numericPrice: share.numeric,
+      };
     },
   );
 }
-
-/**
- * Category landing-page meta for the static shell — DUPLICATED from
- * frontend/src/lib/categories.ts (metaTitle / metaDescription verbatim).
- * The backend build cannot import the frontend source (tsc rootDir:
- * "src"), so parity is PINNED by test:
- * src/__tests__/spa-shell-category-parity.test.ts fails when either
- * copy drifts. Keep both files in sync when a category's meta changes.
- * Exported for that parity test.
- */
-export const SHELL_CATEGORY_META: Record<string, { metaTitle: string; metaDescription: string }> = {
-  streaming: {
-    // R161-C: mirrors categories.ts's streaming metaTitle verbatim
-    // (the parity suite pins the pair — keep both sides in sync).
-    metaTitle: "منصات المشاهدة في ليبيا — Netflix و Disney+ | SubNation",
-    // I-4 (R142): Shahid VIP dropped — the live catalog sells neither it
-    // nor Crunchyroll; the frontend CATEGORY_META twin (categories.ts)
-    // carries the same edit (the parity suite pins the pair verbatim).
-    metaDescription:
-      "اشترِ اشتراكات Netflix و Disney+ و Amazon Prime Video بالدينار الليبي. تسليم فوري في طرابلس وبنغازي ومصراتة وكامل ليبيا.",
-  },
-  music: {
-    metaTitle: "اشتراكات الموسيقى في ليبيا — Spotify | SubNation",
-    metaDescription:
-      "اشترِ اشتراك Spotify Premium وخدمات الموسيقى الأخرى بالدينار الليبي. تسليم فوري، جودة صوت عالية، استماع بدون إعلانات في كامل ليبيا.",
-  },
-  software: {
-    metaTitle: "مفاتيح Windows وبرامج أصلية في ليبيا | SubNation",
-    metaDescription:
-      "اشترِ مفاتيح Windows 10 و WinRAR و Grammarly و cPanel أصلية بالدينار الليبي. تراخيص دائمة، تفعيل فوري، ضمان استبدال في كامل ليبيا.",
-  },
-  vpn: {
-    metaTitle: "اشتراكات VPN في ليبيا — ExpressVPN | SubNation",
-    metaDescription:
-      "اشترِ اشتراكات ExpressVPN و CyberGhost و IPVanish و HMA بالدينار الليبي. تسليم فوري، تشفير كامل، خوادم عالمية، تعمل في كامل ليبيا.",
-  },
-  "ai-tools": {
-    metaTitle: "اشتراك ChatGPT Plus في ليبيا | SubNation",
-    metaDescription:
-      "فعّل ChatGPT Plus و Shopia AI بالدينار الليبي بدون بطاقة دولية. تسليم فوري لبيانات الحساب، وصول كامل للنماذج المتقدمة، دعم في كامل ليبيا.",
-  },
-  "seo-tools": {
-    metaTitle: "أدوات SEO في ليبيا — Ahrefs و Semrush | SubNation",
-    metaDescription:
-      "اشترِ اشتراكات Ahrefs و Semrush الاحترافية بالدينار الليبي. تحليل روابط وكلمات مفتاحية ومنافسين، فاتورة شهرية أو سنوية، تسليم فوري في ليبيا.",
-  },
-  education: {
-    metaTitle: "اشتراكات Skillshare و Scribd في ليبيا | SubNation",
-    metaDescription:
-      "اشترِ اشتراكات Skillshare و Scribd الأصلية بالدينار الليبي. آلاف الدورات ومكتبة كتب غير محدودة، تنزيل بدون إنترنت، تسليم فوري في كامل ليبيا.",
-  },
-};
-
-/**
- * Home shell meta — DUPLICATED from the runtime useSeo block in
- * frontend/src/pages/home.tsx (title + description verbatim).
- * B12-F1 (R127-L9): the shipped index.html baseline is the generic
- * brand-first default («SubNation — سوق الاشتراكات الرقمية» + the
- * R120-B3 catalog description) while the hydrated home page renders
- * this keyword-forward copy — a split title+description signal for
- * every non-rendering engine (the exact class R122 A7-P1-1 closed for
- * /product/*). The backend build cannot import the frontend source
- * (tsc rootDir: "src"), so parity is PINNED by test:
- * src/__tests__/spa-shell-route-parity.test.ts fails when either
- * copy drifts. Exported for that parity test.
- */
-export const SHELL_HOME_META: { title: string; description: string } = {
-  // The money query leads («سوق الاشتراكات الرقمية في ليبيا»), brand
-  // tail, ≤60 chars — the rendered page's exact title.
-  title: "سوق الاشتراكات الرقمية في ليبيا | SubNation",
-  // Intent-led ~147-char copy: locale inside the first clause, the
-  // Arabic brand transliterations users actually type, closing with
-  // the three differentiators (LYD, instant delivery, local support).
-  description:
-    "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
-};
-
-/**
- * Static public routes with fixed meta (mirrors each page's useSeo
- * block). Same pinning contract as SHELL_HOME_META above: parity is
- * PINNED by src/__tests__/spa-shell-route-parity.test.ts — keep both
- * sides in sync when a route's meta changes. Exported for that test.
- */
-export const SHELL_STATIC_ROUTE_META: Record<string, { title: string; description: string }> = {
-  "/flash-sales": {
-    title: "عروض فلاش — SubNation",
-    // R124 (A10-F3) lengthened the rendered description 53 → 140 chars
-    // but shipped frontend-only — B12-F2 (R127-L9): the shell kept
-    // serving the pre-R124 copy to every non-rendering engine. Now
-    // the runtime builder's copy verbatim.
-    // R143 (L12-1, backend half): the page's description became
-    // RUNTIME-GATED (active sale → the A10-F3 discount copy; no sale →
-    // the honest seasonal copy — the live probe found the page saying
-    // «لا عرض نشط حالياً» under a meta promising «عروض فلاش بخصومات
-    // حقيقية…», the J-3/F1 truthfulness class). The shell is static and
-    // cannot know sale state, so it serves the HONEST no-sale arm: a
-    // non-rendering engine must never be promised live discounts the
-    // page itself denies; the hydrated page upgrades the meta to the
-    // active-sale copy when one is actually running. Parity with the
-    // no-sale arm is pinned by spa-shell-route-parity.test.ts.
-    description:
-      "صفحة عروض SubNation — تابع العروض الموسمية على الاشتراكات الرقمية بالدينار الليبي مع تسليم فوري في كامل ليبيا.",
-  },
-  "/support": {
-    title: "الدعم والأسئلة الشائعة — SubNation",
-    description:
-      "إجابات حول الدفع وشحن المحفظة والاشتراكات والاسترداد وتسجيل الدخول في SubNation. افتح تذكرة دعم في أي وقت.",
-  },
-  "/terms": {
-    title: "الشروط والأحكام — SubNation",
-    description:
-      "شروط استخدام منصة SubNation: سياسة الشراء، شحن المحفظة، الاشتراكات الرقمية، والاسترداد.",
-  },
-};
 
 /**
  * A7-F16: static-shell noindex families — the SAME path families the
@@ -447,6 +385,13 @@ export interface SpaShellMeta {
   /** R142 (K-2): rewrites og:type ("product" on PDP routes — the
    *  static baseline says `website` on every route). */
   ogType?: string;
+  /**
+   * R163: serialized JSON-LD object to inject as ONE
+   * <script type="application/ld+json"> before </head> (the PDP's
+   * initial-HTML Product/Offer structured data — see
+   * buildShellProductLd). Undefined = no injection.
+   */
+  jsonLd?: string;
 }
 
 /**
@@ -615,6 +560,18 @@ function rewriteSpaShellMeta(html: string, meta: SpaShellMeta): string {
     if (meta.canonical !== undefined) {
       out = rewriteCanonical(out, meta.canonical);
     }
+    // R163: the initial-HTML Product structured-data arm. Google's
+    // product-snippet technical guidance explicitly recommends putting
+    // Product structured data in the initial HTML "for best results" —
+    // JS-only markup makes Shopping crawls less reliable for exactly
+    // the fields that change (price, availability). The block is a
+    // serialized JSON object (@id-anchored to the same node the
+    // hydrated page's JsonLd component re-emits, so the two merge into
+    // one entity); it is inert data, not executable script — CSP
+    // script-src never applies to application/ld+json.
+    if (meta.jsonLd !== undefined) {
+      out = injectJsonLdScript(out, meta.jsonLd);
+    }
     return out;
   });
 }
@@ -643,10 +600,17 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
   const category = /^\/category\/([^/]+)$/.exec(norm);
   if (category) {
     const meta = SHELL_CATEGORY_META[category[1]];
-    // Unknown category slug → the SPA renders its noindex 404 surface;
-    // unknown-path treatment (no canonical) applies. R122 (A7-P1-2):
-    // the raw shell now stamps noindex,follow too — it used to keep the
-    // static index,follow and contradict the SPA's own rendered robots.
+    // Unknown/retired category slug → REAL 404 status, mirroring the
+    // unknown-product branch below (R163): the shell still ships so the
+    // SPA renders its 404 UI client-side, but the HTTP status is the
+    // honest "this URL has no content" signal Google's soft-404
+    // guidance asks for. R122 (A7-P1-2) had settled for 200 +
+    // noindex,follow; live evidence (R163 SERP research — Google
+    // indexed the retired /category/gaming as an error page with the
+    // «الفئة غير موجودة» title) showed the 200 status invites the
+    // soft-404 state. noindex,follow stays as the belt-and-braces it
+    // always was; the canonical stays stripped (an unknown category
+    // consolidates nowhere).
     return meta
       ? {
           status: 200,
@@ -657,7 +621,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
           // used to keep the static homepage og:url on every category.
           ogUrl: `${origin}/category/${category[1]}`,
         }
-      : { status: 200, canonical: null, robots: "noindex,follow" };
+      : { status: 404, canonical: null, robots: "noindex,follow" };
   }
 
   const product = /^\/product\/([^/]+)$/.exec(norm);
@@ -707,6 +671,21 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
         ? row.imageUrl
         : `${origin}${row.imageUrl.startsWith("/") ? "" : "/"}${row.imageUrl}`
       : undefined;
+    // R163: the initial-HTML Product/Offer structured data — Google's
+    // product-snippet guidance recommends it in the initial HTML; the
+    // hydrated page re-emits the same @id node (client JsonLd), so the
+    // pair merges. Numeric price (flash-aware, the same rule as the
+    // share card) + the deliverable-stock scalar drive the Offer
+    // honestly. Falls back to undefined (no block) on a non-finite
+    // price — never fabricate what the row cannot prove.
+    const jsonLd = buildShellProductLd({
+      row,
+      origin,
+      numericPrice: lookup.numericPrice,
+      // The LD image mirrors the og:image absolutization (logo fallback
+      // — same as the frontend buildProductLd's fallback).
+      absoluteImage: ogImage ?? `${origin}/subnation-logo.png`,
+    });
     return {
       status: 200,
       title: seoTitle ? clampSeoTitleForShell(seoTitle) : `${row.name} — SubNation`,
@@ -723,6 +702,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
       // the static baseline said `website` at the apex on every route.
       ogUrl: `${origin}/product/${row.slug ?? slugOrId}`,
       ogType: "product",
+      ...(jsonLd !== undefined ? { jsonLd } : {}),
     };
   }
 
@@ -809,6 +789,25 @@ export function isIndexerUserAgent(userAgent: string): boolean {
  */
 export function mountSpaShellRoutes(app: Express): void {
   if (!frontendDist) return;
+
+  // R163 — the IndexNow key file (https://indexnow.org): engines verify
+  // ownership by fetching `https://<host>/<key>.txt` and comparing the
+  // body to the key used in submissions. The key comes from env config
+  // (INDEXNOW_KEY) and NEVER lives in this repo. The route mounts ONLY
+  // when the key is configured + valid — unset means the whole IndexNow
+  // feature is inert and this path serves the regular SPA fallback.
+  const indexNowKeyValue = indexNowKey();
+  if (indexNowKeyValue) {
+    const keyFileRoute = `/${indexNowKeyValue}.txt`;
+    app.get(keyFileRoute, (_req, res) => {
+      res
+        .set("Content-Type", "text/plain; charset=utf-8")
+        // Engines fetch the key file on (nearly) every submission batch;
+        // a day of edge cache keeps that off the origin.
+        .set("Cache-Control", "public, max-age=86400")
+        .send(indexNowKeyValue);
+    });
+  }
 
   // Serve hashed assets with 1-year immutable cache (file names change on rebuild)
   app.use(

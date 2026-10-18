@@ -2241,6 +2241,7 @@ export const ListAdminProductsResponseItem = zod.object({
   stock_count: zod.number().int(),
   order_count: zod.number().int(),
   usage_terms: zod.string().nullish(),
+  features: zod.array(zod.string()).optional(),
   seo_title: zod
     .string()
     .nullish()
@@ -2341,6 +2342,7 @@ export const CreateProductResponse = zod.object({
   stock_count: zod.number().int(),
   order_count: zod.number().int(),
   usage_terms: zod.string().nullish(),
+  features: zod.array(zod.string()).optional(),
   seo_title: zod
     .string()
     .nullish()
@@ -2396,6 +2398,10 @@ export const updateProductBodyPriceMax = 1000000;
 export const updateProductBodyCostPriceMin = 0;
 export const updateProductBodyCostPriceMax = 1000000;
 
+export const updateProductBodyFeaturesItemMax = 500;
+
+export const updateProductBodyFeaturesMax = 32;
+
 export const updateProductBodySeoTitleMax = 200;
 
 export const updateProductBodySeoDescriptionMax = 320;
@@ -2412,6 +2418,10 @@ export const UpdateProductBody = zod.object({
     .nullish(),
   category: zod.string().nullish(),
   usage_terms: zod.string().nullish(),
+  features: zod
+    .array(zod.string().min(1).max(updateProductBodyFeaturesItemMax))
+    .max(updateProductBodyFeaturesMax)
+    .optional(),
   seo_title: zod
     .string()
     .max(updateProductBodySeoTitleMax)
@@ -2444,6 +2454,7 @@ export const UpdateProductResponse = zod.object({
   stock_count: zod.number().int(),
   order_count: zod.number().int(),
   usage_terms: zod.string().nullish(),
+  features: zod.array(zod.string()).optional(),
   seo_title: zod
     .string()
     .nullish()

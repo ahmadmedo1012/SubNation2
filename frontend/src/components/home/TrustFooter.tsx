@@ -39,7 +39,12 @@ const STEPS = [
     n: "2",
     Icon: Wallet,
     title: "اشحن محفظتك بالدينار",
-    body: "الدفع محلياً بالدينار الليبي عبر مدار أو ليبيانا",
+    // R163: LyPay joins the honest payment-channel list — the wallet's
+    // real top-up methods are مدار/ليبيانا credit transfer AND LyPay
+    // bank transfer (MethodTabs); the SERP research showed this exact
+    // trust stack (named local payment rails) is what the telco-card
+    // archetype wins on.
+    body: "الدفع محلياً بالدينار الليبي عبر مدار أو ليبيانا أو LyPay",
   },
   {
     n: "3",

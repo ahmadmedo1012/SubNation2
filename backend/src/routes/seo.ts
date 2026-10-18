@@ -21,47 +21,48 @@ const APP_ORIGIN = (process.env.APP_URL || "https://subnation.ly").replace(/\/$/
 // /robots.txt
 // ────────────────────────────────────────────────────────────────────────────
 //
-// Disallow list covers EVERY non-public route the SPA exposes
-// (r140-m parity audit against frontend/src/app/routes.tsx):
+// R163 redesign — the noindex/Disallow conflict resolved.
 //
-//   • Auth flow                    /login, /register, /forgot-password,
-//                                    /onboarding, /auth/, /auth/callback
-//   • Cart + checkout funnels      /cart, /checkout (V3-A2)
-//   • User-private pages           /wallet, /orders (+ detail urls), /loyalty,
-//                                    /referrals, /profile, /notifications
-//                                    (these render user-state-dependent
-//                                    content that's empty for an anonymous
-//                                    crawler — bad for SEO)
-//   • Admin                        /admin, /admin/*
-//   • Internal observability       /status   (operational view; no
-//                                    customer-facing value)
-//   • API surface                  /api/
+// Google's documented model (Search Essentials, "Block URLs from being
+// indexed"): robots.txt blocks CRAWLING, never INDEXING. A URL that is
+// Disallowed but externally linked can still be indexed "without content"
+// (the "Indexed, though blocked by robots.txt" state), and — decisively
+// for us — a crawler blocked by robots.txt CANNOT READ the page's
+// noindex directive, so the exclusion signal never reaches the engine.
+//
+// Every customer-facing private surface (/login, /register, /cart,
+// /checkout, /wallet, /orders, /loyalty, /referrals, /profile,
+// /notifications, /onboarding, /auth/, /forgot-password) serves
+// `noindex,follow` in the RAW shell HTML (spa-shell.ts
+// SHELL_NOINDEX_RES) AND at runtime (route-shapes.ts NOINDEX_ROUTES) —
+// a complete, JS-independent de-indexing signal. These families are
+// therefore deliberately CRAWLABLE now: the crawler reads the noindex
+// and the URL drops out of the index cleanly (the R162-and-earlier
+// Disallow walls are retired — they made the noindex unreadable).
+//
+// The three families that REMAIN Disallowed, by documented requirement:
+//
+//   • /api/            the JSON API surface — not HTML, no rendering
+//                      value, pure crawl waste; real authorization is
+//                      enforced by auth middleware (robots.txt is not a
+//                      security boundary, and the walls here are only
+//                      the crawl-waste guard)
+//   • /admin, /admin/  internal tooling behind real authentication —
+//                      crawling it is waste; not a customer surface,
+//                      and it serves noindex,follow anyway (belt and
+//                      suspenders, R142 SHELL_NOINDEX_RES)
+//   • /status          internal observability view; no customer value
 //
 // Public crawlable routes (allowed):
 //   • /                            home / catalog
 //   • /product/<slug>              individual product pages (anonymous-
-//                                    renderable; the catalog data is public)
+//                                  renderable; the catalog data is public)
 //   • /category/<slug>             the 7 live category landings
 //   • /flash-sales                 on-sale money page (V3-A4)
 //   • /support                     help center (mostly static)
 //   • /terms                       legal
-//
-// r140-m notes:
-//   • /notifications gained its Disallow row here — the page shipped in
-//     R128-IMP-5 (A9-F2) and the SPA's own noindex mirror
-//     (frontend/src/app/route-shapes.ts NOINDEX_ROUTES) had flagged the
-//     missing wall since then.
-//   • /forgot-password is a RETIRED route (no entry in the SPA's route
-//     registry since the auth flow was consolidated; the URL 404s in the
-//     client router). The wall is kept deliberately: the noindex mirrors
-//     (route-shapes.ts NOINDEX_ROUTES + spa-shell.ts SHELL_NOINDEX_RES)
-//     still list the family, a Disallow on a dead path costs nothing, and
-//     it guards an accidental re-introduction. Removing it here would
-//     diverge the three walls for zero SEO gain.
-//   • /flash-sales gained its explicit Allow line — it was always
-//     crawlable via the blanket "Allow: /" (nothing disallowed it), but
-//     the documented public-surface list above now names every money
-//     page the sitemap advertises.
+//   • /login /register /cart /…    the noindex families above —
+//                                  crawlable, each stamped noindex,follow
 //
 // Sitemap reference points at the dynamic /sitemap.xml below (not a static
 // file). Cache-Control max-age=300 so crawlers revisit hourly-ish without
@@ -81,33 +82,22 @@ const ROBOTS_BODY = [
   "Allow: /support",
   "Allow: /terms",
   "",
-  "# Auth flow — never index",
-  "Disallow: /login",
-  "Disallow: /register",
-  "Disallow: /forgot-password",
-  "Disallow: /onboarding",
-  "Disallow: /auth/",
+  "# De-indexed customer surfaces (auth, cart/checkout, account pages):",
+  "# deliberately CRAWLABLE — each serves noindex,follow in the raw HTML",
+  "# and at runtime, and that directive can only be read when the URL is",
+  "# not robots-blocked (Google: robots.txt stops crawling, not indexing).",
+  "# Families: /login /register /forgot-password /onboarding /auth/",
+  "# /cart /checkout /wallet /orders /loyalty /referrals /profile",
+  "# /notifications",
   "",
-  "# Cart + checkout — transactional funnels, never index (V3-A2)",
-  "Disallow: /cart",
-  "Disallow: /checkout",
-  "",
-  "# User-private pages (anonymous crawlers see redirects / empty state)",
-  "Disallow: /wallet",
-  "Disallow: /orders",
-  "Disallow: /loyalty",
-  "Disallow: /referrals",
-  "Disallow: /profile",
-  // R128-IMP-5 shipped the page; r140-m ships the wall it asked for.
-  "Disallow: /notifications",
-  "",
-  "# Admin + internal observability",
+  "# Never crawled (documented requirements):",
+  "#   /api/   — the JSON API surface, not HTML, pure crawl waste",
+  "#            (real authorization is enforced by auth middleware)",
+  "#   /admin, /status — internal tooling behind real authentication",
+  "Disallow: /api/",
   "Disallow: /admin",
   "Disallow: /admin/",
   "Disallow: /status",
-  "",
-  "# API surface",
-  "Disallow: /api/",
   "",
   // Crawl-delay is a soft hint; modern Googlebot/Bingbot ignore it but other
   // crawlers (Yandex, Baidu) honour it. 1s gives small crawlers air without
@@ -234,13 +224,6 @@ function urlEntry(
     ...(lastmod ? [`    <lastmod>${lastmod}</lastmod>`] : []),
     `    <changefreq>${changefreq}</changefreq>`,
     `    <priority>${priority}</priority>`,
-    // The site is currently Arabic-only. We declare the Arabic alternate
-    // for explicit-locale crawlers, plus x-default for fallback. We do
-    // NOT emit an "en" alternate because no English version exists; an
-    // alternate that points to Arabic content is a misconfiguration that
-    // Google can flag and use to suppress the entire alternate set.
-    `    <xhtml:link rel="alternate" hreflang="ar" href="${escapedLoc}" />`,
-    `    <xhtml:link rel="alternate" hreflang="x-default" href="${escapedLoc}" />`,
     "  </url>",
   ].join("\n");
 }
@@ -319,7 +302,14 @@ async function buildSitemap(): Promise<string> {
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
+    // R163: the xmlns:xhtml namespace and every <xhtml:link hreflang>
+    // alternate were REMOVED — the site is single-language Arabic with
+    // no alternate versions, and hreflang/x-default annotations exist to
+    // map GENUINE alternates (Google's international docs: every
+    // documented scenario requires ≥2 versions; the language of a page
+    // is detected from its content). The old ar + x-default pair both
+    // pointed at the SAME URL — redundant noise every engine ignored.
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...staticEntries,
     ...productEntries,
     "</urlset>",

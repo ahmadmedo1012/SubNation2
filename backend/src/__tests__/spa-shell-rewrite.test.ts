@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Express } from "express";
 import { eq } from "drizzle-orm";
-import { db, initTestDb, productsTable, resetTestDb, flashSalesTable } from "../test/db";
+import {
+  db,
+  initTestDb,
+  productsTable,
+  resetTestDb,
+  flashSalesTable,
+  inventoryTable,
+} from "../test/db";
 // R122 (A3-P1): the shell's /product/* lookup now rides the catalog
 // cache — the same generation bump admin CRUD performs keeps each
 // test's re-seeded rows fresh (module state persists across `it`s).
@@ -214,10 +221,10 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
       "سوق الاشتراكات الرقمية في ليبيا | SubNation",
     );
     expect(metaContent(r.body, "name", "description")).toBe(
-      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
+      "متجر اشتراكات رقمية في ليبيا — نتفلكس، سبوتيفاي، ChatGPT وأكثر بالدينار الليبي. الدفع عبر ليبيانا ومدار وLyPay، تسليم فوري، دعم محلي.",
     );
     expect(metaContent(r.body, "property", "og:description")).toBe(
-      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
+      "متجر اشتراكات رقمية في ليبيا — نتفلكس، سبوتيفاي، ChatGPT وأكثر بالدينار الليبي. الدفع عبر ليبيانا ومدار وLyPay، تسليم فوري، دعم محلي.",
     );
     // The static apex canonical, robots and og:image set were already
     // correct for "/" — the home rewrite must not touch them.
@@ -558,6 +565,96 @@ describe("SPA shell rewrite — dead product slugs answer 404 (A7-F7)", () => {
   });
 });
 
+// ── R163: the initial-HTML Product/Offer structured data ────────────────────
+
+describe("SPA shell rewrite — PDP JSON-LD in the initial HTML (R163)", () => {
+  /** Extract + JSON.parse every ld+json block the raw shell ships. */
+  function ldBlocks(body: string): object[] {
+    return [...body.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(
+      (m) => JSON.parse(m[1] as string) as object,
+    );
+  }
+
+  it("a live product's shell carries ONE parseable Product block whose Offer is honest about price + stock", async () => {
+    const r = await get(`/product/${activeProduct.slug}`);
+    expect(r.status).toBe(200);
+    const blocks = ldBlocks(r.body);
+    expect(blocks).toHaveLength(1);
+    const ld = blocks[0] as Record<string, unknown>;
+    expect(ld["@type"]).toBe("Product");
+    // The @id/url node is the SAME one the hydrated page's JsonLd
+    // re-emits (frontend buildProductLd) — the pair merges, never forks.
+    expect(ld["@id"]).toBe("https://subnation.ly/product/expressvpn-shell-test");
+    expect(ld.url).toBe("https://subnation.ly/product/expressvpn-shell-test");
+    expect(ld.name).toBe("ExpressVPN اشتراك اختبار");
+    expect(ld.sku).toBe("subnation-expressvpn-shell-test");
+    expect(ld.brand).toEqual({ "@type": "Brand", name: "SubNation" });
+    // Description preference mirrors the frontend builder.
+    expect(ld.description).toBe("اشتراك VPN اختبار القشرة الثابتة");
+    // Site-relative art is absolutized like og:image.
+    expect(ld.image).toBe("https://subnation.ly/products/expressvpn.webp");
+    const offers = ld.offers as Record<string, unknown>;
+    expect(offers.price).toBe("100.00");
+    expect(offers.priceCurrency).toBe("LYD");
+    expect(offers.itemCondition).toBe("https://schema.org/NewCondition");
+    // priceValidUntil: end of NEXT year (never an expired-offer signal).
+    expect(offers.priceValidUntil).toBe(`${new Date().getUTCFullYear() + 1}-12-31`);
+    expect(offers.url).toBe("https://subnation.ly/product/expressvpn-shell-test");
+    // The seeded row has ZERO deliverable units → OutOfStock (the
+    // D2-F2 honesty contract, now enforced pre-JS in the raw shell).
+    expect(offers.availability).toBe("https://schema.org/OutOfStock");
+  });
+
+  it("a product with deliverable stock asserts InStock", async () => {
+    // Stock the active product with one deliverable unit (the catalog's
+    // own is_available semantics: is_sold=false + a credential field).
+    await db.insert(inventoryTable).values({
+      productId: activeProduct.id,
+      accountEmail: "shell-ld-stock@example.com",
+      accountPassword: "plainpass",
+    });
+    bumpCatalogCache();
+    const r = await get(`/product/${activeProduct.slug}`);
+    const blocks = ldBlocks(r.body);
+    expect(blocks).toHaveLength(1);
+    const offers = (blocks[0] as Record<string, unknown>).offers as Record<string, unknown>;
+    expect(offers.availability).toBe("https://schema.org/InStock");
+  });
+
+  it("description_long is preferred over the short description (the frontend builder's rule)", async () => {
+    await db
+      .update(productsTable)
+      .set({ descriptionLong: "الوصف الطويل الكامل للاختبار" })
+      .where(eq(productsTable.id, activeProduct.id));
+    bumpCatalogCache();
+    const r = await get(`/product/${activeProduct.slug}`);
+    const blocks = ldBlocks(r.body);
+    expect(blocks).toHaveLength(1);
+    expect((blocks[0] as Record<string, unknown>).description).toBe("الوصف الطويل الكامل للاختبار");
+  });
+
+  it("NON-product routes ship NO ld+json (home, category, statics, noindex families, unknowns)", async () => {
+    for (const pathname of [
+      "/",
+      "/category/vpn",
+      "/flash-sales",
+      "/support",
+      "/terms",
+      "/login",
+      "/xyz-not-a-route",
+    ]) {
+      const r = await get(pathname);
+      expect(ldBlocks(r.body)).toHaveLength(0);
+    }
+  });
+
+  it("a dead product's 404 shell ships NO ld+json", async () => {
+    const r = await get(`/product/${inactiveProduct.slug}`);
+    expect(r.status).toBe(404);
+    expect(ldBlocks(r.body)).toHaveLength(0);
+  });
+});
+
 // ── A7-F16: auth/transactional/admin families get noindex in RAW html ──────
 
 describe("SPA shell rewrite — noindex families in the raw shell (A7-F16)", () => {
@@ -616,12 +713,18 @@ describe("SPA shell rewrite — unknown public paths (no lying canonical, noinde
     expect(metaContent(r.body, "name", "robots")).toBe("noindex,follow");
   });
 
-  it("an unknown category slug keeps 200 + no canonical + noindex (SPA noindex surface, R122 A7-P1-2)", async () => {
+  it("an unknown/retired category slug serves a REAL 404 + no canonical + noindex (R163 soft-404 fix — the shell still ships for the client-side 404 UX)", async () => {
     const r = await get("/category/gaming");
-    expect(r.status).toBe(200);
+    // R163: mirrors the unknown-product branch — Google's soft-404
+    // guidance + the live evidence (the retired /category/gaming had been
+    // indexed as an error page under the old 200 status).
+    expect(r.status).toBe(404);
     expect(canonicalOf(r.body)).toBeNull();
     expect(titleOf(r.body)).toBe("SubNation — سوق الاشتراكات الرقمية");
     expect(metaContent(r.body, "name", "robots")).toBe("noindex,follow");
+    // The SPA still boots from this shell (the client-side 404 UI is a
+    // rendered surface, not an empty body).
+    expect(r.body).toContain('<div id="root">');
   });
 
   it("KNOWN routes stay index,follow (the noindex stamp never over-reaches)", async () => {

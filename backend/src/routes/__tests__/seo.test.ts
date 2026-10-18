@@ -164,7 +164,7 @@ function lastmodOf(entries: string[], path: string): string | null {
 }
 
 describe("GET /robots.txt (R118-A5 #16)", () => {
-  it("serves the allow-list + private-surface disallow list with the right content type", async () => {
+  it("serves the allow-list + the R163 noindex-readable design with the right content type", async () => {
     const { url, close } = await listen(buildApp());
     try {
       const res = await getBody(url, "/robots.txt");
@@ -184,22 +184,18 @@ describe("GET /robots.txt (R118-A5 #16)", () => {
         expect(res.text).toContain(`\n${allow}\n`);
       }
 
-      // Auth flow — never index.
-      for (const disallow of [
+      // R163: the de-indexed customer families (auth, funnels,
+      // user-private) are CRAWLABLE BY DESIGN — each serves noindex,
+      // follow in the raw shell (SHELL_NOINDEX_RES) and at runtime
+      // (NOINDEX_ROUTES), and Google can only read that directive when
+      // the URL is not robots-blocked. The old Disallow walls are
+      // pinned ABSENT so this inversion can never silently regress.
+      for (const retired of [
         "Disallow: /login",
         "Disallow: /register",
         "Disallow: /forgot-password",
         "Disallow: /onboarding",
         "Disallow: /auth/",
-      ]) {
-        expect(res.text).toContain(`\n${disallow}\n`);
-      }
-
-      // Transactional funnels (V3-A2) + user-private pages. NOTE:
-      // "Disallow: /orders" also covers the order DETAIL urls
-      // (/orders/:id) — prefix matching. /notifications is the
-      // R128-IMP-5 page whose wall r140-m finally shipped.
-      for (const disallow of [
         "Disallow: /cart",
         "Disallow: /checkout",
         "Disallow: /wallet",
@@ -209,15 +205,17 @@ describe("GET /robots.txt (R118-A5 #16)", () => {
         "Disallow: /profile",
         "Disallow: /notifications",
       ]) {
-        expect(res.text).toContain(`\n${disallow}\n`);
+        expect(res.text).not.toContain(`\n${retired}\n`);
       }
 
-      // Admin + internal observability + API surface.
+      // Never crawled, by documented requirement: the JSON API surface
+      // (not HTML, pure crawl waste) + internal admin/observability
+      // tooling (real auth fronts both).
       for (const disallow of [
+        "Disallow: /api/",
         "Disallow: /admin",
         "Disallow: /admin/",
         "Disallow: /status",
-        "Disallow: /api/",
       ]) {
         expect(res.text).toContain(`\n${disallow}\n`);
       }
@@ -297,9 +295,14 @@ describe("GET /sitemap.xml (R118-A5 #16)", () => {
         expect(res.text).not.toContain(`<loc>${TEST_ORIGIN}${absent}`);
       }
 
-      // Arabic alternate + x-default for explicit-locale crawlers.
-      expect(res.text).toContain('hreflang="ar"');
-      expect(res.text).toContain('hreflang="x-default"');
+      // R163: the hreflang/x-default alternates are GONE — the site is
+      // single-language Arabic with no alternate versions, and hreflang
+      // exists to map GENUINE alternates (Google: every documented
+      // scenario requires ≥2 versions). The old same-URL ar+x-default
+      // pair was redundant noise; pin its absence so it never returns.
+      expect(res.text).not.toContain("hreflang");
+      expect(res.text).not.toContain("xhtml:link");
+      expect(res.text).not.toContain("xmlns:xhtml");
     } finally {
       close();
     }
@@ -607,42 +610,32 @@ describe("GET /robots.txt (r140-m walls + SPA parity)", () => {
         "Allow: /flash-sales",
         "Allow: /support",
         "Allow: /terms",
-        // Auth flow — never index (/forgot-password: retired route,
-        // wall deliberately retained — see seo.ts r140-m notes).
-        "Disallow: /login",
-        "Disallow: /register",
-        "Disallow: /forgot-password",
-        "Disallow: /onboarding",
-        "Disallow: /auth/",
-        // Transactional funnels (V3-A2).
-        "Disallow: /cart",
-        "Disallow: /checkout",
-        // User-private pages (incl. the R128-IMP-5 /notifications wall).
-        "Disallow: /wallet",
-        "Disallow: /orders",
-        "Disallow: /loyalty",
-        "Disallow: /referrals",
-        "Disallow: /profile",
-        "Disallow: /notifications",
-        // Admin + internal observability.
+        // R163: the noindex-dependent customer families (auth, cart/
+        // checkout, user-private) are deliberately CRAWLABLE — their
+        // noindex,follow shell must stay readable to crawlers; the old
+        // Disallow walls were removed in this round (see seo.ts).
+        // Never crawled, by documented requirement:
+        "Disallow: /api/",
         "Disallow: /admin",
         "Disallow: /admin/",
         "Disallow: /status",
-        // API surface.
-        "Disallow: /api/",
       ]);
     } finally {
       close();
     }
   });
 
-  it("every noindex-classified route the SPA mounts is robots-blocked; every indexable one stays crawlable", async () => {
-    // The pin that would have caught the R128-IMP-5 /notifications gap:
-    // the SPA's own privacy classification (route-shapes.ts
-    // NOINDEX_ROUTES) and the served robots.txt walls must agree on
-    // EVERY route the registry actually mounts — in BOTH directions
-    // (a missing Disallow leaks an empty private page into the index; a
-    // stray Disallow silently de-indexes a money page).
+  it("every noindex-classified route the SPA mounts stays CRAWLABLE (the noindex directive must remain readable); the documented walls hold; indexable routes stay crawlable", async () => {
+    // R163 INVERSION of the r140-m pin: the SPA's privacy classification
+    // (route-shapes.ts NOINDEX_ROUTES) marks these routes noindex — and a
+    // noindex directive is only effective when Google can FETCH the page.
+    // robots-blocking a noindex page creates the "Indexed, though
+    // blocked by robots.txt" state instead of a clean drop. The
+    // exceptions are the three DOCUMENTED walls (/admin, /status —
+    // internal tooling behind real authentication, not customer
+    // surfaces; /api/ never appears in the SPA registry). A stray
+    // Disallow on an indexable money page is still a failure — that
+    // direction of the pin is unchanged.
     const { url, close } = await listen(buildApp());
     try {
       const res = await getBody(url, "/robots.txt");
@@ -683,7 +676,15 @@ describe("GET /robots.txt (r140-m walls + SPA parity)", () => {
         // :param segments and * splats → representative concrete paths.
         const p = raw.replace(/:[^/]+/g, "x").replace(/\*/g, "nested");
         if (spaClassifiesPrivate(p)) {
-          expect(blocked(p), `robots must block the SPA's private route ${raw}`).toBe(true);
+          const documentedWall = p === "/admin" || p.startsWith("/admin/") || p === "/status";
+          if (documentedWall) {
+            expect(blocked(p), `the documented internal wall must hold for ${raw}`).toBe(true);
+          } else {
+            expect(
+              blocked(p),
+              `robots must NOT block the SPA's noindex route ${raw} — the noindex,follow directive must stay readable to crawlers`,
+            ).toBe(false);
+          }
         } else {
           expect(blocked(p), `robots must NOT block the SPA's indexable route ${raw}`).toBe(false);
         }

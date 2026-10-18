@@ -44,9 +44,9 @@ const GROWTH_BANNED: Array<[string, number]> = [
   ["services/alerting.service.ts", 1_083],
   ["lib/spa-shell.ts", 1_039],
   ["routes/admin/auth.ts", 1_026],
-  // R158 (B#1): tripwire — 962/1,000 after the notifyAdminStats dedup;
-  // any growth past the pin names this file in the CI failure.
-  ["routes/admin/products.ts", 967],
+  // R158 (B#1) tripwire — RETIRED R163: the set-count route's carve to
+  // products-inventory.ts dropped the file to ~830; the tripwire entry
+  // left with it (the register-honesty branch demands removal below 900).
 ];
 const MIGRATE_CEILING = 5_000;
 const CEILING = 1_000;

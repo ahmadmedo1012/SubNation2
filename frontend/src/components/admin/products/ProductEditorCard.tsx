@@ -281,6 +281,35 @@ export function ProductEditorCard({
             placeholder="ملاحظات مهمة تظهر بعد الشراء…"
           />
         </div>
+        {/* R163: the feature-bullet checklist editor — the census's
+            features[] write surface. One bullet per line; the backend
+            trims + drops blanks. Edit-mode only (create has no features
+            contract). */}
+        {editingId !== null && (
+          <div className="md:col-span-2">
+            <Label
+              htmlFor="product-editor-features"
+              className="text-xs font-bold text-muted-foreground mb-1.5 block"
+            >
+              المزايا (سطر لكل ميزة)
+            </Label>
+            <textarea
+              id="product-editor-features"
+              value={form.features}
+              onChange={(e) => onFormChange((f) => ({ ...f, features: e.target.value }))}
+              placeholder={"ميزة أولى\nميزة ثانية…"}
+              rows={5}
+              dir="rtl"
+              /* R163: rides the sibling seo_description textarea's exact
+                 idiom (R143 L2-5 — the input.tsx focus ring family) —
+                 one dialect inside this card, no second style invented. */
+              className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-sm resize-y focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+            />
+            <p className="text-3xs mt-1 text-muted-foreground">
+              تظهر كقائمة نقاط في صفحة المنتج — سطر واحد لكل ميزة.
+            </p>
+          </div>
+        )}
         {/* R123 (E3 item 2): the SEO override fields the CHANGELOG
             claimed existed — they feed the product page's meta tags
             (seo-builders consume the overrides; empty falls back to

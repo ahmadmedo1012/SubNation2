@@ -91,7 +91,12 @@ describe("SHELL_HOME_META parity with home.tsx useSeo (B12-F1)", () => {
     // The money query leads — NOT the brand-first baseline the shell
     // used to ship (that exact regression is what B12-F1 closed).
     expect(SHELL_HOME_META.title).toBe("سوق الاشتراكات الرقمية في ليبيا | SubNation");
-    expect(SHELL_HOME_META.description).toContain("متجر إلكتروني متخصّص");
+    // R163: the description was tightened to the query-aligned lead
+    // («متجر اشتراكات رقمية…») + the REAL payment rails the SERP
+    // research showed the telco-card archetype wins on (ليبيانا/مدار/
+    // LyPay — the wallet MethodTabs' actual channels).
+    expect(SHELL_HOME_META.description).toContain("متجر اشتراكات رقمية");
+    expect(SHELL_HOME_META.description).toContain("الدفع عبر ليبيانا ومدار وLyPay");
     // home.tsx's own budget comment: ~145 chars / 160 cap.
     expect(SHELL_HOME_META.description.length).toBeGreaterThan(120);
     expect(SHELL_HOME_META.description.length).toBeLessThanOrEqual(160);

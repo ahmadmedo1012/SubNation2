@@ -8,6 +8,8 @@ import { writeAuditLog } from "../../lib/audit";
 import { notifyAdminStats } from "../../lib/socket";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+// R163: price-affecting variant CRUD is a documented IndexNow trigger.
+import { notifyIndexNow } from "../../lib/indexnow";
 
 /**
  * Admin catalog-variant management (catalog reconstruction 2026-09-20).
@@ -252,6 +254,10 @@ router.post("/products/:id/variants", async (req, res) => {
   });
 
   bumpCatalogCache();
+  // R163: a new price-bearing variant changes the PDP's rendered offers —
+  // ping it (numeric-id URL; its shell canonicalizes to the slug form, so
+  // the engine consolidates onto the sitemap URL).
+  notifyIndexNow(`/product/${id}`);
   return res.status(201).json(await formatVariant(created));
 });
 
@@ -382,6 +388,8 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
   });
 
   bumpCatalogCache();
+  // R163: variant price/label edits change the PDP's rendered offer.
+  notifyIndexNow(`/product/${id}`);
   return res.json(await formatVariant(updated));
 });
 
@@ -433,6 +441,8 @@ router.delete("/products/:id/variants/:variantId", async (req, res) => {
   });
 
   bumpCatalogCache();
+  // R163: deleting a variant changes the PDP's offer set.
+  notifyIndexNow(`/product/${id}`);
   return res.json({ success: true, message: "تم حذف الباقة" });
 });
 

@@ -350,6 +350,9 @@ export default function AdminProductsPage() {
       // null (no override) maps to "" for the string form fields.
       seo_title: product.seo_title ?? "",
       seo_description: product.seo_description ?? "",
+      // R163: the feature bullets join the seeded editor (one per line —
+      // the R125-I3 write-only-editor lesson applied to the checklist).
+      features: (product.features ?? []).join("\n"),
       is_active: product.is_active,
     };
     // 98-F7 (R98-05): the loaded values double as the pristine baseline.
@@ -432,6 +435,20 @@ export default function AdminProductsPage() {
       // server-side.
       seo_title: seoTouched.title ? form.seo_title.trim() || null : undefined,
       seo_description: seoTouched.description ? form.seo_description.trim() || null : undefined,
+      // R163: the features[] write surface — dirty-aware (the seoTouched
+      // idiom, but against the pristine baseline the page already keeps):
+      // untouched = OMIT (the wire body stays minimal); edited = SET the
+      // parsed bullet list (blank lines dropped); edited-to-empty = CLEAR
+      // the checklist (an explicit operator action, never an accident).
+      // Create carries no features contract — the field is edit-only.
+      ...(editingId && form.features !== formBaseline.features
+        ? {
+            features: form.features
+              .split("\n")
+              .map((line) => line.trim())
+              .filter((line) => line.length > 0),
+          }
+        : {}),
       is_active: form.is_active,
     };
     if (editingId) updateMutation.mutate({ id: editingId, data });

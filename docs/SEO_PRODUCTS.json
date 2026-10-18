@@ -1,7 +1,7 @@
 [
   {
     "product_name": "Netflix",
-    "slug": "netflix",
+    "slug": "netflix-premium",
     "category": "streaming",
     "primary_keyword": "اشتراك نتفلكس بريميوم",
     "secondary_keywords": [
@@ -67,7 +67,7 @@
     "notes": "حجم البحث في ليبيا ضعيف (10–170 شهرياً) لكن الطلب الإقليمي العربي ضخم (60500). تجنبنا الادعاءات حول التسليم اللحظي بثوانٍ لأن النظام يعتمد على رمز تحويل ديناميكي."
   },
   {
-    "product_name": "Spotify",
+    "product_name": "Spotify Premium",
     "slug": "spotify-premium",
     "category": "music",
     "primary_keyword": "اشتراك سبوتيفاي بريميوم",
@@ -126,7 +126,7 @@
   },
   {
     "product_name": "Disney+",
-    "slug": "disney-plus",
+    "slug": "disney-standard",
     "category": "streaming",
     "primary_keyword": "اشتراك ديزني بلس",
     "secondary_keywords": [
@@ -189,7 +189,7 @@
   },
   {
     "product_name": "Prime Video",
-    "slug": "prime-video",
+    "slug": "amazon-prime-video",
     "category": "streaming",
     "primary_keyword": "اشتراك أمازون برايم فيديو",
     "secondary_keywords": [
@@ -317,7 +317,7 @@
   },
   {
     "product_name": "Apple TV+",
-    "slug": "apple-tv-plus",
+    "slug": "apple-tv",
     "category": "streaming",
     "primary_keyword": "اشتراك أبل تي في بلس",
     "secondary_keywords": [

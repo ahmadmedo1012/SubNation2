@@ -35,6 +35,10 @@ export const EMPTY_FORM = {
   // accidental clears.
   seo_title: "",
   seo_description: "",
+  // R163: the feature bullets as the editor's string form — one bullet
+  // per textarea line (startEdit seeds the live rows; the page's submit
+  // splits lines back into the array).
+  features: "",
   is_active: true,
 };
 

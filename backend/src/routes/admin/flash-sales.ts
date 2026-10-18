@@ -26,6 +26,8 @@ import { logger } from "../../lib/logger";
 import { intParam } from "../../lib/http";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+// R163: flash-sale changes move every on-sale price at once.
+import { notifyIndexNow } from "../../lib/indexnow";
 
 const router: IRouter = Router();
 
@@ -215,6 +217,11 @@ router.post("/flash-sales", requireAdmin, async (req, res) => {
     });
 
     bumpCatalogCache();
+    // R163: an active site-wide sale re-prices every PDP — the money page
+    // itself is the highest-value ping (per-PDP enumeration is the sitemap's
+    // job; the debounce map would eat it anyway).
+    notifyIndexNow("/flash-sales");
+    notifyIndexNow("/");
     return res.status(201).json(toResponse(row));
   } catch (err) {
     // SQLSTATE 23505 = unique_violation. Our partial index rejects
@@ -344,6 +351,9 @@ router.patch("/flash-sales/:id", requireAdmin, async (req, res) => {
 
     void writeAuditLog(req, "flash_sale.update", "flash_sale", row.id, auditMeta);
     bumpCatalogCache();
+    // R163: sale edits (discount/end-date/active) re-price the sale surface.
+    notifyIndexNow("/flash-sales");
+    notifyIndexNow("/");
     return res.json(toResponse(row));
   } catch (err) {
     const code = (err as { code?: string }).code;
@@ -385,6 +395,9 @@ router.delete("/flash-sales/:id", requireAdmin, async (req, res) => {
     title: row.title,
   });
   bumpCatalogCache();
+  // R163: the sale ending restores list prices on the whole catalog.
+  notifyIndexNow("/flash-sales");
+  notifyIndexNow("/");
   return res.json(toResponse(row));
 });
 

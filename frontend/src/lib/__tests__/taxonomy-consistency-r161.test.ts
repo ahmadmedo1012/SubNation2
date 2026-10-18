@@ -144,7 +144,7 @@ describe("R161-C (d) — no canonical label source carries the retired live-broa
     "src/lib/utils.ts",
     "src/lib/category-registry.ts",
     "src/lib/categories.ts",
-    "../backend/src/lib/spa-shell.ts",
+    "../backend/src/lib/shell-meta.ts",
   ] as const;
 
   it.each([...CANONICAL_SOURCES])(
@@ -158,7 +158,7 @@ describe("R161-C (d) — no canonical label source carries the retired live-broa
     // The parity suite (backend/src/__tests__/spa-shell-category-parity)
     // already pins both sides via imports; this pins the MIRROR from
     // the frontend tree too, so a one-sided edit fails closest to home.
-    expect(read("../backend/src/lib/spa-shell.ts")).toContain(
+    expect(read("../backend/src/lib/shell-meta.ts")).toContain(
       `metaTitle: "${CATEGORY_META.streaming.metaTitle}"`,
     );
   });

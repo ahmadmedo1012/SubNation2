@@ -1242,6 +1242,7 @@ export interface AdminProduct {
   order_count: number;
   /** @nullable */
   usage_terms?: string | null;
+  features?: string[];
   /**
    * Operator's meta-title override (≤200 chars). Null = no
    * override (the product page falls back to the name-based
@@ -1452,6 +1453,12 @@ export interface UpdateProductBody {
   category?: string | null;
   /** @nullable */
   usage_terms?: string | null;
+  /**
+   * @maxItems 32
+   * @items.minLength 1
+   * @items.maxLength 500
+   */
+  features?: string[];
   /**
    * Operator override for the product page <title>; null clears it.
    * @maxLength 200

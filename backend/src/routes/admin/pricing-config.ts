@@ -11,6 +11,8 @@ import {
 import { writeAuditLog } from "../../lib/audit";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+// R163: site-wide pricing changes move every displayed price.
+import { notifyIndexNow } from "../../lib/indexnow";
 
 /**
  * Admin pricing configuration endpoints (catalog reconstruction 2026-09-20).
@@ -71,6 +73,9 @@ router.put("/pricing/config", async (req, res) => {
       effective: config,
     });
     bumpCatalogCache();
+    // R163: the exchange-rate/markup config moves every price — home is
+    // the catalog-rendering money page (per-PDP is the sitemap's job).
+    notifyIndexNow("/");
     return res.json({
       usd_to_lyd: config.usdToLyd,
       markup_percent: config.markupPercent,
@@ -242,6 +247,8 @@ router.post("/pricing/recompute", async (req, res) => {
   });
 
   bumpCatalogCache();
+  // R163: the bulk re-pricing pass rewrote variant prices catalog-wide.
+  notifyIndexNow("/");
   return res.json({
     variants_updated: variantsUpdated,
     products_updated: productsUpdatedCount,

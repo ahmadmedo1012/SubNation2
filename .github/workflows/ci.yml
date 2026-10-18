@@ -428,7 +428,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [backend, frontend]
+        # R163: scripts joins the suite matrix — the seo-join harness
+        # (R162's first @workspace/scripts tests) now runs in CI instead of
+        # being a local-only gate.
+        suite: [backend, frontend, scripts]
 
     steps:
       - name: Checkout
@@ -461,13 +464,17 @@ jobs:
         # round: thresholds land in R137 calibrated against the first CI
         # runs' artifact numbers (gating on never-measured numbers is a
         # flaky gate waiting to happen; the artifacts ARE the baseline).
-        run: pnpm --filter ${{ matrix.suite == 'backend' && '@workspace/api-server' || '@workspace/subnation' }} run test:coverage
+        # R163: the scripts workspace rides the same job — its harness is
+        # plain `vitest run` (no coverage config; 6 tests, no DB).
+        run: pnpm --filter ${{ matrix.suite == 'backend' && '@workspace/api-server' || matrix.suite == 'scripts' && '@workspace/scripts' || '@workspace/subnation' }} run ${{ matrix.suite == 'scripts' && 'test' || 'test:coverage' }}
 
       - name: Upload the ${{ matrix.suite }} coverage report
         # R136 (TST-2): the v8 json-summary/html report as a workflow
         # artifact — per-suite retention is 7 days (debugging aid, not a
         # compliance record). SHA-pinned like every other action here.
-        if: always()
+        # R163: scripts has no coverage output (plain vitest run) — the
+        # upload step is skipped for that matrix leg.
+        if: always() && matrix.suite != 'scripts'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-${{ matrix.suite }}

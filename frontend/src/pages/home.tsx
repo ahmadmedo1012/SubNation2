@@ -455,7 +455,7 @@ export default function HomePage() {
     // named brand here is verified against the active catalog
     // (يوتيوب = YouTube Premium, streaming).
     description:
-      "متجر إلكتروني متخصّص لشراء اشتراكات الخدمات الرقمية في ليبيا — نتفلكس، سبوتيفاي، يوتيوب، ديزني+ وأكثر. الدفع بالدينار الليبي، تسليم فوري، دعم محلي.",
+      "متجر اشتراكات رقمية في ليبيا — نتفلكس، سبوتيفاي، ChatGPT وأكثر بالدينار الليبي. الدفع عبر ليبيانا ومدار وLyPay، تسليم فوري، دعم محلي.",
     path: "/",
     locale: "ar",
     type: "website",

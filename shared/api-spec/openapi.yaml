@@ -6934,6 +6934,13 @@ components:
           type: integer
         usage_terms:
           type: ["string", "null"]
+        # R163: the feature bullets ride the admin list projection so the
+        # editor seeds the checklist with the row's LIVE values (the
+        # R125-I3 write-only-editor lesson, applied to features).
+        features:
+          type: array
+          items:
+            type: string
         # R125-I3 (A4 B-2 / A2-3): the operator's SEO overrides now ride
         # the admin list projection — the editor seeds its fields from the
         # row's LIVE values instead of write-only blanks.
@@ -7194,6 +7201,17 @@ components:
           type: ["string", "null"]
         usage_terms:
           type: ["string", "null"]
+        # R163: the feature-bullet checklist (the PDP's «المزايا» list).
+        # An array — possibly empty, which CLEARS the list — sets it;
+        # omitting the field leaves it untouched. Bullets are trimmed on
+        # the server; empty strings are dropped.
+        features:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            minLength: 1
+            maxLength: 500
         # R122 (A7-P2 + A4-P2-3): same SEO-override fields as
         # CreateProductBody — nullable so an explicit null CLEARS the
         # override (the row falls back to the name-based default).

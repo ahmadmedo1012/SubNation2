@@ -72,7 +72,9 @@ describe("R143 (L2-5) — the admin field family rides the shared focus idiom", 
     // idiom — pinned in the it.each above); only the textarea remains
     // hand-rolled locally.
     const src = stripComments(read("src/components/admin/products/ProductEditorCard.tsx"));
-    expect(src.match(/focus-visible:ring-2/g)).toHaveLength(1);
+    // R163: the features[] editor added the second hand-rolled textarea
+    // (same R143 L2-5 idiom) — one ring per local field.
+    expect(src.match(/focus-visible:ring-2/g)).toHaveLength(2);
     expect(src).toContain("<Select");
   });
 });
