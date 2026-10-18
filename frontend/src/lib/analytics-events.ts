@@ -35,7 +35,7 @@
  *
  * Purchase dedup (ANALYTICS guard only): one purchase event per
  * order_code EVER — an in-memory Set fast-path plus a
- * localStorage-backed sent-set under `subnation_ga4_purchase_sent`
+ * localStorage-backed sent-set under `subnation_ga4_sent`
  * (JSON array of the most recent 100 codes; corrupt JSON resets it).
  * localStorage — not sessionStorage — so other tabs and later sessions
  * cannot double-count a replayed order. This slot NEVER participates
@@ -45,7 +45,7 @@
  * whose status is "pending" or "completed" — never "failed" or
  * "refunded".
  *
- * Storage slot note: `subnation_ga4_purchase_sent` is analytics-only
+ * Storage slot note: `subnation_ga4_sent` is analytics-only
  * and shares nothing with the money-path intent-envelope slots
  * (see lib/idempotency.ts's R-140-o map — that registry is strictly
  * money-mutation Idempotency-Key minters, which is why this module is
@@ -218,7 +218,7 @@ export function trackBeginCheckout(
 
 // ── purchase: eligibility + one-fire-per-order_code ─────────────────────────
 
-const PURCHASE_SENT_STORAGE_KEY = "subnation_ga4_purchase_sent";
+const PURCHASE_SENT_STORAGE_KEY = "subnation_ga4_sent";
 const PURCHASE_SENT_BOUND = 100;
 
 const purchaseSent = new Set<string>();

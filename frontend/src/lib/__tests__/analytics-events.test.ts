@@ -259,10 +259,7 @@ describe("R168 analytics-events — purchase dedup", () => {
     expect(fired("purchase")[0]!.transaction_id).toBe("ORD-D2");
 
     // The sent-set survives under the documented analytics-only slot.
-    expect(JSON.parse(localStorage.getItem("subnation_ga4_purchase_sent")!)).toEqual([
-      "ORD-D1",
-      "ORD-D2",
-    ]);
+    expect(JSON.parse(localStorage.getItem("subnation_ga4_sent")!)).toEqual(["ORD-D1", "ORD-D2"]);
   });
 
   it("the sent-set is bounded to the 100 most recent codes (the 101st evicts the oldest)", async () => {
@@ -271,10 +268,10 @@ describe("R168 analytics-events — purchase dedup", () => {
     for (let i = 1; i <= 100; i++) {
       m.trackPurchase(order(`ORD-B${String(i).padStart(3, "0")}`));
     }
-    expect(JSON.parse(localStorage.getItem("subnation_ga4_purchase_sent")!)).toHaveLength(100);
+    expect(JSON.parse(localStorage.getItem("subnation_ga4_sent")!)).toHaveLength(100);
 
     m.trackPurchase(order("ORD-B101"));
-    const stored = JSON.parse(localStorage.getItem("subnation_ga4_purchase_sent")!) as string[];
+    const stored = JSON.parse(localStorage.getItem("subnation_ga4_sent")!) as string[];
     expect(stored).toHaveLength(100);
     expect(stored).not.toContain("ORD-B001"); // first evicted
     expect(stored[0]).toBe("ORD-B002");
@@ -287,7 +284,7 @@ describe("R168 analytics-events — purchase dedup", () => {
   });
 
   it("corrupt localStorage payload resets the sent-set instead of throwing", async () => {
-    localStorage.setItem("subnation_ga4_purchase_sent", "{not json");
+    localStorage.setItem("subnation_ga4_sent", "{not json");
     const m = await freshModule();
     armGtag();
     m.trackPurchase(order("ORD-CORRUPT"));
