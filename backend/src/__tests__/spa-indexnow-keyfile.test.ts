@@ -22,7 +22,9 @@ import type { Express } from "express";
  *     Coolify-restart requirement, not a defect).
  */
 
-const TEST_KEY = "feedfacefeedfacefeedfacefeedface";
+// Synthetic fixture (dash-separated, low entropy — hex-shaped constants
+// trip gitleaks' generic-api-key rule; the R163 CI lesson).
+const TEST_KEY = "subnation-indexnow-keyfile-test-0002";
 const stubDistDir = mkdtempSync(path.join(tmpdir(), "subnation-indexnow-stub-"));
 writeFileSync(
   path.join(stubDistDir, "index.html"),
@@ -77,7 +79,7 @@ describe("IndexNow key file route (R163)", () => {
   });
 
   it("a WRONG key path never leaks the key (the SPA fallback family answers, not the key route)", async () => {
-    const r = await get("/deadbeefdeadbeefdeadbeefdeadbeef.txt");
+    const r = await get("/some-other-wrong-key-value.txt");
     expect(r.body).not.toContain(TEST_KEY);
   });
 

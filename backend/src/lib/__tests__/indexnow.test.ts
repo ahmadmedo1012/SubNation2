@@ -20,7 +20,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * and restored after — the repo's env-hygiene convention.
  */
 
-const GOOD_KEY = "0123456789abcdef0123456789abcdef";
+// Synthetic fixture — dash-separated low-entropy on purpose: a 32-char
+// hex-shaped constant trips gitleaks' generic-api-key entropy rule (the
+// R163 CI lesson). Still matches the documented [A-Za-z0-9-] charset.
+const GOOD_KEY = "subnation-indexnow-test-key-0001";
 
 type IndexNowModule = typeof import("../indexnow");
 let indexnow: IndexNowModule;
