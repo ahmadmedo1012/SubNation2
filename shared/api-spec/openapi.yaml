@@ -2941,6 +2941,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/products/tier-price-sweep:
+    get:
+      operationId: adminProductsTierPriceSweep
+      tags: [admin]
+      security:
+        - adminCookieAuth: []
+          adminBearerAuth: []
+      summary: Whole-catalog tier-price audit, read-only (requireAdmin + inventory scope)
+      description: |
+        R168 (L2): scans every active, non-archived product's ACTIVE
+        variant matrix with the R162 cross-duration tier-price validator —
+        the same rule the R167 write-path `warnings` ride — and reports
+        every equalized/inverted tier pair with the operator copy plus the
+        variant evidence needed to correct it. Read-only by construction:
+        no writes, no cache bumps, no IndexNow, no audit log. Deactivating
+        an offending variant is the documented silencer (R167 semantics).
+      responses:
+        "200":
+          description: The sweep report (findings may be empty)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTierPriceSweepReport"
+        "401":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing inventory permission scope (requirePermission guard)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/products/{id}:
     patch:
       operationId: updateProduct
@@ -7069,6 +7105,88 @@ components:
                     type: string
                     description: Operator-facing Arabic warning copy.
                 required: [kind, message]
+
+    AdminTierPriceSweepFinding:
+      type: object
+      description: |
+        R168 (L2): one whole-catalog tier-price anomaly row — the R162
+        validator's finding over a product's ACTIVE variant matrix, mapped
+        to the same operator Arabic copy the R167 write-path warnings
+        ride, plus the evidence an operator needs to correct the row.
+      properties:
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        product_slug:
+          type: ["string", "null"]
+        kind:
+          type: string
+          enum: [equalized, inverted]
+          description: The anomaly class the validator reports.
+        plan_a:
+          type: string
+        plan_b:
+          type: string
+        duration:
+          type: ["string", "null"]
+          description: The shared duration label where the anomaly sits (null = no duration axis).
+        price:
+          type: number
+          description: Present when kind = equalized — the price both tiers collide at.
+        price_a:
+          type: number
+          description: Present when kind = inverted — plan_a's price at the inverted duration.
+        price_b:
+          type: number
+          description: Present when kind = inverted — plan_b's price at the inverted duration.
+        message:
+          type: string
+          description: Operator-facing Arabic warning copy (tierPriceWarningMessage — the single registry).
+        variants:
+          type: array
+          description: The product's ACTIVE variant rows — the evidence an operator corrects against.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              plan_label:
+                type: ["string", "null"]
+              duration_label:
+                type: ["string", "null"]
+              price:
+                type: number
+            required: [id, price]
+      required: [product_id, product_name, kind, plan_a, plan_b, duration, message, variants]
+
+    AdminTierPriceSweepReport:
+      type: object
+      description: |
+        R168 (L2): the whole-catalog read-only tier-price audit envelope
+        (the diagnostics/inventory-health computed-report shape — no
+        writes, no pagination; the catalog is small).
+      properties:
+        checked_at:
+          type: string
+          description: ISO timestamp of the scan.
+        products_scanned:
+          type: integer
+          description: Active, non-archived products examined.
+        variants_scanned:
+          type: integer
+          description: Active variant rows examined across those products.
+        scan_cap:
+          type: integer
+          description: Defensive product cap (mirrors inventory-health's scanned_cap echo).
+        products_with_findings:
+          type: integer
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTierPriceSweepFinding"
+      required:
+        [checked_at, products_scanned, variants_scanned, scan_cap, products_with_findings, findings]
 
     CreateVariantBody:
       type: object

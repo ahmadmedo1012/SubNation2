@@ -48,6 +48,7 @@ import { useToast } from "@/hooks/useToast";
 import { useSeo } from "@/hooks/useSeo";
 import { useCheckoutRequote } from "@/hooks/useCheckoutRequote";
 import { useAuth } from "@/lib/auth";
+import { cartLineToItem, trackBeginCheckout, trackPurchase } from "@/lib/analytics-events";
 import { readLiveCartItems, roundToCents, useCart, cartHasBlockingStock } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
 import { getErrorMessage } from "@/lib/errors";
@@ -410,6 +411,12 @@ export default function CheckoutPage() {
       { productId: number; variantId: number | null; units: number }
     >();
     const couponCode = coupon.trim().toUpperCase();
+    // R168: GA4 begin_checkout — once per confirm attempt, after the
+    // group-token mint and before the per-unit loop (retries re-fire:
+    // a new begin, honestly). The value is the coupon-adjusted
+    // cent-rounded total the buyer pays (comparisonTotal — the same
+    // number the balance gate compares against).
+    trackBeginCheckout(items.map(cartLineToItem), comparisonTotal, couponCode);
 
     try {
       // 93-C5 / F-15 (A4 #9) + 98-F2 (R98-A3 F1 / P1): pre-flight the
@@ -535,6 +542,12 @@ export default function CheckoutPage() {
               headers: { "Idempotency-Key": unitKey },
             });
             created.push(order);
+            // R168: GA4 purchase — the server-confirmed UNIT order
+            // (transaction_id = order_code; a multi-order checkout
+            // emits N events, one per order + amount). The module's
+            // eligibility + sent-set dedup make replays/retries and
+            // the other tab's purchases safe by construction.
+            trackPurchase(order);
             unitsOrdered++;
             // 2xx success — the unit is resolved, but the key is NOT deleted
             // here: if a LATER unit network-fails, the cart-sync below is

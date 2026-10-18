@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { EmptyHero } from "@/components/EmptyState";
 import { useSeo } from "@/hooks/useSeo";
+import { productToItem, trackSelectItem, trackViewItemList } from "@/lib/analytics-events";
 import { NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { buildItemListLd } from "@/lib/seo-builders";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
@@ -95,7 +96,12 @@ function FlashCard({
       : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 
   return (
-    <Link href={product.slug ? `/product/${product.slug}` : `/product/${product.id}`}>
+    <Link
+      href={product.slug ? `/product/${product.slug}` : `/product/${product.id}`}
+      /* R168: GA4 select_item — the flash card's click into the PDP
+         (this page's own card markup, not ProductCard). */
+      onClick={() => trackSelectItem(productToItem(product), "flash-sales")}
+    >
       {/* R116-S1 card convergence: ProductCard's hover physics
           (card-spring + token shadow) and aspect-square ratio replace
           the ad-hoc -translate-y-1 / raw black shadow / active-scale stack. */}
@@ -255,6 +261,16 @@ export default function FlashSalesPage() {
       )
       .sort((a, b) => (b.discount_percent ?? 0) - (a.discount_percent ?? 0));
   }, [products]);
+
+  // R168: GA4 view_item_list — one impression of the filtered sale
+  // list (the page's actual rendered set, "flash-sales").
+  useEffect(() => {
+    if (onSale.length === 0) return;
+    trackViewItemList(
+      onSale.map((p) => productToItem(p)),
+      "flash-sales",
+    );
+  }, [onSale]);
 
   // Real flash-sale window — the SAME /api/flash-sale endpoint
   // FlashSaleBanner consumes. `flash_sale` is null when no sale is

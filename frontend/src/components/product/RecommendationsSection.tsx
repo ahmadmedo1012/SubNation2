@@ -1,6 +1,8 @@
 import { Link } from "wouter";
 import { Lock } from "lucide-react";
+import { useEffect } from "react";
 import { formatCurrency } from "@/lib/utils";
+import { productToItem, trackViewItemList } from "@/lib/analytics-events";
 import {
   getGetProductRecommendationsQueryKey,
   useGetProductRecommendations,
@@ -27,6 +29,19 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
       retry: 1,
     },
   });
+
+  // R168: GA4 view_item_list — one impression of the cross-sell rail
+  // ("pdp-recommendations"). Declared BEFORE the hide-on-empty early
+  // return (rules of hooks); the length guard makes it a no-op while
+  // the rail is hidden. The recommendation DTO (id/slug/name/price)
+  // carries no category, so no item_category.
+  useEffect(() => {
+    if (recommendations.length === 0) return;
+    trackViewItemList(
+      recommendations.map((r) => productToItem(r)),
+      "pdp-recommendations",
+    );
+  }, [recommendations]);
 
   // R115-I1 (A7 P3-9): hide DELIBERATELY on a definitive failure (after
   // the retry above) or an empty payload. The recommendations rail is

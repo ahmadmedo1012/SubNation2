@@ -47,6 +47,10 @@ vi.mock("@workspace/api-client-react", () => ({
   // this export — the mock must carry the module surface the page
   // graph imports.
   setUnauthorizedHandler: vi.fn(),
+  // R168: the tier-price audit panel's hook — loading shape keeps the
+  // panel self-hidden (its isLoading → null convention).
+  useAdminProductsTierPriceSweep: () => ({ isLoading: true, data: undefined }),
+  getAdminProductsTierPriceSweepQueryKey: () => ["/api/admin/products/tier-price-sweep"],
 }));
 
 vi.mock("@/lib/auth", () => ({

@@ -116,6 +116,15 @@ export function PaymentMethodCard({
             >
               اشحن المحفظة ثم عُد لإتمام الطلب
             </Link>
+            {/* R168-L3 (fix 3): the topup-approval SLA — the alert told the
+                buyer to top up but not that approval is reviewed by a
+                human, so «ثم عُد» read as instant. PendingLimitBanner's
+                one canonical sentence (R115 A8 #5) verbatim, in its
+                third-line register (text-2xs, full warning ink family —
+                here the alert's own error ink). */}
+            <p className="text-2xs font-normal mt-1">
+              يُعتمد الشحن عادةً خلال دقائق، وبحد أقصى 30 دقيقة خلال ساعات العمل.
+            </p>
           </div>
         </div>
       )}

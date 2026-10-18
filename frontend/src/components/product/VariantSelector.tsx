@@ -5,7 +5,10 @@ import { formatCurrency } from "@/lib/utils";
 //   1. Plan row (فردي/ثنائي/عائلي…) — only when the product varies by plan.
 //   2. Duration row (شهر واحد/3 أشهر…) with the per-option price — always
 //      visible so the price comparison is inline (Libyan shoppers compare
-//      monthly-equivalent value per option, not just the total).
+//      monthly-equivalent value per option, not just the total). R168-L3
+//      (fix 5): multi-month pills now carry the comparison itself — a
+//      text-3xs «≈ N د.ل شهريًا» sub-line under the price (see
+//      parseDurationMonths for the fail-safe).
 //
 // Mobile-first: pills wrap, min-height 44px (thumb rule), the selected
 // state is the site's tinted pill (R138 below), unavailable options dim
@@ -40,6 +43,23 @@ export interface SelectableVariant {
   sale_price?: number | null;
   discount_percent?: number | null;
   is_available: boolean;
+}
+
+/** R168-L3 (fix 5): parse a catalog duration_label into its month count.
+ *  Covers ONLY the well-formed labels the catalog actually uses (the
+ *  live set behind the selector: «شهر واحد»، «1 شهر»، «3 أشهر»،
+ *  «6 أشهر»، «سنة»، «سنة كاملة» — the label family arabic-search's
+ *  duration folding already canonizes). Everything else — «مدى الحياة»،
+ *  «بدون مدة»، «شهري»، week/day forms, Arabic-Indic digits — returns null
+ *  and the pill renders NO per-month line: never fabricate a duration
+ *  the label does not state. Pure + exported for its unit table. */
+export function parseDurationMonths(label: string | null | undefined): number | null {
+  const s = (label ?? "").trim();
+  if (s === "شهر واحد") return 1;
+  if (s === "سنة" || s === "سنة كاملة") return 12;
+  const m = s.match(/^(\d+)\s*(?:شهر|أشهر)$/);
+  const n = m ? Number(m[1]) : Number.NaN;
+  return Number.isInteger(n) && n >= 1 ? n : null;
 }
 
 export function VariantSelector({
@@ -132,6 +152,13 @@ export function VariantSelector({
           {visibleDurations.map((v) => {
             const isSelected = v.id === selectedId;
             const eff = v.sale_price ?? v.price;
+            // R168-L3 (fix 5): the monthly equivalent — the docblock's own
+            // mental model, now rendered. Guarded: only when the label
+            // parses AND months > 1 (a 1-month pill's per-month IS the
+            // displayed price — duplication, not information) and the
+            // effective price is positive (no «≈ 0.00 د.ل شهريًا» noise).
+            const months = parseDurationMonths(v.duration_label);
+            const perMonth = months && months > 1 && eff > 0 ? +(eff / months).toFixed(2) : null;
             return (
               <button
                 key={v.id}
@@ -186,6 +213,17 @@ export function VariantSelector({
                     </span>
                   )}
                 </span>
+                {/* R168-L3 (fix 5): the monthly-equivalent sub-line — the
+                    strike-through's own quiet register (text-3xs muted),
+                    cents-rounded via the repo idiom. The pill keeps its
+                    single-button a11y contract: the aria-label above
+                    names label + price; this line is visible-only
+                    comparison context. */}
+                {perMonth != null && (
+                  <span className="text-3xs font-normal text-muted-foreground tabular-nums leading-none">
+                    ≈ {formatCurrency(perMonth)} شهريًا
+                  </span>
+                )}
               </button>
             );
           })}

@@ -19,8 +19,11 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  getAdminProductsTierPriceSweepQueryKey,
   getListAdminProductsQueryKey,
+  useAdminProductsTierPriceSweep,
   type AdminProduct,
+  type AdminTierPriceSweepFinding,
   useCreateProduct,
   useDeleteProduct,
   useListAdminProducts,
@@ -28,6 +31,12 @@ import {
 } from "@workspace/api-client-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
+// R168 (L2): the tier-price audit panel's kind badge + icons (the
+// StockoutRiskPanel / orders-row-expansion idioms it rides) + the money
+// formatter its evidence rows use.
+import { StatusBadge } from "@/components/ui/status-badge";
+import { AlertTriangle, ChevronDown, ChevronLeft, RefreshCw } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 // R137 (FE decomposition): the page's self-contained subcomponents and
@@ -215,6 +224,9 @@ export default function AdminProductsPage() {
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/stats"] });
+    // R168 (L2): variant writes can resolve tier-price findings — the
+    // audit panel rides the same funnel so a fix disappears immediately.
+    queryClient.invalidateQueries({ queryKey: getAdminProductsTierPriceSweepQueryKey() });
   }, [queryClient]);
 
   const createMutation = useCreateProduct({
@@ -373,6 +385,11 @@ export default function AdminProductsPage() {
   }, []);
   const openVariants = useCallback((product: AdminProduct) => {
     setVariantsDialogProduct({ id: product.id, name: product.name });
+  }, []);
+  // R168 (L2): the tier-price audit panel's rows carry the sweep finding's
+  // product identity, not an AdminProduct — same dialog, narrower input.
+  const openVariantsById = useCallback((id: number, name: string) => {
+    setVariantsDialogProduct({ id, name });
   }, []);
   const stockEditDone = useCallback(() => {
     setEditingStockId(null);
@@ -693,6 +710,12 @@ export default function AdminProductsPage() {
             at risk, or when the user lacks the inventory scope. */}
         <StockoutRiskPanel />
 
+        {/* R168 (L2): the tier-price audit panel — the whole-catalog
+            read-only twin of the variant dialog's write-path warnings
+            (self-hides while loading/on error; empty state on a clean
+            catalog). */}
+        <TierPriceAuditPanel onOpenVariants={openVariantsById} />
+
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
           <BulkActionBar
@@ -793,5 +816,153 @@ export default function AdminProductsPage() {
       )}
       <ConfirmDialog />
     </AdminLayout>
+  );
+}
+
+// ── R168 (L2): the tier-price audit panel ─────────────────────────────────
+//
+// The StockoutRiskPanel idiom applied to catalog pricing: a read-only,
+// collapsible surface over GET /api/admin/products/tier-price-sweep — the
+// whole-catalog twin of the R167 write-path warnings the variant dialog
+// now toasts. It lives in the page file (not under components/admin/)
+// because its act-on affordance is the page's own variantsDialogProduct
+// state. Self-hides while loading and on error (the StockoutRiskPanel
+// conventions); renders the empty state on a clean catalog; every finding
+// row carries the verbatim Arabic copy, a kind badge, the «الباقات»
+// affordance, and the expandable variant evidence (the orders-row
+// aria-expanded idiom).
+
+function TierPriceAuditPanel({
+  onOpenVariants,
+}: {
+  onOpenVariants: (id: number, name: string) => void;
+}) {
+  const headers = useAdminHeaders();
+  const [collapsed, setCollapsed] = useState(false);
+  const query = useAdminProductsTierPriceSweep({
+    query: { retry: false },
+    request: { headers },
+  });
+
+  const data = query.data;
+  if (query.isLoading || query.isError || !data) return null;
+
+  return (
+    <div className="border border-border/60 rounded-2xl bg-card overflow-hidden">
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-border/60 bg-muted/30">
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          aria-expanded={!collapsed}
+          className="flex items-center gap-2 flex-1 text-start group"
+        >
+          <AlertTriangle className="w-4 h-4 text-status-warning" />
+          <h2 className="text-sm font-bold">فحص تسعير الباقات</h2>
+          {collapsed ? (
+            <ChevronLeft className="w-3.5 h-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          )}
+        </button>
+        <span className="text-2xs text-muted-foreground">
+          {/* 96-F7: -u-nu-latn pins Latin digits (the StockoutRiskPanel header idiom). */}
+          {`آخر فحص: ${new Date(data.checked_at).toLocaleString("ar-LY-u-nu-latn", {
+            hour: "2-digit",
+            minute: "2-digit",
+            day: "numeric",
+            month: "short",
+          })}`}
+        </span>
+        <button
+          onClick={() => query.refetch()}
+          disabled={query.isFetching}
+          className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+          aria-label="تحديث"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${query.isFetching ? "animate-spin" : ""}`} />
+        </button>
+      </header>
+      {!collapsed && (
+        <>
+          <div className="px-4 py-1.5 text-2xs text-muted-foreground border-b border-border/60">
+            فُحص{" "}
+            <span dir="ltr" className="font-mono">
+              {data.products_scanned}
+            </span>{" "}
+            منتجًا و{" "}
+            <span dir="ltr" className="font-mono">
+              {data.variants_scanned}
+            </span>{" "}
+            باقة
+          </div>
+          {data.findings.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+              لا توجد ملاحظات تسعير على الكتالوج الحالي
+            </div>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {data.findings.map((f) => (
+                <TierPriceFindingRow
+                  key={`${f.product_id}-${f.kind}-${f.plan_a}-${f.plan_b}-${f.duration ?? ""}`}
+                  finding={f}
+                  onOpenVariants={onOpenVariants}
+                />
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TierPriceFindingRow({
+  finding,
+  onOpenVariants,
+}: {
+  finding: AdminTierPriceSweepFinding;
+  onOpenVariants: (id: number, name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        <StatusBadge
+          variant={finding.kind === "equalized" ? "warning" : "low-stock"}
+          size="xs"
+          className="shrink-0"
+        >
+          {finding.kind === "equalized" ? "تساوٍ" : "ترتيب معكوس"}
+        </StatusBadge>
+        <span className="font-bold text-sm truncate flex-1">{finding.product_name}</span>
+        <button
+          onClick={() => onOpenVariants(finding.product_id, finding.product_name)}
+          className="text-2xs text-primary-text hover:underline"
+        >
+          الباقات
+        </button>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label="أدلة الباقات"
+          className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
+        >
+          {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+      <p className="text-2xs text-muted-foreground mt-1">{finding.message}</p>
+      {open && (
+        <ul className="mt-2 rounded-xl border border-border/40 bg-muted/20 p-2 space-y-1">
+          {finding.variants.map((v) => (
+            <li key={v.id} className="text-2xs flex items-center gap-2">
+              <span className="font-semibold">{v.plan_label ?? "الخيار الافتراضي"}</span>
+              <span className="text-muted-foreground">{v.duration_label ?? "بدون مدة"}</span>
+              <span className="ms-auto font-mono" dir="ltr">
+                {formatCurrency(v.price)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }

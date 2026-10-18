@@ -2419,6 +2419,85 @@ export const CreateProductResponse = zod.object({
 });
 
 /**
+ * R168 (L2): scans every active, non-archived product's ACTIVE
+ * variant matrix with the R162 cross-duration tier-price validator —
+ * the same rule the R167 write-path `warnings` ride — and reports
+ * every equalized/inverted tier pair with the operator copy plus the
+ * variant evidence needed to correct it. Read-only by construction:
+ * no writes, no cache bumps, no IndexNow, no audit log. Deactivating
+ * an offending variant is the documented silencer (R167 semantics).
+ * @summary Whole-catalog tier-price audit, read-only (requireAdmin + inventory scope)
+ */
+export const AdminProductsTierPriceSweepResponse = zod
+  .object({
+    checked_at: zod.string().describe("ISO timestamp of the scan."),
+    products_scanned: zod.number().int().describe("Active, non-archived products examined."),
+    variants_scanned: zod
+      .number()
+      .int()
+      .describe("Active variant rows examined across those products."),
+    scan_cap: zod
+      .number()
+      .int()
+      .describe("Defensive product cap (mirrors inventory-health's scanned_cap echo)."),
+    products_with_findings: zod.number().int(),
+    findings: zod.array(
+      zod
+        .object({
+          product_id: zod.number().int(),
+          product_name: zod.string(),
+          product_slug: zod.string().nullish(),
+          kind: zod
+            .enum(["equalized", "inverted"])
+            .describe("The anomaly class the validator reports."),
+          plan_a: zod.string(),
+          plan_b: zod.string(),
+          duration: zod
+            .string()
+            .nullable()
+            .describe(
+              "The shared duration label where the anomaly sits (null = no duration axis).",
+            ),
+          price: zod
+            .number()
+            .optional()
+            .describe("Present when kind = equalized — the price both tiers collide at."),
+          price_a: zod
+            .number()
+            .optional()
+            .describe("Present when kind = inverted — plan_a's price at the inverted duration."),
+          price_b: zod
+            .number()
+            .optional()
+            .describe("Present when kind = inverted — plan_b's price at the inverted duration."),
+          message: zod
+            .string()
+            .describe(
+              "Operator-facing Arabic warning copy (tierPriceWarningMessage — the single registry).",
+            ),
+          variants: zod
+            .array(
+              zod.object({
+                id: zod.number().int(),
+                plan_label: zod.string().nullish(),
+                duration_label: zod.string().nullish(),
+                price: zod.number(),
+              }),
+            )
+            .describe(
+              "The product's ACTIVE variant rows — the evidence an operator corrects against.",
+            ),
+        })
+        .describe(
+          "R168 (L2): one whole-catalog tier-price anomaly row — the R162\nvalidator's finding over a product's ACTIVE variant matrix, mapped\nto the same operator Arabic copy the R167 write-path warnings\nride, plus the evidence an operator needs to correct the row.\n",
+        ),
+    ),
+  })
+  .describe(
+    "R168 (L2): the whole-catalog read-only tier-price audit envelope\n(the diagnostics/inventory-health computed-report shape — no\nwrites, no pagination; the catalog is small).\n",
+  );
+
+/**
  * @summary Update a product (requireAdmin + inventory scope)
  */
 export const UpdateProductParams = zod.object({

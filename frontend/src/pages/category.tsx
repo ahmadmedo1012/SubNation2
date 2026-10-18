@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
 import { useSeo } from "@/hooks/useSeo";
+import { productToItem, trackViewItemList } from "@/lib/analytics-events";
 import { CATEGORY_META, type CategoryMeta } from "@/lib/categories";
 import { buildBreadcrumbLd, buildFaqLd, buildItemListLd } from "@/lib/seo-builders";
 import { getListProductsQueryKey, useListProducts } from "@workspace/api-client-react";
@@ -17,7 +18,7 @@ import {
   Tv2,
 } from "lucide-react";
 import { keepPreviousData } from "@tanstack/react-query";
-import { useMemo, type ComponentType } from "react";
+import { useEffect, useMemo, type ComponentType } from "react";
 import { Link, useParams, useLocation } from "wouter";
 
 // ── Category accent system ────────────────────────────────────────────────
@@ -205,6 +206,18 @@ export default function CategoryPage() {
     () => [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available)),
     [products],
   );
+
+  // R168: GA4 view_item_list — one impression per committed category
+  // listing (the slug the landing page owns). Fires on the query's
+  // data, so keepPreviousData's one-placeholder flash on sibling-chip
+  // navigation is followed by the authoritative data-keyed fire.
+  useEffect(() => {
+    if (products.length === 0 || !meta) return;
+    trackViewItemList(
+      products.map((p) => productToItem(p)),
+      meta.slug,
+    );
+  }, [products, meta]);
 
   // R147 (2-b): the availability truth line — the live catalog ran 44/45
   // sold out and a Google landing on /category/streaming met a wall of نفد
@@ -425,7 +438,7 @@ export default function CategoryPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
             {displayProducts.map((product, i) => (
-              <ProductCard key={product.id} product={product} index={i} />
+              <ProductCard key={product.id} product={product} index={i} itemListId={meta.slug} />
             ))}
           </div>
         )}

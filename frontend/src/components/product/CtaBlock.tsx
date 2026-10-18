@@ -174,6 +174,18 @@ export function CtaBlock({
               «سجل الدخول للشراء / سجل للشراء» were the only outliers. */}
           {compact ? "سجّل دخولك للشراء" : "تسجيل الدخول للشراء"}
         </Button>
+        {/* R168-L3 (fix 2): the ONE payment-model line for guests — the
+            login gate said nothing about HOW payment works, and the
+            wallet-only model is the telco-card archetype's #1 surprise
+            (SERP research, R163). TrustFooter's step-2 rails verbatim
+            (مدار أو ليبيانا أو LyPay), same muted helper-line family as
+            the sold-out branch's «تحقّق لاحقاً». Desktop panel only —
+            the compact sticky bar stays thumb-sized. */}
+        {!compact && (
+          <p className="text-center text-xs text-muted-foreground">
+            الدفع من رصيد المحفظة — اشحنها عبر مدار أو ليبيانا أو LyPay
+          </p>
+        )}
         {/* R124 (A1-F4) → A9-4 (R126-L6): guests get the same
             add-to-cart affordance the grid cards give them — the cart is
             local (ProductCard's CTA has no auth gate; addItem is a
@@ -306,6 +318,14 @@ export function CtaBlock({
             >
               <Wallet className="w-5 h-5 ms-2" /> شحن المحفظة
             </Button>
+            {/* R168-L3 (fix 3): the topup-approval SLA — PendingLimitBanner's
+                one canonical sentence (R115 A8 #5: ONE SLA across every
+                surface) so the buyer who leaves to top up knows approval
+                is minutes, not hours. Desktop panel only (the compact bar
+                keeps its row geometry). */}
+            <p className="text-center text-xs text-muted-foreground">
+              يُعتمد الشحن عادةً خلال دقائق، وبحد أقصى 30 دقيقة خلال ساعات العمل.
+            </p>
           </>
         )}
       </div>

@@ -32,6 +32,7 @@ import {
 } from "@/components/home/search-history";
 import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
+import { productToItem, trackSearch, trackViewItemList } from "@/lib/analytics-events";
 import { MotionLazy } from "@/lib/motion-lazy";
 import { keepPreviousData } from "@tanstack/react-query";
 import { buildItemListLd, buildOrganizationLd, buildWebsiteLd } from "@/lib/seo-builders";
@@ -101,7 +102,11 @@ const gridPropsEqual = (
   a.searchInput === b.searchInput &&
   a.category === b.category &&
   a.sort === b.sort &&
-  a.availableOnly === b.availableOnly;
+  a.availableOnly === b.availableOnly &&
+  /* R168: the GA4 list context — a filter-context change must reach
+     the cards' select_item even when the (placeholder) products array
+     identity did not change. */
+  a.itemListId === b.itemListId;
 
 const MemoProductsGrid = memo(ProductsGrid, gridPropsEqual);
 
@@ -159,6 +164,9 @@ export default function HomePage() {
       // the heading/count swap and the URL mirror are exactly the
       // non-urgent work transitions exist for. keepPreviousData keeps
       // the grid's content continuous across the fetch either way.
+      // R168: GA4 search — the debounced commit path (the module's
+      // consecutive-dedupe collapses the Enter double-fire).
+      trackSearch(val);
       startTransition(() => {
         setSearch(val.trim());
       });
@@ -182,6 +190,9 @@ export default function HomePage() {
     if (query) {
       saveSearchHistory(query);
       setSearchHistory(getSearchHistory());
+      // R168: GA4 search — the Enter-commit path (the debounce path
+      // above fires the same term; the module dedupes).
+      trackSearch(query);
     }
   };
 
@@ -296,6 +307,23 @@ export default function HomePage() {
       // work in-memory; only the URL reflection is lost.
     }
   }, [search, category, sort, availableOnly]);
+
+  // R168: GA4 view_item_list — one impression per committed catalog
+  // view. Keyed on the COMMITTED products data (the useListProducts
+  // query — NOT the suggestions fetch, which is an enhancement-only
+  // raw query) + the list context; keepPreviousData means a filter
+  // change can fire once on the placeholder list before the fresh
+  // data lands — acceptable impression noise, the data-keyed fire
+  // that follows is the authoritative one. The list id mirrors the
+  // grid's own context (§ the ProductsGrid itemListId below).
+  const analyticsListId = search ? "search" : category || "catalog";
+  useEffect(() => {
+    if (products.length === 0) return;
+    trackViewItemList(
+      products.map((p) => productToItem(p)),
+      analyticsListId,
+    );
+  }, [products, analyticsListId]);
 
   // R111-F1 G2 (P3): the stats widgets (hero side column + mobile strip)
   // had NO loading state — a late /catalog-stats success popped the
@@ -571,6 +599,7 @@ export default function HomePage() {
             availableOnly={availableOnly}
             clearFilters={clearFilters}
             refetchProducts={refetchProducts}
+            itemListId={analyticsListId}
           />
 
           {/* ── The close (R145: the resolve — how-it-works + trust) ── */}

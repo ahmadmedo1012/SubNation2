@@ -18,6 +18,14 @@ export function PriceStockPanel({
   selectedVariant: ProductVariant | null;
   displayPrice: number;
 }) {
+  // R168-L3 (fix 6): multi-variant products drop the numeric count —
+  // stock_count is the PRODUCT-level pool, which can over-claim what the
+  // SELECTED variant can deliver (verified drift case: uneven scoped
+  // pools → a mid-charge 409). Single-variant products keep the count
+  // (accurate there, and the low-stock urgency signal stays).
+  // shortcut: variant-scoped counts would need the DTO to expose them, upgrade when it does.
+  // (ProductCard's defensive read — the grid projection omits variants.)
+  const multiVariant = (product.variants?.length ?? 0) > 1;
   return (
     // Price + stock
     // R117 (F-1): max-lg:mx-5 restores the 20px side gutter the
@@ -55,7 +63,13 @@ export function PriceStockPanel({
         role="status"
         aria-live="polite"
         aria-label={
-          product.is_available ? `المنتج متوفر، الكمية ${product.stock_count}` : "نفد المخزون"
+          product.is_available
+            ? // R168-L3 (fix 6): the SR twin mirrors the visible badge —
+              // no count on multi-variant products (same honesty rule).
+              multiVariant
+              ? "المنتج متوفر"
+              : `المنتج متوفر، الكمية ${product.stock_count}`
+            : "نفد المخزون"
         }
         className={`flex items-center gap-1.5 self-start text-sm font-bold px-3 py-2 rounded-xl border ${
           product.is_available
@@ -65,7 +79,8 @@ export function PriceStockPanel({
       >
         {product.is_available ? (
           <>
-            <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر ({product.stock_count})
+            <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" /> متوفر
+            {!multiVariant && ` (${product.stock_count})`}
           </>
         ) : (
           <>

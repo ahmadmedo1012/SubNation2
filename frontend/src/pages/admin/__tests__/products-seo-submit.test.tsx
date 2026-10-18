@@ -39,6 +39,10 @@ vi.mock("@workspace/api-client-react", () => ({
   useDeleteProduct: vi.fn(),
   getListAdminProductsQueryKey: (params?: unknown) => ["/api/admin/products", params ?? null],
   setUnauthorizedHandler: vi.fn(),
+  // R168: the tier-price audit panel's hook — loading shape keeps the
+  // panel self-hidden (its isLoading → null convention).
+  useAdminProductsTierPriceSweep: () => ({ isLoading: true, data: undefined }),
+  getAdminProductsTierPriceSweepQueryKey: () => ["/api/admin/products/tier-price-sweep"],
 }));
 
 vi.mock("@/lib/auth", () => ({

@@ -98,6 +98,7 @@ import type {
   AdminTicketStatusBody,
   AdminTicketSummary,
   AdminTicketThread,
+  AdminTierPriceSweepReport,
   AdminTopup,
   AdminTopupActionBody,
   AdminUser,
@@ -7418,6 +7419,139 @@ export const useCreateProduct = <TError = ErrorType<ErrorResponse>, TContext = u
 > => {
   return useMutation(getCreateProductMutationOptions(options), queryClient);
 };
+
+export const getAdminProductsTierPriceSweepUrl = () => {
+  return `/api/admin/products/tier-price-sweep`;
+};
+
+/**
+ * R168 (L2): scans every active, non-archived product's ACTIVE
+ * variant matrix with the R162 cross-duration tier-price validator —
+ * the same rule the R167 write-path `warnings` ride — and reports
+ * every equalized/inverted tier pair with the operator copy plus the
+ * variant evidence needed to correct it. Read-only by construction:
+ * no writes, no cache bumps, no IndexNow, no audit log. Deactivating
+ * an offending variant is the documented silencer (R167 semantics).
+ * @summary Whole-catalog tier-price audit, read-only (requireAdmin + inventory scope)
+ */
+export const adminProductsTierPriceSweep = async (
+  options?: Parameters<typeof customFetch>[1],
+): Promise<AdminTierPriceSweepReport> => {
+  return customFetch<AdminTierPriceSweepReport>(getAdminProductsTierPriceSweepUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAdminProductsTierPriceSweepQueryKey = () => {
+  return [`/api/admin/products/tier-price-sweep`] as const;
+};
+
+export const getAdminProductsTierPriceSweepQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+  TError = ErrorType<ErrorResponse>,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof adminProductsTierPriceSweep>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAdminProductsTierPriceSweepQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof adminProductsTierPriceSweep>>> = ({
+    signal,
+  }) => adminProductsTierPriceSweep({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type AdminProductsTierPriceSweepQueryResult = NonNullable<
+  Awaited<ReturnType<typeof adminProductsTierPriceSweep>>
+>;
+export type AdminProductsTierPriceSweepQueryError = ErrorType<ErrorResponse>;
+
+export function useAdminProductsTierPriceSweep<
+  TData = Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminProductsTierPriceSweep>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+          TError,
+          Awaited<ReturnType<typeof adminProductsTierPriceSweep>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminProductsTierPriceSweep<
+  TData = Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminProductsTierPriceSweep>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+          TError,
+          Awaited<ReturnType<typeof adminProductsTierPriceSweep>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminProductsTierPriceSweep<
+  TData = Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminProductsTierPriceSweep>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Whole-catalog tier-price audit, read-only (requireAdmin + inventory scope)
+ */
+
+export function useAdminProductsTierPriceSweep<
+  TData = Awaited<ReturnType<typeof adminProductsTierPriceSweep>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminProductsTierPriceSweep>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getAdminProductsTierPriceSweepQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getUpdateProductUrl = (id: number) => {
   return `/api/admin/products/${id}`;

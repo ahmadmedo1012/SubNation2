@@ -38,6 +38,12 @@ import { productSeoInput } from "@/components/product/product-seo";
 import { RecommendationsSection } from "@/components/product/RecommendationsSection";
 import { useSeo } from "@/hooks/useSeo";
 import { useToast } from "@/hooks/useToast";
+import {
+  productToItem,
+  trackAddToCart,
+  trackPurchase,
+  trackViewItem,
+} from "@/lib/analytics-events";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { generateIdempotencyKey } from "@/lib/idempotency";
@@ -244,6 +250,18 @@ export default function ProductPage() {
     setSelectedVariantId(null);
   }, [product?.id]);
 
+  // R168: GA4 view_item — once per product load, with the
+  // default-selected variant (the cheapest available option — the
+  // selection the price on screen quotes). Deliberately keyed on
+  // [product?.id] only: the variant-choosers must not re-fire the
+  // impression (GA4 view_item is a page-view-scoped event; a shopper
+  // comparing options inside one PDP visit stays one view).
+  useEffect(() => {
+    if (!product) return;
+    trackViewItem(productToItem(product, selectedVariant));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pinned to the product identity, not the variant selection
+  }, [product?.id]);
+
   // R98-01 (r98 frontend-deep §2 / R98-A3 §9 — P1): the validated coupon
   // result is voided whenever the EFFECTIVE selected variant changes —
   // mirroring checkout.tsx's [items] void for the same defect class.
@@ -382,6 +400,10 @@ export default function ProductPage() {
             : quotedBasePrice;
       setPurchaseSummary({ charged: chargedAmount, balanceAfter: null });
       setOrderResult(order);
+      // R168: GA4 purchase — the server-confirmed single-buy order
+      // (order_code is the transaction id; the module's eligibility +
+      // dedup guards keep replayed retries safe).
+      trackPurchase(order);
       // 93-C5 / sim P2 (navbar balance staleness): a plain invalidate of
       // /api/auth/me can be answered from the browser HTTP cache
       // (Cache-Control: private, max-age=30) with the pre-purchase body,
@@ -539,6 +561,10 @@ export default function ProductPage() {
       stockCount: product.stock_count,
     });
     if (applied) {
+      // R168: GA4 add_to_cart — the applied success path, the SELECTED
+      // variant's effective price (productToItem picks sale ?? price),
+      // quantity 1.
+      trackAddToCart(productToItem(product, selectedVariant));
       toast({
         title: "أُضيف إلى السلة",
         description: selectedVariant

@@ -384,6 +384,73 @@ describe("CartPage — per-line totals + wallet chip (R115-I1 / A7 P3-4)", () =>
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────
+// R168-L3 (fix 1) — the cart-level wallet-shortfall warning. The buyer
+// used to learn they were short only at checkout's insufficient gate;
+// the same probe that paints the «رصيدك» chip now says HOW short, with
+// the PaymentMethodCard topup-link idiom (44px floor, return=/cart).
+// ─────────────────────────────────────────────────────────────────────
+
+describe("CartPage — wallet shortfall warning (R168-L3 fix 1)", () => {
+  beforeEach(() => {
+    sonnerToastMock.mockReset();
+    toastSpy.mockReset();
+    localStorage.clear();
+    sessionStorage.clear();
+    authState.token = null;
+    walletMock.data = undefined;
+  });
+
+  it("balance < total renders «تحتاج شحن …» + the topup link back to /cart", async () => {
+    authState.token = "t";
+    walletMock.data = { balance: 20 }; // total 49 → missing 29
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.getByText("تحتاج شحن 29.00 د.ل لإتمام الطلب")).toBeInTheDocument();
+    const topup = screen.getByRole("link", { name: "اشحن المحفظة" });
+    expect(topup).toHaveAttribute("href", "/wallet?return=/cart");
+    // The 44px touch floor (the PaymentMethodCard link idiom).
+    expect(topup.className).toContain("min-h-11");
+    // Quiet warning ink (the PendingLimitBanner register — full token).
+    expect(screen.getByText("تحتاج شحن 29.00 د.ل لإتمام الطلب").parentElement!.className).toContain(
+      "text-status-warning",
+    );
+  });
+
+  it("sufficient balance renders NO shortfall line (the chip alone)", async () => {
+    authState.token = "t";
+    walletMock.data = { balance: 200 };
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.queryByText(/تحتاج شحن/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "اشحن المحفظة" })).not.toBeInTheDocument();
+  });
+
+  it("unknown balance renders nothing (never a fabricated shortfall)", async () => {
+    authState.token = "t";
+    walletMock.data = undefined;
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.queryByText(/تحتاج شحن/)).not.toBeInTheDocument();
+  });
+
+  it("guests see no shortfall line (no probe, no chip)", async () => {
+    authState.token = null;
+    walletMock.data = { balance: 20 };
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.queryByText(/تحتاج شحن/)).not.toBeInTheDocument();
+  });
+});
+
 describe("CartPage — R120-B2 (A4-F6 labels + A3-F4/F13 empty CTA + A1-F9 links)", () => {
   beforeEach(() => {
     sonnerToastMock.mockReset();

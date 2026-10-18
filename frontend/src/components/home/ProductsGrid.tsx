@@ -31,6 +31,7 @@ export function ProductsGrid({
   availableOnly,
   clearFilters,
   refetchProducts,
+  itemListId,
 }: {
   isLoading: boolean;
   productsError: boolean;
@@ -43,6 +44,9 @@ export function ProductsGrid({
   availableOnly: boolean;
   clearFilters: () => void;
   refetchProducts: () => void;
+  /* R168: the GA4 list context of this grid — threaded to every
+     ProductCard for select_item (no-op without the GA loader). */
+  itemListId?: string;
 }) {
   return (
     <>
@@ -247,6 +251,7 @@ export function ProductsGrid({
                   }
                 }
                 index={i}
+                itemListId={itemListId}
               />
             </div>
           ))}

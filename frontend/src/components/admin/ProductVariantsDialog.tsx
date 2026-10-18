@@ -96,13 +96,24 @@ export function ProductVariantsDialog({
     onChanged();
   };
 
+  // R168 (L2): surface the additive R167-D tier-price warnings — one
+  // "warning" toast per finding AFTER the success toast (the operator
+  // reads write-OK → pricing-caution; the toast shim's warning variant
+  // auto-dismisses at 8s). Never blocks the write — it already succeeded.
+  const toastTierPriceWarnings = (warnings: { message: string }[] | undefined) => {
+    for (const w of warnings ?? []) {
+      toast({ title: "تنبيه تسعير", description: w.message, variant: "warning" });
+    }
+  };
+
   const createMutation = useCreateProductVariant({
     request: { headers },
     mutation: {
-      onSuccess() {
+      onSuccess(data) {
         refreshAfterMutation();
         resetForm();
         toast({ title: "تمت إضافة الباقة", variant: "success" });
+        toastTierPriceWarnings(data?.warnings);
       },
       onError(err: unknown) {
         toast({
@@ -116,10 +127,11 @@ export function ProductVariantsDialog({
   const updateMutation = useUpdateProductVariant({
     request: { headers },
     mutation: {
-      onSuccess() {
+      onSuccess(data) {
         refreshAfterMutation();
         resetForm();
         toast({ title: "تم تحديث الباقة", variant: "success" });
+        toastTierPriceWarnings(data?.warnings);
       },
       onError(err: unknown) {
         toast({

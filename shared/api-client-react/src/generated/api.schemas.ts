@@ -1301,6 +1301,76 @@ export type AdminProductVariantWriteResult = AdminProductVariant & {
 };
 
 /**
+ * The anomaly class the validator reports.
+ */
+export type AdminTierPriceSweepFindingKind =
+  (typeof AdminTierPriceSweepFindingKind)[keyof typeof AdminTierPriceSweepFindingKind];
+
+export const AdminTierPriceSweepFindingKind = {
+  equalized: "equalized",
+  inverted: "inverted",
+} as const;
+
+export type AdminTierPriceSweepFindingVariantsItem = {
+  id: number;
+  /** @nullable */
+  plan_label?: string | null;
+  /** @nullable */
+  duration_label?: string | null;
+  price: number;
+};
+
+/**
+ * R168 (L2): one whole-catalog tier-price anomaly row — the R162
+ * validator's finding over a product's ACTIVE variant matrix, mapped
+ * to the same operator Arabic copy the R167 write-path warnings
+ * ride, plus the evidence an operator needs to correct the row.
+ */
+export interface AdminTierPriceSweepFinding {
+  product_id: number;
+  product_name: string;
+  /** @nullable */
+  product_slug?: string | null;
+  /** The anomaly class the validator reports. */
+  kind: AdminTierPriceSweepFindingKind;
+  plan_a: string;
+  plan_b: string;
+  /**
+   * The shared duration label where the anomaly sits (null = no duration axis).
+   * @nullable
+   */
+  duration: string | null;
+  /** Present when kind = equalized — the price both tiers collide at. */
+  price?: number;
+  /** Present when kind = inverted — plan_a's price at the inverted duration. */
+  price_a?: number;
+  /** Present when kind = inverted — plan_b's price at the inverted duration. */
+  price_b?: number;
+  /** Operator-facing Arabic warning copy (tierPriceWarningMessage — the single registry). */
+  message: string;
+  /** The product's ACTIVE variant rows — the evidence an operator corrects against. */
+  variants: AdminTierPriceSweepFindingVariantsItem[];
+}
+
+/**
+ * R168 (L2): the whole-catalog read-only tier-price audit envelope
+ * (the diagnostics/inventory-health computed-report shape — no
+ * writes, no pagination; the catalog is small).
+ */
+export interface AdminTierPriceSweepReport {
+  /** ISO timestamp of the scan. */
+  checked_at: string;
+  /** Active, non-archived products examined. */
+  products_scanned: number;
+  /** Active variant rows examined across those products. */
+  variants_scanned: number;
+  /** Defensive product cap (mirrors inventory-health's scanned_cap echo). */
+  scan_cap: number;
+  products_with_findings: number;
+  findings: AdminTierPriceSweepFinding[];
+}
+
+/**
  * At least one of plan_label / duration_label must be non-empty.
  * Provide EITHER cost_price (price computed via the pricing engine)
  * OR price_lyd directly (cost stored as 0 — discouraged).

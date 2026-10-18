@@ -73,6 +73,20 @@ export function OrderErrorBanner({
                   لم يتم خصم أي مبلغ. راجع الرصيد والمخزون ثم أعد المحاولة.
                 </p>
               )}
+              {/* R168-L3 (fix 4): support recourse — the complete-failure
+                  dead end had no escape hatch. The order-detail support
+                  idiom («…؟ تواصل مع الدعم» → /support, no ?ref= — there
+                  is no order code to reference yet), styled by THIS
+                  banner's own R151 link recipe (44px floor, error ink)
+                  so the two links in this box stay one family. Renders
+                  in both wallet-state branches — the unknown-wallet case
+                  needs the escape hatch MORE. */}
+              <Link
+                href="/support"
+                className="inline-flex items-center gap-1 mt-1.5 min-h-11 -my-2 py-2 px-1 text-status-error underline underline-offset-2 hover:opacity-80"
+              >
+                مشكلة في الطلب؟ تواصل مع الدعم
+              </Link>
             </>
           )}
         </div>

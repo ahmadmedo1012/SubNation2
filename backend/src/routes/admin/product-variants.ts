@@ -1,5 +1,5 @@
 import { db, ordersTable, productVariantsTable, productsTable } from "@workspace/db";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { bumpCatalogCache } from "../../lib/catalog-cache";
 import { Router } from "express";
 import { computeRetailLYD, getPricingConfig, round2 } from "../../lib/pricing-config";
@@ -19,6 +19,7 @@ import { notifyIndexNow } from "../../lib/indexnow";
  * Admin catalog-variant management (catalog reconstruction 2026-09-20).
  *
  * Routes (mounted under /api/admin):
+ *   GET    /products/tier-price-sweep              — whole-catalog audit (R168)
  *   GET    /products/:id/variants               — list (incl. internal cost)
  *   POST   /products/:id/variants               — create (price via engine)
  *   PATCH  /products/:id/variants/:variantId    — update
@@ -127,6 +128,21 @@ interface VariantWriteWarning {
   message: string;
 }
 
+/**
+ * R168 (L2): the trim/parseFloat projection BOTH tier-price consumers
+ * (the R167 write-path sweep + the whole-catalog audit below) feed
+ * findTierPriceAnomalies — one copy of the ACTIVE-matrix preparation.
+ */
+function activeVariantPricePoints(
+  rows: Array<{ planLabel: string | null; durationLabel: string | null; priceLyd: string }>,
+) {
+  return rows.map((v) => ({
+    plan_label: v.planLabel?.trim() || null,
+    duration_label: v.durationLabel?.trim() || null,
+    price: parseFloat(String(v.priceLyd)),
+  }));
+}
+
 // R167: en-US grouping + 2 decimals — the site's money numeral language
 // (mirrors the frontend formatCurrency CURRENCY_NUMBER_FORMATTER contract).
 const LYD_COPY_FORMATTER = new Intl.NumberFormat("en-US", {
@@ -174,13 +190,7 @@ async function collectTierPriceWarnings(
       // Same order as the public projection (catalog.service.ts) — keeps
       // the anchor-duration pick deterministic for pathological matrices.
       .orderBy(asc(productVariantsTable.sortOrder), asc(productVariantsTable.priceLyd));
-    const anomalies = findTierPriceAnomalies(
-      rows.map((v) => ({
-        plan_label: v.planLabel?.trim() || null,
-        duration_label: v.durationLabel?.trim() || null,
-        price: parseFloat(String(v.priceLyd)),
-      })),
-    );
+    const anomalies = findTierPriceAnomalies(activeVariantPricePoints(rows));
     if (anomalies.length === 0) return [];
     // R167: exactly ONE warn-level line per offending write (repo idiom).
     logger.warn(
@@ -219,6 +229,101 @@ function normalizeLabels(body: VariantBody): {
     durationLabel: duration.length > 0 ? duration.slice(0, 120) : null,
   };
 }
+
+// ── GET /products/tier-price-sweep ────────────────────────────────────────
+// R168 (L2): the whole-catalog READ-ONLY twin of the R167 write-path
+// sweep — every active, non-archived product's ACTIVE variant matrix
+// through the same R162 validator, mapped to the same operator copy
+// (tierPriceWarningMessage — one copy registry) plus the variant evidence
+// an operator needs to correct the row. Path note: a literal 2-segment
+// /products/* path — no collision with the :id routes (3+ segments) in
+// either router sharing the /products family, and GET-only here.
+// READ-ONLY by construction: no writes, no bumpCatalogCache, no
+// notifyIndexNow, no audit log (it observes; it can never mutate).
+router.get("/products/tier-price-sweep", async (_req, res, next) => {
+  try {
+    // The catalog is small (~60 products) — single scan, no pagination;
+    // the defensive cap mirrors diagnostics' inventory-health echo.
+    const SCAN_CAP = 1_000;
+    const products = await db
+      .select({ id: productsTable.id, name: productsTable.name, slug: productsTable.slug })
+      .from(productsTable)
+      .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false)))
+      .orderBy(asc(productsTable.id))
+      .limit(SCAN_CAP);
+
+    const productIds = products.map((p) => p.id);
+    // One inArray query over the whole catalog (the admin products list
+    // idiom) — ACTIVE variants only, ordered like collectTierPriceWarnings.
+    const variantRows =
+      productIds.length > 0
+        ? await db
+            .select({
+              id: productVariantsTable.id,
+              productId: productVariantsTable.productId,
+              planLabel: productVariantsTable.planLabel,
+              durationLabel: productVariantsTable.durationLabel,
+              priceLyd: productVariantsTable.priceLyd,
+            })
+            .from(productVariantsTable)
+            .where(
+              and(
+                inArray(productVariantsTable.productId, productIds),
+                eq(productVariantsTable.isActive, true),
+              ),
+            )
+            .orderBy(asc(productVariantsTable.sortOrder), asc(productVariantsTable.priceLyd))
+        : [];
+
+    const rowsByProduct = new Map<number, typeof variantRows>();
+    for (const v of variantRows) {
+      const list = rowsByProduct.get(v.productId) ?? [];
+      list.push(v);
+      rowsByProduct.set(v.productId, list);
+    }
+
+    const findings: Array<Record<string, unknown>> = [];
+    let productsWithFindings = 0;
+    for (const p of products) {
+      const rows = rowsByProduct.get(p.id) ?? [];
+      const anomalies = findTierPriceAnomalies(activeVariantPricePoints(rows));
+      if (anomalies.length === 0) continue;
+      productsWithFindings += 1;
+      for (const a of anomalies) {
+        findings.push({
+          product_id: p.id,
+          product_name: p.name,
+          product_slug: p.slug,
+          kind: a.kind,
+          plan_a: a.planA,
+          plan_b: a.planB,
+          duration: a.duration,
+          ...(a.kind === "equalized"
+            ? { price: a.price }
+            : { price_a: a.priceA, price_b: a.priceB }),
+          message: tierPriceWarningMessage(a),
+          variants: rows.map((v) => ({
+            id: v.id,
+            plan_label: v.planLabel?.trim() || null,
+            duration_label: v.durationLabel?.trim() || null,
+            price: parseFloat(String(v.priceLyd)),
+          })),
+        });
+      }
+    }
+
+    return res.json({
+      checked_at: new Date().toISOString(),
+      products_scanned: products.length,
+      variants_scanned: variantRows.length,
+      scan_cap: SCAN_CAP,
+      products_with_findings: productsWithFindings,
+      findings,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
 
 // ── GET /products/:id/variants ─────────────────────────────────────────────
 router.get("/products/:id/variants", async (req, res) => {

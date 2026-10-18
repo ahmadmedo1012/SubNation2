@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { categoryLookup } from "@/lib/category-registry";
+import { productToItem, trackAddToCart, trackSelectItem } from "@/lib/analytics-events";
 import { StatusBadge } from "@/components/ui/status-badge";
 
 interface Product {
@@ -122,7 +123,18 @@ function PopularBadge({ count }: { count?: number }) {
   );
 }
 
-function ProductCardInner({ product, index = 0 }: { product: Product; index?: number }) {
+function ProductCardInner({
+  product,
+  index = 0,
+  itemListId,
+}: {
+  product: Product;
+  index?: number;
+  /* R168: the GA4 list context this card renders in ("search" /
+   * category slug / "catalog" / "pdp-recommendations") — rides
+   * select_item. Absent = no list id sent. */
+  itemListId?: string;
+}) {
   const displayPrice = product.sale_price ?? product.price;
   const cat = product.category ?? "streaming";
   const accent = CATEGORY_ACCENT[cat] ?? DEFAULT_ACCENT;
@@ -212,6 +224,10 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
       stockCount: product.stock_count,
     });
     if (applied) {
+      // R168: GA4 add_to_cart — ONLY the applied success path, the
+      // added variant's effective price (productToItem picks
+      // sale ?? price), quantity 1.
+      trackAddToCart(productToItem(product, cheapestVariant));
       toast({
         title: "أُضيف إلى السلة",
         description: cheapestVariant
@@ -317,6 +333,9 @@ function ProductCardInner({ product, index = 0 }: { product: Product; index?: nu
       <Link
         href={`/product/${product.slug ?? product.id}`}
         aria-label={ariaLabel}
+        /* R168: GA4 select_item — the card's product link click (the
+           funnel's list→PDP hop; no-op without the GA loader). */
+        onClick={() => trackSelectItem(productToItem(product, cheapestVariant), itemListId)}
         className="flex flex-col flex-1"
       >
         {/* R138 (visual): shadow-primary/40 → /30 — the badge joins the
@@ -758,5 +777,9 @@ export const ProductCard = memo(
        variants array reference across refetches unless the data deeply
        changed — and a deep change re-renders, exactly as it must. */
     prev.product.variants === next.product.variants &&
-    prev.index === next.index,
+    prev.index === next.index &&
+    /* R168: the list context threads through the memo — a grid whose
+       filter context changed must not keep firing the old
+       item_list_id. */
+    prev.itemListId === next.itemListId,
 );

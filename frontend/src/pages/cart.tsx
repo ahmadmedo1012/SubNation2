@@ -576,6 +576,28 @@ export default function CartPage() {
                 <span className="font-bold text-2xl tabular-nums">{formatCurrency(total)}</span>
               </div>
             </div>
+            {/* R168-L3 (fix 1): wallet-shortfall warning — the buyer used to
+                learn they were short only at checkout's insufficient gate;
+                the same probe that paints the chip above already knows.
+                Quiet warning ink (the PendingLimitBanner register — full
+                token, R96-F6) + the PaymentMethodCard topup-link idiom
+                (44px floor, return path back to THIS page). Renders only
+                when the probe answered AND the balance is short;
+                sufficient/unknown render nothing (never a fabricated
+                shortfall — the chip's own honesty rule). */}
+            {token && walletBalance != null && walletBalance < total && (
+              <div className="-mt-2 mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-status-warning">
+                <span className="font-semibold tabular-nums">
+                  تحتاج شحن {formatCurrency(+(total - walletBalance).toFixed(2))} لإتمام الطلب
+                </span>
+                <Link
+                  href="/wallet?return=/cart"
+                  className="inline-flex items-center gap-1 min-h-11 -my-2 py-2 font-bold underline underline-offset-2 hover:opacity-80"
+                >
+                  اشحن المحفظة
+                </Link>
+              </div>
+            )}
             {/* A3-F4 + A3-F13 (R120-B2): the populated summary rides the
                 same asChild composition as the empty-state CTA above —
                 Link>Button nesting rendered TWO same-named elements per

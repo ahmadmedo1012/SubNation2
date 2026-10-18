@@ -313,6 +313,23 @@ async function lookupProductForShareSurfaces(
                 OR inventory.extra_details IS NOT NULL
               )
           )`,
+          // R168 (L2): the hydrated page's displayBase — the cheapest
+          // AVAILABLE active variant (R130 two-pool availability, the same
+          // deliverable predicate stockCount counts; hand-qualified). NULL
+          // = no variant holds stock → the Offer rides the base row price.
+          cheapestAvailableVariant: sql<string | null>`(
+            SELECT MIN(pv.price_lyd) FROM product_variants pv
+            WHERE pv.product_id = products.id AND pv.is_active = true
+              AND (EXISTS (SELECT 1 FROM inventory s
+                  WHERE s.variant_id = pv.id AND s.is_sold = false
+                    AND (s.account_password IS NOT NULL OR s.account_email IS NOT NULL
+                      OR s.extra_details IS NOT NULL))
+                OR EXISTS (SELECT 1 FROM inventory g
+                  WHERE g.product_id = products.id
+                    AND g.variant_id IS NULL AND g.is_sold = false
+                    AND (g.account_password IS NOT NULL OR g.account_email IS NOT NULL
+                      OR g.extra_details IS NOT NULL)))
+          )`,
         })
         .from(productsTable)
         .where(
@@ -327,8 +344,11 @@ async function lookupProductForShareSurfaces(
       if (!row) return { found: false as const };
       // Flash-aware price folded INTO the cached entry — the 60 s
       // staleness budget matches the share card's own Cache-Control
-      // max-age=60 and the detail routes' cached sale_price.
-      const share = await shareDisplayPrice(row.price);
+      // max-age=60 and the detail routes' cached sale_price. R168 (L2):
+      // the BASE is the cheapest AVAILABLE variant price (displayBase) so
+      // the shell's Offer price matches the hydrated page's price under
+      // the merged @id; tierless/fully-drained products ride the base row.
+      const share = await shareDisplayPrice(row.cheapestAvailableVariant ?? row.price);
       return {
         found: true as const,
         row,
@@ -464,29 +484,18 @@ function rewriteOutsideComments(html: string, rewrite: (segment: string) => stri
 
 // ── R136 (PERF #10): bounded memoization of applySpaShellMeta ────────────────
 //
-// The shell rewrite is a PURE function of (html, meta) — html is the
-// boot-time SPA_SHELL_HTML snapshot, meta comes from the small closed set
-// resolveSpaShellMeta produces (home/category/static metas, the shared
-// noindex stamp, per-product rows riding the 60 s catalog cache). Yet
-// every non-API GET paid the full pipeline — a comment-boundary split over
-// the whole ~20-30 KB document plus 5+ regex passes per non-comment segment
-// — just to rebuild a byte-identical string. This block memoizes the
-// output: a bounded LRU (~200 entries) keyed by the SERIALIZED meta,
-// guarded by an html identity check.
-//
-//   - Key: JSON.stringify(meta). Undefined/absent fields stringify
-//     identically AND behave identically in the rewriter, so the key is a
-//     faithful equivalence class; field-order permutations at worst
-//     duplicate an entry (harmless — same output).
-//   - Guard: `html !== memoHtml` (string VALUE equality; O(1) for the hot
-//     path, where every caller passes the SAME SPA_SHELL_HTML reference). A
-//     different html — the unit tests' stub shells — resets the map, so a
-//     cached output can never be served for a different shell. This is the
-//     correctness invariant that makes keying on meta alone safe.
-//   - Bound: Map insertion order = LRU age; the oldest key is evicted at
-//     200 entries. Real cardinality is ~60, so eviction is a safety valve
-//     against pathological URL shapes, not an expected event.
-//   - Miss path: byte-identical to the pre-R136 rewriter.
+// The rewrite is a PURE function of (html, meta) — html is the boot-time
+// SPA_SHELL_HTML snapshot, meta the small closed set resolveSpaShellMeta
+// produces — yet every non-API GET paid the full pipeline (comment-
+// boundary split over the ~20-30 KB document + 5+ regex passes per
+// segment) just to rebuild a byte-identical string. This block memoizes
+// them. Key: JSON.stringify(meta) — undefined/absent fields stringify AND
+// behave identically, so the key is a faithful equivalence class. Guard:
+// `html !== memoHtml` (VALUE equality — the unit tests' stub shells reset
+// the map, so a cached output can never serve a different shell). Bound:
+// Map insertion order = LRU age, oldest evicted at 200 entries (real
+// cardinality ~60 — a safety valve, not an expected event). Miss path:
+// byte-identical to the pre-R136 rewriter.
 const SHELL_META_CACHE_MAX_ENTRIES = 200;
 let memoHtml: string | null = null;
 const memoEntries = new Map<string, string>();
@@ -739,33 +748,24 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
 /**
  * R111 (D2-F1): the R104 (AG6-2) share-bot predicate, SPLIT in two.
  *
- * The unified predicate matched indexing crawlers (googlebot, bingbot,
- * yandexbot, duckduckbot, baiduspider) alongside unfurlers, so every
- * crawl of /product/* received the ~1KB no-JS OG card instead of the
- * SPA shell — no JSON-LD (Product/FAQ/Breadcrumb), no renderable
- * content: all structured data on the money pages was invisible to
- * Google (its Web Rendering Service fetches the same URL and used to
- * get the same card). The two bot classes want OPPOSITE responses:
- *
+ * The unified predicate matched indexing crawlers alongside unfurlers, so
+ * every crawl of /product/* received the ~1KB no-JS OG card instead of the
+ * SPA shell — no JSON-LD (Product/FAQ/Breadcrumb), no renderable content:
+ * all structured data on the money pages was invisible to Google (its Web
+ * Rendering Service fetches the same URL and used to get the same card).
+ * The two bot classes want OPPOSITE responses:
  *   (a) UNFURLERS — chat/social link-preview fetchers that never
  *       execute JS. They alone get the DB-backed OG share card.
  *   (b) INDEXERS — search-engine crawlers that render JS (Googlebot
  *       via WRS) or index raw HTML. They get the normal SPA shell.
  *
- * Both regexes are case-insensitive over the raw User-Agent.
- * The unfurler list stays a STRICT allowlist — nothing gets the card
- * unless it is a known link-preview fetcher. The indexer list exists
- * so the card middleware can EXCLUDE crawlers explicitly (belt and
- * suspenders against future list drift); its tokens are chosen to never
- * match a normal browser UA (verified against real strings: Googlebot
- * Smartphone's "… (compatible; Googlebot/2.1; …)" is matched by
- * `googlebot`, while ordinary Chrome/Safari/Firefox UAs contain none
- * of these tokens).
- *
- * server.ts's boot gate imports the UNFURLER half (via app.ts's
- * re-export) so the gated set can never drift from the set the
- * OG-card route actually serves (the DB-backed path) — single source,
- * unchanged contract.
+ * Both regexes are case-insensitive over the raw User-Agent. The unfurler
+ * list stays a STRICT allowlist; the indexer list exists so the card
+ * middleware can EXCLUDE crawlers explicitly (belt and suspenders against
+ * future list drift) — its tokens never match a normal browser UA
+ * (verified against real strings). server.ts's boot gate imports the
+ * UNFURLER half so the gated set can never drift from the set the OG-card
+ * route actually serves — single source, unchanged contract.
  */
 
 /** (a) Link-unfurler bots — the ONLY user agents served the OG card. */

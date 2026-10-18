@@ -8,6 +8,7 @@ import {
   db,
   initTestDb,
   productsTable,
+  productVariantsTable,
   resetTestDb,
   flashSalesTable,
   inventoryTable,
@@ -709,6 +710,201 @@ describe("SPA shell rewrite — PDP JSON-LD in the initial HTML (R163)", () => {
     const r = await get(`/product/${inactiveProduct.slug}`);
     expect(r.status).toBe(404);
     expect(ldBlocks(r.body)).toHaveLength(0);
+  });
+});
+
+// ── R168 (L2): the shell Offer rides the cheapest AVAILABLE variant ────────
+
+describe("SPA shell rewrite — PDP Offer price = the hydrated page's displayBase (R168 L2)", () => {
+  /** Seed helper: a variant + its scoped deliverable inventory unit. */
+  async function seedVariantWithStock(
+    productId: number,
+    opts: { plan: string | null; duration: string | null; price: string; stock: boolean },
+  ) {
+    const [v] = await db
+      .insert(productVariantsTable)
+      .values({
+        productId,
+        planLabel: opts.plan,
+        durationLabel: opts.duration,
+        costPrice: "10.00",
+        priceLyd: opts.price,
+        isActive: true,
+      })
+      .returning({ id: productVariantsTable.id });
+    if (opts.stock) {
+      // Scoped pool only (variant_id set, generic pool stays empty) so the
+      // two-pool availability arms are exercised independently.
+      await db.insert(inventoryTable).values({
+        productId,
+        variantId: v.id,
+        accountEmail: "variant-stock@example.com",
+        accountPassword: "plainpass",
+      });
+    }
+    return v;
+  }
+
+  async function offersOf(slug: string): Promise<Record<string, unknown>> {
+    const r = await get(`/product/${slug}`);
+    expect(r.status).toBe(200);
+    // Same extractor contract as the R163 block above (local scope there).
+    const blocks = [
+      ...r.body.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((m) => JSON.parse(m[1] as string) as object);
+    expect(blocks).toHaveLength(1);
+    return (blocks[0] as Record<string, unknown>).offers as Record<string, unknown>;
+  }
+
+  it("a variant product whose base price ≠ cheapest-available variant → the Offer carries the VARIANT-derived price", async () => {
+    // Base row says 500.00; the storefront renders the cheapest available
+    // variant (79.80). Pre-R168 the shell's Offer said 500.00 while the
+    // hydrated page's LD said 79.80 — two conflicting Offers under one @id.
+    const [p] = await db
+      .insert(productsTable)
+      .values({
+        name: "Variant Priced Product",
+        slug: "variant-priced-shell-test",
+        description: "وصف",
+        price: "500.00",
+        category: "streaming",
+        isActive: true,
+      })
+      .returning({ id: productsTable.id, slug: productsTable.slug });
+    await seedVariantWithStock(p.id, {
+      plan: "أساسي",
+      duration: "شهر واحد",
+      price: "79.80",
+      stock: true,
+    });
+    await seedVariantWithStock(p.id, {
+      plan: "بريميوم",
+      duration: "شهر واحد",
+      price: "119.80",
+      stock: true,
+    });
+    bumpCatalogCache();
+
+    const offers = await offersOf(p.slug!);
+    expect(offers.price).toBe("79.80");
+    expect(offers.availability).toBe("https://schema.org/InStock");
+  });
+
+  it("the cheapest variant DRAINED (scoped pool empty, generic pool empty) → the Offer rides the next available variant", async () => {
+    const [p] = await db
+      .insert(productsTable)
+      .values({
+        name: "Drained Cheapest Product",
+        slug: "drained-cheapest-shell-test",
+        description: "وصف",
+        price: "500.00",
+        category: "streaming",
+        isActive: true,
+      })
+      .returning({ id: productsTable.id, slug: productsTable.slug });
+    // 79.80 exists as a row but holds NO deliverable stock anywhere →
+    // unavailable (the R130 «تبدأ من» semantics the hydrated page rides).
+    await seedVariantWithStock(p.id, {
+      plan: "أساسي",
+      duration: "شهر واحد",
+      price: "79.80",
+      stock: false,
+    });
+    await seedVariantWithStock(p.id, {
+      plan: "بريميوم",
+      duration: "شهر واحد",
+      price: "119.80",
+      stock: true,
+    });
+    bumpCatalogCache();
+
+    const offers = await offersOf(p.slug!);
+    expect(offers.price).toBe("119.80");
+    expect(offers.availability).toBe("https://schema.org/InStock");
+  });
+
+  it("a tierless product (no variants at all) keeps the base row price", async () => {
+    const [p] = await db
+      .insert(productsTable)
+      .values({
+        name: "Tierless Product",
+        slug: "tierless-price-shell-test",
+        description: "وصف",
+        price: "123.45",
+        category: "tools",
+        isActive: true,
+      })
+      .returning({ id: productsTable.id, slug: productsTable.slug });
+    bumpCatalogCache();
+
+    const offers = await offersOf(p.slug!);
+    expect(offers.price).toBe("123.45");
+  });
+
+  it("ALL variants sold out → OutOfStock + the product base price (no fabricated variant claim)", async () => {
+    const [p] = await db
+      .insert(productsTable)
+      .values({
+        name: "All Drained Product",
+        slug: "all-drained-shell-test",
+        description: "وصف",
+        price: "100.00",
+        category: "streaming",
+        isActive: true,
+      })
+      .returning({ id: productsTable.id, slug: productsTable.slug });
+    await seedVariantWithStock(p.id, {
+      plan: "أساسي",
+      duration: "شهر واحد",
+      price: "79.80",
+      stock: false,
+    });
+    await seedVariantWithStock(p.id, {
+      plan: "بريميوم",
+      duration: "شهر واحد",
+      price: "119.80",
+      stock: false,
+    });
+    bumpCatalogCache();
+
+    const offers = await offersOf(p.slug!);
+    expect(offers.availability).toBe("https://schema.org/OutOfStock");
+    // No variant is available → the base row price, never a stale
+    // availability-blind variant minimum.
+    expect(offers.price).toBe("100.00");
+  });
+
+  it("a GENERIC-pool unit makes every active variant available (the two-pool arm) — cheapest active variant wins", async () => {
+    const [p] = await db
+      .insert(productsTable)
+      .values({
+        name: "Generic Pool Product",
+        slug: "generic-pool-shell-test",
+        description: "وصف",
+        price: "500.00",
+        category: "streaming",
+        isActive: true,
+      })
+      .returning({ id: productsTable.id, slug: productsTable.slug });
+    await seedVariantWithStock(p.id, {
+      plan: "أساسي",
+      duration: "شهر واحد",
+      price: "79.80",
+      stock: false,
+    });
+    // One GENERIC (variant_id NULL) deliverable unit → both variants are
+    // buyable → the cheapest ACTIVE variant's price drives the Offer.
+    await db.insert(inventoryTable).values({
+      productId: p.id,
+      variantId: null,
+      accountEmail: "generic-pool@example.com",
+      accountPassword: "plainpass",
+    });
+    bumpCatalogCache();
+
+    const offers = await offersOf(p.slug!);
+    expect(offers.price).toBe("79.80");
+    expect(offers.availability).toBe("https://schema.org/InStock");
   });
 });
 
