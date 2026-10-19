@@ -185,7 +185,7 @@ not Coolify-coupled — deployment is verified behaviorally, §2.1).
 
 | Item | Rationale |
 |---|---|
-| `features[]` admin write surface | Pre-existing gap (R162 closing note): four correction bullets ride `features[]`; needs a small admin lane, not a hotfix |
+| `features[]` admin write surface | Pre-existing gap (R162 closing note): four correction bullets ride `features[]`; needs a small admin lane, not a hotfix — **[R169 errata: STALE when written — R163 had already shipped the features[] write surface (`routes/admin/products.ts` L324-331 + the product form's features textarea, edit-only); the four features[] bullets (F9 `features[2]`, F18 `features[3]`, F36 `features[0]`, and F12's `features[3]` after its business decision) are owner-appliable through the admin form like every other field — all 24 mechanical corrections have clean apply-paths]** |
 | The 12 R162 business decisions | Owner-dependent by definition (Netflix tier, Pandora dialect, Ahrefs price, Funimation archive, …) — the decision table stands |
 | GSC quantitative analysis | No authenticated session (§2.4) — owner-side read |
 | GA4 Realtime/DebugView confirmation | The automation-suppressed last hop (§2.2) — 30-second owner check |

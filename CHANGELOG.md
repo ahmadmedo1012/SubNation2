@@ -10,6 +10,20 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R169 — The comprehensive health round (dependency modernization, CVE sweep, lint-zero, e2e restoration) — 2026-10-19
+
+**Scope:** the owner directive «جولة ضخمة من الفحص والتشخيص والتحسين والتطوير والترقية الشاملة» — a full diagnostic pass, then three implementation lanes. Full report: `docs/engineering/R169/round-close.md`.
+
+**Diagnostics first:** production re-verified (healthz 200, Coolify rebuilt on the R168 docs push — release `dfefa41`, runtime identical); dependency census classified every available bump safe vs major; prod CVE audit confirmed clean (the CI gate held); full dev audit mapped 32 advisories to 6 owner chains; lint baseline 16 warnings/11 files; suites re-baselined green (backend 288/2,677, frontend 297/2,762); e2e found BROKEN locally (chromium 1200 vs required 1243); GHCR rollback images found stale since Oct 6; and one docs-truth error caught — R168's deferred table claimed the `features[]` admin surface was missing when R163 had shipped it (errata applied).
+
+**L1 dependency sweep (`45922e2b` + `587a98d7`):** every safe in-range bump — esbuild 0.28.2 (CVE fix), socket.io/client 4.8.4, argon2 0.45.1 (`Options`→`HashOptions` type rename, roundtrip verified), drizzle-orm/kit, tailwind 4.3.3, react-query 5.104.4, the radix set, sonner, fontsource, testing-library, typography, @types/pg, prettier, typescript-eslint + the caniuse-lite data refresh. Ten scoped override floors for the dev-chain CVEs (fast-uri, source-map-js, fflate, fast-copy, lodash, @babel/core, browserslist, baseline-browser-mapping, picomatch@^2.3.1, postcss-selector-parser) — **audit 32 → 10** (the remaining ten documented-accept: unpatchable or breaking-major on @lhci/cli local tooling that never runs on CI). `prom-client`'s deprecation investigated and migration REFUSED with rationale (the notice points at a different project, not a rename). The tailwind bump introduced a CI-only dual-vite-instance typecheck break (tsx peer split 4.21.0/4.23.15) — root-caused from the CI logs, fixed by pinning tsx 4.21.0 in the override home, verified with a from-scratch CI-style install.
+
+**L2 lint-zero (`5bc6655e`):** 16 warnings → 0 — ten real fixes (the two stale-ref drawer focus races, support.tsx's headers memoized on token, the admins/promotions loaders in useCallback, coupons/whatsapp deps completed, auth-callback's navigate) + six documented intentional omissions (eslint-disable-next-line with the why) + four stale source-scan pins updated with [R169] rationale.
+
+**L3 restoration:** chromium 1243 installed and the **entire e2e suite re-run against production: 141/141 green** (analytics 6, seo 21, mobile-390 21, home/category/search 24, product/cart/auth/api 27, login/pdp-band/soldout 9, cart-drain 3, authed-pdp 30) — the prior session's unresolved viewport failures closed. `docker.yml` dispatched on the round head → the first GHCR per-commit image since Oct 6, restoring the emergency-rollback runbook's `sha-<short>` pull path.
+
+**Gates:** lint 0/0 (was 0/16) · typecheck clean ×4 · backend 288/2,677 · frontend 297/2,762 · build green — eager 147,632 B gz (inside the 150 KiB warn) · parity 87/50/7-of-7 · drizzle + orval drift clean · CI #544 on the final head.
+
 ## Round R168 — The measurable-growth round (GA4 ecommerce funnel, catalog-truth tooling, conversion honesty) — 2026-10-19
 
 **Scope:** the owner brief «measurable growth, ecommerce analytics, catalog close-out» — three implementation lanes, zero new auditing. Full report: `docs/engineering/R168/round-close.md`.

@@ -1,7 +1,7 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-19 (R168 — the measurable-growth round; this
-> index was created in R166). The ENGINEERING bucket: the working
+> Status: CURRENT @ 2026-10-19 (R169 — the comprehensive health round;
+> this index was created in R166). The ENGINEERING bucket: the working
 > records of the R142+ rounds. The round **ledger** is
 > [`CHANGELOG.md`](../../CHANGELOG.md) (one entry per round, newest first —
 > the authoritative summary of every round); the folders below hold the
@@ -12,13 +12,14 @@
 
 ## The round index
 
-**25 folders covering the R142→R168 span** (82 md + 32 `.jsonl` lane
-records = 114 files). Newest first, matching the CHANGELOG's
+**26 folders covering the R142→R169 span** (83 md + 32 `.jsonl` lane
+records = 115 files). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
 (`## Round R###` header) that summarizes it.
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R169 | 2026-10-19 | The comprehensive health round (dependency modernization, CVE sweep, lint-zero, e2e restoration) | [`round-close.md`](./R169/round-close.md) |
 | R168 | 2026-10-19 | The measurable-growth round (GA4 ecommerce funnel, catalog-truth tooling, conversion honesty) | [`round-close.md`](./R168/round-close.md) |
 | R167 | 2026-10-18 | The deeper structural round (the R166 deferred backlog closed) | [`round-close.md`](./R167/round-close.md) |
 | R166 | 2026-10-18 | The comprehensive improvement & organization round | [`round-close.md`](./R166/round-close.md) |
