@@ -10,6 +10,60 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R172 — The final modernization sweep — 2026-10-19
+
+**Scope:** the owner directive «الآن ادخل في جولة أخيرة من التحسين والتطوير
+والتنظيم على أعلى مستوى ولكل الجوانب» — the final round of improvement,
+development, and organization at the highest level. Full report:
+`docs/engineering/R172/round-close.md`.
+
+**The majors the R169 table deferred, each a verified lane this round:**
+zod 3.25.76 → **4.6.7** (catalog; orval 8.43 with `zod.version: 4` — the
+generated client regenerated to v4 syntax, two hand-written adaptations:
+the risk allowlist `z.string().ip()` → `z.union([z.ipv4(), z.ipv6()])`,
+and the error-handler needed NOTHING — R120's `instanceof` + `.issues`
+shape was already v4-ready); pino 9 → **10** + pino-http 10 → **11** +
+thread-stream 4.2; redis 5 → **6** + rate-limit-redis 5 → **6** — the v6
+store contract changed (async init + EVALSHA script-SHA preloading) and the
+resilient wrapper now forwards init and re-arms on fallback, keeping the R2
+degraded-boot recovery contract (the cooldown test caught the naive-wiring
+regression live); recharts 2 → **3** (one formatter type narrowed);
+web-vitals 4 → **6**; vite-plugin-pwa 1 → **2** (generateSW output verified
+live); lucide-react 0.545 → **1.59** (246 imports, zero breakage). Minors:
+express/helmet/node-cron/otplib/pg/orval/motion 14.3 (14.4 blocked by
+`minimumReleaseAge 1440` — honored)/wouter/tailwind-merge/eslint/impeccable/
+@types 19.3.0.
+
+**The two single-instance laws extended (both caught by the harness
+mid-round):** @types/react(-dom) pinned EXACT in the catalog (two @types
+peer combos had produced TWO react-query instances = two React contexts —
+the admin-layout suite went 11/11 red and would have shipped a broken
+provider); the @esbuild-kit/esm-loader alias override went EXACT
+(npm:tsx@4.21.0 — the caret let drizzle-kit re-resolve tsx 4.23.15, the
+R169 class). Plus the pnpm-workspace.yaml reconstruction: `pnpm up`
+silently destroyed 20 of the 31 overrides (the R144/R169 security floors),
+every rationale comment, and the minimumReleaseAge warning block — all
+restored from HEAD with six intended deltas, frozen-lockfile-verified.
+House rule recorded: never `pnpm up` a catalog dependency.
+
+**The honest CI record:** the first push (`421822bf`) failed CI on every
+job — the lockfile's importer specifiers still carried literal ranges the
+catalog-reference repair should have regenerated (a pipe-exit-code trap had
+made the local frozen-install check falsely green; the run stands failed on
+the record). The fix (`827962cb`) went green: push CI all 8 jobs → docker
+dispatch → production redeployed (healthz 200, SENTRY_RELEASE `827962c`
+live) → dispatched CI **all 9 jobs green incl. e2e 144/144 (3.5 m) against
+the new production** → GA4/PWA markers verified read-only (1× GA4 id in the
+entry, the analytics chunk carrying `subnation_ga4_sent` + all 7 ecommerce
+event names, sw.js 200).
+
+**Gates:** typecheck ×4, lint 0/0, backend 288/2,677, frontend 297/2,762,
+scripts 6/59, build eager 148,984 B gz (+1,352 vs R169, inside the 150 KiB
+warn), parity 87/50/7, drizzle + orval drift clean, audit prod 0 / full 10
+(the documented-accept floor). **Still refused with standing rationale:**
+TS 7, vite 8, vitest 5, @sentry 11 family, firebase 13, jsdom 30, jest-dom 7,
+playwright 1.64, prom-client, and the react 19.1.0 / tsx 4.21.0 pins.
+
 ## Round R171 — The deployment-mechanism discovery + the dispatch-sequencing law — 2026-10-19
 
 **Scope:** the R170 closing session's concurrent `ci.yml` + `docker.yml` dispatches produced a red verification run (#548) whose e2e failures root-caused to the production auto-redeploy the docker image push itself triggers — the round records the mechanism, adjudicates every #548 failure as non-product, and turns the sequencing rule into law. Full report: `docs/engineering/R171/round-close.md`.
