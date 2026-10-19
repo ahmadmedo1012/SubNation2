@@ -10,6 +10,20 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R170 — The e2e heartbeat + secret-scan restoration round — 2026-10-19
+
+**Scope:** CI run #546 (the weekly scheduled heartbeat on `9afaed2b`) failed on two jobs every push run was structurally blind to — this round repairs both. Full report: `docs/engineering/R170/round-close.md`.
+
+**e2e (33/144 failed, all in `authed-pdp-r162.spec.ts`):** (a) the spec's 8 round-time debug `page.screenshot` calls wrote to the R162 sandbox's absolute `/home/z/my-project/download/` path — ENOENT on the GitHub runner, every carrying test dying after its assertions passed; invisible locally (the sandbox has the directory) and on push (push runs skip e2e by design). Deleted — they were never assertions. (b) the T3 panel anchor «المنتج متوفر، الكمية 12» was stale since R168-L3 fix 6 (multi-variant stock chips suppress the count — the over-claim honesty rule); R168 re-ran only the analytics/seo e2e specs and the drift survived to the heartbeat. Anchored to the honest form with in-line rationale.
+
+**Secret scan (2 full-history findings):** the schedule-mode FULL-history gitleaks scan (push scans only the pushed commit) trips on two history-only commits whose literals were fixed at HEAD in-round but never commit-allowlisted: `af6a7032` (R163's synthetic hex IndexNow `GOOD_KEY`, fixed by `62904ac7`) and `3183dbe1` (R168's pre-rename `subnation_ga4_purchase_sent` public slot name, fixed by `f5b636e5`). One new commit-only `[[allowlists]]` block in the exact R130/R144 precedent shape, scoped to precisely those two SHAs — a NEW secret anywhere still fails loudly.
+
+**Erratum recorded:** R169's "141/141 green" was the per-spec passed-count sum; the run actually stood at 141 passed / 3 failed (the T3 drift above) of 144 total — the claim is corrected here and in the R170 report.
+
+**Gates:** gitleaks 8.27.2 full-history (the exact CI schedule-mode scan) **0 findings** (was 2) · full e2e suite vs production **144/144 green** (all 13 spec files × 3 viewport projects; authed 33/33) · typecheck clean ×4 · eslint + prettier clean on the changed files · unit suites structurally untouched (vitest scope is `src/**`) · production read-only probe: healthz 200, live chunk `SENTRY_RELEASE={id:"9afaed2"}`.
+
+**Session context:** the workspace had been reset to an R157-era snapshot — recovered by anonymous fetch + fast-forward to `origin/main` (`9afaed2b`); the PAT was wiped with the reset, so this round's commits sat local awaiting the owner's re-provision (the R168 pattern: re-provide in the closing session and the push carries the report). **Resolved:** the owner re-provisioned the same day (2026-10-19, closing session) — `3f2e83b1` + this entry rode that push; gap: hours, not a round.
+
 ## Round R169 — The comprehensive health round (dependency modernization, CVE sweep, lint-zero, e2e restoration) — 2026-10-19
 
 **Scope:** the owner directive «جولة ضخمة من الفحص والتشخيص والتحسين والتطوير والترقية الشاملة» — a full diagnostic pass, then three implementation lanes. Full report: `docs/engineering/R169/round-close.md`.
