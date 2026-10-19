@@ -482,6 +482,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Empty dep array: this effect intentionally runs ONCE per
     // AuthProvider lifetime. queryClient is stable across the
     // lifetime of the QueryClientProvider so omitting it is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Firebase token-refresh listener ───────────────────────────────────

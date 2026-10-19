@@ -15,7 +15,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatRelativeTime } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
@@ -103,7 +103,10 @@ export default function AdminPromotionsPage() {
 
   const headers = useAdminHeaders({ json: true });
 
-  async function load() {
+  // R169 (lint-zero): load wrapped in useCallback so the mount effect
+  // can key on it honestly (canView/headers/toast all stable — boolean,
+  // the useAdminHeaders useMemo, the useToast module-level fn).
+  const load = useCallback(async () => {
     // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
     if (!canView) return;
     if (!adminToken) return;
@@ -132,11 +135,11 @@ export default function AdminPromotionsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [canView, adminToken, headers, toast]);
 
   useEffect(() => {
     void load();
-  }, [adminToken]);
+  }, [adminToken, load]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

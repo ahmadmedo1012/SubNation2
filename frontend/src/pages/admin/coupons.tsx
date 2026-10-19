@@ -138,7 +138,7 @@ export default function AdminCouponsPage() {
         if (!silent) setLoading(false);
       }
     },
-    [adminToken, headers],
+    [adminToken, headers, canView, toast],
   );
 
   useEffect(() => {
@@ -147,7 +147,9 @@ export default function AdminCouponsPage() {
       return;
     }
     fetchCoupons();
-  }, [adminToken]);
+    // R169 (lint-zero): fetchCoupons keys on (adminToken, headers,
+    // canView, toast) — all stable, so this still fires once per token.
+  }, [adminToken, navigate, fetchCoupons]);
 
   // R123 (E3 P3a): URL → sort (a ?sort= change lands without clobbering
   // a sort the operator already picked locally — the users.tsx

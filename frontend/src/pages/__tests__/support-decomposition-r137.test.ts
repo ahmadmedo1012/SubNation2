@@ -81,8 +81,10 @@ describe("R137 (FE) — support.tsx decomposition: page stays an orchestration c
   it("the mutation/polling handlers stay IN the page (the extracts render; the page owns the sends)", () => {
     // fetchTickets / openTicket carry the 93-C5 res.ok + shape guards —
     // an outage must stay an error card, never a crash or a fake empty.
-    expect(page).toContain("const fetchTickets = () => {");
-    expect(page).toContain("const openTicket = async (id: number) => {");
+    // [R169 lint-zero] both became useCallbacks (same page-owned bodies;
+    // headers is now memoized on token so the identities stay stable).
+    expect(page).toContain("const fetchTickets = useCallback(() => {");
+    expect(page).toContain("const openTicket = useCallback(");
     // handleCreate / handleReply carry the R94-A1 #3 double-submit
     // guards — the Enter keydown path bypasses the disabled button, so
     // the `sending`/`submitting` gates must never drift into an

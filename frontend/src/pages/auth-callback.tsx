@@ -58,7 +58,10 @@ export default function AuthCallbackPage() {
     // seeds the sentinel token, so we just bounce home; SPA auth
     // guards take it from there if the probe came back unauthenticated.
     navigate("/");
-  }, []);
+    // R169 (lint-zero): navigate joins the deps (house convention —
+    // admins.tsx/tickets.tsx; wouter's navigate is stable, so this
+    // stays a mount-only one-shot redirect).
+  }, [navigate]);
 
   useEffect(() => {
     const t = setTimeout(() => setHangVisible(true), HANG_TIMEOUT_MS);

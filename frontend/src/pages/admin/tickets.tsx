@@ -243,6 +243,10 @@ export default function AdminTicketsPage() {
   // The ticket id joins the key so every switch scrolls to the newest.
   useEffect(() => {
     if (selected) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // `selected` itself is intentionally NOT a dep (R169 lint-zero note):
+    // the full object mutates on every silent refresh — only (id, reply
+    // count) may re-scroll, per the R120-B5 keying above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, selected?.replies?.length]);
 
   useEffect(() => {

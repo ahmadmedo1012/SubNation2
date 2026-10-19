@@ -122,8 +122,13 @@ export function Navbar() {
   useEffect(() => {
     if (!open) return;
     drawerRef.current?.focus();
+    // R169 (lint-zero): capture the ref value for the cleanup — React
+    // rewrites menuButtonRef.current between here and unmount, so the
+    // cleanup must not read the ref again (the stale-ref race the rule
+    // warns about).
+    const opener = menuButtonRef.current;
     return () => {
-      menuButtonRef.current?.focus();
+      opener?.focus();
     };
   }, [open]);
 

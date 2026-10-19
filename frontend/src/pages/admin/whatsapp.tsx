@@ -131,7 +131,7 @@ export default function AdminWhatsAppPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [headers]);
+  }, [headers, canView]);
 
   useEffect(() => {
     void loadSessions();

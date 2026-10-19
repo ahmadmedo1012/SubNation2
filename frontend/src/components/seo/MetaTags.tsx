@@ -283,6 +283,10 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
         notifyFallback();
       }
     };
+    // R169 (lint-zero): `apply` is deliberately NOT in the dep list — it
+    // is a per-render closure over exactly the values listed above;
+    // keying on it would re-run this effect every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     title,
     description,

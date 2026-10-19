@@ -437,6 +437,10 @@ export function useWhatsAppOtp({ onSuccess }: UseWhatsAppOtpOptions = {}) {
     if (autoSubmittedFor.current === code) return;
     autoSubmittedFor.current = code;
     void verifyCode();
+    // verifyCode is intentionally omitted (the comment above): keying on
+    // (step, code, loading) is the one-shot semantic; autoSubmittedFor
+    // guards the single submit per code value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, step, loading]);
 
   const settlingAuto = settling?.autoPending ?? false;

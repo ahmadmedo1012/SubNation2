@@ -13,7 +13,6 @@ import {
 } from "../../test/db";
 import { signUserToken } from "../../lib/jwt";
 import { ordersRouter } from "../orders";
-import { notifyNewOrder } from "../../telegram";
 
 /**
  * R165 (the R162 ADR) — the order_group_id route wiring:

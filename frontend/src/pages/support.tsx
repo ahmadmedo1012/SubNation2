@@ -72,9 +72,12 @@ export default function SupportPage() {
   const [form, setForm] = useState({ title: "", message: "", category: "other" });
   const [submitting, setSubmitting] = useState(false);
 
-  const headers = { Authorization: token ? `Bearer ${token}` : "" };
+  // R169 (lint-zero): headers memoized on token — the object literal was
+  // rebuilt every render, which made every downstream useCallback
+  // unstable; now fetchTickets/openTicket keep identity per token.
+  const headers = useMemo(() => ({ Authorization: token ? `Bearer ${token}` : "" }), [token]);
 
-  const fetchTickets = () => {
+  const fetchTickets = useCallback(() => {
     if (!token) return;
     // L6-1 (R143): this rode a raw `fetch` with NO timeout — a stalled
     // Libyan mobile link kept `loading` armed until the browser's ~300 s
@@ -93,39 +96,42 @@ export default function SupportPage() {
         setListError(true);
       })
       .finally(() => setLoading(false));
-  };
+  }, [token, headers]);
 
-  const openTicket = async (id: number) => {
-    setTicketLoading(true);
-    try {
-      // L6-1 (R143): generated getSupportTicket rides customFetch (20 s
-      // budget + ApiError envelope) — the raw fetch carried neither, and
-      // an unguarded r.json() leaked English SyntaxError text into the
-      // Arabic toast when a proxy 502 answered HTML. The 93-C5 / F-05
-      // shape guard stays: a contract drift must toast, never crash the
-      // page at `selectedTicket.replies.length`.
-      const d: unknown = await getSupportTicket(id, { headers });
-      if (!d || !Array.isArray((d as TicketDetail).replies)) {
+  const openTicket = useCallback(
+    async (id: number) => {
+      setTicketLoading(true);
+      try {
+        // L6-1 (R143): generated getSupportTicket rides customFetch (20 s
+        // budget + ApiError envelope) — the raw fetch carried neither, and
+        // an unguarded r.json() leaked English SyntaxError text into the
+        // Arabic toast when a proxy 502 answered HTML. The 93-C5 / F-05
+        // shape guard stays: a contract drift must toast, never crash the
+        // page at `selectedTicket.replies.length`.
+        const d: unknown = await getSupportTicket(id, { headers });
+        if (!d || !Array.isArray((d as TicketDetail).replies)) {
+          toast({
+            title: "تعذّر تحميل التذكرة",
+            description: "حدث خطأ في الاتصال — حاول مجدداً",
+            variant: "destructive",
+          });
+          return;
+        }
+        setSelectedTicket(d as TicketDetail);
+        setReplyText("");
+        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+      } catch {
         toast({
           title: "تعذّر تحميل التذكرة",
           description: "حدث خطأ في الاتصال — حاول مجدداً",
           variant: "destructive",
         });
-        return;
+      } finally {
+        setTicketLoading(false);
       }
-      setSelectedTicket(d as TicketDetail);
-      setReplyText("");
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
-    } catch {
-      toast({
-        title: "تعذّر تحميل التذكرة",
-        description: "حدث خطأ في الاتصال — حاول مجدداً",
-        variant: "destructive",
-      });
-    } finally {
-      setTicketLoading(false);
-    }
-  };
+    },
+    [headers, toast],
+  );
 
   // B-10 (R128-IMP-5 / B13 §3): the poll's SILENT thread refresh. It must
   // NOT reuse openTicket — that one flashes the reply skeleton
@@ -188,13 +194,19 @@ export default function SupportPage() {
     // public. The ticket fetch itself is already token-guarded inside
     // fetchTickets; anonymous visitors simply never load the inbox.
     if (token) fetchTickets();
-  }, [token]);
+    // R169 (lint-zero): fetchTickets keys on (token, headers) — stable,
+    // so this still fires once per token.
+  }, [token, fetchTickets]);
 
   useEffect(() => {
     if (selectedTicket) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     // R120-B3 (A5-F8): re-run when SWITCHING tickets too — the old
     // [replies.length] key skipped the scroll when a second ticket had
     // the SAME reply count (e.g. both empty) as the previously open one.
+    // `selectedTicket` itself is intentionally NOT a dep (R169 lint-zero
+    // note): it mutates on every silent refresh — only (id, reply count)
+    // may re-scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTicket?.id, selectedTicket?.replies?.length]);
 
   const handleCreate = async (e: React.FormEvent) => {

@@ -118,7 +118,11 @@ describe("R167 (layout decomposition) — Navbar.tsx stays an orchestration core
       'else if (e.key === "Tab" && drawerRef.current) trapTabKey(drawerRef.current, e);',
     );
     expect(navbar).toContain("drawerRef.current?.focus();");
-    expect(navbar).toContain("menuButtonRef.current?.focus();");
+    // [R169 lint-zero] the cleanup captures the ref value first (React
+    // rewrites menuButtonRef.current before the cleanup runs — the
+    // stale-ref race); same header-owned focus machinery, safer shape.
+    expect(navbar).toContain("const opener = menuButtonRef.current;");
+    expect(navbar).toContain("opener?.focus();");
     expect(navbar).toContain('document.body.style.overflow = "hidden";');
     // The R-140-k cart announcer (round-closure-r140 + live-regions-r140
     // pin the same wiring) and the scroll atom stay header-owned.

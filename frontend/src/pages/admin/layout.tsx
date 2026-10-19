@@ -284,8 +284,13 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   useEffect(() => {
     if (!mobileOpen) return;
     drawerRef.current?.focus();
+    // R169 (lint-zero): capture the ref value for the cleanup — React
+    // rewrites hamburgerRef.current between here and unmount, so the
+    // cleanup must not read the ref again (the stale-ref race the rule
+    // warns about).
+    const opener = hamburgerRef.current;
     return () => {
-      hamburgerRef.current?.focus();
+      opener?.focus();
     };
   }, [mobileOpen]);
 

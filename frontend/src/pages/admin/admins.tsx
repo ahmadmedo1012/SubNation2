@@ -21,8 +21,8 @@ import { AdminSessionExpiredError, adminFetch, adminFetchJson } from "@/lib/admi
 import { useDirtyGuard } from "@/hooks/useDirtyGuard";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
+import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
@@ -121,7 +121,11 @@ export default function AdminAdminsPage() {
             editSelectedScopes.some((s) => !editingInitialScopes.includes(s))))),
   );
 
-  const reload = async () => {
+  // R169 (lint-zero): reload wrapped in useCallback so the mount effect
+  // below can key on it honestly (headers/toast are both stable — the
+  // useAdminHeaders useMemo + the useToast module-level fn) — identity
+  // only changes when the token does, exactly the old refetch behavior.
+  const reload = useCallback(async () => {
     // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
     if (!canView) return;
     try {
@@ -160,7 +164,7 @@ export default function AdminAdminsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [canView, headers, toast]);
 
   // R125-I5 (A3-9): scopes-only refetch for the dialogs' retry affordance
   // — the catalog is a single small GET; re-pulling the accounts list
@@ -187,7 +191,7 @@ export default function AdminAdminsPage() {
       return;
     }
     void reload();
-  }, [adminToken, navigate]);
+  }, [adminToken, navigate, reload]);
 
   if (!adminToken) return null;
 

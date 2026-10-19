@@ -90,7 +90,9 @@ describe("R137 (FE) — admin/promotions.tsx decomposition: page stays an orches
       'await adminFetchJson(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });',
     );
     // The session-aware list fetch + the confirm gate are page-owned too.
-    expect(page).toContain("async function load() {");
+    // [R169 lint-zero] load became a useCallback (same page-owned body;
+    // the wrapper lets the mount effect key on it without a refetch loop).
+    expect(page).toContain("const load = useCallback(async () => {");
     expect(page).toContain("const { confirm, ConfirmDialog } = useConfirm();");
     expect(page).toContain("if (err instanceof AdminSessionExpiredError) return;");
   });

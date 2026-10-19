@@ -76,7 +76,9 @@ describe("R137 (FE) — admin/admins.tsx decomposition: page stays an orchestrat
 
   it("the RBAC mutation path stays IN the page (the extracts render; the page owns every POST/PATCH)", () => {
     // The accounts/scopes/session triple fetch + the scopes-only retry.
-    expect(page).toContain("const reload = async () => {");
+    // [R169 lint-zero] reload became a useCallback (same page-owned body;
+    // the wrapper lets the mount effect key on it without a refetch loop).
+    expect(page).toContain("const reload = useCallback(async () => {");
     expect(page).toContain("const loadScopes = async () => {");
     expect(page).toContain('adminFetch("/api/admin/admins", { credentials: "include", headers })');
     // The confirm-gated enable/disable POST.
