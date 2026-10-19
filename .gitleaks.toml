@@ -326,3 +326,22 @@ description = "History-only commit quoting the RFC 6455 sample WebSocket nonce i
 commits = [
   "4e4f2c310e4e2e2252d5f9be89465b8c82f0b820",
 ]
+
+# R170: two more HISTORY-ONLY patches of the same class the weekly
+# full-history scan keeps surfacing (push events scan only the pushed
+# commit via --log-opts=-1, so every push run stayed green while the
+# schedule runs went red — CI runs #539 and #546 both died here). Both
+# literals are GONE from HEAD, fixed by same-round commits; history is
+# immovable without a destructive rewrite. Same empirical constraints
+# as R130/R144: no value-regex or targetRules shape suppresses them, so
+# the commit-only global entry below is the one working form. Scope is
+# exactly two historical SHAs — a NEW secret in ANY commit (including
+# these files' future edits) still fails the gate loudly:
+#   af6a703200df677988570e6c2a0f8625daabfbf4  feat(seo,r163): indexnow.test.ts:23 carried GOOD_KEY as a synthetic 32-char hex fixture (a generated test value, never a credential); replaced at HEAD by the dash-separated low-entropy form in 62904ac7 the same round.
+#   3183dbe13e6144ca5ee6b6d0f57eca8a640d9648  feat(*,r168): analytics-events.ts:221 carried PURCHASE_SENT_STORAGE_KEY = "subnation_ga4_purchase_sent" — a 27-char PUBLIC localStorage slot name (the same class as subnation_topupkey & friends), which the generic-api-key entropy heuristic misreads; renamed to subnation_ga4_sent at HEAD in f5b636e5 the same round.
+[[allowlists]]
+description = "History-only commits carrying the R163 synthetic IndexNow test key and the R168 pre-rename GA4 localStorage slot name (both fixed at HEAD in-round; commit-only global entry — same shape as the R130/R144 precedents)"
+commits = [
+  "af6a703200df677988570e6c2a0f8625daabfbf4",
+  "3183dbe13e6144ca5ee6b6d0f57eca8a640d9648",
+]

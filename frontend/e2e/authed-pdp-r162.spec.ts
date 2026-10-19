@@ -485,7 +485,6 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
           expect(Math.abs(barBox!.y + barBox!.height - vp.height)).toBeLessThanOrEqual(1);
         }
       }
-      await page.screenshot({ path: `/home/z/my-project/download/r162-e-bar-${vp.width}.png` });
     });
   }
 
@@ -518,7 +517,6 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
     expect(focusedShadow).not.toBe(restShadow);
     expect(focusedShadow).toContain("0px 0px 0px 3px");
     expect(focusedShadow).toContain("rgb(220, 24, 64)");
-    await page.screenshot({ path: "/home/z/my-project/download/r162-e-focus-640.png" });
   });
 
   // ── T3: variant selector semantics ──────────────────────────────────────
@@ -531,9 +529,12 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
 
     const bar = stickyBar(page);
     // The panel is anchored on its own stock chip (role=status), not
-    // on document order.
+    // on document order. R170: the multi-variant honest form — R168-L3
+    // (fix 6) dropped the count from the SR twin on multi-variant
+    // products (the product-level pool over-claims across variants);
+    // «الكمية N» only rides single-variant panels now.
     const panel = page
-      .getByRole("status", { name: "المنتج متوفر، الكمية 12", exact: true })
+      .getByRole("status", { name: "المنتج متوفر", exact: true })
       .locator("xpath=..");
     const pill = (name: string) => page.getByRole("button", { name, exact: true });
 
@@ -575,7 +576,6 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
     await expect(bar.getByText("120.00 د.ل")).toBeVisible();
     await expect(panel.getByText("120.00 د.ل")).toBeVisible();
     await expect(panel.getByText("30.00 د.ل")).toHaveCount(0);
-    await page.screenshot({ path: "/home/z/my-project/download/r162-e-variant-640.png" });
   });
 
   // ── T4: the buy interaction — intercepted, honest pending → error ───────
@@ -658,7 +658,6 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
     };
     expect(body.product_id).toBe(PRODUCT.id);
     expect(body.variant_id).toBe(101); // the default cheapest-available selection
-    await page.screenshot({ path: "/home/z/my-project/download/r162-e-buy-error-640.png" });
   });
 
   // ── T5: add-to-cart from the authed bar — local-only by design ──────────
@@ -690,7 +689,6 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
     const bar = stickyBar(page);
     expect(await bar.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
     expect(Number.parseInt(await bar.evaluate((el) => getComputedStyle(el).bottom), 10)).toBe(60);
-    await page.screenshot({ path: "/home/z/my-project/download/r162-e-addtocart-390.png" });
   });
 
   // ── T6: the insufficient-balance branch (checkout CTA gating) ───────────
@@ -715,7 +713,6 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
     expect(page.url()).toContain("return=%2Fproduct%2F");
     // The wallet page itself renders under the hermetic data.
     await expect(page.locator("main")).toBeVisible();
-    await page.screenshot({ path: "/home/z/my-project/download/r162-e-shortfall-640.png" });
   });
 
   // ── T7: RTL (default) + both themes via the app's own toggle ────────────
@@ -743,7 +740,6 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: "/home/z/my-project/download/r162-e-theme-light-640.png" });
 
     // The persisted light theme survives a fresh boot at 390.
     await page.setViewportSize({ width: 390, height: 844 });
@@ -757,6 +753,5 @@ test.describe("authed PDP — hermetic session (R162-E)", () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow390).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: "/home/z/my-project/download/r162-e-theme-light-390.png" });
   });
 });
