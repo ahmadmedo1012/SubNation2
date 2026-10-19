@@ -70,21 +70,30 @@ test.describe("GA4 (R168) — loader + Enhanced Measurement", () => {
     await page.waitForFunction(() => typeof (window as { gtag?: unknown }).gtag === "function");
     await page.locator(`a[href="/product/${pick.slug}"]`).first().click();
 
-    // Enhanced Measurement reacts to the history change...
+    // Enhanced Measurement reacts to the history change... (live-verified
+    // shape: EM's history listener pushes OBJECT-form entries named
+    // "gtm.historyChange-v2" — array-form entries are app-side gtag()
+    // calls, e.g. the R168 view_item/view_item_list pushes.)
     await expect
       .poll(async () =>
         page.evaluate(() => {
           const layer = (window as { dataLayer?: unknown[] }).dataLayer ?? [];
           return layer.some(
             (entry) =>
-              Array.isArray(entry) && entry[0] === "event" && entry[1] === "gtm.historyChange",
+              !!entry &&
+              typeof entry === "object" &&
+              !Array.isArray(entry) &&
+              String((entry as { event?: unknown }).event ?? "").startsWith("gtm.historyChange"),
           );
         }),
       )
       .toBe(true);
 
     // ...and the app itself must never push a manual page_view (the
-    // no-duplicates contract — EM owns page_views on this SPA).
+    // no-duplicates contract — EM owns page_views on this SPA; an app
+    // push would go through window.gtag, i.e. ARRAY form — EM itself
+    // never echoes page_view onto the dataLayer, so the array check is
+    // the precise app-side contract).
     const manualPageView = await page.evaluate(() => {
       const layer = (window as { dataLayer?: unknown[] }).dataLayer ?? [];
       return layer.some(
