@@ -67,15 +67,14 @@ export default defineConfig({
       formatter: "prettier",
       override: {
         zod: {
-          // CRITICAL (R123-E2, P1 fix): the workspace pins zod ^3.25.76
-          // (pnpm-workspace.yaml catalog). orval's default 'auto' target
-          // resolution finds no zod dependency in THIS package, so it falls
-          // back to emitting Zod 4 syntax (z.looseObject, z.iso.datetime, …)
-          // which does not typecheck against zod 3 — the root cause of the
-          // broken codegen pipeline. `version: 3` pins deterministic
-          // zod-3-compatible emission regardless of installed packages.
-          // NEVER remove this while the catalog pins zod 3.
-          version: 3,
+          // R172: the catalog moved to zod ^4.6.7 and this pin moved with
+          // it. Deterministic emission stays the rule (R123-E2's root
+          // cause was orval's 'auto' resolution falling back to whatever
+          // syntax it guessed): `version: 4` pins zod-4-compatible
+          // emission (z.looseObject, z.iso.datetime, two-arg z.record)
+          // regardless of installed packages. NEVER move this and the
+          // catalog pin independently of each other.
+          version: 4,
           coerce: {
             query: ["boolean", "number", "string"],
             param: ["boolean", "number", "string"],

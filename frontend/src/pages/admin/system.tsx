@@ -514,7 +514,11 @@ export default function AdminSystemPage(): ReactElement | null {
                                 fontSize: 11,
                               }}
                               labelStyle={{ display: "none" }}
-                              formatter={(v: number) => [v.toFixed(2), "طلب/ث"]}
+                              // R172: recharts 3 narrowed the Tooltip
+                              // formatter to its full 5-arg Formatter shape
+                              // (ReactNode | [ReactNode, NameType] return) —
+                              // annotate as ValueType and return the pair.
+                              formatter={(v) => [Number(v).toFixed(2), "طلب/ث"] as [string, string]}
                             />
                             <rc.Area
                               type="monotone"

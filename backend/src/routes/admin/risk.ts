@@ -649,9 +649,11 @@ const RiskConfigPutBody = z.object({
     .optional(),
   allowlist: z
     .object({
-      // ip() accepts both v4 and v6 literals — what isAllowlisted
-      // compares signal.ip against.
-      ips: z.string().ip().array().max(100).optional(),
+      // The union accepts both v4 and v6 literals — what isAllowlisted
+      // compares signal.ip against. (R172: zod 4 removed the combined
+      // z.string().ip() string-format check; the classic surface exposes
+      // z.ipv4()/z.ipv6() factories only — behavior-identical union.)
+      ips: z.union([z.ipv4(), z.ipv6()]).array().max(100).optional(),
       // Device fingerprints are opaque client strings; phones are
       // normalized digits. Bounded length + array caps keep the jsonb
       // row (and the matcher's includes() scan) cheap.

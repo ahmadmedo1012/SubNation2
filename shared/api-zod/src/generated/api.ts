@@ -99,7 +99,7 @@ export const LogoutResponse = zod.object({
  */
 export const GetMeResponse = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     phone: zod.string(),
     email: zod.string().nullish(),
     email_verified: zod.boolean().optional(),
@@ -108,12 +108,12 @@ export const GetMeResponse = zod
     photo_url: zod.string().nullish(),
     auth_provider: zod.string().optional(),
     wallet_balance: zod.number(),
-    loyalty_points: zod.number().int(),
+    loyalty_points: zod.int(),
     loyalty_tier: zod.string(),
     lifetime_spend: zod.number(),
     referral_code: zod.string().nullish(),
     onboarded_at: zod.string().nullish(),
-    onboarding_step: zod.number().int().optional(),
+    onboarding_step: zod.int().optional(),
     created_at: zod.string().optional(),
     linked_identities: zod
       .array(
@@ -216,7 +216,7 @@ export const ListPublicAuthProvidersResponse = zod.object({
  * @summary Verify Telegram Login Widget data — mints the session cookie
  */
 export const AuthTelegramWidgetBody = zod
-  .object({
+  .looseObject({
     id: zod
       .union([
         zod
@@ -344,7 +344,7 @@ export const AuthFirebaseSessionBody = zod.object({
 export const AuthFirebaseSessionResponse = zod.object({
   user: zod
     .object({
-      id: zod.number().int(),
+      id: zod.int(),
       phone: zod.string(),
       email: zod.string().nullish(),
       email_verified: zod.boolean().optional(),
@@ -353,12 +353,12 @@ export const AuthFirebaseSessionResponse = zod.object({
       photo_url: zod.string().nullish(),
       auth_provider: zod.string().optional(),
       wallet_balance: zod.number(),
-      loyalty_points: zod.number().int(),
+      loyalty_points: zod.int(),
       loyalty_tier: zod.string(),
       lifetime_spend: zod.number(),
       referral_code: zod.string().nullish(),
       onboarded_at: zod.string().nullish(),
-      onboarding_step: zod.number().int().optional(),
+      onboarding_step: zod.int().optional(),
       created_at: zod.string().optional(),
       linked_identities: zod
         .array(
@@ -401,7 +401,7 @@ export const AuthFirebaseRefreshBody = zod.object({
 export const AuthFirebaseRefreshResponse = zod.object({
   user: zod
     .object({
-      id: zod.number().int(),
+      id: zod.int(),
       phone: zod.string(),
       email: zod.string().nullish(),
       email_verified: zod.boolean().optional(),
@@ -410,12 +410,12 @@ export const AuthFirebaseRefreshResponse = zod.object({
       photo_url: zod.string().nullish(),
       auth_provider: zod.string().optional(),
       wallet_balance: zod.number(),
-      loyalty_points: zod.number().int(),
+      loyalty_points: zod.int(),
       loyalty_tier: zod.string(),
       lifetime_spend: zod.number(),
       referral_code: zod.string().nullish(),
       onboarded_at: zod.string().nullish(),
-      onboarding_step: zod.number().int().optional(),
+      onboarding_step: zod.int().optional(),
       created_at: zod.string().optional(),
       linked_identities: zod
         .array(
@@ -446,7 +446,7 @@ export const ProbeAuthResponse = zod.object({
   authenticated: zod.boolean(),
   user: zod
     .object({
-      id: zod.number().int(),
+      id: zod.int(),
       phone: zod.string(),
       email: zod.string().nullish(),
       email_verified: zod.boolean().optional(),
@@ -455,12 +455,12 @@ export const ProbeAuthResponse = zod.object({
       photo_url: zod.string().nullish(),
       auth_provider: zod.string().optional(),
       wallet_balance: zod.number(),
-      loyalty_points: zod.number().int(),
+      loyalty_points: zod.int(),
       loyalty_tier: zod.string(),
       lifetime_spend: zod.number(),
       referral_code: zod.string().nullish(),
       onboarded_at: zod.string().nullish(),
-      onboarding_step: zod.number().int().optional(),
+      onboarding_step: zod.int().optional(),
       created_at: zod.string().optional(),
       linked_identities: zod
         .array(
@@ -524,7 +524,7 @@ export const ListProductsQueryParams = zod.object({
 
 export const ListProductsResponseItem = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     slug: zod.string().nullish(),
     name: zod.string(),
     description: zod
@@ -542,13 +542,12 @@ export const ListProductsResponseItem = zod
       .describe('True when multiple active variants exist (card renders "تبدأ من").'),
     category: zod.string().nullish(),
     is_active: zod.boolean(),
-    stock_count: zod.number().int(),
+    stock_count: zod.int(),
     is_available: zod.boolean(),
     sale_price: zod.number().nullish(),
     discount_percent: zod.number().nullish(),
-    order_count: zod.number().int(),
+    order_count: zod.int(),
     variant_count: zod
-      .number()
       .int()
       .describe(
         "Number of public variants — the count badge's data source when the variant tree is not projected.",
@@ -567,7 +566,7 @@ export const GetProductParams = zod.object({
 });
 
 export const GetProductResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
@@ -600,16 +599,16 @@ export const GetProductResponse = zod.object({
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   usage_terms: zod.string().nullish(),
-  stock_count: zod.number().int(),
+  stock_count: zod.int(),
   is_available: zod.boolean(),
   sale_price: zod.number().nullish(),
   discount_percent: zod.number().nullish(),
-  order_count: zod.number().int(),
+  order_count: zod.int(),
   variants: zod
     .array(
       zod
         .object({
-          id: zod.number().int(),
+          id: zod.int(),
           plan_label: zod
             .string()
             .nullish()
@@ -646,7 +645,7 @@ export const GetProductRecommendationsParams = zod.object({
 
 export const GetProductRecommendationsResponseItem = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     slug: zod.string().nullish(),
     name: zod.string(),
     image_url: zod.string().nullish(),
@@ -662,9 +661,9 @@ export const GetProductRecommendationsResponse = zod.array(GetProductRecommendat
  * @summary Get catalog summary stats
  */
 export const GetCatalogStatsResponse = zod.object({
-  total_products: zod.number().int(),
-  available_products: zod.number().int(),
-  total_units: zod.number().int(),
+  total_products: zod.int(),
+  available_products: zod.int(),
+  total_units: zod.int(),
   lowest_price: zod.number().nullish(),
   has_flash_sale: zod.boolean(),
 });
@@ -675,7 +674,7 @@ export const GetCatalogStatsResponse = zod.object({
 export const GetFlashSaleResponse = zod.object({
   flash_sale: zod
     .object({
-      id: zod.number().int(),
+      id: zod.int(),
       title: zod.string(),
       discount_percent: zod.number(),
       ends_at: zod.string(),
@@ -691,7 +690,7 @@ export const GetProductBySlugParams = zod.object({
 });
 
 export const GetProductBySlugResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
@@ -724,16 +723,16 @@ export const GetProductBySlugResponse = zod.object({
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   usage_terms: zod.string().nullish(),
-  stock_count: zod.number().int(),
+  stock_count: zod.int(),
   is_available: zod.boolean(),
   sale_price: zod.number().nullish(),
   discount_percent: zod.number().nullish(),
-  order_count: zod.number().int(),
+  order_count: zod.int(),
   variants: zod
     .array(
       zod
         .object({
-          id: zod.number().int(),
+          id: zod.int(),
           plan_label: zod
             .string()
             .nullish()
@@ -788,11 +787,10 @@ export const ListOrdersQueryParams = zod.object({
 
 export const ListOrdersResponseItem = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     order_code: zod.string(),
-    product_id: zod.number().int(),
+    product_id: zod.int(),
     variant_id: zod
-      .number()
       .int()
       .nullish()
       .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
@@ -867,9 +865,8 @@ export const createOrderBodyCouponCodeMax = 64;
 export const createOrderBodyOrderGroupIdMax = 36;
 
 export const CreateOrderBody = zod.object({
-  product_id: zod.number().int().min(1),
+  product_id: zod.int().min(1),
   variant_id: zod
-    .number()
     .int()
     .nullish()
     .describe(
@@ -887,11 +884,10 @@ export const CreateOrderBody = zod.object({
 
 export const CreateOrderResponse = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     order_code: zod.string(),
-    product_id: zod.number().int(),
+    product_id: zod.int(),
     variant_id: zod
-      .number()
       .int()
       .nullish()
       .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
@@ -943,11 +939,10 @@ export const GetOrderParams = zod.object({
 
 export const GetOrderResponse = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     order_code: zod.string(),
-    product_id: zod.number().int(),
+    product_id: zod.int(),
     variant_id: zod
-      .number()
       .int()
       .nullish()
       .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
@@ -995,17 +990,16 @@ export const GetOrderResponse = zod
  */
 export const GetWalletResponse = zod.object({
   balance: zod.number(),
-  loyalty_points: zod.number().int(),
+  loyalty_points: zod.int(),
   loyalty_tier: zod.string(),
-  pending_topups_count: zod.number().int(),
+  pending_topups_count: zod.int(),
   recent_orders: zod.array(
     zod
       .object({
-        id: zod.number().int(),
+        id: zod.int(),
         order_code: zod.string(),
-        product_id: zod.number().int(),
+        product_id: zod.int(),
         variant_id: zod
-          .number()
           .int()
           .nullish()
           .describe("The purchased catalog variant (null for legacy pre-2026-09-20 orders)."),
@@ -1073,7 +1067,7 @@ export const GetWalletLedgerQueryParams = zod.object({
 });
 
 export const GetWalletLedgerResponseItem = zod.object({
-  id: zod.number().int().optional(),
+  id: zod.int().optional(),
   type: zod.enum(["topup", "purchase", "refund", "adjustment", "referral_credit"]).optional(),
   type_label: zod.string().optional().describe("Arabic label"),
   amount: zod.number().optional(),
@@ -1098,7 +1092,7 @@ export const ListTopupsQueryParams = zod.object({
 });
 
 export const ListTopupsResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   amount: zod.number(),
   payment_method: zod.string(),
   payment_network: zod.string().nullish(),
@@ -1144,7 +1138,7 @@ export const CreateTopupBody = zod
   );
 
 export const CreateTopupResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   amount: zod.number(),
   payment_method: zod.string(),
   payment_network: zod.string().nullish(),
@@ -1169,10 +1163,9 @@ export const GetCartResponse = zod.object({
   items: zod.array(
     zod
       .object({
-        id: zod.number().int(),
-        product_id: zod.number().int(),
+        id: zod.int(),
+        product_id: zod.int(),
         variant_id: zod
-          .number()
           .int()
           .nullish()
           .describe("Selected catalog variant for this line (null = legacy/variant-less)."),
@@ -1186,7 +1179,7 @@ export const GetCartResponse = zod.object({
           .nullish()
           .describe("Flash-sale price (2dp) — null when no active sale."),
         discount_percent: zod.number().nullish().describe("Flash-sale percent — null when 0."),
-        quantity: zod.number().int().min(1).max(getCartResponseItemsItemQuantityMax),
+        quantity: zod.int().min(1).max(getCartResponseItemsItemQuantityMax),
         subtotal: zod.number(),
         created_at: zod.string(),
       })
@@ -1216,10 +1209,9 @@ export const addCartItemBodyQuantityMax = 99;
 
 export const AddCartItemBody = zod
   .object({
-    product_id: zod.number().int(),
-    variant_id: zod.number().int().nullish(),
+    product_id: zod.int(),
+    variant_id: zod.int().nullish(),
     quantity: zod
-      .number()
       .int()
       .min(1)
       .max(addCartItemBodyQuantityMax)
@@ -1234,10 +1226,9 @@ export const addCartItemResponseQuantityMax = 99;
 
 export const AddCartItemResponse = zod
   .object({
-    id: zod.number().int(),
-    product_id: zod.number().int(),
+    id: zod.int(),
+    product_id: zod.int(),
     variant_id: zod
-      .number()
       .int()
       .nullish()
       .describe("Selected catalog variant for this line (null = legacy/variant-less)."),
@@ -1251,7 +1242,7 @@ export const AddCartItemResponse = zod
       .nullish()
       .describe("Flash-sale price (2dp) — null when no active sale."),
     discount_percent: zod.number().nullish().describe("Flash-sale percent — null when 0."),
-    quantity: zod.number().int().min(1).max(addCartItemResponseQuantityMax),
+    quantity: zod.int().min(1).max(addCartItemResponseQuantityMax),
     subtotal: zod.number(),
     created_at: zod.string(),
   })
@@ -1271,7 +1262,7 @@ export const updateCartItemBodyQuantityMax = 99;
 
 export const UpdateCartItemBody = zod
   .object({
-    quantity: zod.number().int().min(1).max(updateCartItemBodyQuantityMax),
+    quantity: zod.int().min(1).max(updateCartItemBodyQuantityMax),
   })
   .describe("Replaces the quantity (not an increment).");
 
@@ -1279,10 +1270,9 @@ export const updateCartItemResponseQuantityMax = 99;
 
 export const UpdateCartItemResponse = zod
   .object({
-    id: zod.number().int(),
-    product_id: zod.number().int(),
+    id: zod.int(),
+    product_id: zod.int(),
     variant_id: zod
-      .number()
       .int()
       .nullish()
       .describe("Selected catalog variant for this line (null = legacy/variant-less)."),
@@ -1296,7 +1286,7 @@ export const UpdateCartItemResponse = zod
       .nullish()
       .describe("Flash-sale price (2dp) — null when no active sale."),
     discount_percent: zod.number().nullish().describe("Flash-sale percent — null when 0."),
-    quantity: zod.number().int().min(1).max(updateCartItemResponseQuantityMax),
+    quantity: zod.int().min(1).max(updateCartItemResponseQuantityMax),
     subtotal: zod.number(),
     created_at: zod.string(),
   })
@@ -1347,13 +1337,13 @@ export const ValidateCouponResponse = zod.object({
  * @summary List all coupons (requireAdmin + finance scope)
  */
 export const ListAdminCouponsResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   code: zod.string(),
   type: zod.enum(["percentage", "fixed"]),
   value: zod.number(),
   min_order_amount: zod.number().optional(),
-  max_uses: zod.number().int().nullish(),
-  used_count: zod.number().int(),
+  max_uses: zod.int().nullish(),
+  used_count: zod.int(),
   expires_at: zod.string().nullish(),
   is_active: zod.boolean(),
   description: zod.string().nullish(),
@@ -1390,7 +1380,7 @@ export const CreateCouponBody = zod
       .max(createCouponBodyMinOrderAmountMax)
       .optional()
       .describe("Defaults to 0."),
-    max_uses: zod.number().int().min(1).max(createCouponBodyMaxUsesMax).nullish(),
+    max_uses: zod.int().min(1).max(createCouponBodyMaxUsesMax).nullish(),
     expires_at: zod
       .string()
       .nullish()
@@ -1402,13 +1392,13 @@ export const CreateCouponBody = zod
   );
 
 export const CreateCouponResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   code: zod.string(),
   type: zod.enum(["percentage", "fixed"]),
   value: zod.number(),
   min_order_amount: zod.number().optional(),
-  max_uses: zod.number().int().nullish(),
-  used_count: zod.number().int(),
+  max_uses: zod.int().nullish(),
+  used_count: zod.int(),
   expires_at: zod.string().nullish(),
   is_active: zod.boolean(),
   description: zod.string().nullish(),
@@ -1430,7 +1420,7 @@ export const updateCouponBodyDescriptionMax = 200;
 export const UpdateCouponBody = zod
   .object({
     is_active: zod.boolean().optional(),
-    max_uses: zod.number().int().min(1).max(updateCouponBodyMaxUsesMax).nullish(),
+    max_uses: zod.int().min(1).max(updateCouponBodyMaxUsesMax).nullish(),
     expires_at: zod
       .string()
       .nullish()
@@ -1440,13 +1430,13 @@ export const UpdateCouponBody = zod
   .describe("Strict body — unknown keys are a 400 (zod .strict()).");
 
 export const UpdateCouponResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   code: zod.string(),
   type: zod.enum(["percentage", "fixed"]),
   value: zod.number(),
   min_order_amount: zod.number().optional(),
-  max_uses: zod.number().int().nullish(),
-  used_count: zod.number().int(),
+  max_uses: zod.int().nullish(),
+  used_count: zod.int(),
   expires_at: zod.string().nullish(),
   is_active: zod.boolean(),
   description: zod.string().nullish(),
@@ -1471,15 +1461,15 @@ export const DeleteCouponResponse = zod.object({
  */
 export const GetLoyaltyResponse = zod
   .object({
-    points: zod.number().int(),
+    points: zod.int(),
     tier: zod.enum(["bronze", "silver", "gold", "platinum"]),
     lifetime_spend: zod.number(),
     referral_code: zod.string().describe("Empty string when unset."),
     referral_link: zod.string(),
     referred_by: zod.string().nullish(),
-    referrals_total: zod.number().int(),
-    referrals_credited: zod.number().int(),
-    referrals_pending: zod.number().int(),
+    referrals_total: zod.int(),
+    referrals_credited: zod.int(),
+    referrals_pending: zod.int(),
     points_value_lyd: zod
       .string()
       .describe('points / 100, formatted with 2 decimals (e.g. "12.00").'),
@@ -1497,8 +1487,8 @@ export const GetLoyaltyResponse = zod
       platinum: zod.number(),
     }),
     points_rate: zod.object({
-      points_per_referral: zod.number().int(),
-      points_per_lyd: zod.number().int(),
+      points_per_referral: zod.int(),
+      points_per_lyd: zod.int(),
     }),
   })
   .describe(
@@ -1519,11 +1509,7 @@ export const convertPointsBodyPointsOneMultipleOf = 100;
 export const ConvertPointsBody = zod
   .object({
     points: zod.union([
-      zod
-        .number()
-        .int()
-        .min(convertPointsBodyPointsOneMin)
-        .multipleOf(convertPointsBodyPointsOneMultipleOf),
+      zod.int().min(convertPointsBodyPointsOneMin).multipleOf(convertPointsBodyPointsOneMultipleOf),
       zod.string().describe("Numeric string, coerced via parseInt."),
     ]),
   })
@@ -1533,9 +1519,9 @@ export const ConvertPointsBody = zod
 
 export const ConvertPointsResponse = zod.object({
   success: zod.boolean(),
-  points_spent: zod.number().int(),
+  points_spent: zod.int(),
   lyd_credited: zod.number(),
-  new_points: zod.number().int(),
+  new_points: zod.int(),
   new_balance: zod.number(),
   message: zod.string().describe("Arabic success message with the converted amount."),
 });
@@ -1567,7 +1553,7 @@ export const GetLoyaltyLedgerQueryParams = zod.object({
 });
 
 export const GetLoyaltyLedgerResponseItem = zod.object({
-  id: zod.number().int().optional(),
+  id: zod.int().optional(),
   type: zod
     .enum([
       "purchase_award",
@@ -1579,8 +1565,8 @@ export const GetLoyaltyLedgerResponseItem = zod.object({
     ])
     .optional(),
   type_label: zod.string().optional().describe("Arabic label"),
-  points_delta: zod.number().int().optional(),
-  points_after: zod.number().int().optional(),
+  points_delta: zod.int().optional(),
+  points_after: zod.int().optional(),
   lyd_credited: zod.number().nullish(),
   created_at: zod.coerce.date().optional(),
 });
@@ -1600,12 +1586,12 @@ export const ListReferralsQueryParams = zod.object({
 });
 
 export const ListReferralsResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   status: zod.enum(["pending", "credited"]),
   phone_masked: zod.string().describe('Referee phone masked ("091****789").'),
   created_at: zod.string(),
   credited_at: zod.string().nullable(),
-  points_earned: zod.number().int().describe("50 when credited, else 0."),
+  points_earned: zod.int().describe("50 when credited, else 0."),
 });
 export const ListReferralsResponse = zod.array(ListReferralsResponseItem);
 
@@ -1614,7 +1600,7 @@ export const ListReferralsResponse = zod.array(ListReferralsResponseItem);
  * @summary List the current user's tickets (≤200, newest first)
  */
 export const ListSupportTicketsResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   title: zod.string(),
   category: zod.enum(["billing", "technical", "order", "account", "other"]),
   status: zod.enum(["open", "in_progress", "closed"]),
@@ -1649,7 +1635,7 @@ export const CreateSupportTicketBody = zod
   );
 
 export const CreateSupportTicketResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   title: zod.string(),
   status: zod.enum(["open"]),
   created_at: zod.string(),
@@ -1664,7 +1650,7 @@ export const GetSupportTicketParams = zod.object({
 });
 
 export const GetSupportTicketResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   title: zod.string(),
   category: zod.enum(["billing", "technical", "order", "account", "other"]),
   status: zod.enum(["open", "in_progress", "closed"]),
@@ -1672,7 +1658,7 @@ export const GetSupportTicketResponse = zod.object({
   replies: zod
     .array(
       zod.object({
-        id: zod.number().int(),
+        id: zod.int(),
         author_type: zod.enum(["user", "admin"]),
         message: zod.string(),
         created_at: zod.string(),
@@ -1693,7 +1679,7 @@ export const ReplySupportTicketBody = zod.object({
 });
 
 export const ReplySupportTicketResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   author_type: zod.enum(["user", "admin"]),
   message: zod.string(),
   created_at: zod.string(),
@@ -1703,7 +1689,7 @@ export const ReplySupportTicketResponse = zod.object({
  * @summary List the current user's notifications (≤40, newest first)
  */
 export const ListNotificationsResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   type: zod.string().describe('e.g. "order" | "loyalty" | "system".'),
   title: zod.string(),
   message: zod.string().nullish(),
@@ -1737,21 +1723,20 @@ export const MarkNotificationReadResponse = zod.object({
  * @summary Get platform stats
  */
 export const GetAdminStatsResponse = zod.object({
-  total_users: zod.number().int(),
-  total_orders: zod.number().int(),
+  total_users: zod.int(),
+  total_orders: zod.int(),
   total_revenue: zod.number(),
-  pending_topups: zod.number().int(),
-  today_orders: zod.number().int(),
+  pending_topups: zod.int(),
+  today_orders: zod.int(),
   today_revenue: zod.number(),
   available_stock: zod
-    .number()
     .int()
     .describe(
       "Deliverable unsold units (ghost rows with zero credentials\nare excluded — they ride unsold_rows below).\n",
     ),
   total_wallet_balance: zod.number(),
-  open_tickets: zod.number().int(),
-  unsold_rows: zod.number().int(),
+  open_tickets: zod.int(),
+  unsold_rows: zod.int(),
 });
 
 /**
@@ -1797,7 +1782,7 @@ export const ListAdminOrdersQueryParams = zod.object({
 });
 
 export const ListAdminOrdersResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   order_code: zod.string(),
   user_phone: zod.string(),
   user_display_name: zod.string().nullish(),
@@ -1849,7 +1834,7 @@ export const GetAdminOrderCredentialsParams = zod.object({
 });
 
 export const GetAdminOrderCredentialsResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   order_code: zod.string(),
   status: zod.enum(["pending", "completed", "failed", "refunded"]),
   has_credentials: zod.boolean(),
@@ -1897,12 +1882,7 @@ export const bulkUpdateOrderStatusBodyIdsMax = 200;
 export const BulkUpdateOrderStatusBody = zod
   .object({
     ids: zod
-      .array(
-        zod.union([
-          zod.number().int(),
-          zod.string().describe("Numeric string, coerced via Number()."),
-        ]),
-      )
+      .array(zod.union([zod.int(), zod.string().describe("Numeric string, coerced via Number().")]))
       .min(1)
       .max(bulkUpdateOrderStatusBodyIdsMax)
       .describe(
@@ -1920,9 +1900,8 @@ export const BulkUpdateOrderStatusBody = zod
 
 export const BulkUpdateOrderStatusResponse = zod.object({
   success: zod.boolean(),
-  updated: zod.number().int().describe("Count of orders transitioned (or successfully refunded)."),
+  updated: zod.int().describe("Count of orders transitioned (or successfully refunded)."),
   skipped_invalid: zod
-    .number()
     .int()
     .optional()
     .describe(
@@ -1960,8 +1939,8 @@ export const ListAdminTopupsQueryParams = zod.object({
 });
 
 export const ListAdminTopupsResponseItem = zod.object({
-  id: zod.number().int(),
-  user_id: zod.number().int(),
+  id: zod.int(),
+  user_id: zod.int(),
   user_phone: zod.string(),
   user_display_name: zod.string().nullish(),
   user_email: zod.string().nullish(),
@@ -2071,7 +2050,7 @@ export const ListAdminFlashSalesResponse = zod.object({
   flash_sales: zod.array(
     zod
       .object({
-        id: zod.number().int(),
+        id: zod.int(),
         title: zod.string(),
         discount_percent: zod
           .number()
@@ -2122,7 +2101,7 @@ export const createFlashSaleResponseDiscountPercentMax = 95;
 
 export const CreateFlashSaleResponse = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     title: zod.string(),
     discount_percent: zod
       .number()
@@ -2169,7 +2148,7 @@ export const updateFlashSaleResponseDiscountPercentMax = 95;
 
 export const UpdateFlashSaleResponse = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     title: zod.string(),
     discount_percent: zod
       .number()
@@ -2199,7 +2178,7 @@ export const deleteFlashSaleResponseDiscountPercentMax = 95;
 
 export const DeleteFlashSaleResponse = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     title: zod.string(),
     discount_percent: zod
       .number()
@@ -2240,7 +2219,7 @@ export const CreditReferralHeader = zod.object({
 
 export const CreditReferralResponse = zod.object({
   success: zod.boolean(),
-  points_credited: zod.number().int().describe("Points granted (POINTS_PER_REFERRAL = 50)."),
+  points_credited: zod.int().describe("Points granted (POINTS_PER_REFERRAL = 50)."),
 });
 
 /**
@@ -2256,7 +2235,7 @@ export const ListAdminProductsQueryParams = zod.object({
 });
 
 export const ListAdminProductsResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
@@ -2271,8 +2250,8 @@ export const ListAdminProductsResponseItem = zod.object({
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   is_archived: zod.boolean(),
-  stock_count: zod.number().int(),
-  order_count: zod.number().int(),
+  stock_count: zod.int(),
+  order_count: zod.int(),
   usage_terms: zod.string().nullish(),
   features: zod.array(zod.string()).optional(),
   seo_title: zod
@@ -2292,11 +2271,11 @@ export const ListAdminProductsResponseItem = zod.object({
     .array(
       zod
         .object({
-          id: zod.number().int(),
-          product_id: zod.number().int(),
+          id: zod.int(),
+          product_id: zod.int(),
           plan_label: zod.string().nullish(),
           duration_label: zod.string().nullish(),
-          duration_days: zod.number().int().nullish(),
+          duration_days: zod.int().nullish(),
           cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
           price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
           computed_price_lyd: zod
@@ -2307,7 +2286,7 @@ export const ListAdminProductsResponseItem = zod.object({
             ),
           sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
           is_active: zod.boolean(),
-          sort_order: zod.number().int(),
+          sort_order: zod.int(),
           created_at: zod.string().optional(),
         })
         .describe(
@@ -2357,7 +2336,7 @@ export const CreateProductBody = zod.object({
 });
 
 export const CreateProductResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
@@ -2372,8 +2351,8 @@ export const CreateProductResponse = zod.object({
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   is_archived: zod.boolean(),
-  stock_count: zod.number().int(),
-  order_count: zod.number().int(),
+  stock_count: zod.int(),
+  order_count: zod.int(),
   usage_terms: zod.string().nullish(),
   features: zod.array(zod.string()).optional(),
   seo_title: zod
@@ -2393,11 +2372,11 @@ export const CreateProductResponse = zod.object({
     .array(
       zod
         .object({
-          id: zod.number().int(),
-          product_id: zod.number().int(),
+          id: zod.int(),
+          product_id: zod.int(),
           plan_label: zod.string().nullish(),
           duration_label: zod.string().nullish(),
-          duration_days: zod.number().int().nullish(),
+          duration_days: zod.int().nullish(),
           cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
           price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
           computed_price_lyd: zod
@@ -2408,7 +2387,7 @@ export const CreateProductResponse = zod.object({
             ),
           sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
           is_active: zod.boolean(),
-          sort_order: zod.number().int(),
+          sort_order: zod.int(),
           created_at: zod.string().optional(),
         })
         .describe(
@@ -2431,20 +2410,16 @@ export const CreateProductResponse = zod.object({
 export const AdminProductsTierPriceSweepResponse = zod
   .object({
     checked_at: zod.string().describe("ISO timestamp of the scan."),
-    products_scanned: zod.number().int().describe("Active, non-archived products examined."),
-    variants_scanned: zod
-      .number()
-      .int()
-      .describe("Active variant rows examined across those products."),
+    products_scanned: zod.int().describe("Active, non-archived products examined."),
+    variants_scanned: zod.int().describe("Active variant rows examined across those products."),
     scan_cap: zod
-      .number()
       .int()
       .describe("Defensive product cap (mirrors inventory-health's scanned_cap echo)."),
-    products_with_findings: zod.number().int(),
+    products_with_findings: zod.int(),
     findings: zod.array(
       zod
         .object({
-          product_id: zod.number().int(),
+          product_id: zod.int(),
           product_name: zod.string(),
           product_slug: zod.string().nullish(),
           kind: zod
@@ -2478,7 +2453,7 @@ export const AdminProductsTierPriceSweepResponse = zod
           variants: zod
             .array(
               zod.object({
-                id: zod.number().int(),
+                id: zod.int(),
                 plan_label: zod.string().nullish(),
                 duration_label: zod.string().nullish(),
                 price: zod.number(),
@@ -2548,7 +2523,7 @@ export const UpdateProductBody = zod.object({
 });
 
 export const UpdateProductResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   slug: zod.string().nullish(),
   name: zod.string(),
   description: zod.string().nullish(),
@@ -2563,8 +2538,8 @@ export const UpdateProductResponse = zod.object({
   category: zod.string().nullish(),
   is_active: zod.boolean(),
   is_archived: zod.boolean(),
-  stock_count: zod.number().int(),
-  order_count: zod.number().int(),
+  stock_count: zod.int(),
+  order_count: zod.int(),
   usage_terms: zod.string().nullish(),
   features: zod.array(zod.string()).optional(),
   seo_title: zod
@@ -2584,11 +2559,11 @@ export const UpdateProductResponse = zod.object({
     .array(
       zod
         .object({
-          id: zod.number().int(),
-          product_id: zod.number().int(),
+          id: zod.int(),
+          product_id: zod.int(),
           plan_label: zod.string().nullish(),
           duration_label: zod.string().nullish(),
-          duration_days: zod.number().int().nullish(),
+          duration_days: zod.int().nullish(),
           cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
           price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
           computed_price_lyd: zod
@@ -2599,7 +2574,7 @@ export const UpdateProductResponse = zod.object({
             ),
           sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
           is_active: zod.boolean(),
-          sort_order: zod.number().int(),
+          sort_order: zod.int(),
           created_at: zod.string().optional(),
         })
         .describe(
@@ -2630,11 +2605,11 @@ export const ListAdminProductVariantsParams = zod.object({
 
 export const ListAdminProductVariantsResponseItem = zod
   .object({
-    id: zod.number().int(),
-    product_id: zod.number().int(),
+    id: zod.int(),
+    product_id: zod.int(),
     plan_label: zod.string().nullish(),
     duration_label: zod.string().nullish(),
-    duration_days: zod.number().int().nullish(),
+    duration_days: zod.int().nullish(),
     cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
     price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
     computed_price_lyd: zod
@@ -2645,7 +2620,7 @@ export const ListAdminProductVariantsResponseItem = zod
       ),
     sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
     is_active: zod.boolean(),
-    sort_order: zod.number().int(),
+    sort_order: zod.int(),
     created_at: zod.string().optional(),
   })
   .describe(
@@ -2679,7 +2654,7 @@ export const CreateProductVariantBody = zod
   .object({
     plan_label: zod.string().max(createProductVariantBodyPlanLabelMax).nullish(),
     duration_label: zod.string().max(createProductVariantBodyDurationLabelMax).nullish(),
-    duration_days: zod.number().int().nullish(),
+    duration_days: zod.int().nullish(),
     cost_price: zod
       .number()
       .min(createProductVariantBodyCostPriceMin)
@@ -2693,7 +2668,6 @@ export const CreateProductVariantBody = zod
       .describe("Optional explicit retail override (LYD)."),
     sku: zod.string().max(createProductVariantBodySkuMax).nullish(),
     sort_order: zod
-      .number()
       .int()
       .min(createProductVariantBodySortOrderMin)
       .max(createProductVariantBodySortOrderMax)
@@ -2706,11 +2680,11 @@ export const CreateProductVariantBody = zod
 
 export const CreateProductVariantResponse = zod
   .object({
-    id: zod.number().int(),
-    product_id: zod.number().int(),
+    id: zod.int(),
+    product_id: zod.int(),
     plan_label: zod.string().nullish(),
     duration_label: zod.string().nullish(),
-    duration_days: zod.number().int().nullish(),
+    duration_days: zod.int().nullish(),
     cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
     price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
     computed_price_lyd: zod
@@ -2721,7 +2695,7 @@ export const CreateProductVariantResponse = zod
       ),
     sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
     is_active: zod.boolean(),
-    sort_order: zod.number().int(),
+    sort_order: zod.int(),
     created_at: zod.string().optional(),
   })
   .describe(
@@ -2774,7 +2748,7 @@ export const updateProductVariantBodySortOrderMax = 10000;
 export const UpdateProductVariantBody = zod.object({
   plan_label: zod.string().max(updateProductVariantBodyPlanLabelMax).nullish(),
   duration_label: zod.string().max(updateProductVariantBodyDurationLabelMax).nullish(),
-  duration_days: zod.number().int().nullish(),
+  duration_days: zod.int().nullish(),
   cost_price: zod
     .number()
     .min(updateProductVariantBodyCostPriceMin)
@@ -2789,7 +2763,6 @@ export const UpdateProductVariantBody = zod.object({
     .describe("Explicit retail override (LYD)."),
   sku: zod.string().max(updateProductVariantBodySkuMax).nullish(),
   sort_order: zod
-    .number()
     .int()
     .min(updateProductVariantBodySortOrderMin)
     .max(updateProductVariantBodySortOrderMax)
@@ -2799,11 +2772,11 @@ export const UpdateProductVariantBody = zod.object({
 
 export const UpdateProductVariantResponse = zod
   .object({
-    id: zod.number().int(),
-    product_id: zod.number().int(),
+    id: zod.int(),
+    product_id: zod.int(),
     plan_label: zod.string().nullish(),
     duration_label: zod.string().nullish(),
-    duration_days: zod.number().int().nullish(),
+    duration_days: zod.int().nullish(),
     cost_price: zod.number().describe("Supplier USD cost — internal, admin-only."),
     price_lyd: zod.number().describe("Retail LYD price (pricing-engine output)."),
     computed_price_lyd: zod
@@ -2814,7 +2787,7 @@ export const UpdateProductVariantResponse = zod
       ),
     sku: zod.string().nullish().describe("Internal stock-keeping label (admin-only)."),
     is_active: zod.boolean(),
-    sort_order: zod.number().int(),
+    sort_order: zod.int(),
     created_at: zod.string().optional(),
   })
   .describe(
@@ -2870,15 +2843,15 @@ export const DeleteProductVariantResponse = zod.object({
  * @summary Variant-aware economics simulator (requireAdmin; R115 rewrite)
  */
 export const AdminPricingCalculateBody = zod.object({
-  product_id: zod.number().int().optional(),
-  variant_id: zod.number().int().optional().describe("The sellable unit (preferred input)"),
+  product_id: zod.int().optional(),
+  variant_id: zod.int().optional().describe("The sellable unit (preferred input)"),
   price: zod.number().optional().describe("Manual sandbox list price (LYD)"),
   cost_price: zod.number().optional().describe("Manual sandbox cost (LYD)"),
   coupon_code: zod.string().optional(),
   simulate_referred: zod.boolean().optional(),
 });
 
-export const AdminPricingCalculateResponse = zod.object({}).passthrough();
+export const AdminPricingCalculateResponse = zod.looseObject({});
 
 /**
  * @summary Read the catalog pricing rule (rate + markup) (requireAdmin + inventory scope)
@@ -2940,9 +2913,8 @@ export const UpdateAdminPricingConfigResponse = zod.object({
  * @summary Recompute every variant's price_lyd from cost via the current rule (requireAdmin + inventory scope)
  */
 export const RecomputeCatalogPricesResponse = zod.object({
-  variants_updated: zod.number().int().describe("Number of variant rows whose price_lyd changed."),
+  variants_updated: zod.int().describe("Number of variant rows whose price_lyd changed."),
   products_updated: zod
-    .number()
     .int()
     .describe("Number of product display prices refreshed (MIN of variants)."),
   usd_to_lyd: zod.number(),
@@ -2979,7 +2951,7 @@ export const ListAdminUsersQueryParams = zod.object({
 });
 
 export const ListAdminUsersResponseItem = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   phone: zod
     .string()
     .describe(
@@ -3010,10 +2982,10 @@ export const ListAdminUsersResponseItem = zod.object({
   has_whatsapp: zod.boolean().optional(),
   last_auth_at: zod.string().nullish(),
   wallet_balance: zod.number(),
-  loyalty_points: zod.number().int(),
+  loyalty_points: zod.int(),
   loyalty_tier: zod.enum(["bronze", "silver", "gold", "platinum"]),
   lifetime_spend: zod.number(),
-  order_count: zod.number().int().describe("Completed-order count for this user."),
+  order_count: zod.int().describe("Completed-order count for this user."),
   referral_code: zod.string().nullish(),
   created_at: zod.string(),
 });
@@ -3070,7 +3042,6 @@ export const UpdateAdminUserBody = zod.object({
       "Absolute balance set via AdjustmentService (same ledger path).\nIgnored when wallet_adjustment is also present.\n",
     ),
   loyalty_points: zod
-    .number()
     .int()
     .min(updateAdminUserBodyLoyaltyPointsMin)
     .max(updateAdminUserBodyLoyaltyPointsMax)
@@ -3087,10 +3058,10 @@ export const UpdateAdminUserBody = zod.object({
 });
 
 export const UpdateAdminUserResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   phone: zod.string(),
   wallet_balance: zod.number(),
-  loyalty_points: zod.number().int(),
+  loyalty_points: zod.int(),
   loyalty_tier: zod.enum(["bronze", "silver", "gold", "platinum"]),
 });
 
@@ -3120,7 +3091,7 @@ export const ListAdminAlertsResponse = zod
     alerts: zod.array(
       zod
         .object({
-          id: zod.number().int(),
+          id: zod.int(),
           type: zod
             .string()
             .describe(
@@ -3139,10 +3110,10 @@ export const ListAdminAlertsResponse = zod
           "A raw admin_alerts row (drizzle select() — every column rides\nthe JSON, dedupeKey included).\n",
         ),
     ),
-    unreadCount: zod.number().int(),
-    total: zod.number().int(),
-    page: zod.number().int(),
-    limit: zod.number().int(),
+    unreadCount: zod.int(),
+    total: zod.int(),
+    page: zod.int(),
+    limit: zod.int(),
     hasMore: zod.boolean(),
   })
   .describe(
@@ -3166,7 +3137,7 @@ export const DeleteAllAdminAlertsResponse = zod.object({
  * @summary Count unread admin alerts (requireAdmin + support scope)
  */
 export const GetAdminAlertsUnreadCountResponse = zod.object({
-  count: zod.number().int(),
+  count: zod.int(),
 });
 
 /**
@@ -3182,7 +3153,7 @@ export const MarkAllAdminAlertsReadResponse = zod.object({
  */
 export const DeleteReadAdminAlertsResponse = zod.object({
   success: zod.boolean(),
-  deleted: zod.number().int().describe("Count of read rows deleted."),
+  deleted: zod.int().describe("Count of read rows deleted."),
 });
 
 /**
@@ -3254,7 +3225,7 @@ export const ListAdminTicketsQueryParams = zod.object({
 
 export const ListAdminTicketsResponseItem = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     user_phone: zod
       .string()
       .describe("Empty string when the ticket's user was deleted/anonymized."),
@@ -3274,7 +3245,7 @@ export const ListAdminTicketsResponseItem = zod
       ),
     status: zod.enum(["open", "in_progress", "closed"]),
     created_at: zod.string(),
-    reply_count: zod.number().int(),
+    reply_count: zod.int(),
     last_reply_at: zod
       .string()
       .nullable()
@@ -3302,7 +3273,7 @@ export const GetAdminTicketParams = zod.object({
 
 export const GetAdminTicketResponse = zod
   .object({
-    id: zod.number().int(),
+    id: zod.int(),
     user_phone: zod.string(),
     user_display_name: zod.string().nullable(),
     user_email: zod.string().nullable(),
@@ -3318,7 +3289,7 @@ export const GetAdminTicketResponse = zod
     replies: zod
       .array(
         zod.object({
-          id: zod.number().int(),
+          id: zod.int(),
           author_type: zod.enum(["user", "admin"]),
           message: zod.string(),
           created_at: zod.string(),
@@ -3357,7 +3328,7 @@ export const ReplyAdminTicketBody = zod
   );
 
 export const ReplyAdminTicketResponse = zod.object({
-  id: zod.number().int(),
+  id: zod.int(),
   author_type: zod.enum(["user", "admin"]),
   message: zod.string(),
   created_at: zod.string(),
@@ -3471,11 +3442,11 @@ export const GetAdminChartDataResponseItem = zod
       .describe(
         'RAW ISO calendar key ("2026-09-06") — NOT localized; the FE parses and localizes.',
       ),
-    orders: zod.number().int(),
+    orders: zod.int(),
     revenue: zod.number().describe("Money (finance-gated surface)."),
-    users: zod.number().int(),
+    users: zod.int(),
     discounts: zod.number().describe("Money (finance-gated surface)."),
-    coupon_orders: zod.number().int(),
+    coupon_orders: zod.int(),
   })
   .describe(
     "One Tripoli-calendar-day bucket. Zero-filled: every day in the\nrange appears, with 0s when nothing happened.\n",
@@ -3489,10 +3460,10 @@ export const GetAdminChartDataResponse = zod.array(GetAdminChartDataResponseItem
  * @summary Auth activity counts (requireAdmin + admins scope)
  */
 export const GetAdminAuthStatsSummaryResponse = zod.object({
-  total: zod.number().int(),
-  success: zod.number().int(),
-  failure: zod.number().int(),
-  last24h: zod.number().int(),
+  total: zod.int(),
+  success: zod.int(),
+  failure: zod.int(),
+  last24h: zod.int(),
 });
 
 /**
@@ -3529,8 +3500,8 @@ export const ListAdminAuthActivityResponse = zod.object({
   activities: zod.array(
     zod
       .object({
-        id: zod.number().int(),
-        userId: zod.number().int().nullable(),
+        id: zod.int(),
+        userId: zod.int().nullable(),
         identifier: zod.string(),
         action: zod
           .string()
@@ -3606,9 +3577,8 @@ export const ListAdminAuditLogsResponse = zod
     logs: zod.array(
       zod
         .object({
-          id: zod.number().int(),
+          id: zod.int(),
           actorId: zod
-            .number()
             .int()
             .nullable()
             .describe(
@@ -3620,7 +3590,7 @@ export const ListAdminAuditLogsResponse = zod
             .string()
             .describe("Stable `<resource>.<verb>` string (topup.approve, user.update, …)."),
           targetType: zod.string().nullable(),
-          targetId: zod.number().int().nullable(),
+          targetId: zod.int().nullable(),
           metadata: zod
             .string()
             .nullable()
@@ -3632,9 +3602,9 @@ export const ListAdminAuditLogsResponse = zod
           'R127-L5 (B15-1): one audit_logs row — the WHO did WHAT WHEN\nanswer for every consequential admin action. `metadata` is the\nwriter\'s raw JSON string (writeAuditLog safeMetadata, ≤2 KB);\ne.g. the Telegram webhook path carries\n`{"source":"telegram_webhook","actor":"@ops","from_id":111111}`\n(B11-F1). `actorUsername` is the LEFT-JOINed admin_users\nusername for the actor id (null for system/telegram actors).\n',
         ),
     ),
-    total: zod.number().int(),
-    page: zod.number().int(),
-    limit: zod.number().int(),
+    total: zod.int(),
+    page: zod.int(),
+    limit: zod.int(),
     hasMore: zod.boolean(),
   })
   .describe(
@@ -3667,35 +3637,32 @@ export const ListAdminReferralsQueryParams = zod.object({
 
 export const ListAdminReferralsResponse = zod.object({
   stats: zod.object({
-    total: zod.number().int(),
-    credited: zod.number().int(),
-    pending: zod.number().int(),
-    total_points: zod
-      .number()
-      .int()
-      .describe("credited × POINTS_PER_REFERRAL (lib/loyalty-policy)."),
+    total: zod.int(),
+    credited: zod.int(),
+    pending: zod.int(),
+    total_points: zod.int().describe("credited × POINTS_PER_REFERRAL (lib/loyalty-policy)."),
   }),
   top_referrers: zod
     .array(
       zod.object({
-        id: zod.number().int(),
+        id: zod.int(),
         phone: zod.string(),
-        credited_count: zod.number().int(),
-        total_count: zod.number().int(),
+        credited_count: zod.int(),
+        total_count: zod.int(),
       }),
     )
     .describe("Top 10 referrers by credited count."),
   list: zod
     .array(
       zod.object({
-        id: zod.number().int(),
+        id: zod.int(),
         status: zod.enum(["pending", "credited"]),
         created_at: zod.string(),
         credited_at: zod.string().nullable(),
         referrer_phone: zod.string(),
-        referrer_id: zod.number().int(),
+        referrer_id: zod.int(),
         referee_phone: zod.string(),
-        points_earned: zod.number().int().describe("POINTS_PER_REFERRAL when credited, else 0."),
+        points_earned: zod.int().describe("POINTS_PER_REFERRAL when credited, else 0."),
       }),
     )
     .describe("Newest 200 referral events (post-limit search window — B-7)."),
@@ -3741,7 +3708,7 @@ export const CopilotAskBody = zod.object({
     .object({
       route: zod.string().optional(),
       focus_entity_type: zod.string().optional(),
-      focus_entity_id: zod.number().int().optional(),
+      focus_entity_id: zod.int().optional(),
     })
     .optional(),
 });
@@ -3759,7 +3726,7 @@ export const CopilotDraftBody = zod.object({
     .object({
       route: zod.string().optional(),
       focus_entity_type: zod.string().optional(),
-      focus_entity_id: zod.number().int().optional(),
+      focus_entity_id: zod.int().optional(),
     })
     .optional(),
 });
@@ -3772,7 +3739,7 @@ export const CopilotDraftResponse = zod.object({
   preview_id: zod.string(),
   preview: zod.object({
     id: zod.string(),
-    admin_id: zod.number().int(),
+    admin_id: zod.int(),
     intent_text: zod.string(),
     intent_summary: zod.string(),
     action_class: zod.string(),
@@ -3787,7 +3754,7 @@ export const CopilotDraftResponse = zod.object({
             severity: zod.enum(["warn", "error"]),
             code: zod.string(),
             message: zod.string(),
-            affected_id: zod.number().int().nullish(),
+            affected_id: zod.int().nullish(),
           }),
         ),
         irreversible: zod.boolean(),
@@ -3801,7 +3768,7 @@ export const CopilotDraftResponse = zod.object({
           ])
           .optional(),
         entity_type: zod.string(),
-        entity_id: zod.number().int(),
+        entity_id: zod.int(),
         changes: zod.array(
           zod.object({
             field: zod.string(),
@@ -3822,20 +3789,16 @@ export const CopilotDraftResponse = zod.object({
             severity: zod.enum(["warn", "error"]),
             code: zod.string(),
             message: zod.string(),
-            affected_id: zod.number().int().nullish(),
+            affected_id: zod.int().nullish(),
           }),
         ),
         irreversible: zod.boolean(),
-        total_affected: zod
-          .number()
-          .int()
-          .min(1)
-          .max(copilotDraftResponsePreviewPayloadTwoTotalAffectedMax),
+        total_affected: zod.int().min(1).max(copilotDraftResponsePreviewPayloadTwoTotalAffectedMax),
         sample: zod
           .array(
             zod.object({
               entity_type: zod.string(),
-              entity_id: zod.number().int(),
+              entity_id: zod.int(),
               changes: zod.array(
                 zod.object({
                   field: zod.string(),
@@ -3855,7 +3818,7 @@ export const CopilotDraftResponse = zod.object({
         aggregate_impact: zod.record(zod.string(), zod.unknown()).nullish(),
         predicted_failures: zod.array(
           zod.object({
-            entity_id: zod.number().int(),
+            entity_id: zod.int(),
             reason: zod.string(),
           }),
         ),
@@ -3882,7 +3845,7 @@ export const copilotGetPreviewResponsePayloadTwoSampleMax = 20;
 
 export const CopilotGetPreviewResponse = zod.object({
   id: zod.string(),
-  admin_id: zod.number().int(),
+  admin_id: zod.int(),
   intent_text: zod.string(),
   intent_summary: zod.string(),
   action_class: zod.string(),
@@ -3897,7 +3860,7 @@ export const CopilotGetPreviewResponse = zod.object({
           severity: zod.enum(["warn", "error"]),
           code: zod.string(),
           message: zod.string(),
-          affected_id: zod.number().int().nullish(),
+          affected_id: zod.int().nullish(),
         }),
       ),
       irreversible: zod.boolean(),
@@ -3911,7 +3874,7 @@ export const CopilotGetPreviewResponse = zod.object({
         ])
         .optional(),
       entity_type: zod.string(),
-      entity_id: zod.number().int(),
+      entity_id: zod.int(),
       changes: zod.array(
         zod.object({
           field: zod.string(),
@@ -3929,20 +3892,16 @@ export const CopilotGetPreviewResponse = zod.object({
           severity: zod.enum(["warn", "error"]),
           code: zod.string(),
           message: zod.string(),
-          affected_id: zod.number().int().nullish(),
+          affected_id: zod.int().nullish(),
         }),
       ),
       irreversible: zod.boolean(),
-      total_affected: zod
-        .number()
-        .int()
-        .min(1)
-        .max(copilotGetPreviewResponsePayloadTwoTotalAffectedMax),
+      total_affected: zod.int().min(1).max(copilotGetPreviewResponsePayloadTwoTotalAffectedMax),
       sample: zod
         .array(
           zod.object({
             entity_type: zod.string(),
-            entity_id: zod.number().int(),
+            entity_id: zod.int(),
             changes: zod.array(
               zod.object({
                 field: zod.string(),
@@ -3962,7 +3921,7 @@ export const CopilotGetPreviewResponse = zod.object({
       aggregate_impact: zod.record(zod.string(), zod.unknown()).nullish(),
       predicted_failures: zod.array(
         zod.object({
-          entity_id: zod.number().int(),
+          entity_id: zod.int(),
           reason: zod.string(),
         }),
       ),
@@ -3996,13 +3955,13 @@ export const CopilotConfirmParams = zod.object({
 
 export const CopilotConfirmResponse = zod.object({
   outcome: zod.enum(["success", "partial", "failure", "awaiting_double_confirm"]),
-  action_id: zod.number().int().nullish(),
-  cooldown_seconds: zod.number().int().nullish(),
+  action_id: zod.int().nullish(),
+  cooldown_seconds: zod.int().nullish(),
   items: zod
     .union([
       zod.array(
         zod.object({
-          entity_id: zod.number().int(),
+          entity_id: zod.int(),
           outcome: zod.enum(["success", "failure", "skipped"]),
           failure_reason: zod.string().nullish(),
         }),
@@ -4022,13 +3981,13 @@ export const CopilotDoubleConfirmParams = zod.object({
 
 export const CopilotDoubleConfirmResponse = zod.object({
   outcome: zod.enum(["success", "partial", "failure", "awaiting_double_confirm"]),
-  action_id: zod.number().int().nullish(),
-  cooldown_seconds: zod.number().int().nullish(),
+  action_id: zod.int().nullish(),
+  cooldown_seconds: zod.int().nullish(),
   items: zod
     .union([
       zod.array(
         zod.object({
-          entity_id: zod.number().int(),
+          entity_id: zod.int(),
           outcome: zod.enum(["success", "failure", "skipped"]),
           failure_reason: zod.string().nullish(),
         }),
@@ -4078,8 +4037,8 @@ export const CopilotHistoryQueryParams = zod.object({
 export const CopilotHistoryResponse = zod.object({
   entries: zod.array(
     zod.object({
-      id: zod.number().int(),
-      admin_id: zod.number().int(),
+      id: zod.int(),
+      admin_id: zod.int(),
       intent_text: zod.string(),
       action_class: zod.string(),
       risk_tier: zod.enum(["low", "high", "no_execute"]),
@@ -4105,23 +4064,19 @@ export const CopilotHistoryResponse = zod.object({
  * @summary Inventory deliverability health — per-product blast radius of undecryptable/empty units
  */
 export const AdminDiagnosticsInventoryHealthResponse = zod.object({
-  scanned_unsold: zod
-    .number()
-    .int()
-    .describe("Number of unsold units actually scanned (≤ scanned_cap)."),
+  scanned_unsold: zod.int().describe("Number of unsold units actually scanned (≤ scanned_cap)."),
   scanned_cap: zod
-    .number()
     .int()
     .describe("Scan bound (500) — the sequential scan is capped as the catalog grows."),
-  products_with_undeliverable_units: zod.number().int(),
+  products_with_undeliverable_units: zod.int(),
   items: zod.array(
     zod.object({
-      product_id: zod.number().int(),
+      product_id: zod.int(),
       product_name: zod.string(),
-      unsold: zod.number().int(),
-      undeliverable: zod.number().int(),
+      unsold: zod.int(),
+      undeliverable: zod.int(),
       broken_unit_ids: zod
-        .array(zod.number().int())
+        .array(zod.int())
         .describe("First ≤20 broken unit ids (re-upload worklist)."),
     }),
   ),
@@ -4146,7 +4101,7 @@ export const GetAdminObservabilityMetricsResponse = zod
         zod
           .object({
             timestamp: zod.coerce.date(),
-            uptimeSec: zod.number().int(),
+            uptimeSec: zod.int(),
             http: zod.object({
               totalRequests: zod.number(),
               requestsByStatusClass: zod.object({
@@ -4271,7 +4226,7 @@ export const GetAdminObservabilitySummaryResponse = zod
       version: zod
         .string()
         .describe('7-char release SHA (GIT_SHA / RENDER_GIT_COMMIT, "unknown" when unset).'),
-      uptimeSec: zod.number().int(),
+      uptimeSec: zod.int(),
       nodeVersion: zod.string(),
     }),
     redis: zod.object({
@@ -4280,7 +4235,7 @@ export const GetAdminObservabilitySummaryResponse = zod
     worker: zod.object({
       heartbeat: zod.union([
         zod.object({
-          ageSec: zod.number().int().nullable(),
+          ageSec: zod.int().nullable(),
           ts: zod.coerce.date().nullable(),
         }),
         zod.null(),
@@ -4289,7 +4244,7 @@ export const GetAdminObservabilitySummaryResponse = zod
     alerts: zod.object({
       lastKnownGoodAt: zod.coerce.date().nullable(),
       stale: zod.boolean(),
-      recentCount: zod.number().int(),
+      recentCount: zod.int(),
     }),
     dashboards: zod.object({
       render: zod.string().nullable(),
@@ -4318,7 +4273,7 @@ export const GetAdminObservabilitySchedulerResponse = zod
     reason: zod.enum(["active", "disabled_by_env", "not_leader", "redis_unavailable", "unknown"]),
     startedAt: zod.coerce.date().nullable(),
     heartbeat: zod.object({
-      ageSec: zod.number().int().nullable(),
+      ageSec: zod.int().nullable(),
       ts: zod.coerce.date().nullable(),
       healthy: zod.boolean(),
       expected: zod
@@ -4351,7 +4306,7 @@ export const GetAdminObservabilityAlertsRecentResponse = zod
     alerts: zod.array(
       zod
         .object({
-          id: zod.number().int(),
+          id: zod.int(),
           type: zod
             .string()
             .describe(
@@ -4392,23 +4347,23 @@ export const GetAdminDiagnosticsResponse = zod
       version: zod.string(),
       platform: zod.string(),
       arch: zod.string(),
-      pid: zod.number().int(),
+      pid: zod.int(),
     }),
     runtime: zod.object({
-      uptimeSec: zod.number().int(),
+      uptimeSec: zod.int(),
       version: zod.string().describe('The 7-char release SHA ("unknown" when unset).'),
       env: zod.string(),
       service: zod.string().describe('RENDER_SERVICE_NAME or the "web" fallback.'),
     }),
     memory: zod.object({
-      rssMb: zod.number().int(),
-      heapUsedMb: zod.number().int(),
-      heapTotalMb: zod.number().int(),
-      externalMb: zod.number().int(),
+      rssMb: zod.int(),
+      heapUsedMb: zod.int(),
+      heapTotalMb: zod.int(),
+      externalMb: zod.int(),
     }),
     cpu: zod.object({
-      userMs: zod.number().int(),
-      systemMs: zod.number().int(),
+      userMs: zod.int(),
+      systemMs: zod.int(),
     }),
     eventLoop: zod
       .union([
@@ -4463,7 +4418,7 @@ export const ListAdminNewAlertsResponse = zod
     alerts: zod.array(
       zod
         .object({
-          id: zod.number().int(),
+          id: zod.int(),
           type: zod
             .string()
             .describe(
@@ -4505,23 +4460,20 @@ export const GetAdminRiskDashboardQueryParams = zod.object({
 
 export const GetAdminRiskDashboardResponse = zod
   .object({
-    window_hours: zod.number().int().describe("The clamped lookback (1–720)."),
-    total: zod.number().int().describe("Sum of the by_level counts."),
+    window_hours: zod.int().describe("The clamped lookback (1–720)."),
+    total: zod.int().describe("Sum of the by_level counts."),
     by_level: zod.object({
-      low: zod.number().int(),
-      medium: zod.number().int(),
-      high: zod.number().int(),
-      critical: zod.number().int(),
+      low: zod.int(),
+      medium: zod.int(),
+      high: zod.int(),
+      critical: zod.int(),
     }),
-    unresolved: zod
-      .number()
-      .int()
-      .describe("Events in the window with no risk_labels row (the backlog)."),
+    unresolved: zod.int().describe("Events in the window with no risk_labels row (the backlog)."),
     top_rules: zod
       .array(
         zod.object({
           rule: zod.string(),
-          count: zod.number().int(),
+          count: zod.int(),
         }),
       )
       .describe("Top ≤5 fired rules, count-descending."),
@@ -4613,9 +4565,8 @@ export const ListAdminRiskEventsResponse = zod
     events: zod.array(
       zod
         .object({
-          id: zod.number().int(),
+          id: zod.int(),
           user_id: zod
-            .number()
             .int()
             .nullable()
             .describe("Null when the user was deleted (ON DELETE SET NULL)."),
@@ -4635,7 +4586,7 @@ export const ListAdminRiskEventsResponse = zod
             "referral_event",
             "admin_force_reauth",
           ]),
-          score: zod.number().int().describe("0–100 (the V1-M29 CHECK bounds)."),
+          score: zod.int().describe("0–100 (the V1-M29 CHECK bounds)."),
           level: zod.enum(["low", "medium", "high", "critical"]),
           confidence: zod.number().describe("numeric(4,3) → number, 0–1."),
           rule_fired: zod.array(zod.string()),
@@ -4677,30 +4628,29 @@ export const ListAdminForecastAtRiskResponse = zod
     pipeline_state: zod.enum(["fresh", "stale", "uninitialized", "calibrating"]),
     last_successful_run_at: zod.coerce.date().nullable(),
     data_freshness_hours: zod
-      .number()
       .int()
       .nullable()
       .describe("Hours since the last successful run (null when none)."),
     rows: zod.array(
       zod
         .object({
-          product_id: zod.number().int(),
+          product_id: zod.int(),
           product_name: zod.string(),
           product_image_url: zod.string().nullable(),
           product_slug: zod.string().nullable(),
           category: zod.string().nullable(),
-          current_stock_on_hand: zod.number().int(),
+          current_stock_on_hand: zod.int(),
           avg_daily_sales: zod
             .number()
             .nullable()
             .describe("Trailing 14-day mean (numeric → number)."),
-          predicted_demand_7d: zod.number().int().nullable(),
-          predicted_demand_30d: zod.number().int().nullable(),
+          predicted_demand_7d: zod.int().nullable(),
+          predicted_demand_30d: zod.int().nullable(),
           predicted_runout_at: zod
             .string()
             .nullable()
             .describe('RAW calendar date ("2026-10-01"), clamped to +90 days.'),
-          recommended_reorder_qty: zod.number().int().nullable(),
+          recommended_reorder_qty: zod.int().nullable(),
           confidence: zod.enum(["high", "medium", "low", "insufficient_data"]),
           forecast_date: zod.string().describe("RAW calendar date the forecast represents."),
           panel_url: zod
@@ -4733,23 +4683,23 @@ export const GetAdminForecastProductResponse = zod
       .union([
         zod
           .object({
-            product_id: zod.number().int(),
+            product_id: zod.int(),
             product_name: zod.string(),
             product_image_url: zod.string().nullable(),
             product_slug: zod.string().nullable(),
             category: zod.string().nullable(),
-            current_stock_on_hand: zod.number().int(),
+            current_stock_on_hand: zod.int(),
             avg_daily_sales: zod
               .number()
               .nullable()
               .describe("Trailing 14-day mean (numeric → number)."),
-            predicted_demand_7d: zod.number().int().nullable(),
-            predicted_demand_30d: zod.number().int().nullable(),
+            predicted_demand_7d: zod.int().nullable(),
+            predicted_demand_30d: zod.int().nullable(),
             predicted_runout_at: zod
               .string()
               .nullable()
               .describe('RAW calendar date ("2026-10-01"), clamped to +90 days.'),
-            recommended_reorder_qty: zod.number().int().nullable(),
+            recommended_reorder_qty: zod.int().nullable(),
             confidence: zod.enum(["high", "medium", "low", "insufficient_data"]),
             forecast_date: zod.string().describe("RAW calendar date the forecast represents."),
             panel_url: zod
@@ -4768,7 +4718,6 @@ export const GetAdminForecastProductResponse = zod
                   .nullable()
                   .describe("Avg day-of-week multiplier across the next 7 days."),
                 days_of_history_available: zod
-                  .number()
                   .int()
                   .describe("Distinct days of order history (the ≥14-day hint)."),
                 run_completed_at: zod.coerce.date().nullable(),
@@ -4818,7 +4767,7 @@ export const TelegramWebhookHeader = zod.object({
 });
 
 export const TelegramWebhookBody = zod.object({
-  update_id: zod.number().int().optional(),
+  update_id: zod.int().optional(),
   message: zod
     .object({
       text: zod.string().optional(),
@@ -4854,7 +4803,7 @@ export const TelegramWebhookBody = zod.object({
               id: zod.number(),
             })
             .optional(),
-          message_id: zod.number().int().optional(),
+          message_id: zod.int().optional(),
           text: zod.string().optional(),
         })
         .optional(),

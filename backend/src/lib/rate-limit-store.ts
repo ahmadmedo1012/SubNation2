@@ -18,6 +18,16 @@
  *      `withRedisCommandTimeout` (REDIS_COMMAND_TIMEOUT_MS, default 500ms).
  *      A hang becomes a fast rejection.
  *
+ * rate-limit-redis v6 (R172): the store's `init()` became ASYNC — it captures
+ * `windowMs` and pre-loads the EVALSHA Lua scripts over the wire, and every
+ * op awaits the cached script-SHA promises. Two consequences wired here:
+ *   - init must be FORWARDED (v5 could run un-inited because it read TTLs off
+ *     the keys; v6's increment builds its command from `windowMs` and the SHA
+ *     promises and throws before reaching Redis without it);
+ *   - a failed script-load leaves rejected SHA promises cached on the store,
+ *     so after a fallback we RE-ARM by re-running init (a fresh promise pair),
+ *     keeping the degraded-boot recovery story intact (the v5 behavior).
+ *
  * Failure policy: on timeout/error/absence, fall back to a private
  * `MemoryStore` (single-instance semantics — the exact behaviour the
  * deployment already has without Redis) and let the request proceed.
@@ -47,6 +57,9 @@ export function createResilientRateLimitStore(): Store {
   // default; windowMs arrives via init(options) from the owning limiter.
   const memoryStore = new MemoryStore();
 
+  // The limiter's configuration, captured at init for the v6 re-arm path.
+  let limiterOptions: Parameters<NonNullable<Store["init"]>>[0] | null = null;
+
   // The Redis-backed store. sendCommand resolves the CURRENT singleton
   // client per call (lazy engagement) and bounds each command with the
   // shared command timeout (R2).
@@ -64,11 +77,34 @@ export function createResilientRateLimitStore(): Store {
     },
   });
 
+  /**
+   * rate-limit-redis v6 (R172): run (or re-run) the async init — captures
+   * windowMs and re-loads the EVALSHA script-SHA promises. Fire-and-forget:
+   * express-rate-limit calls init() synchronously, and a failed load must
+   * never break the limiter (the rejected SHA promises make every following
+   * op fall back to memory; the re-arm in noteFallback replaces them).
+   */
+  const armRedisStore = (): void => {
+    if (!limiterOptions) return;
+    void Promise.resolve(redisStore.init(limiterOptions)).catch(() => {
+      // Swallowed on purpose: the failure path is the store's own fallback
+      // (each op that awaits the rejected SHA promise lands in noteFallback,
+      // which re-arms and applies the cooldown). An unhandled rejection
+      // here would crash the process for a dead Redis at boot.
+    });
+  };
+
   let redisCooldownUntil = 0;
   let lastFallbackLogAt = 0;
 
   const noteFallback = (err: unknown): void => {
     redisCooldownUntil = Date.now() + REDIS_FAILURE_COOLDOWN_MS;
+    // Re-arm the v6 script cache for the next window: the cached SHA
+    // promises may be rejected (dead Redis at init time) and would otherwise
+    // stay rejected forever — the cooldown lapse would re-open a door to a
+    // store that can never engage again (the exact degraded-boot
+    // regression the R2 contract forbids).
+    armRedisStore();
     safeInc(redisOpsTotal, { op: "rate_limit", status: "fallback" });
     safeInc(redisErrorsTotal, { reason: "rate_limit_fallback" });
     const now = Date.now();
@@ -87,6 +123,11 @@ export function createResilientRateLimitStore(): Store {
   return {
     init(options) {
       memoryStore.init(options);
+      // rate-limit-redis v6 (R172): forward the async init — v6's increment
+      // builds EVALSHA commands from windowMs + the script-SHA promises and
+      // throws before touching Redis without it. See armRedisStore().
+      limiterOptions = options;
+      armRedisStore();
     },
     async increment(key) {
       if (shouldTryRedis()) {
