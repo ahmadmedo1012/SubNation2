@@ -10,6 +10,20 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R168 — The measurable-growth round (GA4 ecommerce funnel, catalog-truth tooling, conversion honesty) — 2026-10-19
+
+**Scope:** the owner brief «measurable growth, ecommerce analytics, catalog close-out» — three implementation lanes, zero new auditing. Full report: `docs/engineering/R168/round-close.md`.
+
+**GA4 ecommerce funnel (L1):** `frontend/src/lib/analytics-events.ts` — the typed event layer over the R164 deferred loader: `view_item`/`view_item_list`/`select_item`/`search`/`add_to_cart`/`begin_checkout`/`purchase` per Google's current spec, `currency` always LYD, values plain numbers; **no manual `page_view`** (SPA navigation rides Enhanced Measurement — duplication impossible by construction, e2e-pinned); purchase = confirmed orders only (`transaction_id = order_code`, one fire per code EVER via the `subnation_ga4_sent` sent-set, never failed/refunded/non-2xx paths, R165 group token informational-only), mappers structurally PII-free. Pinned by a 15-test unit suite + `e2e/analytics.spec.ts` (6 tests × 3 projects, re-run green against production).
+
+**Catalog-truth tooling (L2, the R167 §5 deferred work closed):** `GET /api/admin/products/tier-price-sweep` — the whole-catalog read-only `findTierPriceAnomalies` sweep (balanced/inverted tier prices, findings with product identity + verbatim Arabic warning copy + active-variant evidence, never a write); admin surfacing via variant-write warning toasts + the products-page `TierPriceAuditPanel` (self-invalidating on fixes); the SPA shell's Product-LD Offer price now rides the cheapest-AVAILABLE-variant projection (matching the hydrated page — the stale-shell-price drift closed). Parity gates: 87 enforced ops (+1).
+
+**Conversion honesty (L3):** cart wallet-shortfall warning + topup return-link at the decision moment, guest-PDP payment-model line, topup-approval SLA sentence on both insufficient-balance surfaces, checkout-failure support recourse, per-month equivalents on duration pills (fail-safe), multi-variant stock honesty (no numeric count on multi-variant products). 42 new tests.
+
+**Verification:** production re-verified read-only post-reset — Sentry release `c27b7ae` in the live bundle, live dataLayer probes (config + all observed events to spec, zero duplicate page_view), IndexNow adjudicated (R164's 202-no-key → owner's 200 = key file live and validated; no key rotation performed or needed), GSC inaccessibility recorded (owner-only), and **all 24 R162-authorized mechanical catalog corrections confirmed still-valid and still-unapplied** (38/38 verbatim markers on live data) — owner-side admin-UI actions per the R162 apply-paths.
+
+**Gates:** CI green on `c27b7ae5` (secret-scan/CVE/lint/typecheck/drift/both suites/build) · backend 288 files/2,677 · frontend 297 files/2,762 · scripts 6/59 · lint 0/16 · typecheck clean ×4 · parity 87/50/7-of-7 · build green — eager 147,185 B gz (+73, inside the 150 KiB warn) · e2e vs production: analytics 6/6 + seo 21/21.
+
 ## Round R167 — The deeper structural round (the R166 deferred backlog closed) — 2026-10-18
 
 **Scope:** the owner's directive «complete the deferred work, enter a deeper/broader/stronger round, no repeat auditing — act with multiple agents»: the **9 structural items R166 §6 documented** implemented in **2 waves of file-disjoint lanes + a coordinator mechanical sweep** (7 execution units, zero new auditing). Full report: `docs/engineering/R167/round-close.md`.

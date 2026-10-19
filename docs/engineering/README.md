@@ -1,6 +1,6 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-18 (R167 — the R166 §6 deferred-backlog round; this
+> Status: CURRENT @ 2026-10-19 (R168 — the measurable-growth round; this
 > index was created in R166). The ENGINEERING bucket: the working
 > records of the R142+ rounds. The round **ledger** is
 > [`CHANGELOG.md`](../../CHANGELOG.md) (one entry per round, newest first —
@@ -12,13 +12,14 @@
 
 ## The round index
 
-**24 folders covering the R142→R167 span** (81 md + 32 `.jsonl` lane
-records = 113 files). Newest first, matching the CHANGELOG's
+**25 folders covering the R142→R168 span** (82 md + 32 `.jsonl` lane
+records = 114 files). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
 (`## Round R###` header) that summarizes it.
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R168 | 2026-10-19 | The measurable-growth round (GA4 ecommerce funnel, catalog-truth tooling, conversion honesty) | [`round-close.md`](./R168/round-close.md) |
 | R167 | 2026-10-18 | The deeper structural round (the R166 deferred backlog closed) | [`round-close.md`](./R167/round-close.md) |
 | R166 | 2026-10-18 | The comprehensive improvement & organization round | [`round-close.md`](./R166/round-close.md) |
 | R165 | 2026-10-18 | The multi-order money lane (the R162 ADR, implemented) | [`round-close.md`](./R165/round-close.md) |
