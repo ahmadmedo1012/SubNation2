@@ -10,6 +10,20 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R173 — The final comprehensive inspection, purification & perfection sweep — 2026-10-20
+
+**Scope:** the owner directive «اعمل جولة اخيرة شاملة من الفحص والتشخيص والمحاكاة والتحسين والتطوير وتنظيم وتطهير المستودع وكل الاكواد والفحص مجددا للوصول للمثالية من كل النواحي» — the final comprehensive round: inspect, diagnose, simulate, improve, organize, purify, re-verify, toward perfection from every aspect. Full report: `docs/engineering/R173/round-close.md`.
+
+**The re-verification baseline (everything from scratch on the R172 head):** typecheck ×4 clean · lint 0/0 · backend 288/2,677 + frontend 297/2,762 + scripts 6/59 green · build eager 148,984 B gz · parity 87/50/7/7 · drizzle + orval zero drift · prod audit 0 · CI green on head · production probe: healthz 200, SENTRY_RELEASE `9a9e806` live, GA4 exactly 1×.
+
+**The supply-chain purification (`audit 10 → 4`, the mathematical minimum):** three new override floors in the `@lhci/cli` dev chain — `tmp 0.2.7` (the 0.1.0/0.0.33 pre-0.2 lines to the patch floor; the first 0.2.6 attempt was itself inside a third advisory's range, caught by re-audit-after-floor), `basic-ftp 6.2.1` (5→6 verified against get-uri 7's own resolution), `uuid 11.1.1` (@lhci is the tree's only uuid consumer; its `uuid.v4()` CJS usage is v11-compatible; the vulnerable v3/v5/v6-with-buf API never called). Proven by simulation: `lhci --version` + a real 1-run `lhci collect` against production, exit 0. The four remaining findings (extract-zip ×2, braces, sprintf-js) have **no patched release in existence** — every fix that exists is now taken.
+
+**The aged-in in-range bumps:** `pg ^8.23.1` (both holders, the runtime DB driver's maintenance line) + `scripts/argon2 ^0.45.1` (aligned with backend — one instance now). **Refused by the age policy, honestly:** motion 14.4.0, react-query 5.104.5, typescript-eslint 8.72.0, impeccable 4.7.0 — all published 2026-10-19, inside `minimumReleaseAge 1440`; they age in. @types/node 25.9.9 skipped on purpose (types churn, zero functional gain). The R172 refused table re-verified — every rationale holds.
+
+**The purification sweeps:** 1,881 workspace-reset file-mode flips normalized (0644 restored, the 8 legit executable scripts kept 0755) · empty `scripts/.lighthouseci` artifact dir removed · TODO census 0 real (12 grep hits are phone-placeholder `XXXX` digits) · console.log all legitimate (CLI stdout + the documented Sentry banner) · **158/158 doc links resolve** · security headers reviewed complete · CI state API-verified.
+
+**Gates on the round's tree:** install exit 0 (real exit code) · frozen-lockfile exit 0 · typecheck ×4 · lint 0/0 · backend 2,677 + frontend 2,762 + scripts 59 green (exact baseline counts) · build eager 148,984 B gz (byte-identical — no frontend code touched) · parity 87/50/7/7 · drift zero · audit prod 0 / full 4 · impeccable clean. Diff: exactly 4 files (workspace overrides + lockfile + two package ranges) — zero source-code changes.
+
 ## Round R172 — The final modernization sweep — 2026-10-19
 
 **Scope:** the owner directive «الآن ادخل في جولة أخيرة من التحسين والتطوير

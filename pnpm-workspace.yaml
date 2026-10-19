@@ -200,6 +200,36 @@ overrides:
   #   resolution only (the 4.x resolution elsewhere is current);
   #   2.3.1 → 2.3.2. Verified by: pnpm build (sentry plugin path).
   "picomatch@^2.3.1": "2.3.2"
+  # ── R173 dev-chain CVE floors (the @lhci/cli chain — local validate
+  # suite only, never CI, never the Docker runtime image; --prod audit
+  # stays clean; same accepted-dev-risk class as R119/R169) ──
+  # tmp — 1 HIGH (path traversal via unsanitized prefix/postfix,
+  # GHSA-ph9p-34f9-6g65) + 1 LOW (symlink arbitrary write,
+  # GHSA-52f5-9888-3x2c) via @lhci/cli>tmp AND inquirer>
+  # external-editor>tmp; the lockfile carried the pre-0.2 lines
+  # (0.1.0 / 0.0.33). 0.2.7 is the patch floor for the whole 0.2.x
+  # advisory set (0.2.6 covers the two pre-0.2 GHSA advisories but
+  # sits inside a third advisory's >=0.2.6 <0.2.7 range); the
+  # fileSync/file API external-editor calls is stable across the
+  # 0.2.x line. Verified by: pnpm exec lhci --version + a 1-run
+  # collect smoke against production (read-only).
+  "tmp": "0.2.7"
+  # basic-ftp — HIGH (quadratic-time ReDoS in Client.list(),
+  # GHSA-c475-qrg2-pj4r) via @lhci/cli>proxy-agent>pac-proxy-agent>
+  # get-uri; 5.3.1 → 6.2.1 crosses the 6.x line BUT the Client API
+  # get-uri calls (access + list) is unchanged in 6.x — get-uri 7
+  # itself resolved to basic-ftp 6. Unreachable in our flow either
+  # way (no ftp:// PAC fetches; lhci collect talks plain https to
+  # the origin). Verified by the same smoke run.
+  "basic-ftp": "6.2.1"
+  # uuid — MODERATE (missing buffer bounds check in v3/v5/v6 when
+  # buf is provided, GHSA-3q3p-h2jv-947g) via @lhci/cli>uuid 8.3.2;
+  # patched only in 11.1.1 (the advisory floor). lhci imports the
+  # named v4 export (TypeScript source) which v11 keeps; the
+  # vulnerable v3/v5/v6-with-buf API is never called. Same
+  # accepted-unreachable precedent as the prod-side google-gax uuid
+  # CVE-2026-41907, closed here because a fix EXISTS.
+  "uuid": "11.1.1"
   # postcss-selector-parser — moderate (quadratic-time flat selector
   #   parsing) under @tailwindcss/typography; 6.0.10 → 7.1.6 (the
   #   continued maintenance line — 7.x is what tailwindcss itself
