@@ -1,7 +1,7 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-19 (R170 — the e2e heartbeat + secret-scan
-> restoration round;
+> Status: CURRENT @ 2026-10-19 (R171 — the deployment-mechanism
+> discovery + the dispatch-sequencing law;
 > this index was created in R166). The ENGINEERING bucket: the working
 > records of the R142+ rounds. The round **ledger** is
 > [`CHANGELOG.md`](../../CHANGELOG.md) (one entry per round, newest first —
@@ -13,13 +13,14 @@
 
 ## The round index
 
-**27 folders covering the R142→R170 span** (84 md + 32 `.jsonl` lane
-records = 116 files). Newest first, matching the CHANGELOG's
+**28 folders covering the R142→R171 span** (85 md + 32 `.jsonl` lane
+records = 117 files). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
 (`## Round R###` header) that summarizes it.
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R171 | 2026-10-19 | The deployment-mechanism discovery + the dispatch-sequencing law | [`round-close.md`](./R171/round-close.md) |
 | R170 | 2026-10-19 | The e2e heartbeat + secret-scan restoration round | [`round-close.md`](./R170/round-close.md) |
 | R169 | 2026-10-19 | The comprehensive health round (dependency modernization, CVE sweep, lint-zero, e2e restoration) | [`round-close.md`](./R169/round-close.md) |
 | R168 | 2026-10-19 | The measurable-growth round (GA4 ecommerce funnel, catalog-truth tooling, conversion honesty) | [`round-close.md`](./R168/round-close.md) |

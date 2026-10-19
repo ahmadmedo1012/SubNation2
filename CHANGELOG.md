@@ -10,6 +10,18 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R171 — The deployment-mechanism discovery + the dispatch-sequencing law — 2026-10-19
+
+**Scope:** the R170 closing session's concurrent `ci.yml` + `docker.yml` dispatches produced a red verification run (#548) whose e2e failures root-caused to the production auto-redeploy the docker image push itself triggers — the round records the mechanism, adjudicates every #548 failure as non-product, and turns the sequencing rule into law. Full report: `docs/engineering/R171/round-close.md`.
+
+**The discovery:** the GHCR `main`-tag push (`docker.yml` dispatched on main) is followed within minutes by an automatic production redeploy (owner-side watcher, outside repo view; empirically correlated twice on 2026-10-19 — docker run #5 → production `9afaed2`, run #6 → `1f88dba`). `docker.yml` dispatch is therefore a **production deployment event**, not a neutral artifact build.
+
+**The #548 adjudication:** e2e 4 failed + 2 flaky, all in [tablet-768] (the last Playwright project — its authed-spec portion ran inside the 12:30:45–12:33:07 restart window), all timeout-class on the price locator; the same four tests pass 11/11 locally vs the redeployed production, and the sequenced re-dispatch **#549 is green end-to-end — e2e 144/144 in 3.2 m, all 9 jobs**. Backend: `2fa-verify-setup-lockout` timed out at 5 s in #548 while green in #547 (same SHA) and locally (4/4, 426 ms) — the R153 runner-slowness class.
+
+**The law (source-of-truth #17):** push → verify (push run or `ci.yml` dispatch incl. e2e) → **only then** `docker.yml`; never dispatch docker while a live-target run is in flight (a multi-minute restart window defeats even `retries: 2`); the R169 dispatch discipline (#15(f)) is refined accordingly. No code changed — docs-only round.
+
+**Gates:** CI #547 (push) + **#549 (sequenced dispatch) all green — e2e 144/144** · local authed spec [tablet-768] 11/11 (48.3 s) · backend flake re-run 4/4 · production probe on release `1f88dba`: healthz 200, `analytics-events-mbUZ-uHg.js` carries `subnation_ga4_sent` + all 7 ecommerce events, exactly 1× `G-RKRV3ZC3MF`.
+
 ## Round R170 — The e2e heartbeat + secret-scan restoration round — 2026-10-19
 
 **Scope:** CI run #546 (the weekly scheduled heartbeat on `9afaed2b`) failed on two jobs every push run was structurally blind to — this round repairs both. Full report: `docs/engineering/R170/round-close.md`.
