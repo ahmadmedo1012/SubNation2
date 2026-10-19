@@ -31,15 +31,15 @@ packages:
   - scripts
 
 catalog:
-  "@tailwindcss/vite": ^4.1.14
-  "@tanstack/react-query": ^5.90.21
+  "@tailwindcss/vite": ^4.3.3
+  "@tanstack/react-query": ^5.104.4
   "@types/node": ^25.3.3
   "@types/react": ^19.2.0
   "@types/react-dom": ^19.2.0
   "@vitejs/plugin-react": ^5.0.4
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
-  drizzle-orm: ^0.45.2
+  drizzle-orm: ^0.45.4
   lucide-react: ^0.545.0
   # AUD103-7-C5 (r103): comment honesty — there is NO expo anywhere in
   # this workspace; the real reason for the exact pin is single-version
@@ -48,7 +48,7 @@ catalog:
   react: 19.1.0
   react-dom: 19.1.0
   tailwind-merge: ^3.3.1
-  tailwindcss: ^4.1.14
+  tailwindcss: ^4.3.3
   tsx: ^4.21.0
   vite: ^7.3.7
   wouter: ^3.3.5
@@ -143,14 +143,60 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's
   # vulnerable, this overrides it (R144-A2: exact pin raised 0.27.3 →
   # 0.27.7 alongside the backend direct dep — tsx ~0.27.0 and vite
-  # ^0.27.0 || ^0.28.0 both accept it)
+  # ^0.27.0 || ^0.28.0 both accept it). R169: raised 0.27.7 → 0.28.2 —
+  # GHSA-g7r4-m6w7-qqqr (low, arbitrary file read) patched >=0.28.1;
+  # backend's direct devDep moves with it.
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.7"
+  esbuild: "0.28.2"
   # websocket-driver — GHSA-xv26-6w52-cph6 (critical): message corruption
   #   via protocol length headers. Transitive via firebase → @firebase/
   #   database → faye-websocket; currently resolves 0.7.5 naturally — this
   #   floor keeps it pinned against range drift.
   "websocket-driver": ">=0.7.5"
+  # ── R169 dev-chain CVE floors (all DEV-side; --prod audit was already
+  # clean — these close the pnpm audit (dev) findings that are fixable
+  # without a major jump; every pin is the minimal patched release and
+  # each is verified by the gate that exercises its chain) ──
+  # fast-uri — 7 high advisories (SSRF/host-confusion/path-traversal
+  #   family) under vite-plugin-pwa>workbox-build>ajv; 3.1.0 → 3.1.8
+  #   (in-range 3.x). Verified by: pnpm build (workbox SW generation).
+  "fast-uri": "3.1.8"
+  # source-map-js — high (event-loop DoS) under @vitest/coverage-v8>
+  #   magicast; 1.2.1 → 1.2.2 (in-range 1.x). Verified by: vitest runs.
+  "source-map-js": "1.2.2"
+  # fflate — moderate (unzipSync infinite loop) under @vitest/ui;
+  #   0.8.2 → 0.8.3. Verified by: vitest runs.
+  "fflate": "0.8.3"
+  # fast-copy — moderate (stack exhaustion) under pino-pretty;
+  #   4.0.2 → 4.1.0 (in-range ^4). Verified by: install + typecheck
+  #   (backend dev logging path).
+  "fast-copy": "4.1.0"
+  # lodash — high (Code Injection via _.template) + moderate (prototype
+  #   pollution) under @lhci/cli>inquirer; 4.17.23 → 4.18.1 (in-range
+  #   4.x, the 2026 patch line). @lhci/cli never runs on CI — local
+  #   tooling only (R119 precedent: accepted-dev-risk class).
+  "lodash": "4.18.1"
+  # @babel/core — low (arbitrary file read via sourceMappingURL) under
+  #   eslint-plugin-react-hooks; 7.29.0 → 7.29.6 (in-range 7.x — NOT
+  #   8.x). Verified by: pnpm lint.
+  "@babel/core": "7.29.6"
+  # browserslist — 2 high (crash/prototype write + unbounded memory)
+  #   + baseline-browser-mapping (moderate, process termination) under
+  #   the eslint @babel chain; 4.28.1 → 4.28.7 and 2.10.0 → 2.11.0
+  #   (in-range). Verified by: pnpm lint. (caniuse-lite DATA refresh
+  #   rides update-browserslist-db, separate from this package floor.)
+  "browserslist": "4.28.7"
+  "baseline-browser-mapping": "2.11.0"
+  # picomatch — 2 high (ReDoS extglob + method injection) under
+  #   @sentry/vite-plugin>unplugin>chokidar 3; SCOPED to the ^2.3.1
+  #   resolution only (the 4.x resolution elsewhere is current);
+  #   2.3.1 → 2.3.2. Verified by: pnpm build (sentry plugin path).
+  "picomatch@^2.3.1": "2.3.2"
+  # postcss-selector-parser — moderate (quadratic-time flat selector
+  #   parsing) under @tailwindcss/typography; 6.0.10 → 7.1.6 (the
+  #   continued maintenance line — 7.x is what tailwindcss itself
+  #   resolves). Verified by: pnpm build (CSS generation path).
+  "postcss-selector-parser": "7.1.6"
   # NOTE (R119-B3): the historical "path-to-regexp": ">=8.4.0" override is
   # deliberately NOT restored: the express-5 chain already resolves the
   # patched 8.4.2 naturally (the override was written when 8.3.0 was

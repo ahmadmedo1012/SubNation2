@@ -8,7 +8,7 @@ import { randomBytes } from "crypto";
 // argon2.needsRehash() (called from verifyPassword) automatically detects
 // hashes generated with weaker parameters and flags them for re-hashing on
 // next successful login, so a parameter bump self-migrates over time.
-const ARGON2_OPTIONS: argon2.Options = {
+const ARGON2_OPTIONS: argon2.HashOptions = {
   type: argon2.argon2id,
   memoryCost: 65_536,
   timeCost: 3,
