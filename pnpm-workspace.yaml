@@ -197,6 +197,15 @@ overrides:
   #   continued maintenance line — 7.x is what tailwindcss itself
   #   resolves). Verified by: pnpm build (CSS generation path).
   "postcss-selector-parser": "7.1.6"
+  # tsx — R169 (the CI-only typecheck break): the tailwind 4.3.3 bump
+  # re-resolved the FRONTEND importer's vite 7.3.7 peer combo to
+  # tsx@4.23.15 (latest) while the backend/scripts side kept the
+  # catalog's 4.21.0 — two vite instances in one tree, and
+  # vite.config.ts's plugin arrays mixed Plugin types from both
+  # (TS2769 in CI; locally masked by the two-pass install order).
+  # One pinned tsx = one vite peer combo = one vite instance. Same
+  # single-version discipline as the react pin.
+  "tsx": "4.21.0"
   # NOTE (R119-B3): the historical "path-to-regexp": ">=8.4.0" override is
   # deliberately NOT restored: the express-5 chain already resolves the
   # patched 8.4.2 naturally (the override was written when 8.3.0 was
