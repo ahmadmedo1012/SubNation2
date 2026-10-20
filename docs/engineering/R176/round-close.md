@@ -66,3 +66,8 @@ lint 0/0 (the round's own .mjs pipeline included) · typecheck ×3 (backend, fro
 1. VLM adjudication when the z-ai quota window reopens (contact sheet at `scripts/r176-contact-sheet-final.png`; per-tile files under `frontend/public/products/`).
 2. upload.wikimedia.org original re-fetch for the 6 small-source tiles when its 429 block clears.
 3. Embronic remains deferred by owner order (untouched this round, as ordered).
+
+## Ship record (the sequencing law)
+
+- Commit `146c1413` pushed after a clean rebase onto the concurrent SEO lane (PRs #7/#8 landed mid-round; the freshness pins re-verified post-rebase: spa-shell-rewrite 72 tests, product-art + boot-warmup 9 — the SEO PRs grew the spa-shell battery by 6). My commit's own CI run was cancelled by the concurrency group when PR #9 (`53cde102`) merged on top — a mechanical cancellation, not a verdict: the combined-tree run `39443686834` on `53cde102` (which contains R176) completed **success** on every job (path-filter cost gate, gitleaks, production build, lint/typecheck/drift, backend, frontend, scripts).
+- Production redeployed by Coolify's push-to-deploy webhook (the standing topology; `docker.yml` stays the disaster-recovery publisher only). Read-only verification at 17:2x local: `healthz` **200**; `netflix.webp` serves the NEW tile at **8,276 B** (the r175 file was ~29 KB — the size itself proves the swap), PIL-decoded **1024×1024**; `fox-now.webp` 2,940 B and `spotify-premium.webp?v=r176` 11,780 B decode 1024²; the entry carries the new bundle `index-CIpQDjlB.js`; **all 45 slugs probed live — 45/45 HTTP 200.**
