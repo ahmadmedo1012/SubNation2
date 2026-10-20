@@ -1,0 +1,14 @@
+[
+  {
+    "kind": "og:image",
+    "url": "https://cdn.brain.fm/images/bfm-og-image.png"
+  },
+  {
+    "kind": "twitter:image",
+    "url": "https://cdn.brain.fm/images/bfm-og-image.png"
+  },
+  {
+    "kind": "icon",
+    "url": "https://www.brain.fm/favicon.png"
+  }
+]

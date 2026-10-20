@@ -7,7 +7,9 @@
 // exactly like the frontend's productArtUrl does for humans (frontend/src/
 // lib/product-art.ts — MUST stay in sync; each side's tests pin its own
 // value). Bump ONLY when frontend/public/products/*.webp is replaced again.
-export const PRODUCT_ART_VERSION = "r175";
+// R176: the tiles are the brands' REAL official artwork now (Wikipedia logo
+// files + brand CDNs; zero AI generation) — see scripts/r176-real-art/.
+export const PRODUCT_ART_VERSION = "r176";
 
 /** The share-surface image contract (A11-F3b/110-F lineage, now versioned):
  *  already-absolute URLs pass through untouched (future CDN hosts),

@@ -10,6 +10,16 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R176 — The real-source art round — 2026-10-20
+
+**Scope:** the owner's clarifying directive — «انا كان هدفي صور من المصدر حقيقية مش صور تم انشاءها ب ai» — the goal was the brands' real artwork, not AI generation. All 45 tiles are replaced with the **official logos themselves** in one designed pearl/charcoal tile system. Zero AI generation. Full report: `docs/engineering/R176/round-close.md`.
+
+**The sources:** 43/45 from Wikipedia's official logo files (SVG masters rendered at 1280px — `Netflix 2015 logo.svg`, `Disney+ logo.svg`, `Windows 10 Logo.svg`…; every pick recorded in `scripts/r176-real-art/picks.json`); brain.fm, HMA and CyberGhost upgraded to their own CDNs (og:image, the 400² logo, the 192px ghost mark); Shopia AI (parked domain, every official surface dead) from Google's favicon cache — the last living copy of its real mark. Special alpha-keying for IDAGIO's white-on-black JPEG and HMA's dark-on-white plate.
+
+**The family:** pearl ground (white→#F4F5F8) for dark/colored marks, charcoal (#23242D→#17181F) for white marks — same geometry everywhere (ink-bbox-trimmed, centered, aspect-classed boxes 46–72%, margins ≥144px, LANCZOS + unsharp for small sources). **The weight table: total 426 KB, avg 9.5 KB/tile, max 18 KB — 5.6× lighter than R175's cinematic AI scenes at the same 1024², the fastest catalog yet.**
+
+**The pipeline (committed, resumable):** `scripts/r176-real-art/` — fetch (Wikipedia search with curated want/avoid scoring; curl-based because undici/HTTP1.1 is edge-throttled while curl/HTTP2 sails) × curated picks × download (batched imageinfo, standard-width thumbs — `thumb.wikimedia.org` only serves the standard sizes) × analyze (luminance/saturation forensics → variant + box decisions) × composite (gradients, glow, plate alpha-keying) × encode (WebP q82 + decode verification) × offline geometric QA (45/45 ALL CLEAR — ink coverage, contrast, margins). The freshness contract re-run: `PRODUCT_ART_VERSION` r175 → r176 both sides + 11 test literals re-pinned. **VLM visual adjudication honestly deferred** (z-ai stayed hard-429 all round; deterministic official-source files + color forensics + geometric QA hold the line — contact sheet retained). **Gates:** lint 0/0 · typecheck ×3 · backend 2,677/288 (exact baseline) · frontend 2,766/298 (exact) · scripts 6/59 (exact) · build eager 149,050 B gz (budget holds) · parity 87/50/7/7 · dist 45×1024² WebP PIL-verified · full r175 backup retained.
+
 ## Round R175 — The product-art attraction round — 2026-10-20
 
 **Scope:** the owner directive «الصور يجب ان تكون اجمل واكثر جاذبية» — the R174 family (one glossy emblem on a radial gradient) was clean but static; R175 upgrades every tile to a **cinematic showcase scene** while keeping all the hard laws (1024², one family, no prices/promo/watermarks/URLs). Embronic deferred by owner order («امبرونيك ليس الان»). Full report: `docs/engineering/R175/round-close.md`.

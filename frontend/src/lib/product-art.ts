@@ -11,9 +11,14 @@
  * fetch, which must match or the warm becomes a double-download) makes the
  * new art visible to everyone the moment the bundle deploys.
  *
- * Bump this ONLY when frontend/public/products/*.webp is replaced again.
+ * R176 (real-source art): the 45 tiles are now the brands' REAL official
+ * artwork (Wikipedia logo files + the brands' own CDNs — brain.fm, HMA,
+ * CyberGhost; Google's favicon cache for the parked shopia.io), on one of
+ * two neutral grounds (pearl for dark/colored marks, charcoal for white
+ * marks). Zero AI generation. Bump this ONLY when
+ * frontend/public/products/*.webp is replaced again.
  */
-export const PRODUCT_ART_VERSION = "r175";
+export const PRODUCT_ART_VERSION = "r176";
 
 /**
  * Pure URL versioner — any product-art URL (site-relative /products/… or an

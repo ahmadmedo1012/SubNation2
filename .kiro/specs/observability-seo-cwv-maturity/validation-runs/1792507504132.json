@@ -1,0 +1,82 @@
+{
+  "timestamp": "2026-10-20T14:45:04.132Z",
+  "commitSha": "3ec9532",
+  "totalDurationMs": 4138,
+  "results": [
+    {
+      "name": "firebase",
+      "status": "fail",
+      "observed": "not executed",
+      "expected": "Google Sign-In E2E completes",
+      "durationMs": 0,
+      "error": "Firebase E2E requires a configured Playwright test account"
+    },
+    {
+      "name": "otp",
+      "status": "fail",
+      "observed": "not executed",
+      "expected": "WhatsApp OTP issue + verify completes",
+      "durationMs": 0,
+      "error": "OTP E2E requires a disposable test phone and a ready OpenWA session"
+    },
+    {
+      "name": "redis",
+      "status": "fail",
+      "observed": "not executed",
+      "expected": "Redis ping and rate-limit round-trip succeed",
+      "durationMs": 0,
+      "error": "Redis journey is not wired to a live test target"
+    },
+    {
+      "name": "socket",
+      "status": "fail",
+      "observed": "not executed",
+      "expected": "Socket.IO connect, emit, and receive succeed",
+      "durationMs": 0,
+      "error": "Socket.IO E2E is not wired to a live authenticated test target"
+    },
+    {
+      "name": "admin",
+      "status": "fail",
+      "observed": "not executed",
+      "expected": "Admin dashboard loads with a test admin account",
+      "durationMs": 0,
+      "error": "Admin E2E requires a disposable admin account"
+    },
+    {
+      "name": "mobile",
+      "status": "fail",
+      "observed": "not executed",
+      "expected": "Home page renders at mobile viewport",
+      "durationMs": 0,
+      "error": "Mobile rendering E2E requires a configured browser runner"
+    },
+    {
+      "name": "lighthouse",
+      "status": "fail",
+      "durationMs": 3090,
+      "error": "mobile Lighthouse collection failed (exit code 1)"
+    },
+    {
+      "name": "sitemap",
+      "status": "pass",
+      "observed": "HTTP 200",
+      "expected": "HTTP 200",
+      "durationMs": 846
+    },
+    {
+      "name": "robots",
+      "status": "pass",
+      "observed": "HTTP 200",
+      "expected": "HTTP 200",
+      "durationMs": 197
+    },
+    {
+      "name": "sentry",
+      "status": "fail",
+      "durationMs": 0,
+      "error": "A Sentry DSN is not configured"
+    }
+  ],
+  "passed": false
+}
