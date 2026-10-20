@@ -22,7 +22,7 @@
 import { db, copilotActionsTable } from "@workspace/db";
 import type { Request, Response } from "express";
 import { Router } from "express";
-import { Counter } from "prom-client";
+import { Counter } from "@prometheus-io/client";
 import { logger } from "../../../lib/logger";
 import { ErrorCode, createErrorResponse } from "../../../lib/errors";
 import { copilotRateLimit } from "../../../lib/copilot/rate-limit";

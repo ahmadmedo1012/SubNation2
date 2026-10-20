@@ -15,7 +15,7 @@
  * place socket forensics need the RIGHTMOST X-Forwarded-For entry.
  */
 import * as Sentry from "@sentry/node";
-import { Counter } from "prom-client";
+import { Counter } from "@prometheus-io/client";
 import type { Socket } from "socket.io";
 import { getRegistry } from "../metrics";
 import { logger } from "../logger";

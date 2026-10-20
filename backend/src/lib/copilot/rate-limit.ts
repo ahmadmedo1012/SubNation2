@@ -24,7 +24,7 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { Counter } from "prom-client";
+import { Counter } from "@prometheus-io/client";
 import { ErrorCode, createErrorResponse } from "../errors";
 import { logger } from "../logger";
 import { getRedisClient } from "../redis-client";

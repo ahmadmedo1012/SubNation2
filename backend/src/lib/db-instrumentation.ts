@@ -29,7 +29,7 @@
  * 10-100 ms (joins), tail at 100-1000 ms (admin reports).
  */
 
-import { Histogram } from "prom-client";
+import { Histogram } from "@prometheus-io/client";
 import { logger } from "./logger";
 import { getRegistry, neonPoolErrorsTotal, safeObserve } from "./metrics";
 import { captureSubsystemException } from "./sentry";

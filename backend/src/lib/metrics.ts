@@ -9,7 +9,25 @@
  *   - Cardinality bound: route label is Express route pattern, not resolved URL.
  */
 
-import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from "prom-client";
+import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from "@prometheus-io/client";
+
+/**
+ * R179 — the library's (unexported) LabelValues<T> shape, mirrored.
+ *
+ * @prometheus-io/client 0.16.x declares label parameters as a CONDITIONAL
+ * type — `T extends never ? Partial<Record<string, never>>
+ * : Partial<Record<T, string | number>>` — which TypeScript cannot prove
+ * assignable from a plain `Record<T, string | number>` while T is an
+ * unresolved generic (the pre-rename prom-client 15.x type was the plain
+ * `Partial<Record<T, string | number>>`, which is why the helpers used to
+ * type-check without this mirror). Replicating the exact conditional keeps
+ * the helpers assignable to every inc/observe/set call site below, and for
+ * every CONCRETE metric (T = a label-name union) it still resolves to the
+ * same Partial<Record<...>> the library itself accepts at its methods.
+ */
+export type MetricLabels<T extends string> = T extends never
+  ? Partial<Record<string, never>>
+  : Partial<Record<T, string | number>>;
 
 // ============================================================================
 // Singleton Registry
@@ -347,12 +365,12 @@ export const alertsDispatchedTotal = new Counter({
  */
 export function safeInc<T extends string>(
   counter: Counter<T>,
-  labels: Record<T, string | number>,
+  labels: MetricLabels<T>,
   value?: number,
 ): void {
   try {
     if (value !== undefined) {
-      counter.inc(labels as Record<T, string | number>, value);
+      counter.inc(labels, value);
     } else {
       counter.inc(labels);
     }
@@ -365,14 +383,30 @@ export function safeInc<T extends string>(
 
 /**
  * Safely observe a histogram value, catching any errors.
+ *
+ * R179: two overloads because @prometheus-io/client 0.16.x resolves
+ * LabelValues<never> to `never` — for a labelless histogram the ONLY
+ * legal call shape is observe(value); the old prom-client 15.x accepted
+ * observe({}, value) (its non-conditional LabelValues<never> was `{}`),
+ * which is why the labelless overload now exists as a distinct shape.
  */
+export function safeObserve(histogram: Histogram<never>, value: number): void;
 export function safeObserve<T extends string>(
   histogram: Histogram<T>,
-  labels: Record<T, string | number>,
+  labels: MetricLabels<T>,
   value: number,
+): void;
+export function safeObserve<T extends string>(
+  histogram: Histogram<T> | Histogram<never>,
+  labelsOrValue: MetricLabels<T> | number,
+  maybeValue?: number,
 ): void {
   try {
-    histogram.observe(labels as Record<T, string | number>, value);
+    if (typeof labelsOrValue === "number") {
+      (histogram as Histogram<never>).observe(labelsOrValue);
+    } else {
+      (histogram as Histogram<T>).observe(labelsOrValue, maybeValue as number);
+    }
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
     console.error("Histogram observation failed:", err);
@@ -382,13 +416,10 @@ export function safeObserve<T extends string>(
 /**
  * Safely increment a gauge, catching any errors.
  */
-export function safeGaugeInc<T extends string>(
-  gauge: Gauge<T>,
-  labels?: Record<T, string | number>,
-): void {
+export function safeGaugeInc<T extends string>(gauge: Gauge<T>, labels?: MetricLabels<T>): void {
   try {
     if (labels) {
-      gauge.inc(labels as Record<T, string | number>);
+      gauge.inc(labels);
     } else {
       gauge.inc();
     }
@@ -401,13 +432,10 @@ export function safeGaugeInc<T extends string>(
 /**
  * Safely decrement a gauge, catching any errors.
  */
-export function safeGaugeDec<T extends string>(
-  gauge: Gauge<T>,
-  labels?: Record<T, string | number>,
-): void {
+export function safeGaugeDec<T extends string>(gauge: Gauge<T>, labels?: MetricLabels<T>): void {
   try {
     if (labels) {
-      gauge.dec(labels as Record<T, string | number>);
+      gauge.dec(labels);
     } else {
       gauge.dec();
     }
@@ -428,11 +456,11 @@ export function safeGaugeDec<T extends string>(
 export function safeGaugeSet<T extends string>(
   gauge: Gauge<T>,
   value: number,
-  labels?: Record<T, string | number>,
+  labels?: MetricLabels<T>,
 ): void {
   try {
     if (labels) {
-      gauge.set(labels as Record<T, string | number>, value);
+      gauge.set(labels, value);
     } else {
       gauge.set(value);
     }

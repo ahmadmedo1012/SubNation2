@@ -5,7 +5,7 @@
  * `risk-metrics.ts` shape so on-call's mental model is consistent.
  */
 
-import { Counter, Histogram } from "prom-client";
+import { Counter, Histogram } from "@prometheus-io/client";
 import { getRegistry } from "../metrics";
 
 export const forecastRunsTotal = new Counter({

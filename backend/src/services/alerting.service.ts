@@ -245,11 +245,11 @@ function numericLe(le: string): number {
 class AlertingService {
   private readonly alertsDispatchedTotal = getRegistry().getSingleMetric(
     "alerts_dispatched_total",
-  ) as import("prom-client").Counter<string> | undefined;
+  ) as import("@prometheus-io/client").Counter<string> | undefined;
 
   private readonly monitoringErrorsTotal = getRegistry().getSingleMetric(
     "monitoring_errors_total",
-  ) as import("prom-client").Counter<string> | undefined;
+  ) as import("@prometheus-io/client").Counter<string> | undefined;
 
   private evaluatorInterval: NodeJS.Timeout | null = null;
 
@@ -434,7 +434,7 @@ class AlertingService {
   private evalCounterDelta(counterName: string, threshold: number, rule: AlertRuleSpec): boolean {
     try {
       const counter = getRegistry().getSingleMetric(counterName) as
-        import("prom-client").Counter<string> | undefined;
+        import("@prometheus-io/client").Counter<string> | undefined;
       if (!counter) return false;
 
       // Aggregate across all label combinations.
@@ -468,7 +468,7 @@ class AlertingService {
   ): boolean {
     try {
       const counter = getRegistry().getSingleMetric(counterName) as
-        import("prom-client").Counter<string> | undefined;
+        import("@prometheus-io/client").Counter<string> | undefined;
       if (!counter) return false;
 
       const collected = counter.get?.() as
@@ -508,7 +508,7 @@ class AlertingService {
   private evalHttp5xxRate(rule: AlertRuleSpec): boolean {
     try {
       const counter = getRegistry().getSingleMetric("http_requests_total") as
-        import("prom-client").Counter<string> | undefined;
+        import("@prometheus-io/client").Counter<string> | undefined;
       if (!counter) return false;
 
       const collected = counter.get?.() as
@@ -562,7 +562,7 @@ class AlertingService {
   private evalHttpP95Latency(rule: AlertRuleSpec): boolean {
     try {
       const histogram = getRegistry().getSingleMetric("http_request_duration_seconds") as
-        import("prom-client").Histogram<string> | undefined;
+        import("@prometheus-io/client").Histogram<string> | undefined;
       if (!histogram?.get) return false;
 
       const collected = histogram.get() as {

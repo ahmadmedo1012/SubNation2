@@ -49,7 +49,7 @@
  *     fires once per process so degraded mode is observable, not silent.
  */
 
-import { Counter, Histogram } from "prom-client";
+import { Counter, Histogram } from "@prometheus-io/client";
 import { createClient, type RedisClientType } from "redis";
 import { logger } from "./logger";
 import { readEnvNumber } from "./env";

@@ -9,7 +9,7 @@
  * failure never breaks the scoring path.
  */
 
-import { Counter, Histogram } from "prom-client";
+import { Counter, Histogram } from "@prometheus-io/client";
 
 import { getRegistry, monitoringErrorsTotal, safeInc, safeObserve } from "./metrics";
 

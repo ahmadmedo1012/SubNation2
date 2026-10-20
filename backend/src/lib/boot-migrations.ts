@@ -405,7 +405,7 @@ export async function bootMigrations(): Promise<MigrationResult> {
   const start = Date.now();
   const observe = (outcome: MigrationOutcome) => {
     const durationMs = Date.now() - start;
-    safeObserve(migrationDurationSeconds, {}, durationMs / 1000);
+    safeObserve(migrationDurationSeconds, durationMs / 1000);
     safeInc(migrationsRunsTotal, { outcome });
     return durationMs;
   };
