@@ -99,12 +99,18 @@ CI + deployment verification (the R171 sequencing law — push verified first, d
 
 ## 6. Deployment record (the sequencing law held)
 
+Per source-of-truth #17, in order — nothing concurrent at any step:
+
 | Step | Record |
 |---|---|
-| Push (this round) | CI run on the new head — recorded below at close time |
-| `ci.yml` dispatch (post-deploy e2e) | run recorded below at close time |
-| `docker.yml` dispatch | only after the above verified green — recorded below |
-| Production settle + probe | healthz · entry · SENTRY_RELEASE · GA4 1× — recorded below |
+| Push `b5999669` | CI run **39343502757 — success** (push run; e2e skipped on push by design) |
+| `docker.yml` dispatch | Run **39344535201 — success** — GHCR `main-amd64` + `sha-b5999669-amd64` pushed → the production auto-redeploy fired |
+| Production settle + probe | **healthz 200**; entry `index-BE9lNgCT.js` (new content hash — the SENTRY release id rides the bundle); **SENTRY_RELEASE id `b599966`** in the live bundle — production runs the round's code; GA4 `G-RKRV3ZC3MF` exactly **1×**; `sw.js` 200 |
+| `ci.yml` dispatch (post-deploy) | Run **39345178316 — success, all 9 jobs** — **e2e 144/144 passed (2.9 m)** against the new production, zero failed, zero flaky; secret-scan, lint/typecheck/drift, all three unit suites, prod-CVE scan, production build all green |
+
+The rollback path stays intact: `docker pull
+ghcr.io/ahmadmedo1012/subnation2:sha-9a9e806` (the R172 head) per the
+runbook.
 
 ## 7. Honesty notes
 
