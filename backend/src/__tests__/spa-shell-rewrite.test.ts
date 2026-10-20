@@ -362,11 +362,9 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     expect(desc).toBe("D".repeat(160));
   });
 
-  // R142 (K-1): the clamp must be the MetaTags WORD-BOUNDARY algorithm,
-  // not a raw character cut — the two LIVE money-page titles (61 chars,
-  // both ending «… | SubNation») shipped mid-word shards («…| SubNat…»)
-  // in the raw shell while the hydrated page clamped at the word
-  // boundary (raw ≠ hydrated — the split-title signal R122 closed).
+  // R142 (K-1): word-boundary clamp; R179: spend the budget on the body
+  // and KEEP the « | SubNation» suffix. Before R179 these 61-char titles
+  // shipped «… |…» (pipe with no brand) in both the raw and hydrated title.
   it("R142 K-1: spaced over-long titles clamp at the WORD BOUNDARY — no mid-word shards (the two live money-page titles)", async () => {
     const [lifetimeRow] = await db
       .insert(productsTable)
@@ -395,18 +393,20 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
 
     const lifetime = await get(`/product/${lifetimeRow.slug}`);
     const lifetimeTitle = titleOf(lifetime.body)!;
-    expect(lifetimeTitle).toBe("تخزين سحابي مدى الحياة — من 500 جيجا إلى بلا حدود |…");
-    // the raw-cut shard class ("…| SubNat…") must be gone
-    expect(lifetimeTitle).not.toMatch(/SubN/);
+    expect(lifetimeTitle).toBe("تخزين سحابي مدى الحياة — من 500 جيجا إلى بلا… | SubNation");
+    // the raw-cut shard class ("…| SubNat…") and the brandless "… |…" must be gone
+    expect(lifetimeTitle).not.toMatch(/…\s*\|…/);
+    expect(lifetimeTitle).toContain("| SubNation");
     expect(metaContent(lifetime.body, "property", "og:title")).toBe(lifetimeTitle);
 
     const hallmark = await get(`/product/${hallmarkRow.slug}`);
     const hallmarkTitle = titleOf(hallmark.body)!;
-    expect(hallmarkTitle).toBe("اشتراك Hallmark — أفلام عائلية ورومانسية في ليبيا |…");
-    expect(hallmarkTitle).not.toMatch(/SubN/);
+    expect(hallmarkTitle).toBe("اشتراك Hallmark — أفلام عائلية ورومانسية في… | SubNation");
+    expect(hallmarkTitle).not.toMatch(/…\s*\|…/);
+    expect(hallmarkTitle).toContain("| SubNation");
     for (const t of [lifetimeTitle, hallmarkTitle]) {
       expect(t.length).toBeLessThanOrEqual(60);
-      expect(t.endsWith("…")).toBe(true);
+      expect(t).toContain("… | SubNation");
     }
   });
 

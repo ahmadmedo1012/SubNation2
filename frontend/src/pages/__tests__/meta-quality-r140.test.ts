@@ -340,6 +340,20 @@ describe("R-140-h mechanism — MetaTags robots + in-place upsert contract", () 
     expect(desc!.length).toBeLessThanOrEqual(160);
     expect(desc!.endsWith("…")).toBe(true);
   });
+
+  it("R179: a branded title spends the budget on the body and keeps | SubNation", () => {
+    render(
+      createElement(MetaTags, {
+        title: "تخزين سحابي مدى الحياة — من 500 جيجا إلى بلا حدود | SubNation",
+        description: "وصف",
+        path: "/product/lifetime-cloud-storage",
+      }),
+    );
+
+    expect(document.title.length).toBeLessThanOrEqual(60);
+    expect(document.title).toContain("… | SubNation");
+    expect(document.title).not.toMatch(/…\s*\|…/);
+  });
 });
 
 // ── 2. PAGE SHAPES — the four lane pages' useSeo calls ─────────────────
