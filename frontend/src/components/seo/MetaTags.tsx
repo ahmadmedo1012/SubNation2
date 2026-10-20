@@ -91,8 +91,26 @@ function getAppOrigin(): string {
   return "https://subnation.ly";
 }
 
-function clamp(text: string, max: number): string {
+function clamp(text: string, max: number, preserveBrand = false): string {
   if (text.length <= max) return text;
+  // R179 (RH-55 follow-up): a title that overflows only because of its
+  // « | SubNation» suffix used to clamp to «… |…» — the pipe with no
+  // brand, which reads as a broken SERP title. Spend the budget on the
+  // body and keep the suffix intact. Descriptions never take this path.
+  if (preserveBrand) {
+    const sep = text.lastIndexOf(" | ");
+    if (sep > 0) {
+      const suffix = text.slice(sep);
+      const budget = max - 1 - suffix.length;
+      if (budget >= 12) {
+        const body = text.slice(0, sep);
+        const sliced = body.slice(0, budget).trimEnd();
+        const lastSpace = sliced.lastIndexOf(" ");
+        const cut = lastSpace > 0 ? sliced.slice(0, lastSpace) : sliced;
+        return cut.trimEnd() + "…" + suffix;
+      }
+    }
+  }
   // R122 (A7): cut at the last WORD BOUNDARY inside the budget — the
   // old raw slice chopped words mid-glyph and Arabic shards like
   // «…الليب…» leaked into titles/descriptions (SERP snippets and
@@ -174,7 +192,7 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   // the precise territory claim is the honest one; scrapers that flatten
   // territory granularity still read the "ar" language part.
   const ogLocale = lang === "ar" ? "ar_LY" : "en_US";
-  const title = clamp(input.title.trim(), 60);
+  const title = clamp(input.title.trim(), 60, true);
   const description = clamp(input.description.trim(), 160);
   // R-140-h (noindex mechanism verdict): the noindex capability IS this
   // free-form `robots` directive string — there is deliberately NO

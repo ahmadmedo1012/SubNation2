@@ -20,6 +20,7 @@ import { indexNowKey } from "./indexnow";
 import { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
 import { buildShellProductLd, injectJsonLdScript } from "./shell-product-ld";
 import { injectSeoNav } from "./shell-seo-nav";
+import { clampSeoTitle } from "./shell-title";
 // R166 (F4): the home's Organization + WebSite LD pair (frontend mirror).
 import { buildShellOrganizationLd, buildShellWebsiteLd } from "./shell-website-ld";
 // R174: og:image/Product-LD art URLs carry the art version (?v=) — the
@@ -201,26 +202,6 @@ function buildShareDescription(description: string | null, displayPrice: string)
     .slice(0, 150);
   const assembled = `${body} — السعر ${displayPrice} د.ل`;
   return assembled.length <= 180 ? assembled : `${assembled.slice(0, 179)}…`;
-}
-
-/**
- * R122 (A7-P2-5): clamp an operator seo_title for the shell, mirroring
- * MetaTags.clamp(text, 60) VERBATIM (frontend/src/components/seo/
- * MetaTags.tsx) so the raw-HTML title and the hydrated title agree on
- * the same 60-char budget. The DB column allows 200; only the DISPLAY
- * is clamped.
- */
-function clampSeoTitleForShell(title: string): string {
-  if (title.length <= 60) return title;
-  // R142 (K-1): cut at the last WORD BOUNDARY inside the budget — the
-  // verbatim MetaTags.clamp algorithm (R122-A7). The old raw character
-  // cut shipped mid-word shards («…| SubN…») on long titles, disagreeing
-  // with the hydrated SERP title; a single unbroken word longer than the
-  // budget still falls back to the character cut.
-  const sliced = title.slice(0, Math.max(0, 60 - 1)).trimEnd();
-  const lastSpace = sliced.lastIndexOf(" ");
-  const cut = lastSpace > 0 ? sliced.slice(0, lastSpace) : sliced;
-  return cut.trimEnd() + "…";
 }
 
 /**
@@ -703,7 +684,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     });
     return {
       status: 200,
-      title: seoTitle ? clampSeoTitleForShell(seoTitle) : `${row.name} — SubNation`,
+      title: seoTitle ? clampSeoTitle(seoTitle) : `${row.name} — SubNation`,
       description: seoDescription
         ? // Mirrors the hydrated page's plain .slice(0, 160) — no price
           // suffix, no ellipsis — so both surfaces tell the same story.
@@ -955,7 +936,7 @@ export function mountSpaShellRoutes(app: Express): void {
       // money-forward line).
       const seoTitle = product.seoTitle?.trim() || null;
       const seoDescription = product.seoDescription?.trim() || null;
-      const cardTitle = seoTitle ? clampSeoTitleForShell(seoTitle) : `${product.name} — SubNation`;
+      const cardTitle = seoTitle ? clampSeoTitle(seoTitle) : `${product.name} — SubNation`;
       // R120-B3 (A7-F9 + A7-F17): assemble the description inside display
       // limits (buildShareDescription) — the seo_description (when set)
       // is the body, keeping the «— السعر X د.ل» suffix.
