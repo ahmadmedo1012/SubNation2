@@ -66,7 +66,14 @@ Every tile was 450×450 (the R132 L4-F9 census), mixed RGB/RGBA, mixed backgroun
 
 ## 6. Ship record
 
-(filled at close: push → CI → docker dispatch → production verification, per the R171 sequencing law)
+| Step | Result |
+|---|---|
+| commit | `b39bd74b` (75 files, +318/−114; pre-commit lint-staged green) |
+| push | `cd1831e3..b39bd74b` → **CI run 39358891741 SUCCESS** (all 9 push jobs green; e2e + CVE scan skipped by design on push) |
+| docker dispatch (post-CI, the R171 law) | run **39359831924 SUCCESS** → GHCR `main-amd64` + `sha-b39bd74b-amd64` → production auto-redeploy |
+| production (read-only) | healthz **200** · entry `index-0oW6Or7U.js` carries **SENTRY_RELEASE `b39bd74`** (the new head live) · GA4 `G-RKRV3ZC3MF` exactly **1×** · `/products/netflix.webp?v=r174` → 200 `image/webp` 16,558 B **1024×1024** (PIL-verified, live) · `cpanel.webp?v=r174` 1024×1024 live |
+| post-deploy ci.yml dispatch | run **39360606000 SUCCESS** — all 9 jobs green incl. **e2e 144/144 (3.0 m, zero failed, zero flaky)** vs the new production |
+| credentials note | the `.gh-token` copy had gone stale (owner-side rotation); re-synced from the push-validated `.git-credentials` entry and API-verified (`login: ahmadmedo1012`). Neither file was ever deleted — the standing order holds |
 
 ## 7. Standing for the next round
 
