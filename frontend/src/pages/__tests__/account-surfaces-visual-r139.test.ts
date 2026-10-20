@@ -308,7 +308,9 @@ describe("R139-l — order-detail: the receipt terminal + de-hand-rolled CTAs", 
   });
 
   it("the amount is the colorless receipt terminal (weight+size, not color)", () => {
-    const amountIdx = ORDER_DETAIL.indexOf("formatCurrency(order.amount ?? 0)");
+    // R177: the `?? 0` coercion retired — an absent amount reads «— د.ل»
+    // (formatCurrency's honesty contract), never «0.00 د.ل».
+    const amountIdx = ORDER_DETAIL.indexOf("formatCurrency(order.amount)");
     const window = ORDER_DETAIL.slice(Math.max(0, amountIdx - 300), amountIdx);
     expect(window).toContain("font-bold text-xl tabular-nums text-foreground");
     expect(window).not.toContain("text-primary-text");
@@ -336,7 +338,7 @@ describe("R139-l — order-detail: the receipt terminal + de-hand-rolled CTAs", 
     // card extract; the pins read the page ∪ family surface.
     expect(ORDER_DETAIL).toContain('"border-status-info/22"');
     expect(ORDER_DETAIL).toContain('"bg-status-info/8 border-status-info/22"');
-    expect(ORDER_DETAIL).toContain("استُرد ${formatCurrency(order.amount ?? 0)}");
+    expect(ORDER_DETAIL).toContain("استُرد ${formatCurrency(order.amount)}");
     expect(ORDER_DETAIL).toContain("كما خُصمت نقاط الشراء المستردة");
   });
 });

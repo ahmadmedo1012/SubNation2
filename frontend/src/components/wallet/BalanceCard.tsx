@@ -86,7 +86,7 @@ export function BalanceCard({
             الرصيد المتاح
           </div>
           <div className="text-3xl sm:text-4xl font-bold tabular-nums mb-3 leading-none text-foreground num-pop break-words">
-            {formatCurrency(wallet.balance ?? 0)}
+            {formatCurrency(wallet.balance)}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
@@ -146,7 +146,7 @@ export function BalanceCard({
           stay quiet, only real balance MOVEMENTS speak. Polite, never
           assertive: a balance update is state, not an interrupt. */}
       <div aria-live="polite" role="status" className="sr-only">
-        {`الرصيد المتاح الآن ${formatCurrency(wallet.balance ?? 0)}`}
+        {`الرصيد المتاح الآن ${formatCurrency(wallet.balance)}`}
       </div>
     </div>
   ) : null;

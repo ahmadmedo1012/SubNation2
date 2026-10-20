@@ -76,7 +76,11 @@ export function ShelfRail({
           : shelfProducts.map((p, i) => (
               <Link
                 key={p.id}
-                href={`/product/${p.slug}`}
+                /* R177: the slug ?? id fallback every sibling surface
+                   carries (ProductCard:335, CatalogFiltersBar:140,
+                   RecommendationsSection:87, seo-builders:107) — a legacy
+                   slug-less row must never link to /product/null. */
+                href={`/product/${p.slug ?? p.id}`}
                 className="group shrink-0 block rounded-xl focus-visible:outline-offset-4"
                 aria-label={p.name ?? "منتج"}
               >

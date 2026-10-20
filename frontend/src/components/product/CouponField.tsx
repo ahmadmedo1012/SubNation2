@@ -77,6 +77,7 @@ export function CouponField({
           <button
             onClick={onCouponClear}
             aria-label="إزالة الكوبون"
+            title="إزالة الكوبون"
             className="min-h-11 px-3 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 transition-all press-spring"
           >
             <X className="w-3.5 h-3.5" />
@@ -87,7 +88,18 @@ export function CouponField({
             disabled={!couponInput.trim() || couponValidating}
             className="min-h-11 px-3 rounded-lg bg-muted/50 border border-border/60 text-xs font-bold hover:bg-muted hover:border-border transition-all press-spring disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {couponValidating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "تحقق"}
+            {/* R177 (R160 checkout-twin parity): the spinner swap emptied the
+                accessible name mid-request — the sr-only twin keeps it (the
+                checkout CouponCard fixed this exact class in R160; the PDP
+                twin never received it). */}
+            {couponValidating ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span className="sr-only">جارٍ التحقق…</span>
+              </>
+            ) : (
+              "تحقق"
+            )}
           </button>
         )}
       </div>

@@ -1,4 +1,6 @@
 import type { FaqItem } from "@/lib/seo-builders";
+import { formatCurrency } from "@/lib/utils";
+import { WELCOME_BONUS_LYD } from "@/lib/referral-policy";
 
 // R137 (FE decomposition): extracted verbatim from pages/support.tsx —
 // the FAQ content data. One source feeds BOTH surfaces Google's parity
@@ -73,8 +75,10 @@ export const SUPPORT_FAQ: FaqItem[] = [
   },
   {
     question: "هل أحصل على مكافأة عند دعوة أصدقائي؟",
-    answer:
-      "نعم. عندما يعتمد فريقنا أول شحن لصديقٍ انضم عبر رمز إحالتك، تحصل أنت على نقاط الولاء قابلة للتحويل لرصيد، ويحصل صديقك على مكافأة ترحيب 5 د.ل تُضاف لمحفظته في الوقت نفسه.",
+    answer: `نعم. عندما يعتمد فريقنا أول شحن لصديقٍ انضم عبر رمز إحالتك، تحصل أنت على نقاط الولاء قابلة للتحويل لرصيد، ويحصل صديقك على مكافأة ترحيب ${formatCurrency(WELCOME_BONUS_LYD)} تُضاف لمحفظته في الوقت نفسه.`,
+    /* R177: the welcome-bonus figure rides the shared policy module
+       (mirrors backend loyalty-policy.ts) — a policy change now
+       re-renders this copy from one address. */
   },
   {
     question: "كيف أتواصل مع الدعم؟",

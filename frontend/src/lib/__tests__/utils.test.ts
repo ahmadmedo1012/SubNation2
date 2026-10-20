@@ -57,6 +57,15 @@ describe("formatCurrency", () => {
     expect(formatCurrency(Number.NaN)).toBe("— د.ل");
   });
 
+  it("reads negative zero as plain zero (R177: Intl preserves -0's sign)", () => {
+    // A future delta/rounding call site can produce -0 (e.g.
+    // 0.1 + 0.2 - 0.3 === 5.55e-17 is fine, but ceiling-style clamps can
+    // yield the exact -0); Intl.NumberFormat would render «-0.00 د.ل».
+    // `===` is sign-blind, so the guard branch re-reads it as plain zero.
+    expect(formatCurrency(-0)).toBe("0.00 د.ل");
+    expect(formatCurrency(-0 as number)).not.toBe("-0.00 د.ل");
+  });
+
   it("handles negative numbers (e.g. wallet adjustment reversals)", () => {
     expect(formatCurrency(-30.5)).toBe("-30.50 د.ل");
   });

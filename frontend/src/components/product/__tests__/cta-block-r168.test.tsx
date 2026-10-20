@@ -103,3 +103,51 @@ describe("R168-L3 fix 3 — the topup-approval SLA on the insufficient branch", 
     expect(screen.queryByText(TOPUP_SLA)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * R177 — the failed-/me-probe contract (the false-money-statement fix).
+ *
+ * The page now passes canAfford=true when useGetMe errored (retry:false —
+ * one transient 5xx or a mid-session 401): an unknown balance never
+ * claims insufficiency; the server re-checks at order time and surfaces
+ * INSUFFICIENT_FUNDS honestly. CtaBlock's job under userError is to (a)
+ * render the afford branch — never the «رصيدك الحالي 0.00 د.ل» /
+ * «تحتاج إضافة X د.ل» fabrication — and (b) keep the compact sub-line
+ * from claiming «رصيد كافٍ» it cannot know: the guest branch's neutral
+ * payment-model line stands in.
+ */
+describe("R177 — a failed /me probe never fabricates money", () => {
+  it("desktop: the afford branch renders — zero fabricated-balance copy", () => {
+    renderCta({ token: "t", user: undefined, userError: true, canAfford: true, shortfall: 0 });
+
+    // The fabrication class (the exact false statement a solvent buyer
+    // used to see when /me failed once):
+    expect(screen.queryByText("رصيدك الحالي")).not.toBeInTheDocument();
+    expect(screen.queryByText("تحتاج إضافة")).not.toBeInTheDocument();
+    expect(screen.queryByText(/0\.00 د\.ل/)).not.toBeInTheDocument();
+    // The buyer can still attempt the purchase — the server is the truth.
+    expect(screen.getByRole("button", { name: /اشترِ الآن/ })).toBeInTheDocument();
+  });
+
+  it("compact: the neutral payment-model line replaces the «رصيد كافٍ» claim", () => {
+    renderCta({
+      token: "t",
+      user: undefined,
+      userError: true,
+      canAfford: true,
+      shortfall: 0,
+      compact: true,
+    });
+
+    expect(screen.getByText("الدفع من رصيد المحفظة")).toBeInTheDocument();
+    expect(screen.queryByText("رصيد كافٍ")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "اشترِ" })).toBeInTheDocument();
+  });
+
+  it("control — without userError the compact sub-line still says «رصيد كافٍ»", () => {
+    renderCta({ token: "t", user: USER, canAfford: true, shortfall: 0, compact: true });
+
+    expect(screen.getByText("رصيد كافٍ")).toBeInTheDocument();
+    expect(screen.queryByText("الدفع من رصيد المحفظة")).not.toBeInTheDocument();
+  });
+});

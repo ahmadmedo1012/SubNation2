@@ -185,7 +185,11 @@ export default function ProductPage() {
     }
   }, [isLegacyNumeric, byIdQuery.data, queryClient]);
 
-  const { data: user, isLoading: userLoading } = useGetMe({
+  const {
+    data: user,
+    isLoading: userLoading,
+    isError: userError,
+  } = useGetMe({
     query: { enabled: !!token, retry: false, queryKey: getGetMeQueryKey() },
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
@@ -729,6 +733,7 @@ export default function ProductPage() {
           token={token}
           user={user}
           userLoading={userLoading}
+          userError={userError}
           couponInput={couponInput}
           couponResult={couponResult}
           couponError={couponError}
@@ -828,12 +833,19 @@ export default function ProductPage() {
           product={product}
           user={user}
           userLoading={userLoading}
+          userError={userError}
           displayPrice={couponResult ? couponResult.final_amount : displayPrice}
           canAfford={
+            /* R177: a FAILED /me probe must not fabricate «رصيدك الحالي
+               0.00 د.ل» — the checkout contract (checkout.tsx excludes
+               balanceError from insufficient) rides here too: unknown
+               balance never claims insufficiency; the server re-checks at
+               order time and surfaces INSUFFICIENT_FUNDS honestly. */
             !!(
-              user &&
-              (user.wallet_balance ?? 0) >=
-                (couponResult ? couponResult.final_amount : displayPrice)
+              userError ||
+              (user &&
+                (user.wallet_balance ?? 0) >=
+                  (couponResult ? couponResult.final_amount : displayPrice))
             )
           }
           shortfall={

@@ -16,7 +16,9 @@ import { formatCurrency } from "@/lib/utils";
 // typed straight off the generated User contract.
 
 export function formatBalance(value: number | null | undefined): string {
-  return formatCurrency(value ?? 0);
+  // R177: no `?? 0` — an absent balance reads «— د.ل» (formatCurrency's
+  // R157 honesty contract), never a fabricated «0.00 د.ل».
+  return formatCurrency(value);
 }
 
 /**

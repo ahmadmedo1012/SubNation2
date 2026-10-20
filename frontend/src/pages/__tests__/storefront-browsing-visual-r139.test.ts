@@ -108,9 +108,11 @@ describe("R139 — category landing: the page-title anchor + hero-card family", 
   });
 
   it("the chip geometry keeps the storefront 44px tap floor (min-h-11 on every chip surface)", () => {
-    // Three live surfaces: the sibling-chip Link, the neutral escape
-    // button, and the error branch's FetchErrorCard retry override.
-    expect(category.match(/min-h-11/g) ?? []).toHaveLength(3);
+    // Four live surfaces: the sibling-chip Link, the neutral escape
+    // button, the error branch's FetchErrorCard retry override, and
+    // R177's unknown-category recovery Link (the last bare text escape
+    // hatch — now the same 44px floor).
+    expect(category.match(/min-h-11/g) ?? []).toHaveLength(4);
   });
 });
 

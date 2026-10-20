@@ -391,7 +391,7 @@ describe("R140-k (c) — polite for state, assertive ONLY for actionable errors"
   });
 
   it("BalanceCard announces the total through formatCurrency (the visible number's own formatter)", () => {
-    expect(balanceSrc).toContain("الرصيد المتاح الآن ${formatCurrency(wallet.balance ?? 0)}");
+    expect(balanceSrc).toContain("الرصيد المتاح الآن ${formatCurrency(wallet.balance)}");
   });
 
   it("StatsRow announces the points total through formatCount (the wallet family's plural table)", () => {

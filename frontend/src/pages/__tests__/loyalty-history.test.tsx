@@ -328,8 +328,8 @@ describe("LoyaltyPage — conversion gates + tiers driven by API values (R115, A
     await screen.findByText("كيف تكسب النقاط؟");
 
     // The tier rows quote the API thresholds — not the old literals.
-    expect(screen.getByText("المستوى الفضي (300 د.ل إنفاق)")).toBeInTheDocument();
-    expect(screen.getByText("المستوى الذهبي (1500 د.ل إنفاق)")).toBeInTheDocument();
+    expect(screen.getByText("المستوى الفضي (300.00 د.ل إنفاق)")).toBeInTheDocument();
+    expect(screen.getByText("المستوى الذهبي (1,500.00 د.ل إنفاق)")).toBeInTheDocument();
 
     // Progress: 100 - (remaining 120 / silver 300)*100 = 60%.
     const bar = document.querySelector("div.bg-gradient-to-l") as HTMLElement | null;
@@ -344,8 +344,8 @@ describe("LoyaltyPage — conversion gates + tiers driven by API values (R115, A
     renderPage();
     await screen.findByText("كيف تكسب النقاط؟");
 
-    expect(screen.getByText("المستوى الفضي (500 د.ل إنفاق)")).toBeInTheDocument();
-    expect(screen.getByText("المستوى الذهبي (2000 د.ل إنفاق)")).toBeInTheDocument();
+    expect(screen.getByText("المستوى الفضي (500.00 د.ل إنفاق)")).toBeInTheDocument();
+    expect(screen.getByText("المستوى الذهبي (2,000.00 د.ل إنفاق)")).toBeInTheDocument();
   });
 
   it("states the earn rate explicitly and makes NO unbacked perk promises (A8 #6 + #7)", async () => {

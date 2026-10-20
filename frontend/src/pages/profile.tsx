@@ -422,7 +422,7 @@ export default function ProfilePage() {
                         token (3.93:1 dark — text-sm is not large text);
                         text-primary-text = the checkout totals idiom. */}
                     <div className="font-bold text-sm text-primary-text tabular-nums">
-                      {formatCurrency(user.wallet_balance ?? 0)}
+                      {formatCurrency(user.wallet_balance)}
                     </div>
                   </div>
                   <div className="bg-background/35 border border-border/30 rounded-xl px-3 py-2">

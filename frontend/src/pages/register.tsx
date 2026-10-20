@@ -7,6 +7,7 @@ import { usePublicAuthProviders } from "@/hooks/usePublicAuthProviders";
 import { useOnScreen } from "@/hooks/useOnScreen";
 import { useSeo } from "@/hooks/useSeo";
 import { formatCurrency, sanitizeInternalPath } from "@/lib/utils";
+import { POINTS_PER_REFERRAL, WELCOME_BONUS_LYD } from "@/lib/referral-policy";
 import { CheckCircle, Gift } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
@@ -199,8 +200,12 @@ export default function RegisterPage() {
                   عند أول شحن معتمد عبر رمز الإحالة تحصل أنت وصديقك على مكافآت
                 </p>
                 <p className="text-2xs text-status-success mt-0.5 leading-relaxed">
-                  تحصل أنت على <span className="font-bold">{formatCurrency(5)}</span> رصيد، ويحصل
-                  صديقك على <span className="font-bold">50 نقطة</span> عند اعتماد أول شحن لك
+                  {/* R177: the policy constants ride the shared module (one
+                      address per side; mirrors backend loyalty-policy.ts). */}
+                  تحصل أنت على{" "}
+                  <span className="font-bold">{formatCurrency(WELCOME_BONUS_LYD)}</span> رصيد، ويحصل
+                  صديقك على <span className="font-bold">{POINTS_PER_REFERRAL} نقطة</span> عند اعتماد
+                  أول شحن لك
                 </p>
               </div>
             </div>

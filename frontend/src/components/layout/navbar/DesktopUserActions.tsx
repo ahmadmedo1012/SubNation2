@@ -27,14 +27,13 @@ export function DesktopUserActions({
     <div className="hidden md:flex items-center gap-1.5">
       <Link
         href="/wallet"
-        aria-label={
-          user ? `المحفظة، الرصيد ${formatCurrency(user.wallet_balance ?? 0)}` : "المحفظة"
-        }
+        aria-label={user ? `المحفظة، الرصيد ${formatCurrency(user.wallet_balance)}` : "المحفظة"}
       >
         <div className="flex items-center gap-1.5 bg-secondary/60 hover:bg-secondary/90 border border-border/40 hover:border-primary/30 px-3 py-1.5 rounded-xl text-sm font-bold transition-all duration-150 press-spring cursor-pointer group min-w-[80px] h-9">
           <Wallet className="w-3.5 h-3.5 text-primary-text transition-transform group-hover:scale-110 duration-200" />
           {user ? (
-            <span className="tabular-nums">{formatCurrency(user.wallet_balance ?? 0)}</span>
+            /* R177: `?? 0` dropped — honest «— د.ل» over fabricated zero. */
+            <span className="tabular-nums">{formatCurrency(user.wallet_balance)}</span>
           ) : (
             <div className="w-10 h-4 rounded skeleton-shimmer" />
           )}

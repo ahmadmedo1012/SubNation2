@@ -20,6 +20,7 @@ export function CtaBlock({
   product,
   user,
   userLoading,
+  userError,
   displayPrice,
   canAfford,
   shortfall,
@@ -46,6 +47,12 @@ export function CtaBlock({
    * رصيدك الحالي 0.00 د.ل» — a false money statement during the first
    * 200–800ms on 3G. */
   userLoading?: boolean;
+  /** R177: true when /me FAILED (retry:false — one transient 5xx or a
+   * mid-session 401). The parent then passes canAfford=true (checkout's
+   * contract: unknown balance never claims insufficiency; the server
+   * re-checks at order time) — this flag's only job is keeping the
+   * compact sub-line from claiming «رصيد كافٍ» it cannot know. */
+  userError?: boolean;
   displayPrice: number;
   canAfford: boolean;
   shortfall: number;
@@ -301,7 +308,10 @@ export function CtaBlock({
               <div className="flex items-center justify-between gap-2 px-4 py-3 bg-muted/25 border border-border/50 rounded-xl col-span-2">
                 <span className="text-muted-foreground">رصيدك الحالي</span>
                 <span className="font-bold tabular-nums">
-                  {formatCurrency(user?.wallet_balance ?? 0)}
+                  {/* R177: no `?? 0` — formatCurrency's «— د.ل» is the honest
+                      read if the balance is ever absent on this branch
+                      (unreachable with userError, canAfford's new guard). */}
+                  {formatCurrency(user?.wallet_balance)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2 px-4 py-3 bg-primary/8 border border-primary/20 rounded-xl col-span-2">
@@ -344,12 +354,21 @@ export function CtaBlock({
           {/* R128-A6 (P4-4): the ✓ TEXT glyph is gone — lucide Check in
               its place (emoji/text-glyph-as-icon is off the icon
               contract). inline-flex keeps the icon on the reading line
-              (RTL: text first, glyph to its left). */}
+              (RTL: text first, glyph to its left). R177: when the /me
+              probe failed (canAfford rode the error guard above), no
+              sufficiency claim — the guest branch's neutral payment-model
+              line stands in (same register, zero fabrication). */}
           <div className="text-xs text-status-success">
-            <span className="inline-flex items-center gap-1">
-              رصيد كافٍ
-              <Check className="w-3 h-3" aria-hidden="true" />
-            </span>
+            {userError ? (
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                الدفع من رصيد المحفظة
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1">
+                رصيد كافٍ
+                <Check className="w-3 h-3" aria-hidden="true" />
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -401,10 +420,11 @@ export function CtaBlock({
           tap and pause to mentally calculate "wait, will I still have
           something for next time?". Desktop-only; the mobile sticky bar
           already shows the balance via the «رصيد كافٍ» line in compact
-          mode. */}
+          mode. R177: `?? 0` dropped — an absent balance reads «— د.ل»,
+          never a fabricated «0.00 د.ل» (formatCurrency's R157 contract). */}
       {!compact && user && (
         <p className="text-center text-xs text-muted-foreground -mt-1">
-          سيُخصم من رصيدك ({formatCurrency(user.wallet_balance ?? 0)} متاح)
+          سيُخصم من رصيدك ({formatCurrency(user.wallet_balance)} متاح)
         </p>
       )}
     </div>

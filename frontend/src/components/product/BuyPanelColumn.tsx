@@ -28,6 +28,7 @@ export function BuyPanelColumn({
   token,
   user,
   userLoading,
+  userError,
   couponInput,
   couponResult,
   couponError,
@@ -51,6 +52,9 @@ export function BuyPanelColumn({
   token: string | null;
   user: User | undefined;
   userLoading: boolean;
+  /** R177: a failed /me probe never fabricates «رصيدك الحالي 0.00 د.ل» —
+   * mirrors the sticky-bar twin's guard (CtaBlock's userError docblock). */
+  userError?: boolean;
   couponInput: string;
   couponResult: CouponResult | null;
   couponError: string;
@@ -125,9 +129,16 @@ export function BuyPanelColumn({
             gates the FAQPage JSON-LD against thin structured data). */}
         {productFaqs && <FaqAccordion faqs={productFaqs} />}
 
-        {/* Mobile coupon entry stays in the scrollable content; the sticky bar remains thumb-sized. */}
+        {/* Mobile coupon entry stays in the scrollable content; the sticky
+            bar remains thumb-sized. R177: sm:hidden → lg:hidden — the
+            640–1024px band (landscape phones/small tablets) had NO coupon
+            surface at all: this block died at sm while the panel CtaBlock
+            with its own CouponField only mounts ≥lg. Same class of gap the
+            R157 buy-affordance fix closed for the CTA — the coupon
+            affordance now also exists at every width: this block <lg,
+            the panel CtaBlock ≥lg (no duplication). */}
         {token && (
-          <div className="order-11 max-lg:mx-5 sm:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
+          <div className="order-11 max-lg:mx-5 lg:hidden rounded-xl border border-border/45 bg-muted/10 p-3">
             <CouponField
               token={token}
               couponInput={couponInput}
@@ -152,12 +163,17 @@ export function BuyPanelColumn({
             product={product}
             user={user}
             userLoading={userLoading}
+            userError={userError}
             displayPrice={couponResult ? couponResult.final_amount : displayPrice}
             canAfford={
+              /* R177: failed /me probe — unknown balance never claims
+                 insufficiency (the sticky-bar twin + CtaBlock docblocks
+                 carry the full contract). */
               !!(
-                user &&
-                (user.wallet_balance ?? 0) >=
-                  (couponResult ? couponResult.final_amount : displayPrice)
+                userError ||
+                (user &&
+                  (user.wallet_balance ?? 0) >=
+                    (couponResult ? couponResult.final_amount : displayPrice))
               )
             }
             shortfall={

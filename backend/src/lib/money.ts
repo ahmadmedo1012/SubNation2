@@ -55,8 +55,13 @@ const LYD_DISPLAY_FORMATTER = new Intl.NumberFormat("en-US", {
 });
 
 /** Grouped plain-number form (no «د.ل» suffix) — for callers that append
- *  their own suffix/context (the share card's «— السعر X د.ل» line). */
+ *  their own suffix/context (the share card's «— السعر X د.ل» line).
+ *  R177: the frontend twin's honesty guard (utils.ts formatCurrency,
+ *  R157) rides here too — NaN/Infinity never render a confident number
+ *  on a customer-visible channel (Telegram cards, bell titles, the
+ *  WhatsApp share card) when a future caller feeds an unguarded delta. */
 export function formatLydNumber(amount: number): string {
+  if (!Number.isFinite(amount)) return "—";
   return LYD_DISPLAY_FORMATTER.format(amount);
 }
 

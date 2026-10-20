@@ -76,7 +76,7 @@ export function AuthedHero({ user }: { user: User }) {
                   المحفظة
                 </div>
                 <div className="font-bold text-sm tabular-nums text-foreground">
-                  {formatCurrency(user.wallet_balance ?? 0)}
+                  {formatCurrency(user.wallet_balance)}
                 </div>
               </div>
             </div>

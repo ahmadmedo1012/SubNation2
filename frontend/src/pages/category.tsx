@@ -261,7 +261,10 @@ export default function CategoryPage() {
         </p>
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-primary-text font-bold hover:text-primary-text transition-colors press-spring"
+          /* R177: the 44px recovery floor every sibling escape surface rides
+             (not-found:121, ProductsGrid:200, ProductOutageCard:33 — each
+             cites the tap-floor rule; this was the last bare text link). */
+          className="inline-flex items-center gap-1.5 min-h-11 px-1 text-primary-text font-bold hover:text-primary-text transition-colors press-spring"
         >
           {/* RTL: "back" points right (unified icon-direction decision) —
               the chevron rotation is correct here; only the hover tint

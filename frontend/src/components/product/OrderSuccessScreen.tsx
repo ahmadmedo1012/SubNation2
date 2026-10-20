@@ -85,7 +85,9 @@ export function OrderSuccessScreen({
             <div className="flex items-center justify-between gap-3 px-4 py-3">
               <span className="text-xs font-bold text-muted-foreground">المبلغ المخصوم</span>
               <span className="font-bold text-sm tabular-nums text-foreground">
-                {formatCurrency(purchaseSummary?.charged ?? order.amount ?? 0)}
+                {/* R177: no trailing `?? 0` — absent amount reads «— د.ل"
+                    (the R157 honesty contract), never «0.00 د.ل». */}
+                {formatCurrency(purchaseSummary?.charged ?? order.amount)}
               </span>
             </div>
             {purchaseSummary?.balanceAfter != null && (

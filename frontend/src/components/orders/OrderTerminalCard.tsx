@@ -52,7 +52,9 @@ export function OrderTerminalCard({ order }: { order: Order }) {
       </h2>
       <p className="text-xs text-muted-foreground leading-relaxed tabular-nums">
         {order.status === "refunded"
-          ? `استُرد ${formatCurrency(order.amount ?? 0)} إلى محفظتك تلقائياً`
+          ? /* R177: `?? 0` dropped — the refund amount stays honest («— د.ل")
+               if ever absent, never a fabricated «0.00 د.ل». */
+            `استُرد ${formatCurrency(order.amount)} إلى محفظتك تلقائياً`
           : "يرجى التواصل مع الدعم الفني إن احتجت مساعدة"}
       </p>
       {order.status === "refunded" && (

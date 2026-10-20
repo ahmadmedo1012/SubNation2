@@ -24,6 +24,11 @@ export function formatCurrency(amount: number | null | undefined): string {
   // surface — an unavailable amount reads as the honest em-dash (callers
   // that already guard with Number.isFinite keep their behavior).
   if (amount === null || amount === undefined || isNaN(amount)) return "— د.ل";
+  // R177: Intl preserves -0's sign ("-0.00 د.ل") — `===` is sign-blind,
+  // so this branch reads as plain zero without the noise. Unreachable
+  // from today's callers (2dp operands everywhere); guards future
+  // delta/rounding call sites.
+  if (amount === 0) return "0.00 د.ل";
   return `${CURRENCY_NUMBER_FORMATTER.format(amount)} د.ل`;
 }
 
@@ -333,10 +338,9 @@ export function formatDateShort(dateStr: string): string {
  * `.toISOString()` re-encodes the intended instant correctly.
  *
  * This is the shared helper extracted from the pattern promotions.tsx
- * already does correctly (`new Date(form.ends_at).toISOString()`).
- * coupons.tsx (93-C7's file) should swap its raw `expires_at` send for
- * `localDateTimeToUtcIso(form.expires_at)` — noted in the round-93
- * worklog for coordination.
+ * already does correctly (`new Date(form.ends_at).toISOString()`);
+ * coupons.tsx adopted it too (pinned by
+ * admin-coupons-decomposition-r137.test.ts:78).
  *
  * Returns `null` for empty input (caller decides whether "no expiry"
  * is legal) and `null` for unparseable values (caller validates).

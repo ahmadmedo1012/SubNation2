@@ -1,4 +1,5 @@
 import { Crown, ShoppingCart, Star, Users } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 // R137 (FE decomposition): extracted verbatim from pages/loyalty.tsx —
 // the "how to earn" card (the earn-rate rows + the honest tiers
@@ -16,6 +17,9 @@ export function HowToEarnCard({
   pointsPerReferral: number;
   tierThresholds: Record<string, number>;
 }) {
+  /* R177: the thresholds ride formatCurrency — the same datum rendered
+     «2000 د.ل» here while StatsRow beside it said «2,000.00 د.ل» (one
+     datum, two visual languages on one screen). */
   const HOW_TO_EARN = [
     {
       icon: <Users className="w-4 h-4 text-status-info" />,
@@ -38,7 +42,7 @@ export function HowToEarnCard({
     {
       icon: <Crown className="w-4 h-4 text-tier-silver" /> /* R128 (A1-F3): tier tokens */,
       bg: "bg-tier-silver/10",
-      label: `المستوى الفضي (${tierThresholds.silver} د.ل إنفاق)`,
+      label: `المستوى الفضي (${formatCurrency(tierThresholds.silver)} إنفاق)`,
       /* R115 (A8 #7): «مزايا إضافية» was an unbacked promise — zero perk
        * implementations exist. Tiers are progress markers for now. */
       points: "مزايا قريباً",
@@ -46,7 +50,7 @@ export function HowToEarnCard({
     {
       icon: <Star className="w-4 h-4 text-status-warning" />,
       bg: "bg-status-warning/10",
-      label: `المستوى الذهبي (${tierThresholds.gold} د.ل إنفاق)`,
+      label: `المستوى الذهبي (${formatCurrency(tierThresholds.gold)} إنفاق)`,
       points: "مزايا قريباً",
     },
   ];

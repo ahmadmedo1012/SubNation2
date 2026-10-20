@@ -117,7 +117,7 @@ describe("R167 (FE) — order-detail.tsx decomposition (F12): page stays the dat
     // The failed/refunded terminal card — the §4 refund vocabulary.
     expect(terminal).toContain("تم الاسترداد");
     expect(terminal).toContain("فشل الطلب");
-    expect(terminal).toContain("استُرد ${formatCurrency(order.amount ?? 0)}");
+    expect(terminal).toContain("استُرد ${formatCurrency(order.amount)}");
     expect(terminal).toContain("كما خُصمت نقاط الشراء المستردة");
     expect(terminal).toContain("تواصل مع الدعم");
   });

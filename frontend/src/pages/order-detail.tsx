@@ -376,7 +376,7 @@ export default function OrderDetailPage() {
                     carry the emphasis, never color; the old comment's
                     "checkout totals idiom" predates that round). */}
                 <div className="font-bold text-xl tabular-nums text-foreground">
-                  {formatCurrency(order.amount ?? 0)}
+                  {formatCurrency(order.amount)}
                 </div>
               </div>
             </div>

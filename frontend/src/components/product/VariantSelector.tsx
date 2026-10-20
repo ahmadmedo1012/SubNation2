@@ -218,8 +218,11 @@ export function VariantSelector({
                     cents-rounded via the repo idiom. The pill keeps its
                     single-button a11y contract: the aria-label above
                     names label + price; this line is visible-only
-                    comparison context. */}
-                {perMonth != null && (
+                    comparison context. R177: the render guard drops
+                    rounds-to-zero (perMonth > 0) — eff > 0 alone can
+                    still floor to «≈ 0.00 د.ل شهريًا» for sub-cent
+                    per-month values. */}
+                {perMonth != null && perMonth > 0 && (
                   <span className="text-3xs font-normal text-muted-foreground tabular-nums leading-none">
                     ≈ {formatCurrency(perMonth)} شهريًا
                   </span>

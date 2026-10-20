@@ -115,6 +115,17 @@ describe("formatLyd / formatLydNumber — the en-US grouped display canon (R128 
     expect(formatLyd(5)).toBe("5.00 د.ل");
   });
 
+  it("non-finite amounts read as the honest em-dash (R177 — the frontend twin's R157 guard)", () => {
+    // The customer-visible channels (Telegram cards, bell titles, the
+    // WhatsApp share card) must never render «NaN د.ل» — the frontend's
+    // formatCurrency reads the same input as «— د.ل»; the backend twin
+    // now matches. Unreachable from today's callers (DB numerics), it
+    // guards future unguarded-delta call sites.
+    expect(formatLydNumber(Number.NaN)).toBe("—");
+    expect(formatLydNumber(Number.POSITIVE_INFINITY)).toBe("—");
+    expect(formatLyd(Number.NaN)).toBe("— د.ل");
+  });
+
   it("negative amounts keep their sign ahead of the grouped digits (web parity)", () => {
     // formatCurrency on the web renders -1380 the same way — the sign is
     // never grouped apart from the leading digit group.

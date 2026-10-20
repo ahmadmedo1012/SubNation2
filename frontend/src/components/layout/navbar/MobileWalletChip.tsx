@@ -25,7 +25,9 @@ export function MobileWalletChip({ user }: { user: SessionUser | undefined }) {
                span is a flex item (blockified) so max-w +
                truncate apply. */
             <span className="tabular-nums max-w-[96px] truncate">
-              {formatCurrency(user.wallet_balance ?? 0)}
+              {/* R177: `?? 0` dropped — formatCurrency's «— د.ل» stays
+                  honest if the contract ever loosens. */}
+              {formatCurrency(user.wallet_balance)}
             </span>
           ) : (
             <div className="w-8 h-3 rounded skeleton-shimmer" />

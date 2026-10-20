@@ -7,6 +7,7 @@ import { usePublicAuthProviders } from "@/hooks/usePublicAuthProviders";
 import { useOnScreen } from "@/hooks/useOnScreen";
 import { useSeo } from "@/hooks/useSeo";
 import { sanitizeInternalPath } from "@/lib/utils";
+import { POINTS_PER_REFERRAL } from "@/lib/referral-policy";
 import { Gift, Package, ShieldCheck, ShoppingBag, Users, Wallet } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
@@ -285,7 +286,7 @@ export default function LoginPage() {
                   is APPROVED (topup.service.ts). Pre-auth page: the 50 is
                   the policy constant in copy (POINTS_PER_REFERRAL), same
                   as register.tsx's chip. */}
-              <ValueChip icon={Gift} label="+50 نقطة عند أول شحن لصديقك" />
+              <ValueChip icon={Gift} label={`+${POINTS_PER_REFERRAL} نقطة عند أول شحن لصديقك`} />
             </div>
           )}
 
