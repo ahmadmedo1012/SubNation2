@@ -20,7 +20,9 @@
  * growth-banned at 1,039 lines (backend-size-gate-r143), so the behavior
  * lives here rather than growing the monolith.
  */
+import { buildCategoryJsonLd } from "./shell-category-ld";
 import { SHELL_CATEGORY_META, SHELL_HOME_META } from "./shell-meta";
+import { injectJsonLdScript } from "./shell-product-ld";
 
 interface SeoNavMeta {
   status: number;
@@ -96,6 +98,15 @@ export function injectSeoNav(html: string, meta: SeoNavMeta): string {
 
   const { origin, path } = resolveOrigin(meta.canonical);
   const categorySlug = /^\/category\/([^/]+)$/.exec(path)?.[1] ?? null;
+
+  // R177 (RH-55): the raw category shell now carries BreadcrumbList +
+  // CollectionPage. The guard keeps a second injectSeoNav call (or a
+  // future shell arm) from emitting the pair twice.
+  if (categorySlug && !html.includes('"@type":"CollectionPage"')) {
+    for (const block of buildCategoryJsonLd(origin, categorySlug) ?? []) {
+      html = injectJsonLdScript(html, block);
+    }
+  }
 
   let h1: string | null;
   if (path === "/") {
