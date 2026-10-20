@@ -257,6 +257,11 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     expect(canonicalHref(r.body)).toBe("https://subnation.ly/category/vpn");
     // Public money route stays indexable.
     expect(metaContent(r.body, "name", "robots")).toBe("index,follow");
+    // R177 (RH-55): the raw category HTML carries the crawler-visible
+    // BreadcrumbList + CollectionPage pair (previously zero JSON-LD).
+    expect(r.body).toContain('"@type":"BreadcrumbList"');
+    expect(r.body).toContain('"@type":"CollectionPage"');
+    expect(r.body).toContain('"@id":"https://subnation.ly/category/vpn#breadcrumb"');
   });
 
   it("/flash-sales, /support and /terms get their static per-route meta", async () => {
@@ -701,18 +706,18 @@ describe("SPA shell rewrite — PDP JSON-LD in the initial HTML (R163)", () => {
     expect(action["query-input"]).toBe("required name=search_term_string");
   });
 
-  it("NON-product, NON-home routes ship NO ld+json (category, statics, noindex families, unknowns)", async () => {
-    for (const pathname of [
-      "/category/vpn",
-      "/flash-sales",
-      "/support",
-      "/terms",
-      "/login",
-      "/xyz-not-a-route",
-    ]) {
+  it("NON-product, NON-home, NON-category routes ship NO ld+json (statics, noindex families, unknowns)", async () => {
+    for (const pathname of ["/flash-sales", "/support", "/terms", "/login", "/xyz-not-a-route"]) {
       const r = await get(pathname);
       expect(ldBlocks(r.body)).toHaveLength(0);
     }
+  });
+
+  it("category routes ship exactly the R177 pair (BreadcrumbList + CollectionPage)", async () => {
+    const r = await get("/category/vpn");
+    const blocks = ldBlocks(r.body) as Array<Record<string, unknown>>;
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map((b) => b["@type"])).toEqual(["BreadcrumbList", "CollectionPage"]);
   });
 
   it("a dead product's 404 shell ships NO ld+json", async () => {
