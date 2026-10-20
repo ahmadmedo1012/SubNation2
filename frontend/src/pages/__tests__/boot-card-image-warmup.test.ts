@@ -48,17 +48,17 @@ describe("R127-L10 (B4 D5): bootCardImageWarmUrls — warmed-set selection", () 
     const list = [1, 2, 3, 4, 5, 6].map((id) => row(id, `/products/p${id}.webp`));
 
     expect(bootCardImageWarmUrls(list)).toEqual([
-      "/products/p1.webp?v=r176",
-      "/products/p2.webp?v=r176",
-      "/products/p3.webp?v=r176",
-      "/products/p4.webp?v=r176",
+      "/products/p1.webp?v=r178",
+      "/products/p2.webp?v=r178",
+      "/products/p3.webp?v=r178",
+      "/products/p4.webp?v=r178",
     ]);
   });
 
   it("a catalog shorter than 4 warms every row (no padding, no error)", () => {
     const list = [row(1, "/products/only.webp")];
 
-    expect(bootCardImageWarmUrls(list)).toEqual(["/products/only.webp?v=r176"]);
+    expect(bootCardImageWarmUrls(list)).toEqual(["/products/only.webp?v=r178"]);
     expect(bootCardImageWarmUrls([])).toEqual([]);
   });
 
@@ -73,7 +73,7 @@ describe("R127-L10 (B4 D5): bootCardImageWarmUrls — warmed-set selection", () 
       row(5, "/products/p5.webp"),
     ];
 
-    expect(bootCardImageWarmUrls(list)).toEqual(["/products/p1.webp?v=r176"]);
+    expect(bootCardImageWarmUrls(list)).toEqual(["/products/p1.webp?v=r178"]);
   });
 
   it("null/undefined lists warm nothing (a failed/absent prefetch is inert)", () => {

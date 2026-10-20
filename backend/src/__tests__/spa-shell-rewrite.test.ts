@@ -453,7 +453,10 @@ describe("SPA shell rewrite — product og:image (A11-F3b, R126-L6)", () => {
     expect(metaContent(r.body, "property", "og:image")).toBe(
       // R174: bot-surface art URLs carry the art version — same cache-bust
       // contract as the frontend's productArtUrl (30d HTTP + SW caches).
-      "https://subnation.ly/products/expressvpn.webp?v=r176",
+      // R178: bots read the OPAQUE /products-og/ family (pearl/charcoal
+      // tiles) — transparent art composites on unpredictable scraper
+      // grounds, so the share surface keeps its own ground.
+      "https://subnation.ly/products-og/expressvpn.webp?v=r178",
     );
     // The 1280×720 pair describes the BASELINE opengraph.jpg — beside
     // product art it would be a wrong dimension claim, so it's stripped
@@ -607,7 +610,7 @@ describe("SPA shell rewrite — PDP JSON-LD in the initial HTML (R163)", () => {
     // Description preference mirrors the frontend builder.
     expect(ld.description).toBe("اشتراك VPN اختبار القشرة الثابتة");
     // Site-relative art is absolutized like og:image.
-    expect(ld.image).toBe("https://subnation.ly/products/expressvpn.webp?v=r176");
+    expect(ld.image).toBe("https://subnation.ly/products-og/expressvpn.webp?v=r178");
     const offers = ld.offers as Record<string, unknown>;
     expect(offers.price).toBe("100.00");
     expect(offers.priceCurrency).toBe("LYD");

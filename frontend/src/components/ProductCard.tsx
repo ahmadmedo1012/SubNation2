@@ -378,23 +378,19 @@ function ProductCardInner({
             floating on a bare background (live-site audit). A /60 muted
             wash — the empty-state icon-tile vocabulary — gives the well
             its own shelf surface: a STATIC token wash (theme-aware via
-            color-mix), not decoration. The img's drop-shadow-lg grounds
-            the asset on the plane; the white/[0.06] top sheen below
-            (R120-B1 A1-F4) stays. */}
+            color-mix), not decoration. R178: the art is TRANSPARENT now,
+            so this well IS the product-art ground — it follows the theme,
+            and the img's drop-shadow-lg grounds the asset on the plane. */}
         <div className="relative aspect-square bg-muted/60 overflow-hidden">
           <div
             className={`absolute top-0 inset-x-0 h-[2px] ${accent.accentLine} opacity-65 z-[1]`}
           />
-          {/* R120-B1 (A1-F4): unified image pad — ~7/12 catalog assets are
-              pure-white-background squares, so a bare bg-card tile made
-              white assets and transparent assets read as two different
-              card systems. One subtle top-lit gradient behind EVERY
-              image unifies the pad; object-contain + the fixed
-              aspect-square box + width/height attrs keep CLS at zero. */}
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 z-[1] bg-gradient-to-b from-white/[0.06] to-transparent"
-          />
+          {/* R120-B1 (A1-F4): the shine-trigger sweep (group-hover) — kept
+              for its own sake; the white/[0.06] top-sheen unification
+              layer it used to ride with was RETIRED in R178 (it existed
+              to reconcile white-plate assets with transparent ones — the
+              whole catalog is transparent art now, so there is nothing
+              left to unify). */}
           <div className="shine-trigger absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full skew-x-[-14deg] pointer-events-none z-[3]" />
 
           {product.image_url ? (

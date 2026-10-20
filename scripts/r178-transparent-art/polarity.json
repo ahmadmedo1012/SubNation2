@@ -1,0 +1,227 @@
+{
+  "ahrefs": {
+    "med_lum": 0.273,
+    "med_sat": 0.785,
+    "polarity": "ink"
+  },
+  "amc-plus": {
+    "med_lum": 0.687,
+    "med_sat": 0.621,
+    "polarity": "auto"
+  },
+  "apple-tv-plus": {
+    "med_lum": 0.0,
+    "med_sat": 0.0,
+    "polarity": "ink"
+  },
+  "brain-fm-pro": {
+    "med_lum": 0.335,
+    "med_sat": 0.42,
+    "polarity": "ink"
+  },
+  "chatgpt-plus": {
+    "med_lum": 0.618,
+    "med_sat": 0.164,
+    "polarity": "auto"
+  },
+  "cpanel": {
+    "med_lum": 0.526,
+    "med_sat": 0.827,
+    "polarity": "auto"
+  },
+  "cyberghost-vpn": {
+    "med_lum": 0.785,
+    "med_sat": 0.718,
+    "polarity": "auto"
+  },
+  "directv-stream": {
+    "med_lum": 0.37,
+    "med_sat": 0.472,
+    "polarity": "ink"
+  },
+  "disney-plus": {
+    "med_lum": 0.092,
+    "med_sat": 0.513,
+    "polarity": "ink"
+  },
+  "expressvpn": {
+    "med_lum": 0.36,
+    "med_sat": 0.636,
+    "polarity": "ink"
+  },
+  "fox-now": {
+    "med_lum": 0.07,
+    "med_sat": 0.004,
+    "polarity": "ink"
+  },
+  "funimation": {
+    "med_lum": 0.0,
+    "med_sat": 0.0,
+    "polarity": "ink"
+  },
+  "grammarly-pro": {
+    "med_lum": 0.386,
+    "med_sat": 0.234,
+    "polarity": "ink"
+  },
+  "hallmark-movies-now": {
+    "med_lum": 0.281,
+    "med_sat": 0.337,
+    "polarity": "ink"
+  },
+  "hbo-max": {
+    "med_lum": 0.0,
+    "med_sat": 0.261,
+    "polarity": "ink"
+  },
+  "headspace": {
+    "med_lum": 0.568,
+    "med_sat": 0.418,
+    "polarity": "auto"
+  },
+  "hma-vpn-pro": {
+    "med_lum": 0.2,
+    "med_sat": 0.043,
+    "polarity": "ink"
+  },
+  "hulu": {
+    "med_lum": 0.666,
+    "med_sat": 0.521,
+    "polarity": "auto"
+  },
+  "idagio": {
+    "med_lum": 1.0,
+    "med_sat": 0.0,
+    "polarity": "paper"
+  },
+  "ipvanish": {
+    "med_lum": 0.637,
+    "med_sat": 0.326,
+    "polarity": "auto"
+  },
+  "lifetime-cloud-storage": {
+    "med_lum": 0.771,
+    "med_sat": 0.073,
+    "polarity": "paper"
+  },
+  "napster": {
+    "med_lum": 0.122,
+    "med_sat": 0.157,
+    "polarity": "ink"
+  },
+  "netflix": {
+    "med_lum": 0.278,
+    "med_sat": 0.727,
+    "polarity": "ink"
+  },
+  "osn-plus": {
+    "med_lum": 0.024,
+    "med_sat": 0.364,
+    "polarity": "ink"
+  },
+  "pandora-premium": {
+    "med_lum": 1.0,
+    "med_sat": 0.219,
+    "polarity": "paper"
+  },
+  "paramount-plus": {
+    "med_lum": 0.353,
+    "med_sat": 1.0,
+    "polarity": "ink"
+  },
+  "prime-video": {
+    "med_lum": 0.535,
+    "med_sat": 0.604,
+    "polarity": "auto"
+  },
+  "qobuz": {
+    "med_lum": 0.075,
+    "med_sat": 0.0,
+    "polarity": "ink"
+  },
+  "scribd": {
+    "med_lum": 0.041,
+    "med_sat": 0.038,
+    "polarity": "ink"
+  },
+  "semrush-classic": {
+    "med_lum": 0.0,
+    "med_sat": 0.255,
+    "polarity": "ink"
+  },
+  "showtime": {
+    "med_lum": 0.312,
+    "med_sat": 0.878,
+    "polarity": "ink"
+  },
+  "shudder": {
+    "med_lum": 0.177,
+    "med_sat": 0.833,
+    "polarity": "ink"
+  },
+  "skillshare": {
+    "med_lum": 0.38,
+    "med_sat": 0.252,
+    "polarity": "ink"
+  },
+  "sling-tv": {
+    "med_lum": 0.56,
+    "med_sat": 0.808,
+    "polarity": "auto"
+  },
+  "sophia-ai": {
+    "med_lum": 0.697,
+    "med_sat": 0.493,
+    "polarity": "auto"
+  },
+  "soundcloud-go-plus": {
+    "med_lum": 0.523,
+    "med_sat": 0.821,
+    "polarity": "auto"
+  },
+  "spotify-premium": {
+    "med_lum": 0.655,
+    "med_sat": 0.727,
+    "polarity": "auto"
+  },
+  "tidal": {
+    "med_lum": 0.059,
+    "med_sat": 0.012,
+    "polarity": "ink"
+  },
+  "tunein-premium": {
+    "med_lum": 0.592,
+    "med_sat": 0.538,
+    "polarity": "auto"
+  },
+  "ultimate-guitar-pro": {
+    "med_lum": 0.067,
+    "med_sat": 0.174,
+    "polarity": "ink"
+  },
+  "windows-10-home": {
+    "med_lum": 0.397,
+    "med_sat": 0.842,
+    "polarity": "ink"
+  },
+  "windows-10-pro": {
+    "med_lum": 0.397,
+    "med_sat": 0.842,
+    "polarity": "ink"
+  },
+  "windows-8": {
+    "med_lum": 0.553,
+    "med_sat": 0.942,
+    "polarity": "auto"
+  },
+  "winrar-lifetime": {
+    "med_lum": 0.16,
+    "med_sat": 0.412,
+    "polarity": "ink"
+  },
+  "youtube-premium": {
+    "med_lum": 0.213,
+    "med_sat": 0.486,
+    "polarity": "ink"
+  }
+}

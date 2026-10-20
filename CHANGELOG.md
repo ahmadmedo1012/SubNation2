@@ -10,6 +10,18 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R178 — The theme-adaptive transparent art round — 2026-10-21
+
+**Scope:** the owner's directive — «الصور لو كان شعارات بدون خلفية بيضاء… بحيث تتغير الخلفية مع تغيير الثيم» — the logos lose their baked grounds and the theme supplies the background. Full report: `docs/engineering/R178/round-close.md`.
+
+**The two-family contract:** `/products/*.webp` is now TRANSPARENT RGBA art (the theme-aware `bg-muted/*` wells ARE the ground — they follow the dark/light theme exactly, the R176 pearl squares on dark-theme cards gone); `/products-og/*.webp` keeps the opaque pearl/charcoal tiles for the BOT family (og:image, Product-LD, the WhatsApp unfurl — scrapers composite transparent art on unpredictable grounds, so the share surface keeps its own). Both families: same 45 slugs, same geometry as R176, `?v=r178` on both sides (frontend `productOgUrl` + backend `absolutizeProductArt` now point bots at `/products-og/`).
+
+**The polarity block (index.css, generated from the measured `polarity.json` — ink 28 / paper 3 / auto 14):** ink wordmarks (dark content) flip on the dark theme only, paper ones (white content) on the light theme only — `invert(1) hue-rotate(180deg)` keeps hues alive while luminance inverts (Apple TV+'s black mark renders its official white dark-variant; no second asset, no DB churn). Attribute selectors match the unversioned path; the chain re-declares the `--drop-shadow-lg` grounding because `filter` is atomic. Computed-style-verified in the real DOM on all four quadrants; VLM-adjudicated screenshots retained.
+
+**The R176 defect fixes the visual audit caught live:** fox-now shipped a blank white rectangle (broken source) → re-sourced the official Fox Broadcasting Company 2019 wordmark; soundcloud-go-plus shipped a faint gray circle → re-sourced the official SoundCloud orange lockup; sophia-ai shipped its black favicon plate as a square → luminance-keyed, cyan mark survives. All three VLM-verified.
+
+**Retired:** ProductCard's A1-F4 `from-white/[0.06]` unification layer (its mixed-asset population reason died with universal transparency). Weight: UI 869 KB/avg 19.3 KB, OG 433 KB/avg 9.6 KB, no q74 fallbacks, no weak-alpha tiles. **Gates:** lint 0/0 · typecheck ×3 · backend 2,689/289 (exact baseline) · frontend 2,787/300 (+12 new) · parity 87/50/7 · build eager 149,440 B gz (budget holds) · 9 re-pins with R178 rationale.
+
 ## Round R176 — The real-source art round — 2026-10-20
 
 **Scope:** the owner's clarifying directive — «انا كان هدفي صور من المصدر حقيقية مش صور تم انشاءها ب ai» — the goal was the brands' real artwork, not AI generation. All 45 tiles are replaced with the **official logos themselves** in one designed pearl/charcoal tile system. Zero AI generation. Full report: `docs/engineering/R176/round-close.md`.

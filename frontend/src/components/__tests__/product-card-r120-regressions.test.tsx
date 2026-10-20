@@ -179,13 +179,18 @@ describe("ProductCard — chrome + imagery + type regressions (R120-B1)", () => 
     expect(well.className).not.toContain("bg-card");
   });
 
-  it("unified image pad tile sits behind the image area (A1-F4)", () => {
+  it("R178: the white-sheen unification layer is RETIRED (A1-F4 superseded)", () => {
+    // The A1-F4 pad tile existed to reconcile the ~7/12 white-plate assets
+    // with the transparent ones (one visual system). R178 made the ENTIRE
+    // catalog transparent art — there is nothing left to unify, so the
+    // from-white/[0.06] layer died with its reason (the theme-aware
+    // bg-muted/60 well IS the ground now; the polarity block in index.css
+    // flips ink/paper wordmarks on the theme where they'd drown).
     const { container } = renderCard(AVAILABLE_PRODUCT);
     const tile = container.querySelector(
       ".aspect-square > .bg-gradient-to-b.from-white\\/\\[0\\.06\\]",
     );
-    expect(tile).toBeInstanceOf(HTMLElement);
-    expect(tile!.getAttribute("aria-hidden")).toBe("true");
+    expect(tile).toBeNull();
   });
 
   it("name is an h3, 2 clamp lines below sm, 1 from sm; description hidden below sm (A1-F10/A7-F13)", () => {

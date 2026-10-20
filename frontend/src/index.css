@@ -545,6 +545,66 @@
   }
 }
 
+/* ── R178: PRODUCT-ART THEME POLARITY ──────────────────────────────────────
+ * The R178 art is TRANSPARENT (no baked ground — scripts/r178-transparent-
+ * art/build.py): every product-image well's theme-aware bg-muted/* surface
+ * IS the ground, so the tile follows the dark/light theme exactly. Two
+ * polarity families still need an ink flip on the theme where their content
+ * would drown — dark wordmarks on the dark theme, white marks on the light
+ * one — CSS invert + hue-rotate(180deg) flips luminance while hues survive
+ * (the standard single-file dark-mode technique; no second asset, no
+ * filename/DB churn). The per-slug manifest is MEASURED by the pipeline
+ * (polarity.json: ink 28 / paper 3 / auto 14 = 45) — regenerate the block
+ * from build.py's output on any future art replacement and keep the counts
+ * honest (the r178-polarity test pins ink+paper+auto = the shipped set).
+ *
+ * Attribute selectors match the UNVERSIONED /products/<slug>.webp path —
+ * the ?v= cache-buster rides after it, so the rules are immune to art
+ * version bumps. They deliberately do NOT match /products-og/ (the opaque
+ * bot family that keeps its pearl/charcoal grounds for scrapers).
+ *
+ * The filter chain re-declares the drop-shadow-lg grounding (the theme's
+ * real --drop-shadow-lg: 0 4px 4px / 15% black) because `filter` is
+ * atomic: these rules outrank the utility class, so the grounding rides
+ * along instead of dying with it. */
+:root:not(.light) img[src*="/products/ahrefs.webp"],
+:root:not(.light) img[src*="/products/apple-tv-plus.webp"],
+:root:not(.light) img[src*="/products/brain-fm-pro.webp"],
+:root:not(.light) img[src*="/products/directv-stream.webp"],
+:root:not(.light) img[src*="/products/disney-plus.webp"],
+:root:not(.light) img[src*="/products/expressvpn.webp"],
+:root:not(.light) img[src*="/products/fox-now.webp"],
+:root:not(.light) img[src*="/products/funimation.webp"],
+:root:not(.light) img[src*="/products/grammarly-pro.webp"],
+:root:not(.light) img[src*="/products/hallmark-movies-now.webp"],
+:root:not(.light) img[src*="/products/hbo-max.webp"],
+:root:not(.light) img[src*="/products/hma-vpn-pro.webp"],
+:root:not(.light) img[src*="/products/napster.webp"],
+:root:not(.light) img[src*="/products/netflix.webp"],
+:root:not(.light) img[src*="/products/osn-plus.webp"],
+:root:not(.light) img[src*="/products/paramount-plus.webp"],
+:root:not(.light) img[src*="/products/qobuz.webp"],
+:root:not(.light) img[src*="/products/scribd.webp"],
+:root:not(.light) img[src*="/products/semrush-classic.webp"],
+:root:not(.light) img[src*="/products/showtime.webp"],
+:root:not(.light) img[src*="/products/shudder.webp"],
+:root:not(.light) img[src*="/products/skillshare.webp"],
+:root:not(.light) img[src*="/products/tidal.webp"],
+:root:not(.light) img[src*="/products/ultimate-guitar-pro.webp"],
+:root:not(.light) img[src*="/products/windows-10-home.webp"],
+:root:not(.light) img[src*="/products/windows-10-pro.webp"],
+:root:not(.light) img[src*="/products/winrar-lifetime.webp"],
+:root:not(.light) img[src*="/products/youtube-premium.webp"] {
+  filter: invert(1) hue-rotate(180deg) drop-shadow(0 4px 4px rgb(0 0 0 / 0.15));
+}
+
+/* paper (white content — same flip, light theme) */
+.light img[src*="/products/idagio.webp"],
+.light img[src*="/products/lifetime-cloud-storage.webp"],
+.light img[src*="/products/pandora-premium.webp"] {
+  filter: invert(1) hue-rotate(180deg) drop-shadow(0 4px 4px rgb(0 0 0 / 0.15));
+}
+
 /* ── KEYFRAMES ───────────────────────────────────────── */
 @keyframes shimmer {
   0% {

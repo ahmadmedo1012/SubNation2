@@ -846,15 +846,17 @@ export function mountSpaShellRoutes(app: Express): void {
           res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
           return;
         }
-        // R104 (AG11-2b): product art (frontend/public/products/*.webp) and
-        // the PWA icon set are effectively IMMUTABLE (filenames change on
-        // replacement — r102's WebP conversion proved the workflow). They
-        // rode the 1h default, forcing an hourly conditional-GET round
-        // trip per asset per returning visitor; 30d + SWR matches the
-        // service worker's CacheFirst window instead. Hashed workbox-*.js
-        // chunks are safe to treat the same (content-hash names).
+        // R104 (AG11-2b): product art (frontend/public/products/*.webp and
+        // the R178 opaque bot family /products-og/*.webp) and the PWA icon
+        // set are effectively IMMUTABLE (filenames change on replacement —
+        // r102's WebP conversion proved the workflow). They rode the 1h
+        // default, forcing an hourly conditional-GET round trip per asset
+        // per returning visitor; 30d + SWR matches the service worker's
+        // CacheFirst window instead. Hashed workbox-*.js chunks are safe to
+        // treat the same (content-hash names).
         if (
           filePath.includes("/products/") ||
+          filePath.includes("/products-og/") ||
           /pwa-.*\.png$/.test(filePath) ||
           /workbox-.*\.js$/.test(filePath)
         ) {

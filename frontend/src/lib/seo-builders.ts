@@ -8,7 +8,7 @@
  */
 
 import { categoryLabel } from "./utils";
-import { productArtUrl } from "./product-art";
+import { productOgUrl } from "./product-art";
 
 const DEFAULT_ORIGIN = "https://subnation.ly";
 
@@ -137,9 +137,11 @@ export function buildProductLd(p: ProductLdInput) {
     image: p.imageUrl
       ? p.imageUrl.startsWith("http")
         ? p.imageUrl
-        : // R174: art URLs carry the version so crawlers re-fetch replaced
-          // art immediately (same contract as every rendered <img>).
-          (productArtUrl(`${origin}${p.imageUrl}`) ?? `${origin}${p.imageUrl}`)
+        : // R178: crawlers read the OPAQUE /products-og/ family
+          // (productOgUrl) — transparent art composites on unpredictable
+          // scraper grounds, so Product-LD keeps the pearl/charcoal tile
+          // (the same story as og:image + the backend shell).
+          (productOgUrl(`${origin}${p.imageUrl}`) ?? `${origin}${p.imageUrl}`)
       : `${origin}/subnation-logo.png`,
     // R120-B3 (A7-F20): sku = slug-based, not the raw DB id — "1" told
     // Google Shopping nothing and leaked row identity. Legacy slug-less

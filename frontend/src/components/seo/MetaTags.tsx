@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { productArtUrl } from "@/lib/product-art";
+import { productOgUrl } from "@/lib/product-art";
 
 export interface SeoInput {
   /** ≤ 60 chars title shown in `<title>` and og:title */
@@ -181,9 +181,11 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   // images once here; absolute URLs pass through untouched.
   const rawImage = input.image ?? DEFAULT_IMAGE;
   const absolutized = rawImage.startsWith("http") ? rawImage : `${origin}${rawImage}`;
-  // R174: product-art URLs carry the art version (?v=) so unfurlers
-  // re-fetch replaced art immediately — same contract as every <img>.
-  const image = productArtUrl(absolutized) ?? absolutized;
+  // R178: product-art og:image / Product-LD URLs point at the OPAQUE
+  // /products-og/ family (productOgUrl) — scrapers composite transparent
+  // art on unpredictable grounds, so the share surface keeps its pearl/
+  // charcoal ground. Same story as the backend shell's absolutizeProductArt.
+  const image = productOgUrl(absolutized) ?? absolutized;
   const lang = input.locale ?? "ar";
   // R-140-h (locale verdict): og:locale is ar_LY — the territory-specific
   // language_COUNTRY form, NOT Facebook's generic Arabic pseudo-locale
