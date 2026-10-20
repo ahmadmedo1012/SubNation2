@@ -7,7 +7,7 @@
 // exactly like the frontend's productArtUrl does for humans (frontend/src/
 // lib/product-art.ts — MUST stay in sync; each side's tests pin its own
 // value). Bump ONLY when frontend/public/products/*.webp is replaced again.
-export const PRODUCT_ART_VERSION = "r174";
+export const PRODUCT_ART_VERSION = "r175";
 
 /** The share-surface image contract (A11-F3b/110-F lineage, now versioned):
  *  already-absolute URLs pass through untouched (future CDN hosts),

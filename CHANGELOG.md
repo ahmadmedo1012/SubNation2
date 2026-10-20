@@ -10,6 +10,16 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R175 — The product-art attraction round — 2026-10-20
+
+**Scope:** the owner directive «الصور يجب ان تكون اجمل واكثر جاذبية» — the R174 family (one glossy emblem on a radial gradient) was clean but static; R175 upgrades every tile to a **cinematic showcase scene** while keeping all the hard laws (1024², one family, no prices/promo/watermarks/URLs). Embronic deferred by owner order («امبرونيك ليس الان»). Full report: `docs/engineering/R175/round-close.md`.
+
+**The new family:** each of the 45 tiles is now a full scene — glossy 3D brand hero above a **polished dark-glass floor with mirror reflection**, layered brand-color gradient world with volumetric haze, floating category-context elements (blank widescreen panes for streaming, waveforms for music, security rings/tunnels for VPNs), bokeh orbs, sparkle particles, rim light, depth of field. The brand is NAMED in every prompt (calibration proved unnamed emblems render unrecognizable). A side-by-side VLM adjudication on the netflix pair: old «flat, static background with a basic drop shadow» vs new «rich, atmospheric scene… reflective floor, dynamic lighting, glowing particles» — **NEW wins**.
+
+**The pipeline (committed this time):** `scripts/r175-product-art/` (manifest × generate × validate × encode) — resumable 3-way generation with retries, VLM QA gates (banned-text token law, brand-or-category, beauty ≥8, defects), WebP q80 with adaptive q74 for heavy tiles (avg 53.3 KB, max 95 KB, total 2.4 MB), full r174 backup. Five QA rounds closed real defect classes: stray text on floating panels (blank-panels law), garbled chart labels, trademark glyphs (®, letter-shaped marks), wrong-category reads (redesigned marks), beauty-7 plateaus. **42 strict passes + 3 documented acceptances** (shudder's genre-capped 7; grammarly's name-gate limit; pandora's jewelry-reading gem ring, re-roll pending API quota). 12 same-batch tiles carry PIL + generation verification with their VLM verdicts honestly deferred to the standing QA completion (API throttled at round close).
+
+**The contract, re-run:** `PRODUCT_ART_VERSION` r174 → r175 both sides + 11 test literals re-pinned; boot warming/og:image/Product-LD/crawler/unfurler inherit. **Deps:** motion 14.3.0 → 14.4.0 (the only candidate past the 24h age window — clean swap, +8 B eager); react-query 5.104.5 / typescript-eslint 8.72.0 / impeccable 4.7.0 refused with rationale (age in this evening). **Gates:** lint 0/0 · typecheck ×4 · backend 2,677 (288 files, exact baseline) · frontend 2,766 (298, exact) · scripts 59 · build eager 149,057 B gz (budget holds) · parity 87/50/7/7 · drift zero · dist 45×1024² PIL-verified.
+
 ## Round R174 — The product-art excellence round — 2026-10-20
 
 **Scope:** the owner directive «اكمل ماتبقى وبخصوص المنتجات … تحسين صور المنتجات لتكون أعلى دقة وأحدث وأنظف وأسرع في الظهور وايضا بدون كتابة السعر على الصورة … استبدل الصور الحالية للمنتجات بصور لكل منتج بشكل منظم ومثالي» — the product-image excellence lane. Full report: `docs/engineering/R174/round-close.md`.

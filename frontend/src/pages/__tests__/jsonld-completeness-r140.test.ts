@@ -296,7 +296,7 @@ describe("R-140-g — buildProductLd (pure): the required Product/Offer keys", (
     // R174: art URLs carry the version (?v= — lib/product-art) so
     // crawlers re-fetch replaced art immediately.
     expect(buildProductLd({ ...BASE, imageUrl: "/products/x.webp" }).image).toBe(
-      `${ORIGIN}/products/x.webp?v=r174`,
+      `${ORIGIN}/products/x.webp?v=r175`,
     );
     expect(buildProductLd({ ...BASE, imageUrl: null }).image).toBe(`${ORIGIN}/subnation-logo.png`);
   });
@@ -454,7 +454,7 @@ describe("R-140-g — product.tsx: Product + Offer + BreadcrumbList end-to-end",
     expect(ld.description).toBe("اشتراك شهري");
     expect(ld["@id"]).toBe(`${ORIGIN}/product/5`);
     expect(ld.url).toBe(`${ORIGIN}/product/5`);
-    expect(ld.image).toBe(`${ORIGIN}/products/netflix.webp?v=r174`);
+    expect(ld.image).toBe(`${ORIGIN}/products/netflix.webp?v=r175`);
     const offers = ld.offers as Json;
     expect(offers.price).toBe("49.00"); // the API number, stringified — never a constant
     expect(offers.priceCurrency).toBe("LYD");

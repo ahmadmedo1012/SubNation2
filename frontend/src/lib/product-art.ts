@@ -13,7 +13,7 @@
  *
  * Bump this ONLY when frontend/public/products/*.webp is replaced again.
  */
-export const PRODUCT_ART_VERSION = "r174";
+export const PRODUCT_ART_VERSION = "r175";
 
 /**
  * Pure URL versioner — any product-art URL (site-relative /products/… or an

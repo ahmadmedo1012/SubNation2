@@ -14,13 +14,14 @@
 
 ## The round index
 
-**30 folders covering the R142→R174 span** (89 md + 32 `.jsonl` lane
+**31 folders covering the R142→R175 span** (90 md + 32 `.jsonl` lane
 records = 121 files). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
 (`## Round R###` header) that summarizes it.
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R175 | 2026-10-20 | The product-art attraction round (the cinematic showcase family, pipeline committed, motion 14.4.0) | [`round-close.md`](./R175/round-close.md) |
 | R174 | 2026-10-20 | The product-art excellence round (45 regenerated 1024² tiles + the freshness contract) | [`round-close.md`](./R174/round-close.md) |
 | R173 | 2026-10-20 | The final comprehensive inspection, purification & perfection sweep (audit 10 → 4 at the no-fix floor, pg 8.23.1, argon2 aligned) | [`round-close.md`](./R173/round-close.md) |
 | R172 | 2026-10-19 | The final modernization sweep (zod 4, pino 10, redis 6, recharts 3, web-vitals 6, PWA 2, lucide 1) | [`round-close.md`](./R172/round-close.md) |
