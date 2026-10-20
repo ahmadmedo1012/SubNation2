@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { productArtUrl } from "@/lib/product-art";
 
 export interface SeoInput {
   /** ≤ 60 chars title shown in `<title>` and og:title */
@@ -161,7 +162,10 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
   // DB and every share unfurled without a thumbnail. Absolutize caller
   // images once here; absolute URLs pass through untouched.
   const rawImage = input.image ?? DEFAULT_IMAGE;
-  const image = rawImage.startsWith("http") ? rawImage : `${origin}${rawImage}`;
+  const absolutized = rawImage.startsWith("http") ? rawImage : `${origin}${rawImage}`;
+  // R174: product-art URLs carry the art version (?v=) so unfurlers
+  // re-fetch replaced art immediately — same contract as every <img>.
+  const image = productArtUrl(absolutized) ?? absolutized;
   const lang = input.locale ?? "ar";
   // R-140-h (locale verdict): og:locale is ar_LY — the territory-specific
   // language_COUNTRY form, NOT Facebook's generic Arabic pseudo-locale

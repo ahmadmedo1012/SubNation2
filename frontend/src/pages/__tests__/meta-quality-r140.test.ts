@@ -317,8 +317,9 @@ describe("R-140-h mechanism — MetaTags robots + in-place upsert contract", () 
     expect(document.head.querySelectorAll('meta[property="og:image:width"]')).toHaveLength(0);
     expect(document.head.querySelectorAll('meta[property="og:image:height"]')).toHaveLength(0);
     // …and the caller image is absolutized (AUD103-6-F1 — scrapers drop
-    // relative image URLs).
-    expect(metaContent('meta[property="og:image"]')).toBe(`${origin()}/products/x.webp`);
+    // relative image URLs) — carrying the R174 art version like every
+    // rendered <img> (lib/product-art).
+    expect(metaContent('meta[property="og:image"]')).toBe(`${origin()}/products/x.webp?v=r174`);
   });
 
   it("titles/descriptions are clamped to 60/160 at a word boundary (the bands are enforced mechanically)", () => {

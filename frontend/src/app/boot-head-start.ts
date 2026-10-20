@@ -13,6 +13,7 @@ import { getListProductsQueryKey } from "@workspace/api-client-react";
 import type { ProductListItem } from "@workspace/api-client-react";
 import { apiUrl } from "@/lib/api-config";
 import { queryClient } from "@/app/query-client";
+import { productArtUrl } from "@/lib/product-art";
 
 // ── 96-F3 (R96 F-1 / mobile-performance-pwa §5): boot parallelization ──────
 //
@@ -87,7 +88,10 @@ export function bootCardImageWarmUrls(list: ProductListItem[] | undefined | null
   for (const product of list.slice(0, BOOT_CARD_IMAGE_WARM_COUNT)) {
     const url = product?.image_url;
     if (typeof url === "string" && url.length > 0) {
-      urls.push(url);
+      // R174: warmed URLs carry the same ?v= as the rendered <img> (see
+      // lib/product-art.ts) — an unversioned warm would fetch a cache
+      // entry the renderer never reads (a double download).
+      urls.push(productArtUrl(url) ?? url);
     }
   }
   return urls;

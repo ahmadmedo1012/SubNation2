@@ -21,6 +21,9 @@ import { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from ".
 import { buildShellProductLd, injectJsonLdScript } from "./shell-product-ld";
 // R166 (F4): the home's Organization + WebSite LD pair (frontend mirror).
 import { buildShellOrganizationLd, buildShellWebsiteLd } from "./shell-website-ld";
+// R174: og:image/Product-LD art URLs carry the art version (?v=) — the
+// bot-surface half of the cache-bust contract (lib/product-art-version.ts).
+import { absolutizeProductArt } from "./product-art-version";
 export { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
 import type { Express, NextFunction, Request, Response } from "express";
 import express from "express";
@@ -678,12 +681,9 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     // this costs nothing extra. Absolutized exactly like the share
     // card below: DB rows carry site-relative /products/<slug>.webp;
     // already-absolute URLs (future CDN host) pass through untouched.
+    // R174: the absolutizer also versions /products/ art (?v=).
     // Null imageUrl keeps the static og set (a generic card beats none).
-    const ogImage = row.imageUrl
-      ? row.imageUrl.startsWith("http")
-        ? row.imageUrl
-        : `${origin}${row.imageUrl.startsWith("/") ? "" : "/"}${row.imageUrl}`
-      : undefined;
+    const ogImage = row.imageUrl ? absolutizeProductArt(row.imageUrl, origin) : undefined;
     // R163: the initial-HTML Product/Offer structured data — Google's
     // product-snippet guidance recommends it in the initial HTML; the
     // hydrated page re-emits the same @id node (client JsonLd), so the
@@ -940,11 +940,8 @@ export function mountSpaShellRoutes(app: Express): void {
       // production-domain default — identical to the APP_ORIGIN resolution
       // in routes/seo.ts); DB rows carry site-relative /products/<slug>.webp,
       // already-absolute URLs (future CDN host) pass through untouched.
-      const ogImage = product.imageUrl
-        ? product.imageUrl.startsWith("http")
-          ? product.imageUrl
-          : `${origin}${product.imageUrl.startsWith("/") ? "" : "/"}${product.imageUrl}`
-        : null;
+      // R174: the absolutizer also versions /products/ art (?v=).
+      const ogImage = product.imageUrl ? absolutizeProductArt(product.imageUrl, origin) : null;
       // R128 (B8-D1): the operator's curated SEO overrides — the SAME
       // fields the plain-UA shell (resolveSpaShellMeta) and the hydrated
       // page render, with the SAME fallbacks (seo_title?.trim() ? clamped

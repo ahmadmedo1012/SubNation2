@@ -1,6 +1,7 @@
 import { memo, useRef } from "react";
 import { Link } from "wouter";
 import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
+import { productArtUrl } from "@/lib/product-art";
 import { useToast } from "@/hooks/useToast";
 import { useCartCommands, LOW_STOCK_THRESHOLD } from "@/lib/cart";
 import { Button } from "@/components/ui/button";
@@ -398,7 +399,7 @@ function ProductCardInner({
 
           {product.image_url ? (
             <img
-              src={product.image_url}
+              src={productArtUrl(product.image_url)}
               alt={(() => {
                 // Build descriptive alt text:
                 //   "<product name> — <category label> اشتراك"
@@ -417,15 +418,15 @@ function ProductCardInner({
                   ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
                   : name;
               })()}
-              // L4-F9 (R132): 450 = the measured intrinsic size of every
-              // live product asset (all 45 /products/*.webp are 450×450).
-              width={450}
-              height={450}
+              // L4-F9 (R132): honest intrinsic size — R174 regenerated
+              // every /products/*.webp at 1024×1024 (was 450×450).
+              width={1024}
+              height={1024}
               // R-140-a (image discipline): NO srcset/sizes by
               // measurement — the catalog ships exactly ONE
               // rendition per asset (all 45 /products/*.webp
-              // re-probed 450×450 this round), so a srcset would
-              // fabricate /products/*@2x URLs that 404. Revisit
+              // re-probed 1024×1024 this round), so a srcset would
+              // fabricate /products*@2x URLs that 404. Revisit
               // only when a second size actually exists in
               // public/products/.
               // ── LCP optimization ─────────────────────────────────────

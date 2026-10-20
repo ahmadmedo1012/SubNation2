@@ -1,4 +1,5 @@
 import type { ProductListItem } from "@workspace/api-client-react";
+import { productArtUrl } from "@/lib/product-art";
 import { Link } from "wouter";
 
 // R145 (visual transformation): the guest hero's signature surface —
@@ -86,13 +87,13 @@ export function ShelfRail({
                 >
                   {p.image_url ? (
                     <img
-                      src={p.image_url}
+                      src={productArtUrl(p.image_url)}
                       alt={p.name ?? "منتج"}
                       // The measured intrinsic size of every live asset
-                      // (450×450, the R132 census) reserves the box; the
+                      // (1024×1024, the R174 census) reserves the box; the
                       // rail renders it at ~86-96px.
-                      width={450}
-                      height={450}
+                      width={1024}
+                      height={1024}
                       // LCP discipline: on mobile the shelf is the first
                       // product imagery in the fold — the leading two
                       // items load eager (index 0 high priority, matching

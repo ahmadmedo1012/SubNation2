@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import type { LocalCartItem } from "@/lib/cart";
+import { productArtUrl } from "@/lib/product-art";
 import type { AppliedCoupon } from "./CouponCard";
 
 // R136 (FE-2 decomposition): extracted verbatim from pages/checkout.tsx —
@@ -125,21 +126,21 @@ export function CartSummaryAside({
                     <div className="w-9 h-9 rounded-lg bg-muted/60 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
                       {it.imageUrl ? (
                         <img
-                          src={it.imageUrl}
+                          src={productArtUrl(it.imageUrl)}
                           alt={it.name}
                           loading="lazy"
                           decoding="async"
                           /* R-140-a (image discipline): decoding async —
                              the 36px line thumbs decode off the
                              interaction path; width/height mirror the
-                             catalog art's measured 450×450 intrinsic
+                             catalog art's measured 1024×1024 intrinsic
                              (all 45 /products/*.webp, the R132 L4-F9
                              census re-probed this round) so the
                              aspect-ratio reserve is honest pre-CSS —
                              the fixed w-9 h-9 well already pins CLS
                              at zero. */
-                          width={450}
-                          height={450}
+                          width={1024}
+                          height={1024}
                           className="w-full h-full object-contain p-1"
                         />
                       ) : (

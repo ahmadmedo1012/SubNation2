@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { InlineStockEdit } from "@/components/admin/products/InlineStockEdit";
 import { CATEGORY_INITIAL_COLOR } from "@/components/admin/products/products-meta";
 import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
+import { productArtUrl } from "@/lib/product-art";
 import type { AdminProduct } from "@workspace/api-client-react";
 import { CheckSquare, Edit2, Layers, Square, Trash2, Upload } from "lucide-react";
 
@@ -105,18 +106,18 @@ const ProductCard = React.memo(function ProductCard({
           >
             {product.image_url ? (
               <img
-                src={product.image_url}
+                src={productArtUrl(product.image_url)}
                 alt={product.name}
                 loading="lazy"
                 decoding="async"
                 /* R-140-a (image discipline): width/height mirror the
-                   catalog art's measured 450×450 intrinsic (all 45
+                   catalog art's measured 1024×1024 intrinsic (all 45
                    /products/*.webp, the R132 L4-F9 census re-probed
                    this round) — the fixed w-11 h-11 well already pins
                    CLS at zero; the attrs keep the aspect-ratio
                    reserve honest pre-CSS. */
-                width={450}
-                height={450}
+                width={1024}
+                height={1024}
                 className="w-full h-full object-contain p-1.5"
                 onError={(e) => {
                   // R139 (precision): the failed-image fallback wash matches

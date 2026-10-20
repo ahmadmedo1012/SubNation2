@@ -7,9 +7,10 @@
  * contracts so a future round cannot silently regress the CWV layer:
  *
  *   (a) CLS-zero proof — every <img> carries intrinsic width/height
- *       attrs (450×450 = the MEASURED intrinsic of every live
- *       /products/*.webp — all 45 files re-probed with PIL this
- *       round; the R132 L4-F9 census holds) OR a fully constrained
+ *       attrs (1024×1024 = the MEASURED intrinsic of every live
+ *       /products/*.webp — all 45 files re-probed with PIL at R174,
+ *       when the art was regenerated at 1024×1024; the L4-F9
+ *       honest-intrinsic rule holds) OR a fully constrained
  *       CSS box (fixed w-N h-N / aspect-[…] on the tag or its
  *       pinned container string). No auto-sized image box exists.
  *   (b) loading strategy — below-fold content imgs ride
@@ -24,7 +25,7 @@
  *       redundant (name-in-alt follows the thumb-family idiom the
  *       cart/orders/GlobalSearch thumbs already rode).
  *   (d) srcset reality — the catalog ships exactly ONE rendition per
- *       asset (450×450 webp, no @2x/variants in public/products/),
+ *       asset (1024×1024 webp, no @2x/variants in public/products/),
  *       so NO srcset/sizes is invented anywhere; the flagship grid
  *       site documents the measurement in-source.
  *
@@ -102,8 +103,8 @@ function imgTags(code: string): string[] {
 const EAGER_MARKER = /R-140-a[\s\S]{0,600}?EAGER-LCP/;
 
 /** The catalog art's measured intrinsic — every /products/*.webp
- *  (45 files, PIL-probed this round; the R132 L4-F9 census). */
-const INTRINSIC = ["width={450}", "height={450}"];
+ *  (45 files, PIL-probed at R174: the 1024×1024 regeneration). */
+const INTRINSIC = ["width={1024}", "height={1024}"];
 
 interface Site {
   /** Source path relative to frontend/ (the r139 read() idiom). */
@@ -149,7 +150,7 @@ const SITES: Site[] = [
 ];
 
 /** The 9 catalog-art thumb/grid sites that carry the measured
- *  450×450 intrinsic attrs (the thumb family: cart/orders/search/
+ *  1024×1024 intrinsic attrs (the thumb family: cart/orders/search/
  *  forecast/admin twins + the recommendations rail). */
 const THUMB_FILES = SITES.filter(
   (s) => !s.eager && s.file !== "src/components/ProductCard.tsx",
@@ -219,7 +220,7 @@ describe("R-140-a — the 14-site audit: every <img> carries the image disciplin
     }
   });
 
-  it("no srcset/sizes is invented anywhere — the catalog ships ONE rendition (450×450, 45 files, measured)", () => {
+  it("no srcset/sizes is invented anywhere — the catalog ships ONE rendition (1024×1024, 45 files, measured)", () => {
     // R-140-a (d): /public/products/*.webp has no @2x/variant files,
     // so a srcSet would fabricate URLs that 404. The measurement is
     // documented at the flagship grid site (pinned below); the guard
@@ -245,8 +246,8 @@ describe("R-140-a — storefront grid (ProductCard): the above-fold LCP ladder +
     expect(PC_CODE).toContain('fetchPriority={index < 2 ? "high" : index < 4 ? "auto" : "low"}');
     // The box discipline on the grid flagship: intrinsic attrs match
     // the catalog reality, the aspect-square well pins the layout.
-    expect(PC_CODE).toContain("width={450}");
-    expect(PC_CODE).toContain("height={450}");
+    expect(PC_CODE).toContain("width={1024}");
+    expect(PC_CODE).toContain("height={1024}");
     expect(PC_CODE).toContain("relative aspect-square bg-muted/60 overflow-hidden");
   });
 
@@ -287,11 +288,12 @@ describe("R-140-a — PDP main image (ProductMediaSection): THE LCP element stay
     expect(PMS_RAW).toMatch(EAGER_MARKER);
   });
 
-  it("CLS-zero on the biggest image on the page: 450×450 intrinsic attrs + the fixed aspect-[16/9] media plane", () => {
-    // Honest intrinsic dims (the R132 L4-F9 fix — the old {800} lied
-    // to the scanner) + the 16:9 well that owns the layout box.
-    expect(PMS_CODE).toContain("width={450}");
-    expect(PMS_CODE).toContain("height={450}");
+  it("CLS-zero on the biggest image on the page: 1024×1024 intrinsic attrs + the fixed aspect-[16/9] media plane", () => {
+    // Honest intrinsic dims (the R132 L4-F9 rule — the old {800} lied
+    // to the scanner; R174 regenerated the art at 1024×1024) + the 16:9
+    // well that owns the layout box.
+    expect(PMS_CODE).toContain("width={1024}");
+    expect(PMS_CODE).toContain("height={1024}");
     expect(PMS_CODE).toContain("aspect-[16/9] bg-muted/60 bg-gradient-to-b");
   });
 
@@ -302,7 +304,7 @@ describe("R-140-a — PDP main image (ProductMediaSection): THE LCP element stay
   });
 });
 
-describe("R-140-a — below-fold catalog thumbs: lazy + async + the measured 450×450 intrinsic", () => {
+describe("R-140-a — below-fold catalog thumbs: lazy + async + the measured 1024×1024 intrinsic", () => {
   // The 9 thumb sites (checkout summary · cart lines · orders list ·
   // order detail · home strip · admin search palette · stockout risk
   // rows · admin catalog cards · the PDP recommendations rail). Every
@@ -310,12 +312,12 @@ describe("R-140-a — below-fold catalog thumbs: lazy + async + the measured 450
   // suspenders: the well pins the box NOW, the attrs keep the
   // aspect-ratio reserve truthful even before Tailwind lands.
   for (const file of THUMB_FILES) {
-    it(`${file}: loading="lazy" + decoding="async" + width/height={450}`, () => {
+    it(`${file}: loading="lazy" + decoding="async" + width/height={1024}`, () => {
       const code = stripComments(read(file));
       expect(code).toContain('loading="lazy"');
       expect(code).toContain('decoding="async"');
-      expect(code).toContain("width={450}");
-      expect(code).toContain("height={450}");
+      expect(code).toContain("width={1024}");
+      expect(code).toContain("height={1024}");
       // The lazy + eager split must never coexist on one thumb file.
       expect(code).not.toContain('loading="eager"');
     });

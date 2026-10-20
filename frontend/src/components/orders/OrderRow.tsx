@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { CheckCircle, ChevronLeft, Clock, Tag, Undo2, XCircle } from "lucide-react";
 import { formatCurrency, formatDateShort, statusLabel } from "@/lib/utils";
 import { STATUS_TONE, StatusBadge, UNKNOWN_STATUS_TONE } from "@/components/ui/status-badge";
+import { productArtUrl } from "@/lib/product-art";
 import type { Order } from "@workspace/api-client-react";
 
 /**
@@ -95,19 +96,19 @@ export function OrderRow({ order, index }: { order: Order; index: number }) {
           <div className="w-12 h-12 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
             {order.product_image_url ? (
               <img
-                src={order.product_image_url}
+                src={productArtUrl(order.product_image_url)}
                 alt={order.product_name}
                 loading="lazy"
                 decoding="async"
                 /* R-140-a (image discipline): width/height
-                             mirror the catalog art's measured 450×450
+                             mirror the catalog art's measured 1024×1024
                              intrinsic (all 45 /products/*.webp, the
                              R132 L4-F9 census re-probed this round) —
                              the fixed w-12 h-12 well already pins CLS
                              at zero; the attrs keep the aspect-ratio
                              reserve honest pre-CSS. */
-                width={450}
-                height={450}
+                width={1024}
+                height={1024}
                 className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform duration-200"
               />
             ) : (

@@ -19,7 +19,7 @@
  *
  *   - image-discipline-r140: orders.tsx's SITES entry swapped for
  *     components/orders/OrderRow.tsx (the row's product thumb is the
- *     page's only <img> — lazy/async/450×450 now pinned at the
+ *     page's only <img> — lazy/async/1024×1024 now pinned at the
  *     extract);
  *   - pages-contracts-r143: the dir="auto" truncating
  *     {order.product_name} site re-pointed to the extract;
@@ -103,8 +103,8 @@ describe("R167 (FE) — orders.tsx decomposition (F11): page stays the data mach
     expect(row).toContain("استُرد {formatCurrency(order.amount)} إلى محفظتك");
     expect(row).toContain("dir=");
     expect(row).toContain('loading="lazy"');
-    expect(row).toContain("width={450}");
-    expect(row).toContain("height={450}");
+    expect(row).toContain("width={1024}");
+    expect(row).toContain("height={1024}");
     // The row's forward affordance rides the RTL icon law (left-pointing
     // = forward, the OrderGroupChip ArrowLeft convention).
     expect(row).toContain("<ChevronLeft");

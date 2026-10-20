@@ -24,6 +24,7 @@ import { adminFetchJson } from "@/lib/admin-session";
 // emerald/yellow/orange hues to the canonical StatusBadge on the
 // --status-* tokens (high→success, medium→warning, low→low-stock).
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
+import { productArtUrl } from "@/lib/product-art";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -242,7 +243,7 @@ function RiskRow({ row }: { row: AtRiskRow }) {
         <div className="w-9 h-9 rounded-lg bg-muted/60 border border-border/40 shrink-0 overflow-hidden flex items-center justify-center">
           {row.product_image_url ? (
             <img
-              src={row.product_image_url}
+              src={productArtUrl(row.product_image_url)}
               /* R-140-a (image discipline): alt — was alt="" (empty on
                  a CONTENT image). The thumb follows the family idiom
                  the cart/orders/GlobalSearch thumbs ride: the product
@@ -253,13 +254,13 @@ function RiskRow({ row }: { row: AtRiskRow }) {
               loading="lazy"
               decoding="async"
               /* R-140-a (image discipline): width/height mirror the
-                 catalog art's measured 450×450 intrinsic (all 45
+                 catalog art's measured 1024×1024 intrinsic (all 45
                  /products/*.webp, the R132 L4-F9 census re-probed
                  this round) — the fixed w-9 h-9 well already pins CLS
                  at zero; the attrs keep the aspect-ratio reserve
                  honest pre-CSS. */
-              width={450}
-              height={450}
+              width={1024}
+              height={1024}
             />
           ) : (
             <Package className="w-4 h-4 text-muted-foreground" />

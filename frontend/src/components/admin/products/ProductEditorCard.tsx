@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { CATEGORY_OPTIONS, type ProductForm } from "@/components/admin/products/products-meta";
 import { formatCurrency } from "@/lib/utils";
+import { productArtUrl } from "@/lib/product-art";
 import { CheckCircle, Loader2, X } from "lucide-react";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/products.tsx —
@@ -200,7 +201,7 @@ export function ProductEditorCard({
                   the card body, so the preview read as a bare image). */}
               <div className="relative w-16 h-16 shrink-0 rounded-xl border border-border/40 bg-muted/60 overflow-hidden">
                 <img
-                  src={form.image_url.trim()}
+                  src={productArtUrl(form.image_url.trim())}
                   /* R-140-a (image discipline): alt — was the generic
                      «معاينة»; descriptive now (the preview IS a
                      product image preview). EAGER-LCP exception: it

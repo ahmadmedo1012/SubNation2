@@ -13,6 +13,10 @@
  * so it can neither silently widen (warming the whole catalog — byte
  * cost on every home boot) nor narrow (losing the LCP cards).
  *
+ * R174: the warmed URLs now carry the art version (?v=, lib/product-art)
+ * — the warm MUST hit the exact cache key the rendered <img> requests,
+ * or the warm becomes a double download instead of an LCP head-start.
+ *
  * The prefetch-resolve WIRING itself is module-eval code gated off in
  * tests (MODE === "test"), same limitation as the isHomeBootPath suite
  * — the 3-line .then is reviewed by eye and the selection semantics
@@ -40,21 +44,21 @@ function row(id: number, image_url: string | null | undefined): ProductListItem 
 }
 
 describe("R127-L10 (B4 D5): bootCardImageWarmUrls — warmed-set selection", () => {
-  it("warms EXACTLY the first 4 rows' images, in render order (never the 5th)", () => {
+  it("warms EXACTLY the first 4 rows' images, in render order (never the 5th) — versioned like the rendered <img>", () => {
     const list = [1, 2, 3, 4, 5, 6].map((id) => row(id, `/products/p${id}.webp`));
 
     expect(bootCardImageWarmUrls(list)).toEqual([
-      "/products/p1.webp",
-      "/products/p2.webp",
-      "/products/p3.webp",
-      "/products/p4.webp",
+      "/products/p1.webp?v=r174",
+      "/products/p2.webp?v=r174",
+      "/products/p3.webp?v=r174",
+      "/products/p4.webp?v=r174",
     ]);
   });
 
   it("a catalog shorter than 4 warms every row (no padding, no error)", () => {
     const list = [row(1, "/products/only.webp")];
 
-    expect(bootCardImageWarmUrls(list)).toEqual(["/products/only.webp"]);
+    expect(bootCardImageWarmUrls(list)).toEqual(["/products/only.webp?v=r174"]);
     expect(bootCardImageWarmUrls([])).toEqual([]);
   });
 
@@ -69,7 +73,7 @@ describe("R127-L10 (B4 D5): bootCardImageWarmUrls — warmed-set selection", () 
       row(5, "/products/p5.webp"),
     ];
 
-    expect(bootCardImageWarmUrls(list)).toEqual(["/products/p1.webp"]);
+    expect(bootCardImageWarmUrls(list)).toEqual(["/products/p1.webp?v=r174"]);
   });
 
   it("null/undefined lists warm nothing (a failed/absent prefetch is inert)", () => {

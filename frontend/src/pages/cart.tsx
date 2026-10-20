@@ -20,6 +20,7 @@ import { toast as sonnerToast } from "sonner";
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
+import { productArtUrl } from "@/lib/product-art";
 import {
   customFetch,
   getGetWalletQueryKey,
@@ -325,19 +326,19 @@ export default function CartPage() {
                       <div className="w-14 h-14 rounded-xl bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/40 group-hover:border-border/70 transition-colors">
                         {it.imageUrl ? (
                           <img
-                            src={it.imageUrl}
+                            src={productArtUrl(it.imageUrl)}
                             alt={it.name}
                             loading="lazy"
                             decoding="async"
                             /* R-140-a (image discipline): width/height
-                               mirror the catalog art's measured 450×450
+                               mirror the catalog art's measured 1024×1024
                                intrinsic (all 45 /products/*.webp, the
                                R132 L4-F9 census re-probed this round) —
                                the fixed w-14 h-14 well already pins CLS
                                at zero; the attrs keep the aspect-ratio
                                reserve honest pre-CSS. */
-                            width={450}
-                            height={450}
+                            width={1024}
+                            height={1024}
                             className="w-full h-full object-contain p-1.5"
                           />
                         ) : (

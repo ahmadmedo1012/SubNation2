@@ -4,6 +4,7 @@ import {
   CATEGORY_INITIAL_COLOR,
 } from "@/components/product/category-presentation";
 import { categoryLabel } from "@/lib/utils";
+import { productArtUrl } from "@/lib/product-art";
 import type { Product } from "@workspace/api-client-react";
 
 // R135 (FE-3 decomposition): extracted verbatim from pages/product.tsx —
@@ -50,7 +51,7 @@ export function ProductMediaSection({ product }: { product: Product }) {
 
         {product.image_url ? (
           <img
-            src={product.image_url}
+            src={productArtUrl(product.image_url)}
             alt={(() => {
               const name = (product.name ?? "").trim();
               const cat = categoryLabel(product.category);
@@ -60,20 +61,15 @@ export function ProductMediaSection({ product }: { product: Product }) {
                 ? `${name} — ${hasSub ? "" : "اشتراك "}${cat}`.trim()
                 : name;
             })()}
-            // L4-F9 (R132, measured): the intrinsic source of every
-            // live product asset is 450×450 webp (verified against
-            // https://subnation.ly/products/*.webp — all 45). The
-            // old width/height={800} was a false preload hint: it
-            // told the scanner to expect a larger resource than
-            // exists while the RENDERED box (object-contain inside
-            // the 16:9 media area, ~250-500 CSS px depending on
-            // viewport, ≤1.4 device-px upscale at DPR 2) sits close
-            // to the source. Honest intrinsic dimensions keep the
-            // aspect-ratio math truthful without regenerating
-            // artwork (no bigger sources exist; upscaling adds
-            // weight, not detail).
-            width={450}
-            height={450}
+            // L4-F9 (R132, measured): honest intrinsic dimensions —
+            // R174 regenerated every live product asset at 1024×1024
+            // (was 450×450 webp). The rendered box (object-contain
+            // inside the 16:9 media area, ~250-500 CSS px depending on
+            // viewport, ≤1.0 device-px at DPR 2) now sits inside the
+            // source, so the aspect-ratio math stays truthful with
+            // real headroom for sharp retina rendering.
+            width={1024}
+            height={1024}
             fetchPriority="high"
             decoding="async"
             // R-140-a (image discipline): EAGER-LCP exception — this

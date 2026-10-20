@@ -32,6 +32,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/hooks/useSocket";
 import { useSeo } from "@/hooks/useSeo";
+import { productArtUrl } from "@/lib/product-art";
 import {
   ArrowRight,
   Clock,
@@ -260,7 +261,9 @@ export default function OrderDetailPage() {
                 {(order as { product_image_url?: string }).product_image_url ? (
                   <div className="w-12 h-12 rounded-xl bg-muted/60 border border-border/40 overflow-hidden shrink-0">
                     <img
-                      src={(order as { product_image_url?: string }).product_image_url}
+                      src={productArtUrl(
+                        (order as { product_image_url?: string }).product_image_url,
+                      )}
                       alt={order.product_name || "صورة المنتج"}
                       loading="lazy"
                       decoding="async"
@@ -269,12 +272,12 @@ export default function OrderDetailPage() {
                          a content image when a legacy order ships a
                          blank name; || gives it the honest «صورة
                          المنتج» floor instead. width/height mirror
-                         the catalog art's measured 450×450 intrinsic
+                         the catalog art's measured 1024×1024 intrinsic
                          (all 45 /products/*.webp, the R132 L4-F9
                          census re-probed this round) — the fixed
                          w-12 h-12 well already pins CLS at zero. */
-                      width={450}
-                      height={450}
+                      width={1024}
+                      height={1024}
                       className="w-full h-full object-contain p-1.5"
                     />
                   </div>

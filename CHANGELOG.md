@@ -10,6 +10,20 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R174 — The product-art excellence round — 2026-10-20
+
+**Scope:** the owner directive «اكمل ماتبقى وبخصوص المنتجات … تحسين صور المنتجات لتكون أعلى دقة وأحدث وأنظف وأسرع في الظهور وايضا بدون كتابة السعر على الصورة … استبدل الصور الحالية للمنتجات بصور لكل منتج بشكل منظم ومثالي» — the product-image excellence lane. Full report: `docs/engineering/R174/round-close.md`.
+
+**The diagnosis:** the live 45-tile catalog art was scraped third-party reseller material — prices baked into images («$4.99/MO» on cPanel), competitor watermarks («Accountbot.net» on ChatGPT Plus), mixed white/dark backdrops, all at 450×450. Not a designed set.
+
+**The regeneration:** all 45 tiles replaced in ONE designed family (dark studio backdrop + brand-color radial glow + one glossy 3D emblem; text only where the wordmark IS the mark) at **1024×1024 WebP** (avg 27.8 KB/tile, max 65 KB) through a generate → **VLM-QA → regenerate** loop (`scripts/r174-product-art/`): no price/currency/promo/watermark text on any tile, wordmarks spell-checked by the validator, 42 strict passes + 3 documented abstract-mark acceptances (Tidal, ChatGPT, Skillshare stacking).
+
+**The freshness contract (the engineering half):** replaced-under-same-name art rides 30d HTTP + SW CacheFirst caches — so every surface now requests versioned URLs (`?v=r174`): 13 frontend render/warm sites via the new `lib/product-art.ts` (including the R127-L10 boot image-warming, which must hit the exact cache key the rendered `<img>` reads), the hydrated page's og:image + Product-LD, and the backend crawler-shell/share-card og:image via the new `lib/product-art-version.ts` (spa-shell.ts SHRANK to 1,035 ≤ its 1,039 growth-ban). Intrinsic dims made honest everywhere (450 → 1024); 7 test suites re-pinned + 4 new tests.
+
+**Gates:** typecheck ×4 · lint 0/0 · backend 2,677 · frontend 2,766 (+4) · scripts 59 · build eager 149,049 B gz (budget holds) · parity 87/50/7/7 · drift zero · dist verified 45×1024² WEBP.
+
+**Standing:** the R173 age-gated deps re-checked — still inside the 24h window (7.3–14.6h), they age in tomorrow. Embronic API: the owner confirmed the plan; the prepared adapter boundary awaits the official docs + credentials (owner-side), nothing invented.
+
 ## Round R173 — The final comprehensive inspection, purification & perfection sweep — 2026-10-20
 
 **Scope:** the owner directive «اعمل جولة اخيرة شاملة من الفحص والتشخيص والمحاكاة والتحسين والتطوير وتنظيم وتطهير المستودع وكل الاكواد والفحص مجددا للوصول للمثالية من كل النواحي» — the final comprehensive round: inspect, diagnose, simulate, improve, organize, purify, re-verify, toward perfection from every aspect. Full report: `docs/engineering/R173/round-close.md`.

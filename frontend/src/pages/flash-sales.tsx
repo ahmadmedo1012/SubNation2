@@ -7,6 +7,7 @@ import { NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { buildItemListLd } from "@/lib/seo-builders";
 import { formatCount, categoryLabel, formatCurrency } from "@/lib/utils";
 import { CATEGORY_ACCENT, CATEGORY_ICON, DEFAULT_ACCENT } from "@/components/ProductCard";
+import { productArtUrl } from "@/lib/product-art";
 import {
   useGetFlashSale,
   useListProducts,
@@ -140,7 +141,7 @@ function FlashCard({
                  max-h-[74%] object-contain containment (the ProductCard
                  shelf's own twin idiom). */
               <img
-                src={product.image_url}
+                src={productArtUrl(product.image_url)}
                 alt={product.name}
                 loading="lazy"
                 decoding="async"

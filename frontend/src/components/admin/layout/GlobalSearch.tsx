@@ -7,6 +7,7 @@ import { adminFetchJson } from "@/lib/admin-session";
 // R125 (A6 B-9): formatCount feeds the search palette's sr-only result
 // announcement (Arabic plural forms — «نتيجة واحدة» / «3 نتائج»).
 import { formatCount, formatCurrency } from "@/lib/utils";
+import { productArtUrl } from "@/lib/product-art";
 import {
   displayUserName,
   displayUserPhone,
@@ -499,7 +500,7 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                         <div className="w-7 h-7 rounded-lg bg-muted/60 flex items-center justify-center shrink-0 overflow-hidden border border-border/35">
                           {p.image_url ? (
                             <img
-                              src={p.image_url}
+                              src={productArtUrl(p.image_url)}
                               alt={p.name || "صورة منتج"}
                               loading="lazy"
                               decoding="async"
@@ -509,12 +510,12 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
                                  payload ships a blank name; || gives it
                                  the honest «صورة منتج» floor instead.
                                  width/height mirror the catalog art's
-                                 measured 450×450 intrinsic (all 45
+                                 measured 1024×1024 intrinsic (all 45
                                  /products/*.webp, the R132 L4-F9 census
                                  re-probed this round) — the fixed w-7
                                  h-7 well already pins CLS at zero. */
-                              width={450}
-                              height={450}
+                              width={1024}
+                              height={1024}
                               className="w-full h-full object-contain p-1"
                             />
                           ) : (
