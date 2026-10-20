@@ -183,11 +183,20 @@ export interface BreadcrumbItem {
   href: string;
 }
 
-export function buildBreadcrumbLd(items: BreadcrumbItem[]) {
+export function buildBreadcrumbLd(items: BreadcrumbItem[], id?: string) {
   const origin = getOrigin();
+  // R178 (RH-55): the raw shell already emits the same BreadcrumbList with
+  // this @id. Reusing it lets the hydrated page merge into ONE node instead
+  // of shipping a second, anonymous BreadcrumbList beside the shell's.
+  const absoluteId = id
+    ? id.startsWith("http")
+      ? id
+      : `${origin}${id.startsWith("/") ? id : "/" + id}`
+    : null;
   return {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
+    ...(absoluteId ? { "@id": absoluteId } : {}),
     itemListElement: items.map((item, idx) => ({
       "@type": "ListItem",
       position: idx + 1,

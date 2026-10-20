@@ -170,10 +170,13 @@ export default function CategoryPage() {
   // own products via home.tsx's buildItemListLd twin, ≤30 entries).
   const breadcrumb = useMemo(() => {
     if (!meta) return null;
-    return buildBreadcrumbLd([
-      { name: "الرئيسية", href: "/" },
-      { name: meta.label, href: `/category/${meta.slug}` },
-    ]);
+    return buildBreadcrumbLd(
+      [
+        { name: "الرئيسية", href: "/" },
+        { name: meta.label, href: `/category/${meta.slug}` },
+      ],
+      `/category/${meta.slug}#breadcrumb`,
+    );
   }, [meta]);
 
   const itemList = useMemo(() => {

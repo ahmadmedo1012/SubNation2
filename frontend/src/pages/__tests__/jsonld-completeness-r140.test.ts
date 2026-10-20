@@ -346,6 +346,18 @@ describe("R-140-g — the graph/collection builders (pure)", () => {
     ]).itemListElement as Json[];
     expect(mixed[0].item).toBe("https://example.com/x");
     expect(mixed[1].item).toBe(`${ORIGIN}/support`);
+    // R178 (RH-55): category passes the shell's @id so hydration merges the
+    // two BreadcrumbList definitions instead of adding an anonymous second.
+    const identified = buildBreadcrumbLd(
+      [{ name: "الرئيسية", href: "/" }],
+      "/category/vpn#breadcrumb",
+    );
+    expect(identified["@id"]).toBe(`${ORIGIN}/category/vpn#breadcrumb`);
+    const absolute = buildBreadcrumbLd(
+      [{ name: "الرئيسية", href: "/" }],
+      "https://subnation.ly/category/vpn#breadcrumb",
+    );
+    expect(absolute["@id"]).toBe("https://subnation.ly/category/vpn#breadcrumb");
   });
 
   it("buildItemListLd: slug-canonical URLs + sequential positions", () => {
@@ -634,7 +646,8 @@ describe("R-140-g — the per-page emission calls exist in source", () => {
 
   it("category.tsx builds Breadcrumb + ItemList + FAQ", () => {
     const page = stripComments(read("src/pages/category.tsx"));
-    expect(page).toContain("buildBreadcrumbLd([");
+    expect(page).toContain("buildBreadcrumbLd(");
+    expect(page).toContain("#breadcrumb");
     expect(page).toContain("buildItemListLd(");
     expect(page).toContain("buildFaqLd(meta.faqs)");
   });
