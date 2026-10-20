@@ -154,9 +154,14 @@ interface ShellResponse {
   body: string;
   contentType: string;
   cacheControl: string;
+  location: string | null;
 }
 
-async function get(pathname: string, userAgent = UA_BROWSER): Promise<ShellResponse> {
+async function get(
+  pathname: string,
+  userAgent = UA_BROWSER,
+  redirect: "follow" | "manual" | "error" = "follow",
+): Promise<ShellResponse> {
   return new Promise((resolve, reject) => {
     const server = realApp.listen(0, async () => {
       const addr = server.address();
@@ -167,12 +172,14 @@ async function get(pathname: string, userAgent = UA_BROWSER): Promise<ShellRespo
       try {
         const res = await fetch(`http://127.0.0.1:${addr.port}${pathname}`, {
           headers: { "User-Agent": userAgent },
+          redirect,
         });
         resolve({
           status: res.status,
           body: await res.text(),
           contentType: res.headers.get("content-type") ?? "",
           cacheControl: res.headers.get("cache-control") ?? "",
+          location: res.headers.get("location"),
         });
       } catch (err) {
         reject(err);
@@ -950,6 +957,50 @@ describe("SPA shell rewrite — noindex families in the raw shell (A7-F16)", () 
       expect(label).toBe(url);
     },
   );
+});
+
+// ── R176: no-JS fallback H1 + internal-link nav ────────────────────────────
+
+describe("SPA shell rewrite — no-JS fallback H1 + internal links (R176)", () => {
+  it("home ships the keyword H1, the meta description and every live category link", async () => {
+    const r = await get("/");
+    expect(r.status).toBe(200);
+    expect(r.body).toContain('<noscript data-seo-nav="1">');
+    expect(r.body).toContain(">سوق الاشتراكات الرقمية في ليبيا</h1>");
+    expect(r.body).toContain('href="https://subnation.ly/" aria-current="page"');
+    expect(r.body).toContain('href="https://subnation.ly/category/streaming"');
+    expect(r.body).toContain('href="https://subnation.ly/category/software"');
+    expect(r.body).toContain('href="https://subnation.ly/support"');
+    expect(r.body).toContain('href="https://subnation.ly/sitemap.xml"');
+  });
+
+  it("category shell ships its pinned h1 + the current-category marker", async () => {
+    const r = await get("/category/vpn");
+    expect(r.body).toContain(">اشتراكات VPN في ليبيا</h1>");
+    expect(r.body).toContain('href="https://subnation.ly/category/vpn" aria-current="page"');
+    // Every fallback link is an absolute canonical-origin URL.
+    expect(r.body).toContain('href="https://subnation.ly/category/education"');
+  });
+
+  it("product shell uses the Product-LD name as the fallback H1 (unclamped)", async () => {
+    const r = await get(`/product/${activeProduct.slug}`);
+    expect(r.body).toContain(">ExpressVPN اشتراك اختبار</h1>");
+  });
+
+  it("noindex/404 shells never ship the fallback nav", async () => {
+    const unknown = await get("/some-unknown-page");
+    expect(unknown.body).not.toContain('data-seo-nav="1"');
+    const dead = await get("/product/does-not-exist");
+    expect(dead.body).not.toContain('data-seo-nav="1"');
+    const retired = await get("/category/gaming");
+    expect(retired.body).not.toContain('data-seo-nav="1"');
+  });
+
+  it("301s the retired productivity category to its live software successor", async () => {
+    const r = await get("/category/productivity", UA_BROWSER, "manual");
+    expect(r.status).toBe(301);
+    expect(r.location).toContain("/category/software");
+  });
 });
 
 // ── Unknown paths: no canonical, noindex (R122 A7-P1-2) ───────────────────

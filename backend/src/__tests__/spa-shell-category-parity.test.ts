@@ -64,10 +64,16 @@ describe("SHELL_CATEGORY_META parity with frontend CATEGORY_META (A7-F3)", () =>
   });
 
   it.each(Object.keys(SHELL_CATEGORY_META))(
-    "%s: backend shell metaTitle + metaDescription are VERBATIM the frontend copy",
+    "%s: backend shell label + h1 + metaTitle + metaDescription are VERBATIM the frontend copy",
     (slug) => {
       const block = frontendCategoryBlocks().get(slug);
       expect(block, `frontend block for ${slug} not found`).toBeDefined();
+      // R176: the no-JS fallback nav renders label as link text and h1 as
+      // the page heading; drift here would make the raw shell disagree
+      // with the hydrated category page on its two strongest on-page
+      // signals, so both are pinned alongside the meta pair.
+      expect(SHELL_CATEGORY_META[slug].label).toBe(extractProp(block!, "label"));
+      expect(SHELL_CATEGORY_META[slug].h1).toBe(extractProp(block!, "h1"));
       expect(SHELL_CATEGORY_META[slug].metaTitle).toBe(extractProp(block!, "metaTitle"));
       expect(SHELL_CATEGORY_META[slug].metaDescription).toBe(
         extractProp(block!, "metaDescription"),

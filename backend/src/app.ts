@@ -314,6 +314,13 @@ app.use("/api", (_req, res) => {
 // engines crawling the apex find them where they expect.
 app.use(seoRouter);
 
+// R176 (SEO): /category/productivity is retired but still records GSC
+// impressions (24 in the last 28 days; 122 / 9 clicks in the prior window).
+// Its catalog (Windows/Office licensing) lives under /category/software —
+// consolidate the old URL there instead of leaving it a 404. This route
+// must sit before mountSpaShellRoutes, whose category branch owns 404s.
+app.get("/category/productivity", (_req, res) => res.redirect(301, "/category/software"));
+
 // ── SPA shell: static assets + per-route SEO meta + OG cards + fallback ──────
 // lib/spa-shell.ts (R136 decomposition) — the shell snapshot, the meta
 // constants + rewriters (now with the R136 PERF #10 memoization), the

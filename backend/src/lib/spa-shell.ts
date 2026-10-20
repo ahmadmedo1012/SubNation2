@@ -19,6 +19,7 @@ import { indexNowKey } from "./indexnow";
 // re-exports + the parity suites) keeps its import path.
 import { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
 import { buildShellProductLd, injectJsonLdScript } from "./shell-product-ld";
+import { injectSeoNav } from "./shell-seo-nav";
 // R166 (F4): the home's Organization + WebSite LD pair (frontend mirror).
 import { buildShellOrganizationLd, buildShellWebsiteLd } from "./shell-website-ld";
 // R174: og:image/Product-LD art URLs carry the art version (?v=) — the
@@ -586,6 +587,7 @@ function rewriteSpaShellMeta(html: string, meta: SpaShellMeta): string {
         out = injectJsonLdScript(out, block);
       }
     }
+    out = injectSeoNav(out, meta);
     return out;
   });
 }
