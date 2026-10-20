@@ -39,6 +39,11 @@ ProductCard's `from-white/[0.06]` top-gradient existed to unify the mixed white-
 
 lint 0/0 · typecheck ×3 · **backend 2,689 tests / 289 files** (4 sequential chunks on the 2-CPU box — the exact R177 baseline, tree unchanged this side) · **frontend 2,787 / 300** (full-suite single run + chunk re-verification; baseline 2,775 + 12 new polarity/OG-contract tests) · OpenAPI parity 87 / error-codes 50 / header params 7 (green) · production build green — **eager 149,440 B gz** (+328 B vs R177's 149,112, budget 150 KiB holds: the CSS block's cost) · 9 test-literal re-pins with in-line R178 rationale (backend og:image → products-og ×2, frontend og/LD ×3, boot warmup version ×6 → r178, the A1-F4 retirement).
 
+## Ship record (the sequencing law)
+
+- Commit `b2722f27` pushed to `main`; CI run **39508985112 — conclusion: success on every executed job** (path filter cost gate, gitleaks, lint/typecheck/drift, scripts, frontend, backend, production build; e2e + CVE scan path-filter-skipped for the round's file set — the cost gate's designed behavior, same as R177).
+- The `?v=r178` bump rotates every human surface (HTTP 30d + SW CacheFirst are both URL-keyed) on Coolify's push-to-deploy; bot surfaces switch to the `/products-og/` URLs from the shell re-render on the same deploy.
+
 ## Standing items (unchanged)
 
 - Embrionic API stays deferred by owner order; the DB's `image_url` paths never changed, so a future real-source refresh rides the same `?v=` bump contract.
