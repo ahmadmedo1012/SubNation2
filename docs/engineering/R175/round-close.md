@@ -87,11 +87,12 @@ The richer scenes cost ~2× weight at the same resolution (particles/reflections
 
 | Step | Result |
 |---|---|
-| commit | `feat(art,r175)` + `docs(r175)` (the round + the docs) |
-| push | CI run — see the follow-up row |
-| docker dispatch (post-CI, the R171 sequencing law) | run — production auto-redeploy |
-| production (read-only) | `/products/netflix.webp?v=r175` → 200 `image/webp` 1024×1024, the new family PIL-probed live |
-| post-deploy ci.yml dispatch | e2e vs the new production — the R170 heartbeat lesson |
+| commit | `09bdfbec` (61 files, +936/−28; pre-commit lint-staged green) |
+| push | `d9211866..09bdfbec` → **CI run 39420942648 SUCCESS** (all 9 push jobs green; e2e skipped by design on push) |
+| docker dispatch (post-CI, the R171 sequencing law) | run **39422122180 SUCCESS** → GHCR `main-amd64` + `sha-09bdfbec-amd64` → production auto-redeploy |
+| production (read-only) | healthz **200** · release `09bdfbe` present in the live entry `index-OPr8CBzF.js` AND every route chunk · GA4 `G-RKRV3ZC3MF` exactly **1×** · `/products/netflix.webp?v=r175` → 200 `image/webp` 30,352 B **1024×1024** (PIL-verified live) · `pandora-premium.webp?v=r175` 200, 67,914 B (the q74 re-encode, live) |
+| post-deploy ci.yml dispatch | run **39423471206 SUCCESS** — all 9 jobs green incl. **e2e 144/144 vs the new production** |
+| credentials | the PAT re-provisioned at round start, API-verified `login: ahmadmedo1012`; both files chmod 600, never deleted — the standing order holds |
 
 ## 10. Standing for the next round
 
