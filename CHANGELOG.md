@@ -10,6 +10,20 @@ at the bottom — full history: `git log`, the release ledger
 `docs/README.md` (historical rounds now live under `docs/history/` —
 executed R122, extended R135).
 
+## Round R179 — The deprecated-registry retirement + the upstream-unfixable ledger — 2026-10-21
+
+**Scope:** the owner's directive — «اكمل التحسين والتطوير والتنظيم الشامل والتفصيلي… مع التركيز على أدق التفاصيل من كل الجوانب» — the comprehensive-improvement continuation. Full report: `docs/engineering/R179/round-close.md`.
+
+**The rename:** `prom-client` 15.1.3 (officially deprecated — "replaced by @prometheus-io/client") → `@prometheus-io/client` 0.16.1, the same codebase under the Prometheus IO scope. 14 import/type sites across 9 backend modules, swept and closed by the committed `scripts/r179-prom-client-migrate.py`; `pnpm audit --prod` stays zero. The two typing movements the rename carries were closed type-honestly: `MetricLabels<T>` (a documented mirror of the renamed conditional `LabelValues<T>` that a plain `Record` can no longer prove against, adopted by the five `safe*` helpers, the old tautological casts deleted) and a labelless `safeObserve` overload (`LabelValues<never>` now resolves to `never` — `observe({}, v)` is illegal, `boot-migrations` calls the `(value)` shape). Live-exposition smoke: counters, histograms, and the 200-line default-metrics family all render; `dist/index.mjs`/`worker.mjs` carry the new specifier 84× each.
+
+**The upstream-unfixable ledger:** the dev-side audit tail is down to 4 findings, every one `patched: <0.0.0` with a vulnerable range covering the LATEST release (extract-zip ×2 HIGH via lhci's puppeteer browser-downloader; braces HIGH via the sentry vite-plugin's chokidar; sprintf-js MOD via lhci's argparse) — documented in `pnpm-workspace.yaml` with per-chain reachability analysis and a revisit rule (the R119/R169/R173 accepted-dev-risk class; dev-only, never CI, never the runtime image).
+
+**The freshness floor, landed:** typescript-eslint 8.72.0 · impeccable 4.7.0 · @playwright/test 1.64.1 · @tanstack/react-query 5.104.5.
+
+**The freshness floor, rejected with numbers:** react/react-dom 19.3.1 A/B-measured at +10,630 B gz on vendor-react (+18.1%) → eager 160,093 B, over the frozen 150 KiB warn gate — the floor stays 19.1.0 (trim-or-raise precedent, recorded at the pin). lucide-react 1.60.0 age-gated by `minimumReleaseAge: 1440` — the supply-chain defense wins.
+
+**Gates:** lint 0/0 · typecheck ×3 · backend 2,707/294 files (7 chunks) · frontend 2,787/300 (4 chunks, final-state re-verify) · parity 87/50/7 · build eager 149,469 B gz (warn gate holds) · prod audit zero.
+
 ## Round R178 — The theme-adaptive transparent art round — 2026-10-21
 
 **Scope:** the owner's directive — «الصور لو كان شعارات بدون خلفية بيضاء… بحيث تتغير الخلفية مع تغيير الثيم» — the logos lose their baked grounds and the theme supplies the background. Full report: `docs/engineering/R178/round-close.md`.
