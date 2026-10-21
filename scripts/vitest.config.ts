@@ -10,5 +10,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    // R180: vitest 5 flips clearMocks' default to true. Pin the v4
+    // semantics this suite was written under (mirrors backend config).
+    clearMocks: false,
   },
 });

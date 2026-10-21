@@ -49,8 +49,8 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "catalog:",
-    "@vitest/coverage-v8": "^4.1.11",
-    "@vitest/ui": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.5",
+    "@vitest/ui": "^5.0.5",
     "esbuild": "0.28.2",
     "esbuild-plugin-pino": "^2.3.3",
     "fast-check": "^4.10.2",
@@ -58,6 +58,6 @@
     "thread-stream": "4.2.0",
     "tsx": "catalog:",
     "vite": "catalog:",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.5"
   }
 }

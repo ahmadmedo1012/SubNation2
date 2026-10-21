@@ -35,10 +35,21 @@ export default defineConfig({
   // plugin-free test config states it explicitly instead. Existing
   // classic-style test files keep working — an explicit React import is
   // simply unused under the automatic runtime.
-  esbuild: { jsx: "automatic" },
+  // R180 (vite 8 / Oxc): the automatic JSX runtime now rides the Oxc
+  // transform — the vitest-4-era `esbuild: { jsx: "automatic" }` form is
+  // auto-converted with a deprecation warning; state the native v5 form
+  // explicitly. Why this exists at all is unchanged: tsconfig's "jsx":
+  // "preserve" makes a classic-runtime fallback kill every page render
+  // with "React is not defined"; the plugin-free test config states the
+  // automatic runtime explicitly instead.
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     globals: true,
     environment: "jsdom",
+    // R180: vitest 5 flips clearMocks' default to true — mock call-history
+    // recorded in beforeAll (the pattern this suite leans on) would be
+    // wiped. Pin the v4 semantics (mirrors the backend config).
+    clearMocks: false,
     setupFiles: ["./src/test/setup.ts"],
     // Component tests can be slower than backend pglite tests under
     // jsdom — give them a generous default but cap so a hung test

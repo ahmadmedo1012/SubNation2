@@ -26,6 +26,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:",
-    "vitest": "^4.1.11"
+    "vite": "catalog:",
+    "vitest": "^5.0.5"
   }
 }

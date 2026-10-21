@@ -1304,21 +1304,19 @@ export default defineConfig({
     // Split CSS per chunk so non-critical routes don’t block initial load
     cssCodeSplit: true,
     chunkSizeWarningLimit: 600,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        // A2 F6 (R124): merge micro-chunks. The R122 icon de-chunking left
-        // ~70-90 per-icon chunks at 511-855 B br each — every lazy route
-        // navigation paid 13-56 requests where a handful would do (h2
-        // per-request header overhead + stream scheduling). NOTE: Rollup
-        // 4's option is `experimentalMinChunkSize` (the A2 report's
-        // `minChunkSize` does not exist in rollup 4.59 — verified against
-        // rollup/dist/rollup.d.ts). The value is ESTIMATED SOURCE bytes
-        // (pre-minify), not wire bytes; 2048 merges the icon/one-liner
-        // chunks into their consumers. Merge candidates are ranked by the
-        // dead bytes they would add to other routes, so icons do not
-        // re-eager — and if anything ever does, the eager-sum gate above
-        // fails the build.
-        experimentalMinChunkSize: 2048,
+        // R180 (vite 8 = Rolldown): the A2 F6 micro-chunk merge
+        // (`experimentalMinChunkSize: 2048`) has NO Rolldown equivalent —
+        // verified against rolldown's output options (codeSplitting /
+        // advancedChunks groups are per-group, no global merge floor).
+        // The option was removed rather than left dead in the config; the
+        // consequence is measured and accepted per round: the sub-2 KB
+        // lucide-icon residue rides Rollup-style default chunking again
+        // (inlined into importers where the graph allows, small shared
+        // chunks otherwise). The eager-sum gate above still fails the
+        // build if any merge ever re-eagers bytes — that invariant is the
+        // load-bearing one.
         // R140-c audit (verify-only): the named-rule set was re-audited
         // against the r140 dependency graph and a live production
         // build — every rule below still matches real modules (vendor-
@@ -1335,139 +1333,174 @@ export default defineConfig({
         // remains vendor-charts (admin-lazy ChartsLoader). The rule
         // list is FROZEN by src/pages/__tests__/
         // chunk-architecture-r140.test.ts.
-        manualChunks(id) {
-          // Ensure tiny shared utility libs stay with the eager critical
-          // bundle so admin-only chart libs don't get pulled into the
-          // home page's import graph.
-          if (
-            id.includes("node_modules/clsx") ||
-            id.includes("node_modules/tailwind-merge") ||
-            id.includes("node_modules/class-variance-authority")
-          ) {
-            return "vendor-utils";
-          }
-          if (
-            id.includes("node_modules/react/") ||
-            id.includes("node_modules/react-dom/") ||
-            id.includes("node_modules/scheduler/")
-          ) {
-            return "vendor-react";
-          }
-          if (id.includes("node_modules/@tanstack")) {
-            return "vendor-query";
-          }
-          if (
-            id.includes("node_modules/recharts") ||
-            id.includes("node_modules/d3-") ||
-            id.includes("node_modules/victory-")
-          ) {
-            return "vendor-charts";
-          }
-          // R122 (A6-P1-1): lucide-react NO LONGER gets a manual chunk. The
-          // old rule pinned ALL 135 icons the app imports into ONE
-          // vendor-icons chunk; since the eager path references that chunk
-          // (Navbar/App/error pages use 14 icons), every cold storefront
-          // visit preloaded all 135 icons (11.2 KB gz) while only ~1.2 KB
-          // gz of them are eager-reachable — the other 121 icons (90%) are
-          // referenced exclusively by lazy admin/storefront routes. With no
-          // rule, Rollup's default chunking inlines the entry-reachable
-          // icons into their importing chunks and assigns lazy-only icons
-          // to the lazy page chunks (or a small on-demand shared chunk):
-          // eager path 152,438 → 144,430 B gz (−8.0 KB), back under the
-          // 145 KiB warn line; the entry chunk absorbed the eager icons
-          // (27,718 → 30,881 B gz, still far under its 55 KiB gate).
-          // Named per-icon imports are tree-shaken either way (no
-          // barrel imports in src), so nothing regresses for lazy routes.
-          if (
-            id.includes("node_modules/socket.io-client") ||
-            id.includes("node_modules/engine.io-client")
-          ) {
-            return "vendor-socket";
-          }
-          // Round-4 (perf P0-1 — de-eager vendor-radix): Button (eager via
-          // Navbar) imports @radix-ui/react-slot. If slot stays inside the
-          // merged vendor-radix chunk, that single eager static import drags
-          // the whole Radix bundle (dialog/popper/alert-dialog/switch/label,
-          // ~25 KB gz) into the storefront's modulepreload set. Route slot
-          // (and its only dependency, react-compose-refs) into the eager
-          // vendor-utils chunk instead so vendor-radix is referenced ONLY by
-          // lazily-loaded pages (support/wallet/admin) and drops out of the
-          // critical path entirely. compose-refs must follow slot — a
-          // vendor-utils → vendor-radix static import would re-eager the
-          // whole chunk.
-          if (
-            id.includes("node_modules/@radix-ui/react-slot") ||
-            id.includes("node_modules/@radix-ui/react-compose-refs")
-          ) {
-            return "vendor-utils";
-          }
-          if (id.includes("node_modules/@radix-ui")) {
-            return "vendor-radix";
-          }
-          if (id.includes("node_modules/wouter") || id.includes("node_modules/regexparam")) {
-            return "vendor-router";
-          }
-          // Isolate Firebase into its own async chunk so it never blocks
-          // initial page render — it’s only needed post-auth-check.
-          if (id.includes("node_modules/firebase") || id.includes("node_modules/@firebase")) {
-            return "vendor-firebase";
-          }
-          // R145 (Motion): the motion/react engine gets its own named
-          // chunk so it NEVER lands on the eager path. The app shell
-          // (Navbar/App/main.tsx) imports ZERO motion modules — the only
-          // importers are lazy route chunks (home/category/product), so
-          // this chunk is fetched on first route load and then cached
-          // across routes. Consumers ride LazyMotion + `m` +
-          // domAnimation (scroll reveals / parallax / gestures); domMax
-          // (layout + drag) is deliberately NOT loaded anywhere — no
-          // consumer needs layout animation, and the feature delta is
-          // the difference between ~6 KB and ~18 KB gz. The eager-sum
-          // gate above still fails the build if any motion module ever
-          // leaks into the entry graph.
-          if (
-            id.includes("node_modules/motion") ||
-            id.includes("node_modules/framer-motion") ||
-            id.includes("node_modules/motion-dom") ||
-            id.includes("node_modules/motion-utils")
-          ) {
-            return "vendor-motion";
-          }
-          // Sentry is on the critical path (instrument.ts is the first
-          // import in main.tsx) but should not bloat the index entry. By
-          // chunking it separately, the main bundle stays tiny while Sentry
-          // is still preloaded in parallel via Vite's module preload.
-          // 97-F6 (J-3): when VITE_SENTRY_DSN is unset at build time,
-          // sentryDsnGuardPlugin swaps @sentry/react for a no-op stub, so
-          // no id ever matches this rule and the vendor-sentry chunk is
-          // not emitted at all — the ~151 KB brotli dead weight stays out
-          // of the deployment entirely.
-          // A2 F1 move #4 (R124): the replay recorder + its wrapper get
-          // their OWN named chunk. Without this pin, Rollup's default
-          // grouping merged the 2 KB wrapper into the instrument chunk
-          // (experimentalMinChunkSize) — dissolving the dynamic-import
-          // boundary — and the recorder followed the barrel's re-export
-          // into vendor-sentry. With the pin (and the barrel strip in
-          // sentryDsnGuardPlugin), "sentry-replay" is ~314 KB, far above
-          // any merge threshold, and import("./lib/sentry-replay") is a
-          // real network boundary: fetched only when a session will
-          // actually record (sticky 10% roll / first error).
-          // NOTE the id shapes: pnpm store paths carry
-          // "@sentry-internal+replay@" in the directory segment, while
-          // the package-internal segment is "@sentry-internal/replay/".
-          // The wrapper is matched by its source path suffix.
-          if (
-            id.includes("@sentry-internal+replay") ||
-            id.includes("node_modules/@sentry-internal/replay/") ||
-            id.endsWith("src/lib/sentry-replay.ts")
-          ) {
-            return "sentry-replay";
-          }
-          if (id.includes("node_modules/@sentry/")) {
-            return "vendor-sentry";
-          }
-          // Fall through → Rollup's default chunking (TS7030 under
-          // noImplicitReturns: make the implicit undefined explicit).
-          return undefined;
+        // R180 (vite 8 / Rolldown): the deprecated function-form
+        // manualChunks is retired in favor of rolldown's native
+        // output.codeSplitting groups — the migration guide's
+        // recommended form. CRITICAL semantics that shaped this
+        // conversion: groups are evaluated by PRIORITY (not if-chain
+        // order) and a captured group's dependencies are included
+        // recursively by default. Under the deprecated conversion that
+        // recursion let vendor-motion swallow react/jsx-runtime — the
+        // module EVERY JSX file needs — so the ENTRY statically
+        // imported the whole motion chunk and the eager set exploded
+        // 149.5 → 341.5 KiB (the R120-B5 budget gate caught it). The
+        // react group now takes priority 100 so NO lazy group's
+        // dependency capture can ever claim react, react-dom,
+        // scheduler, or the jsx runtimes living under them. The rule
+        // NAMES and matchers stay frozen by chunk-architecture-r140
+        // .test.ts (re-pinned to the groups form in R180); group
+        // order below = priority ladder, NOT the old if-chain order.
+        codeSplitting: {
+          groups: [
+            // P100 — the React runtime, INCLUDING react/jsx-runtime:
+            // the one family that must never be captured into a lazy
+            // group by dependency recursion (header comment above).
+            {
+              name: "vendor-react",
+              priority: 100,
+              test: (id) =>
+                id.includes("node_modules/react/") ||
+                id.includes("node_modules/react-dom/") ||
+                id.includes("node_modules/scheduler/"),
+            },
+            // P90 — eager-path companions. The Round-4 de-eager pair
+            // (radix slot + compose-refs) rides the SAME group as the
+            // eager utils trio so vendor-radix stays referenced ONLY
+            // by lazily-loaded pages (support/wallet/admin) and off
+            // the critical path; compose-refs must follow slot — a
+            // vendor-utils → vendor-radix static import would re-eager
+            // the whole radix chunk.
+            {
+              name: "vendor-utils",
+              priority: 90,
+              test: (id) =>
+                // Ensure tiny shared utility libs stay with the eager
+                // critical bundle so admin-only chart libs don't get
+                // pulled into the home page's import graph.
+                id.includes("node_modules/clsx") ||
+                id.includes("node_modules/tailwind-merge") ||
+                id.includes("node_modules/class-variance-authority") ||
+                id.includes("node_modules/@radix-ui/react-slot") ||
+                id.includes("node_modules/@radix-ui/react-compose-refs"),
+            },
+            // P80 — eager vendor families.
+            {
+              name: "vendor-query",
+              priority: 80,
+              test: (id) => id.includes("node_modules/@tanstack"),
+            },
+            {
+              name: "vendor-router",
+              priority: 80,
+              test: (id) =>
+                id.includes("node_modules/wouter") || id.includes("node_modules/regexparam"),
+            },
+            // P70 — lazy-only transport + auth families.
+            {
+              name: "vendor-socket",
+              priority: 70,
+              test: (id) =>
+                id.includes("node_modules/socket.io-client") ||
+                id.includes("node_modules/engine.io-client"),
+            },
+            // Isolate Firebase into its own async chunk so it never
+            // blocks initial page render — it's only needed
+            // post-auth-check.
+            {
+              name: "vendor-firebase",
+              priority: 70,
+              test: (id) =>
+                id.includes("node_modules/firebase") || id.includes("node_modules/@firebase"),
+            },
+            // P60 — lazy engine families (radix sits AFTER its slot
+            // pair was claimed by vendor-utils at P90).
+            {
+              name: "vendor-radix",
+              priority: 60,
+              test: (id) => id.includes("node_modules/@radix-ui"),
+            },
+            // R145 (Motion): the motion/react engine gets its own
+            // named chunk so it NEVER lands on the eager path. The app
+            // shell (Navbar/App/main.tsx) imports ZERO motion modules —
+            // the only importers are lazy route chunks
+            // (home/category/product), so this chunk is fetched on
+            // first route load and then cached across routes.
+            // Consumers ride LazyMotion + `m` + domAnimation (scroll
+            // reveals / parallax / gestures); domMax (layout + drag) is
+            // deliberately NOT loaded anywhere — no consumer needs
+            // layout animation, and the feature delta is the difference
+            // between ~6 KB and ~18 KB gz. The eager-sum gate above
+            // still fails the build if any motion module ever leaks
+            // into the entry graph.
+            {
+              name: "vendor-motion",
+              priority: 60,
+              test: (id) =>
+                id.includes("node_modules/motion") ||
+                id.includes("node_modules/framer-motion") ||
+                id.includes("node_modules/motion-dom") ||
+                id.includes("node_modules/motion-utils"),
+            },
+            // R122 (A6-P1-1): lucide-react deliberately gets NO group.
+            // The old rule pinned ALL 135 icons the app imports into ONE
+            // vendor-icons chunk; since the eager path references that
+            // chunk (Navbar/App/error pages use 14 icons), every cold
+            // storefront visit preloaded all 135 icons (11.2 KB gz)
+            // while only ~1.2 KB gz of them are eager-reachable — the
+            // other 121 icons (90%) are referenced exclusively by lazy
+            // admin/storefront routes. With no rule, default chunking
+            // inlines the entry-reachable icons into their importing
+            // chunks and assigns lazy-only icons to the lazy page
+            // chunks (or a small on-demand shared chunk): eager path
+            // 152,438 → 144,430 B gz (−8.0 KB) at the time. Named
+            // per-icon imports are tree-shaken either way (no barrel
+            // imports in src), so nothing regresses for lazy routes.
+            // R180: without the retired experimentalMinChunkSize merge
+            // (see the comment above the groups), the SHARED icons
+            // ride their own micro-chunks again — the request-count
+            // tradeoff is measured per round and guarded by the
+            // eager-sum gate either way.
+            {
+              name: "vendor-charts",
+              priority: 60,
+              test: (id) =>
+                id.includes("node_modules/recharts") ||
+                id.includes("node_modules/d3-") ||
+                id.includes("node_modules/victory-"),
+            },
+            // A2 F1 move #4 (R124): the replay recorder + its wrapper
+            // get their OWN named chunk so import("./lib/sentry-replay")
+            // stays a real network boundary: fetched only when a
+            // session will actually record (sticky 10% roll / first
+            // error). NOTE the id shapes: pnpm store paths carry
+            // "@sentry-internal+replay@" in the directory segment,
+            // while the package-internal segment is
+            // "@sentry-internal/replay/". The wrapper is matched by its
+            // source path suffix.
+            {
+              name: "sentry-replay",
+              priority: 60,
+              test: (id) =>
+                id.includes("@sentry-internal+replay") ||
+                id.includes("node_modules/@sentry-internal/replay/") ||
+                id.endsWith("src/lib/sentry-replay.ts"),
+            },
+            // Sentry is on the critical path (instrument.ts is the
+            // first import in main.tsx) but should not bloat the index
+            // entry. By chunking it separately, the main bundle stays
+            // tiny while Sentry is still preloaded in parallel via
+            // Vite's module preload. 97-F6 (J-3): when VITE_SENTRY_DSN
+            // is unset at build time, sentryDsnGuardPlugin swaps
+            // @sentry/react for a no-op stub, so no id ever matches
+            // this rule and the vendor-sentry chunk is not emitted at
+            // all — the ~151 KB brotli dead weight stays out of the
+            // deployment entirely.
+            {
+              name: "vendor-sentry",
+              priority: 50,
+              test: (id) => id.includes("node_modules/@sentry/"),
+            },
+          ],
         },
       },
     },

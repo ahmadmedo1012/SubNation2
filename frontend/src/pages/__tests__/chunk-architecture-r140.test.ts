@@ -13,7 +13,10 @@
  *   1. manualChunks — the named-rule list is FROZEN (both deletions
  *      and additions fail loudly): the 11 return sites / 10 chunk
  *      names, the load-bearing module matchers behind each rule, and
- *      the A2 F6 experimentalMinChunkSize merge value. The bundle story
+ *      the R180 rolldownOptions section (vite 8/Rolldown: the A2 F6
+ *      experimentalMinChunkSize merge had no Rolldown equivalent and was
+ *      retired — the dead option is BANNED below, not merely absent).
+ *      The bundle story
  *      (vendor-sentry DSN-conditional, sentry-replay byte-gating,
  *      vendor-charts the lone >400 KB admin-only monster) has deep WHY
  *      history in vite.config.ts comments — an accidental rule
@@ -71,22 +74,22 @@ const lazyRetry = stripComments(read("src/lib/lazy-with-retry.ts"));
 
 // ── Section 1: manualChunks frozen rule list ───────────────────────────────
 
-/** R140-c freeze (R145-amended): the 12 manualChunks return sites
- *  (vendor-utils appears twice by design — the eager utils trio AND the
- *  Round-4 de-eager radix-slot/compose-refs pair both target
- *  vendor-utils; R145 added vendor-motion, the lazy-gated motion/react
- *  engine chunk — see vite.config.ts's R145 comment). */
+/** R140-c freeze (R145-amended, R180-repinned): the 11 codeSplitting
+ *  group `name:` sites (the R180 rolldown conversion — the deprecated
+ *  manualChunks function became output.codeSplitting groups with a
+ *  PRIORITY ladder; vendor-utils appears ONCE now because the Round-4
+ *  de-eager radix-slot/compose-refs pair joined the single vendor-utils
+ *  group's test instead of a second return site). */
 const FROZEN_MANUAL_CHUNK_RULES = [
-  "vendor-utils",
   "vendor-react",
-  "vendor-query",
-  "vendor-charts",
-  "vendor-socket",
   "vendor-utils",
-  "vendor-radix",
+  "vendor-query",
   "vendor-router",
+  "vendor-socket",
   "vendor-firebase",
+  "vendor-radix",
   "vendor-motion",
+  "vendor-charts",
   "sentry-replay",
   "vendor-sentry",
 ];
@@ -134,12 +137,17 @@ const FROZEN_RULE_MATCHERS: readonly [label: string, pin: string][] = [
   ],
   ["sentry-replay: the wrapper source pin", 'id.endsWith("src/lib/sentry-replay.ts")'],
   ["vendor-sentry: @sentry/", 'id.includes("node_modules/@sentry/")'],
-  ["A2 F6 micro-chunk merge value", "experimentalMinChunkSize: 2048"],
+  ["R180 rolldown section", "rolldownOptions: {"],
+  ["R180 native code-splitting section", "codeSplitting: {"],
+  [
+    "R180 jsx-runtime guard: react group takes the top priority",
+    'name: "vendor-react",\n              priority: 100,',
+  ],
 ];
 
 describe("R140-c — manualChunks (vite.config.ts): the named-rule list is frozen", () => {
-  it("emits exactly the 12 known return sites / 11 named chunks — deletions AND additions fail", () => {
-    const ruleReturns = [...viteConfig.matchAll(/return\s+"(vendor-[a-z-]+|sentry-replay)";/g)].map(
+  it("emits exactly the 11 known group name sites — deletions AND additions fail", () => {
+    const ruleReturns = [...viteConfig.matchAll(/name:\s*"(vendor-[a-z-]+|sentry-replay)"/g)].map(
       (m) => m[1],
     );
     expect(ruleReturns).toEqual(FROZEN_MANUAL_CHUNK_RULES);
@@ -149,6 +157,10 @@ describe("R140-c — manualChunks (vite.config.ts): the named-rule list is froze
     for (const [label, pin] of FROZEN_RULE_MATCHERS) {
       expect(viteConfig, label).toContain(pin);
     }
+  });
+
+  it("bans the dead rolldown option (R180: experimentalMinChunkSize is ignored by Rolldown — a resurrected line is config-dishonesty)", () => {
+    expect(viteConfig).not.toContain("experimentalMinChunkSize");
   });
 
   it("keeps the modulepreload/DOM-order load-bearing lines (external home gate, eager-sum home skip, font preload family)", () => {

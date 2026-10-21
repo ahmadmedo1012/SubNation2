@@ -5,6 +5,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    // R180: vitest 5 flips clearMocks' default to true, which would wipe
+    // mock call-history recorded in beforeAll (40 suites here do exactly
+    // that). Pin the v4 semantics; adopting the new default is its own
+    // test-by-test round, not a toolchain-upgrade side effect.
+    clearMocks: false,
     // Round-93 A10: synthetic env bootstrap (runs once, before any module
     // import) so the DB-less suite boots locally exactly like CI — see
     // src/test/env.ts. Tests that exercise fail-fast paths delete the vars

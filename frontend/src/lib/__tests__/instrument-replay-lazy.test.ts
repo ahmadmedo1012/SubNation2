@@ -272,17 +272,23 @@ describe("A2 F1 moves 3+4 (R124): the build-config half of the boundary", () => 
     expect(config).toMatch(/build\\\/npm\\\/esm\\\/\(dev\\\/\|prod\\\/\)\?index\\\.js\$/);
   });
 
-  it("move 4: manualChunks pins the recorder package + wrapper into a sentry-replay chunk", () => {
+  it("move 4: codeSplitting pins the recorder package + wrapper into a sentry-replay chunk (R180 groups form)", () => {
     expect(config).toContain('id.includes("@sentry-internal+replay")');
     expect(config).toContain('id.includes("node_modules/@sentry-internal/replay/")');
     expect(config).toContain('id.endsWith("src/lib/sentry-replay.ts")');
-    expect(config).toContain('return "sentry-replay";');
+    expect(config).toContain('name: "sentry-replay"');
   });
 
-  it("move 4 ordering: the sentry-replay rule precedes the vendor-sentry rule (first match wins)", () => {
-    const replayRule = config.indexOf('return "sentry-replay";');
-    const vendorRule = config.indexOf('return "vendor-sentry";');
-    expect(replayRule).toBeGreaterThan(0);
-    expect(vendorRule).toBeGreaterThan(replayRule);
+  it("move 4 priority: the sentry-replay group outranks the vendor-sentry group (R180: priority ladder replaces if-chain order)", () => {
+    const replayGroup = config.indexOf('name: "sentry-replay"');
+    const vendorGroup = config.indexOf('name: "vendor-sentry"');
+    expect(replayGroup).toBeGreaterThan(0);
+    const replayPriority = Number(
+      config.slice(replayGroup, replayGroup + 220).match(/priority:\s*(\d+)/)?.[1],
+    );
+    const vendorPriority = Number(
+      config.slice(vendorGroup, vendorGroup + 220).match(/priority:\s*(\d+)/)?.[1],
+    );
+    expect(replayPriority).toBeGreaterThan(vendorPriority);
   });
 });
