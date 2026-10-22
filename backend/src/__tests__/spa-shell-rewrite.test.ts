@@ -430,10 +430,10 @@ describe("SPA shell rewrite — known public routes (A7-F3)", () => {
     expect(metaContent(r.body, "name", "description")).toContain("السعر 12.00 د.ل");
   });
 
-  it("a numeric /product/:id request canonicalizes to the row's SLUG url", async () => {
-    const r = await get(`/product/${activeProduct.id}`);
-    expect(r.status).toBe(200);
-    expect(canonicalHref(r.body)).toBe(`https://subnation.ly/product/${activeProduct.slug}`);
+  it("301s a numeric /product/:id request to the row's SLUG url", async () => {
+    const r = await get(`/product/${activeProduct.id}`, UA_BROWSER, "manual");
+    expect(r.status).toBe(301);
+    expect(r.location).toBe(`/product/${activeProduct.slug}`);
   });
 
   it("trailing slashes are normalized (no /category/vpn/ self-duplicate)", async () => {
@@ -973,13 +973,14 @@ describe("SPA shell rewrite — no-JS fallback H1 + internal links (R176)", () =
   it("home ships the keyword H1, the meta description and every live category link", async () => {
     const r = await get("/");
     expect(r.status).toBe(200);
-    expect(r.body).toContain('<noscript data-seo-nav="1">');
+    expect(r.body).toContain('<div data-seo-nav="1" id="seo-prerender">');
     expect(r.body).toContain(">سوق الاشتراكات الرقمية في ليبيا</h1>");
     expect(r.body).toContain('href="https://subnation.ly/" aria-current="page"');
     expect(r.body).toContain('href="https://subnation.ly/category/streaming"');
     expect(r.body).toContain('href="https://subnation.ly/category/software"');
     expect(r.body).toContain('href="https://subnation.ly/support"');
     expect(r.body).toContain('href="https://subnation.ly/sitemap.xml"');
+    expect(r.body).toContain(`href="https://subnation.ly/product/${activeProduct.slug}"`);
   });
 
   it("category shell ships its pinned h1 + the current-category marker", async () => {
@@ -988,11 +989,39 @@ describe("SPA shell rewrite — no-JS fallback H1 + internal links (R176)", () =
     expect(r.body).toContain('href="https://subnation.ly/category/vpn" aria-current="page"');
     // Every fallback link is an absolute canonical-origin URL.
     expect(r.body).toContain('href="https://subnation.ly/category/education"');
+    expect(r.body).toContain(`href="https://subnation.ly/product/${activeProduct.slug}"`);
   });
 
   it("product shell uses the Product-LD name as the fallback H1 (unclamped)", async () => {
     const r = await get(`/product/${activeProduct.slug}`);
     expect(r.body).toContain(">ExpressVPN اشتراك اختبار</h1>");
+  });
+
+  it("product shell ships unique long-form raw text and a related product link", async () => {
+    const [related] = await db
+      .insert(productsTable)
+      .values({
+        name: "منتج مرتبط",
+        slug: "related-shell-test",
+        description: "وصف قصير",
+        price: "20.00",
+        category: "vpn",
+        isActive: true,
+      })
+      .returning({ slug: productsTable.slug });
+    await db
+      .update(productsTable)
+      .set({
+        descriptionLong:
+          "الفقرة الطويلة الأولى: تفاصيل فريدة عن المنتج تكفي لفهرسة الصفحة.\n\nالفقرة الثانية: معلومات إضافية لا تظهر في قشرة SPA العادية.",
+      })
+      .where(eq(productsTable.id, activeProduct.id));
+    bumpCatalogCache();
+
+    const r = await get(`/product/${activeProduct.slug}`);
+    expect(r.body).toContain("الفقرة الطويلة الأولى");
+    expect(r.body).toContain("الفقرة الثانية");
+    expect(r.body).toContain(`href="https://subnation.ly/product/${related.slug}"`);
   });
 
   it("noindex/404 shells never ship the fallback nav", async () => {

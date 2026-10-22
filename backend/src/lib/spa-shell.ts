@@ -19,6 +19,7 @@ import { indexNowKey } from "./indexnow";
 // re-exports + the parity suites) keeps its import path.
 import { SHELL_CATEGORY_META, SHELL_HOME_META, SHELL_STATIC_ROUTE_META } from "./shell-meta";
 import { buildShellProductLd, injectJsonLdScript } from "./shell-product-ld";
+import { listShellProductLinks, type ShellProductLink } from "./shell-product-links";
 import { injectSeoNav } from "./shell-seo-nav";
 import { clampSeoTitle } from "./shell-title";
 // R166 (F4): the home's Organization + WebSite LD pair (frontend mirror).
@@ -404,6 +405,9 @@ export interface SpaShellMeta {
    * Offer, the home's Organization + WebSite pair. Undefined = no injection.
    */
   jsonLd?: string | string[];
+  /** R183 (RH-266): raw product links + numeric-PDP redirect target. */
+  productLinks?: ShellProductLink[];
+  redirectTo?: string;
 }
 
 /**
@@ -593,6 +597,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
       title: SHELL_HOME_META.title,
       description: SHELL_HOME_META.description,
       jsonLd: [buildShellOrganizationLd(origin), buildShellWebsiteLd(origin)],
+      productLinks: await listShellProductLinks(null),
     };
   }
 
@@ -619,6 +624,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
           // R142 (K-2): OG identity follows the canonical — the raw shell
           // used to keep the static homepage og:url on every category.
           ogUrl: `${origin}/category/${category[1]}`,
+          productLinks: await listShellProductLinks(category[1]),
         }
       : { status: 404, canonical: null, robots: "noindex,follow" };
   }
@@ -647,6 +653,11 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     if (!lookup.found || !lookup.row.isActive)
       return { status: 404, canonical: null, robots: "noindex,follow" };
     const row = lookup.row;
+    const canonical = `${origin}/product/${row.slug ?? slugOrId}`;
+    if (numeric !== null && row.slug) {
+      return { status: 301, canonical, redirectTo: `/product/${row.slug}` };
+    }
+    const productLinks = await listShellProductLinks(row.category, row.slug);
     // R122 (A7-P1-1 + A7-P2-5): prefer the operator's DB-backed SEO
     // overrides — the SAME fields the hydrated page renders
     // (frontend/src/pages/product.tsx: seo_title?.trim() ? seo_title :
@@ -692,13 +703,14 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
         : buildShareDescription(row.description, lookup.displayPrice),
       // Prefer the row's canonical slug URL (numeric-id requests get
       // replaceState'd to it client-side — R117 F-4).
-      canonical: `${origin}/product/${row.slug ?? slugOrId}`,
+      canonical,
       ogImage,
       // R142 (K-2): the PDP is an OG `product` object at its own URL —
       // the static baseline said `website` at the apex on every route.
-      ogUrl: `${origin}/product/${row.slug ?? slugOrId}`,
+      ogUrl: canonical,
       ogType: "product",
       ...(jsonLd !== undefined ? { jsonLd } : {}),
+      productLinks,
     };
   }
 
@@ -1014,6 +1026,10 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
       meta = await resolveSpaShellMeta(req.path, appOrigin());
     } catch {
       meta = { status: 200 };
+    }
+    if (meta.redirectTo) {
+      res.redirect(301, meta.redirectTo);
+      return;
     }
     res.status(meta.status).type("html").send(applySpaShellMeta(SPA_SHELL_HTML, meta));
   });
