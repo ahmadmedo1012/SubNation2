@@ -78,19 +78,19 @@ Served and exercised in the round's review environment (a Next.js host framing t
 
 **Environmental deferrals (the standing set):** the live-E2E checks requiring real infra and Playwright's pinned browser revision; the e2e/CVE CI jobs remain the by-design skips (e2e = dispatch/schedule-only; CVE = deps-only — no dependency changes this round).
 
-## 7. Ship record — STAGED (evidence to be stamped at ship)
+## 7. Ship record — CLOSED GREEN
 
-The ship sequence per the standing law (no automatic deploys; push → CI → Coolify rotation → read-only probes; this section is rewritten CLOSED GREEN only after the evidence exists):
-
-1. **Commits (conventional, on `main`, no force-push):** `fix(privacy,r184)` — the teardown predicate + the `admin-healthz-ready` rename + both pins (4 files); `docs(guide,r184)` — the study guide + the README/docs truth pass + this round-close + the round ledger (7 files).
-2. **Push:** fast-forward `a9be45f0..` to `origin/main`; remote HEAD re-verified equal to local.
-3. **CI:** all-executed jobs green on the pushed tree (gitleaks, path filter, lint/typecheck/drift, unit tests ×3, production build; e2e + CVE = the standing by-design skips).
-4. **GitHub repo description:** the study-guide pointer appended via the API (description + 20 topics re-verified).
-5. **Coolify rotation:** entry hash re-probed until it differs from `index-B9PaBJn_.js` (the R183 deploy).
-6. **Read-only production probes:** `healthz` 200; the homepage's honest caption + purchasable floor intact; the admin families' live 401 gates; a fresh browser session with zero page/console/network errors; the R181 residue regression on the new bundle.
-7. **Ship-record commit:** this section rewritten to CLOSED GREEN with the real SHAs, CI run id, entry hash, and probe outputs; pushed (docs-only cost-gate path).
-
-**No production data, secrets, DNS, or Coolify configuration is touched by any step (the operator-only boundary; all probes strictly read-only).**
+- **Starting SHA:** `a9be45f04a8c6db6a39952786233ce1f2e23d1c1` · **Final SHA on `origin/main`:** `5cbe1a60…` (fast-forward push `a9be45f0..5cbe1a60`, no force-push; remote HEAD re-verified equal to local via `git ls-remote`).
+- **Commits:** `03e20040` (`fix(privacy,r184)` — the teardown predicate + the `admin-healthz-ready` rename + both pins, 4 files +36/−4) + `5cbe1a60` (`docs(guide,r184)` — the study guide + the README/docs truth pass + this round ledger, 7 files +2,642/−27; the repo's lint-staged prettier hook formatted the guide HTML — the ledger's byte figure is the formatted size).
+- **CI on `5cbe1a60`** (run `39840014628`): **completed, success — all-executed jobs green** (path filter, gitleaks, lint/typecheck/drift gates, unit tests ×3 backend/frontend/scripts, production build). The two skips are the standing by-design gates (e2e = dispatch/schedule-only; CVE = deps-only — no dependency changes this round).
+- **GitHub repo description updated** via the API (`PATCH /repos/ahmadmedo1012/SubNation2` → 200): the study-guide pointer appended — «…Live at subnation.ly · Full Arabic study guide: docs/PROJECT_GUIDE.html»; the 20-topic set and homepage verified intact.
+- **Coolify rotation: LIVE.** The deployed entry rotated `index-B9PaBJn_.js` → **`index-DhByQZaf.js`** with `/api/healthz` → 200 at the first post-window probe. **The R184 deploy discriminator is decisive:** the live `assets/system-T9NcUYAV.js` chunk contains `admin-healthz-ready` (count 1) — the renamed queryKey only exists in the R184 tree; the pre-R184 build cannot serve that string.
+- **Read-only production probes — ALL GREEN:**
+  - `/api/catalog/stats` → `45 products · 1 available · 4 units · lowest_price 980` — the purchasable-floor contract intact post-rotation.
+  - The admin families' live 401 gates: `/api/admin/enrichment/status`, `/api/admin/pricing/config`, `/api/admin/settings`, `/api/admin/observability/summary` — all 401 unauthenticated (fail-closed base verified live).
+  - Fresh browser session: the homepage renders the honest caption («1 منتج متاح الآن» + «تبدأ الأسعار من …») byte-consistent with the live catalog; SPA navigation to the purchasable PDP `/product/lifetime-cloud-storage` clean; **zero page errors, zero console output, zero failed network requests**.
+  - **R181 residue regression on the NEW bundle:** the full transitive sweep from the entry (170 chunks / 2,567,780 B, zero fetch failures) — zero hits on all seven markers (`copilot`, `calculator`, `adminPricingCalculate`, `CopilotPanel`, `CalculatorInputsCard`, `copilot_previews`, `pricing/calculate`); the single `COPILOT_API_KEY` occurrence lives where documented — the enrichment status diagnostic chunk (`enrichment-BjsIiRdn.js`, ×1, the R181 verbatim env-name keep).
+- **No production data, secrets, DNS, or Coolify configuration was touched** (the operator-only boundary held; every probe strictly read-only).
 
 ## 8. Definition-of-done scorecard
 
