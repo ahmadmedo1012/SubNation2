@@ -128,7 +128,7 @@ async function seedCopilotState(adminId: number): Promise<void> {
   // across a file's tests) — clear this test's keys first so re-seeding
   // is exact.
   await db.execute(sql`
-    DELETE FROM system_settings WHERE key IN ('copilot.phases', 'v1m36.sibling')
+    DELETE FROM system_settings WHERE key IN ('copilot.phases', 'retention-days')
   `);
   await db.execute(sql`
     INSERT INTO system_settings (key, value) VALUES ('copilot.phases', '{"phase1_enabled":true}')
@@ -147,7 +147,7 @@ async function seedCopilotState(adminId: number): Promise<void> {
       ('admin', ${adminId}, 'risk.label', 'risk_event', 9, '{}')
   `);
   await db.execute(sql`
-    INSERT INTO system_settings (key, value) VALUES ('v1m36.sibling', '{}')
+    INSERT INTO system_settings (key, value) VALUES ('retention-days', '{}')
   `);
 }
 
@@ -209,7 +209,7 @@ describe("V1-M36 (R181) — copilot removal: the upgrade convergence", () => {
     await seedCopilotState(adminId);
     await applyCopilotRemovalStage();
     expect(
-      await scalar(sql`SELECT count(*) AS c FROM system_settings WHERE key = 'v1m36.sibling'`),
+      await scalar(sql`SELECT count(*) AS c FROM system_settings WHERE key = 'retention-days'`),
     ).toBe(1);
   });
 

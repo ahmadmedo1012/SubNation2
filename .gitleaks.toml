@@ -344,4 +344,13 @@ description = "History-only commits carrying the R163 synthetic IndexNow test ke
 commits = [
   "af6a703200df677988570e6c2a0f8625daabfbf4",
   "3183dbe13e6144ca5ee6b6d0f57eca8a640d9648",
+  # R181: migrate-v1m36.test.ts:212 carried the sibling-settings fixture
+  # key 'v1m36.sibling' — a synthetic system_settings row name (13 chars,
+  # digits+word entropy that the generic-api-key heuristic misreads as a
+  # key credential; never a secret — it names a DELETE/INSERT test
+  # fixture). Renamed to the plain-word 'retention-days' form at HEAD in
+  # this round's fix commit; the schedule/dispatch full-history scan
+  # still sees the original literal in this one SHA, so it rides the
+  # same commit-scoped entry as the R163/R168 precedents.
+  "fc7a3142830c91e995c0e0fea16fed37d709fd82",
 ]
