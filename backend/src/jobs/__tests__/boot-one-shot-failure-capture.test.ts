@@ -4,12 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * R127-L3 (B7 P3-1) — boot one-shot chain failure honesty.
  *
  * The chain's outer catch in fireOneShotsSequentially was WARN-ONLY and
- * UNCAPPED (invisible to Sentry — and for copilot-reaper /
- * whatsapp-otp-prune / reencrypt-v1-credentials there was no internal
+ * UNCAPPED (invisible to Sentry — and for whatsapp-otp-prune /
+ * reencrypt-v1-credentials there was no internal
  * captureSchedulerFailure either), while the message promised every
- * failing entry "will run again at its cron slot" — FALSE for 7 of the
- * 17 (no cron slot exists for coupon/stock sweeps, orphan-report,
- * copilot-reaper, otp-prune, flash-sale-catchup, reencrypt; B7 §2).
+ * failing entry "will run again at its cron slot" — FALSE for 6 of the
+ * 16 (no cron slot exists for coupon/stock sweeps, orphan-report,
+ * otp-prune, flash-sale-catchup, reencrypt; B7 §2 — the R181 copilot
+ * removal retired the copilot-reaper entry).
  *
  * The fix under test: captureSchedulerFailure(name, err, { trigger:
  * "boot_one_shot" }) in the catch + a per-kind retry message driven by
@@ -75,9 +76,6 @@ vi.mock("../stockWatcher", () => ({
   runStockSweep: stub("stock-sweep"),
   reportOrphanInventory: stub("orphan-inventory-report"),
 }));
-vi.mock("../copilot-reaper", () => ({
-  reapExpiredCopilotPreviews: stub("copilot-reaper"),
-}));
 vi.mock("../../services/whatsapp-otp.service", () => ({
   pruneExpiredOtps: stub("whatsapp-otp-prune"),
 }));
@@ -102,7 +100,7 @@ import { logger } from "../../lib/logger";
 const captureSpy = vi.mocked(captureSchedulerFailure);
 const warnSpy = vi.mocked(logger.warn);
 
-/** The 17-entry roster (CHAIN ORDER) with the retry kind each label must report. */
+/** The 16-entry roster (CHAIN ORDER) with the retry kind each label must report. */
 const ROSTER: Record<string, "cron" | "opportunistic" | "boot-only"> = {
   "session-prune": "cron",
   "security-advisories": "cron",
@@ -116,7 +114,6 @@ const ROSTER: Record<string, "cron" | "opportunistic" | "boot-only"> = {
   "coupon-sweep": "opportunistic",
   "stock-sweep": "opportunistic",
   "orphan-inventory-report": "boot-only",
-  "copilot-reaper": "opportunistic",
   "whatsapp-otp-prune": "opportunistic",
   "admin-session-prune": "cron",
   "flash-sale-catchup": "opportunistic",
@@ -148,22 +145,22 @@ describe("R127-L3 (B7 P3-1) — boot one-shot failure capture + retry truth", ()
     expect(extras).toEqual({ trigger: "boot_one_shot" });
   });
 
-  it("one failure never skips its siblings — the whole 17-entry chain runs", async () => {
+  it("one failure never skips its siblings — the whole 16-entry chain runs", async () => {
     failingJobs.add("session-prune");
     runBootOneShots();
 
     await vi.waitFor(() => expect(warnSpy).toHaveBeenCalledTimes(1));
-    // 17 visits recorded, including every sibling AFTER the failure —
+    // 16 visits recorded, including every sibling AFTER the failure —
     // the sequential chain catches per-entry and keeps walking.
-    expect(jobCalls).toHaveLength(17);
+    expect(jobCalls).toHaveLength(16);
     expect(jobCalls[jobCalls.length - 1]).toBe("reencrypt-v1-credentials");
   });
 
-  it("the retry message is per-kind TRUTHFUL: all 17 fail, each says what actually retries it", async () => {
+  it("the retry message is per-kind TRUTHFUL: all 16 fail, each says what actually retries it", async () => {
     for (const name of Object.keys(ROSTER)) failingJobs.add(name);
     runBootOneShots();
 
-    await vi.waitFor(() => expect(captureSpy).toHaveBeenCalledTimes(17));
+    await vi.waitFor(() => expect(captureSpy).toHaveBeenCalledTimes(16));
 
     // Every captured name is a roster entry, exactly once (order is the
     // sequential chain's, but the pin is set-equality: each label once).
@@ -171,7 +168,7 @@ describe("R127-L3 (B7 P3-1) — boot one-shot failure capture + retry truth", ()
     expect([...capturedNames].sort()).toEqual(Object.keys(ROSTER).sort());
 
     // Every warn carries the kind-correct message fragment + binding.
-    expect(warnSpy).toHaveBeenCalledTimes(17);
+    expect(warnSpy).toHaveBeenCalledTimes(16);
     for (const call of warnSpy.mock.calls) {
       const [bindings, message] = call as [{ retryKind?: string }, string];
       const name = String(message).match(/^\[scheduler\] (\S+) boot one-shot failed/)?.[1];
@@ -183,11 +180,11 @@ describe("R127-L3 (B7 P3-1) — boot one-shot failure capture + retry truth", ()
       expect(String(message)).not.toContain("will run again at its cron slot");
     }
 
-    // And the classification itself: 10 cron-twins, 5 opportunistic,
-    // 2 boot-only (B7 §2 inventory).
+    // And the classification itself: 10 cron-twins, 4 opportunistic,
+    // 2 boot-only (B7 §2 inventory, minus the R181 copilot-reaper).
     const kinds = Object.values(ROSTER);
     expect(kinds.filter((k) => k === "cron")).toHaveLength(10);
-    expect(kinds.filter((k) => k === "opportunistic")).toHaveLength(5);
+    expect(kinds.filter((k) => k === "opportunistic")).toHaveLength(4);
     expect(kinds.filter((k) => k === "boot-only")).toHaveLength(2);
   });
 });

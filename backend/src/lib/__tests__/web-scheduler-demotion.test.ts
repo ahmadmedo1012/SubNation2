@@ -37,9 +37,6 @@ vi.mock("../../jobs/stockWatcher", () => ({
 vi.mock("../../jobs/flashSaleWatcher", () => ({
   deactivateExpiredFlashSales: vi.fn(async () => undefined),
 }));
-vi.mock("../../jobs/copilot-reaper", () => ({
-  reapExpiredCopilotPreviews: vi.fn(async () => 0),
-}));
 vi.mock("../../jobs/cron", () => ({ initCronJobs: vi.fn(() => ({ stop: vi.fn() })) }));
 vi.mock("../../services/alerting.service", () => ({
   alertingService: { start: vi.fn(), stop: vi.fn() },
@@ -99,7 +96,6 @@ import { startHeartbeat } from "../../worker/heartbeat";
 import { checkExpiringCoupons } from "../../jobs/couponWatcher";
 import { runStockSweep, reportOrphanInventory } from "../../jobs/stockWatcher";
 import { deactivateExpiredFlashSales } from "../../jobs/flashSaleWatcher";
-import { reapExpiredCopilotPreviews } from "../../jobs/copilot-reaper";
 import { pruneExpiredOtps } from "../../services/whatsapp-otp.service";
 import { getSchedulerState } from "../scheduler-state";
 import { startWebSchedulers } from "../web-scheduler";
@@ -194,7 +190,6 @@ describe("R6 — startWebSchedulers demotion wiring", () => {
       // R102: the orphan-inventory report fires with the rest of the chain.
       expect(reportOrphanInventory).toHaveBeenCalledTimes(1);
       expect(deactivateExpiredFlashSales).toHaveBeenCalledTimes(1);
-      expect(reapExpiredCopilotPreviews).toHaveBeenCalledTimes(1);
       expect(pruneExpiredOtps).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();

@@ -46,10 +46,6 @@ vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
 }));
 
-vi.mock("@/components/admin/copilot/CopilotPanel", () => ({
-  CopilotPanel: () => null,
-}));
-
 /** Minimal Response-like object (the global-search.test.tsx stub). */
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;

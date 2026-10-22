@@ -3,7 +3,7 @@
 Scope: how sellable stock (the `inventory` table) is loaded, verified, and
 rolled back on the r112 production system. Loading inventory is OPERATOR DATA
 ENTRY — tooling and guardrails only; nothing here fabricates stock, and no
-automation (including the AI copilot) may ever add it. Code claims verified at
+automation may ever add it. Code claims verified at
 HEAD 521234f against the cited files; cites re-verified at ef3d0c3 (R118-A7;
 drifted line numbers refreshed in the same pass).
 
@@ -19,7 +19,7 @@ drifted line numbers refreshed in the same pass).
 | `account_password` | varchar(512) NULL | credential part 2 — AES-256-GCM at rest |
 | `extra_details` | text NULL | code products / recovery notes — GCM at rest (F7, round-94) |
 | `is_sold` / `sold_at` | bool / timestamptz | claim state |
-| `created_at` / `updated_at` | timestamptz | `updated_at` = copilot staleness clock (raw SQL must set it explicitly) |
+| `created_at` / `updated_at` | timestamptz | `updated_at` = staleness clock (raw SQL must set it explicitly; historically the copilot's freshness signal) |
 
 Rules:
 - `variant_id IS NULL` = GENERIC pool — claimable by any variant of the
@@ -73,10 +73,9 @@ Honest limits of the adjacent mechanisms:
 - POST /products/:id/inventory/set-count (products.ts:435-507) can only
   DECREASE unsold stock (deletes the OLDEST unsold rows first); raising the
   number is rejected 400 — stock is credentials, never a count.
-- Copilot `update_stock` (backend/src/services/copilot/admin-direct.ts:521+):
-  `delta > 0` refused outright; `delta < 0` (≤1000) deletes the most-recent
-  unsold rows in a transaction. Read tools (copilot/tools/read.ts) are
-  stock read-only — NO tool adds stock.
+- (Historical, retired R181: the copilot's `update_stock` tool also refused
+  `delta > 0` outright and could only delete unsold rows — the copilot and
+  its tools are gone; nothing replaced them.)
 - NO endpoint accepts `product_slug` / `variant_sku` columns, and no write
   path sets `variant_id`. Scoped pools need a code change (shipped together
   with the variant-DELETE guard per inventory.ts:33-39), not data entry.
@@ -191,4 +190,5 @@ Unsold units under ARCHIVED products are flagged by the orphan sweep
   ACTIVE products (`netflix-premium`); 10 deliverable units total incl.
   archived products' stock.
 - Restock is the operator's data entry task (§2): set-count cannot raise the
-  number, copilot cannot, and no script should ever exist that tries.
+  number, and no script should ever exist that tries (nor could the retired
+  copilot, R181).

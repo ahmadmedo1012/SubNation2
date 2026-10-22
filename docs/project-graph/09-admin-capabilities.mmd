@@ -12,7 +12,7 @@ graph TB
     end
 
     subgraph BackendScopes["Backend route scopes (requireAdmin + requirePermission)"]
-        S1["auth · stats · copilot · risk · forecast · enrichment"]
+        S1["auth · stats · risk · forecast · enrichment"]
         S2["topups (finance) · orders · users · tickets · alerts"]
         S3["security · admins · settings · observability · diagnostics"]
         S4["products · product-variants · pricing-* · flash-sales"]

@@ -82,8 +82,9 @@ export const productsTable = pgTable(
     imageUrl: varchar("image_url", { length: 1000 }),
     price: numeric("price", { precision: 10, scale: 2 }).notNull(),
     /**
-     * Operator's procurement cost (per unit) — used by the admin pricing
-     * calculator to compute margin. Never returned on user-facing /api/products.
+     * Operator's procurement cost (per unit) — feeds the pricing rule
+     * (cost × (1 + markup%) × rate) and margin reads. Never returned on
+     * user-facing /api/products.
      * Nullable because existing rows pre-Increment-1 have no value; new
      * products SHOULD set it but the backend never enforces it.
      */
@@ -110,8 +111,8 @@ export const productsTable = pgTable(
     // in-schema so drizzle-kit introspection doesn't report drift.
     slugUniqueIdx: uniqueIndex("idx_products_slug_unique").on(t.slug),
     // Trigram GIN index over the product name — mirrors the live boot SQL
-    // (migrate.ts:1226). Powers the Copilot resolve_product fuzzy/typo/
-    // Arabic-English lookup. Previously live-only: a drizzle push would
+    // (migrate.ts). Powers the products ?search= fuzzy/typo/Arabic-English
+    // ILIKE lookup. Previously live-only: a drizzle push would
     // drop it and silently degrade fuzzy search to seq scans.
     nameTrgmIdx: index("idx_products_name_trgm").using("gin", t.name.op("gin_trgm_ops")),
     // R123-E5 (V1-M29): the zod perimeter (CreateProductBody min 0.01)

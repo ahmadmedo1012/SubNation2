@@ -136,7 +136,8 @@ describe("R143 (L9-2): the drizzle chain replays cleanly on a fresh database", (
 
   it("the documented end shape holds — every core + money table exists", async () => {
     const tables = new Set(await objectNames("table"));
-    // Core + money surfaces (migrate.ts Stage A..C + the R142 copilot tables).
+    // Core + money surfaces (migrate.ts Stage A..C; the R142 copilot
+    // tables left the chain via 0027 — R181, the feature's retirement).
     for (const t of [
       "users",
       "sessions",
@@ -155,23 +156,27 @@ describe("R143 (L9-2): the drizzle chain replays cleanly on a fresh database", (
       "ticket_replies",
       "audit_logs",
       "idempotency_keys",
-      "copilot_previews",
-      "copilot_actions",
       "system_settings",
     ]) {
       expect(tables.has(t), `chain-built schema is missing table ${t}`).toBe(true);
     }
-    // The L9 fresh-replay shape WITH the L9-1 fix applied: 41 tables /
-    // 29 CHECKs / 39 FKs / 140 indexes — exactly the boot dry-run's shape
-    // (L9's 138 was measured with the singleton statement failing; the
-    // two pg_trgm GIN indexes are the one environmental delta vs real
+    // R181 (V1-M36 mirror): the copilot-exclusive tables are GONE from
+    // the chain-built end shape (chain 0027 drops them; the create
+    // files remain as historical chain records).
+    for (const t of ["copilot_previews", "copilot_actions", "copilot_action_items"]) {
+      expect(tables.has(t), `retired table ${t} must not exist post-0027`).toBe(false);
+    }
+    // The L9 fresh-replay shape WITH the L9-1 fix applied, re-measured
+    // after R181's chain 0027 (copilot retirement): 38 tables /
+    // 29 CHECKs / 35 FKs / 128 indexes — the boot dry-run's shape minus
+    // the three copilot tables, their 4 FKs and their 12 indexes (9 explicit + the 3 table
+    // PKs; the two pg_trgm GIN indexes are the one environmental delta vs real
     // Postgres, skipped exactly like ensurePgTrgmExtension degrades;
-    // R165/V1-M35 raised 139 → 140 — chain 0026 carries
-    // idx_orders_user_group).
-    expect(tables.size).toBe(41);
+    // R165/V1-M35's idx_orders_user_group still rides chain 0026).
+    expect(tables.size).toBe(38);
     expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(29);
-    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(39);
-    expect((await objectNames("index")).length).toBe(140);
+    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(35);
+    expect((await objectNames("index")).length).toBe(128);
   });
 
   it("the money guards the invariants depend on are all present", async () => {

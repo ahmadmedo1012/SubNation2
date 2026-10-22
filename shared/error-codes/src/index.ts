@@ -55,65 +55,19 @@ export const ErrorCode = {
   IDEMPOTENCY_IN_FLIGHT: "IDEMPOTENCY_IN_FLIGHT",
   IDEMPOTENCY_KEY_REUSE: "IDEMPOTENCY_KEY_REUSE",
 
-  // Admin AI copilot family (round-3: previously unmapped in the
-  // frontend, surfacing raw English in Arabic toasts).
-  COPILOT_INVALID_INPUT: "COPILOT_INVALID_INPUT",
-  COPILOT_LLM_ERROR: "COPILOT_LLM_ERROR",
-  COPILOT_NO_ADMIN_SESSION: "COPILOT_NO_ADMIN_SESSION",
-  COPILOT_BAD_METHOD: "COPILOT_BAD_METHOD",
-
-  // Admin AI copilot preview/execution family (round-92 B3/F-05: the
-  // copilot routes returned these codes while they existed in neither
-  // this enum nor the openapi ErrorCode enum — the enum contract was a
-  // lie for that family. Emitted by
-  // backend/src/routes/admin/copilot/{previews,ask,draft,settings}.ts).
-  COPILOT_PREVIEW_NOT_FOUND: "COPILOT_PREVIEW_NOT_FOUND",
-  COPILOT_PREVIEW_CONSUMED: "COPILOT_PREVIEW_CONSUMED",
-  COPILOT_PREVIEW_EXPIRED: "COPILOT_PREVIEW_EXPIRED",
-  COPILOT_HANDOFF_REQUIRED: "COPILOT_HANDOFF_REQUIRED",
-  COPILOT_HIGH_RISK_DISABLED: "COPILOT_HIGH_RISK_DISABLED",
-  COPILOT_STALE_RECORD: "COPILOT_STALE_RECORD",
-  COPILOT_UNEXPECTED_STATE: "COPILOT_UNEXPECTED_STATE",
-  COPILOT_EXECUTE_FAILED: "COPILOT_EXECUTE_FAILED",
-  COPILOT_NOT_HIGH_RISK: "COPILOT_NOT_HIGH_RISK",
-  COPILOT_FIRST_CONFIRM_MISSING: "COPILOT_FIRST_CONFIRM_MISSING",
-  COPILOT_COOLDOWN_NOT_ELAPSED: "COPILOT_COOLDOWN_NOT_ELAPSED",
-  COPILOT_LLM_UNAVAILABLE: "COPILOT_LLM_UNAVAILABLE",
-  COPILOT_OUT_OF_SCOPE: "COPILOT_OUT_OF_SCOPE",
-  COPILOT_INVALID_FLAGS: "COPILOT_INVALID_FLAGS",
-
-  // Round-93 (93-A8 F-8): emitted by the copilot rate limiter
-  // (backend/src/lib/copilot/rate-limit.ts) on 429 with
-  // retry_after_seconds + window extras — previously outside the
-  // enum/spec/map contract ("the enum must stay exhaustive over what
-  // the backend actually emits").
-  COPILOT_RATE_LIMITED: "COPILOT_RATE_LIMITED",
-
   // Round-93 (93-A8 F-15): emitted by the CSRF gate's fail-closed
   // misconfiguration branch (app.ts) when the allow-list is empty at
   // runtime. Rare/ops-facing, but the enum-exhaustiveness guarantee
   // applies to it too.
   CSRF_CONFIG: "CSRF_CONFIG",
 
-  // Round-94 (A5-05): the last two codes the copilot routes actually
-  // emit that previously lived outside the enum/spec contract — the
-  // phase-gate 503 (middlewares/requireCopilotPhase.ts) and the
-  // outbound secret-scan 502 abort (routes/admin/copilot/{ask,draft}.ts).
-  // Same 93-A8 F-8/F-15 class: the enum must stay exhaustive over what
-  // the backend actually emits.
-  COPILOT_PHASE_DISABLED: "COPILOT_PHASE_DISABLED",
-  COPILOT_SECRET_LEAK: "COPILOT_SECRET_LEAK",
-
   // Round-R166 (B10+B11): the error-code truth reconciliation.
-  // ADDED (B11): five codes the backend actually emits that existed
-  // in no registry/spec/map — PRODUCT_STALE / VARIANT_STALE (the
-  // checkout in-tx product/variant freshness re-checks riding the
-  // retryable CONCURRENCY_ERROR envelope;
-  // backend/src/services/checkout.service.ts, shaped at
-  // backend/src/routes/orders.ts) and the copilot admin-request tool
-  // loop trio (path-allowlist refusal, the SEC-92-03
-  // mutation-confirmation gate, loopback fetch failure;
-  // backend/src/services/copilot/admin-request-tool.ts).
+  // ADDED (B11): PRODUCT_STALE / VARIANT_STALE (the checkout in-tx
+  // product/variant freshness re-checks riding the retryable
+  // CONCURRENCY_ERROR envelope; backend/src/services/checkout.service.ts,
+  // shaped at backend/src/routes/orders.ts). The copilot admin-request
+  // tool loop trio that landed here the same round left with the
+  // copilot feature in R181.
   // RETIRED (B10): ten registered codes with ZERO backend emission
   // (verified per-code grep of both `ErrorCode.<NAME>` and string
   // literal sites): INVALID_PHONE, INVALID_PASSWORD_WEAK,
@@ -123,9 +77,6 @@ export const ErrorCode = {
   // GOOGLE_VERIFICATION_FAILED.
   PRODUCT_STALE: "PRODUCT_STALE",
   VARIANT_STALE: "VARIANT_STALE",
-  COPILOT_PATH_BLOCKED: "COPILOT_PATH_BLOCKED",
-  COPILOT_CONFIRMATION_REQUIRED: "COPILOT_CONFIRMATION_REQUIRED",
-  COPILOT_LOOPBACK_FAILED: "COPILOT_LOOPBACK_FAILED",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

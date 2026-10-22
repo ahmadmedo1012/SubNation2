@@ -1,10 +1,11 @@
 /**
- * F7 (R98-A6, 98-F5) — copilot total request budget.
+ * F7 (R98-A6, 98-F5) — LLM total request budget. (R181: relocated from
+ * services/copilot/ — the transport is shared, the copilot is gone.)
  *
  * MAX_TOOL_ROUNDS (4) × 60 s LLM calls + 20 s loopback tools used to be
  * unbounded (~4–5 min worst case) while Render's proxy cuts the connection
  * around ~100 s — the handler and LLM tokens kept burning on a 0.5-CPU free
- * instance. copilotChat now owns a shared 90 s deadline AbortController that
+ * instance. llmChat now owns a shared 90 s deadline AbortController that
  * (a) composes with each fetch's own 60 s AbortController inside
  * postChatCompletion (aborts the in-flight request) and (b) is checked at
  * every round boundary (a deadline hit mid-tool must not queue another
@@ -16,17 +17,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../provider-config", () => ({
-  getCopilotProvider: () => ({
+  getLlmProvider: () => ({
     providerId: "custom" as const,
     baseUrl: "http://llm.test/v1",
     apiKey: "test-key",
     model: "test-model",
     extraHeaders: {},
   }),
-  hasCopilotProvider: () => true,
+  hasLlmProvider: () => true,
 }));
 
-import { copilotChat, type CopilotEvent, type Tool } from "../llm-client";
+import { llmChat, type LlmEvent, type Tool } from "../llm-client";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -76,7 +77,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("copilotChat — F7 shared 90 s request budget", () => {
+describe("llmChat — F7 shared 90 s request budget", () => {
   it("completes a normal 2-round tool flow well inside the budget (regression)", async () => {
     let calls = 0;
     globalThis.fetch = vi.fn(async () => {
@@ -84,7 +85,7 @@ describe("copilotChat — F7 shared 90 s request budget", () => {
       return calls === 1 ? completion({ toolCalls: 1 }) : completion({ text: "done" });
     }) as unknown as typeof fetch;
 
-    const result = await copilotChat({
+    const result = await llmChat({
       systemText: "sys",
       intentText: "hello",
       tools: TOOLS,
@@ -105,8 +106,8 @@ describe("copilotChat — F7 shared 90 s request budget", () => {
     }) as unknown as typeof fetch;
 
     vi.useFakeTimers();
-    const events: CopilotEvent[] = [];
-    const chat = copilotChat({
+    const events: LlmEvent[] = [];
+    const chat = llmChat({
       systemText: "sys",
       intentText: "hello",
       tools: TOOLS,
@@ -146,7 +147,7 @@ describe("copilotChat — F7 shared 90 s request budget", () => {
     }) as unknown as typeof fetch);
 
     vi.useFakeTimers();
-    const chat = copilotChat({
+    const chat = llmChat({
       systemText: "sys",
       intentText: "hello",
       tools: TOOLS,

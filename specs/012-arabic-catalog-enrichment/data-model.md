@@ -217,7 +217,7 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_drafts_run
 | `GET /api/admin/enrichment/list` (panel)         | `enrichment_drafts WHERE state='drafted'`                              | `LIMIT 25 OFFSET <cursor>`, ORDER BY created_at DESC           |
 | `POST /api/admin/enrichment/:id/publish`         | the single draft row                                                   | identity by id; verify state='drafted'                         |
 | `POST /api/admin/enrichment/:id/reject`          | the single draft row                                                   | identity by id; verify state='drafted'                         |
-| `query_enrichment_drafts` (copilot tool)         | `enrichment_drafts` filtered by state, product_id, field_name          | optional product_id; optional state                            |
+| `query_enrichment_drafts` (copilot tool — RETIRED R181) | `enrichment_drafts` filtered by state, product_id, field_name          | optional product_id; optional state                            |
 | Candidate selector (cron, in-process)            | `products LEFT JOIN enrichment_drafts` to find eligible product+field  | excludes archived/inactive + recently-rejected combinations    |
 | Retention cron                                   | `enrichment_drafts WHERE created_at < CURRENT_DATE - 90 AND state IN (terminal)` | none — pure delete                                       |
 

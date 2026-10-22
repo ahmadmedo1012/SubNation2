@@ -18,7 +18,7 @@
  *      every router file under backend/src/routes/**). Resolves
  *      `router.use(prefix, ...middlewares, childRouter)` mounts and
  *      `receiver.METHOD("/path", ...)` leaf registrations, including
- *      multi-line calls and aliased imports (copilot/index.ts pattern).
+ *      multi-line calls and aliased imports.
  *   3. Diff both directions:
  *        - documented-but-not-implemented → always a FAILURE (stale docs);
  *        - implemented-but-not-documented → FAILURE unless the op is in
@@ -71,7 +71,7 @@ interface Op {
  *   admin-gap   — internal admin families (B3 F-10): risk, forecast,
  *                 enrichment, tickets, alerts, security, observability,
  *                 diagnostics, admins lifecycle, settings, 2FA, pricing,
- *                 chart-data, referrals read, copilot settings, inventory
+ *                 chart-data, referrals read, inventory
  *                 writes. Pending the F-10 scope-policy decision.
  *   alias       — canonical twins of documented alias paths
  *                 (/products/stats ↔ /catalog/stats, B3 F-15).
@@ -223,8 +223,6 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   // admin-gap — misc reads (B3 B.2)
   { method: "get", path: "/api/admin/referrals", category: "admin-gap" },
   { method: "get", path: "/api/admin/chart-data", category: "admin-gap" },
-  { method: "get", path: "/api/admin/copilot/settings", category: "admin-gap" },
-  { method: "patch", path: "/api/admin/copilot/settings", category: "admin-gap" },
 ];
 
 // ── OpenAPI side: line-based path/method scan ───────────────────────────────
@@ -479,7 +477,7 @@ function parseRouteFile(file: string): RouteFileInfo {
   // Router definitions: const/let/var X[: Type] = Router(...) — captures
   // `const router = Router()`, `const router: IRouter = Router()` (the
   // health/flash-sales/observability/diagnostics/seo pattern), and
-  // `export const copilotRouter = Router()`.
+  // `export const adminRiskRouter = Router()`.
   const routerDefs = new Set<string>();
   const routerDefRe =
     /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[A-Za-z_$][\w$.<>[\]]*\s*)?=\s*Router\s*\(/g;
@@ -708,7 +706,7 @@ function main(): void {
     console.log(
       `   Gate enforces ${
         [...implementedKeys].filter((k) => !allowlistKeys.has(k)).length
-      } implemented operations (public + money + admin-money + copilot families).`,
+      } implemented operations (public + money + admin-money families).`,
     );
   } else {
     process.exitCode = 1;

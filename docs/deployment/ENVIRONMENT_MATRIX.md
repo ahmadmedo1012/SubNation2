@@ -47,7 +47,7 @@
 | `METRICS_ADMIN_TOKEN` | ✔ | — | `/api/metrics` bearer | unset = metrics endpoint 404-class denial |
 | `WHATSAPP_OTP_BASE_URL` / `WHATSAPP_OTP_API_KEY` | API_KEY ✔ | — | `services/openwa.service.ts` | unset = OTP 503 `gateway_disabled`; base can be the compose-internal `http://openwa:2785` |
 | `WHATSAPP_OTP_SESSION` / `WHATSAPP_OTP_AUTO_CREATE_SESSION` / `WHATSAPP_OTP_SETTLE_MS` / `WHATSAPP_OTP_OPERATOR_E164` | ✖ | **no default** / `true` / `45000` / — | same | r108 matrix fix: WHATSAPP_OTP_SESSION has NO code default — unset = the OTP session ref is empty (set `subnation-otp`); settle window clamped 0-300000 |
-| `COPILOT_PROVIDER` / `COPILOT_API_KEY` / `COPILOT_MODEL` / `COPILOT_BASE_URL` | API_KEY ✔ | — | copilot + enrichment | all-four-or-nothing; feature disabled cleanly |
+| `COPILOT_PROVIDER` / `COPILOT_API_KEY` / `COPILOT_MODEL` / `COPILOT_BASE_URL` | API_KEY ✔ | — | enrichment LLM (`services/llm/`) | names kept verbatim from the retired copilot (R181) for production continuity; unset = LLM-backed enrichment disabled cleanly |
 | `FIREBASE_AUTH_ENABLED` / `FIREBASE_PROJECT_ID` / `FIREBASE_SERVICE_ACCOUNT_JSON` | SA-JSON ✔ | — | `lib/firebase-admin.ts` | unset = Google/Telegram identity off, WhatsApp OTP unaffected |
 | `OTP_HMAC_KEY` | ✔ | derives from SESSION_SECRET | `whatsapp-otp.service.ts` | explicit key recommended in prod |
 | `ENRICHMENT_RUNNER_ENABLED` / `FORECAST_RUNNER_ENABLED` | ✖ | `false` | runners | worker-tier gated, inert today |

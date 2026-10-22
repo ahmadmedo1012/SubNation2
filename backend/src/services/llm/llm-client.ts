@@ -1,6 +1,7 @@
 /**
- * LLM transport for the AI Admin Copilot using the OpenAI-compatible
- * Chat Completions HTTP protocol.
+ * LLM transport using the OpenAI-compatible Chat Completions HTTP protocol
+ * (R181: relocated from services/copilot/ — the copilot is gone; the
+ * Arabic catalog-enrichment feature keeps this transport).
  *
  * "OpenAI-compatible" here is the protocol name (the same wire format
  * adopted by NVIDIA NIM, OpenRouter, vLLM, llama.cpp server, etc). This
@@ -13,12 +14,12 @@
  *   - we can swap providers by env var with zero code change.
  */
 
-import { getCopilotProvider, hasCopilotProvider } from "./provider-config";
+import { getLlmProvider, hasLlmProvider } from "./provider-config";
 
 const MAX_TOOL_ROUNDS = 4;
 const REQUEST_TIMEOUT_MS = 60_000;
 // F7 (R98-A6, 98-F5): TOTAL budget across every LLM round + tool call of
-// ONE copilotChat invocation. 4 × 60 s LLM calls + 20 s loopback tools was
+// ONE llmChat invocation. 4 × 60 s LLM calls + 20 s loopback tools was
 // unbounded (~4–5 min worst case) while Render's proxy cuts the connection
 // around ~100 s — the handler and LLM tokens kept burning on a 0.5-CPU free
 // instance for a client that already saw the stream die. 90 s stays
@@ -27,9 +28,9 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const TOTAL_REQUEST_BUDGET_MS = 90_000;
 
 /** F7: the timeout-style error thrown when the shared budget is exhausted. */
-function copilotBudgetError(): Error {
+function llmBudgetError(): Error {
   return new Error(
-    `Copilot total request budget of ${TOTAL_REQUEST_BUDGET_MS}ms exceeded — aborting remaining tool rounds`,
+    `LLM total request budget of ${TOTAL_REQUEST_BUDGET_MS}ms exceeded — aborting remaining tool rounds`,
   );
 }
 
@@ -75,7 +76,7 @@ export interface ToolUseTrace {
   result: unknown;
 }
 
-export interface CopilotChatResult {
+export interface LlmChatResult {
   text: string;
   toolUses: ToolUseTrace[];
   inputTokens: number;
@@ -84,12 +85,11 @@ export interface CopilotChatResult {
 }
 
 /**
- * Progress event emitted by copilotChat as it works through tool rounds.
- * Used by the SSE streaming /ask endpoint to give the user live feedback
- * during the (typically 3-6 second) tool-loop window. Non-streaming
- * callers can simply pass no onEvent and ignore.
+ * Progress event emitted by llmChat as it works through tool rounds —
+ * live feedback during the (typically 3-6 second) tool-loop window.
+ * Non-streaming callers can simply pass no onEvent and ignore.
  */
-export type CopilotEvent =
+export type LlmEvent =
   | { type: "round_start"; round: number }
   | { type: "tool_call_start"; round: number; name: string; input: Record<string, unknown> }
   | { type: "tool_call_done"; round: number; name: string; ok: boolean; summary: string }
@@ -118,8 +118,8 @@ function summarizeToolResult(result: unknown): { ok: boolean; summary: string } 
   return { ok: true, summary: "ok" };
 }
 
-export function copilotLlmAvailable(): boolean {
-  return hasCopilotProvider();
+export function llmAvailable(): boolean {
+  return hasLlmProvider();
 }
 
 async function postChatCompletion(args: {
@@ -186,24 +186,26 @@ async function postChatCompletion(args: {
  * text answer (no more tool_calls) or MAX_TOOL_ROUNDS is hit.
  *
  * Optional `history` is the prior conversation's user/assistant messages
- * (typically the last 6 turns) so the model has context across turns.
- * The route caps the size so we don't blow the context window on long
- * sessions.
+ * (typically the last 6 turns) so the model has context across turns —
+ * the CALLER caps the size so we don't blow the context window on long
+ * sessions (no current caller; the surface stays part of the transport
+ * API).
  *
- * Optional `onEvent` is called as the chat progresses — used by the SSE
- * streaming path to push live "searching… updating… done" feedback to
- * the client during the multi-second tool loop.
+ * Optional `onEvent` is called as the chat progresses — live
+ * "searching… updating… done" feedback during the multi-second tool
+ * loop (the retired copilot SSE stream was the consumer; the surface
+ * stays part of the transport API).
  */
-export async function copilotChat(args: {
+export async function llmChat(args: {
   systemText: string;
   intentText: string;
   tools: Tool[];
   toolHandler: ToolHandler;
   maxTokens?: number;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
-  onEvent?: (e: CopilotEvent) => void;
-}): Promise<CopilotChatResult> {
-  const provider = getCopilotProvider();
+  onEvent?: (e: LlmEvent) => void;
+}): Promise<LlmChatResult> {
+  const provider = getLlmProvider();
   if (!provider.apiKey) {
     throw new Error("LLM provider not configured");
   }
@@ -217,7 +219,7 @@ export async function copilotChat(args: {
   // process alive nor leaks the timer.
   const deadlineController = new AbortController();
   const deadlineTimer = setTimeout(
-    () => deadlineController.abort(copilotBudgetError()),
+    () => deadlineController.abort(llmBudgetError()),
     TOTAL_REQUEST_BUDGET_MS,
   );
   deadlineTimer.unref?.();
@@ -247,7 +249,7 @@ export async function copilotChat(args: {
       // and the task explicitly keeps this one wrapper)? Stop HERE with the
       // same timeout-style error instead of starting a doomed round.
       if (deadlineSignal.aborted) {
-        throw deadlineSignal.reason instanceof Error ? deadlineSignal.reason : copilotBudgetError();
+        throw deadlineSignal.reason instanceof Error ? deadlineSignal.reason : llmBudgetError();
       }
       args.onEvent?.({ type: "round_start", round });
       const resp = await postChatCompletion({

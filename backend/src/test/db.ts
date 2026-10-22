@@ -521,61 +521,6 @@ CREATE TABLE notifications (
 -- boot swap converge (user_id, created_at DESC) for the bell sort.
 CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 
--- R142 (E-1): copilot_previews + copilot_actions — prod parity (migrate.ts
--- copilot pipeline batch) so the executor's single-use claim is testable
--- against the REAL columns (consumed_at conditional stamp included).
-CREATE TABLE copilot_previews (
-  id varchar(32) PRIMARY KEY,
-  admin_id integer NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
-  intent_text text NOT NULL,
-  tool_name varchar(100) NOT NULL,
-  action_class varchar(50) NOT NULL,
-  risk_tier varchar(20) NOT NULL,
-  affected_ids jsonb NOT NULL,
-  affected_entity_type varchar(50) NOT NULL,
-  record_versions jsonb NOT NULL,
-  preview_payload jsonb NOT NULL,
-  model_id varchar(64) NOT NULL,
-  correlation_id varchar(64) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  expires_at timestamptz NOT NULL,
-  consumed_at timestamptz,
-  confirmed_once_at timestamptz,
-  cooldown_starts_at timestamptz,
-  confirmed_twice_at timestamptz
-);
-CREATE INDEX idx_copilot_previews_admin_created
-  ON copilot_previews(admin_id, created_at DESC);
-CREATE INDEX idx_copilot_previews_expires ON copilot_previews(expires_at);
-CREATE INDEX idx_copilot_previews_action_class ON copilot_previews(action_class);
-
-CREATE TABLE copilot_actions (
-  id serial PRIMARY KEY,
-  preview_id varchar(32) REFERENCES copilot_previews(id) ON DELETE SET NULL,
-  admin_id integer NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
-  intent_text text NOT NULL,
-  tool_name varchar(100),
-  action_class varchar(50) NOT NULL,
-  risk_tier varchar(20) NOT NULL,
-  outcome varchar(20) NOT NULL,
-  failure_reason text,
-  before_state jsonb,
-  after_state jsonb,
-  confirmed_once_at timestamptz,
-  confirmed_twice_at timestamptz,
-  executed_at timestamptz,
-  model_id varchar(64),
-  model_input_tokens integer,
-  model_output_tokens integer,
-  correlation_id varchar(64) NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX idx_copilot_actions_admin_created
-  ON copilot_actions(admin_id, created_at DESC);
-CREATE INDEX idx_copilot_actions_action_class ON copilot_actions(action_class);
-CREATE INDEX idx_copilot_actions_outcome ON copilot_actions(outcome);
-CREATE INDEX idx_copilot_actions_preview ON copilot_actions(preview_id);
-
 -- V1-M9 (B8-10) composites for the admin "status + newest-first" lists,
 -- declared by the schema TS and created by applyMoneyConstraintStage.
 -- R123-E5 (V1-M27): idx_cart_items_user dropped — a strict prefix of
@@ -608,8 +553,6 @@ const TABLES = [
   "support_tickets",
   "audit_logs",
   "notifications",
-  "copilot_previews",
-  "copilot_actions",
 ];
 
 /** Build the fresh schema once. Call in a global beforeAll. */

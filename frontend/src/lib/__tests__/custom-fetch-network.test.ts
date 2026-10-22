@@ -231,7 +231,7 @@ describe("customFetch — 20 s default timeout merge (96-F3 M3)", () => {
     installTimeoutStub();
     removeAbortAny();
 
-    await customFetch("/api/copilot/run", { timeoutMs: 60_000 });
+    await customFetch("/api/admin/long-poll", { timeoutMs: 60_000 });
 
     expect(timeoutCalls).toEqual([60_000]);
   });

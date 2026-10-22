@@ -3,7 +3,7 @@
  *
  * Every consumer imports from here: routes/loyalty.ts, checkout.service,
  * refund.service, topup.service, admin/referrals.ts, admin/users.ts,
- * admin/pricing-calculator.ts, the OpenAPI descriptions and the tests.
+ * the OpenAPI descriptions and the tests.
  * Before R115 the constants lived in lib/loyalty-tiers.ts (tiers only) and
  * the welcome bonus was duplicated as bare literals in four services —
  * this module ends that.

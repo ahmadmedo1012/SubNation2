@@ -59,7 +59,7 @@ description: "Task list for Inventory Demand Forecasting implementation"
 ### Backend infrastructure
 
 - [ ] T010 [P] `backend/src/lib/forecast/dates.ts` — small pure utilities: `today_utc_date()`, `add_days(date, n)`, `clamp_date(date, lo, hi)`. Used by the runner and the math service so date arithmetic stays in one place and is unit-testable without hitting Postgres.
-- [ ] T011 [P] `backend/src/lib/forecast/redis-flags.ts` — read/write helpers for two Redis keys: `forecast:alerts:paused` (no TTL, set by capture-rate retention job — R-8) and `forecast_alert:<product_id>` (7-day TTL dedupe per R-3). Mirrors the shape of `backend/src/services/copilot/lib/rate-limit.ts`.
+- [ ] T011 [P] `backend/src/lib/forecast/redis-flags.ts` — read/write helpers for two Redis keys: `forecast:alerts:paused` (no TTL, set by capture-rate retention job — R-8) and `forecast_alert:<product_id>` (7-day TTL dedupe per R-3). Mirrors the shape of the (now-removed) copilot rate-limit helper — `backend/src/services/copilot/lib/rate-limit.ts` before the R181 copilot retirement.
 - [ ] T012 [P] Prometheus metrics in `backend/src/observability/metrics.ts`: counter `forecast_runs_total{outcome}`, counter `forecast_products_predicted_total`, counter `forecast_products_skipped_total{reason}`, counter `forecast_alerts_emitted_total`, histogram `forecast_run_seconds`. Exported via the existing `/metrics` endpoint per FR-FORECAST-008.
 
 ### Forecast service skeletons
@@ -98,30 +98,16 @@ description: "Task list for Inventory Demand Forecasting implementation"
 - [ ] T028 [US1] Mount `forecastRouter` into `backend/src/routes/admin/index.ts` next to the existing `risk` mount, with the same `requireAdmin` + `requirePermission("inventory")` gate.
 - [ ] T029 [P] [US1] `frontend/src/components/admin/forecast/StockoutRiskPanel.tsx` — the panel: collapsed-when-empty, RTL-aware container, fetches via the generated TanStack hook, renders up to 10 rows; depends on T030.
 - [ ] T030 [P] [US1] `frontend/src/components/admin/forecast/RiskRow.tsx` — single row component: product thumbnail + name (reusing existing product-table conventions), current stock count, predicted runout date in `ar-LY` locale, recommended reorder quantity inside an inline-LTR span (R-5), link to `/admin/products/:id`, "آخر تحديث" timestamp.
-- [ ] T031 [P] [US1] `frontend/src/components/admin/forecast/api.ts` — small wrapper over the generated TanStack Query hook for `GET /api/admin/forecast/at-risk` so the component-side code is readable; matches the 010 copilot `api.ts` convention.
+- [ ] T031 [P] [US1] `frontend/src/components/admin/forecast/api.ts` — small wrapper over the generated TanStack Query hook for `GET /api/admin/forecast/at-risk` so the component-side code is readable; matches the thin generated-hook wrapper convention.
 - [ ] T032 [US1] Mount `<StockoutRiskPanel />` above the existing product list in `frontend/src/pages/admin/products.tsx`. The mount is conditional on the panel having data OR being in stale/calibrating state — never rendered when uninitialized so a fresh deploy doesn't show an empty banner before the first cron run.
 
 **Checkpoint**: US1 fully functional — Phase 1 admins can see at-risk products and click through. The cron itself ships in Phase 4 (depended on by every story); this checkpoint validates the read surface against seeded fixture rows.
 
 ---
 
-## Phase 4: User Story 2 — Ask the copilot in natural language (P2)
+## Phase 4: User Story 2 — Ask the copilot in natural language (P2) — RETIRED R181
 
-**Goal**: An admin asks "أي منتجات على وشك أن تنفد الأسبوع القادم؟" in the AI Admin Copilot. The copilot calls `forecast_demand`, returns rows verbatim from `inventory_forecasts`, and offers to deep-link the admin into the panel.
-
-**Independent Test**: Phase 1 copilot enabled. Admin asks "show me products at risk". Copilot's reply lists product IDs that match a direct `SELECT … WHERE at_risk=true` against `inventory_forecasts` for the current calendar day. Asking about a non-existent product returns "no forecast available" — no fabrication.
-
-### Tests for User Story 2
-
-- [ ] T033 [P] [US2] Test in `backend/src/test/forecast/copilot-tool.test.ts`: `forecast_demand` invoked without filters returns at-risk-only rows by default; `at_risk_only=false` returns all rows; `product_id` filter returns the latest row for that product or empty; `horizon_days=30` is honored.
-- [ ] T034 [P] [US2] Test in `backend/src/test/forecast/copilot-fabrication.test.ts`: a copilot turn that asks the model to list at-risk products MUST cite IDs verbatim from the tool output; the test asserts every product mentioned in the assistant text appears in the tool's returned `rows[].product_id`.
-- [ ] T035 [P] [US2] Test in `backend/src/test/forecast/copilot-scope.test.ts`: an admin without the `inventory` scope sees the `forecast_demand` tool excluded from the catalog passed to the LLM; the copilot replies "you do not have inventory access" rather than calling the tool.
-
-### Implementation
-
-- [ ] T036 [US2] Add `forecast_demand` to `backend/src/services/copilot/tools/read.ts` per `contracts/README.md`: `requiredScope: "inventory"`, accepts `horizon_days ∈ {7,30}`, `at_risk_only`, `product_id`, `limit`; handler reads via `forecast-store` only; returns `{ data_freshness_hours, pipeline_state, rows[] }` with `panel_url` per row pointing at `/admin/products?highlight=<id>`. Append to the `READ_TOOLS` array next to `query_risk_events` (matches the existing 010 bridge convention).
-
-**Checkpoint**: US2 functional — the copilot can answer forecast questions in Arabic + English with grounded data. Verify against `quickstart.md` §3.
+**Status**: the AI Admin Copilot was permanently retired in Round R181 (UI, `/api/admin/copilot/*` routes, services, and DB tables removed). The `forecast_demand` tool — tests T033–T035 and implementation T036 that originally lived here — no longer exists; `backend/src/services/copilot/tools/read.ts` is gone with it. This phase is preserved as a historical record only; do not implement. The live forecast surfaces are the panel (Phase 3) and the alerting pipeline (Phase 5).
 
 ---
 
@@ -172,7 +158,7 @@ description: "Task list for Inventory Demand Forecasting implementation"
 
 - [ ] T046 [P] `backend/src/jobs/forecast-runner.ts` — `node-cron` schedule at `15 2 * * *` (02:15 UTC). First action: short-circuit with a structured warn log if `process.env.WORKER_TIER !== "true"` OR `process.env.FORECAST_RUNNER_ENABLED !== "true"`. Calls `forecast.service.run()` and surfaces the elapsed-ms + outcome in the existing Pino structured log shape.
 - [ ] T047 [P] `backend/src/jobs/forecast-retention.ts` — daily at 03:30 UTC: deletes `inventory_forecasts` rows older than 90 days; reaps orphaned `in_flight` runs > 24h old (sets outcome='failure' with reason='abandoned' per data-model §2.1); computes the 14-day capture rate per `data-model.md` §3 invariant 4 and writes it back to the latest run row; sets `forecast:alerts:paused` Redis flag when capture_rate < 0.5 per SC-008. Lives next to `risk-retention.ts`.
-- [ ] T048 [P] Wire both jobs into `backend/src/jobs/cron.ts` next to the existing `low_stock`, `risk-retention`, and `copilot-reaper` schedules. Cron entries MUST be conditional on the worker-tier env check (the same short-circuit pattern T046 uses) so a misconfigured deploy is observably off.
+- [ ] T048 [P] Wire both jobs into `backend/src/jobs/cron.ts` next to the existing `low_stock` and `risk-retention` schedules. Cron entries MUST be conditional on the worker-tier env check (the same short-circuit pattern T046 uses) so a misconfigured deploy is observably off.
 - [ ] T049 [P] Test in `backend/src/test/forecast/retention.test.ts`: rows with `forecast_date < CURRENT_DATE - 90 days` are deleted; younger rows survive; `inventory_forecast_runs` rows older than 90 days cascade-delete their child forecasts.
 - [ ] T050 [P] Test in `backend/src/test/forecast/capture-rate.test.ts`: seeded forecasts + actual zero-stock outcomes produce the expected 14-day capture rate; below-50% sets the Redis pause flag; above-50% leaves it untouched (the flag is manual-clear per R-8).
 
@@ -191,7 +177,7 @@ description: "Task list for Inventory Demand Forecasting implementation"
 - [ ] T055 [P] Update `OPERATIONS_RUNBOOK.md` with a new "Inventory Demand Forecasting" section pointing at `quickstart.md` §6 (operating shortcuts), §7 (failure modes), and §8 (decommission checklist).
 - [ ] T056 [P] Update `PROJECT_OVERVIEW.md` with a one-paragraph summary linking the spec/plan/research/data-model/quickstart artifacts, mirroring the entry the 003 anomaly-detection feature carries.
 - [ ] T057 [P] Validate fail-fast on a fresh deploy: with `FORECAST_RUNNER_ENABLED=true` but `WORKER_TIER` unset, confirm the cron entry refuses to run and the log line is unambiguous (no silent half-on state).
-- [ ] T058 Final end-to-end run of `quickstart.md` §1–§5 against staging: trigger the cron, open the panel, ask the copilot, observe the alert, validate the explanation drawer math. Capture the trace IDs in the release note for the pilot admin group.
+- [ ] T058 Final end-to-end run of `quickstart.md` §1–§5 against staging: trigger the cron, open the panel, observe the alert, validate the explanation drawer math. Capture the trace IDs in the release note for the pilot admin group.
 
 ---
 
@@ -269,7 +255,7 @@ Task: "Hook wrapper — frontend/src/components/admin/forecast/api.ts"
 
 1. MVP (US1) → panel + cron in prod.
 2. - US3 (alerting) → existing notification channels carry forecast warnings.
-3. - US2 (copilot tool) → admins can ask in natural language.
+3. - US2 (copilot tool) → retired R181 with the copilot; historical record only.
 4. - US4 (explainability) → audit drawer for trust during pilot.
 5. - Phase 8 polish + decommission readiness.
 
@@ -279,7 +265,7 @@ After Phase 2 completes:
 
 - **Track A (Backend services)** — US1 runner → US3 alert wire-up → US4 product-detail endpoint.
 - **Track B (Frontend)** — US1 panel + row → US4 explanation drawer.
-- **Track C (Copilot + Ops)** — US2 tool catalog entry; Phase 7 cron + retention; Phase 8 polish in parallel.
+- **Track C (Ops)** — Phase 7 cron + retention; Phase 8 polish in parallel. (Historically this track also carried the US2 copilot tool catalog entry — retired R181.)
 
 Each track integrates at the `forecast-store` boundary; the OpenAPI fragment (T008) and generated hooks (T009) keep them in sync.
 
@@ -293,4 +279,4 @@ Each track integrates at the `forecast-store` boundary; the OpenAPI fragment (T0
 - Verify tests fail before implementing.
 - Commit after each task (or logical group); follow the project commit-and-push convention (direct-to-main per the user's standing rule).
 - Stop at any checkpoint to validate the story independently.
-- Do not weaken safety invariants for delivery speed: SC-006 (customer-path latency unchanged), SC-007 (no fabrication), and SC-008 (kill criterion auto-pause) MUST hold in production.
+- Do not weaken safety invariants for delivery speed: SC-006 (customer-path latency unchanged), SC-008 (kill criterion auto-pause), and SC-007 (no fabrication — historical copilot-era criterion, retired R181) MUST hold in production.

@@ -169,7 +169,7 @@ export function CreatePromotionForm({
                   {/* R125-I3 (A2-10c): the ⚠ text glyph is gone —
                             lucide icon, the R124 emoji convention. */}
                   <AlertTriangle className="w-3 h-3 shrink-0" />
-                  خصم كبير — راجع الهامش في حاسبة الأسعار قبل التفعيل.
+                  خصم كبير — تأكد من ربحية الباقة (التكلفة مقابل السعر) قبل التفعيل.
                 </span>
               )}
             </div>

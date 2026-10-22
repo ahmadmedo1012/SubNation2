@@ -31,19 +31,9 @@ An admin opens `/admin/products` and within five seconds can answer: which produ
 
 ---
 
-### User Story 2 — Ask the copilot in natural language (Priority: P2)
+### User Story 2 — Ask the copilot in natural language (Priority: P2) — RETIRED R181
 
-An admin asks the AI Admin Copilot in Arabic ("أي منتجات على وشك أن تنفد الأسبوع القادم؟" / "what products will run out next week?"). The copilot calls a `forecast_demand` read tool, returns a grounded answer citing product IDs verbatim from the `inventory_forecasts` table, and offers to open the relevant rows. No fabrication: every product mentioned by the model must come from the tool output.
-
-**Why this priority**: The copilot is already the place admins ask operational questions. Wiring forecasting in there means admins don't need to remember a new dashboard exists — they just ask. Lower priority than US1 because the panel itself is the authoritative surface; the copilot is discoverability + Arabic-language convenience.
-
-**Independent Test**: Phase 1 copilot enabled. Admin asks "show me products at risk of running out". Copilot calls `forecast_demand`, gets back a list, and replies with product IDs + names + runout dates that match a direct query against `inventory_forecasts`. Asking for a non-existent product returns "no forecast available" rather than an invented row.
-
-**Acceptance Scenarios**:
-
-1. **Given** the copilot has the `inventory` scope and the daily forecast has run, **When** the admin asks "what's at risk of stockout this week?", **Then** the copilot calls `forecast_demand`, replies with rows where `predicted_runout_at` is within 7 days, and never invents a product.
-2. **Given** the copilot is asked about a specific product by name, **When** it calls `forecast_demand` with a filter, **Then** it returns the latest forecast row for that product or the literal "no forecast available — insufficient data" string.
-3. **Given** an admin without the `inventory` scope opens the copilot, **When** they try to ask about forecasts, **Then** the tool is excluded from the model's catalog and the copilot answers with "you do not have inventory access".
+The AI Admin Copilot was permanently retired in Round R181 (admin UI, `/api/admin/copilot/*` routes, services, jobs, and the copilot DB tables removed). The `forecast_demand` read tool this story specified — natural-language forecast access through the copilot — no longer exists. The live forecast surfaces are the `/admin/products` risk panel (US1) and the alert pipeline (US3).
 
 ---
 
@@ -81,10 +71,10 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 ### Edge Cases
 
 - **Brand-new product (< 14 days of order history)**: marked "insufficient data". Never a hallucinated forecast.
-- **Archived / inactive product**: skipped entirely — not listed in the risk panel and not surfaced by the copilot tool.
+- **Archived / inactive product**: skipped entirely — not listed in the risk panel.
 - **Zero-sales window (e.g., a flash-sale product after the sale ends)**: forecast predicts effectively infinite days-to-stockout; row is filtered out of the at-risk panel by an upper threshold (e.g., > 90 days).
 - **Stock-spike / restock between forecast runs**: the next day's forecast sees the new stock level and updates accordingly. Mid-day stale data is acceptable; the panel surfaces a "last updated" timestamp so the admin knows the granularity.
-- **Worker tier outage**: the daily job didn't run. The admin panel detects staleness > 24h and shows a degraded-mode banner with the last-successful-run timestamp. The copilot tool returns "forecast data is stale" instead of yesterday's numbers as if they were today's.
+- **Worker tier outage**: the daily job didn't run. The admin panel detects staleness > 24h and shows a degraded-mode banner with the last-successful-run timestamp.
 - **Catalog with > 10k products**: forecasting all of them in one batch must complete inside the worker tier's existing job-time budget. The job is idempotent — re-running mid-batch picks up where it stopped.
 - **Persistent under-prediction during pilot** (catches < 50% of stockouts ≥3 days early): kill criterion fires; the feature falls back to the existing reactive low-stock cron and the admin panel surfaces a "calibrating" state.
 - **Forecast says "0 days left" but stock is actually positive**: clamp the displayed runout date to "today" rather than show a negative number; an admin always knows it's time to restock.
@@ -123,14 +113,9 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 - **FR-PANEL-006**: Panel MUST be authored Arabic-first, RTL, matching the existing admin layout tokens.
 - **FR-PANEL-007**: Panel MUST gracefully render "no products at risk" with a positive empty-state when zero products meet the threshold.
 
-#### FR-COPILOT: AI admin copilot integration
+#### FR-COPILOT: AI admin copilot integration — RETIRED R181
 
-- **FR-COPILOT-001**: System MUST expose a `forecast_demand` read-only tool to the AI Admin Copilot, gated on the `inventory` scope (matches the panel's gate).
-- **FR-COPILOT-002**: Tool MUST accept optional filters: `horizon_days` (7 or 30; default 7), `at_risk_only` (boolean; default true), `product_id` (single-product lookup), and `limit` (default 10, max 50).
-- **FR-COPILOT-003**: Tool MUST return only rows from `inventory_forecasts` — never an inferred or generated row. The copilot system prompt MUST instruct the model to cite product IDs verbatim from this output.
-- **FR-COPILOT-004**: Tool MUST include a `data_freshness_hours` field per response so the model can warn the admin when results are stale.
-- **FR-COPILOT-005**: Tool MUST surface a deep-link `panel_url` per row pointing at `/admin/products` with the product highlighted, mirroring the existing `query_risk_events` bridge convention.
-- **FR-COPILOT-006**: Tool MUST be a no-op (returns an empty list and a "forecast_disabled" reason) when the cron has never run successfully — admins should not see a stale empty answer.
+The AI Admin Copilot feature — and the `forecast_demand` read tool FR-COPILOT-001…006 specified for it — was permanently retired in Round R181. These requirements are a historical record; no copilot tool surface exists in the current system. The panel (FR-PANEL) and the alert pipeline (FR-ALERT) are the surviving forecast surfaces.
 
 #### FR-ALERT: alert pipeline
 
@@ -150,7 +135,7 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 ### Key Entities _(include if feature involves data)_
 
 - **Forecast Run**: One row per daily job execution. Captures: run id, started-at, completed-at, products predicted count, products skipped count (per reason), worker tier identifier, success/failure outcome. Powers the "last updated" surface and the calibration analysis.
-- **Inventory Forecast**: One row per (product, forecast date). Carries: product reference, predicted demand 7d, predicted demand 30d, predicted runout date, confidence band, recommended reorder quantity, input snapshot (avg-daily-sales, dow-multiplier, stock-on-hand at run time), parent run reference. Read by the panel + copilot tool. Cascades on product delete.
+- **Inventory Forecast**: One row per (product, forecast date). Carries: product reference, predicted demand 7d, predicted demand 30d, predicted runout date, confidence band, recommended reorder quantity, input snapshot (avg-daily-sales, dow-multiplier, stock-on-hand at run time), parent run reference. Read by the panel (historically also by the copilot tool — retired R181). Cascades on product delete.
 - **Stockout Alert** (extension of existing `admin_alerts`): existing entity with a new `type` literal `forecast_stockout`. No schema change to `admin_alerts`; only the type enum gets a new member if one is enforced server-side.
 
 ---
@@ -165,7 +150,7 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 - **SC-004 (panel latency)**: The risk panel renders within 500ms p95 alongside the existing product list — never noticeably slower than today's `/admin/products` page.
 - **SC-005 (job duration)**: Daily forecast run completes inside the existing worker tier's 5-minute idle budget for catalogs up to 10k products.
 - **SC-006 (zero customer regression)**: Customer purchase critical path latency p95 is unchanged within ±1% of the baseline measured the week before launch.
-- **SC-007 (no fabrication)**: 100% of products mentioned by the copilot when answering forecast questions match an `inventory_forecasts` row from the same calendar day.
+- **SC-007 (no fabrication — RETIRED R181)**: historical copilot-era criterion — 100% of products mentioned by the copilot when answering forecast questions matched an `inventory_forecasts` row from the same calendar day. Moot since the copilot retirement (R181).
 - **SC-008 (kill criterion)**: If SC-001 capture rate falls below 50% on a rolling 14-day basis, alerts MUST automatically pause within one worker run and the panel MUST surface the "calibrating" state.
 
 ---
@@ -175,9 +160,9 @@ For each forecasted product, an admin can see what drove the prediction: the rol
 - The existing single-warehouse inventory model (no multi-region, no per-vendor splits) is the schema we plan against. Multi-region is out of scope.
 - The catalog stays under 10k active products through the pilot — matches PROJECT_OVERVIEW estimates and the constitution's scale targets.
 - The existing `admin_alerts` table accepts a new `type` literal without schema migration. If the type column is enforced via a Postgres enum, a separate one-line migration adds `forecast_stockout` to the enum; otherwise no migration is required.
-- The existing AI Admin Copilot panel and `inventory` permission scope are the only admin surface for the forecast — no new top-level navigation entry is added.
+- The `/admin/products` page (where the risk panel mounts) and the `inventory` permission scope are the only admin surface for the forecast — no new top-level navigation entry is added. (Historically the AI Admin Copilot panel was also a surface; the copilot was retired in R181.)
 - The existing `subnation-worker` tier remains the cron host; the web tier MUST NOT run the forecast.
 - 14 days of order history is sufficient for the v1 statistical baseline (moving average + day-of-week multiplier). If pilot calibration shows the threshold is too short for sparse-sales products, the threshold is tuned via configuration in a follow-up release; the feature does NOT introduce a small-model variant in v1.
 - "Recommended reorder quantity" uses a simple safety-stock formula (predicted 30-day demand minus current stock, floored at zero). A more sophisticated cost-based model is a follow-up if pilot signals demand it.
 - Admin permission `inventory` is the right gate. No new permission scope is introduced.
-- The Phase-1 forecast is rule-based / statistical — no LLM inference is on this path. The copilot tool only reads pre-computed rows, so there is no per-event inference cost (matches Constitution §I "Financial Integrity": no money-mutating action; no per-order inference cost).
+- The Phase-1 forecast is rule-based / statistical — no LLM inference is on this path, so there is no per-event inference cost (matches Constitution §I "Financial Integrity": no money-mutating action; no per-order inference cost). The retired copilot tool only ever read pre-computed rows.

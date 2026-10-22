@@ -11,7 +11,7 @@ import { adminTopupsRouter } from "../topups";
  *
  * `parseTopupActionBody` used to return `string | null`, so a VALID body
  * without the OPTIONAL admin_note (`{}` — exactly what the openapi
- * AdminTopupActionBody declares, and what the R116 copilot admin_request
+ * AdminTopupActionBody declares, and what the historical R116 admin_request
  * tool sends) was conflated with an invalid body and 400'd
  * INVALID_DATA on both money-approval routes. The parser now returns a
  * discriminated result: only a schema failure answers 400; a valid body
@@ -78,7 +78,10 @@ async function postAction(
 ): Promise<{ status: number; body: Record<string, unknown> | null }> {
   const init: RequestInit = { method: "POST", headers: { Authorization: `Bearer ${token}` } };
   if (body !== undefined) {
-    init.headers = { ...init.headers, "Content-Type": "application/json" } as Record<string, string>;
+    init.headers = { ...init.headers, "Content-Type": "application/json" } as Record<
+      string,
+      string
+    >;
     init.body = JSON.stringify(body);
   }
   const res = await fetch(`${url}${path}`, init);
@@ -182,19 +185,22 @@ describe("R118-A1 F-1: topup approve/reject — truly-invalid bodies still 400",
     ["admin_note as a number", { admin_note: 123 }],
     ["admin_note longer than 500 chars", { admin_note: "x".repeat(501) }],
     ["unknown key (strict schema)", { totally_unexpected: 1 }],
-  ])("approve rejects %s with 400 INVALID_DATA and never reaches the service", async (_label, body) => {
-    const app = buildApp();
-    const { url, close } = await listen(app);
-    try {
-      const token = await seedAdminToken();
-      const res = await postAction(url, "/api/admin/topups/5/approve", token, body);
-      expect(res.status).toBe(400);
-      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
-      expect(approveMock).not.toHaveBeenCalled();
-    } finally {
-      close();
-    }
-  });
+  ])(
+    "approve rejects %s with 400 INVALID_DATA and never reaches the service",
+    async (_label, body) => {
+      const app = buildApp();
+      const { url, close } = await listen(app);
+      try {
+        const token = await seedAdminToken();
+        const res = await postAction(url, "/api/admin/topups/5/approve", token, body);
+        expect(res.status).toBe(400);
+        expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+        expect(approveMock).not.toHaveBeenCalled();
+      } finally {
+        close();
+      }
+    },
+  );
 
   it("reject answers 400 INVALID_DATA for an object admin_note (same shared schema)", async () => {
     const app = buildApp();

@@ -51,7 +51,7 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
-// The admin shell (sidebar / socket / copilot) is out of scope for
+// The admin shell (sidebar / socket) is out of scope for
 // page-level tests — stub it to a passthrough.
 vi.mock("@/pages/admin/layout", () => ({
   AdminLayout: ({ children }: { children?: ReactNode }) => <div>{children}</div>,

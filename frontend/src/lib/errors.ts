@@ -10,8 +10,8 @@ export { ErrorCode };
 // 93-C8 (A11 §10 + A8 F-8/F-15): wording follows A11 — user-facing
 // nouns instead of developer jargon (المورد/العنصر), a next step on
 // UNAUTHORIZED, passwordless-honest INVALID_CREDENTIAL (the code itself
-// retired R166 — zero backend emission), and the two newly-enumerated
-// codes (COPILOT_RATE_LIMITED, CSRF_CONFIG).
+// retired R166 — zero backend emission), and CSRF_CONFIG. The
+// COPILOT_* family left with the copilot feature in R181.
 const errorMessages: Record<ErrorCode, string> = {
   // Validation errors
   [ErrorCode.INVALID_DATA]: "بيانات غير صالحة",
@@ -51,61 +51,21 @@ const errorMessages: Record<ErrorCode, string> = {
   [ErrorCode.INVALID_TOKEN]: "رمز الجلسة غير صالح. سجّل الدخول مرة أخرى",
   [ErrorCode.FEATURE_DISABLED]: "هذه الميزة معطّلة حالياً",
   [ErrorCode.RATE_LIMITED]: "تم تجاوز الحد الأقصى للطلبات. حاول مرة أخرى بعد دقيقة",
-  [ErrorCode.COPILOT_INVALID_INPUT]: "طلب غير صالح للمساعد الذكي",
-  [ErrorCode.COPILOT_LLM_ERROR]: "تعذّر الوصول إلى المساعد الذكي. حاول مرة أخرى",
-  [ErrorCode.COPILOT_NO_ADMIN_SESSION]: "جلسة المسؤول مطلوبة لاستخدام المساعد الذكي",
-  [ErrorCode.COPILOT_BAD_METHOD]: "طريقة طلب غير مدعومة",
   [ErrorCode.IDEMPOTENCY_IN_FLIGHT]:
     "طلب سابق بنفس المعرف لا يزال قيد المعالجة. حاول مرة أخرى بعد قليل",
   [ErrorCode.IDEMPOTENCY_KEY_REUSE]: "تمت إعادة استخدام معرف العملية مع طلب مختلف",
-
-  // Round-92 (B3 F-05): copilot preview/execution family — the enum
-  // contract previously omitted these codes; the map must stay
-  // exhaustive over Record<ErrorCode, string>.
-  [ErrorCode.COPILOT_PREVIEW_NOT_FOUND]: "المعاينة غير موجودة",
-  [ErrorCode.COPILOT_PREVIEW_CONSUMED]: "المعاينة استُهلكت بالفعل",
-  [ErrorCode.COPILOT_PREVIEW_EXPIRED]: "انتهت صلاحية المعاينة",
-  [ErrorCode.COPILOT_HANDOFF_REQUIRED]: "هذا الإجراء يتطلب تنفيذاً يدوياً من صفحة الإدارة",
-  [ErrorCode.COPILOT_HIGH_RISK_DISABLED]: "تنفيذ الإجراءات عالية الخطورة معطّل حالياً",
-  [ErrorCode.COPILOT_STALE_RECORD]: "تغيّرت حالة المعاينة. حاول مرة أخرى",
-  [ErrorCode.COPILOT_UNEXPECTED_STATE]: "حالة غير متوقعة للمعاينة. حاول مرة أخرى",
-  [ErrorCode.COPILOT_EXECUTE_FAILED]: "فشل تنفيذ الإجراء. حاول مرة أخرى",
-  [ErrorCode.COPILOT_NOT_HIGH_RISK]: "هذا الإجراء لا يتطلب تأكيداً ثانياً",
-  [ErrorCode.COPILOT_FIRST_CONFIRM_MISSING]: "التأكيد الأول مطلوب قبل التأكيد الثاني",
-  [ErrorCode.COPILOT_COOLDOWN_NOT_ELAPSED]: "لم تنتهِ مهلة الانتظار بعد. حاول مرة أخرى بعد لحظات",
-  [ErrorCode.COPILOT_LLM_UNAVAILABLE]: "خدمة المساعد الذكي غير متاحة حالياً",
-  [ErrorCode.COPILOT_OUT_OF_SCOPE]: "ليست لديك صلاحية لاستخدام هذه الميزة",
-  [ErrorCode.COPILOT_INVALID_FLAGS]: "إعدادات مراحل المساعد غير صالحة",
-
-  // Round-93 (93-A8 F-8): copilot rate limiter 429 body — previously
-  // fell through to the raw Arabic string by luck; the map stays
-  // exhaustive over the shared enum.
-  [ErrorCode.COPILOT_RATE_LIMITED]:
-    "تجاوزت الحد الأقصى للأوامر المرسلة للمساعد الذكي. حاول مرة أخرى بعد قليل",
 
   // Round-93 (93-A8 F-15): CSRF gate fail-closed misconfiguration
   // branch — ops-facing, surfaces to admins as a hard 403.
   [ErrorCode.CSRF_CONFIG]:
     "تعذّر التحقق الأمني من الطلب (خلل في إعدادات الخادم) — يرجى إبلاغ الدعم",
 
-  // Round-94 (A5-05): the two codes the copilot routes actually emit —
-  // added to the shared enum so this Record stays exhaustive
-  // (Record<ErrorCode, string> breaks typecheck otherwise).
-  [ErrorCode.COPILOT_PHASE_DISABLED]: "هذه المرحلة من المساعد معطّلة حالياً",
-  [ErrorCode.COPILOT_SECRET_LEAK]: "تم إيقاف الرد لأنه تضمّن معلومات حساسة. سُجِّل الحدث للمراجعة",
-
-  // Round-R166 (B11): five codes the backend actually emits that were
+  // Round-R166 (B11): codes the backend actually emits that were
   // previously in no registry/spec/map — the map stays exhaustive
   // over the shared enum. The checkout in-tx staleness pair first
   // (user-facing register — the retryable 409 re-price guidance):
   [ErrorCode.PRODUCT_STALE]: "تغيّر سعر المنتج أو تفاصيله — راجع السلة ثم أعد المحاولة",
   [ErrorCode.VARIANT_STALE]: "تغيّر تفاصيل الخيار المحدد — راجع السلة ثم أعد المحاولة",
-  // Then the copilot admin-request tool loop trio (admin-facing
-  // register — surfaced inside the admin copilot panel's error
-  // paths via getErrorMessage, same as the other COPILOT_* codes).
-  [ErrorCode.COPILOT_PATH_BLOCKED]: "المسار المطلوب غير مسموح للمساعد الذكي",
-  [ErrorCode.COPILOT_CONFIRMATION_REQUIRED]: "العملية تتطلب تأكيدًا صريحًا من المشرف قبل التنفيذ",
-  [ErrorCode.COPILOT_LOOPBACK_FAILED]: "تعذّر تنفيذ طلب المساعد الذكي داخلياً. حاول مرة أخرى",
 };
 
 type ErrorLike = {

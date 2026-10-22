@@ -13,7 +13,7 @@
  *   loyalty, referrals, support, notifications): an `auth_token`
  *   httpOnly cookie (primary) OR an `Authorization: Bearer <token>`
  *   header (fallback).
- * - **Admin routes** (/admin/*, /coupons/admin*, the copilot family):
+ * - **Admin routes** (/admin/*, /coupons/admin*):
  *   an `admin_token` httpOnly cookie (8h, issued by POST
  *   /admin/login) OR its Bearer equivalent. POST /admin/login itself
  *   is the credential endpoint and needs no prior session.
@@ -89,33 +89,9 @@ export const ErrorCode = {
   RATE_LIMITED: "RATE_LIMITED",
   IDEMPOTENCY_IN_FLIGHT: "IDEMPOTENCY_IN_FLIGHT",
   IDEMPOTENCY_KEY_REUSE: "IDEMPOTENCY_KEY_REUSE",
-  COPILOT_INVALID_INPUT: "COPILOT_INVALID_INPUT",
-  COPILOT_LLM_ERROR: "COPILOT_LLM_ERROR",
-  COPILOT_NO_ADMIN_SESSION: "COPILOT_NO_ADMIN_SESSION",
-  COPILOT_BAD_METHOD: "COPILOT_BAD_METHOD",
-  COPILOT_PREVIEW_NOT_FOUND: "COPILOT_PREVIEW_NOT_FOUND",
-  COPILOT_PREVIEW_CONSUMED: "COPILOT_PREVIEW_CONSUMED",
-  COPILOT_PREVIEW_EXPIRED: "COPILOT_PREVIEW_EXPIRED",
-  COPILOT_HANDOFF_REQUIRED: "COPILOT_HANDOFF_REQUIRED",
-  COPILOT_HIGH_RISK_DISABLED: "COPILOT_HIGH_RISK_DISABLED",
-  COPILOT_STALE_RECORD: "COPILOT_STALE_RECORD",
-  COPILOT_UNEXPECTED_STATE: "COPILOT_UNEXPECTED_STATE",
-  COPILOT_EXECUTE_FAILED: "COPILOT_EXECUTE_FAILED",
-  COPILOT_NOT_HIGH_RISK: "COPILOT_NOT_HIGH_RISK",
-  COPILOT_FIRST_CONFIRM_MISSING: "COPILOT_FIRST_CONFIRM_MISSING",
-  COPILOT_COOLDOWN_NOT_ELAPSED: "COPILOT_COOLDOWN_NOT_ELAPSED",
-  COPILOT_LLM_UNAVAILABLE: "COPILOT_LLM_UNAVAILABLE",
-  COPILOT_OUT_OF_SCOPE: "COPILOT_OUT_OF_SCOPE",
-  COPILOT_INVALID_FLAGS: "COPILOT_INVALID_FLAGS",
-  COPILOT_RATE_LIMITED: "COPILOT_RATE_LIMITED",
   CSRF_CONFIG: "CSRF_CONFIG",
-  COPILOT_PHASE_DISABLED: "COPILOT_PHASE_DISABLED",
-  COPILOT_SECRET_LEAK: "COPILOT_SECRET_LEAK",
   PRODUCT_STALE: "PRODUCT_STALE",
   VARIANT_STALE: "VARIANT_STALE",
-  COPILOT_PATH_BLOCKED: "COPILOT_PATH_BLOCKED",
-  COPILOT_CONFIRMATION_REQUIRED: "COPILOT_CONFIRMATION_REQUIRED",
-  COPILOT_LOOPBACK_FAILED: "COPILOT_LOOPBACK_FAILED",
 } as const;
 
 export interface ErrorResponse {
@@ -159,34 +135,6 @@ export interface TopupLimitErrorResponse {
   pending_count: number;
   /** Max concurrent pending top-ups per user (3). */
   limit: number;
-}
-
-export type CopilotRateLimitResponseCode =
-  (typeof CopilotRateLimitResponseCode)[keyof typeof CopilotRateLimitResponseCode];
-
-export const CopilotRateLimitResponseCode = {
-  COPILOT_RATE_LIMITED: "COPILOT_RATE_LIMITED",
-} as const;
-
-/**
- * Which window tripped — per-minute (30) or per-hour (200).
- */
-export type CopilotRateLimitResponseWindow =
-  (typeof CopilotRateLimitResponseWindow)[keyof typeof CopilotRateLimitResponseWindow];
-
-export const CopilotRateLimitResponseWindow = {
-  "1m": "1m",
-  "1h": "1h",
-} as const;
-
-export interface CopilotRateLimitResponse {
-  /** Arabic human-readable message. */
-  error: string;
-  code: CopilotRateLimitResponseCode;
-  /** Seconds until the sliding window admits the admin again. */
-  retry_after_seconds: number;
-  /** Which window tripped — per-minute (30) or per-hour (200). */
-  window: CopilotRateLimitResponseWindow;
 }
 
 export interface RegisterBody {
@@ -1234,8 +1182,9 @@ export interface AdminProduct {
   image_url?: string | null;
   price: number;
   /**
-   * Operator's procurement cost per unit. Used by the admin
-   * pricing calculator to compute margin. Nullable for products
+   * Operator's procurement cost per unit. Feeds the pricing rule
+   * (cost × (1 + markup%) × rate via the variant recompute) and
+   * finance/reporting margin reads. Nullable for products
    * created before this field existed.
    * @nullable
    */
@@ -2165,201 +2114,6 @@ export interface AdminReferralsResponse {
   top_referrers: AdminTopReferrer[];
   /** Newest 200 referral events (post-limit search window — B-7). */
   list: AdminReferralEventRow[];
-}
-
-export interface CopilotAskContext {
-  route?: string;
-  focus_entity_type?: string;
-  focus_entity_id?: number;
-}
-
-export type CopilotValidationWarningSeverity =
-  (typeof CopilotValidationWarningSeverity)[keyof typeof CopilotValidationWarningSeverity];
-
-export const CopilotValidationWarningSeverity = {
-  warn: "warn",
-  error: "error",
-} as const;
-
-export interface CopilotValidationWarning {
-  severity: CopilotValidationWarningSeverity;
-  code: string;
-  message: string;
-  /** @nullable */
-  affected_id?: number | null;
-}
-
-export interface CopilotHandoff {
-  target_url: string;
-  rationale: string;
-}
-
-export interface CopilotChange {
-  field: string;
-  /** Previous value (any JSON-encodable shape) */
-  before?: unknown;
-  /** Proposed new value (any JSON-encodable shape) */
-  after?: unknown;
-}
-
-export type CopilotSinglePreviewPayloadKind =
-  (typeof CopilotSinglePreviewPayloadKind)[keyof typeof CopilotSinglePreviewPayloadKind];
-
-export const CopilotSinglePreviewPayloadKind = {
-  single: "single",
-} as const;
-
-export interface CopilotSinglePreviewPayload {
-  kind: CopilotSinglePreviewPayloadKind;
-  intent_summary: string;
-  side_effects: string[];
-  validation_warnings: CopilotValidationWarning[];
-  irreversible: boolean;
-  handoff?: CopilotHandoff | null;
-  entity_type: string;
-  entity_id: number;
-  changes: CopilotChange[];
-}
-
-export interface CopilotBulkSampleRow {
-  entity_type: string;
-  entity_id: number;
-  changes: CopilotChange[];
-}
-
-export interface CopilotPredictedFailure {
-  entity_id: number;
-  reason: string;
-}
-
-export type CopilotBulkPreviewPayloadKind =
-  (typeof CopilotBulkPreviewPayloadKind)[keyof typeof CopilotBulkPreviewPayloadKind];
-
-export const CopilotBulkPreviewPayloadKind = {
-  bulk: "bulk",
-} as const;
-
-/**
- * @nullable
- */
-export type CopilotBulkPreviewPayloadAggregateImpact = { [key: string]: unknown } | null;
-
-export interface CopilotBulkPreviewPayload {
-  kind: CopilotBulkPreviewPayloadKind;
-  intent_summary: string;
-  side_effects: string[];
-  validation_warnings: CopilotValidationWarning[];
-  irreversible: boolean;
-  /**
-   * @minimum 1
-   * @maximum 500
-   */
-  total_affected: number;
-  /** @maxItems 20 */
-  sample: CopilotBulkSampleRow[];
-  /** @nullable */
-  aggregate_impact?: CopilotBulkPreviewPayloadAggregateImpact;
-  predicted_failures: CopilotPredictedFailure[];
-}
-
-export type CopilotPreviewViewRiskTier =
-  (typeof CopilotPreviewViewRiskTier)[keyof typeof CopilotPreviewViewRiskTier];
-
-export const CopilotPreviewViewRiskTier = {
-  low: "low",
-  high: "high",
-  no_execute: "no_execute",
-} as const;
-
-export interface CopilotPreviewView {
-  id: string;
-  admin_id: number;
-  intent_text: string;
-  intent_summary: string;
-  action_class: string;
-  risk_tier: CopilotPreviewViewRiskTier;
-  payload: CopilotSinglePreviewPayload | CopilotBulkPreviewPayload;
-  created_at: string;
-  expires_at: string;
-  /** @nullable */
-  confirmed_once_at?: string | null;
-  /** @nullable */
-  cooldown_starts_at?: string | null;
-  /** @nullable */
-  confirmed_twice_at?: string | null;
-}
-
-export interface CopilotDraftResponse {
-  preview_id: string;
-  preview: CopilotPreviewView;
-}
-
-export type CopilotConfirmItemOutcome =
-  (typeof CopilotConfirmItemOutcome)[keyof typeof CopilotConfirmItemOutcome];
-
-export const CopilotConfirmItemOutcome = {
-  success: "success",
-  failure: "failure",
-  skipped: "skipped",
-} as const;
-
-export interface CopilotConfirmItem {
-  entity_id: number;
-  outcome: CopilotConfirmItemOutcome;
-  /** @nullable */
-  failure_reason?: string | null;
-}
-
-export type CopilotConfirmResponseOutcome =
-  (typeof CopilotConfirmResponseOutcome)[keyof typeof CopilotConfirmResponseOutcome];
-
-export const CopilotConfirmResponseOutcome = {
-  success: "success",
-  partial: "partial",
-  failure: "failure",
-  awaiting_double_confirm: "awaiting_double_confirm",
-} as const;
-
-export interface CopilotConfirmResponse {
-  outcome: CopilotConfirmResponseOutcome;
-  /** @nullable */
-  action_id?: number | null;
-  /** @nullable */
-  cooldown_seconds?: number | null;
-  items?: CopilotConfirmItem[] | null;
-  /** @nullable */
-  result_url?: string | null;
-}
-
-export interface CopilotRefusalResponse {
-  code: string;
-  message: string;
-  reasons: string[];
-  /** @nullable */
-  suggested_narrowing?: string | null;
-}
-
-export type CopilotHistoryEntryRiskTier =
-  (typeof CopilotHistoryEntryRiskTier)[keyof typeof CopilotHistoryEntryRiskTier];
-
-export const CopilotHistoryEntryRiskTier = {
-  low: "low",
-  high: "high",
-  no_execute: "no_execute",
-} as const;
-
-export interface CopilotHistoryEntry {
-  id: number;
-  admin_id: number;
-  intent_text: string;
-  action_class: string;
-  risk_tier: CopilotHistoryEntryRiskTier;
-  outcome: string;
-  created_at: string;
-  /** @nullable */
-  executed_at?: string | null;
-  /** @nullable */
-  failure_reason?: string | null;
 }
 
 export type TelegramWebhookUpdateMessageChat = {
@@ -3640,20 +3394,6 @@ export type ListAdminProductsParams = {
   search?: string | null;
 };
 
-export type AdminPricingCalculateBody = {
-  product_id?: number;
-  /** The sellable unit (preferred input) */
-  variant_id?: number;
-  /** Manual sandbox list price (LYD) */
-  price?: number;
-  /** Manual sandbox cost (LYD) */
-  cost_price?: number;
-  coupon_code?: string;
-  simulate_referred?: boolean;
-};
-
-export type AdminPricingCalculate200 = { [key: string]: unknown };
-
 export type ListAdminUsersParams = {
   /**
    * Phone substring filter (LIKE %search%).
@@ -3838,69 +3578,6 @@ export const ListAdminReferralsStatus = {
   pending: "pending",
   credited: "credited",
 } as const;
-
-export type CopilotAskBody = {
-  /**
-   * @minLength 1
-   * @maxLength 4000
-   */
-  intent_text: string;
-  context?: CopilotAskContext;
-};
-
-export type CopilotDraftBody = {
-  /**
-   * @minLength 1
-   * @maxLength 4000
-   */
-  intent_text: string;
-  context?: CopilotAskContext;
-};
-
-export type CopilotHistoryParams = {
-  action_class?: string;
-  outcome?: CopilotHistoryOutcome;
-  /**
-   * Deprecated (round-94 A5-06): never implemented — the history
-   * table has no entity columns to filter on (entity data lives on
-   * the preview rows, not the action rows). Kept as deprecated
-   * for client compatibility; the filter is a no-op server-side.
-   */
-  entity_type?: string;
-  /**
-   * Inclusive lower bound on created_at (ISO-8601). The legacy
-   * `since` alias is still accepted for pre-94 callers; an
-   * unparseable value now 400s instead of being silently ignored.
-   */
-  since_iso?: string;
-  /**
-   * @minimum 1
-   * @maximum 100
-   */
-  limit?: number;
-  cursor?: string;
-};
-
-export type CopilotHistoryOutcome =
-  (typeof CopilotHistoryOutcome)[keyof typeof CopilotHistoryOutcome];
-
-export const CopilotHistoryOutcome = {
-  success: "success",
-  partial: "partial",
-  failure: "failure",
-  refused: "refused",
-  validation_rejected: "validation_rejected",
-  rate_limited: "rate_limited",
-  stale: "stale",
-  expired: "expired",
-  cancelled: "cancelled",
-} as const;
-
-export type CopilotHistory200 = {
-  entries: CopilotHistoryEntry[];
-  /** @nullable */
-  next_cursor?: string | null;
-};
 
 export type GetAdminObservabilityMetrics500Error =
   (typeof GetAdminObservabilityMetrics500Error)[keyof typeof GetAdminObservabilityMetrics500Error];

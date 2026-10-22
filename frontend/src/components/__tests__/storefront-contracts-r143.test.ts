@@ -82,7 +82,7 @@ describe("R143 (L2-5) — the admin field family rides the shared focus idiom", 
 describe("R143 (L2-6) — GlobalSearch: suppressed outlines have visible replacements", () => {
   const src = read("src/components/admin/layout/GlobalSearch.tsx");
 
-  it("the combobox input row carries the focus-within ring (CopilotComposer's idiom)", () => {
+  it("the combobox input row carries the focus-within ring", () => {
     expect(src).toContain("focus-within:ring-2 focus-within:ring-ring");
     expect(src).toContain("focus-within:ring-offset-1 focus-within:ring-offset-background");
   });

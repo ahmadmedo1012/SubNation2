@@ -66,18 +66,9 @@ Per-run alert volume is hard-capped at 50 rows (FR-ALERT-005) — if the daily j
 
 ---
 
-## R-4. AI Admin Copilot integration shape
+## R-4. AI Admin Copilot integration shape — RETIRED R181
 
-**Decision**: Add a `forecast_demand` read tool to the copilot's read-tool catalog (`backend/src/services/copilot/tools/read.ts`), gated on the existing `inventory` scope. Tool returns rows from `inventory_forecasts` only — never invents a forecast. The system prompt's existing no-fabrication discipline (010-ai-admin-copilot, R-3) extends to this tool by virtue of the same pattern: cite product IDs verbatim from tool output.
-
-The tool exposes a `panel_url` per row pointing at `/admin/products?highlight=<id>` so the copilot's reply can deep-link the admin into the panel — the same convention the `query_risk_events` bridge tool established.
-
-**Rationale**: Consistent with the existing copilot tool catalog convention. No new copilot subsystem needed. The tool is read-only by design (no draft variant, no execute path).
-
-**Alternatives considered**:
-
-- **A draft tool that lets the copilot suggest a reorder action**: out of scope per FR-SAFETY-001 — admins always decide.
-- **A separate copilot endpoint outside the read-tool catalog**: rejected — would duplicate auth, scope, rate-limit infrastructure for no benefit.
+**Decision (historical)**: a `forecast_demand` read tool was added to the copilot's read-tool catalog (`backend/src/services/copilot/tools/read.ts`), gated on the existing `inventory` scope, returning rows from `inventory_forecasts` only — never an invented forecast — with a `panel_url` deep-link per row. The AI Admin Copilot was permanently retired in Round R181: the tool, its catalog, and the whole `backend/src/services/copilot/` tree no longer exist. The surviving forecast surfaces are the panel (R-5) and the alert pipeline (R-3).
 
 ---
 
@@ -85,7 +76,7 @@ The tool exposes a `panel_url` per row pointing at `/admin/products?highlight=<i
 
 **Decision**: Mount a `StockoutRiskPanel` component above the existing product list at `frontend/src/pages/admin/products.tsx`. The panel collapses by default when zero products are at risk so it doesn't waste vertical space. RTL-aware: the explanation drawer slides from the appropriate edge based on the document direction; numeric content (predicted runout days, reorder quantity) is rendered LTR inside an inline-LTR span to avoid Arabic/Latin-numeral mixing artifacts.
 
-**Rationale**: Constitution §Arabic-First UX. Matches the layout patterns the 003 risk module and 010 copilot already use.
+**Rationale**: Constitution §Arabic-First UX. Matches the layout patterns the 003 risk module already used.
 
 **Alternatives considered**:
 
@@ -98,7 +89,7 @@ The tool exposes a `panel_url` per row pointing at `/admin/products?highlight=<i
 
 **Decision**: Daily at 02:15 UTC on the existing `subnation-worker` tier. The job short-circuits with a structured warn log if `process.env.WORKER_TIER !== "true"` so the web tier accidentally running it is impossible.
 
-The existing `low_stock` cron fires at 00:00 UTC, the WhatsApp OTP cleanup at minute 15 hourly, the copilot reaper every 5 minutes; 02:15 is chosen to land outside all three so no two heavy jobs compete for DB resources at the same instant.
+The existing `low_stock` cron fires at 00:00 UTC and the WhatsApp OTP cleanup at minute 15 hourly (historically also the copilot reaper every 5 minutes — the copilot was retired in R181); 02:15 is chosen to land outside the heavy jobs so no two compete for DB resources at the same instant.
 
 **Rationale**: Constitution §V scheduling rule. The existing cron registry in `backend/src/jobs/cron.ts` is the home; we add one new schedule entry that calls `runForecast()`.
 
@@ -165,13 +156,13 @@ Expected latency on 10k products: aggregate query ≤ 2s, math + bulk insert ≤
 
 **Decision**: For products with < 14 days of order history (measured as: first `orders` row for the product is < 14 days old), write an `inventory_forecasts` row with `predicted_runout_at = NULL`, `predicted_demand_7d = NULL`, `predicted_demand_30d = NULL`, `confidence = 'insufficient_data'`, and `recommended_reorder_qty = NULL`.
 
-Both the panel and the copilot tool render a "بيانات غير كافية" (insufficient data) badge for these rows and show how many days of history are currently available — never a guess.
+The panel renders a "بيانات غير كافية" (insufficient data) badge for these rows and shows how many days of history are currently available — never a guess.
 
 **Rationale**: FR-FORECAST-003 requires no fabrication. Storing the row (with NULL forecasts) instead of skipping the product entirely lets the explanation drawer answer "why is this product not forecasted?" with audited data — without forcing the panel to re-query elsewhere.
 
 **Alternatives considered**:
 
-- **Skip the row entirely**: rejected. The panel would have to re-query `products` joined with `inventory_forecasts` to surface the explanation, and the copilot would need a separate "is this product forecasted?" code path.
+- **Skip the row entirely**: rejected. The panel would have to re-query `products` joined with `inventory_forecasts` to surface the explanation.
 - **Bootstrap with a category-average prediction**: rejected — this IS fabrication. The whole point of the floor is to refuse to guess.
 
 ---

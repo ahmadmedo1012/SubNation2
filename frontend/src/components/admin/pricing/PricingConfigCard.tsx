@@ -78,8 +78,8 @@ export function PricingConfigCard({
        resting border/60 family and the card adopts the r138 two-layer calm
        elevation at rest (the ProductEditorCard / MetricCard recipe,
        neutral black — a primary-tinted shadow reads as color on .light).
-       The read-only calculator cards below stay flat: one elevated
-       register per page.
+       One elevated register per page (R181: the flat read-only
+       calculator cards that used to sit below it are retired).
        R143 (L2-1): the calm elevation is now the theme-aware
        `shadow-calm` token in index.css (dark byte-identical; .light
        re-tuned inside the documented 6–14% ceiling). */

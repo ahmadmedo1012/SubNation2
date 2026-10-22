@@ -28,7 +28,8 @@ import { decrypt, isEncrypted } from "../../lib/encryption";
  *      here);
  *   2. the second run is a clean idempotent no-op (boot-resilience's
  *      transient retry re-runs from the top — that path must converge);
- *   3. the end shape matches the lane-L9 boot dry-run: 41 tables /
+ *   3. the end shape matches the lane-L9 boot dry-run (re-measured
+ *      after R181's V1-M36 copilot retirement): 38 tables /
  *      29 CHECKs / 39 FKs / 140 indexes (pg_trgm degrades exactly like
  *      ensurePgTrgmExtension does on this engine; R165/V1-M35 raised
  *      139 → 140 with idx_orders_user_group);
@@ -143,16 +144,25 @@ describe("R143 (L9-2): the full runMigrations() body boots a fresh database", ()
     },
   );
 
-  it("the documented end shape holds (41 tables / 29 CHECKs / 39 FKs / 140 indexes)", async () => {
+  it("the documented end shape holds (38 tables / 29 CHECKs / 35 FKs / 128 indexes)", async () => {
     const tables = await scalar("SELECT count(*) AS c FROM pg_tables WHERE schemaname = 'public'");
-    expect(tables).toBe(41);
+    expect(tables).toBe(38);
     expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'c'")).toBe(29);
-    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(39);
+    expect(await scalar("SELECT count(*) AS c FROM pg_constraint WHERE contype = 'f'")).toBe(35);
     // R165 (V1-M35): 139 → 140 — idx_orders_user_group (the order-group
     // partial lookup, applyOrdersGroupColumnStage).
+    // R181 (V1-M36): 140 → 128 — the three copilot tables leave the boot
+    // end shape (12 indexes: 9 explicit + the 3 table PKs).
     expect(await scalar("SELECT count(*) AS c FROM pg_indexes WHERE schemaname = 'public'")).toBe(
-      140,
+      128,
     );
+    // R181 (V1-M36): the copilot-exclusive tables are provably absent
+    // from a FRESH boot (the retired create block is gone from
+    // migrate.ts; nothing recreates them).
+    const retired = await scalar(
+      `SELECT count(*) AS c FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('copilot_previews','copilot_actions','copilot_action_items')`,
+    );
+    expect(retired).toBe(0);
   });
 
   it("Stage C applied — the legacy password infrastructure is gone", async () => {
@@ -182,8 +192,9 @@ describe("R146 (audit-shared-migrate): parity + encryption-at-rest gates on the 
   it("F2: every schema-TS column exists in the boot-built database, and vice versa (column census)", async () => {
     const tables = Object.entries(schema).filter(([, value]) => is(value, PgTable));
     // Guards the census against a silent is() regression making the loop
-    // vacuous — the schema exports exactly the 41 boot tables, 1:1.
-    expect(tables.length).toBe(41);
+    // vacuous — the schema exports exactly the 38 boot tables, 1:1
+    // (R181: the three copilot tables left both sides together).
+    expect(tables.length).toBe(38);
     for (const [exportName, value] of tables) {
       const table = value as PgTable;
       const tableName = getTableConfig(table).name;

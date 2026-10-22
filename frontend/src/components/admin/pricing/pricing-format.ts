@@ -1,9 +1,9 @@
 // R137 (FE decomposition): extracted verbatim from pages/admin/pricing.tsx —
-// the pricing console's pure money formatters moved to their own module so
-// the page file shrinks to orchestration. ZERO React, zero behavior change
-// (the page + the presentational extracts import them by name — every call
-// site, the per-decimals formatter cache and the cent-rounding convention
-// stay byte-identical).
+// the pricing settings screen's pure money formatters moved to their own
+// module so the page file shrinks to orchestration. ZERO React, zero
+// behavior change (the page + the presentational extracts import them by
+// name — every call site, the per-decimals formatter cache and the
+// cent-rounding convention stay byte-identical).
 
 // R125-I3 (A2-10b): grouped money formatting — fmt used to render bare
 // toFixed(2) ("1250.00 د.ل") while the product picker used

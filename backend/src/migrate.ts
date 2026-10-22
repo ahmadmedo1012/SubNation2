@@ -60,6 +60,7 @@ import {
   applyRetentionPruneIndexesStage,
   applyWalletLedgerTypeIndexDropStage,
 } from "./migrate/stages/03-domain-org-r135-wave";
+import { applyCopilotRemovalStage } from "./migrate/stages/04-copilot-removal-r181";
 
 // ── r110 (109-e P2-1): constraint-skip tracking ────────────────────────────
 //
@@ -116,8 +117,8 @@ export async function runMigrations() {
 
     // ── Extensions ─────────────────────────────────────────────────────────
     // pg_trgm gives us trigram similarity for fuzzy product name lookup
-    // (010-ai-admin-copilot resolve_product tool — Arabic/English/typo
-    // tolerant). Idempotent + cheap; safe to leave enabled.
+    // (the public + admin products ?search= ILIKE paths — Arabic/English/
+    // typo tolerant). Idempotent + cheap; safe to leave enabled.
     //
     // B7-P0-1: the extension is PROBED first (catalog read — safe on a
     // read-only standby); the CREATE statement only runs when genuinely
@@ -258,8 +259,8 @@ export async function runMigrations() {
       -- SELECTIVITY grounds (an almost-always-false boolean indexes to
       -- ~zero selectivity — a seq scan is never worse), NOT because it is
       -- never a leading predicate: it IS the leading/sole predicate in 3
-      -- live queries (admin/products.ts no-search branch, copilot
-      -- search_products status="archived", stockWatcher orphan sweep) —
+      -- live queries (admin/products.ts no-search branch,
+      -- stockWatcher orphan sweep) —
       -- R125-I6 (A8 B-10) docblock truth-up; the drop itself is unchanged.
       -- V1-M27 drops both on already-migrated databases (R97-DB-04
       -- precedent).
@@ -1383,13 +1384,10 @@ export async function runMigrations() {
       ALTER TABLE products ADD COLUMN IF NOT EXISTS faq JSONB;
     `);
 
-    // ── 010-ai-admin-copilot: staleness columns + copilot tables ─────────────
-    //
-    // The AI Admin Copilot (010-ai-admin-copilot, FR-PREVIEW-004) detects a
-    // stale preview by comparing the target entity's `updated_at` between
-    // draft and execute. `products` already had the column; `inventory` and
-    // `admin_users` did not. Both are writable in Phase 3 (FR-DATA-002), so
-    // both must carry the column for the staleness check to be honest.
+    // ── Staleness/write-clock columns (historically the copilot preview
+    //    staleness pair; the copilot is retired R181 — the columns stay:
+    //    they are the shared monotonic write-clock for inventory and
+    //    admin_users, same as products.updated_at).
     //
     // The Drizzle `$onUpdate` hook on the schema only fires on Drizzle calls,
     // not on raw SQL. Existing inline raw-SQL writes against these tables
@@ -1403,93 +1401,19 @@ export async function runMigrations() {
       ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     `);
 
-    // Three new tables for the copilot's preview/audit pipeline. Spec lives
-    // in specs/010-ai-admin-copilot/data-model.md §1; immutability,
-    // single-use enforcement, and reconciliation invariants enforced by
-    // application code, not DB constraints (we don't trust DB-level
-    // immutability triggers to survive future migrations).
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS copilot_previews (
-        id                    VARCHAR(32)  PRIMARY KEY,
-        admin_id              INTEGER      NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
-        intent_text           TEXT         NOT NULL,
-        tool_name             VARCHAR(100) NOT NULL,
-        action_class          VARCHAR(50)  NOT NULL,
-        risk_tier             VARCHAR(20)  NOT NULL,
-        affected_ids          JSONB        NOT NULL,
-        affected_entity_type  VARCHAR(50)  NOT NULL,
-        record_versions       JSONB        NOT NULL,
-        preview_payload       JSONB        NOT NULL,
-        model_id              VARCHAR(64)  NOT NULL,
-        correlation_id        VARCHAR(64)  NOT NULL,
-        created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        expires_at            TIMESTAMPTZ  NOT NULL,
-        consumed_at           TIMESTAMPTZ,
-        confirmed_once_at     TIMESTAMPTZ,
-        cooldown_starts_at    TIMESTAMPTZ,
-        confirmed_twice_at    TIMESTAMPTZ
-      );
+    // R181 (V1-M36): the copilot tables (copilot_previews, copilot_actions,
+    // copilot_action_items) are RETIRED with the feature — the create block
+    // that lived here is deleted so future boots never recreate them, and
+    // the V1-M36 stage at the tail drops any existing ones (+ their data +
+    // the copilot.phases setting + the copilot audit rows). See
+    // backend/src/migrate/stages/04-copilot-removal-r181.ts.
 
-      CREATE INDEX IF NOT EXISTS idx_copilot_previews_admin_created
-        ON copilot_previews(admin_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_copilot_previews_expires
-        ON copilot_previews(expires_at);
-      CREATE INDEX IF NOT EXISTS idx_copilot_previews_action_class
-        ON copilot_previews(action_class);
-
-      CREATE TABLE IF NOT EXISTS copilot_actions (
-        id                  SERIAL       PRIMARY KEY,
-        preview_id          VARCHAR(32)  REFERENCES copilot_previews(id) ON DELETE SET NULL,
-        admin_id            INTEGER      NOT NULL REFERENCES admin_users(id) ON DELETE RESTRICT,
-        intent_text         TEXT         NOT NULL,
-        tool_name           VARCHAR(100),
-        action_class        VARCHAR(50)  NOT NULL,
-        risk_tier           VARCHAR(20)  NOT NULL,
-        outcome             VARCHAR(20)  NOT NULL,
-        failure_reason      TEXT,
-        before_state        JSONB,
-        after_state         JSONB,
-        confirmed_once_at   TIMESTAMPTZ,
-        confirmed_twice_at  TIMESTAMPTZ,
-        executed_at         TIMESTAMPTZ,
-        model_id            VARCHAR(64),
-        model_input_tokens  INTEGER,
-        model_output_tokens INTEGER,
-        correlation_id      VARCHAR(64)  NOT NULL,
-        created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_copilot_actions_admin_created
-        ON copilot_actions(admin_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_copilot_actions_action_class
-        ON copilot_actions(action_class);
-      CREATE INDEX IF NOT EXISTS idx_copilot_actions_outcome
-        ON copilot_actions(outcome);
-      CREATE INDEX IF NOT EXISTS idx_copilot_actions_preview
-        ON copilot_actions(preview_id);
-
-      CREATE TABLE IF NOT EXISTS copilot_action_items (
-        id              SERIAL       PRIMARY KEY,
-        action_id       INTEGER      NOT NULL REFERENCES copilot_actions(id) ON DELETE CASCADE,
-        entity_type     VARCHAR(50)  NOT NULL,
-        entity_id       INTEGER      NOT NULL,
-        outcome         VARCHAR(20)  NOT NULL,
-        failure_reason  TEXT,
-        before_value    JSONB,
-        after_value     JSONB
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_copilot_action_items_action
-        ON copilot_action_items(action_id);
-      CREATE INDEX IF NOT EXISTS idx_copilot_action_items_entity
-        ON copilot_action_items(entity_type, entity_id);
-    `);
-
-    // 010-ai-admin-copilot: trigram index on products.name for fuzzy
-    // resolve_product (Arabic/English/typo tolerant). pg_trgm extension
-    // is probed/created at the top of this function; when the extension
-    // is unavailable in this environment the index is skipped (search
-    // falls back to seq scan — correct, just slower).
+    // Trigram index on products.name for fuzzy ?search= lookup
+    // (Arabic/English/typo tolerant — the public + admin product search
+    // paths). pg_trgm extension is probed/created at the top of this
+    // function; when the extension is unavailable in this environment
+    // the index is skipped (search falls back to seq scan — correct,
+    // just slower).
     if (pgTrgmAvailable) {
       await db.execute(sql`
         CREATE INDEX IF NOT EXISTS idx_products_name_trgm
@@ -2007,6 +1931,13 @@ export async function runMigrations() {
     // applyOrdersGroupColumnStage docs.
     await applyOrdersGroupColumnStage();
 
+    // ── V1-M36 (R181): the AI Admin Copilot permanent removal — the ──
+    // three copilot-exclusive tables (dependency order, no CASCADE),
+    // the copilot.phases setting row, and the positively-identified
+    // copilot audit rows. Probe-gated: zero DDL on a converged database.
+    // See applyCopilotRemovalStage docs.
+    await applyCopilotRemovalStage();
+
     // R146-F5: moved from after the seed blocks — V1-M9..M35 (money
     // constraints, points ledger, index waves) still executed below it,
     // so an operator tailing a slow deploy read "completed" mid-run.
@@ -2072,4 +2003,5 @@ export {
   applyRetentionPruneIndexesStage,
   applyWalletLedgerTypeIndexDropStage,
 } from "./migrate/stages/03-domain-org-r135-wave";
+export { applyCopilotRemovalStage } from "./migrate/stages/04-copilot-removal-r181";
 // R144-B2-GEN:END re-exports

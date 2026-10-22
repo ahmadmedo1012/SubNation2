@@ -2,9 +2,8 @@
  * 94-C3 — the unified CopyButton (A3 #12 / P2-4 / P3-9 / P3-10 / P1-3).
  *
  * CopyButton is now the single copy lifecycle implementation (idle →
- * copied → failed) — the behavior CopilotPanel's AskAnswer button used
- * to implement locally (folded onto it in R146 components audit F9,
- * via the icon-only rendering). These tests pin:
+ * copied → failed) — the icon-only overlay shape (no visible label)
+ * was folded onto it in R146 components audit F9. These tests pin:
  *
  *   1. Success and FAILURE feedback via the shared copyToClipboard
  *      helper (the old button silently kept "نسخ" when the clipboard
@@ -149,9 +148,10 @@ describe("CopyButton — form-safety + touch/token hygiene (A3 P3-9 / P1-3 / P2-
 });
 
 describe("CopyButton — icon-only rendering (R146 components audit F9)", () => {
-  // The copilot AskAnswer overlay shape: no visible label, the surface's
-  // own positioning classes, and the full-sentence accessible names the
-  // copilot-copy suite pins at the rendered level.
+  // The icon-only overlay shape: no visible label, the surface's
+  // own positioning classes, and the full-sentence accessible names —
+  // the a11y contract for icon-only overlay shapes is pinned here at
+  // the rendered level.
   it("carries the caller's classes + the full-sentence aria-names through copied and failed", async () => {
     vi.mocked(copyToClipboard).mockResolvedValue(true);
     const first = render(<CopyButton text={TEXT} iconOnly className="absolute top-1.5 p-2" />);

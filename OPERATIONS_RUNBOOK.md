@@ -360,7 +360,8 @@ heartbeat** (only when a Redis client exists — skipped entirely when
 start (+7 s deferral). NOTHING sub-hourly touches the database. The
 timers removed in the 2026-09-20 free-infrastructure round (hourly OTP
 prune, hourly copilot-previews reaper, 10-min keep-alive self-pings,
-watcher intervals) stay removed: that work runs as throttled opportunistic
+watcher intervals) stay removed — and the copilot itself was subsequently
+retired entirely in R181 (UI, routes, services, tables): that work runs as throttled opportunistic
 sweeps fired by real traffic (`lib/opportunistic.ts`) plus the boot
 one-shots — zero artificial wake-ups (on the pre-cutover Render stack that
 kept sleeping services free; on the live stack it is what keeps Neon
@@ -730,12 +731,15 @@ accounts can press them.
   R130 record) — live-verified 2026-10-10. No operator action remains; the
   UI-flag path in OPERATOR_ACTIONS_R118 #11 is the documented alternative.
 - **R123 addition — copilot_actions / copilot_action_items retention
-  policy is UNDECIDED** (currently unbounded; the only audit-grade tables
-  without a window — jsonb before/after snapshots grow monotonically with
-  copilot usage). The decision (180 d aligned with audit_logs / longer /
-  keep-unbounded) + reference prune SQL: OPERATOR_ACTIONS_R118 #12. The
-  risk-retention job (R123-E5) deliberately does NOT touch these tables
-  until the policy is chosen.
+  policy — ✅ MOOT (R181)**: the AI Admin Copilot was permanently retired
+  in Round R181 — the admin UI, `/api/admin/copilot/*` routes, services,
+  jobs, and the `copilot_previews` / `copilot_actions` /
+  `copilot_action_items` tables themselves were dropped (boot migration
+  V1-M36 + drizzle chain 0027). There is no table left to hold a
+  retention policy; OPERATOR_ACTIONS_R118 #12 is closed by the same
+  retirement (its historical decision record remains in that doc). The
+  risk-retention job (R123-E5) never touched these tables and is
+  unaffected.
 - **R124 — delete the live «تجربة» test flash sale** (admin → promotions;
   `docs/history/inspection-r124/A1` §ops — the site-wide banner renders the
   literal word «تجربة» + «خصم 20%» on every storefront page; delete or

@@ -34,8 +34,9 @@ reward      = floor(list)/100                     ≈ 1% of list
 contribution(gross − reward)                      ≈ 49% of list
 ```
 Worst ALLOWED stack (cap 50%): price = cost → gross 0 → contribution = −reward (−0.29 on
-the cheapest item) → flagged LOSS in the calculator, never silent (the cap makes deeper
-stacks structurally impossible at checkout).
+the cheapest item) — the deepest stack the cap permits; deeper stacks are structurally
+impossible at checkout (the historical calculator flagged this shape LOSS; the
+simulator itself was retired in R181, the cap enforcement was not).
 
 ## 4. The 10 scenarios (live numbers, cheapest variant 59.80 / cost 29.90)
 
@@ -65,7 +66,9 @@ safe_min_price_incl_program:
     → p = (29.90 + 5.50) / (0.5 × 0.99) ≈ 71.52 LYD for the cheapest variant
 max_safe_discount_pct   = (1 − cost/list) × 100 = 50% at uniform markup
 ```
-All three are computed per-variant by the admin calculator (`guardrails` block).
+All three are closed-form per-variant formulas (historically surfaced per-variant by
+the admin calculator's `guardrails` block — the simulator was retired in R181; the
+cap invariant itself lives on at the checkout choke point).
 
 ## 6. Program-level budget view
 

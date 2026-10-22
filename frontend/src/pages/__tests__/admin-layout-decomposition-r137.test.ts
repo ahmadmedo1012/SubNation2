@@ -141,8 +141,6 @@ describe("R137 (FE) — admin/layout.tsx decomposition: the shell stays an orche
     // page-owned pageTitle + the restore constant.
     expect(page).toContain("const pageTitle = pageTitleFor(location);");
     expect(page).toContain("document.title = STOREFRONT_DEFAULT_TITLE;");
-    // The CopilotPanel code-split chunk (R124-I5) keeps its lazy mount.
-    expect(page).toContain("const CopilotPanel = lazyWithRetry(");
   });
 
   it("the admin-palette-tokens source pins keep their home in the page (their test reads THIS file)", () => {
@@ -169,12 +167,11 @@ describe("R137 (FE) — the extracts are self-contained units (verbatim moves)",
     }
   });
 
-  it("GlobalSearch owns ONLY its overlay-local atoms (the CopilotPanel R124-I5 feature-extract precedent)", () => {
+  it("GlobalSearch owns ONLY its overlay-local atoms (the self-contained feature-extract shape)", () => {
     // The palette is a self-contained feature component, not a
     // presentational card: its query/results/debounce/highlight state
     // is read by NOTHING outside the overlay, so it moved as a unit
-    // with its own hooks (exactly how CopilotPanel left layout.tsx in
-    // R124-I5). The page owns the open flag + passes onClose.
+    // with its own hooks. The page owns the open flag + passes onClose.
     const gs = read("src/components/admin/layout/GlobalSearch.tsx");
     expect(gs).toContain("export function GlobalSearch({ onClose }: { onClose: () => void })");
     expect(gs).toContain('const [query, setQuery] = useState("");');

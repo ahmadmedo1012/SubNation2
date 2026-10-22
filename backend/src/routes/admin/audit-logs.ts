@@ -10,7 +10,7 @@ import { requireAdmin } from "../../middlewares/requireAdmin";
  *
  * `audit_logs` is written by 6+ writers on every consequential admin
  * action (topup approve/reject, order refunds, wallet edits, risk
- * labels, ticket replies, copilot actions …), but before this route
+ * labels, ticket replies …), but before this route
  * NO admin endpoint ever read the table back — the accountability
  * data was captured server-side and then hidden from the only people
  * it exists for (B15-1: "who approved/refunded/overwrote this?" needed

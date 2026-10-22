@@ -1,5 +1,7 @@
 /**
- * LLM provider configuration for the AI Admin Copilot.
+ * LLM provider configuration (R181: relocated from services/copilot/ — the
+ * copilot is gone; the Arabic catalog-enrichment feature and any future
+ * OpenAI-compatible consumer keep this transport).
  *
  * Supports two presets, both speak the OpenAI-compatible Chat Completions
  * HTTP protocol (not OpenAI itself — the protocol is an open standard
@@ -9,7 +11,9 @@
  *   COPILOT_PROVIDER=openrouter   → https://openrouter.ai/api/v1
  *   COPILOT_PROVIDER=nvidia       → https://integrate.api.nvidia.com/v1
  *
- * Required envs:
+ * Required envs (names kept verbatim from the copilot era — production
+ * hosts already carry these keys in Coolify; renaming would break the
+ * enrichment runs at boot):
  *   COPILOT_API_KEY      — provider-issued bearer token (always required).
  *   COPILOT_PROVIDER     — preset name (default: openrouter).
  *   COPILOT_MODEL        — model id; falls back to a sensible default
@@ -19,8 +23,8 @@
  * Switching models is a single env-var flip with no code change.
  *
  * Production posture mirrors the existing fail-fast pattern: missing
- * COPILOT_API_KEY in production → routes return 503; non-prod → log a
- * single warning and short-circuit so dev boots without the key.
+ * COPILOT_API_KEY in production → the LLM consumer fails fast; non-prod →
+ * log a single warning and short-circuit so dev boots without the key.
  */
 
 import { logger } from "../../lib/logger";
@@ -46,7 +50,7 @@ const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     extraHeaders: {
       // OpenRouter recommends these; SubNation domain is the production origin.
       "HTTP-Referer": "https://subnation.ly",
-      "X-Title": "SubNation Admin Copilot",
+      "X-Title": "SubNation",
     },
   },
   nvidia: {
@@ -57,7 +61,7 @@ const PROVIDERS: Record<ProviderId, ProviderPreset> = {
   },
 };
 
-export interface CopilotProviderConfig {
+export interface LlmProviderConfig {
   providerId: ProviderId | "custom";
   baseUrl: string;
   apiKey: string;
@@ -65,10 +69,10 @@ export interface CopilotProviderConfig {
   extraHeaders: Record<string, string>;
 }
 
-let cached: CopilotProviderConfig | null | undefined;
+let cached: LlmProviderConfig | null | undefined;
 let warned = false;
 
-function resolveProvider(): CopilotProviderConfig | null {
+function resolveProvider(): LlmProviderConfig | null {
   const apiKey = (process.env.COPILOT_API_KEY ?? "").trim();
   if (!apiKey) return null;
 
@@ -90,7 +94,7 @@ function resolveProvider(): CopilotProviderConfig | null {
   if (!p) {
     logger.warn(
       { COPILOT_PROVIDER: preset },
-      "copilot: unknown COPILOT_PROVIDER, falling back to openrouter",
+      "llm: unknown COPILOT_PROVIDER, falling back to openrouter",
     );
     const fallback = PROVIDERS.openrouter;
     return {
@@ -111,30 +115,30 @@ function resolveProvider(): CopilotProviderConfig | null {
   };
 }
 
-export function getCopilotProvider(): CopilotProviderConfig {
+export function getLlmProvider(): LlmProviderConfig {
   if (cached === undefined) cached = resolveProvider();
 
   if (cached) return cached;
 
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "COPILOT_API_KEY is required in production for the AI Admin Copilot. " +
-        "Set COPILOT_PROVIDER=openrouter|nvidia and COPILOT_API_KEY in the host " +
-        "environment before enabling any copilot phase flag.",
+      "COPILOT_API_KEY is required in production for the LLM-backed features " +
+        "(catalog enrichment). Set COPILOT_PROVIDER=openrouter|nvidia and " +
+        "COPILOT_API_KEY in the host environment.",
     );
   }
   if (!warned) {
     logger.warn(
-      { module: "copilot/provider-config" },
-      "COPILOT_API_KEY is unset — copilot routes return 503 COPILOT_LLM_UNAVAILABLE.",
+      { module: "llm/provider-config" },
+      "COPILOT_API_KEY is unset — LLM-backed features (enrichment) will no-op.",
     );
     warned = true;
   }
-  // Return a sentinel that hasCopilotProvider() detects via the empty key.
+  // Return a sentinel that hasLlmProvider() detects via the empty key.
   return { providerId: "openrouter", baseUrl: "", apiKey: "", model: "", extraHeaders: {} };
 }
 
-export function hasCopilotProvider(): boolean {
+export function hasLlmProvider(): boolean {
   if (cached === undefined) cached = resolveProvider();
   return cached !== null && cached.apiKey.length > 0;
 }

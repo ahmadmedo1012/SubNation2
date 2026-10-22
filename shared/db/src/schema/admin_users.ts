@@ -37,11 +37,10 @@ export const adminUsersTable = pgTable("admin_users", {
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   /**
-   * Monotonic write-clock used by the AI Admin Copilot's preview-staleness
-   * check (010-ai-admin-copilot, FR-PREVIEW-004). Captured at draft time and
-   * compared at execute time; if it has advanced the preview is rejected,
-   * preventing a stale role-change preview from overwriting a security-driven
-   * permission downgrade applied between draft and confirm.
+   * Monotonic write-clock (historically the copilot preview-staleness
+   * check; the copilot is retired R181 — the column stays as the table's
+   * general write-clock, same as products.updated_at). Raw-SQL writers
+   * must set it explicitly (Drizzle $onUpdate only fires on Drizzle calls).
    *
    * NOT NULL with default now() so existing rows backfill cleanly via the
    * boot migration's `ADD COLUMN IF NOT EXISTS`.

@@ -2,7 +2,13 @@
 
 > Companion to `docs/loyalty/FINAL_LOYALTY_POLICY.md`. Code truth:
 > `backend/src/lib/pricing-config.ts` (rule engine) + `backend/src/lib/pricing.ts`
-> (discount stack) + `backend/src/routes/admin/pricing-calculator.ts` (simulator).
+> (discount stack) + `backend/src/routes/admin/pricing-config.ts` (settings
+> API + recompute).
+>
+> **R181 note:** the read-only admin calculator simulator (POST
+> `/api/admin/pricing/calculate`, the SAFE/WATCH/THIN/LOSS margin states)
+> was permanently retired in Round R181. This document now describes the
+> pricing engine and its settings only.
 
 ## 1. The retail rule (write-time enforced)
 
@@ -26,9 +32,9 @@ defaults: markup 100% · rate 10  →  $1 → 20 LYD · $5 → 100 LYD
 | VARIANT (the sellable unit) | `price_lyd` (what checkout charges) | `cost_price` (USD) × rate |
 | PRODUCT (denormalized display) | `price` = MIN(active variants) | `cost_price` — **NULL across the live catalog; do not use for economics** |
 
-The admin calculator is VARIANT-aware: `variant_id` (exact) → `product_id` (cheapest
-active variant, labeled) → manual sandbox (explicit LYD pair). The product-level cost
-column exists for legacy tooling only.
+The sellable unit of every pricing decision is the VARIANT (exact
+`variant_id`); a product-level lookup resolves to its cheapest active
+variant. The product-level cost column exists for legacy tooling only.
 
 ## 3. The discount stack + the combined cap (Part 14)
 
@@ -43,43 +49,32 @@ finalPrice = base − coupon                            (≥ 0 always)
 - The cap is the mathematical no-loss line at the catalog's uniform 100% markup
   (list = 2×cost ⇒ half off = cost). Bounds 10–95, operator-settable
   (`pricing.max_total_discount_pct`), enforced at the single choke point shared by
-  checkout AND the calculator.
+  every quote path (checkout and the live re-quote paths alike).
 - Loyalty/referral/welcome are program costs, NOT transactional discounts — deliberately
-  outside the cap and modeled separately by the calculator.
+  outside the cap and accounted separately: the loyalty reward liability accrues at 1%
+  of the paid amount, and a referred buyer's first order carries the referral credit
+  cost (5.50 LYD) — both per `docs/loyalty/FINAL_LOYALTY_POLICY.md`.
 - Flash sales are GLOBAL by construction (single active row, ≤95%); coupons are global
   codes with min-order/max-uses/expiry guards. No per-product exclusions exist.
 
-## 4. Margin vocabulary (the calculator's risk states)
+## 4. The live engine contract (never-regress)
 
-| State | Condition | Meaning |
-|---|---|---|
-| SAFE | gross% ≥ 15 | healthy |
-| WATCH | 5 ≤ gross% < 15 | monitor |
-| THIN | 0 < gross% < 5 | review pricing |
-| LOSS | gross ≤ 0 | selling under cost |
+Checkout, the cart re-quote, and the coupon preview all call the SAME
+`computePricing()` (lib/pricing.ts) with the SAME list price source
+(variant.price_lyd). Pinned by `economic-golden-matrix.test.ts` (P6).
+If any quote path forks from the engine, that is a P0.
 
-`gross = finalPrice − cost_LYD` (variant cost × rate — currency-correct).
-`contribution = gross − reward_liability(1% of paid) − referral_cost(5.50 when simulated)`.
-The calculator also returns: worst-case (cap-bounded stack) price/gross/contribution,
-break-even price, program-inclusive safe minimum, and max safe discount %.
-
-## 5. Checkout ↔ calculator parity (a never-regress contract)
-
-Both call the SAME `computePricing()` (lib/pricing.ts) with the SAME list price source
-(variant.price_lyd). Pinned by `economic-golden-matrix.test.ts` (P6) and the calculator
-suite. If either side forks, that is a P0.
-
-## 6. Refund economics
+## 5. Refund economics
 
 Refund credits `orders.amount` (the frozen final price) to the wallet, decrements the
 coupon's used_count (budget restored), nulls delivered credentials, reverses the award's
 unspent remainder precisely, and records `refunded_at/refund_amount/refunded_by_admin_id`
 on the order (V1-M22). Net-zero round trip; no partial refunds yet (column-sized for them).
 
-## 7. Operator guardrail checklist
+## 6. Operator guardrail checklist
 
-1. Before any flash sale: check the calculator's `flash_exhausts_cap` warning — at ≥ cap%
-   every coupon dies at checkout.
+1. Before any flash sale: check flash% against the cap — at ≥ cap%
+   every coupon dies at checkout (`pricing.max_total_discount_pct`, default 50).
 2. Before any coupon: percentage < 100 (create-side bound), and flash+coupon vs the cap.
 3. Before recompute: run the dry-run; review the BEFORE→AFTER sample; the confirm shows
    the drift counts.

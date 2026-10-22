@@ -3,9 +3,8 @@
  *
  * Calls the existing low-risk catalog-edit path. Updates the product
  * field through Drizzle's typed update — same shape the existing
- * `routes/admin/products.ts` and the 010 copilot executor use, so
- * `updated_at` fires (Drizzle $onUpdate) and existing audit conventions
- * apply uniformly.
+ * `routes/admin/products.ts` uses, so `updated_at` fires (Drizzle
+ * $onUpdate) and existing audit conventions apply uniformly.
  */
 
 import { auditLogsTable, db, enrichmentDraftsTable, productsTable } from "@workspace/db";

@@ -480,7 +480,7 @@ router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
   // null for undecryptable rows (the inventory-health diagnostic reports
   // those separately).
   //
-  // R122 (A4-P2-7): LIMIT + 1 (the risk.ts/copilot-history hasMore idiom)
+  // R122 (A4-P2-7): LIMIT + 1 (the risk.ts hasMore idiom)
   // — one row more than the cap is fetched to detect truncation without
   // a second COUNT, then sliced off.
   const rows = await db

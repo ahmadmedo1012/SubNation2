@@ -44,9 +44,9 @@ export const inventoryTable = pgTable(
     soldAt: timestamp("sold_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     /**
-     * Monotonic write-clock used by the AI Admin Copilot's preview-staleness
-     * check (010-ai-admin-copilot, FR-PREVIEW-004). Captured at draft time and
-     * compared at execute time; if it has advanced the preview is rejected.
+     * Monotonic write-clock (historically the copilot preview-staleness
+     * check; the copilot is retired R181 — the column stays as the table's
+     * general write-clock). Raw-SQL writers must set it explicitly.
      *
      * NOT NULL with default now() so existing rows backfill cleanly via the
      * boot migration's `ADD COLUMN IF NOT EXISTS`.

@@ -36,7 +36,6 @@ import { reapExpiredRiskEvents } from "./risk-retention";
 import { markStaleUnreadAlertsRead, pruneReadAlerts } from "./alertLogger";
 import { deactivateExpiredFlashSales } from "./flashSaleWatcher";
 import { runStockSweep, reportOrphanInventory } from "./stockWatcher";
-import { reapExpiredCopilotPreviews } from "./copilot-reaper";
 import { pruneExpiredOtps } from "../services/whatsapp-otp.service";
 import { pruneOldIdempotencyKeys } from "./idempotency-retention";
 import { pruneOldNotifications } from "./notifications-retention";
@@ -63,7 +62,7 @@ async function deactivateExpiredFlashSalesCatchUp(): Promise<{ deactivated: numb
  *
  * The old single message — "will run again at its cron slot" — was
  * FALSE for 7 of the 17 entries, and the chain's outer catch was
- * warn-only + uncaptured (for copilot-reaper / whatsapp-otp-prune /
+ * warn-only + uncaptured (for whatsapp-otp-prune /
  * reencrypt-v1-credentials there was also no internal
  * captureSchedulerFailure, unlike stockWatcher/couponWatcher/
  * flashSaleWatcher/reportOrphanInventory — so a DB failure at boot was
@@ -75,7 +74,7 @@ async function deactivateExpiredFlashSalesCatchUp(): Promise<{ deactivated: numb
  *                     next slot (the 10 retention/advisory entries);
  *   - "opportunistic" no cron slot, but a throttled traffic/boot twin
  *                     exists (coupon/stock/flash-sale sweeps,
- *                     copilot-reaper, whatsapp-otp-prune — B7 §2d);
+ *                     whatsapp-otp-prune — B7 §2d);
  *   - "boot-only"     next retry is the NEXT BOOT/DEPLOY
  *                     (orphan-inventory-report — no other trigger site;
  *                     reencrypt-v1-credentials — deliberately last in
@@ -94,7 +93,6 @@ const BOOT_ONE_SHOT_RETRY_KINDS: Record<string, "cron" | "opportunistic" | "boot
   "admin-session-prune": "cron",
   "coupon-sweep": "opportunistic",
   "stock-sweep": "opportunistic",
-  "copilot-reaper": "opportunistic",
   "whatsapp-otp-prune": "opportunistic",
   "flash-sale-catchup": "opportunistic",
   "orphan-inventory-report": "boot-only",
@@ -146,8 +144,6 @@ function fireOneShotsSequentially(jobs: Array<[name: string, fn: () => Promise<u
  *   - coupon + stock sweeps: the old 30 s / 60 s watcher initial
  *     passes, now the only boot-time trigger (route-triggered
  *     opportunistic sweeps carry the rest);
- *   - copilot reaper: the old hourly :45 cron slot, now boot +
- *     admin-surface-triggered;
  *   - whatsapp OTP prune + admin-session prune + flash-sale catch-up:
  *     97-F1 — the silent-outage restart-gap fix (these three were
  *     cron-only with no restart catch-up);
@@ -193,7 +189,6 @@ export function runBootOneShots(): void {
     // admin surface — this surfaces them as a deduped ops alert (never
     // auto-deletes; data is an operator decision).
     ["orphan-inventory-report", reportOrphanInventory],
-    ["copilot-reaper", reapExpiredCopilotPreviews],
     ["whatsapp-otp-prune", pruneExpiredOtps],
     ["admin-session-prune", pruneStaleAdminSessions],
     ["flash-sale-catchup", deactivateExpiredFlashSalesCatchUp],
@@ -204,6 +199,6 @@ export function runBootOneShots(): void {
   ]);
   logger.info(
     { category: "monitoring" },
-    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, idempotencyRetention, notificationsRetention, couponSweep, stockSweep, orphanInventoryReport, copilotReaper, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup, loginAttemptsRetention, auditLogsRetention, reencryptV1Credentials)",
+    "[scheduler] sequential boot one-shots started (sessionPrune, securityAdvisories, alertRetention, riskRetention, authActivityRetention, idempotencyRetention, notificationsRetention, couponSweep, stockSweep, orphanInventoryReport, whatsappOtpPrune, adminSessionPrune, flashSaleCatchup, loginAttemptsRetention, auditLogsRetention, reencryptV1Credentials)",
   );
 }

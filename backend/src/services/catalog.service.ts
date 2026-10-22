@@ -56,7 +56,7 @@ interface PublicVariantDto {
  * or extra details). Checkout's R93-DATA gate refuses to sell a unit with
  * zero credential fields (INVENTORY_CORRUPT at pay time), so counting
  * such rows as stock advertised availability the platform could never
- * honor (the copilot +N ghost-stock incident class). Decryption health
+ * honor (the historical +N ghost-stock incident class). Decryption health
  * stays a checkout-time concern — SQL can't see GCM auth failures.
  */
 export const deliverableUnitCondition = () =>
@@ -201,7 +201,7 @@ async function loadPublicVariants(
  * Public-facing flash-sale shape used by /api/products,
  * /api/products/flash-sale and the frontend banner. Underlying lookup
  * is delegated to lib/pricing.ts so the math + lookup criteria stay
- * in lockstep with the order pipeline and the admin calculator.
+ * in lockstep with the order pipeline.
  */
 export async function getActiveFlashSale(): Promise<{
   id: number;

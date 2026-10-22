@@ -27,7 +27,7 @@ export const referralEventsTable = pgTable(
   (t) => ({
     // R123-E5 (V1-M27): idx_referral_referrer dropped — superseded by the
     // (referrer_id, created_at DESC) composite the referrals surface
-    // (loyalty.ts) and the copilot referral tool sort on; boot twin:
+    // (loyalty.ts) sorts on; boot twin:
     // migrate.ts applyIndexConsolidationStage.
     referrerCreatedIdx: index("idx_referral_referrer_created").on(
       t.referrerId,

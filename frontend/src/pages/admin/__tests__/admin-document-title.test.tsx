@@ -46,10 +46,6 @@ vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
 }));
 
-vi.mock("@/components/admin/copilot/CopilotPanel", () => ({
-  CopilotPanel: () => null,
-}));
-
 /** The app-level fallback MetaTags title (App.tsx) — the restore target. */
 const STOREFRONT_DEFAULT_TITLE = "SubNation — سوق الاشتراكات الرقمية";
 

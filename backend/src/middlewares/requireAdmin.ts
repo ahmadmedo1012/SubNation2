@@ -42,7 +42,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   // valid token. Stamped once at entry (not per-branch) so every branch
   // inherits it. The success path keeps it too — no admin response is
   // cacheable (the 98-F3 convention), and handlers that set their own
-  // Cache-Control later (copilot ask.ts SSE headers, /probe) override
+  // Cache-Control later (SSE streaming handlers, /probe) override
   // this value verbatim.
   res.setHeader("Cache-Control", "no-store");
 

@@ -7,80 +7,54 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 // R123 (E3 P3c): see the configDirty guard below.
 import { useDirtyGuard } from "@/hooks/useDirtyGuard";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/useToast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  type AdminPricingCalculateBody,
   getGetAdminPricingConfigQueryKey,
   getListAdminProductsQueryKey,
-  useAdminPricingCalculate,
   useGetAdminPricingConfig,
-  useListAdminProducts,
   useRecomputeCatalogPrices,
   useUpdateAdminPricingConfig,
 } from "@workspace/api-client-react";
-import { Calculator } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 // R137 (FE decomposition): the page's self-contained subcomponents and
 // pure helpers moved to @/components/admin/pricing/* (verbatim moves —
-// the money path, the race-guarded calculate loop, the destructive
-// recompute + its confirm gate, every state atom and every handler stay
-// HERE; the extracts render the byte-identical DOM they rendered inline
-// yesterday). Import surface:
-//   • pricing-types / pricing-format / pricing-errors — the page's pure
-//     modules (the calculate + dry-run wire contracts, the grouped-money
-//     formatters + round2, the backend-Arabic error resolver)
+// the money path, the destructive recompute + its confirm gate, every
+// state atom and every handler stay HERE; the extracts render the
+// byte-identical DOM they rendered inline yesterday). Import surface:
+//   • pricing-format / pricing-errors — the page's pure modules (the
+//     grouped-money formatters + round2, the backend-Arabic error
+//     resolver)
 //   • PricingConfigCard — the WRITABLE «إعدادات التسعير العامة» card
 //     (rule inputs, formula explainer, save/preview/recompute toolbar —
 //     every write stays a page-owned callback passed down as a prop)
 //   • RecomputePreviewCard — the R115 dry-run preview (counts + the
 //     BEFORE→AFTER sample table; the preview fetch stays HERE)
-//   • CalculatorInputsCard — the simulator's inputs (product/variant
-//     pickers, custom sandbox, coupon, referred toggle; the raw page
-//     setters flow down so no input grows its own state island)
-//   • CalculatorOutputsCard — the economics console outputs (risk badge
-//     + WHY, waterfall, the MarginRow tiers, worst-case, guardrails,
-//     warnings — MarginRow + the risk maps ride along inside it)
-import type { CalculatorResponse, RecomputeDryRun } from "@/components/admin/pricing/pricing-types";
+// R181: the read-only profit/margin calculator simulator (product/
+// variant pickers, coupon + referred simulation, risk badges, the
+// waterfall, MarginRow tiers, worst-case + guardrails) is retired with
+// its POST /api/admin/pricing/calculate endpoint — this page is now
+// the pricing SETTINGS screen the live store actually operates.
+import type { RecomputeDryRun } from "@/components/admin/pricing/pricing-types";
 import { round2 } from "@/components/admin/pricing/pricing-format";
 import { describeError } from "@/components/admin/pricing/pricing-errors";
 import { PricingConfigCard } from "@/components/admin/pricing/PricingConfigCard";
 import { RecomputePreviewCard } from "@/components/admin/pricing/RecomputePreviewCard";
-import { CalculatorInputsCard } from "@/components/admin/pricing/CalculatorInputsCard";
-import { CalculatorOutputsCard } from "@/components/admin/pricing/CalculatorOutputsCard";
 
 /**
- * Admin Pricing Calculator + global pricing rule
+ * Admin pricing settings (إعدادات التسعير)
  *
- * catalog-recon (2026-09-20): the page gained a WRITABLE section on top —
- * «إعدادات التسعير العامة» (GET/PUT /api/admin/pricing/config + POST
- * /api/admin/pricing/recompute). Everything below it stays the read-only
- * profit/margin simulator. Talks to POST /api/admin/pricing/calculate
- * which mirrors the live order pipeline (flash sale → coupon → final
- * price) — that part NEVER mutates anything.
- *
- * Inputs (calculator):
- *   - Existing product (picker) → optional VARIANT selector (R115: the
- *     real sellable unit — what checkout charges). Without a variant the
- *     calculator simulates the product's cheapest ACTIVE variant.
- *   - Custom price + cost (manual sandbox)
- *   - Optional coupon code
- *   - "Simulate referred buyer" toggle (subtracts the referral
- *     acquisition cost the API reports — never a frozen constant)
- *
- * Outputs (calculator) — R115 (Part 15) economics console:
- *   - Risk state badge SAFE / WATCH / THIN / LOSS with the WHY text
- *   - Pricing waterfall (list → flash sale → coupon → final)
- *   - Three margin tiers: gross / net (after loyalty) / referral-adjusted
- *   - Worst-case block (deepest allowed stack price + gross +
- *     contribution + referred)
- *   - Guardrails (break-even, program-inclusive safe minimum, max safe
- *     discount %) + the applied config line (incl. the discount cap)
- *   - Loss / low-margin / cap warnings with Arabic explanations
+ * catalog-recon (2026-09-20): the single source of truth for variant
+ * pricing — «إعدادات التسعير العامة» (GET/PUT /api/admin/pricing/config
+ * + POST /api/admin/pricing/recompute with its two-step dry-run). The
+ * read-only profit/margin simulator that used to share this page was
+ * retired in R181; everything here writes or previews the REAL rule the
+ * catalog prices flow through: cost × (1 + markup%) × rate.
  */
 
 export default function AdminPricingPage() {
@@ -89,24 +63,6 @@ export default function AdminPricingPage() {
   const canView = hasAdminPermission("inventory");
   const [, navigate] = useLocation();
   const { toast } = useToast();
-
-  const [productId, setProductId] = useState<number | "custom">("custom");
-  // R115 (Part 13): the variant selector — the sellable unit checkout
-  // actually charges. "" = the product's cheapest ACTIVE variant (the
-  // backend's product_id mode, labeled as such in the response).
-  const [variantId, setVariantId] = useState<number | "">("");
-  const [customPrice, setCustomPrice] = useState("");
-  const [customCost, setCustomCost] = useState("");
-  const [couponCode, setCouponCode] = useState("");
-  const [simulateReferred, setSimulateReferred] = useState(false);
-  const [result, setResult] = useState<CalculatorResponse | null>(null);
-  // R126-L3 (A2-9 stale-keep): a FAILED recalculation keeps the last
-  // successful result standing (with an error banner naming it stale)
-  // instead of wiping it to the «أدخل سعراً…» placeholder — the auto-
-  // recalc effect fires on every input change, so a transient 5xx on
-  // one keystroke used to destroy a result the operator was reading
-  // and replace it with a claim that no calculation existed at all.
-  const [calcError, setCalcError] = useState<string | null>(null);
 
   const headers = useAdminHeaders();
 
@@ -210,7 +166,8 @@ export default function AdminPricingPage() {
     mutation: {
       onSuccess(result) {
         // Display prices (MIN of active variants) moved on the server —
-        // refresh the admin products list this page already holds.
+        // drop any cached admin products list so the catalog surfaces
+        // refetch fresh on their next mount.
         void queryClient.invalidateQueries({ queryKey: getListAdminProductsQueryKey() });
         if (result.variants_updated > 0) {
           toast({
@@ -316,105 +273,9 @@ export default function AdminPricingPage() {
     recomputeMutation.mutate(undefined);
   };
 
-  const { data: products = [] } = useListAdminProducts(undefined, {
-    query: {
-      queryKey: getListAdminProductsQueryKey(),
-      enabled: !!adminToken && canView,
-      refetchIntervalInBackground: false,
-    },
-    request: { headers },
-  });
-
   useEffect(() => {
     if (!adminToken) navigate("/admin/login");
   }, [adminToken, navigate]);
-
-  const selectedProduct = useMemo(
-    () => (productId === "custom" ? null : (products.find((p) => p.id === productId) ?? null)),
-    [productId, products],
-  );
-
-  // R115 (Part 13): the admin products list embeds the variant rows —
-  // no second fetch needed for the selector.
-  const selectedVariants = selectedProduct?.variants ?? [];
-
-  const canCalculate = useMemo(() => {
-    if (productId !== "custom") return selectedProduct != null;
-    return Number.isFinite(parseFloat(customPrice)) && parseFloat(customPrice) >= 0;
-  }, [productId, selectedProduct, customPrice]);
-
-  // R115: the calculator rides the generated mutation hook
-  // (useAdminPricingCalculate — same customFetch + auth headers path as
-  // the config hooks). The response schema is open-ended
-  // ({[key: string]: unknown}) in the codegen, so it is cast to the
-  // page-local CalculatorResponse contract documented above.
-  // R125-I3 (A2-11): race guard — the 300ms debounced auto-recalc and
-  // the manual «إعادة الحساب» button share this one mutation; a slow
-  // earlier response landing AFTER a newer request used to win
-  // setResult (margins disagreeing with the inputs on screen). The
-  // monotonic seq token is the referrals fetchSeqRef recipe: every
-  // calculate() takes the next number, and only the response whose seq
-  // is still the newest may write state. Handling moved off the
-  // hook-level callbacks onto mutateAsync so the token can tag the
-  // exact request it belongs to.
-  const calcSeqRef = useRef(0);
-  const calculateMutation = useAdminPricingCalculate({
-    request: { headers },
-  });
-  const loading = calculateMutation.isPending;
-
-  async function calculate() {
-    if (!canCalculate) return;
-    const body: AdminPricingCalculateBody = {
-      coupon_code: couponCode.trim() || undefined,
-      simulate_referred: simulateReferred,
-    };
-    if (productId === "custom") {
-      body.price = parseFloat(customPrice);
-      const c = customCost.trim();
-      if (c !== "") body.cost_price = parseFloat(c);
-    } else if (variantId !== "") {
-      body.variant_id = variantId;
-    } else {
-      body.product_id = productId;
-    }
-    const seq = ++calcSeqRef.current;
-    try {
-      const data = await calculateMutation.mutateAsync({ data: body });
-      // A newer request was issued while this one was in flight — its
-      // response owns the result slot; drop the stale one.
-      if (seq !== calcSeqRef.current) return;
-      setResult(data as unknown as CalculatorResponse);
-      setCalcError(null);
-    } catch (err: unknown) {
-      if (seq !== calcSeqRef.current) return;
-      toast({
-        title: "خطأ",
-        description: describeError(err),
-        variant: "destructive",
-      });
-      // R126-L3 (A2-9 stale-keep): keep the previous result standing —
-      // the banner below marks it stale. The old `setResult(null)` was
-      // the false-empty half of the finding: a transient gateway error
-      // mid-typing collapsed the outputs card to «أدخل سعراً أو اختر
-      // منتجاً لرؤية الحساب.» as if the operator had never calculated
-      // (the orders/tickets stale-keep precedence, applied here).
-      setCalcError(describeError(err));
-    }
-  }
-
-  // Auto-recalculate when any input changes — ACTUALLY debounced.
-  // The previous comment claimed React batching debounced this effect,
-  // but batching only coalesces renders, not effect runs: every keystroke
-  // fired a full POST /api/admin/pricing/calculate. 300ms of quiet is
-  // the standard feel for type-ahead server calls.
-  const calculateRef = useRef(calculate);
-  calculateRef.current = calculate;
-  useEffect(() => {
-    if (!canCalculate) return;
-    const t = setTimeout(() => calculateRef.current(), 300);
-    return () => clearTimeout(t);
-  }, [productId, variantId, customPrice, customCost, couponCode, simulateReferred, canCalculate]);
 
   if (!adminToken) return null;
 
@@ -427,28 +288,25 @@ export default function AdminPricingPage() {
   }
 
   return (
-    <AdminLayout
-      onRefresh={() => {
-        void refetchConfig();
-        if (canCalculate) void calculate();
-      }}
-    >
+    <AdminLayout onRefresh={() => void refetchConfig()}>
       <div className="max-w-4xl mx-auto space-y-5">
         {/* Page-section header (kept narrow — global admin chrome
-            comes from AdminLayout above). */}
+            comes from AdminLayout above). R181: the simulator is gone —
+            the title and subtitle describe the settings screen that
+            remains. */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Calculator className="w-5 h-5 text-primary" />
+            <SlidersHorizontal className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="font-bold text-xl">التسعير</h1>
+            <h1 className="font-bold text-xl">إعدادات التسعير</h1>
             <p className="text-xs text-muted-foreground">
-              إعدادات القاعدة العامة + حاسبة أرباح للقراءة فقط تحاكي نظام الطلبات الفعلي.
+              قاعدة التسعير العامة للكتالوج: التكلفة × (1 + نسبة الربح) × سعر الصرف.
             </p>
           </div>
         </div>
 
-        {/* ── إعدادات التسعير العامة (WRITES — unlike the calculator) ──
+        {/* ── إعدادات التسعير العامة (WRITES — the page's whole job) ──
             catalog-recon: the single source of truth for variant pricing:
             cost × (1 + markup%) × rate. Saving the rule does NOT touch
             stored prices — the explicit recompute action below does. */}
@@ -482,39 +340,6 @@ export default function AdminPricingPage() {
             POST /recompute?dry_run=true — the operator finally sees the
             bulk mutation's impact before approving it (A5 P1-1). */}
         {dryRun && <RecomputePreviewCard dryRun={dryRun} onClosePreview={() => setDryRun(null)} />}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* ── INPUTS ─────────────────────────────────────────────── */}
-          <CalculatorInputsCard
-            productId={productId}
-            setProductId={setProductId}
-            products={products}
-            variantId={variantId}
-            setVariantId={setVariantId}
-            selectedVariants={selectedVariants}
-            customPrice={customPrice}
-            setCustomPrice={setCustomPrice}
-            customCost={customCost}
-            setCustomCost={setCustomCost}
-            couponCode={couponCode}
-            setCouponCode={setCouponCode}
-            simulateReferred={simulateReferred}
-            setSimulateReferred={setSimulateReferred}
-            result={result}
-            onCalculate={calculate}
-            canCalculate={canCalculate}
-            loading={loading}
-          />
-
-          {/* ── OUTPUTS ────────────────────────────────────────────── */}
-          <CalculatorOutputsCard result={result} calcError={calcError} />
-        </div>
-
-        {/* Footer note */}
-        <div className="text-3xs text-muted-foreground text-center pt-2">
-          تستخدم الحاسبة منطق نظام الطلبات الفعلي (تخفيضات + كوبونات + ولاء + إحالات). أي تغيير في
-          النظام الفعلي يجب أن ينعكس هنا.
-        </div>
       </div>
 
       {/* catalog-recon: styled confirm for the bulk recompute action */}

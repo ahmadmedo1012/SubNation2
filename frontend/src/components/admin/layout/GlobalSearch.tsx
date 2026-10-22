@@ -21,8 +21,8 @@ import { useLocation } from "wouter";
 import { trapTabKey } from "./focus-trap";
 
 // R137 (1-f decomposition): extracted verbatim from pages/admin/layout.tsx —
-// the ⌘K global search palette. A self-contained FEATURE component in the
-// CopilotPanel (R124-I5) precedent: its state is overlay-LOCAL (query,
+// the ⌘K global search palette. A self-contained FEATURE component: its
+// state is overlay-LOCAL (query,
 // results, debounce, the keyboard highlight — nothing outside the palette
 // reads it), so it moves as a unit with its own hooks; the page owns only
 // the open flag (showSearch) and passes onClose. The move only changes its
@@ -286,9 +286,9 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             focus treatment — the bare outline-none below suppressed the
             global focus outline with no replacement, and Tab is
             trapped inside the palette (trapTabKey), so keyboard focus
-            landed on ring-less tabbables. The focus-within idiom mirrors
-            CopilotComposer's composite field (ring-ring — the ONE
-            focus system's token, 2px + ring-offset-background). */}
+            landed on ring-less tabbables. The combobox input row carries
+            the focus-within ring (ring-ring — the ONE focus system's
+            token, 2px + ring-offset-background). */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-background">
           {loading ? (
             <Loader2 className="w-4 h-4 text-muted-foreground shrink-0 animate-spin" />

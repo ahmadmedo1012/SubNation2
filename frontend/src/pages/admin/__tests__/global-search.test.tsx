@@ -27,7 +27,7 @@
  * interleaving is driven deterministically by advancing exactly past
  * each delay.
  *
- * The auth hook, theme, copilot panel and toast hook are mocked at
+ * The auth hook, theme and toast hook are mocked at
  * the module boundary; fetch is routed per URL.
  */
 
@@ -51,12 +51,6 @@ vi.mock("@/lib/theme", () => ({
 
 vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
-}));
-
-// The copilot panel fetches its own history — stubbed so the palette
-// test stays scoped to the GlobalSearch requests.
-vi.mock("@/components/admin/copilot/CopilotPanel", () => ({
-  CopilotPanel: () => null,
 }));
 
 /** Minimal Response-like object — avoids depending on a global Response. */

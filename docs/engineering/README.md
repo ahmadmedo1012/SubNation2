@@ -14,13 +14,13 @@
 
 ## The round index
 
-**33 folders covering the R142→R176 span** (91 md + 32 `.jsonl` lane
-records = 121 files). Newest first, matching the CHANGELOG's
+**35 folders covering the R142→R181 span**. Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
 (`## Round R###` header) that summarizes it.
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R181 | 2026-10-21 | The permanent feature-removal round (AI Admin Copilot + admin calculator — deleted across UI/API/DB/generated contracts, V1-M36 + chain 0027, the LLM transport relocated for enrichment, the real pricing system preserved and regression-pinned) | [`round-close.md`](./R181/round-close.md) |
 | R176 | 2026-10-20 | The real-source art round (the brands' official logos replace the AI families — pearl/charcoal system, 9.5 KB avg, zero AI) | [`round-close.md`](./R176/round-close.md) |
 | R175 | 2026-10-20 | The product-art attraction round (the cinematic showcase family, pipeline committed, motion 14.4.0) | [`round-close.md`](./R175/round-close.md) |
 | R174 | 2026-10-20 | The product-art excellence round (45 regenerated 1024² tiles + the freshness contract) | [`round-close.md`](./R174/round-close.md) |

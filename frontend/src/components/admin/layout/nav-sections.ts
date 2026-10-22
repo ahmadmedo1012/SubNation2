@@ -1,7 +1,7 @@
 import {
   Activity,
   Bell,
-  Calculator,
+  SlidersHorizontal,
   Gift,
   LayoutDashboard,
   MessageSquare,
@@ -73,7 +73,12 @@ export const NAV_SECTIONS = [
         icon: Sparkles,
         scope: "inventory",
       },
-      { href: "/admin/pricing", label: "حاسبة الأسعار", icon: Calculator, scope: "inventory" },
+      {
+        href: "/admin/pricing",
+        label: "إعدادات التسعير",
+        icon: SlidersHorizontal,
+        scope: "inventory",
+      }, // R181: the calculator simulator is retired — this is the pricing rule screen
       { href: "/admin/users", label: "المستخدمون", icon: Users, scope: "users" },
       { href: "/admin/referrals", label: "الإحالات", icon: Gift, scope: "users" },
       // R120-B4 (A2-F1): scope parity — every coupon admin API is

@@ -53,7 +53,7 @@ The unique engineering content below is what the TOPOLOGY does **not** carry.
 │  │                                                                                          │
 │  ├── subnation (this repo, ONE image, ONE container)                                        │
 │  │    Express 5 :8080                                                                       │
-│  │    ├── JSON API  /api/*  (auth, catalog, checkout, wallet, admin, copilot, SEO files)    │
+│  │    ├── JSON API  /api/*  (auth, catalog, checkout, wallet, admin, SEO files)             │
 │  │    ├── Socket.IO (same http server, /socket.io/, WS+polling)                             │
 │  │    ├── SPA static  (frontend/dist/public — single origin, no split hosting)              │
 │  │    ├── in-process schedulers: node-cron jobs + 60 s alerting (SINGLE_INSTANCE_MODE)      │
@@ -78,7 +78,7 @@ The unique engineering content below is what the TOPOLOGY does **not** carry.
 External SaaS the runtime talks to (all optional, degrade cleanly):
 Firebase Auth (Google/Telegram identity verification), Telegram Bot API
 (ops alerts + approval gateway), Sentry (errors/traces), OpenAI-compatible
-LLM (admin copilot + enrichment), Google Analytics (frontend, build-time).
+LLM (Arabic catalog enrichment — the admin copilot was retired in R181), Google Analytics (frontend, build-time).
 
 The single origin contract: `VITE_API_BASE_URL`/`VITE_SOCKET_URL`/`VITE_API_URL`
 stay EMPTY — the browser speaks relative `/api` and same-origin WebSockets.
@@ -176,7 +176,7 @@ drift gate.
   for same-origin polling) → JWT → DB liveness (60 s cache, 5 min re-verify) →
   rooms `user:<id>` / `admin-room`.
 - **Maintenance (event-driven):** real traffic triggers opportunistic sweeps
-  (stock/flash-sale/coupon/OTP-prune/copilot-reaper, throttled 5-60 min per
+  (stock/flash-sale/coupon/OTP-prune, throttled 5-60 min per
   job) — no artificial traffic anywhere (the 2026-09-20 purge is complete).
 - **Money invariants** (topup atomicity M1, topup dedup M2, `mobile_transfer`
   requires a payment reference M3 — `wallet.ts:365` (see
@@ -251,3 +251,9 @@ multi-instance shape.
 - **r113–r115:** deploy/ops runbooks (Docker verify, OpenWA gate, cutover
   preflight), the loyalty economics core (points_ledger, reversals, welcome
   policy) — the r115 Drizzle HEAD `6caa63b` (0015 re-emit followed in R117).
+- **R181 (2026-10-21):** the AI Admin Copilot permanently retired — UI,
+  `/api/admin/copilot/*` routes, services, jobs, and the
+  `copilot_previews`/`copilot_actions`/`copilot_action_items` tables dropped
+  (V1-M36 + chain 0027); the LLM client survives relocated at
+  `services/llm/` serving the enrichment runner (COPILOT_* env names kept
+  verbatim for production continuity).

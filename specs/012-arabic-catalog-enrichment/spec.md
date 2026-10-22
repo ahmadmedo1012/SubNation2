@@ -51,7 +51,7 @@ A daily worker-tier cron (`enrichment-runner`) selects products that need enrich
 
 ### User Story 3 — Token budget cap (Priority: P2)
 
-Enrichment is bounded by a per-day token budget. The cron stops generating drafts for the day once the cumulative token spend (input + output, summed per-call from the existing copilot LLM client) exceeds the configured cap. The remaining candidates are deferred to the next day's run.
+Enrichment is bounded by a per-day token budget. The cron stops generating drafts for the day once the cumulative token spend (input + output, summed per-call from the existing LLM client — historically the copilot's client, relocated in R181) exceeds the configured cap. The remaining candidates are deferred to the next day's run.
 
 **Why this priority**: Constitution §I (financial integrity) requires that AI features keep their inference cost within the assessment-level budget (cost band: batched-llm; SC-004 requires monthly inference < 10% of stated ROI). P2 because v1 ships with a sensible default cap; SC-005 (cost cap held) is measured weekly, not on every run.
 
@@ -65,18 +65,9 @@ Enrichment is bounded by a per-day token budget. The cron stops generating draft
 
 ---
 
-### User Story 4 — Copilot integration (Priority: P3)
+### User Story 4 — Copilot integration (Priority: P3) — RETIRED R181
 
-The AI Admin Copilot exposes a read tool `query_enrichment_drafts` so admins can ask "ما المنتجات التي تحتاج إلى مراجعة محتوى؟" (what products need content review?) and the copilot grounds the answer with rows from `enrichment_drafts`. The copilot's existing draft+preview pipeline (010-ai-admin-copilot) is NOT extended to draft enrichment content — that work is the cron's job. The copilot only READS the existing drafts for discoverability.
-
-**Why this priority**: Discoverability + Arabic-language convenience. P3 because the dedicated panel is the authoritative surface; the copilot is the "remind me what's pending?" entry point.
-
-**Independent Test**: Phase 1 copilot enabled. Admin asks "show me products with pending enrichment drafts". Copilot calls `query_enrichment_drafts`, replies with rows that match a direct query against `enrichment_drafts WHERE state='drafted'`. No fabrication: every product mentioned by the model must be in the tool output.
-
-**Acceptance Scenarios**:
-
-1. **Given** the copilot has the `inventory` scope, **When** the admin asks "what products need content review?", **Then** the copilot calls `query_enrichment_drafts` and replies with rows that include `product_id`, `field_name`, `state`, and a panel deep-link.
-2. **Given** the copilot is asked about a specific product, **When** it calls the tool with a `product_id` filter, **Then** it returns the latest draft row for that product+field or "no draft available".
+The AI Admin Copilot was permanently retired in Round R181. The `query_enrichment_drafts` read tool this story specified (discoverability of pending drafts by asking "ما المنتجات التي تحتاج إلى مراجعة محتوى؟") no longer exists. The `/admin/products/enrichment` review panel (US1) is the sole surface for pending drafts.
 
 ---
 
@@ -101,7 +92,7 @@ The AI Admin Copilot exposes a read tool `query_enrichment_drafts` so admins can
 
 #### FR-DRAFT: draft generation
 
-- **FR-DRAFT-001**: System MUST generate enrichment drafts via the existing copilot LLM client (`backend/src/services/copilot/llm-client.ts`) — no new SDK, no per-event inference cost.
+- **FR-DRAFT-001**: System MUST generate enrichment drafts via the existing LLM client — `backend/src/services/llm/llm-client.ts` since R181 (historically `backend/src/services/copilot/llm-client.ts`, the copilot's client; the module was relocated when the copilot was retired and the COPILOT_* env contract was kept verbatim for production continuity) — no new SDK, no per-event inference cost.
 - **FR-DRAFT-002**: System MUST scope each draft to ONE product+field combination — never bundles multiple fields into a single LLM call. This keeps tokens predictable and audit clean.
 - **FR-DRAFT-003**: System MUST output Arabic copy as the default; the prompt template instructs the model and the validator (FR-DRAFT-007) rejects non-Arabic output.
 - **FR-DRAFT-004**: System MUST mark archived (`isArchived=true`) and inactive (`isActive=false`) products as ineligible for drafting.
@@ -134,19 +125,16 @@ The AI Admin Copilot exposes a read tool `query_enrichment_drafts` so admins can
 - **FR-PANEL-007**: Reject MUST set `state='rejected'`, stamp `rejected_at`, store the optional reject reason, and the cron's 14-day suppression takes effect from that timestamp.
 - **FR-PANEL-008**: Panel MUST be authored Arabic-first, RTL, matching the existing admin layout tokens.
 
-#### FR-COPILOT: AI admin copilot integration
+#### FR-COPILOT: AI admin copilot integration — RETIRED R181
 
-- **FR-COPILOT-001**: System MUST expose a `query_enrichment_drafts` read-only tool to the AI Admin Copilot, gated on the `inventory` scope.
-- **FR-COPILOT-002**: Tool MUST accept optional filters: `state` (default `drafted`), `product_id` (single-product lookup), `field_name`, `limit` (default 10, max 50).
-- **FR-COPILOT-003**: Tool MUST return rows from `enrichment_drafts` only — never invents a row. Copilot system prompt's no-fabrication discipline (010 R-3) extends to this tool.
-- **FR-COPILOT-004**: Tool MUST surface a deep-link `panel_url` per row pointing at `/admin/products/enrichment?focus=<draft_id>` so the model's reply can drive the admin into the panel.
+The AI Admin Copilot feature — and the `query_enrichment_drafts` read tool FR-COPILOT-001…004 specified for it — was permanently retired in Round R181. These requirements are a historical record; no copilot tool surface exists in the current system. The review panel (FR-PANEL) is the surviving surface for pending drafts.
 
 #### FR-SAFETY: scope boundaries
 
 - **FR-SAFETY-001**: System MUST NEVER auto-publish a draft to the live product. Every change requires an explicit admin click on the panel.
 - **FR-SAFETY-002**: System MUST NEVER expose draft text to customers. Drafts live behind the `inventory` admin scope; no customer-facing surface reads `enrichment_drafts`.
 - **FR-SAFETY-003**: System MUST NEVER call the LLM in response to customer requests. The runner is the only invoker; storefront paths are unchanged.
-- **FR-SAFETY-004**: System MUST refuse the `description` field for products whose existing `description` is already substantive (≥ 100 characters) — the runner only fills gaps. Admins who want to rewrite an existing description use the existing copilot draft+preview flow (010), not this batched runner.
+- **FR-SAFETY-004**: System MUST refuse the `description` field for products whose existing `description` is already substantive (≥ 100 characters) — the runner only fills gaps. (Historically, admins who wanted to rewrite an existing description used the copilot draft+preview flow (010); that flow was retired in R181 — rewrite now happens through the standard product edit form.)
 - **FR-SAFETY-005**: System MUST honor the existing logger-redaction rules — draft text is not credential material, but the runner's structured logs MUST NOT include the full draft text at info level (truncate to first 200 chars in logs; full text only in the database row).
 
 ### Key Entities _(include if feature involves data)_
@@ -166,16 +154,16 @@ The AI Admin Copilot exposes a read tool `query_enrichment_drafts` so admins can
 - **SC-004 (cost cap held)**: Monthly LLM spend on enrichment stays under 10% of the assessment's stated ROI lever (data quality / SEO improvement, denominated in USD/month). Constitution §I gate.
 - **SC-005 (zero customer regression)**: Customer-facing storefront latency p95 unchanged within ±1% of the baseline measured the week before launch.
 - **SC-006 (audit completeness)**: 100% of publish events have a paired `audit_logs` row with `action='enrichment.publish'`, the field name, and the diff. Validated by the existing daily reconciliation worker.
-- **SC-007 (no fabrication)**: 100% of products mentioned by the copilot when answering enrichment questions match an `enrichment_drafts` row. Validated by an integration test.
+- **SC-007 (no fabrication — RETIRED R181)**: historical copilot-era criterion — 100% of products mentioned by the copilot when answering enrichment questions matched an `enrichment_drafts` row. Moot since the copilot retirement (R181).
 
 ---
 
 ## Assumptions
 
-- The existing copilot LLM client (`backend/src/services/copilot/llm-client.ts`) supports plain prompt → completion calls with token-count metadata in the response. v1 reuses Sonnet 4.6; if cost calibration argues for Haiku 4.5, the model id is configurable.
+- The existing LLM client (`backend/src/services/llm/llm-client.ts` since the R181 relocation; historically the copilot's `backend/src/services/copilot/llm-client.ts`) supports plain prompt → completion calls with token-count metadata in the response. v1 reuses Sonnet 4.6; if cost calibration argues for Haiku 4.5, the model id is configurable.
 - The catalog stays under 10k active products through the pilot. Larger catalogs would lengthen the back-fill window but the design holds.
 - The `inventory` admin permission scope is the right gate. No new scope is introduced.
-- The existing copilot draft+preview pipeline (010) is NOT extended for batch enrichment — that's the runner's job. The copilot tool is read-only.
+- The runner does not use any copilot draft+preview pipeline — the copilot (010) was retired in R181; batch drafting is the runner's job alone.
 - Rejection reasons are free-text in v1. Structured rejection categories ("too verbose", "off-brand tone", "factually wrong") are a follow-up if pilot signal demands it.
 - The default daily token cap is configurable per release. v1 ships with a conservative cap (e.g., 50k input + output tokens/day) sized at < 10% of the stated ROI lever; operators tune it from the existing system_settings table.
 - The 14-day rejection-suppression window is a hard-coded constant in v1. If pilot signal argues for per-product suppression tuning, that's a follow-up.

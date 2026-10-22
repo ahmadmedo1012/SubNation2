@@ -21,7 +21,7 @@ import { supportRouter } from "../support";
  * 1 MB JSON limit) and NO per-user rate limit — a scripted authenticated
  * user could park ~1 MB text rows into ticket_replies at ~20/min
  * (multi-GB/day growth on a starter-tier Neon). Pinned here:
- *   - reply message ≤ 4000 chars (mirrors the copilot intent-text bound)
+ *   - reply message ≤ 4000 chars (the storage-DoS bound)
  *   - ticket creation message ≤ 4000 chars (same bound, was also open)
  *   - 30 replies/hour/user limiter (mirrors ticketCreateLimiter style)
  *

@@ -310,7 +310,7 @@ ledger; `docs/API.md` owns the API surface.
 | `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
 | `SEO_PRODUCTS.json` | The 45 curated Arabic product entries (8 original + 37 added R116) | STALE vs live DB (R132 L4-F1: 41/41 seeded rows differ — the live DB is the NEWER truth after the operator's R132 curation pass; the importer is keep-unless-force, so this file is a snapshot, not the source of truth — re-export before bulk edits) |
 | `loyalty/FINAL_LOYALTY_POLICY.md` · `loyalty/LOYALTY_ECONOMICS.md` | Loyalty policy + economics | CURRENT |
-| `pricing/PRICING_ECONOMICS.md` | Pricing/margin model | CURRENT |
+| `pricing/PRICING_ECONOMICS.md` | Pricing engine + settings (retail rule, discount stack/cap, recompute, refunds) | CURRENT (R181: calculator-simulator sections removed with the feature's retirement) |
 | `ux/FINAL_UX_SYSTEM.md` | UX/design-system policy | CURRENT (R128: 11px type floor + z-index code truth + icon-direction contract + cross-surface conventions sections added) |
 
 ### project-plan/ + project-state/ + project-graph/ (mission-era trees)
@@ -325,7 +325,7 @@ ledger; `docs/API.md` owns the API surface.
 
 | Tree | What it is |
 |---|---|
-| `specs/003-anomaly-detection` · `specs/004-security-audit` · `specs/008-audit-coverage-gaps` · `specs/010-ai-admin-copilot` · `specs/011-inventory-demand-forecast` · `specs/012-arabic-catalog-enrichment` | Dated spec-driven working directories (spec / plan / research / checklists / contracts per dir) — evidence records of executed work (e.g. the risk engine, the admin copilot, the forecast panel), not maintained docs. Read as history with a date, not as CURRENT guidance. |
+| `specs/003-anomaly-detection` · `specs/004-security-audit` · `specs/008-audit-coverage-gaps` · `specs/011-inventory-demand-forecast` · `specs/012-arabic-catalog-enrichment` | Dated spec-driven working directories (spec / plan / research / checklists / contracts per dir) — evidence records of executed work (e.g. the risk engine, the forecast panel), not maintained docs. Read as history with a date, not as CURRENT guidance. R181 note: `specs/010-ai-admin-copilot/` was deleted with the copilot's permanent retirement; the surviving specs' copilot-tool sections are marked RETIRED R181 in place. |
 
 ### engineering/ (round records — the ENGINEERING bucket, R142+)
 

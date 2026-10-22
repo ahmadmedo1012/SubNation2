@@ -14,7 +14,13 @@
 > CURRENT open set lives in `OPERATIONS_RUNBOOK.md` §14 + the R165
 > round-close §9 (`docs/engineering/R165/round-close.md`) — the
 > post-R163 owner actions (INDEXNOW_KEY, GA4 spot-check, GSC sitemap
-> submission, the 24 catalog fixes) are tracked there, not here.** Read
+> submission, the 24 catalog fixes) are tracked there, not here.**
+> **R181 refresh (2026-10-21): #12 is MOOT — the AI Admin Copilot was
+> permanently retired (UI, routes, services, jobs, and the
+> copilot_previews/copilot_actions/copilot_action_items tables dropped by
+> boot migration V1-M36 + drizzle chain 0027); no copilot tables remain,
+> so there is no retention policy left to decide. The open set is now
+> 4–7, 9–10.** Read
 > this first.
 > Every item carries its evidence anchor (`docs/inspection-r118/*` — moved
 > to `docs/history/inspection-r118/` by the R122 docs reorg). Live
@@ -52,7 +58,7 @@ ready-when-you-are.
 | 9 | Mark all alerts read (after stock load) | 🟡 quick win | S | R118-A3 F6 |
 | 10 | Encryption-key rotation readiness (read the pointer) | 🔵 when ready | S (reading) | R118-A4 F2 |
 | 11 | http→https apex redirect is 302 → flip to 301 (`permanent: true`) | 🟡 quick win | S (proxy config) | R123-A8 live probe |
-| 12 | Decide copilot_actions / copilot_action_items retention policy | 🟠 decide | S (decision + SQL) | R123-A7 P3 |
+| 12 | Decide copilot_actions / copilot_action_items retention policy — ✅ MOOT R181 (copilot retired; tables dropped) | 🟠 decide | — | R123-A7 P3 |
 
 Recommended order: **1 → 2 → 3** (deploy the audited code before loading
 stock, so the live process is the one the R118 findings describe).
@@ -268,52 +274,21 @@ stock, so the live process is the one the R118 findings describe).
 - **Effort:** S (one YAML flag in the Coolify proxy config). (Evidence:
   R123-A8 live probe, 2026-10-08; R123-A6 header audit.)
 
-## 🟠 12. Decide: copilot_actions / copilot_action_items retention policy (currently UNBOUNDED)
+## 🟠 12. Decide: copilot_actions / copilot_action_items retention policy (currently UNBOUNDED) — ✅ MOOT R181
 
-- **What (a decision, not a task):** the AI Admin Copilot audit tables —
-  `copilot_actions` (one row per ask/draft/execute: intent text, tool,
-  risk tier, outcome, **`before_state` / `after_state` jsonb snapshots**,
-  model + token counts, correlation id) and `copilot_action_items` (the
-  per-entity rows linking each action to product/inventory/admin ids) —
-  have **no retention job and no policy**. Every other audit-grade table
-  has one: `audit_logs` 180 d, `risk_events` 90/97 d (labels pruned after
-  a 30-day orphan grace, R123-E5), `notifications` 90/180 d,
-  `admin_alerts` 14/30 d, `idempotency_keys` 48 h. The copilot reaper job
-  (`copilot-reaper`) only expires *previews* — it never touches actions.
-- **Why it matters:** the jsonb snapshots duplicate whole catalog entity
-  rows (prices, stock, copy) per action and grow monotonically with copilot
-  usage. Unbounded audit tables on the Neon free/starter tiers eventually
-  cost storage AND slow the admin history feed (it is cursor-paginated on
-  `(created_at, id)`, but the table itself keeps growing). Counterweight:
-  these rows are the *governance record* for AI-assisted mutations — an
-  operator may reasonably want them kept longer than audit_logs.
-- **The decision to make** (pick one, then it becomes code):
-  1. **Align with audit_logs (180 d)** — the governance record rides the
-     same 180-day window as every other admin action; recommended default.
-  2. **Longer window (1–2 y)** — if the AI-governance record is expected
-     to outlive the generic audit trail.
-  3. **Keep unbounded (explicit)** — accepted, but write it down here so
-     the next audit doesn't re-flag it; check table size quarterly
-     (`SELECT pg_size_pretty(pg_total_relation_size('copilot_actions'));`).
-- **Reference prune shape** (when a policy is chosen; ctid-batched like
-  every sibling job, children first — `copilot_action_items` has no
-  FK to actions, it links by `action_id` column reference):
-
-  ```sql
-  -- candidate window check first (children carry no created_at; join):
-  SELECT count(*) FROM copilot_action_items ai
-  JOIN copilot_actions a ON a.id = ai.action_id
-  WHERE a.created_at < NOW() - INTERVAL '180 days';
-  SELECT count(*) FROM copilot_actions
-  WHERE created_at < NOW() - INTERVAL '180 days';
-  ```
-
-  Implementation, once decided, is a small job in
-  `backend/src/jobs/` following `risk-retention.ts` (R123-E5 added the
-  risk_labels orphan prune there — the same ctid-batch pattern) + a cron
-  entry + a retention test; the risk-retention header deliberately points
-  here for this decision.
-- **Effort:** S (the decision) / S-M (the follow-up code job once
-  decided). (Evidence: R123-A7 P3 retention audit — copilot_actions +
-  copilot_action_items unbounded, jsonb snapshots, no policy vs
-  audit_logs' 180 d.)
+- **Resolution (R181, 2026-10-21):** the AI Admin Copilot feature was
+  permanently retired in Round R181. Its audit tables —
+  `copilot_actions` (intent text, tool, risk tier, outcome, the
+  `before_state`/`after_state` jsonb snapshots, model + token counts,
+  correlation id) and `copilot_action_items` (per-entity links) — were
+  **dropped from the schema** (boot migration V1-M36 + drizzle chain
+  0027), along with `copilot_previews`, the `/api/admin/copilot/*`
+  routes, the services, and the copilot-reaper job. There are no tables
+  left to hold a retention policy: the decision this action asked for is
+  closed by removal, not by choosing a window. The original decision
+  framing (180 d aligned with `audit_logs` / longer / keep-unbounded) and
+  the reference prune SQL were deleted with the tables they described;
+  the R123-A7 P3 evidence anchor remains a historical record.
+- **Effort:** — (no action remains). (Evidence: R123-A7 P3 retention
+  audit — superseded by the R181 retirement; migration V1-M36 + drizzle
+  chain 0027.)

@@ -13,7 +13,7 @@ description: "Task list for Arabic Catalog Content Enrichment implementation"
 ## Phase 1: Setup
 
 - [ ] T001 Add `ENRICHMENT_RUNNER_ENABLED=false`, `ENRICHMENT_DAILY_TOKEN_CAP=50000`, `ENRICHMENT_PER_RUN_CAP=50` defaults to `config/env.example` next to the existing `FORECAST_RUNNER_ENABLED`. Document the worker-tier requirement.
-- [ ] T002 [P] Audit existing `backend/src/services/copilot/llm-client.ts` to confirm it exposes `{text, inputTokens, outputTokens}` and a plain prompt → completion path (no tool catalog). Document any gap in `specs/012-arabic-catalog-enrichment/notes-llm-client.md`.
+- [ ] T002 [P] Audit the existing LLM client (`backend/src/services/llm/llm-client.ts` since the R181 relocation — historically `backend/src/services/copilot/llm-client.ts`) to confirm it exposes `{text, inputTokens, outputTokens}` and a plain prompt → completion path (no tool catalog). Document any gap in `specs/012-arabic-catalog-enrichment/notes-llm-client.md`.
 
 ## Phase 2: Foundational
 
@@ -29,7 +29,7 @@ description: "Task list for Arabic Catalog Content Enrichment implementation"
 - [ ] T007 [P] `backend/src/services/enrichment/prompts.ts` — three prompt templates (description, description_long, faq) with explicit Arabic-output instruction.
 - [ ] T008 [P] `backend/src/services/enrichment/validator.ts` — pure functions: `arabicRatio(text)`, `validateDescription`, `validateDescriptionLong`, `validateFaq`. Returns `{ ok: true } | { ok: false, errors: [] }`.
 - [ ] T009 [P] `backend/src/services/enrichment/run-store.ts` — CRUD over `enrichment_runs` (createInFlight, markSuccess, markFailure, latestSuccessful).
-- [ ] T010 [P] `backend/src/services/enrichment/draft-store.ts` — CRUD: `insertDraft`, `getById`, `listByState`, `markPublished`, `markRejected`, `markInvalid`, `selectForCopilot`.
+- [ ] T010 [P] `backend/src/services/enrichment/draft-store.ts` — CRUD: `insertDraft`, `getById`, `listByState`, `markPublished`, `markRejected`, `markInvalid` (historically also `selectForCopilot` for the copilot read tool — retired R181).
 - [ ] T011 [P] `backend/src/services/enrichment/candidates.ts` — single batched query that returns eligible (product_id, field_name) pairs respecting active+non-archived + 14-day rejection suppression + already-drafted exclusion.
 
 ### Frontend infrastructure
@@ -78,15 +78,9 @@ description: "Task list for Arabic Catalog Content Enrichment implementation"
 
 - [ ] T030 [US3] Token-cap accounting inside `enrichment.service.ts` (already part of T024; this task is the test-driven hardening — separated out so the test in T029 has a clean target).
 
-## Phase 6: User Story 4 — Copilot integration (P3)
+## Phase 6: User Story 4 — Copilot integration (P3) — RETIRED R181
 
-### Tests for US4
-
-- [ ] T031 [P] [US4] Tests in `backend/src/services/enrichment/__tests__/copilot-tool.test.ts` — `query_enrichment_drafts` returns rows verbatim; product_id filter respects single-product lookup; out-of-scope admin gets the tool excluded from the catalog.
-
-### Implementation
-
-- [ ] T032 [US4] Add `query_enrichment_drafts` to `backend/src/services/copilot/tools/read.ts` with `requiredScope: "inventory"`. Returns rows with `panel_url`. Append to `READ_TOOLS`.
+**Status**: the AI Admin Copilot was permanently retired in Round R181 (UI, `/api/admin/copilot/*` routes, services, and DB tables removed). The `query_enrichment_drafts` tool — test T031 and implementation T032 that originally lived here — no longer exists; `backend/src/services/copilot/tools/read.ts` is gone with it. This phase is preserved as a historical record only; do not implement. The `/admin/products/enrichment` panel is the sole drafts surface.
 
 ## Phase 7: Polish
 
@@ -104,8 +98,8 @@ description: "Task list for Arabic Catalog Content Enrichment implementation"
 - Phase 2 (Foundational) blocks all user stories.
 - US1 + US2 are P1 — the panel needs the runner to have produced drafts; the runner needs the panel for admins to act on its work. Ship together for the MVP.
 - US3 depends on US2 (the runner is what enforces the cap).
-- US4 depends on US1 (the panel is the authoritative surface; the copilot is the discoverability layer).
+- US4 (retired R181 with the copilot) historically depended on US1 — the panel was the authoritative surface, the copilot the discoverability layer.
 
 ## MVP scope (US1 + US2 + Phase 7 polish)
 
-T001–T028 (skipping the per-story tests where the env doesn't allow them) plus T037 form the implementable MVP. US3's cap is already covered by T024's accounting; the explicit US3 tests can land in a follow-up. US4's copilot tool can land any time after US1.
+T001–T028 (skipping the per-story tests where the env doesn't allow them) plus T037 form the implementable MVP. US3's cap is already covered by T024's accounting; the explicit US3 tests can land in a follow-up. (US4's copilot tool was historically optional post-US1 work — retired R181 with the copilot.)

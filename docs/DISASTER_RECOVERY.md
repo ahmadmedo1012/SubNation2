@@ -108,7 +108,7 @@ the rotation scenario, where this list WAS the runbook)*:
 - **Seed/admin**: `ADMIN_USERNAME`, `ADMIN_PASSWORD`
 - **Sentry**: `SENTRY_AUTH_TOKEN`, `SENTRY_DSN` (both `sync: false` — NOT `generateValue`), `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_DASHBOARD_URL`
 - **Dashboards/alerting**: `RENDER_DASHBOARD_URL`, `NEON_DASHBOARD_URL`, `ALERTING_RUNBOOK_URL`, `DISCORD_WEBHOOK_URL`, `GENERIC_ALERT_WEBHOOK_URL`
-- **AI (optional — off by default)**: copilot: `COPILOT_PROVIDER`, `COPILOT_API_KEY`, `COPILOT_MODEL`, `COPILOT_BASE_URL` — dormant until all four are set; runs in-process, NO worker tier needed. Enrichment caps: `ENRICHMENT_DAILY_TOKEN_CAP`, `ENRICHMENT_PER_RUN_CAP` — additionally gated on `WORKER_TIER=true`, which the single-instance topology never sets → permanently inert (see `docs/deployment/FINAL_PRODUCTION_ENV.md`)
+- **LLM (optional — off by default)**: `COPILOT_PROVIDER`, `COPILOT_API_KEY`, `COPILOT_MODEL`, `COPILOT_BASE_URL` — the enrichment runner's provider config (names kept verbatim from the retired copilot — R181 — for production continuity); dormant until set; runs in-process, NO worker tier needed. Enrichment caps: `ENRICHMENT_DAILY_TOKEN_CAP`, `ENRICHMENT_PER_RUN_CAP` — additionally gated on `WORKER_TIER=true`, which the single-instance topology never sets → permanently inert (see `docs/deployment/FINAL_PRODUCTION_ENV.md`)
 
 Keep these in a password manager (1Password / Bitwarden) with the service
 entry "SubNation (Coolify/compose env)".

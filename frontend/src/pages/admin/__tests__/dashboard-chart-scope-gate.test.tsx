@@ -78,10 +78,6 @@ vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
 }));
 
-vi.mock("@/components/admin/copilot/CopilotPanel", () => ({
-  CopilotPanel: () => null,
-}));
-
 vi.mock("@/pages/admin/layout", () => ({
   AdminLayout: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));

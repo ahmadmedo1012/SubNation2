@@ -102,10 +102,6 @@ vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
 }));
 
-vi.mock("@/components/admin/copilot/CopilotPanel", () => ({
-  CopilotPanel: () => null,
-}));
-
 // R125-I2 (A1-4): the refresh button lives in AdminLayout — the stub
 // EXPOSES the page-passed onRefresh as a real button so the
 // single-fire test can click it.

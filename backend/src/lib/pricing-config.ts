@@ -16,7 +16,6 @@
  *   - Admin variant create/edit endpoints (recompute on every write)
  *   - Admin bulk price recompute endpoint (operator changes rate/markup
  *     then recomputes the whole catalog with one action)
- *   - Admin pricing calculator (margin simulation — display only)
  *
  * ── Storage & override contract ───────────────────────────────────────────
  *   Defaults are compiled in (DEFAULT_USD_TO_LYD, DEFAULT_MARKUP_PERCENT) so
@@ -55,7 +54,7 @@ export const SETTING_KEY_MARKUP_PERCENT = "pricing.markup_percent";
  * discount ABOVE the cap the sale is guaranteed loss-making before loyalty
  * liability is even considered. Loyalty/referral/welcome are NOT counted
  * here — they are program liabilities, not transactional discounts
- * (never confuse the two; the calculator models them separately).
+ * (never confuse the two).
  * Bounds: 10–95 (a cap <10 makes coupons unusable; >95 approaches free).
  */
 export const DEFAULT_MAX_TOTAL_DISCOUNT_PCT = 50;

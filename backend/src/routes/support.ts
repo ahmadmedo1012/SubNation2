@@ -25,8 +25,7 @@ router.use((_req, res, next) => {
 // was unbounded — the only ceiling was the global 1 MB JSON limit, so a
 // scripted user could park ~1 MB text rows into ticket_replies at
 // userLimiter cadence (multi-GB/day storage growth on a starter-tier
-// Neon + degraded admin ticket views). 4000 chars matches the copilot
-// intent-text bound (routes/admin/copilot/ask.ts) — far above any human
+// Neon + degraded admin ticket views). 4000 chars — far above any human
 // support message, small enough to make storage-DoS expensive.
 const MAX_TICKET_MESSAGE_CHARS = 4000;
 

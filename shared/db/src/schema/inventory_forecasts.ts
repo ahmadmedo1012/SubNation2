@@ -21,8 +21,7 @@ import { productsTable } from "./products";
  * data-model.md §1.2).
  *
  * One row per (product, calendar_date). The authoritative snapshot
- * consumed by the admin risk panel, the copilot forecast_demand tool,
- * and the alert dispatcher. Idempotent re-runs upsert on the unique
+ * consumed by the admin risk panel and the alert dispatcher. Idempotent re-runs upsert on the unique
  * constraint (FR-FORECAST-006); the cron is the only writer.
  *
  * Columns are nullable when `confidence='insufficient_data'` because

@@ -253,11 +253,11 @@ describe("adminFetch — the 20 s timeout wiring (L13-2 / D-3 behavioral pin)", 
     expect(stub).toHaveBeenCalledTimes(1);
   });
 
-  it("timeoutMs: 0 opts OUT of the bound entirely — fetch receives NO signal (the copilot SSE exemption)", async () => {
+  it("timeoutMs: 0 opts OUT of the bound entirely — fetch receives NO signal (the SSE/long-poll exemption)", async () => {
     const { stub, signals } = recordingFetch();
     vi.stubGlobal("fetch", stub);
 
-    await adminFetch("/api/admin/copilot/ask", { method: "POST" }, { timeoutMs: 0 });
+    await adminFetch("/api/admin/long-poll", { method: "POST" }, { timeoutMs: 0 });
 
     expect(signals).toHaveLength(1);
     expect(signals[0]).toBeUndefined();

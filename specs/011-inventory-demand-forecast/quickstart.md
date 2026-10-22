@@ -4,7 +4,7 @@
 **Audience**: operator running the pilot, on-call engineer, future maintainer
 **Companions**: [spec.md](./spec.md), [plan.md](./plan.md), [research.md](./research.md), [data-model.md](./data-model.md)
 
-This file is the operator's playbook for turning the feature on, watching it run, and turning it off cleanly. It mirrors the structure of `010-ai-admin-copilot/quickstart.md` so the on-call rotation only learns one shape.
+This file is the operator's playbook for turning the feature on, watching it run, and turning it off cleanly. It follows the standard spec quickstart shape (historically it mirrored `010-ai-admin-copilot/quickstart.md`, which was deleted with the copilot retirement in R181) so the on-call rotation only learns one shape.
 
 ---
 
@@ -56,20 +56,9 @@ Click the "ما الذي أنتج هذا التوقع؟" expander → shows: avg
 
 ---
 
-## 3. US2 — copilot natural-language access
+## 3. US2 — copilot natural-language access — RETIRED R181
 
-Open the AI Admin Copilot panel. Ask in Arabic or English:
-
-- "أي منتجات على وشك أن تنفد الأسبوع القادم؟"
-- "what products will run out in the next week?"
-- "show me products at risk of stockout"
-
-The copilot calls `forecast_demand` and replies with grounded rows. Verify:
-
-1. Every product the copilot mentions matches a `inventory_forecasts` row with `forecast_date = CURRENT_DATE`.
-2. Each row in the copilot's reply carries a `panel_url` deep-link to `/admin/products?highlight=<id>`.
-3. Asking about a non-existent product surfaces "no forecast available" rather than an invented row (no fabrication).
-4. An admin without the `inventory` scope sees the tool absent from the model's catalog — copilot replies "you do not have inventory access".
+The AI Admin Copilot was permanently retired in Round R181; the `forecast_demand` tool and this walkthrough no longer apply. The live forecast surfaces are the `/admin/products` risk panel (§2) and the alert pipeline (§4).
 
 ---
 
@@ -137,7 +126,6 @@ The flag is intentionally manual-clear — calibration regressions deserve a hum
 | `alerts_capped = true` on multiple runs                 | Either real catalog-wide event or rule regression        | Investigate `products_skipped` + the `at_risk` distribution; decide whether the cap protected against a false flood or a real one. |
 | Customer purchase latency p95 jumps                     | Forecast cron accidentally on the web tier               | Check `WORKER_TIER` env on the web deploy; the cron's first action is to short-circuit if not "true". |
 | `outcome = failure` repeatedly                          | Pinned in `failure_reason`                              | Read `inventory_forecast_runs.failure_reason`; decide whether to roll back or fix forward.    |
-| Copilot fabricates a product not in `inventory_forecasts` | LLM regression — system-prompt cite-IDs-verbatim broke | Treat as P0; add a synthetic test fixture to `backend/src/test/forecast/copilot-tool.test.ts`. |
 
 ---
 
@@ -148,7 +136,6 @@ If the pilot fails (SC-001 capture rate stays < 50% after re-tuning) and the tea
 - [ ] Set `FORECAST_RUNNER_ENABLED=false` in worker env. Cron stops scheduling new runs.
 - [ ] Clear `forecast:alerts:paused` in Redis if set.
 - [ ] Hide the `StockoutRiskPanel` mount in `frontend/src/pages/admin/products.tsx` (one-line conditional on a feature flag).
-- [ ] Remove `forecast_demand` from the copilot's `READ_TOOLS` array (one-line edit).
 - [ ] Leave `inventory_forecasts` and `inventory_forecast_runs` in place for back-testing analysis; drop the tables only after a 30-day cool-down.
 
 The schema is purely additive — there's no migration to roll back. Removing the feature is a deploy-flag flip, not a data migration.

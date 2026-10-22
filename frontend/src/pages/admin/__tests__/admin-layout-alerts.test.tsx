@@ -52,10 +52,6 @@ vi.mock("@/hooks/useToast", () => ({
   toast: vi.fn(),
 }));
 
-vi.mock("@/components/admin/copilot/CopilotPanel", () => ({
-  CopilotPanel: () => null,
-}));
-
 function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
   const { ok = true, status = 200, body = {} } = over;
   // R115: the layout's stats subscription rides the REAL generated

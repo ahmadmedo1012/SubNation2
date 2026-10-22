@@ -13,7 +13,7 @@ This document is the source of truth for the persistence layer. Every field, ind
 
 ### 1.1 `inventory_forecast_runs`
 
-One row per execution of the daily forecast job. Powers the "last successful run" timestamp on the admin panel (FR-PANEL-005), the copilot's `data_freshness_hours` field (FR-COPILOT-004), and the calibration analysis (R-8).
+One row per execution of the daily forecast job. Powers the "last successful run" timestamp on the admin panel (FR-PANEL-005) and the calibration analysis (R-8). (Historically also the copilot's `data_freshness_hours` field — the copilot was retired in R181.)
 
 | Column                    | Type                       | Null | Default       | Notes                                                                                |
 | ------------------------- | -------------------------- | ---- | ------------- | ------------------------------------------------------------------------------------ |
@@ -48,7 +48,7 @@ The `outcome` field never reverts. A failed run is followed by a fresh row on th
 
 ### 1.2 `inventory_forecasts`
 
-One row per (product, run). The authoritative snapshot consumed by the admin panel, the copilot tool, and the alert dispatcher.
+One row per (product, run). The authoritative snapshot consumed by the admin panel and the alert dispatcher (historically also the copilot tool — retired R181).
 
 | Column                       | Type                                           | Null | Default    | Notes                                                                                                                               |
 | ---------------------------- | ---------------------------------------------- | ---- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -76,7 +76,7 @@ One row per (product, run). The authoritative snapshot consumed by the admin pan
 **Indexes**:
 
 - `idx_forecasts_at_risk_runout` on `(at_risk, predicted_runout_at) WHERE at_risk = true` — supports the panel's "top 10 at-risk" query.
-- `idx_forecasts_product_date` on `(product_id, forecast_date DESC)` — supports the copilot tool's per-product lookup.
+- `idx_forecasts_product_date` on `(product_id, forecast_date DESC)` — supports per-product lookup (historically the copilot tool's).
 - `idx_forecasts_run` on `(run_id)` — supports retention purge.
 
 **Why a denormalized `at_risk` column instead of computing the predicate at read time**: the panel query is the hot path; a partial index on `at_risk = true` keeps it constant-time regardless of catalog size, and the predicate is stable for the lifetime of the row.
@@ -141,7 +141,7 @@ The dedupe key (Redis) is `forecast_alert:<product_id>` with a 7-day TTL (R-3).
 The runtime uses `forecast_date` + the parent run's `completed_at` to compute staleness:
 
 - **fresh**: parent run `completed_at` within the last 24 hours.
-- **stale**: parent run `completed_at` ≥ 24 hours old → panel surfaces degraded-mode banner, copilot tool sets `data_freshness_hours` accordingly.
+- **stale**: parent run `completed_at` ≥ 24 hours old → panel surfaces degraded-mode banner.
 - **purged**: row no longer exists (retention purge ran) → panel falls back to "no forecast available".
 
 ---
@@ -299,7 +299,7 @@ Every statement uses `IF NOT EXISTS` (constitution §V boot-migration rule). The
 | ------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `GET /api/admin/forecast/at-risk` (panel)        | latest `inventory_forecasts` per product where `at_risk = true`       | `confidence != 'insufficient_data'`, `LIMIT 10` (configurable) |
 | `GET /api/admin/forecast/products/:id` (drawer)  | latest row for the given product, plus the parent `_runs` row         | none                                                           |
-| `forecast_demand` (copilot tool)                 | same as `at-risk` with optional product filter, optional horizon      | optional `product_id`, optional `horizon_days ∈ {7, 30}`       |
+| `forecast_demand` (copilot tool — RETIRED R181) | same as `at-risk` with optional product filter, optional horizon      | optional `product_id`, optional `horizon_days ∈ {7, 30}`       |
 | Alert dispatcher (cron, in-process)              | rows from the just-completed run where `at_risk = true` AND `confidence IN ('high','medium')` AND `predicted_runout_at <= forecast_date + 3 days` | filtered to the current run only                              |
 | Retention cron                                   | `inventory_forecasts WHERE forecast_date < CURRENT_DATE - 90`         | none — pure delete                                             |
 | Capture-rate cron                                | invariant-4 query (above)                                             | rolling 14-day window                                          |

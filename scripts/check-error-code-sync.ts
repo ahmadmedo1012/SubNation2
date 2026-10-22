@@ -174,11 +174,14 @@ function parseOpenApiErrorCodeEnum(): { entries: YamlEntry[]; keyLine: number } 
 
   // Sanity checks — mirror parseOpenApiOps(): fail loudly if the file's
   // format stops matching this scanner's assumptions instead of letting
-  // an empty parse "pass" the gate vacuously.
-  if (entries.length < 40) {
+  // an empty parse "pass" the gate vacuously. R181: the floor stepped
+  // 40 → 20 with the copilot family's retirement (27 codes left the
+  // enum; 26 remain) — a floor must sit below the real population, not
+  // pin a historical size.
+  if (entries.length < 20) {
     throw new Error(
       `${displayPath(openApiPath)} scan found only ${entries.length} ErrorCode enum entries — ` +
-        "expected ≥40. The file's indentation conventions likely changed; update " +
+        "expected ≥20. The file's indentation conventions likely changed; update " +
         "parseOpenApiErrorCodeEnum() in scripts/check-error-code-sync.ts.",
     );
   }
@@ -224,10 +227,12 @@ function parseConstErrorCodes(): { values: readonly string[]; lines: Map<string,
   }
 
   // Sanity checks — same vacuous-pass protection as the YAML side.
-  if (values.length < 40 || byValue.size < 40) {
+  // R181: the floor stepped 40 → 20 with the copilot family's
+  // retirement (27 codes left the const; 26 remain).
+  if (values.length < 20 || byValue.size < 20) {
     throw new Error(
       `${REL_CONST} scan found ${byValue.size} entries / Object.values(ErrorCode) yields ` +
-        `${values.length} — expected ≥40 on both. The scanner (or the const) is broken; update ` +
+        `${values.length} — expected ≥20 on both. The scanner (or the const) is broken; update ` +
         "parseConstErrorCodes() in scripts/check-error-code-sync.ts.",
     );
   }

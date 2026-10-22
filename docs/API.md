@@ -79,8 +79,8 @@ POST /api/webhook/telegram — Telegram topup approve/reject callbacks
 Observability: /api/metrics (token-gated), /api/healthz/{ready,redis,neon,worker,socket,firebase} (admin).
 
 Admin operator/curl surface — mounted, authenticated, NO SPA consumer
-(R166-B13..B15; reachable via curl with an admin session or the copilot
-admin-request tool):
+(R166-B13..B15; reachable via curl with an admin session — historically
+also via the copilot admin-request tool, retired with the copilot in R181):
   GET/PUT /api/admin/risk/config        singleton thresholds/allowlist/auto-block (users scope)
   GET    /api/admin/risk/rules          full rule catalog (users scope)
   PUT    /api/admin/risk/rules/:id      toggle enabled / replace expression (users scope)

@@ -4,25 +4,15 @@ import { useAuth } from "@/lib/auth";
 import { adminFetch, adminFetchJson } from "@/lib/admin-session";
 import { useTheme } from "@/lib/theme";
 import { ADMIN_ALERT_NEW_EVENT } from "@/lib/socket-events";
-// R124-I5 (A6 F12): CopilotPanel (1,676 lines + its history view) is no
-// longer STATICALLY imported into the admin layout chunk — every admin
-// route paid for a component that only mounts a floating launcher. It
-// now rides its own code-split chunk via the App.tsx lazyWithRetry
-// recipe (stale-deploy chunk recovery included); the import fires on
-// the first admin mount, in parallel with the page's own chunk.
-import { lazyWithRetry } from "@/lib/lazy-with-retry";
-const CopilotPanel = lazyWithRetry(() =>
-  import("@/components/admin/copilot/CopilotPanel").then((m) => ({ default: m.CopilotPanel })),
-);
 import { useQuery } from "@tanstack/react-query";
 import { getGetAdminStatsQueryKey, useGetAdminStats } from "@workspace/api-client-react";
 import { ChevronRight, LogOut, Menu, Moon, RefreshCw, Search, Shield, Sun, X } from "lucide-react";
 import type { ReactNode } from "react";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 // R137 (1-f decomposition): the admin shell's verbatim extracts under
-// components/admin/layout/ — GlobalSearch (the ⌘K palette, a CopilotPanel-
-// style self-contained feature component owning its overlay-local state),
+// components/admin/layout/ — GlobalSearch (the ⌘K palette, a self-
+// contained feature component owning its overlay-local state),
 // SidebarNav (the RBAC-filtered nav section list), SearchTriggers (the
 // top-bar search affordances), NavItem, and the React-free modules
 // (nav-sections / layout-nav / focus-trap). This file stays the
@@ -741,13 +731,6 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
           {children}
         </div>
       </div>
-      {/* R124-I5 (A6 F12): the launcher pops in once its own chunk
-          lands (first admin visit only — cached afterwards); a null
-          fallback avoids layout shift for a floating, non-critical
-          affordance. */}
-      <Suspense fallback={null}>
-        <CopilotPanel />
-      </Suspense>
     </div>
   );
 }

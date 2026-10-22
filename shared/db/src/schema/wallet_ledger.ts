@@ -48,8 +48,8 @@ export const walletLedgerTable = pgTable(
     // applyIndexConsolidationStage (probe-gated DROP INDEX IF EXISTS).
     // AUD103-1-F3 (r103): DESC mirrors the boot definition (migrate.ts)
     createdIdx: index("idx_wallet_ledger_created").on(sql`created_at DESC`),
-    // Round-3 (8-c §4.3): per-user "recent ledger" reads (copilot tools,
-    // future wallet statement pages) sort a user's full ledger by date —
+    // Round-3 (8-c §4.3): per-user "recent ledger" reads (future wallet
+    // statement pages) sort a user's full ledger by date —
     // one row per money event, so this index keeps that O(log n) as the
     // ledger grows.
     // R135 (DB-1 / V1-M34): extended to the FULL keyset tail

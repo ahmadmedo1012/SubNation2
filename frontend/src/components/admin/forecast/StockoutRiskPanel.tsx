@@ -174,7 +174,7 @@ export function StockoutRiskPanel() {
           disabled={query.isFetching}
           /* R139 (precision): p-1 → p-1.5 — the refresh affordance crosses
              the admin ≥24px edge-target floor (4+14+4 = 22px → 26px); the
-             CopilotHeader icon-button register. */
+             icon-button register. */
           className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
           aria-label="تحديث"
         >

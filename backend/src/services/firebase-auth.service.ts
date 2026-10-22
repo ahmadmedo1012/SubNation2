@@ -29,7 +29,7 @@ export class FirebaseAuthError extends Error {
 // ── R143 (L6-3): bounded Firebase verification ──────────────────────────────
 //
 // The hang-class hardening rounds (R93 R1/R2 Redis 500ms, R93 R4 DB
-// statement_timeout, telegram 5s/10s, openwa 8s, alerting 10s, copilot
+// statement_timeout, telegram 5s/10s, openwa 8s, alerting 10s, LLM
 // 60s/90s) never reached firebase-admin — `auth.verifyIdToken` was the
 // LAST unbounded external call in the request path. A network partition
 // that black-holes googleapis.com while Postgres/Redis stay healthy

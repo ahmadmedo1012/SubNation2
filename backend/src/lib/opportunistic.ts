@@ -8,7 +8,7 @@
  * traffic, and Neon Free autosuspends ~5 min after the last query. Every
  * in-process timer that touches the DB on a short cadence (the old
  * 5-minute flash-sale watcher, 30-minute stock watcher, hourly coupon /
- * OTP / copilot sweepers) kept Neon compute awake 24/7 whenever the
+ * OTP sweepers) kept Neon compute awake 24/7 whenever the
  * process itself was awake — the direct cause of free-tier quota
  * exhaustion (Aug 2026). The keep-alive self-pings that kept Render
  * awake are gone entirely (see jobs/cron.ts); these helpers retire the
@@ -22,7 +22,7 @@
  *     or an admin lists them (redemption was already guarded in-tx);
  *   - low/zero stock alerts fire after purchases / refunds / admin
  *     inventory writes — the only events that change stock;
- *   - OTP + copilot retention sweep when those surfaces are exercised.
+ *   - OTP retention sweep when that surface is exercised.
  *
  * GUARANTEES
  *   1. Fire-and-forget: the triggering request NEVER awaits the

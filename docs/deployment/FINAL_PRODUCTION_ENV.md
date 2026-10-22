@@ -94,7 +94,7 @@
 | `SENTRY_DSN` | Backend Sentry (DSN public-by-design) | ✖ | ✖ | SubNation | runtime | unset = Sentry off | Optional |
 | `SENTRY_TRACES_SAMPLE_RATE` / `SENTRY_PROFILES_SAMPLE_RATE` / `SENTRY_DEBUG` | Sentry sampling/verbosity | ✖ | ✖ | SubNation | runtime | `0.1` / `0` / off | Leave unset |
 | `SENTRY_DASHBOARD_URL` / `NEON_DASHBOARD_URL` | Admin observability deep links | ✖ | ✖ | SubNation | runtime | unset = link hidden | Optional |
-| `COPILOT_PROVIDER` / `COPILOT_API_KEY` / `COPILOT_MODEL` / `COPILOT_BASE_URL` | Admin copilot LLM (all-four-or-nothing) | ✖ | API_KEY ✔ | SubNation | runtime | unset = disabled | Optional set |
+| `COPILOT_PROVIDER` / `COPILOT_API_KEY` / `COPILOT_MODEL` / `COPILOT_BASE_URL` | Enrichment LLM provider (names kept from the retired copilot — R181) | ✖ | API_KEY ✔ | SubNation | runtime | unset = disabled | Optional set |
 | `FIREBASE_AUTH_ENABLED` / `FIREBASE_PROJECT_ID` / `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Admin (Google sign-in) | ✖ | SA-JSON ✔ | SubNation | runtime | unset = off | Optional; JSON blob OR discrete form |
 | `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY` | Discrete service-account alternative (`lib/firebase-admin.ts`) | ✖ | ✔ | SubNation | runtime | unset | Pick one form only |
 | `GCLOUD_PROJECT` / `GOOGLE_APPLICATION_CREDENTIALS` | ADC fallbacks in `firebase-admin.ts` | ✖ | ✖ | SubNation | runtime | unset | Leave unset |

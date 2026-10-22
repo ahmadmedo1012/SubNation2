@@ -6,39 +6,28 @@ import { signAdminToken } from "../../lib/jwt";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { adminAuthRouter } from "../admin/auth";
 import { adminSettingsRouter } from "../admin/settings";
-import { copilotRouter } from "../admin/copilot";
 
 /**
  * R123-E5 (A6 P3): no-store parity with the 98-F3 / R122 pattern — the
- * four admin GET surfaces that had no Cache-Control header at all:
+ * admin GET surfaces that had no Cache-Control header at all:
  *
  *   GET /api/admin/session        (identity + permission list echo)
  *   GET /api/admin/settings       (platform settings the panel reads)
- *   GET /api/admin/copilot/settings (phase flags — panel render control)
- *   GET /api/admin/copilot/previews/:id (staged mutation payload)
  *
  * Every other admin router (orders, users, topups, alerts, risk, …)
- * already carries the router-level header; these were the stragglers.
- * The assertions are the R122 auth-sessions idiom: raw fetch, assert
- * `cache-control: no-store` (the header IS the contract).
- *
- * copilot_previews is not part of the shared harness DDL, so the table
- * is provisioned per-file (the copilot-history-contract convention) —
- * the preview GET then takes its clean 404 path (no row seeded), which
- * ALSO proves the router-level header applies to error envelopes.
+ * already carries the router-level header; these were the stragglers
+ * (the copilot settings/previews stragglers left with the copilot in
+ * R181). The assertions are the R122 auth-sessions idiom: raw fetch,
+ * assert `cache-control: no-store` (the header IS the contract).
  */
-
-// R142 (E-1/F-2): copilot_previews ships from the shared harness
-// (test/db.ts prod-parity DDL, in the TRUNCATE list) — the local
-// duplicate CREATE + re-create-per-case were removed.
 
 function buildApp(): Express {
   const app = express();
   app.use(express.json());
   app.use(cookieParser());
   // Same mount shapes as routes/admin/index.ts: the settings router at
-  // "/settings", auth + copilot at the admin root.
-  app.use("/api/admin", adminAuthRouter, copilotRouter);
+  // "/settings", auth at the admin root.
+  app.use("/api/admin", adminAuthRouter);
   app.use("/api/admin/settings", adminSettingsRouter);
   return app;
 }
@@ -77,14 +66,10 @@ beforeAll(async () => {
 }, 60_000);
 
 beforeEach(async () => {
-  // R142 (E-1/F-2): copilot_previews is harness-owned now (test/db.ts
-  // prod-parity DDL, truncated by resetTestDb) — the old per-case
-  // DROP+CREATE cycle is gone: the DROP would cascade-fight
-  // copilot_actions' FK and the CREATE collided with the harness.
   await resetTestDb();
 });
 
-describe("R123-E5 — no-store on the four admin GET stragglers", () => {
+describe("R123-E5 — no-store on the admin GET stragglers", () => {
   it("GET /api/admin/session ships Cache-Control: no-store", async () => {
     const admin = await seedAdmin();
     const { url, close } = await listen();
@@ -107,41 +92,6 @@ describe("R123-E5 — no-store on the four admin GET stragglers", () => {
         headers: { Authorization: `Bearer ${admin.token}` },
       });
       expect(res.status).toBe(200);
-      expect(res.headers.get("cache-control")).toBe("no-store");
-    } finally {
-      close();
-    }
-  });
-
-  it("GET /api/admin/copilot/settings ships Cache-Control: no-store", async () => {
-    const admin = await seedAdmin();
-    const { url, close } = await listen();
-    try {
-      const res = await fetch(`${url}/api/admin/copilot/settings`, {
-        headers: { Authorization: `Bearer ${admin.token}` },
-      });
-      expect(res.status).toBe(200);
-      expect(res.headers.get("cache-control")).toBe("no-store");
-    } finally {
-      close();
-    }
-  });
-
-  it("GET /api/admin/copilot/previews/:id ships Cache-Control: no-store (error envelopes too)", async () => {
-    const admin = await seedAdmin();
-    const { url, close } = await listen();
-    try {
-      // R134 (A1-F10): the previews GET now carries the phase3 gate its
-      // confirm siblings always had. With no phase flag set in this
-      // harness the gate answers 503 FEATURE_DISABLED — which is exactly
-      // what a phase3-disabled deployment must do for a staged-mutation
-      // payload read. The router-level no-store header fires before the
-      // handler, so the gate envelope carries it too (a cached 503/404
-      // would be worse than a cached 200 here).
-      const res = await fetch(`${url}/api/admin/copilot/previews/01NOSTORE`, {
-        headers: { Authorization: `Bearer ${admin.token}` },
-      });
-      expect(res.status).toBe(503);
       expect(res.headers.get("cache-control")).toBe("no-store");
     } finally {
       close();

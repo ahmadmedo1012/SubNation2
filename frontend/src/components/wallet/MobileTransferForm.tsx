@@ -158,8 +158,8 @@ export function MobileTransferForm({
               }`}
             >
               {/* R157-IMPL-B #8: the preset numerals ride the codebase's
-                  inline unit idiom ("{fmt(x)} د.ل" — CalculatorOutputsCard)
-                  so a chip can't read as points/units. */}
+                  inline unit idiom ("{fmt(x)} د.ل") so a chip can't read
+                  as points/units. */}
               {p} د.ل
             </button>
           ))}

@@ -13,8 +13,8 @@
  *   • J-2 (R142): `focus-visible:ring-offset-background` — Tailwind v4's
  *     default `--tw-ring-offset-color` is #fff, so without the offset
  *     token every keyboard-focused Button drew a 1px WHITE halo between
- *     the crimson ring and the dark surface (input.tsx / switch.tsx /
- *     CopilotComposer already carried the token; Button did not).
+ *     the crimson ring and the dark surface (input.tsx / switch.tsx
+ *     already carried the token; Button did not).
  *   • J-1 (R128 A1-F2) regression: the destructive variant fills with
  *     the AA `--destructive-surface` channel (white ink = 4.52:1), never
  *     the raw `--destructive` (4.00:1 — the pre-R128 AA fail that

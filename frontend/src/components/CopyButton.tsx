@@ -7,9 +7,9 @@ interface CopyButtonProps {
   label?: string;
   size?: "sm" | "md";
   /** R146 (components audit F9): icon-only rendering for surfaces that
-   * overlay the affordance on content (copilot's AskAnswer) — the button
-   * carries no visible label, so the accessible name rides the full
-   * sentence forms ("نسخ" / "تم النسخ" / "تعذّر النسخ") via aria-label. */
+   * overlay the affordance on content — the button carries no visible
+   * label, so the accessible name rides the full sentence forms
+   * ("نسخ" / "تم النسخ" / "تعذّر النسخ") via aria-label. */
   iconOnly?: boolean;
   /** With iconOnly: the surface's own positioning classes (the overlay
    * idiom has no house variant — each surface places it differently). */
@@ -20,14 +20,14 @@ interface CopyButtonProps {
  * THE copy affordance (94-C3 / A3 conceptual-dedup #4).
  *
  * One implementation of the idle → copied → failed lifecycle so every
- * surface (wallet, order codes, copilot answers…) shares it instead of
+ * surface (wallet, order codes, icon-only overlays…) shares it instead of
  * re-rolling local `copied` state. The previously missing piece was the
  * failure branch: `copyToClipboard` resolves `false` on insecure
  * contexts / denied permission, and the old button silently kept the
  * "نسخ" label — the user had no idea the copy never happened. Failure
  * now announces itself ("تعذّر النسخ") on every surface, with the same
- * 1.5s/2s reset windows (copilot's AskAnswer was the last local copy
- * of this lifecycle — R146 components audit F9 folded it here).
+ * 1.5s/2s reset windows (the last local copy of this lifecycle was
+ * folded here by the R146 components audit F9).
  *
  * Also carries the 94-C3 hygiene fixes:
  *   • type="button" — safe inside any <form> (previously submitted it)

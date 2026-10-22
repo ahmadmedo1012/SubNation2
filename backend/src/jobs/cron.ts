@@ -250,10 +250,6 @@ export function initCronJobs(): CronJobsHandle {
   //                          leader boot one-shot (jobs/boot-one-shots.
   //                          ts). A sleeping service has no OTP rows
   //                          accumulating.
-  //   job 4  "45 * * * *"   hourly copilot-previews reaper — now
-  //                          OPPORTUNISTIC: throttled 60-min fire from
-  //                          the admin copilot surface (routes/admin/
-  //                          copilot/ask.ts) + leader boot one-shot.
   //   job 8  "*/10 * * * *" keep-alive self-ping of /api/healthz + the
   //                          OpenWA gateway — pure artificial traffic;
   //                          the whole point of this round. Render Free
@@ -308,8 +304,8 @@ export function initCronJobs(): CronJobsHandle {
   //    forecast). Refuses to run unless WORKER_TIER=true AND
   //    FORECAST_RUNNER_ENABLED=true (the runner enforces the gate).
   //    R101 (comment truth): the old justification cited the :15 OTP
-  //    cleanup and the :45 copilot reaper — both became opportunistic in
-  //    the 2026-09-20 free-infrastructure round, so the slot rationale
+  //    cleanup and the :45 copilot reaper (the latter retired with the
+  //    copilot in R181) — both left the cron grid, so the slot rationale
   //    is now purely the daily retention ladder: 00:00/00:05 retention
   //    pair → 02:15 forecast → 03:30+ retention block. No two heavy
   //    jobs share a minute.
@@ -354,8 +350,7 @@ export function initCronJobs(): CronJobsHandle {
   //    (012-arabic-catalog-enrichment). Refuses to run unless
   //    WORKER_TIER=true AND ENRICHMENT_RUNNER_ENABLED=true. 03:50 — B7-P2-3
   //    (round-92): originally moved off a :45 collision with the then-
-  //    hourly copilot reaper (that reaper is opportunistic since the
-  //    2026-09-20 round — boot one-shot + admin-surface trigger). The
+  //    hourly copilot reaper (retired with the copilot in R181). The
   //    slot now simply sits cleanly between the forecast retention
   //    (03:35) and the enrichment retention (04:00) in the daily ladder.
   schedule(

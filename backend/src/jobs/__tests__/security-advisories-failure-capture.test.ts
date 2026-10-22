@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * (permissions on the advisory SELECT/insert) left the weekly TOTP nudge
  * silently dead for weeks on a no-deploy instance — pino warn only, zero
  * Sentry signal — the exact observability asymmetry the R142 L-3 fix
- * closed for copilot-reaper and whatsapp-otp-prune.
+ * closed for whatsapp-otp-prune.
  *
  * The fix under test: `captureSchedulerFailure("totp_advisory", err,
  * { trigger: "advisory" })` inside the internal catch, keeping the

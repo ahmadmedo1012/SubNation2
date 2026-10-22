@@ -93,8 +93,8 @@ export async function checkAdminTotpAdvisory(): Promise<void> {
     // slow-growing DB failure (permissions on the advisory SELECT/insert)
     // left the weekly TOTP nudge silently dead for weeks on a no-deploy
     // instance — pino warn only, zero Sentry signal. Capture HERE, the
-    // exact pattern the L-3 (R142) fix landed in copilot-reaper.ts and
-    // whatsapp-otp-prune; the outer captures remain the fallback if the
+    // exact pattern the L-3 (R142) fix landed in whatsapp-otp-prune;
+    // the outer captures remain the fallback if the
     // failure class ever escapes this boundary.
     logger.warn({ err, category: "security" }, "security-advisories: TOTP check failed");
     captureSchedulerFailure("totp_advisory", err, { trigger: "advisory" });

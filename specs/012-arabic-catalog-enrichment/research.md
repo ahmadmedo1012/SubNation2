@@ -8,16 +8,16 @@ This document resolves every decision point that the spec deferred to design tim
 
 ---
 
-## R-1. Reuse the existing copilot LLM client vs introduce a separate transport
+## R-1. Reuse the existing LLM client vs introduce a separate transport
 
-**Decision**: Reuse `backend/src/services/copilot/llm-client.ts`. The runner constructs a plain prompt → completion call (no tool catalog, no streaming) and consumes the same `{text, inputTokens, outputTokens}` contract.
+**Decision**: Reuse `backend/src/services/llm/llm-client.ts` — the LLM provider config (COPILOT_PROVIDER / COPILOT_API_KEY / COPILOT_MODEL / COPILOT_BASE_URL — historically the copilot's; names kept verbatim for production continuity). The runner constructs a plain prompt → completion call (no tool catalog, no streaming) and consumes the same `{text, inputTokens, outputTokens}` contract. (The client lived at `backend/src/services/copilot/llm-client.ts` until the R181 copilot retirement relocated it.)
 
-**Rationale**: The copilot client already handles Anthropic SDK auth, retries, timeout, and (most importantly) emits the input/output token counts the daily-cap accountant needs. Adding a parallel transport would duplicate auth + retry logic and split the cost-tracking surface in two — bad for SC-004's "stay under 10% of ROI" commitment.
+**Rationale**: That client already handles Anthropic SDK auth, retries, timeout, and (most importantly) emits the input/output token counts the daily-cap accountant needs. Adding a parallel transport would duplicate auth + retry logic and split the cost-tracking surface in two — bad for SC-004's "stay under 10% of ROI" commitment.
 
 **Alternatives considered**:
 
 - **Direct Anthropic SDK call from the runner**: rejected. Re-implements retry + token accounting. Drift between transports erodes auditability.
-- **OpenRouter / NVIDIA NIM**: rejected for v1. The 010 copilot already uses Sonnet 4.6 via the existing client; adding a model-router decision here is out of scope. Revisit if pilot calibration argues for Haiku 4.5 to halve token spend (configurable; one-line change).
+- **OpenRouter / NVIDIA NIM**: rejected for v1. The client already uses Sonnet 4.6 (historically via the 010 copilot, retired R181); adding a model-router decision here is out of scope. Revisit if pilot calibration argues for Haiku 4.5 to halve token spend (configurable; one-line change).
 
 ---
 
@@ -112,7 +112,7 @@ This document resolves every decision point that the spec deferred to design tim
 
 `published` and `rejected` are terminal — application code (and the `state` CHECK constraint) refuse transitions out of them. `draft_invalid` is the validator's "we made a draft but it failed our own checks"; the panel never shows these but the runner counts them in metrics so prompt-template regressions are visible.
 
-**Rationale**: Mirrors the 010 copilot preview state machine in shape, which the on-call rotation already understands. The `draft_invalid` separate state avoids deleting bad drafts (we want them in the audit trail for prompt-template tuning) but keeps them out of the admin's review queue.
+**Rationale**: Mirrors the 010 copilot preview state machine in shape (the copilot itself was retired in R181; the shape is the familiar part). The `draft_invalid` separate state avoids deleting bad drafts (we want them in the audit trail for prompt-template tuning) but keeps them out of the admin's review queue.
 
 ---
 
@@ -120,7 +120,7 @@ This document resolves every decision point that the spec deferred to design tim
 
 **Decision**: Daily at 03:45 UTC on the existing `subnation-worker` tier. The runner short-circuits with a structured warn log if `process.env.WORKER_TIER !== "true"` OR `process.env.ENRICHMENT_RUNNER_ENABLED !== "true"` — same gate pattern as the 011 forecast runner.
 
-The existing crons run at 00:00 (low-stock), 02:15 (forecast), 03:30 (forecast retention + risk retention), and every 5 minutes (copilot reaper). 03:45 lands cleanly between the retention sweep and any morning admin activity.
+The existing crons run at 00:00 (low-stock), 02:15 (forecast), 03:30 (forecast retention + risk retention) — and, historically, every 5 minutes (copilot reaper, retired with the copilot in R181). 03:45 lands cleanly between the retention sweep and any morning admin activity.
 
 **Rationale**: Constitution §V scheduling rule. Reuses the same cron-tier-guard pattern the existing crons use.
 

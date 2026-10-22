@@ -42,11 +42,9 @@ const C7_OWNED_FILES = [
 
 // R137 (decomposition wave): the monolith pages split into verbatim
 // extracts under components/admin/<domain>/ — the guard's coverage
-// follows the code (the settings/* precedent + the copilot list this
-// file carried mid-wave), auto-expanding every extract folder so a
-// future extract can't silently dodge the scan.
+// follows the code (the settings/* precedent), auto-expanding every
+// extract folder so a future extract can't silently dodge the scan.
 const EXTRACT_DIRS = [
-  "components/admin/copilot",
   "components/admin/coupons",
   "components/admin/products",
   "components/admin/security",

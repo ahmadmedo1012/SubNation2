@@ -19,9 +19,7 @@
  * labeled event per 97 days. Orphans older than 30 days (grace for
  * any in-flight review window) are deleted; the grace also guarantees
  * a label orphaned TODAY is never deleted before the next review
- * cycle sees it. copilot_actions retention is deliberately NOT here —
- * that policy is an operator decision (see
- * docs/operations/OPERATOR_ACTIONS_R118.md).
+ * cycle sees it.
  *
  * Batching (B7-P2-5, round-92): every DELETE runs in bounded ctid
  * batches of 1000 — a 90-day first purge (or restart catch-up) on

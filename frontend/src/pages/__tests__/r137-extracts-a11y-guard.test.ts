@@ -3,7 +3,7 @@
  *
  * The r137 admin decomposition wave landed ~160 extract files under
  * components/admin/{system,orders,products,topups,users,layout,pricing,
- * dashboard,copilot,coupons,alerts,admins,security,tickets}/ plus
+ * dashboard,coupons,alerts,admins,security,tickets}/ plus
  * components/{support,loyalty}/ and src/app/. Verbatim moves preserved
  * the batch-1..15 a11y wins, and this pass (3-c) closed the LAST two
  * icon-only gaps (the dashboard CSV-export pair — both mirrored their
@@ -51,7 +51,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (rel: string): string => readFileSync(resolve(process.cwd(), rel), "utf8");
 
-/** The r137 extract surface (mission 3-c scope) — 17 dirs under src/. */
+/** The r137 extract surface (mission 3-c scope) — 16 dirs under src/. */
 const EXTRACT_DIRS: string[] = [
   "src/components/admin/system",
   "src/components/admin/orders",
@@ -61,7 +61,6 @@ const EXTRACT_DIRS: string[] = [
   "src/components/admin/layout",
   "src/components/admin/pricing",
   "src/components/admin/dashboard",
-  "src/components/admin/copilot",
   "src/components/admin/coupons",
   "src/components/admin/alerts",
   "src/components/admin/admins",
@@ -307,13 +306,18 @@ function collectAsChildIconOnly(): IconOnlyButton[] {
 
 describe("R137 (3-c) — icon-only buttons in the r137 extract surface carry accessible names", () => {
   it("scans a non-empty extract inventory (the walker failing silently would pass vacuously)", () => {
-    expect(extractFiles.length).toBeGreaterThanOrEqual(150);
+    // R181: 152 → 148 — the copilot/* extracts (20 files) left, the four
+    // retired calculator extracts left pricing/*; the walker's own count
+    // is the truth a shell `ls | wc -l` overcounts.
+    expect(extractFiles.length).toBeGreaterThanOrEqual(140);
     const iconOnly = collectIconOnlyButtons();
     // the 3-c audited inventory: 23 single-lucide buttons across 19 files
-    // (all 23 labeled — 21 pre-existing wins, 2 fixed by 3-c). A DROP
-    // below this means files moved out of the extract dirs (the floor
+    // (all 23 labeled — 21 pre-existing wins, 2 fixed by 3-c); R181
+    // removed the copilot/* extracts (7 of the 23 lived there), so the
+    // floor re-baselines to 16 across 15 files. A DROP below this means
+    // files moved out of the extract dirs (the floor
     // fails loudly instead of the labeling check passing vacuously).
-    expect(iconOnly.length).toBeGreaterThanOrEqual(23);
+    expect(iconOnly.length).toBeGreaterThanOrEqual(16);
   });
 
   it("every icon-only button is labeled (aria-label / aria-labelledby / sr-only) — zero unnamed", () => {
@@ -332,7 +336,7 @@ describe("R137 (3-c) — icon-only buttons in the r137 extract surface carry acc
     ).toEqual([]);
   });
 
-  it("spot-pins ten representative icon-only buttons (the 3-c pair + the batch-1..15 survivors)", () => {
+  it("spot-pins seven representative icon-only buttons (the 3-c pair + the batch-1..15 survivors)", () => {
     // The two 3-c fixes: the dashboard CSV-export pair had `title` only —
     // hover-only, no AT name — the fix MIRRORS the title text.
     const chartPickers = read("src/components/admin/dashboard/ChartPickers.tsx");
@@ -343,7 +347,7 @@ describe("R137 (3-c) — icon-only buttons in the r137 extract surface carry acc
     expect(newUsersChart).toContain('title="تصدير CSV"');
     expect(newUsersChart).toContain('aria-label="تصدير CSV"');
 
-    // Eight survivors from the decomposition waves — one per family, so a
+    // Five survivors from the decomposition waves — one per family, so a
     // regression in any batch's a11y idiom trips here.
     expect(read("src/components/admin/products/ProductsToolbar.tsx")).toContain(
       'aria-label="مسح البحث"',
@@ -351,10 +355,6 @@ describe("R137 (3-c) — icon-only buttons in the r137 extract surface carry acc
     expect(read("src/components/admin/topups/TopupsToolbar.tsx")).toContain(
       'aria-label="مسح البحث"',
     );
-    expect(read("src/components/admin/copilot/CopilotComposer.tsx")).toContain(
-      'aria-label="إرسال"',
-    );
-    expect(read("src/components/admin/copilot/CopilotHeader.tsx")).toContain('aria-label="إغلاق"');
     expect(read("src/components/admin/alerts/AlertsHeader.tsx")).toContain(
       'aria-label="تحديث التنبيهات"',
     );
@@ -363,11 +363,6 @@ describe("R137 (3-c) — icon-only buttons in the r137 extract surface carry acc
     );
     expect(read("src/components/admin/layout/SearchTriggers.tsx")).toContain(
       'aria-label="بحث سريع"',
-    );
-    // CopilotTrigger renders Bot/X conditionally (not the strict
-    // single-icon shape) — pinned directly: the R134 A3-F5b launcher.
-    expect(read("src/components/admin/copilot/CopilotTrigger.tsx")).toContain(
-      'aria-label="المساعد الذكي (فتح — Ctrl/Cmd+J)"',
     );
   });
 });

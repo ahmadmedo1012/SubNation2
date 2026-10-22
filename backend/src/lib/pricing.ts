@@ -4,7 +4,6 @@
  * Single source of truth for the discount stack used by:
  *   - routes/products.ts (catalog + product detail — flash sale only)
  *   - routes/orders.ts (checkout — flash sale + coupon)
- *   - routes/admin/pricing-calculator.ts (admin simulation — full stack)
  *
  * Pipeline:
  *
@@ -22,7 +21,7 @@
  * orders) and side-effect-free (no Sentry / log / metric calls). All
  * outcomes are returned in the structured PricingResult so callers can
  * shape their own response (orders.ts → 400 on invalid coupon;
- * calculator → embed in body; products.ts → ignore coupon entirely).
+ * products.ts → ignore coupon entirely).
  *
  * IMPORTANT: this file is the *only* place the discount math should
  * live. If you need to change the order or formulas, change it here
@@ -270,8 +269,7 @@ export interface ComputePricingInput {
 
 /**
  * Resolve the entire discount stack for a single product purchase.
- * Read-only. Suitable for both the live order pipeline and the admin
- * simulation calculator; the caller is responsible for converting an
+ * Read-only. The caller is responsible for converting an
  * `InvalidCoupon` into whatever response shape they need.
  */
 export async function computePricing(input: ComputePricingInput): Promise<PricingResult> {

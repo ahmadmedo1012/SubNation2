@@ -85,18 +85,9 @@ To temporarily disable enrichment without flipping the env flag:
 
 ---
 
-## 5. US4 — copilot integration
+## 5. US4 — copilot integration — RETIRED R181
 
-Open the AI Admin Copilot. Ask:
-
-- "ما المنتجات التي تحتاج إلى مراجعة محتوى؟"
-- "show me products with pending enrichment drafts"
-
-The copilot calls `query_enrichment_drafts` and replies with rows + `panel_url` deep-links. Verify:
-
-1. Every product mentioned matches a `enrichment_drafts WHERE state='drafted'` row.
-2. The panel deep-link goes to `/admin/products/enrichment?focus=<draft_id>`.
-3. An admin without the `inventory` scope sees the tool excluded from the model's catalog.
+The AI Admin Copilot was permanently retired in Round R181; the `query_enrichment_drafts` tool and this walkthrough no longer apply. The `/admin/products/enrichment` panel (§3) is the sole surface for pending drafts.
 
 ---
 
@@ -121,7 +112,7 @@ The copilot calls `query_enrichment_drafts` and replies with rows + `panel_url` 
 | `drafts_invalid` consistently > 10%                       | Prompt template regressed; LLM output failing validation  | Review `validation_errors` patterns, tune `services/enrichment/prompts.ts` |
 | Publish-vs-reject ratio < 50% (SC-003 fail)               | Prompt template producing low-quality copy                | Same as above; consider A/B'ing the prompt against a smaller cap          |
 | Customer purchase latency unchanged but spike on cron tier| Token cap too high                                         | Lower `ENRICHMENT_DAILY_TOKEN_CAP`; the cap is the single knob              |
-| `outcome='failure'` repeatedly                            | LLM API down or auth failure                              | `failure_reason` column has the message; check `ANTHROPIC_API_KEY`          |
+| `outcome='failure'` repeatedly                            | LLM API down or auth failure                              | `failure_reason` column has the message; check `COPILOT_API_KEY` (the LLM provider config — names kept from the retired copilot for production continuity) |
 
 ---
 
@@ -131,7 +122,6 @@ If the pilot fails (SC-003 < 50%, SC-001 not improving) and the team retires the
 
 - [ ] Set `ENRICHMENT_RUNNER_ENABLED=false` in worker env. Cron is now a no-op.
 - [ ] Hide the `/admin/products/enrichment` route mount and the sidebar link in `frontend/src/pages/admin/layout.tsx` (one-line conditional).
-- [ ] Remove `query_enrichment_drafts` from the copilot's `READ_TOOLS` array.
 - [ ] Leave `enrichment_drafts` and `enrichment_runs` in place for back-testing analysis; drop the tables only after a 30-day cool-down.
 
 The schema is purely additive — no migration to roll back. Removing the feature is a deploy-flag flip.

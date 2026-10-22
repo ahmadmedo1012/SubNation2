@@ -228,9 +228,9 @@ export class AdminSessionExpiredError extends Error {
  * app-wide timeout contract (customFetch's DEFAULT_REQUEST_TIMEOUT_MS —
  * a stalled link used to leave an operator's money modal armed until the
  * browser's ~300 s TCP timeout). A caller-provided `init.signal` always
- * wins; pass `opts.timeoutMs = 0` to disable the bound entirely — the
- * one deliberate consumer is the copilot ask SSE stream, which
- * legitimately outlives 20 s. A timeout abort rejects with a
+ * wins; pass `opts.timeoutMs = 0` to disable the bound entirely — a
+ * caller that legitimately outlives the bound (e.g. a long-poll or SSE
+ * stream) opts out this way. A timeout abort rejects with a
  * DOMException whose English message lib/errors' leak guard collapses
  * to the Arabic network fallback.
  */

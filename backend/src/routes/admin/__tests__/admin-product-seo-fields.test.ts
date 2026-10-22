@@ -215,7 +215,7 @@ describe("R122 — PATCH /api/admin/products/:id seo fields", () => {
     try {
       const token = await seedAdminToken();
       const id = await seedProduct();
-      // Pre-seed overrides directly (the copilot path can set them too).
+      // Pre-seed overrides directly (the enrichment publish path can set them too).
       await db
         .update(productsTable)
         .set({ seoTitle: SEO_TITLE, seoDescription: SEO_DESCRIPTION })

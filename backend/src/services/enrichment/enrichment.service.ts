@@ -17,17 +17,12 @@
 
 import { auditLogsTable, db } from "@workspace/db";
 import { logger } from "../../lib/logger";
-import { copilotChat, copilotLlmAvailable } from "../copilot/llm-client";
-import { getCopilotProvider } from "../copilot/provider-config";
+import { llmChat, llmAvailable } from "../llm/llm-client";
+import { getLlmProvider } from "../llm/provider-config";
 import { selectCandidates, type CandidateRow } from "./candidates";
 import { insertDraft, markInvalid, type DraftField } from "./draft-store";
 import { buildPrompt, tryParseFaq } from "./prompts";
-import {
-  createInFlightRun,
-  markFailure,
-  markSuccess,
-  type RunCounts,
-} from "./run-store";
+import { createInFlightRun, markFailure, markSuccess, type RunCounts } from "./run-store";
 import { validateDraft } from "./validator";
 
 const TOKEN_CAP_SAFETY_MARGIN = 2000;
@@ -63,7 +58,7 @@ export async function runEnrichment(args: RunArgs): Promise<RunResult> {
       capReached: false,
     };
   }
-  if (!copilotLlmAvailable()) {
+  if (!llmAvailable()) {
     logger.warn(
       { category: "enrichment.run" },
       "[enrichment] LLM provider not configured — refusing to run",
@@ -95,7 +90,7 @@ export async function runEnrichment(args: RunArgs): Promise<RunResult> {
 
     const { candidates, skipped: selectorSkipped } = await selectCandidates(args.perRunCap);
     Object.assign(skipped, selectorSkipped as unknown as Record<string, number>);
-    const provider = getCopilotProvider();
+    const provider = getLlmProvider();
 
     for (const c of candidates) {
       // Token-cap check between candidates. We don't know the next call's
@@ -257,7 +252,7 @@ async function draftOne(c: CandidateRow, modelId: string): Promise<DraftResult> 
   // Plain prompt → completion. No tool catalog; toolHandler is unused
   // because we pass an empty tools array and rely on the model to return
   // text in `result.text`.
-  const result = await copilotChat({
+  const result = await llmChat({
     systemText:
       "أنت مساعد كتابة محتوى عربي محترف لمنصة بيع الاشتراكات الرقمية SubNation. التزم بتعليمات المستخدم بدقة.",
     intentText: prompt,

@@ -125,7 +125,8 @@ Warnings:
 - The secret is displayed ONCE at enrollment (the /2fa/setup response). It is
   never re-displayed, never emailed, never exported.
 - The operator never shares the secret, the QR, or a valid code with anyone —
-  including "support", the AI copilot, or this repository's automation.
+  including "support" or this repository's automation. (Historically this
+  NEVER-rule also named the AI copilot; that feature was retired in R181.)
 - This document contains no real secret; none ever belongs in a doc or commit.
 - Automation never touches the admin account: the r112 rule is that the agent
   NEVER modified / modifies the admin account, its password, or its TOTP

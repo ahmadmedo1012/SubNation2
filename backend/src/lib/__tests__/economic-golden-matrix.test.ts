@@ -15,7 +15,8 @@
  *   P3  reward liability never exceeds the paid amount / 100 (1%)
  *   P4  ledger arithmetic: after = before + delta, balances never negative
  *   P5  refunds never revoke more than the order's own award
- *   P6  calculator economics equal checkout economics (same pipeline)
+ *   P6  one economics pipeline: the golden model and checkout ride the
+ *       same computePricing (the retired calculator delegated to it too)
  */
 
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -178,7 +179,7 @@ describe("R115 economic golden matrix (Part 24 fixture shapes)", () => {
   it("fixture shapes 6-9: thin-margin and zero-cost variants behave honestly", () => {
     // Thin margin: 4% → THIN
     expect(evaluate({ costLyd: 48, listPrice: 50, discountAmount: 0 }).status).toBe("THIN");
-    // Zero/unknown cost → cannot be judged (calculator surfaces no_cost_price)
+    // Zero/unknown cost → cannot be judged (surfaces no_cost_price)
     const unknown = evaluate({ costLyd: 0, listPrice: 50, discountAmount: 0 });
     expect(unknown.gross).toBe(50); // the pure model trusts the operator's 0
   });
@@ -315,8 +316,8 @@ describe("R115 property-based invariants (fast-check)", () => {
     );
   });
 
-  it("P6: calculator economics equal checkout economics — the discount pipeline is shared (structural pin)", async () => {
-    // The calculator delegates to the SAME computePricing as checkout
+  it("P6: one economics pipeline — the golden model and checkout share computePricing (structural pin)", async () => {
+    // The golden model rides the SAME computePricing as checkout
     // (routes/orders.ts). Pin the equality on a representative stack.
     await savePricingConfig({ maxTotalDiscountPct: 50 });
     await db.insert(couponsTable).values({

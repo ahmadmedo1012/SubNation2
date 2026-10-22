@@ -5,12 +5,10 @@ import { adminAdminsRouter } from "./admins";
 import { adminAlertsRouter } from "./alerts";
 import { adminAuditLogsRouter } from "./audit-logs";
 import { adminAuthRouter } from "./auth";
-import { copilotRouter } from "./copilot";
 import { adminDiagnosticsRouter } from "./diagnostics";
 import { adminFlashSalesRouter } from "./flash-sales";
 import { adminObservabilityRouter } from "./observability";
 import { adminOrdersRouter } from "./orders";
-import { adminPricingCalculatorRouter } from "./pricing-calculator";
 import { adminPricingConfigRouter } from "./pricing-config";
 import { adminProductVariantsRouter } from "./product-variants";
 import { adminProductsRouter } from "./products";
@@ -39,10 +37,6 @@ router.use("/", adminStatsRouter);
 const protectedRouter = Router();
 protectedRouter.use(requireAdmin);
 
-// AI Admin Copilot (010-ai-admin-copilot). Each leaf route inside enforces
-// its own phase + scope gate; the parent mount only attaches the router.
-protectedRouter.use("/", copilotRouter);
-
 // R134 (A5-F1): the scope gates are PATH-SCOPED, never root-mounted. A
 // `use("/", requirePermission(x), router)` mount prefix-matches EVERY
 // protected admin request, so the gates composed CUMULATIVELY: a scoped
@@ -61,7 +55,7 @@ protectedRouter.use("/forecast", requirePermission("inventory")); // 011-invento
 protectedRouter.use("/enrichment", requirePermission("inventory")); // 012-arabic-catalog-enrichment
 protectedRouter.use("/topups", requirePermission("finance"));
 protectedRouter.use("/products", requirePermission("inventory")); // products + product-variants
-protectedRouter.use("/pricing", requirePermission("inventory")); // pricing-calculator + pricing-config
+protectedRouter.use("/pricing", requirePermission("inventory")); // pricing-config (R181: the calculator simulator is retired)
 protectedRouter.use("/flash-sales", requirePermission("inventory"));
 // B1-3 (R111): these two `users` gates cover the LIST/loyalty surfaces;
 // the MONEY writes inside (PATCH /users/:id wallet mutations, POST
@@ -86,8 +80,7 @@ protectedRouter.use(
 );
 protectedRouter.use(
   "/",
-  adminPricingCalculatorRouter, // /pricing/calculate
-  adminPricingConfigRouter, // /pricing/config, /pricing/recompute (catalog 2026-09-20)
+  adminPricingConfigRouter, // /pricing/config, /pricing/recompute (catalog 2026-09-20; R181: /pricing/calculate retired with the simulator)
 );
 protectedRouter.use("/", adminFlashSalesRouter); // /flash-sales, /flash-sales/:id
 protectedRouter.use("/", adminUsersRouter); // /users/*

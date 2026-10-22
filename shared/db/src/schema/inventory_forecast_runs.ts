@@ -18,8 +18,7 @@ import { sql } from "drizzle-orm";
  * data-model.md §1.1).
  *
  * One row per execution of the forecast cron. Powers the panel's "last
- * updated" timestamp, the copilot's data_freshness_hours field, and the
- * 14-day capture-rate calibration analysis.
+ * updated" timestamp and the 14-day capture-rate calibration analysis.
  */
 export const inventoryForecastRunsTable = pgTable(
   "inventory_forecast_runs",
