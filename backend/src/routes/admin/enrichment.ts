@@ -2,6 +2,7 @@
  * Admin enrichment routes (012-arabic-catalog-enrichment, T016).
  *
  *   GET  /api/admin/enrichment/list           — paged drafts list
+ *   GET  /api/admin/enrichment/status         — pipeline readiness + last run (R182)
  *   POST /api/admin/enrichment/:id/publish    — apply a draft
  *   POST /api/admin/enrichment/:id/reject     — reject + 14d suppression
  *
@@ -18,7 +19,9 @@ import {
   type DraftRow,
   type DraftState,
 } from "../../services/enrichment/draft-store";
+import { latestRun } from "../../services/enrichment/run-store";
 import { publishDraft, rejectDraftHandler } from "../../services/enrichment/publish";
+import { llmAvailable } from "../../services/llm/llm-client";
 
 const router = Router();
 
@@ -44,6 +47,11 @@ const VALID_STATES = new Set<DraftState>(["drafted", "published", "rejected", "d
  * that lands, mirroring that trim).
  */
 const FINAL_TEXT_MAX_CHARS = 16_000;
+
+// Mirrors jobs/enrichment-runner.ts's module-local default (50,000) so the
+// status contract reports the cap the runner would actually apply — the
+// runner no-ops at cap ≤ 0 (FR-RUN-002), which is a diagnosable state.
+const DEFAULT_DAILY_TOKEN_CAP = 50_000;
 
 function buildPanelUrl(id: number): string {
   const base = (process.env.APP_ORIGIN ?? "").replace(/\/+$/, "");
@@ -93,6 +101,42 @@ router.get("/enrichment/list", requireAdmin, async (req: Request, res: Response)
     drafts: result.rows.map(shape),
     next_cursor: result.nextCursor,
     pending_count: pending,
+  });
+});
+
+// ── GET /enrichment/status ────────────────────────────────────────────────
+// R182 (§4 operational truth): the read-only diagnostic contract that lets
+// the admin panel distinguish the five states its empty queue used to
+// conflate into one "set ENRICHMENT_RUNNER_ENABLED=true" hint whose
+// prescribed action cannot even succeed in the current deployment (no
+// worker tier exists — the WORKER_TIER gate fires FIRST and nothing
+// tells the admin). Modeled on the forecast router's pipeline_state
+// contract. Readiness booleans mirror the runner's own gate order
+// (jobs/enrichment-runner.ts: WORKER_TIER → ENRICHMENT_RUNNER_ENABLED →
+// in-service cap/llm checks); the LLM probe is llmAvailable() — the
+// non-throwing hasLlmProvider() path (never getLlmProvider(), which
+// throws in production when the key is missing). No secret ever leaves
+// this handler: booleans + the run row only.
+router.get("/enrichment/status", requireAdmin, async (_req: Request, res: Response) => {
+  const dailyTokenCap = Number.parseInt(
+    process.env.ENRICHMENT_DAILY_TOKEN_CAP ?? String(DEFAULT_DAILY_TOKEN_CAP),
+    10,
+  );
+  const lastRun = await latestRun();
+  res.json({
+    worker_tier: process.env.WORKER_TIER === "true",
+    runner_enabled: process.env.ENRICHMENT_RUNNER_ENABLED === "true",
+    llm_configured: llmAvailable(),
+    daily_token_cap: Number.isFinite(dailyTokenCap) ? dailyTokenCap : DEFAULT_DAILY_TOKEN_CAP,
+    last_run: lastRun
+      ? {
+          outcome: lastRun.outcome,
+          started_at: lastRun.startedAt.toISOString(),
+          completed_at: lastRun.completedAt?.toISOString() ?? null,
+          drafts_generated: lastRun.draftsGenerated,
+          failure_reason: lastRun.failureReason,
+        }
+      : null,
   });
 });
 

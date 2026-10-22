@@ -106,6 +106,61 @@ components:
         success:
           type: boolean
 
+    EnrichmentRunOutcome:
+      type: string
+      enum: [in_flight, success, failure]
+
+    EnrichmentLastRun:
+      type: object
+      description: >-
+        R182 (§4 operational truth): the most recent run of ANY outcome —
+        a failing or in-flight run is the more truthful row than the
+        last success. null when no run has ever been recorded.
+      required: [outcome, started_at, drafts_generated]
+      properties:
+        outcome:
+          $ref: "#/components/schemas/EnrichmentRunOutcome"
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        drafts_generated:
+          type: integer
+        failure_reason:
+          type: string
+          nullable: true
+          description: Truncated to 1000 chars by the run-store writer.
+
+    EnrichmentStatusResponse:
+      type: object
+      description: >-
+        R182 (§4): the read-only pipeline diagnostic — lets the review
+        panel distinguish "no drafts" from "runner disabled" / "no
+        worker tier" / "LLM unconfigured" / "last run failed". Readiness
+        booleans mirror the runner's own gate order (WORKER_TIER first).
+        Never carries a secret — booleans + the run row only.
+      required: [worker_tier, runner_enabled, llm_configured, daily_token_cap]
+      properties:
+        worker_tier:
+          type: boolean
+          description: WORKER_TIER === "true" in this process.
+        runner_enabled:
+          type: boolean
+          description: ENRICHMENT_RUNNER_ENABLED === "true".
+        llm_configured:
+          type: boolean
+          description: llmAvailable() — a provider + API key are set (COPILOT_* env family, kept verbatim).
+        daily_token_cap:
+          type: integer
+          description: The effective cap the runner would apply (0 = the runner refuses to run).
+        last_run:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/EnrichmentLastRun"
+
 paths:
   /api/admin/enrichment/list:
     get:
@@ -132,6 +187,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListResponse"
+        "401": { description: Unauthenticated }
+        "403": { description: Forbidden — admin lacks inventory scope }
+
+  /api/admin/enrichment/status:
+    get:
+      operationId: getAdminEnrichmentStatus
+      summary: Pipeline readiness + last-run diagnostic
+      tags: [admin/enrichment]
+      security: [{ adminCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrichmentStatusResponse"
         "401": { description: Unauthenticated }
         "403": { description: Forbidden — admin lacks inventory scope }
 

@@ -158,26 +158,46 @@ export const GuestHero = memo(function GuestHero({
                 Caught by the local harness stubbing the wrong path (the
                 SPA HTML fallback parses to a truthy object with undefined
                 fields); the guard makes the caption self-validating:
-                finite count + finite price or nothing. */}
-            {stats &&
-            Number.isFinite(stats.available_products) &&
-            Number.isFinite(stats.lowest_price) ? (
-              <p className="mt-2.5 text-2xs sm:text-xs text-muted-foreground tabular-nums flex items-center gap-1.5">
-                {/* The dot is decorative; the count is the content. */}
-                <span
-                  aria-hidden="true"
-                  className="w-1.5 h-1.5 rounded-full bg-status-success shrink-0"
-                />
-                {formatCount(stats.available_products, {
-                  one: "منتج متاح الآن",
-                  two: "منتجان متاحان الآن",
-                  few: "منتجات متاحة الآن",
-                  many: "منتجاً متاحاً الآن",
-                  other: "منتج متاح الآن",
-                })}
-                <span aria-hidden="true">·</span>
-                <span>تبدأ الأسعار من {formatCurrency(stats.lowest_price)}</span>
-              </p>
+                finite count or nothing.
+                R182 (§3 catalog truth): the caption's price floor is now
+                the PURCHASABLE floor (lowest_price = cheapest buyable
+                variant, null when nothing is purchasable — backend
+                getProductStatsHandler). Zero purchasable → the truthful
+                «لا توجد منتجات متاحة للشراء حالياً» line replaces the
+                old fabricated «تبدأ الأسعار من …» sold-out minimum
+                (live case: 59.80 advertised while nothing under 980 was
+                buyable); a muted dot replaces the success dot. */}
+            {stats && Number.isFinite(stats.available_products) ? (
+              stats.available_products > 0 ? (
+                <p className="mt-2.5 text-2xs sm:text-xs text-muted-foreground tabular-nums flex items-center gap-1.5">
+                  {/* The dot is decorative; the count is the content. */}
+                  <span
+                    aria-hidden="true"
+                    className="w-1.5 h-1.5 rounded-full bg-status-success shrink-0"
+                  />
+                  {formatCount(stats.available_products, {
+                    one: "منتج متاح الآن",
+                    two: "منتجان متاحان الآن",
+                    few: "منتجات متاحة الآن",
+                    many: "منتجاً متاحاً الآن",
+                    other: "منتج متاح الآن",
+                  })}
+                  {Number.isFinite(stats.lowest_price) ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>تبدأ الأسعار من {formatCurrency(stats.lowest_price)}</span>
+                    </>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="mt-2.5 text-2xs sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0"
+                  />
+                  <span>لا توجد منتجات متاحة للشراء حالياً</span>
+                </p>
+              )
             ) : statsPending ? (
               <div className="mt-2.5 flex items-center gap-1.5" aria-hidden="true">
                 <div className="h-2 w-16 skeleton-shimmer rounded" />

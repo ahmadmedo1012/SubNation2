@@ -153,8 +153,10 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   { method: "get", path: "/api/admin/forecast/at-risk", category: "admin-gap" },
   { method: "get", path: "/api/admin/forecast/products/{id}", category: "admin-gap" },
 
-  // admin-gap — enrichment review family (B3 B.2: 3 ops)
+  // admin-gap — enrichment review family (B3 B.2: 3 ops; R182 adds the
+  // §4 operational-truth status op — same family, same category).
   { method: "get", path: "/api/admin/enrichment/list", category: "admin-gap" },
+  { method: "get", path: "/api/admin/enrichment/status", category: "admin-gap" },
   { method: "post", path: "/api/admin/enrichment/{id}/publish", category: "admin-gap" },
   { method: "post", path: "/api/admin/enrichment/{id}/reject", category: "admin-gap" },
 

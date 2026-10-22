@@ -149,6 +149,38 @@ describe("G2 — catalog-stats chips: skeleton → content / deliberate hide on 
     expect(screen.queryByText(STATS_LABELS)).not.toBeInTheDocument();
     expect(screen.queryAllByText(/تبدأ الأسعار من/)).toHaveLength(0);
   });
+
+  it("R182: zero purchasable products renders the truthful unavailable line — never a fabricated floor", () => {
+    mockHooks({
+      stats: {
+        data: { available_products: 0, lowest_price: null, total_units: 0, total_products: 45 },
+      },
+    });
+    const { container } = renderPage();
+
+    // The honest line replaces the old «تبدأ الأسعار من …» caption whose
+    // price was the availability-blind catalog minimum (the live defect:
+    // 59.80 advertised — a sold-out product's price — while nothing under
+    // 980 LYD was buyable). No success-dot either: the muted dot + line.
+    // (No STATS_LABELS assertion here: the honest line itself contains
+    // «منتجات متاحة» — that regex guards COUNT labels, not this sentence.)
+    expect(screen.getByText("لا توجد منتجات متاحة للشراء حالياً")).toBeInTheDocument();
+    expect(screen.queryAllByText(/تبدأ الأسعار من/)).toHaveLength(0);
+    expect(shimmerCount(container)).toBe(0);
+  });
+
+  it("R182: a missing floor with stock present renders the count without the price line (defensive)", () => {
+    mockHooks({
+      stats: { data: { available_products: 2, lowest_price: null, total_units: 5 } },
+    });
+    renderPage();
+
+    // available > 0 but lowest_price absent → the count stands alone; no
+    // fabricated price and no unavailable line (products ARE buyable).
+    expect(screen.getByText("2 منتجان متاحان الآن")).toBeInTheDocument();
+    expect(screen.queryAllByText(/تبدأ الأسعار من/)).toHaveLength(0);
+    expect(screen.queryByText(/لا توجد منتجات متاحة/)).not.toBeInTheDocument();
+  });
 });
 
 describe("G3 — «آخر الطلبات» strip: skeleton → content / honest error + retry", () => {

@@ -103,4 +103,47 @@ export async function latestSuccessful(): Promise<SuccessfulRunSummary | null> {
   };
 }
 
+/**
+ * R182 (§4 operational truth): the most recent run of ANY outcome —
+ * in_flight, success, or failure — for the admin status contract.
+ * `latestSuccessful()` above answers "when did we last produce drafts";
+ * this answers "what is the pipeline's actual state", which for a
+ * failing or stuck runner is the more truthful row. Ordered by
+ * started_at (an in_flight run has no completed_at yet).
+ */
+export interface LatestRunSummary {
+  id: number;
+  outcome: "in_flight" | "success" | "failure";
+  startedAt: Date;
+  completedAt: Date | null;
+  draftsGenerated: number;
+  failureReason: string | null;
+}
+
+export async function latestRun(): Promise<LatestRunSummary | null> {
+  const [row] = await db
+    .select({
+      id: enrichmentRunsTable.id,
+      outcome: enrichmentRunsTable.outcome,
+      startedAt: enrichmentRunsTable.startedAt,
+      completedAt: enrichmentRunsTable.completedAt,
+      draftsGenerated: enrichmentRunsTable.draftsGenerated,
+      failureReason: enrichmentRunsTable.failureReason,
+    })
+    .from(enrichmentRunsTable)
+    .orderBy(desc(enrichmentRunsTable.startedAt))
+    .limit(1);
+  if (!row) return null;
+  return {
+    id: row.id,
+    // varchar column → string; the chk_enrichment_runs_outcome CHECK
+    // pins the domain to exactly these three values at the DB level.
+    outcome: row.outcome as LatestRunSummary["outcome"],
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    draftsGenerated: row.draftsGenerated,
+    failureReason: row.failureReason,
+  };
+}
+
 void isNotNull;

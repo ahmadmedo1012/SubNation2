@@ -664,7 +664,12 @@ export const GetCatalogStatsResponse = zod.object({
   total_products: zod.int(),
   available_products: zod.int(),
   total_units: zod.int(),
-  lowest_price: zod.number().nullish(),
+  lowest_price: zod
+    .number()
+    .nullish()
+    .describe(
+      "R182 catalog truth: the cheapest price a customer can actually pay right now — the lowest BUYABLE variant price among currently purchasable products (active, non-archived, deliverable stock; two-pool claim semantics, same rule as the card/PDP «تبدأ من»), with an ACTIVE flash sale's discount applied (the same computeFlashSalePrice the sale badges ride). null when nothing is purchasable. Previously the availability-blind catalog minimum, which advertised sold-out products' prices.",
+    ),
   has_flash_sale: zod.boolean(),
 });
 

@@ -41,7 +41,7 @@ import { AppDialog } from "@/components/ui/app-dialog";
 // 93-C7 / C-UX6 (A12 §5): the hand-rolled "لا توجد مسودات…" block
 // adopts the shared EmptyState card.
 import { EmptyState } from "@/components/admin/EmptyState";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Check,
@@ -53,10 +53,11 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 import { useAuth } from "../../lib/auth";
+import { formatCount, formatDate } from "@/lib/utils";
 
 type FieldName = "description" | "description_long" | "faq";
 
@@ -82,6 +83,128 @@ interface ListResponse {
   drafts: DraftRow[];
   next_cursor: string | null;
   pending_count: number | null;
+}
+
+/**
+ * R182 (§4 operational truth): the readiness contract the backend now
+ * ships at GET /api/admin/enrichment/status — the five states the old
+ * empty queue conflated into one misleading hint. Readiness booleans
+ * mirror the runner's own gate order; `last_run` carries any outcome
+ * (a failing or in-flight run is the more truthful row than the last
+ * success). No secret ever crosses this contract — booleans + the run
+ * row only.
+ */
+export interface StatusResponse {
+  worker_tier: boolean;
+  runner_enabled: boolean;
+  llm_configured: boolean;
+  daily_token_cap: number;
+  last_run: {
+    outcome: "in_flight" | "success" | "failure";
+    started_at: string;
+    completed_at: string | null;
+    drafts_generated: number;
+    failure_reason: string | null;
+  } | null;
+}
+
+/**
+ * R182 (§4): the state-aware diagnosis for the empty queue — derives
+ * the ONE truthful blocker line from the status contract, in the
+ * runner's own gate order: WORKER_TIER (enrichment-runner.ts:22) →
+ * ENRICHMENT_RUNNER_ENABLED (:29) → daily cap ≤ 0 (enrichment.service.ts
+ * FR-RUN-002) → llmAvailable (:61). The order is load-bearing — with
+ * worker+enabled+cap=0+no-key the runner no-ops at the CAP, so the cap
+ * line must win over the LLM line or the admin fixes the wrong blocker
+ * (the independent-review catch). In the current single-container
+ * deployment no worker tier exists, so the old hint's prescribed action
+ * — flip ENRICHMENT_RUNNER_ENABLED on "the worker" — could never
+ * succeed. A failed last run outranks "queue clear". Returns the
+ * neutral copy while the status contract is still loading (React Query
+ * re-renders the diagnosis in when it lands).
+ */
+export function deriveEmptyStateHint(status: StatusResponse | undefined): ReactNode {
+  if (!status) {
+    return <>قائمة المراجعة فارغة حالياً — تُعرض حالة خط التوليد عند توفرها.</>;
+  }
+  if (!status.worker_tier) {
+    return (
+      <>
+        خط توليد المحتوى لا يعمل في هذا النشر: بوابة <code dir="ltr">WORKER_TIER=true</code> تُفحص
+        أولاً ولا يوجد عامل خادم مُهيّأ حالياً. ضبط <code dir="ltr">ENRICHMENT_RUNNER_ENABLED</code>{" "}
+        وحده لن يُشغّل الخط — راجع دليل النشر لتوفير عامل مخصص أو شغّل الدفعة يدوياً عبر أمر التشغيل
+        في المستودع.
+      </>
+    );
+  }
+  if (!status.runner_enabled) {
+    return (
+      <>
+        لتفعيل خط الأنابيب: اضبط <code dir="ltr">ENRICHMENT_RUNNER_ENABLED=true</code> على عامل
+        الخادم (بوابة <code dir="ltr">WORKER_TIER</code> مفعّلة).
+      </>
+    );
+  }
+  if (status.daily_token_cap <= 0) {
+    return (
+      <>
+        سقف التوكن اليومي معطّل (صفر أو أقل) — عدّل{" "}
+        <code dir="ltr">ENRICHMENT_DAILY_TOKEN_CAP</code> ليقبل الخط العمل.
+      </>
+    );
+  }
+  if (!status.llm_configured) {
+    return (
+      <>
+        الخط مفعّل لكن مزوّد LLM غير مُهيّأ — اضبط <code dir="ltr">COPILOT_API_KEY</code> (ومتغيرات
+        المزوّد المرافقة) في بيئة عامل الخادم.
+      </>
+    );
+  }
+  const last = status.last_run;
+  if (last?.outcome === "failure") {
+    return (
+      <>
+        آخر تشغيل فشل في {formatDate(last.completed_at ?? last.started_at)}
+        {last.failure_reason ? (
+          <>
+            {" "}
+            — السبب المسجّل: <span dir="auto">{last.failure_reason}</span>
+          </>
+        ) : null}
+        . راجع سجلات الخادم ثم أعد المحاولة.
+      </>
+    );
+  }
+  return <>لا عقبات مُكتشفة — قائمة المراجعة فارغة فعلاً، وسيظهر توليد جديد حسب جدولة الخط.</>;
+}
+
+/** R182 (§4, P2): the header's last-run line — «آخر تشغيل…» summary. */
+function lastRunLine(status: StatusResponse | undefined): ReactNode {
+  const last = status?.last_run;
+  if (!last) return null;
+  // formatDate renders bare in RTL everywhere else (risk-event/users
+  // convention — the review's bidi-consistency nit); the count rides
+  // formatCount for the Arabic plural forms («مسودة/مسودتان/مسودات»).
+  const when = formatDate(last.completed_at ?? last.started_at);
+  if (last.outcome === "in_flight") {
+    return <>تشغيل جارٍ الآن…</>;
+  }
+  if (last.outcome === "failure") {
+    return <>آخر تشغيل فشل: {when}</>;
+  }
+  return (
+    <>
+      آخر تشغيل ناجح: {when} ·{" "}
+      {formatCount(last.drafts_generated, {
+        one: "مسودة",
+        two: "مسودتان",
+        few: "مسودات",
+        many: "مسودة",
+        other: "مسودة",
+      })}
+    </>
+  );
 }
 
 const FIELD_LABEL: Record<FieldName, string> = {
@@ -123,6 +246,17 @@ export default function AdminEnrichmentPage() {
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
     enabled: canView,
+  });
+
+  // R182 (§4): the pipeline status query — read-only diagnostic, rides
+  // the same inventory scope (backend mounts it under the same
+  // requirePermission("inventory") parent). Secondary data: a failed
+  // load degrades to the neutral empty-state copy, never blocks the page.
+  const statusQuery = useQuery<StatusResponse, Error>({
+    queryKey: ["admin-enrichment-status"],
+    queryFn: () => adminFetchJson<StatusResponse>("/api/admin/enrichment/status", { headers }),
+    enabled: canView,
+    staleTime: 60_000,
   });
 
   const drafts = useMemo(() => query.data?.pages.flatMap((p) => p.drafts) ?? [], [query.data]);
@@ -167,6 +301,10 @@ export default function AdminEnrichmentPage() {
                   )}
                 </>
               )}
+              {/* R182 (§4, P2): the last-run summary — any outcome, from
+                  the status contract. */}
+              {statusQuery.data?.last_run && <span className="mx-1">·</span>}
+              {statusQuery.data?.last_run && lastRunLine(statusQuery.data)}
             </p>
           </div>
           <Button
@@ -206,12 +344,14 @@ export default function AdminEnrichmentPage() {
           <EmptyState
             icon={CheckCircle2}
             title="لا توجد مسودات تنتظر المراجعة"
-            description={
-              <>
-                لتفعيل خط الأنابيب: اضبط <code dir="ltr">ENRICHMENT_RUNNER_ENABLED=true</code> على
-                عامل الخادم.
-              </>
-            }
+            /* R182 (§4): the state-aware diagnosis replaces the old
+                single hard-coded hint (set ENRICHMENT_RUNNER_ENABLED=true
+                "on the worker") that (a) conflated five distinct backend
+                states and (b) prescribed an action that cannot succeed in
+                the current no-worker-tier deployment — the WORKER_TIER
+                gate fires first. Derived from the status contract in the
+                runner's own gate order; neutral copy while it loads. */
+            description={deriveEmptyStateHint(statusQuery.data)}
           />
         )}
         {drafts.map((d) => (
@@ -267,7 +407,11 @@ function DraftCard({
       setEditing(false);
       onMutate();
     },
-    onError: (e: Error) => setError(e.message),
+    // R182 (Lane-A gap 2): route through getErrorMessage like the query
+    // error path — raw e.message leaked network-level English into the
+    // Arabic inline error chip (the R148 "3-errcopy" fix this page's
+    // FetchErrorCard already received).
+    onError: (e: Error) => setError(getErrorMessage(e)),
   });
 
   const reject = useMutation({
@@ -278,7 +422,7 @@ function DraftCard({
         body: JSON.stringify({ reason }),
       }),
     onSuccess: () => onMutate(),
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(getErrorMessage(e)),
   });
 
   const busy = publish.isPending || reject.isPending;

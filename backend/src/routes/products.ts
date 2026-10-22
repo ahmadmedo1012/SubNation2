@@ -2,10 +2,11 @@ import { db, inventoryTable, productsTable } from "@workspace/db";
 import { withCatalogCache } from "../lib/catalog-cache";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
 import { deactivateExpiredFlashSales } from "../jobs/flashSaleWatcher";
-import { and, count, eq, min, sql } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
 import { intParam } from "../lib/http";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
+import { computeFlashSalePrice } from "../lib/pricing";
 // R136 (BE-3 extraction): the catalog service moved verbatim to
 // services/catalog.service.ts (variant DTO machinery, detail DTO
 // builders, the public list loader with Arabic-search expansion +
@@ -17,6 +18,7 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { cacheable } from "../lib/http-cache";
 import {
   deliverableUnitCondition,
+  fetchVariantPoolData,
   getActiveFlashSale,
   loadProductDetailById,
   loadProductDetailBySlug,
@@ -101,50 +103,125 @@ export async function getProductStatsHandler(_req: Request, res: Response) {
     // Round-3 (8-c §3.3): `available_products` used to fetch one row per
     // stocked product into JS just to take `.length` — COUNT(DISTINCT)
     // computes it in the database in one row.
-    const [[{ totalProducts, lowestPrice }], [{ totalUnits }], [{ availableProducts }], flashSale] =
-      await Promise.all([
+    const [
+      [{ totalProducts }],
+      [{ totalUnits }],
+      [{ availableProducts }],
+      flashSale,
+      purchasableIds,
+    ] = await Promise.all([
+      db
+        .select({
+          totalProducts: count(),
+        })
+        .from(productsTable)
+        .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false))),
+      db
+        .select({
+          totalUnits: sql<number>`COALESCE(SUM(CASE WHEN ${inventoryTable.isSold} = false THEN 1 ELSE 0 END), 0)::int`,
+        })
+        .from(inventoryTable)
+        // R102: total units = deliverable units (matches the public
+        // stock definition — ghost rows don't count).
+        .where(deliverableUnitCondition()),
+      db
+        .select({
+          availableProducts: sql<number>`COUNT(DISTINCT ${inventoryTable.productId})::int`,
+        })
+        .from(inventoryTable)
+        // R102: available products = ACTIVE, non-archived products with
+        // deliverable stock. It used to count archived products too — the
+        // live stats said "2 available" while both were archived TEST
+        // artifacts invisible to the storefront.
+        .innerJoin(
+          productsTable,
+          and(
+            eq(productsTable.id, inventoryTable.productId),
+            eq(productsTable.isActive, true),
+            eq(productsTable.isArchived, false),
+          ),
+        )
+        .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
+      getActiveFlashSale(),
+      // R182 (§3 catalog truth): the purchasable-floor input — the SAME
+      // population `available_products` counts, kept as IDs so the floor
+      // below can price each product's cheapest BUYABLE variant instead
+      // of the old availability-blind min(products.price), which
+      // advertised sold-out minimums («تبدأ الأسعار من 59.80 د.ل» while
+      // nothing under 980 LYD was actually buyable).
+      db
+        .selectDistinct({ productId: inventoryTable.productId })
+        .from(inventoryTable)
+        .innerJoin(
+          productsTable,
+          and(
+            eq(productsTable.id, inventoryTable.productId),
+            eq(productsTable.isActive, true),
+            eq(productsTable.isArchived, false),
+          ),
+        )
+        .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
+    ]);
+
+    // R182 (§3): lowest_price = the cheapest price a customer can
+    // actually pay RIGHT NOW — null when nothing is purchasable (the
+    // hero caption then renders the truthful unavailable line instead
+    // of a fabricated floor). Per purchasable product: the cheapest
+    // BUYABLE variant under the two-pool claim semantics (scoped stock
+    // OR generic stock), falling back to the product row price when no
+    // active variants exist — the same rule the list/detail DTOs use
+    // (displayBaseFromVariants), so cards, PDP and stats can never
+    // disagree. Runs only when the purchasable set is non-empty and
+    // rides the 60 s stats cache; the catalog is tens-of-rows scale.
+    let lowestPrice: number | null = null;
+    if (purchasableIds.length > 0) {
+      const ids = purchasableIds.map((r) => r.productId);
+      const [productRows, variantPool] = await Promise.all([
         db
-          .select({
-            totalProducts: count(),
-            lowestPrice: min(productsTable.price),
-          })
+          .select({ id: productsTable.id, price: productsTable.price })
           .from(productsTable)
-          .where(and(eq(productsTable.isActive, true), eq(productsTable.isArchived, false))),
-        db
-          .select({
-            totalUnits: sql<number>`COALESCE(SUM(CASE WHEN ${inventoryTable.isSold} = false THEN 1 ELSE 0 END), 0)::int`,
-          })
-          .from(inventoryTable)
-          // R102: total units = deliverable units (matches the public
-          // stock definition — ghost rows don't count).
-          .where(deliverableUnitCondition()),
-        db
-          .select({
-            availableProducts: sql<number>`COUNT(DISTINCT ${inventoryTable.productId})::int`,
-          })
-          .from(inventoryTable)
-          // R102: available products = ACTIVE, non-archived products with
-          // deliverable stock. It used to count archived products too — the
-          // live stats said "2 available" while both were archived TEST
-          // artifacts invisible to the storefront.
-          .innerJoin(
-            productsTable,
-            and(
-              eq(productsTable.id, inventoryTable.productId),
-              eq(productsTable.isActive, true),
-              eq(productsTable.isArchived, false),
-            ),
-          )
-          .where(and(eq(inventoryTable.isSold, false), deliverableUnitCondition())),
-        getActiveFlashSale(),
+          .where(inArray(productsTable.id, ids)),
+        fetchVariantPoolData(ids),
       ]);
+      let floor = Infinity;
+      for (const row of productRows) {
+        const variants = variantPool.rows.filter((v) => v.productId === row.id);
+        if (variants.length === 0) {
+          floor = Math.min(floor, parseFloat(String(row.price)));
+          continue;
+        }
+        const genericStock = (variantPool.genericByProduct.get(row.id) ?? 0) > 0;
+        // Two-pool buyability: generic stock makes every active variant
+        // buyable; otherwise only variants with scoped deliverable stock.
+        // (A purchasable product always has ≥1 buyable variant — the
+        // all-variants fallback mirrors displayBaseFromVariants solely
+        // as defensive parity with the card projection.)
+        const buyable = variants.filter(
+          (v) => genericStock || (variantPool.scopedByVariant.get(v.id) ?? 0) > 0,
+        );
+        const pool = buyable.length > 0 ? buyable : variants;
+        floor = Math.min(floor, ...pool.map((v) => parseFloat(String(v.priceLyd))));
+      }
+      // R182 (review #3): an ACTIVE flash sale discounts every buyable
+      // price (the same computeFlashSalePrice the card/PDP sale badges
+      // ride) — without this the hero's floor overstated the real
+      // payable price during a sale and disagreed with the cards below
+      // it. flashSale was fetched in the same Promise.all above; the
+      // discount is monotonic so min-then-discount ≡ discount-then-min.
+      if (flashSale) {
+        const discountPercent = parseFloat(String(flashSale.discount_percent));
+        if (Number.isFinite(discountPercent) && discountPercent > 0) {
+          floor = computeFlashSalePrice(floor, discountPercent);
+        }
+      }
+      lowestPrice = Number.isFinite(floor) ? floor : null;
+    }
 
     return {
       total_products: Number(totalProducts ?? 0),
       available_products: Number(availableProducts ?? 0),
       total_units: Number(totalUnits ?? 0),
-      lowest_price:
-        lowestPrice !== null && lowestPrice !== undefined ? parseFloat(String(lowestPrice)) : null,
+      lowest_price: lowestPrice,
       has_flash_sale: !!flashSale,
     };
   });
