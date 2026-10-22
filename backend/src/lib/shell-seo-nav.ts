@@ -1,5 +1,5 @@
 /**
- * R176 (SEO): the no-JS fallback heading + internal-link nav.
+ * R176/R183 (SEO): the crawler pre-render heading + internal-link nav.
  *
  * The shipped SPA shell is a meta-only document: before hydration it has
  * ZERO `<a href>` and ZERO `<h1>`. Google's renderer executes the app, but
@@ -8,9 +8,9 @@
  * 0 anchors on /, /category/streaming and /product/netflix-premium, and
  * `internal_link_recommend` discovered just one page.
  *
- * This module injects a legitimate `<noscript>` fallback before
- * `</body>` (visible only when JavaScript is off — never hidden text for
- * JS users) carrying:
+ * This module injects a real pre-render block as the first child of
+ * `#root` (React's `createRoot` replaces it on boot; with JavaScript off
+ * it stays visible) carrying:
  *   • the page-specific H1 (home keyword headline, the pinned category
  *     h1, the Product-LD name for a PDP, a fixed map for static routes),
  *   • the page meta description,
@@ -31,6 +31,7 @@ interface SeoNavMeta {
   canonical?: string | null;
   robots?: string;
   jsonLd?: string | string[];
+  productLinks?: Array<{ slug: string; name: string }>;
 }
 
 const DEFAULT_ORIGIN = "https://subnation.ly";
@@ -71,17 +72,21 @@ function resolveOrigin(canonical: string | null | undefined): { origin: string; 
   };
 }
 
-/** The Product LD carries the UNCLAMPED row.name — the shell title may be cut. */
-function productNameFromLd(jsonLd: string | string[] | undefined): string | null {
+/** The Product LD carries the UNCLAMPED row.name and descriptionLong. */
+function productLdString(
+  jsonLd: string | string[] | undefined,
+  field: "name" | "description",
+): string | null {
   const blocks = Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : [];
   for (const block of blocks) {
     try {
-      const parsed = JSON.parse(block) as { "@type"?: unknown; name?: unknown };
-      if (parsed["@type"] === "Product" && typeof parsed.name === "string" && parsed.name.trim()) {
-        return parsed.name.trim();
+      const parsed = JSON.parse(block) as Record<string, unknown>;
+      const value = parsed[field];
+      if (parsed["@type"] === "Product" && typeof value === "string" && value.trim()) {
+        return value.trim();
       }
     } catch {
-      // Ignore a malformed block; the title fallback below still works.
+      // Ignore a malformed block; the title/description fallback still works.
     }
   }
   return null;
@@ -115,7 +120,7 @@ export function injectSeoNav(html: string, meta: SeoNavMeta): string {
     const category = SHELL_CATEGORY_META[categorySlug];
     h1 = category ? category.h1 : meta.title ? stripBrand(meta.title) : null;
   } else if (path.startsWith("/product/")) {
-    h1 = productNameFromLd(meta.jsonLd) ?? (meta.title ? stripBrand(meta.title) : null);
+    h1 = productLdString(meta.jsonLd, "name") ?? (meta.title ? stripBrand(meta.title) : null);
   } else {
     h1 = STATIC_H1[path] ?? (meta.title ? stripBrand(meta.title) : null);
   }
@@ -142,16 +147,48 @@ export function injectSeoNav(html: string, meta: SeoNavMeta): string {
     )
     .join("");
   const intro = meta.description ? `<p>${escapeHtml(meta.description)}</p>` : "";
+  const longDescription = path.startsWith("/product/")
+    ? productLdString(meta.jsonLd, "description")
+    : null;
+  const paragraphs = longDescription
+    ? longDescription
+        .slice(0, 3000)
+        .split(/\n{2,}/)
+        .map((paragraph) => paragraph.trim())
+        .filter(Boolean)
+        .slice(0, 4)
+    : [];
+  const details = paragraphs.length
+    ? `<section><h2 style="font-size:1.15rem;margin:1.25rem 0 .5rem">تفاصيل المنتج</h2>${paragraphs
+        .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+        .join("")}</section>`
+    : "";
+  const productLinks = (meta.productLinks ?? [])
+    .filter((link) => link.slug && link.slug !== path.replace(/^\/product\//, ""))
+    .slice(0, 12);
+  const productItems = productLinks
+    .map(
+      (link) =>
+        `<li><a href="${escapeHtml(`${origin}/product/${link.slug}`)}">${escapeHtml(link.name)}</a></li>`,
+    )
+    .join("");
+  const productNav = productItems
+    ? `<nav aria-label="روابط المنتجات"><h2 style="font-size:1.15rem;margin:1.25rem 0 .5rem">${
+        path.startsWith("/product/") ? "منتجات أخرى" : "منتجات مختارة"
+      }</h2><ul style="list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.5rem 1rem">${productItems}</ul></nav>`
+    : "";
   const block =
-    `<noscript data-seo-nav="1">` +
+    `<div data-seo-nav="1" id="seo-prerender">` +
     `<div style="max-width:72rem;margin:2rem auto;padding:0 1rem;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.9;color:#111">` +
     `<h1 style="font-size:1.5rem;margin:0 0 .75rem">${escapeHtml(h1)}</h1>` +
     intro +
+    details +
     `<nav aria-label="روابط الموقع"><ul style="list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.5rem 1rem">${items}</ul></nav>` +
-    `<p style="margin-top:1rem;font-size:.875rem;color:#555">هذه نسخة نصية مبسطة. فعّل JavaScript للحصول على التجربة الكاملة.</p>` +
-    `</div></noscript>`;
+    productNav +
+    `</div></div>`;
 
-  const close = /<\/body\s*>/i.exec(html);
-  if (!close || close.index === undefined) return html;
-  return html.slice(0, close.index) + block + html.slice(close.index);
+  const rootOpen = /<div id="root"[^>]*>/i.exec(html);
+  if (!rootOpen || rootOpen.index === undefined) return html;
+  const insertAt = rootOpen.index + rootOpen[0].length;
+  return html.slice(0, insertAt) + block + html.slice(insertAt);
 }
