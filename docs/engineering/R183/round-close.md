@@ -93,11 +93,22 @@ A dedicated read-only reviewer (opus-tier) re-audited the complete combined diff
 
 **Environmental deferrals (not regressions, the standing set):** the live-E2E checks requiring real infra and Playwright's pinned browser revision — the same pre-R181 set, documented each round; the e2e/CVE CI jobs remain the standing by-design skips (e2e = dispatch/schedule-only; CVE = deps-only).
 
-## 8. Ship record
+## 8. Ship record — CLOSED GREEN
 
-- **Starting SHA:** `72e287b7bd7a00a573480cbd262fe657a7ee5345` · **Commits:** created locally on `main` (see the CHANGELOG entry) — the push, CI observation, and the post-deploy read-only production probes execute immediately after this record is committed (the PAT is provisioned in-session; no blocker this round).
-- The staged post-deploy probe battery: healthz; the homepage's honest caption against the live catalog; `/api/catalog/stats` purchasable floor; `/api/admin/enrichment/status` 401 gate; `/api/admin/pricing/config` 401 gate (the R183-guarded family's live surface); the R181 residue regression across the full transitive-fetched chunk set; zero page/console/network errors on a fresh browser session.
-- **No production data, secrets, DNS, or Coolify configuration was touched** (the operator-only boundary held; all probes read-only).
+- **Starting SHA:** `72e287b7bd7a00a573480cbd262fe657a7ee5345` · **Final SHA on `origin/main`:** `457009e861436a1a06532b794c5ac7dd676ffdc7` (rebased clean onto the owner's concurrently-merged PR #11 `c45ffa4e` — the SEO indexability lane, zero file overlap; fast-forward push `c45ffa4e..457009e8`, no force-push; remote HEAD re-verified equal to local).
+- **Commits:** `f0c25816` (`fix(precision,r183)`, 15 files +970/−20) + `457009e8` (`docs(truth,r183)`, 6 files +207/−36).
+- **CI on `457009e8`** (run `39804710408`): **all-executed jobs green** — secret scanning (gitleaks), path filter, lint/typecheck/drift gates, unit tests (scripts/frontend/backend), production build. The two skips are the standing by-design gates (e2e = dispatch/schedule-only; CVE = deps-only — no dependency changes).
+- **Combined-tree verification** (post-rebase, pre-push): lint clean · typecheck clean · the backend src-root chunk (which contains PR #11's modified `spa-shell-rewrite.test.ts`) 17 files / **250 tests green** (249 + PR #11's +1) · the R183 guard/provider suites re-green · production build green (eager 148,157 B gz unchanged).
+- **Coolify rotation:** live within ~15 minutes of the push — the deployed entry rotated `index-Al2AYZxc.js` → **`index-B9PaBJn_.js`**.
+- **Read-only production probes — ALL GREEN:**
+  - `healthz` → `200 {"status":"ok"}`.
+  - **PR #11's new surface live** (the deploy discriminator for the owner's concurrently-merged lane): `GET /product/62` → **301 → `/product/lifetime-cloud-storage`** (the numeric-PDP redirect) — the new backend build confirmed.
+  - The homepage renders the honest caption — «1 منتج متاح الآن» + «تبدأ الأسعار من 980.00 د.ل» — byte-consistent with the live catalog.
+  - `/api/catalog/stats` → `45 products · 1 available · 4 units · lowest_price 980` — the purchasable floor intact post-rotation.
+  - **The R183-guarded families' live 401 gates**: `/api/admin/enrichment/status`, `/api/admin/pricing/config`, `/api/admin/settings`, `/api/admin/observability/summary`, `/api/coupons/admin` — all 401 unauthenticated (fail-closed base verified live).
+  - Fresh browser session (homepage + the purchasable PDP + a category page): **zero page errors, zero console output, zero failed network requests**; real Arabic titles everywhere.
+  - **R181 residue regression on the NEW bundle:** the full transitive chunk sweep (171 chunks / 2,660,863 B, all real JS, zero 404s) — zero calculator tokens; the single `copilot` string remains the documented verbatim `COPILOT_API_KEY` env keep in the enrichment diagnostic.
+- **No production data, secrets, DNS, or Coolify configuration was touched** (the operator-only boundary held; all probes strictly read-only).
 
 ## 9. Definition-of-done scorecard
 
