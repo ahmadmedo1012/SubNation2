@@ -157,11 +157,12 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (at R183 — the suites grow every round; each round's
+Current suite (at R185 — the suites grow every round — or shrink by
+honest deletion, as R185's orphan-test removal did; each round's
 CHANGELOG entry carries the exact centrally-verified counts; CI runs
-both unit suites on every code push): **frontend 297 test files /
-2,739 tests** · **backend 290 test files / 2,667 tests** · **scripts
-6 files / 59 tests** — combined **5,465** · guest-only e2e **14 spec
+both unit suites on every code push): **frontend 296 test files /
+2,737 tests** · **backend 290 test files / 2,668 tests** · **scripts
+6 files / 59 tests** — combined **5,464** · guest-only e2e **14 spec
 files / 135 runs** (135/135 green on production at R163 — desktop +
 mobile-390 projects; dispatch + weekly heartbeat only — not per-push).
 
@@ -257,7 +258,11 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   gates, both unit suites, production build, a CVE gate on prod deps, and
   an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy jobs
   via the workflow's path filter). Round-by-round deployment + audit
-  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R184**
+  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R185**
+  (the ponytail full-power lean round — the dead-surface harvest: the
+  audit ladder run end-to-end, the orphaned `ui/switch` component + its
+  own test, a dead test hook and a dead resume-API deleted, 21 dead
+  exports un-exported, −98 lines with zero behavior change), **R184**
   (the final organization round — the admin query-cache teardown
   completed for every `admin-*` root, the README re-stamped to the
   live truth, and the owner's Arabic study guide
@@ -297,7 +302,7 @@ in [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md):
   variant tree + usage terms: −62.6% of the catalog wire bytes.
 - **Route-chunk warm-up** — pointerenter/focusin delegation pre-imports the
   likely-next route (−150–400 ms perceived nav on 3G/4G), saveData-respecting.
-- **Eager path ≈ 144.7 KiB gz (148,157 B at R183)** (entry + vendor + CSS) under a CI budget gate —
+- **Eager path ≈ 144.5 KiB gz (147,929 B at R185)** (entry + vendor + CSS) under a CI budget gate —
   150 KiB warn (raised from 145 KiB at R144-E2, basis in
   `frontend/vite.config.ts`) / 160 KiB hard-fail, enforced by the production
   build.
