@@ -18,6 +18,7 @@ import { riskHardBlockMiddleware } from "../middlewares/risk-hard-block";
 import { riskSoftBlockGuardMiddleware } from "../middlewares/risk-soft-block";
 import { notifyNewOrder } from "../telegram";
 import { createNotification } from "../notify";
+import { logger } from "../lib/logger";
 import { formatLyd } from "../lib/money";
 import { CheckoutService, type CheckoutFailureReason } from "../services/checkout.service";
 import { fireThrottledMaintenance } from "../lib/opportunistic";
@@ -347,6 +348,20 @@ router.post(
               ),
             );
         }
+        // R183: the future-async-provider refusal (the FulfillmentFailureReason
+        // member that used to escape as a raw 500) — transient, retryable,
+        // nothing mutated. The stable code riding the CONCURRENCY_ERROR
+        // envelope answers with the honest provider-outage copy.
+        if (result.code === "PROVIDER_UNAVAILABLE") {
+          return res
+            .status(409)
+            .json(
+              createErrorResponse(
+                "مزوّد التسليم غير متاح مؤقتاً. حاول مجدداً بعد لحظات.",
+                ErrorCode.CONFLICT,
+              ),
+            );
+        }
         // R134 (A7-F4): durable same-key-DIFFERENT-body — the Redis
         // layer's 409 envelope verbatim, so clients see ONE shape
         // whether the fast layer or the durable layer classified it
@@ -391,14 +406,25 @@ router.post(
     // leaving the bell + history silent on the moment of purchase itself.
     // Mirrors the F10 replay contract: only a genuinely NEW order notifies
     // (the replay branch above returns before reaching here). Best-effort
-    // — createNotification never fails the 201.
-    await createNotification(
-      userId,
-      "order",
-      "تم استلام طلبك",
-      `طلبك ${product.name} (${formatLyd(finalPrice)}) قيد المعالجة الآن — سنعلمك عند تغيّر حالته.`,
-      order.orderCode ? `/orders/${order.orderCode}` : "/orders",
-    );
+    // — createNotification never fails the 201. R183: that contract now
+    // owns a ROUTE-level backstop too — the helper already swallows its
+    // own failures internally (logged + Sentry), but a future refactor of
+    // its internals must never be able to surface a POST-COMMIT 500 to a
+    // buyer whose money already moved (pinned by the r183 suite).
+    try {
+      await createNotification(
+        userId,
+        "order",
+        "تم استلام طلبك",
+        `طلبك ${product.name} (${formatLyd(finalPrice)}) قيد المعالجة الآن — سنعلمك عند تغيّر حالته.`,
+        order.orderCode ? `/orders/${order.orderCode}` : "/orders",
+      );
+    } catch (err) {
+      logger.warn(
+        { err, userId, orderId: order.id },
+        "buyer notification failed (non-fatal — the purchase is already committed)",
+      );
+    }
 
     // 2026-09-20 (free-infrastructure round): a purchase is one of the
     // ONLY events that changes inventory — trigger the low/zero-stock

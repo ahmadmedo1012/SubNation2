@@ -431,3 +431,74 @@ describe("AuthProvider.setAdminToken — socket teardown on admin session end (R
     expect(disconnectMock).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R183 — the 401-expiry scope reset: setAdminToken(null) clears adminPermissions
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ScopeResetHarness() {
+  const { adminToken, adminPermissions, setAdminToken, setAdminPermissions, hasAdminPermission } =
+    useAuth();
+  return (
+    <div>
+      <span data-testid="admin-token-state">{adminToken ?? "admin-signed-out"}</span>
+      <span data-testid="admin-permissions-state">{adminPermissions.join(",")}</span>
+      <span data-testid="orders-scope-state">
+        {hasAdminPermission("orders") ? "granted" : "denied"}
+      </span>
+      <button type="button" onClick={() => setAdminToken("jwt-admin-A")}>
+        دخول أدمن أ
+      </button>
+      <button type="button" onClick={() => setAdminPermissions(["orders"])}>
+        منح صلاحية الطلبات
+      </button>
+      <button type="button" onClick={() => setAdminToken(null)}>
+        مسح الجلسة (401)
+      </button>
+    </div>
+  );
+}
+
+describe("AuthProvider.setAdminToken(null) — the 401-expiry scope reset (R183)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    disconnectMock.mockClear();
+    fetchMock.mockResolvedValue({ ok: false } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("clears adminPermissions when the session dies — no stale-scope window on the 401 redirect", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AuthProvider>
+          <ScopeResetHarness />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    // Login order (login.tsx / establishAdminSession): token FIRST, then
+    // permissions — the sign-in path must be unaffected by the reset.
+    fireEvent.click(screen.getByRole("button", { name: "دخول أدمن أ" }));
+    fireEvent.click(screen.getByRole("button", { name: "منح صلاحية الطلبات" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("orders-scope-state")).toHaveTextContent("granted");
+      expect(screen.getByTestId("admin-permissions-state")).toHaveTextContent("orders");
+    });
+
+    // The 401 expiry: useAdminHeaders' clearAdminSession mirror calls
+    // setAdminToken(null) — previously this left adminPermissions
+    // populated, so a scope-gated page re-rendering during the redirect
+    // window still believed it held its scopes (only adminLogout cleared
+    // them explicitly). The scope state must die with the session.
+    fireEvent.click(screen.getByRole("button", { name: "مسح الجلسة (401)" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-token-state")).toHaveTextContent("admin-signed-out");
+      expect(screen.getByTestId("admin-permissions-state")).toHaveTextContent(/^$/);
+      expect(screen.getByTestId("orders-scope-state")).toHaveTextContent("denied");
+    });
+  });
+});

@@ -12,7 +12,7 @@ import {
   walletLedgerTable,
 } from "../../test/db";
 import { signAdminToken } from "../../lib/jwt";
-import { __resetIdempotencyTableProbeForTests } from "../../lib/idempotency";
+import { __resetIdempotencyTableProbeForTests, claimIdempotencyKey } from "../../lib/idempotency";
 import { AdjustmentError, AdjustmentService } from "../../services/adjustment.service";
 import { adminUsersRouter } from "../admin/users";
 
@@ -272,5 +272,88 @@ describe("R108 — the in-tx claim (AdjustmentService race window, service level
     });
     expect(second.walletBalance).toBe(10);
     expect(await ledgerRowCount(user.id)).toBe(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R183 — the cross-subject key collision (admin N vs user N — the frozen
+// shared `u{id}:` namespace, lib/idempotency's documented contract).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("R183 — cross-subject durable-key collision (the frozen shared namespace)", () => {
+  it("route level: user N's ORDER claim + admin N's same raw key → the classified 409, wallet untouched, never a replay", async () => {
+    // In the fresh reset DB the sequences give user and admin the SAME
+    // numeric id — the exact collision precondition of the shared
+    // `u{id}:` namespace (documented in scopeIdempotencyKey's docblock).
+    const user = await seedUser("25.00");
+    const { adminId, token } = await seedAdmin();
+    expect(adminId, "precondition: the shared numeric id").toBe(user.id);
+
+    // The USER's durable claim under the shared namespace — a completed
+    // order intent (referenceType 'order', its own body hash).
+    await claimIdempotencyKey(
+      db,
+      `u${user.id}:cross subject key 0001`,
+      user.id,
+      "order",
+      "aaaa0000111122223333444455556666777788889999aaaabbbbccccddddeeee",
+    );
+
+    // The ADMIN sends the SAME raw key on an adjustment for that user.
+    // The route's pre-check (findIdempotentClaimed — unfiltered) finds
+    // the row; the hashes differ (a different intent's body) → the
+    // classified reuse 409. NEVER a replay of the other subject's
+    // result, never a silent adjustment.
+    const res = await patchAdjust(
+      token,
+      user.id,
+      { wallet_adjustment: 5, note: "تصادم عابر - مسار المسار" },
+      { "Idempotency-Key": "cross subject key 0001" },
+    );
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBeDefined();
+
+    // Nothing moved: no wallet delta, no ledger row for the adjustment.
+    expect(await balanceOf(user.id)).toBe(25);
+    expect(await ledgerRowCount(user.id)).toBe(0);
+
+    // The user's original claim is intact (the collision consumed
+    // nothing — a liveness papercut for the admin, exactly as
+    // documented).
+    const claims = await db.execute(
+      sql.raw(
+        `SELECT order_id, reference_type FROM idempotency_keys WHERE key = 'u${user.id}:cross subject key 0001'`,
+      ),
+    );
+    const row = (claims.rows[0] ?? {}) as { order_id?: unknown; reference_type?: string };
+    expect(row.reference_type).toBe("order");
+    expect(Number(row.order_id)).toBe(user.id);
+  });
+
+  it("service level: the in-tx backstop — the pre-check missed (race window) and the claim collides INSIDE the tx → AdjustmentError 409, wallet rolled back", async () => {
+    const user = await seedUser("25.00");
+    const { adminId } = await seedAdmin();
+    expect(adminId, "precondition: the shared numeric id").toBe(user.id);
+
+    // The user's order claim pre-exists under the shared namespace.
+    await claimIdempotencyKey(db, `u${user.id}:cross subject key 0002`, user.id, "order", null);
+
+    // The admin's adjustment reaches the SERVICE with the scoped key
+    // (the route pre-check race window): the wallet UPDATE + ledger
+    // insert succeed first, then the in-tx claim hits 23505 → the
+    // classified AdjustmentError → full rollback.
+    await expect(
+      AdjustmentService.adjust(user.id, 7, {
+        adminId,
+        note: "خدمة - تصادم عابر",
+        idempotencyKey: `u${adminId}:cross subject key 0002`,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "CONCURRENCY_ERROR",
+    } satisfies Partial<AdjustmentError>);
+
+    expect(await balanceOf(user.id)).toBe(25); // rolled back, not 32
+    expect(await ledgerRowCount(user.id)).toBe(0);
   });
 });

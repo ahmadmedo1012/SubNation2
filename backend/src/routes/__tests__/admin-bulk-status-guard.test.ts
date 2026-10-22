@@ -364,3 +364,90 @@ describe("PATCH /api/admin/orders/bulk-status — B2-F4 ids cap (R111)", () => {
     }
   });
 });
+
+describe("PATCH /api/admin/orders/bulk-status — the mixed refund batch's 207 partial envelope (R183)", () => {
+  /** The refund branch's finance gate reads the admin row's permissions
+   * (requireAdmin materializes them) — the bare seeded admin holds []. */
+  async function seedFinanceAdmin(): Promise<string> {
+    const [a] = await db
+      .insert(adminUsersTable)
+      .values({
+        username: "admin_bulk_refund",
+        passwordHash: "x",
+        isActive: true,
+        permissions: ["all"],
+      })
+      .returning();
+    return signAdminToken({ adminId: a.id, role: "admin" });
+  }
+
+  it("one refunds, one is ALREADY_REFUNDED, one is NOT_REFUNDABLE — 207 with the per-order breakdown, and only the eligible wallet is credited", async () => {
+    const app = buildApp();
+    const { url, close } = await listen(app);
+    try {
+      const token = await seedFinanceAdmin();
+      const refundable = await seedOrder("completed");
+      const alreadyRefunded = await seedOrder("refunded");
+      const notRefundable = await seedOrder("pending");
+
+      const res = await patch(url, token, {
+        ids: [refundable, alreadyRefunded, notRefundable],
+        status: "refunded",
+        note: "دفعة مختلطة",
+      });
+
+      // The partial envelope: exactly one success, two classified
+      // failures with their RefundService codes, and the legacy
+      // {success:true} shape NOT used (failures exist).
+      expect(res.status).toBe(207);
+      expect(res.body).toMatchObject({
+        success: false,
+        updated: 1,
+        failed: [
+          { orderId: alreadyRefunded, code: "ALREADY_REFUNDED" },
+          { orderId: notRefundable, code: "NOT_REFUNDABLE" },
+        ],
+      });
+      // Per-order failures keep their order (the request's id order) and
+      // carry a message for the admin UI's breakdown rendering.
+      for (const f of res.body.failed) {
+        expect(typeof f.message).toBe("string");
+        expect(f.message.length).toBeGreaterThan(0);
+      }
+
+      // Ground truth: ONLY the eligible order transitioned; the refunded
+      // and pending rows are untouched.
+      const after = await statuses([refundable, alreadyRefunded, notRefundable]);
+      expect(after.get(refundable)).toBe("refunded");
+      expect(after.get(alreadyRefunded)).toBe("refunded");
+      expect(after.get(notRefundable)).toBe("pending");
+
+      // Money truth: exactly ONE wallet_ledger row was written by this
+      // batch (the single eligible refund) — the failures moved no money.
+      const ledgerRows = await db.select().from(walletLedgerTable);
+      expect(ledgerRows).toHaveLength(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it("an all-success refund batch keeps the legacy 200 {success:true} shape (no 207 regression)", async () => {
+    const app = buildApp();
+    const { url, close } = await listen(app);
+    try {
+      const token = await seedFinanceAdmin();
+      const a = await seedOrder("completed");
+      const b = await seedOrder("completed");
+
+      const res = await patch(url, token, { ids: [a, b], status: "refunded" });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, updated: 2 });
+
+      const after = await statuses([a, b]);
+      expect(after.get(a)).toBe("refunded");
+      expect(after.get(b)).toBe("refunded");
+    } finally {
+      await close();
+    }
+  });
+});

@@ -9,10 +9,15 @@
  * values — a raw "  TRX-9  " would dodge the exact-match guards while
  * still being the same transfer.
  *
- * B4-R1 (R111): the reference is now REQUIRED for mobile_transfer (a
- * blank ref was exempt from every dedup layer → the dual-approval
- * window); blank-after-trim therefore 400s on that method instead of
- * storing NULL. lypay keeps it optional.
+ * B4-R1 (R111) required the reference on mobile_transfer; **R154
+ * (`490597ce`) RETIRED that hard requirement** — a ref-less
+ * mobile_transfer is the storefront's normal shape now, and the duplicate
+ * risk it guarded against is surfaced to the operator instead (the
+ * `⚠ خطر تكرار محتمل` admin note + the Telegram card's ⚠ line — signal,
+ * never a rejection; pinned in `wallet-topups.test.ts`'s R154 battery).
+ * This file pins the retirement: whitespace-only and omitted references
+ * on mobile_transfer are ACCEPTED, and normalization still canonicalizes
+ * whatever IS sent.
  *
  * The 100-char handler cap is pinned in wallet-topups.test.ts (validation
  * block); this file pins the persistence normalization.

@@ -8,6 +8,7 @@ import {
   resetTestDb,
   inventoryTable,
   ordersTable,
+  walletLedgerTable,
   productsTable,
   usersTable,
 } from "../../test/db";
@@ -283,6 +284,40 @@ describe("GET /api/orders — Cache-Control (A7)", () => {
       expect(res.headers.get("Cache-Control")).toBe("no-store");
     } finally {
       close();
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R183 — the buyer-notification best-effort contract (was contract-by-comment
+// only: "createNotification never fails the 201", routes/orders.ts).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("R183 — a failing buyer notification NEVER fails the 201", () => {
+  it("createNotification rejecting → the purchase still commits and answers 201 with the order", async () => {
+    const notify = await import("../../notify");
+    // The notification write blows up (DB hiccup on the notifications
+    // table) AFTER the purchase transaction already committed.
+    const spy = vi
+      .spyOn(notify, "createNotification")
+      .mockRejectedValueOnce(new Error("NOTIFICATIONS_TABLE_DOWN (r183)"));
+
+    const { id: userId, token } = await seedUser("30.00");
+    const productId = await seedProductWithStock("10.00");
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await post(url, token, { product_id: productId });
+      expect(res.status, "the 201 is the contract — the notification is best-effort").toBe(201);
+      expect(res.body).toMatchObject({ status: "completed" });
+
+      // The purchase is DURABLE despite the notification failure: the
+      // wallet was debited, the order + ledger rows exist.
+      expect(await balanceOf(userId)).toBe(20);
+      expect(await db.select().from(ordersTable)).toHaveLength(1);
+      expect(await db.select().from(walletLedgerTable)).toHaveLength(1);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      await close();
     }
   });
 });

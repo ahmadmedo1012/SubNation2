@@ -706,8 +706,9 @@ export default function AdminProductsPage() {
         />
 
         {/* Stockout-risk forecast panel (011-inventory-demand-forecast).
-            Self-hides when the cron has never run, when no products are
-            at risk, or when the user lacks the inventory scope. */}
+            Self-hides when the cron has never run or when no products are
+            at risk; the inventory-scope gate is BOTH the page-level early
+            return and the panel's own query enabled arm (R183). */}
         <StockoutRiskPanel />
 
         {/* R168 (L2): the tier-price audit panel — the whole-catalog
@@ -838,9 +839,15 @@ function TierPriceAuditPanel({
   onOpenVariants: (id: number, name: string) => void;
 }) {
   const headers = useAdminHeaders();
+  // R183: self-gate (the StockoutRiskPanel idiom) — the sweep endpoint is
+  // inventory-scoped; the panel previously relied solely on the page's
+  // scope gate. The enabled arm keeps a standalone/scope-less mount
+  // fetch-free instead of firing a guaranteed-403 poll.
+  const { adminToken, hasAdminPermission } = useAuth();
+  const canView = hasAdminPermission("inventory");
   const [collapsed, setCollapsed] = useState(false);
   const query = useAdminProductsTierPriceSweep({
-    query: { retry: false },
+    query: { retry: false, enabled: !!adminToken && canView },
     request: { headers },
   });
 

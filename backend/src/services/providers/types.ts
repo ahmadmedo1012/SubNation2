@@ -73,7 +73,13 @@ export interface FulfilledUnit {
   providerOrderId: string | null;
 }
 
-/** Failure vocabulary rides the EXISTING CheckoutFailureReason members. */
+/**
+ * Failure vocabulary rides the EXISTING CheckoutFailureReason members —
+ * except PROVIDER_UNAVAILABLE (R183): a transient provider outage reuses
+ * the retryable CONCURRENCY_ERROR channel with its own stable code riding
+ * the failure envelope, exactly like PRODUCT_STALE/VARIANT_STALE (the F4
+ * "no new CheckoutFailureReason member" rule in checkout.service.ts).
+ */
 export type FulfillmentFailureReason =
   /** No deliverable unit available (pre-tx fast-fail + in-tx race both). */
   | "OUT_OF_STOCK"

@@ -221,7 +221,11 @@ export default function AdminEnrichmentPage() {
   // routes/admin/index.ts /enrichment mount). No useAuth here before —
   // the page rode useAdminHeaders only; the gate needs the permission
   // check, and the infinite query gets its fetch-free mount.
-  const { hasAdminPermission } = useAuth();
+  // R183: adminToken joined the destructure — every sibling query gates on
+  // `!!adminToken && scope`; the token-less arm keeps a session-expiry
+  // re-render from firing a guaranteed-401 fetch during the redirect
+  // window (the house idiom, applied to this page's two queries).
+  const { adminToken, hasAdminPermission } = useAuth();
   const canView = hasAdminPermission("inventory");
 
   // R125-I3 (A2-1): the queue is CURSOR-paginated server-side
@@ -245,7 +249,8 @@ export default function AdminEnrichmentPage() {
     initialPageParam: "" as string,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
-    enabled: canView,
+    // R183: + the token-less arm (the house idiom).
+    enabled: !!adminToken && canView,
   });
 
   // R182 (§4): the pipeline status query — read-only diagnostic, rides
@@ -255,7 +260,8 @@ export default function AdminEnrichmentPage() {
   const statusQuery = useQuery<StatusResponse, Error>({
     queryKey: ["admin-enrichment-status"],
     queryFn: () => adminFetchJson<StatusResponse>("/api/admin/enrichment/status", { headers }),
-    enabled: canView,
+    // R183: + the token-less arm (the house idiom).
+    enabled: !!adminToken && canView,
     staleTime: 60_000,
   });
 

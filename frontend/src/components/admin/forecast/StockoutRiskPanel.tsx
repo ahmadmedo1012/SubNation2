@@ -15,6 +15,13 @@
  */
 
 import { useAdminHeaders } from "@/hooks/useAdminHeaders";
+// R183: the panel self-gates its inventory-scoped query — it previously
+// relied solely on the parent page's scope gate, so any future ungated
+// mount (e.g. a dashboard widget) would fire a guaranteed-403 poll every
+// 5 minutes for an inventory-less admin (the R182 dashboard defect class,
+// latent). The enabled arm makes the query fetch-free for scope-less
+// sessions; the null-render path below stays the panel's hide idiom.
+import { useAuth } from "@/lib/auth";
 // R123 (E3 item 1): the two raw fetches ride the session-aware wrapper —
 // a mid-work 401 gets the global «انتهت الجلسة» toast + redirect (the
 // panel's null-on-error renders stay intact for real failures), with
@@ -122,10 +129,15 @@ function daysFromNow(iso: string | null): number | null {
 
 export function StockoutRiskPanel() {
   const headers = useAdminHeaders();
+  const { adminToken, hasAdminPermission } = useAuth();
+  const canView = hasAdminPermission("inventory");
   const query = useQuery<AtRiskResponse>({
     queryKey: ["admin-forecast-at-risk"],
     queryFn: async () =>
       adminFetchJson<AtRiskResponse>("/api/admin/forecast/at-risk?limit=10", { headers }),
+    // R183: fetch-free for a token-less or inventory-less session (the
+    // page-gate idiom: !!adminToken && scope).
+    enabled: !!adminToken && canView,
     refetchInterval: 5 * 60 * 1000, // 5 min
     retry: false,
   });

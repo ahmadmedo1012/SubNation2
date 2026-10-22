@@ -818,6 +818,16 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         // refresh the variant list specifically.
         return { failure: "VARIANT_STALE" as const };
       }
+      if (err.message === "PROVIDER_UNAVAILABLE") {
+        // R183 — the FulfillmentFailureReason vocabulary member that
+        // previously had NO mapping: a (future async) provider returning
+        // {ok:false, reason:"PROVIDER_UNAVAILABLE"} is converted to this
+        // thrown marker at the fulfill call site, and this branch is what
+        // keeps it from escaping as a RAW 500 on the money endpoint —
+        // the same closed gap PRODUCT_STALE/VARIANT_STALE closed before
+        // it. Retryable envelope, money untouched (the tx rolled back).
+        return { failure: "PROVIDER_UNAVAILABLE" as const };
+      }
       if (isIdempotencyKeyViolation(err)) {
         // F10 — the key claim collided with a concurrent same-key purchase
         // that committed first. This tx (charge + order + ledger) fully
@@ -875,6 +885,19 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
         reason: "CONCURRENCY_ERROR",
         code: "VARIANT_STALE",
         message: "تغيّر سعر الباقة المختارة أثناء إتمام الشراء. حاول مجدداً بالسعر الحالي.",
+      };
+    }
+    if (order.failure === "PROVIDER_UNAVAILABLE") {
+      // R183 — the future-async-provider refusal rides the SAME retryable
+      // channel (see the F4 type comment): a transient provider outage is
+      // retryable-by-design, nothing was mutated, and the stable code lets
+      // the route answer with the honest provider-outage message instead
+      // of the generic wallet-race copy (mirrors PRODUCT_STALE/VARIANT_STALE).
+      return {
+        ok: false,
+        reason: "CONCURRENCY_ERROR",
+        code: "PROVIDER_UNAVAILABLE",
+        message: "مزوّد التسليم غير متاح مؤقتاً. حاول مجدداً بعد لحظات.",
       };
     }
     if (order.failure === "IDEMPOTENT_CLAIM_CONFLICT") {

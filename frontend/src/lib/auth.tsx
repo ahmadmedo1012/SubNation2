@@ -251,6 +251,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // same reset for free — every "admin session ends" route goes
       // through setAdminToken(null).
       if (t === null) {
+        // R183: the 401-expiry path must reset the SCOPE state too — every
+        // prior "admin session ends" route cleared the token, cache, alert
+        // cursor and socket but left `adminPermissions` populated, so a
+        // scope-gated page re-rendering during the redirect window still
+        // believed it held its scopes (stale-permissions window; only
+        // adminLogout cleared them explicitly). Clearing here covers all
+        // session-end routes symmetrically — login sets the token FIRST and
+        // permissions right after, so the sign-in path is unaffected.
+        setAdminPermissionsState([]);
         try {
           localStorage.removeItem("sn_last_alert_id");
         } catch {
