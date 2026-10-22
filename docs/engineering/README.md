@@ -14,12 +14,13 @@
 
 ## The round index
 
-**35 folders covering the R142→R181 span**. Newest first, matching the CHANGELOG's
+**36 folders covering the R142→R182 span**. Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
 (`## Round R###` header) that summarizes it.
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R182 | 2026-10-22 | The whole-product reliability & operational-truth round (the Firecrawl runtime finding classified honestly — not reproducible; the purchasable-floor catalog truth; the enrichment status diagnostic contract; the admin scope-blind 403s + 7 storefront a11y residuals closed; 5,445 tests; push staged, blocked on the PAT re-provision) | [`round-close.md`](./R182/round-close.md) |
 | R181 | 2026-10-21 | The permanent feature-removal round (AI Admin Copilot + admin calculator — deleted across UI/API/DB/generated contracts, V1-M36 + chain 0027, the LLM transport relocated for enrichment, the real pricing system preserved and regression-pinned) | [`round-close.md`](./R181/round-close.md) |
 | R176 | 2026-10-20 | The real-source art round (the brands' official logos replace the AI families — pearl/charcoal system, 9.5 KB avg, zero AI) | [`round-close.md`](./R176/round-close.md) |
 | R175 | 2026-10-20 | The product-art attraction round (the cinematic showcase family, pipeline committed, motion 14.4.0) | [`round-close.md`](./R175/round-close.md) |
