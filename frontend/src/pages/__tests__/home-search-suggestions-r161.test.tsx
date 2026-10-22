@@ -243,8 +243,11 @@ describe("HomePage — live product suggestions (R161-B)", () => {
 
     const listbox = suggestionListbox();
     const options = within(listbox).getAllByRole("option");
-    // 3 product rows + the view-all row.
-    expect(options).toHaveLength(4);
+    // 3 product rows — R182 (Lane-C D7): the «عرض كل النتائج» ACTION row
+    // is a plain button OUTSIDE the listbox now (an action is not a
+    // selectable option; the history panel's own precedent). It stays
+    // rendered inside the popup with its accessible name.
+    expect(options).toHaveLength(3);
     // Row vocabulary: name + the categoryLabel chip + the price
     // (formatCurrency) + the «تبدأ من» qualifier for variant products.
     // The chip label is asserted VIA categoryLabel (not a literal) so
@@ -253,7 +256,7 @@ describe("HomePage — live product suggestions (R161-B)", () => {
     expect(options[0].textContent).toContain(categoryLabel("streaming"));
     expect(options[0].textContent).toContain("تبدأ من");
     expect(options[0].textContent).toContain("25.00 د.ل");
-    expect(options[3].textContent).toContain("عرض كل النتائج");
+    expect(screen.getByRole("button", { name: "عرض كل النتائج" })).toBeInTheDocument();
   });
 
   it("inputs under 2 chars never fetch and render no panel", async () => {
@@ -395,11 +398,15 @@ describe("HomePage — live product suggestions (R161-B)", () => {
     typeInto("");
     typeInto("نتفلكس");
     await advance(300);
-    const options2 = within(suggestionListbox()).getAllByRole("option");
     for (let i = 0; i < 5; i++) fireEvent.keyDown(input, { key: "ArrowDown" });
-    // 3 rows + view-all: the highlight rests on the LAST option (no wrap).
-    expect(options2[3]).toHaveAttribute("aria-selected", "true");
+    // 3 rows + view-all: the highlight rests on the view-all ACTION row
+    // (no wrap). R182 (Lane-C D7): the row is a plain button outside the
+    // listbox now — the highlight rides the activedescendant id + the
+    // button's bg-primary/15 class, not option semantics.
     expect(input).toHaveAttribute("aria-activedescendant", "home-search-sug-all");
+    expect(screen.getByRole("button", { name: "عرض كل النتائج" }).className).toContain(
+      "bg-primary/15",
+    );
 
     // Enter on a highlighted PRODUCT row navigates to its PDP.
     fireEvent.keyDown(input, { key: "ArrowUp" }); // back to row 2 (Family)

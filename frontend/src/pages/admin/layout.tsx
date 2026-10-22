@@ -707,6 +707,10 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
                 /* 96-F7 (R96 M12): p-2 + w-5 icon ≈ 36px (was ~25px). */
                 className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground active:scale-90 shrink-0"
                 title="تحديث البيانات"
+                /* R182 (Lane-B defect 3): the icon-only twin — title alone
+                   computes a fallback accname, but the house R125 A6-B-11
+                   convention (hamburger/theme-toggle siblings) is both. */
+                aria-label="تحديث البيانات"
               >
                 <RefreshCw className="w-5 h-5" />
               </button>

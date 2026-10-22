@@ -19,7 +19,12 @@ export function MethodTabs({
   return (
     <div className="mb-5">
       <p className="text-xs text-muted-foreground mb-2.5 font-bold">طريقة الدفع</p>
-      <div className="grid grid-cols-2 gap-2">
+      {/* R182 (Lane-C D5): the two aria-pressed toggle buttons sat in a bare
+          div with the caption a plain <p> — the money-path topup selector
+          had no group semantics on the rotor. role="group" + aria-label
+          matches the house primitive (ui/filter-tabs.tsx) and the PDP's
+          VariantSelector («اختر الباقة»). */}
+      <div role="group" aria-label="طريقة الدفع" className="grid grid-cols-2 gap-2">
         {[
           {
             id: "mobile_transfer" as Method,

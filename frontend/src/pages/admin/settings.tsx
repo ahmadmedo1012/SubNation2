@@ -223,13 +223,21 @@ export default function AdminSettingsPage() {
   };
 
   useEffect(() => {
-    if (adminToken) void loadSettingsAndProviders();
+    // R182 (Lane-B defect 1): the fetch pair is settings-scoped
+    // server-side (GET /api/admin/settings + /api/admin/settings/auth) —
+    // firing it for every authenticated admin meant a synchronized 403
+    // pair on every visit for scope-less admins (the R134 A3-F1 "403
+    // burst" class, fixed on 14 other pages; this page's tabs hid but
+    // the mount fetch never got the gate). The account/notifications/
+    // security tabs are self-service and never read this state.
+    if (adminToken && canManageSettings) void loadSettingsAndProviders();
+    else setLoading(false);
     // Mount-only by design (mirrors the original effect): adminHeaders
     // is referentially stable per session (useAdminHeaders rides a
     // useMemo), so depending on the per-render closure would refetch
     // for nothing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminToken]);
+  }, [adminToken, canManageSettings]);
 
   // R120-B4 (A2-F20): URL → tab (a ?tab= change lands without
   // clobbering a tab the operator already picked locally).

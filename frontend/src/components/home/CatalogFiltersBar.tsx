@@ -337,22 +337,35 @@ export function CatalogFiltersBar({
                           </button>
                         );
                       })}
-                      <button
-                        id="home-search-sug-all"
-                        onClick={() => {
-                          if (debounceRef.current) clearTimeout(debounceRef.current);
-                          commitSearch(searchInput);
-                        }}
-                        role="option"
-                        aria-selected={safeActive === suggestions.length}
-                        className="min-h-11 w-full flex items-center justify-center gap-1.5 px-2 mt-1 border-t border-border/30 rounded-none text-xs font-bold text-primary-text hover:bg-secondary/40 transition-colors"
-                      >
-                        {/* Always offered when suggestions exist — the
-                            list response carries no total, so the
-                            affordance stays simple and honest. */}
-                        عرض كل النتائج
-                      </button>
                     </div>
+                  )}
+                  {/* R182 (Lane-C D7): the «عرض كل النتائج» ACTION row
+                      moves OUT of the role="listbox" — an action is not
+                      a selectable option (options promise selectability),
+                      matching the history panel's documented precedent
+                      (its header + «مسح» stay siblings "so the role's
+                      option children are exactly the suggestions"). The
+                      row keeps its id (the input's aria-activedescendant
+                      still highlights it), the visual highlight, the
+                      click handler and the Enter integration (the
+                      safeActive === suggestions.length branch) — only
+                      the option role/aria-selected go. */}
+                  {suggestions.length > 0 && (
+                    <button
+                      id="home-search-sug-all"
+                      onClick={() => {
+                        if (debounceRef.current) clearTimeout(debounceRef.current);
+                        commitSearch(searchInput);
+                      }}
+                      className={`min-h-11 w-full flex items-center justify-center gap-1.5 px-2 mt-1 border-t border-border/30 rounded-none text-xs font-bold text-primary-text hover:bg-secondary/40 transition-colors ${
+                        safeActive === suggestions.length ? "bg-primary/15" : ""
+                      }`}
+                    >
+                      {/* Always offered when suggestions exist — the
+                          list response carries no total, so the
+                          affordance stays simple and honest. */}
+                      عرض كل النتائج
+                    </button>
                   )}
                 </div>
               )}

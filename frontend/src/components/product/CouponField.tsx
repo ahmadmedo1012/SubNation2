@@ -57,6 +57,13 @@ export function CouponField({
               if (e.key === "Enter" && !couponResult && !couponValidating) onCouponValidate();
             }}
             placeholder="رمز الكوبون"
+            /* R182 (Lane-C D1): the checkout twin (CouponCard, R124-I4 A5
+               #9) got aria-label + aria-invalid + aria-describedby; this
+               PDP twin stayed placeholder-only-named with its error
+               block never tied to the field — same money path, same fix. */
+            aria-label="رمز الكوبون"
+            aria-invalid={!!couponError && !couponResult}
+            aria-describedby={couponError && !couponResult ? "pdp-coupon-error" : undefined}
             /* 96-F4 (R96 A1 M05 / A2 P3-1): the old text-sm override beat
                the shared Input's iOS-zoom-safe text-base → a 14px coupon
                field on the money path zoomed the whole page on focus.
@@ -108,6 +115,7 @@ export function CouponField({
       {couponError && (
         <div
           role="alert"
+          id="pdp-coupon-error"
           className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/8 border border-destructive/20 rounded-lg px-3 py-2"
         >
           <AlertCircle className="w-3 h-3 shrink-0" />

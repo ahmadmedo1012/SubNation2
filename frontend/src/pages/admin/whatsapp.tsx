@@ -216,6 +216,20 @@ export default function AdminWhatsAppPage() {
   const requestPairCode = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!pairTarget) return;
+    // R182 (Lane-B defect 4): the input's `required` stops empty submits,
+    // but whitespace-only or non-numeric input rode straight to the
+    // server 400. One client-side guard matching the field's own
+    // placeholder contract (21891XXXXXXX): optional leading + then
+    // digits — the server remains the trust boundary; this is UX truth.
+    const trimmedPhone = phone.trim();
+    if (!/^\+?\d{6,15}$/.test(trimmedPhone)) {
+      toast({
+        title: "رقم واتساب غير صالح",
+        description: "اكتب الرقم بصيغة دولية (أرقام فقط، مع + اختيارياً) — مثال: 21891XXXXXXX",
+        variant: "destructive",
+      });
+      return;
+    }
     setBusy(`${pairTarget}:pair`);
     clearPairCode();
     try {
@@ -224,7 +238,7 @@ export default function AdminWhatsAppPage() {
         {
           method: "POST",
           headers: jsonHeaders,
-          body: JSON.stringify({ phone }),
+          body: JSON.stringify({ phone: trimmedPhone }),
         },
       );
       setPairCode(body.code);

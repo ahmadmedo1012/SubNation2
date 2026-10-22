@@ -19,6 +19,7 @@ export function RecentOrdersStream({
   error,
   errorDetail,
   onRetry,
+  scopeBlocked = false,
 }: {
   showChartsColumn: boolean;
   orders: AdminOrder[];
@@ -26,6 +27,10 @@ export function RecentOrdersStream({
   error: boolean;
   errorDetail: unknown;
   onRetry: () => void;
+  /** R182 (Lane-B defect 2): true when the admin lacks the orders scope —
+   * the query never fires, so the honest surface is the scope-note banner
+   * (the KPI tiles' !canSeeMoney idiom), NOT the outage error card. */
+  scopeBlocked?: boolean;
 }) {
   return (
     /* Recent orders stream */
@@ -52,7 +57,15 @@ export function RecentOrdersStream({
         </Link>
       </div>
       <div className="flex-1 divide-y divide-border/40 overflow-y-auto">
-        {loading ? (
+        {scopeBlocked ? (
+          /* R182 (Lane-B defect 2): orders-less scope — the stream is
+             hidden for the account's scope, not "failed" and not
+             "empty". Same sentence shape + warning token pair as the
+             KPI tiles' !canSeeMoney note (dashboard.tsx). */
+          <p className="m-3 text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
+            آخر الطلبات تتطلب صلاحية الطلبات — تواصل مع مسؤول النظام
+          </p>
+        ) : loading ? (
           /* Skeleton rows — the "no orders yet" empty state used to
              flash before the first fetch resolved. */
           <div className="space-y-1 p-2">

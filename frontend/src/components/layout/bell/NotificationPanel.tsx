@@ -194,6 +194,8 @@ export function NotificationPanel({
             onClick={onClose}
             className="-my-2 flex h-11 w-11 items-center justify-center touch-target p-1.5 rounded-lg hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors press-spring"
             aria-label="إغلاق"
+            /* R182 (Lane-C D4): the icon-only title twin (the R161 contract). */
+            title="إغلاق"
           >
             <X className="w-3.5 h-3.5" />
           </button>

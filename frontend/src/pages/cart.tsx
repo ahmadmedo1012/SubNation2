@@ -505,10 +505,14 @@ export default function CartPage() {
                             <Minus className="w-4 h-4" />
                           )}
                         </button>
-                        <span
-                          className="font-bold text-sm tabular-nums px-2 min-w-[28px] text-center"
-                          aria-label={`الكمية ${it.quantity}`}
-                        >
+                        {/* R182 (Lane-C D6): aria-label on a non-interactive
+                            span is non-conforming ARIA (SHOULD NOT) and
+                            unreliable across screen readers — the visible
+                            digit IS the span's text content, and count
+                            CHANGES are already announced by the Navbar's
+                            sr-only cart announcer. The attribute added
+                            nothing; removed. */}
+                        <span className="font-bold text-sm tabular-nums px-2 min-w-[28px] text-center">
                           {it.quantity}
                         </span>
                         <button

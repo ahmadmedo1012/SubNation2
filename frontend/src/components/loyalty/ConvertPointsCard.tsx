@@ -107,6 +107,12 @@ export function ConvertPointsCard({
                   dialect (DESIGN.md Copy dialects); pinned twin updated with
                  the source. */
               placeholder={`عدد النقاط (${pointsPerLyd}، ${pointsPerLyd * 2}، …)`}
+              /* R182 (Lane-C D2): placeholder is not a persistent accessible
+                 name (disappears as fallback once the user types) — this
+                 money-action field converts points → wallet credit and
+                 already carries aria-invalid/describedby; only the name was
+                 missing (the PaymentReferenceField A4 P3 #37 class). */
+              aria-label="عدد النقاط للتحويل"
               value={convertPoints}
               onChange={(e) => onConvertPointsChange(e.target.value)}
               dir="ltr"

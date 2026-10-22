@@ -79,6 +79,14 @@ export default function AdminDashboardPage() {
   // branches below) — same hasAdminPermission idiom as the nav filter
   // and users.tsx canEditMoney.
   const canSeeMoney = hasAdminPermission("finance");
+  // R182 (Lane-B defect 2): /api/admin/orders is orders-scoped server-
+  // side — `enabled: !!adminToken` alone made every orders-less admin
+  // (support/finance/admins-only) fire a guaranteed 403 that re-fired
+  // every 5 min, rendered as the «تعذّر تحميل الطلبات» error card with a
+  // retry that could never succeed. The scope-honest gate mirrors the
+  // stats/chart siblings; the stream renders the scope-note banner for
+  // scope-less admins instead of the error card.
+  const canSeeOrders = hasAdminPermission("orders");
 
   const { data: stats, isLoading: statsLoading } = useGetAdminStats({
     query: {
@@ -117,7 +125,7 @@ export default function AdminDashboardPage() {
     {
       query: {
         queryKey: getListAdminOrdersQueryKey({ limit: 8 }),
-        enabled: !!adminToken,
+        enabled: !!adminToken && canSeeOrders,
         // Socket-driven refresh (see stats above) — fallback only (was 30 s).
         refetchInterval: 300_000,
         refetchIntervalInBackground: false,
@@ -519,6 +527,7 @@ export default function AdminDashboardPage() {
             error={recentOrdersError}
             errorDetail={recentOrdersErrorDetail}
             onRetry={() => void refetchRecentOrders()}
+            scopeBlocked={!canSeeOrders}
           />
         </div>
       </div>

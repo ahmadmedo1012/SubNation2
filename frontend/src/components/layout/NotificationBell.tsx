@@ -98,6 +98,25 @@ export function NotificationBell() {
 
   if (!token) return null;
 
+  // R182 (Lane-C D3): computed once — the accessible name AND the title
+  // twin (the DESIGN.md R161 icon-only contract: every icon-only header
+  // control carries BOTH; the bell had the dynamic aria-label but no
+  // title, so the sighted desktop hover hint was the gap).
+  const bellLabel =
+    unread > 0
+      ? `الإشعارات، ${
+          unread > 9
+            ? "9+"
+            : formatCount(unread, {
+                one: "إشعار غير مقروء",
+                two: "إشعاران غير مقروءان",
+                few: "إشعارات غير مقروءة",
+                many: "إشعاراً غير مقروءاً",
+                other: "إشعار غير مقروء",
+              })
+        }`
+      : "الإشعارات";
+
   return (
     <div className="relative" ref={wrapRef}>
       {/* Bell button — 94-C3 (A3 P1-3): touch-target lifts the hit box
@@ -114,23 +133,10 @@ export function NotificationBell() {
             ? "bg-primary/12 text-primary-text"
             : "hover:bg-secondary/70 text-muted-foreground hover:text-foreground"
         }`}
-        aria-label={
-          unread > 0
-            ? `الإشعارات، ${
-                unread > 9
-                  ? "9+"
-                  : formatCount(unread, {
-                      one: "إشعار غير مقروء",
-                      two: "إشعاران غير مقروءان",
-                      few: "إشعارات غير مقروءة",
-                      many: "إشعاراً غير مقروءاً",
-                      other: "إشعار غير مقروء",
-                    })
-              }`
-            : "الإشعارات"
-        }
+        aria-label={bellLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
+        title={bellLabel}
       >
         {unread > 0 ? <BellDot className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         {unread > 0 && (

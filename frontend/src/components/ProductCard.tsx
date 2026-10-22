@@ -726,6 +726,10 @@ function ProductCardInner({
           type="button"
           disabled
           aria-label="نفد المخزون"
+          /* R182 (Lane-C D4): the icon-only title twin — its enabled
+             sibling above carries both; disabled controls still expose
+             their hover hint to sighted pointer users. */
+          title="نفد المخزون"
           className="hidden md:flex absolute bottom-3 left-3 h-8 w-8 [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 items-center justify-center rounded-xl bg-muted/40 border border-border/40 text-muted-foreground/70 cursor-not-allowed"
         >
           <Lock className="w-3.5 h-3.5" aria-hidden="true" />

@@ -446,6 +446,8 @@ export default function SupportPage() {
           <button
             onClick={closeCreateForm}
             aria-label="إغلاق نموذج التذكرة الجديدة"
+            /* R182 (Lane-C D4): the icon-only title twin (the R161 contract). */
+            title="إغلاق نموذج التذكرة الجديدة"
             className="w-11 h-11 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all press-spring"
           >
             <X className="w-4 h-4" />
