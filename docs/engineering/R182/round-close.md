@@ -104,11 +104,19 @@ Plus nits applied (bidi-consistent bare `formatDate`, the cap copy naming "صف�
 
 **Environmental deferrals (not regressions, the standing set):** the live-E2E checks requiring real infra (firebase/otp/redis/socket/admin-session/mobile/lighthouse/sentry) and Playwright's pinned browser revision — the same pre-R181 set, documented each round; the e2e/CVE CI jobs remain environment-gated skips (their standing state, honestly counted as skips, not passes).
 
-## 8. Ship record — THE EXACT REMAINING BLOCKER (owner action required)
+## 8. Ship record — CLOSED GREEN (the PAT landed; push, CI, rotation, and probes all verified)
 
-- **Starting SHA:** `feaf8e514f620f7cdb29ff92430905e1952290ee` · **Commits:** created locally on `main` (see the CHANGELOG entry) — **NOT YET PUSHED.**
-- **The blocker:** the agent workspace was reset again (the known pattern — source-of-truth entries #14d/#16f): `/home/z/.git-credentials` and `/home/z/.gh-token` are ABSENT, and this session carries no GitHub PAT (the previous session's credential is not recoverable from its summary). The repo is public (clone/fetch verified working); **the push to `origin/main`, the CI observation on the pushed SHA, and the post-deploy read-only production verification of this round's changes are all staged and ready but blocked on the owner re-provisioning the PAT.**
-- **The exact staged sequence once the PAT lands** (the R165/R168 recovery precedent): `git push origin main` → verify the remote SHA → watch the CI run to full green (all-executed-jobs, not partial) → wait for the Coolify push-to-deploy rotation (healthcheck-gated; the queue delay is documented) → then the read-only production probes: healthz; the homepage's honest caption («1 منتج متاح الآن · تبدأ الأسعار من 980.00 د.ل» against the live catalog, or the truthful unavailable line if stock changed); `/api/catalog/stats` lowest_price semantics; `/api/admin/enrichment/status` behind its 401/403 gates; the flagged routes' continued clean rendering; no Copilot/calculator residue (the R181 decision preserved).
+- **Starting SHA:** `feaf8e514f620f7cdb29ff92430905e1952290ee` · **Final SHA on `origin/main`:** `eb46c8f640376c8af404326194350352ce29d6b3` (fast-forward `feaf8e51..eb46c8f6`, no force-push; remote HEAD re-verified equal to local HEAD after the push).
+- **The unblock:** the owner re-provisioned the GitHub PAT in-session (the workspace-reset pattern's standing answer — source-of-truth #14d/#16f). The staged sequence then executed exactly as documented.
+- **CI on `eb46c8f6`** (run `39776018581`): **7/7 executed jobs green** — secret scanning (gitleaks), path filter, lint/typecheck/drift gates, unit tests (scripts), unit tests (frontend), unit tests (backend), production build (API + Vite SPA). The two skips are the standing by-design gates, not failures: `e2e` runs only on `workflow_dispatch`/`schedule`; `CVE scanning` is deps-only-filtered and this push changed no dependency files.
+- **Coolify rotation:** live within ~12 minutes of the push (the documented queue-delay did not recur). One transient `healthz` **504 (32.8 s)** was observed at the cutover moment — the new backend container starting — followed by 12 consecutive `200`s. Deployed entry: `index-Al2AYZxc.js`.
+- **Read-only production probes — ALL GREEN** (fresh browser context; zero page errors, zero console output, zero failed network requests across the whole run):
+  - `healthz` → `200 {"status":"ok"}`.
+  - Homepage renders the honest caption — **«1 منتج متاح الآن» + «تبدأ الأسعار من 980.00 د.ل»** — byte-consistent with the live catalog.
+  - `/api/catalog/stats` → `total_products 45 · available_products 1 · total_units 4 · lowest_price 980 · has_flash_sale false` — **the purchasable floor is LIVE** (the pre-R182 build answered the availability-blind 59.80 sold-out minimum).
+  - `/api/admin/enrichment/status` unauthenticated → **401** — the R182 endpoint is mounted and guarded (the pre-R182 backend would answer 404).
+  - The three Firecrawl-flagged routes (`/product/cpanel`, `/product/netflix-premium`, `/category/streaming`) render their real Arabic titles with zero errors; SPA client-side navigation into a sold-out PDP (`/product/shudder`) loads its lazy chunk cleanly with the honest «نفد» variant states.
+  - **R181 residue regression:** the full production JS surface was transitive-fetched (entry + **171 chunks, 2,660,682 B, all real JS, zero 404s**) and scanned — zero copilot feature references, zero calculator tokens (`adminPricingCalculate`, `CalculatorInputsCard`, `CalculatorOutputsCard`, `pricing/calculate`, `admin/copilot`, `copilot_previews/actions`). The single case-insensitive `copilot` string in the whole bundle is the **documented verbatim `COPILOT_API_KEY` env name** inside the enrichment diagnostic message (the R181 recorded keep — production Coolify secrets carry it under that name).
 - **No production data, secrets, DNS, or Coolify configuration was touched** (the operator-only boundary held throughout; production probes this round were strictly read-only).
 
 ## 9. Definition-of-done scorecard
@@ -121,5 +129,5 @@ Plus nits applied (bidi-consistent bare `formatDate`, the cap copy naming "صف�
 6. SEO output/structured data/hydration consistency: **verified consistent** (§5).
 7. Full required checks genuinely executed: **yes, itemized in §7** (skips named, not counted as passes).
 8. Independent review + fixes: **done** (§6).
-9. Push + CI + deployment observation: **STAGED, blocked on the PAT re-provision — stated explicitly, not claimed** (§8).
+9. Push + CI + deployment observation: **DONE AND GREEN — the ship record §8 carries the evidence** (push fast-forward verified, 7/7 CI jobs green, rotation observed, all probes green, R181 residue regression clean).
 10. This ledger reflects actual evidence: the round's claims above cite files, tests, and probe outputs.
