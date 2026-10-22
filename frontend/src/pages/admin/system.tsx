@@ -144,7 +144,10 @@ export default function AdminSystemPage(): ReactElement | null {
   // Existing queries (unchanged) ───────────────────────────────────────────
 
   const healthQ = useQuery<HealthzReadyResponse>({
-    queryKey: ["healthz-ready"],
+    // R184: renamed onto the admin-* root convention so the setAdminToken
+    // teardown (frontend/src/lib/auth.tsx) owns this root too — the last
+    // admin-gated query left on a bare name.
+    queryKey: ["admin-healthz-ready"],
     queryFn: fetchAdminHealthReady,
     // Reduced 30 s → 60 s. Backend cache is 15 s; admin doesn't need
     // sub-30 s granularity on health.

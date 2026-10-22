@@ -150,7 +150,7 @@ describe("R137 (FE) — admin/system.tsx decomposition: page stays an orchestrat
     expect(page).toContain("enabled: !!adminToken && canViewSystem,");
     // And all six polling queries stay page-owned (one queryKey each).
     for (const key of [
-      '"healthz-ready"',
+      '"admin-healthz-ready"',
       '"admin-diagnostics"',
       '"admin-observability-summary"',
       '"admin-observability-alerts-recent"',

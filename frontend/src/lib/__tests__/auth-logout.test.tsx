@@ -217,7 +217,7 @@ describe("AuthProvider.setAdminToken — admin PII isolation (97-F5 F-04)", () =
     vi.unstubAllGlobals();
   });
 
-  it("REMOVES /api/admin* + admin-alerts* queries and keeps storefront queries", async () => {
+  it("REMOVES /api/admin* + admin-* queries and keeps storefront queries (R184 F4)", async () => {
     const { client } = renderAuthIdentity();
 
     // Admin A's cached lists (PII: user phone numbers, order buyers) +
@@ -226,6 +226,19 @@ describe("AuthProvider.setAdminToken — admin PII isolation (97-F5 F-04)", () =
     client.setQueryData(["/api/admin/users", { search: "" }], [{ id: 2, phone: "091…" }]);
     client.setQueryData(["admin-alerts", { limit: 20 }], [{ id: 4 }]);
     client.setQueryData(["admin-alerts-unread-count"], 3);
+    // R184 (the R183 review's logged F4): the five admin-* root families
+    // that chose literal roots instead of /api/admin* URLs — risk,
+    // enrichment, forecast, observability, diagnostics. Their cached
+    // rows used to survive the teardown for one refetch round-trip on a
+    // shared-machine admin switch.
+    client.setQueryData(["admin-risk-dashboard"], { unresolved: 2 });
+    client.setQueryData(["admin-risk-events", "all"], [{ id: 6 }]);
+    client.setQueryData(["admin-enrichment-list", "drafted"], [{ id: 7 }]);
+    client.setQueryData(["admin-enrichment-status"], { llm_configured: true });
+    client.setQueryData(["admin-forecast-at-risk"], [{ product_id: 8 }]);
+    client.setQueryData(["admin-observability-summary"], { ok: true });
+    client.setQueryData(["admin-diagnostics"], { uptime: 1 });
+    client.setQueryData(["admin-healthz-ready"], { ok: true });
     client.setQueryData(["/api/wallet"], { balance: 500 });
     client.setQueryData(["/api/products", {}], [{ id: 5 }]);
 
@@ -241,6 +254,15 @@ describe("AuthProvider.setAdminToken — admin PII isolation (97-F5 F-04)", () =
     expect(client.getQueryData(["/api/admin/users", { search: "" }])).toBeUndefined();
     expect(client.getQueryData(["admin-alerts", { limit: 20 }])).toBeUndefined();
     expect(client.getQueryData(["admin-alerts-unread-count"])).toBeUndefined();
+    // The R184 F4 families — every admin-* root dies with the session.
+    expect(client.getQueryData(["admin-risk-dashboard"])).toBeUndefined();
+    expect(client.getQueryData(["admin-risk-events", "all"])).toBeUndefined();
+    expect(client.getQueryData(["admin-enrichment-list", "drafted"])).toBeUndefined();
+    expect(client.getQueryData(["admin-enrichment-status"])).toBeUndefined();
+    expect(client.getQueryData(["admin-forecast-at-risk"])).toBeUndefined();
+    expect(client.getQueryData(["admin-observability-summary"])).toBeUndefined();
+    expect(client.getQueryData(["admin-diagnostics"])).toBeUndefined();
+    expect(client.getQueryData(["admin-healthz-ready"])).toBeUndefined();
     // Storefront queries survive — a user session is independent of the
     // admin identity in the same tab.
     expect(client.getQueryData(["/api/wallet"])).toEqual({ balance: 500 });

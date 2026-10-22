@@ -291,7 +291,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // path (logout, 401 expiry, App.tsx's guard) funnels through
               // setAdminToken(null), so the guard cache dies with the session.
               first.startsWith("/api/admin") ||
-              first.startsWith("admin-alerts"))
+              // R184 (the R183 review's logged F4): the "admin-" prefix
+              // arm. The teardown matched only "admin-alerts*" literally
+              // while risk, enrichment, forecast, observability and
+              // diagnostics chose "admin-*" roots — a shared-machine admin
+              // switch could flash one refetch round-trip of the previous
+              // admin's cached rows. The prefix covers every current
+              // family and any future one on the naming convention.
+              first.startsWith("admin-"))
           );
         },
       });
