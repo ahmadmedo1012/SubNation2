@@ -1,9 +1,9 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-20 (R173 — the final comprehensive
-> inspection, purification &
-> perfection sweep;
-> this index was created in R166). The ENGINEERING bucket: the working
+> Status: CURRENT @ 2026-10-22 (R183 — the round-index truth pass:
+> the four missing rows added (R177–R180), the folder count corrected
+> 36→**38**, the header and the R182 row re-synced to the shipped state;
+> prior status R173). The ENGINEERING bucket: the working
 > records of the R142+ rounds. The round **ledger** is
 > [`CHANGELOG.md`](../../CHANGELOG.md) (one entry per round, newest first —
 > the authoritative summary of every round); the folders below hold the
@@ -14,14 +14,21 @@
 
 ## The round index
 
-**36 folders covering the R142→R182 span**. Newest first, matching the CHANGELOG's
+**39 folders covering the R142→R183 span** (R155/R159/R180 have no
+folder — see the gaps section; R177–R179's docs commits never touched
+this index, their rows added by R183). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
 (`## Round R###` header) that summarizes it.
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
-| R182 | 2026-10-22 | The whole-product reliability & operational-truth round (the Firecrawl runtime finding classified honestly — not reproducible; the purchasable-floor catalog truth; the enrichment status diagnostic contract; the admin scope-blind 403s + 7 storefront a11y residuals closed; 5,445 tests; push staged, blocked on the PAT re-provision) | [`round-close.md`](./R182/round-close.md) |
+| R183 | 2026-10-22 | The precision & truth round (the money-contract truth pass — M3's retirement recorded; the nine-family guard-surface sweep; the latent scope gates + the 401-expiry scope reset; four money behavioral pins with two real latent defects closed; the R172–R182 docs-truth reconciliation) | [`round-close.md`](./R183/round-close.md) |
+| R182 | 2026-10-22 | The whole-product reliability & operational-truth round (the Firecrawl runtime finding classified honestly — not reproducible; the purchasable-floor catalog truth; the enrichment status diagnostic contract; the admin scope-blind 403s + 7 storefront a11y residuals closed; 5,445 tests; **shipped green** — the PAT landed in-session: push fast-forward, CI 7/7, Coolify rotation + all probes green, ship record `72e287b7`) | [`round-close.md`](./R182/round-close.md) |
 | R181 | 2026-10-21 | The permanent feature-removal round (AI Admin Copilot + admin calculator — deleted across UI/API/DB/generated contracts, V1-M36 + chain 0027, the LLM transport relocated for enrichment, the real pricing system preserved and regression-pinned) | [`round-close.md`](./R181/round-close.md) |
+| R180 | 2026-10-21 | The frontend toolchain modernization round (vite 8 + Oxc/Rolldown, vitest 5, jsdom 30, jest-dom 7, the codeSplitting priority ladder) | **no folder — CHANGELOG-only** (the round shipped feat-only via `10b3e0ee`; retroactive entry recorded by R183) |
+| R179 | 2026-10-21 | The deprecated-registry retirement + the upstream-unfixable ledger (prom-client → @prometheus-io/client executed, reversing the R169 adjudication; the 4-finding floor; react 19.3.1 rejected with numbers) | [`round-close.md`](./R179/round-close.md) |
+| R178 | 2026-10-21 | The theme-adaptive transparent art round (the two-family contract `/products/*.webp` transparent + `/products-og/*.webp` opaque; the measured polarity block; three defective R176 tiles fixed) | [`round-close.md`](./R178/round-close.md) |
+| R177 | 2026-10-20 | The customer-experience perfection round (12 verified findings: the PDP `/me`-failure money fabrication, the 640–1024px coupon desert, the twin-drift class, money-honesty completion `-0`/non-finite/12 retired `?? 0` coercions, the de-hardcoded guest referral policy) | [`round-close.md`](./R177/round-close.md) |
 | R176 | 2026-10-20 | The real-source art round (the brands' official logos replace the AI families — pearl/charcoal system, 9.5 KB avg, zero AI) | [`round-close.md`](./R176/round-close.md) |
 | R175 | 2026-10-20 | The product-art attraction round (the cinematic showcase family, pipeline committed, motion 14.4.0) | [`round-close.md`](./R175/round-close.md) |
 | R174 | 2026-10-20 | The product-art excellence round (45 regenerated 1024² tiles + the freshness contract) | [`round-close.md`](./R174/round-close.md) |
@@ -67,12 +74,16 @@ order; each row links the round's primary record and names the CHANGELOG entry
   R143 = per-lane findings files (`findings-L1..L18.md`) + an impl-lane
   record, R144 = findings ledger, R145 = defect map. Those are records,
   not gaps to backfill — no fabricated round-closes.
-- **R155 and R159 have no folders.** Both closed CHANGELOG-only: R155
-  (the Telegram OIDC production-failure diagnosability round) shipped its
-  evidence inside the CHANGELOG entry itself; R159 (the ledger-closure
-  round) is explicitly marked a **retroactive entry** — the R158
-  deferrals closed or verdict-confirmed, ledgered after the fact. The
-  CHANGELOG entries are the records; no history fabrication.
+- **R155, R159, and R180 have no folders.** R155 (the Telegram OIDC
+  production-failure diagnosability round) shipped its evidence inside
+  the CHANGELOG entry itself; R159 (the ledger-closure round) is
+  explicitly marked a **retroactive entry** — the R158 deferrals closed
+  or verdict-confirmed, ledgered after the fact; R180 (the toolchain
+  modernization) shipped feat-only via `10b3e0ee` — its docs commit
+  never landed, so the R183-recorded retroactive CHANGELOG entry is its
+  record (the same gap class as R177's missing CHANGELOG entry, also
+  closed by R183). The CHANGELOG entries are the records; no history
+  fabrication.
 - **Pre-R142 rounds:** the inspection-era evidence (r94–r130 + r134) is
   archived under `docs/history/inspection-r###/` (15 directories — see
   [`docs/history/README.md`](../history/README.md), the move map).

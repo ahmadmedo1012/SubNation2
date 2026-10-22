@@ -304,7 +304,7 @@ ledger; `docs/API.md` owns the API surface.
 | `WHATSAPP_OPERATIONS.md` | WhatsApp gateway ops | CURRENT (R117 rewrite verified) |
 | `API.md` | Rate limits + surface (operator reference) | CURRENT (R126: `?fields=list` light projection + `variant_count` documented — was missing the R124-public surface) |
 | `COMPLIANCE.md` | Data-retention/backup compliance claims | CURRENT (R118-B4a corrections) |
-| `FINAL_MONEY_INVARIANTS.md` | M1–M17 money invariants | CURRENT (R134: cites re-derived after the A7-F4 body-hash + A8-F1 schema waves — M1/M2/M3/M4/M5/M6/M7/M16 re-anchored, suite index 43→45 with cart + variant-availability-pricing; fifth full money audit) |
+| `FINAL_MONEY_INVARIANTS.md` | M1–M17 money invariants | CURRENT (R183: the sixth full money audit — anchors re-derived at `72e287b7`; M3's R154 retirement recorded truthfully; M2/M12/M15 re-pointed to their R158/R144-B2 homes; suite index re-measured, routes dir 74→85 files) |
 | `ONBOARDING.md` | The ordered developer path (repo map → setup → law docs → gates → round records) | CURRENT (added R126 — the missing developer journey; suite-size counts restamped R128) |
 | `PERFORMANCE.md` | The performance record — budget gates, measured numbers, round history | CURRENT (added R126; extracted from the README perf section; R127 boot row + R128-B2 Lighthouse re-measure added R128) |
 | `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
@@ -347,7 +347,7 @@ own bucket below (111 files — not part of the 52 above).
 | **HISTORY** | 205 files — 166 md + 39 jpg (74 md from R122 + the R135 wave: 90 md / 39 jpg of inspection evidence r124–r130 + r134 + the ledger split; incl. the 2 root snapshots `PLATFORM.md` / `PROJECT_OVERVIEW.md`) | `docs/history/` — inspection rounds r94–r130 + r134, round reports/repair plans, dated audits/plans, UX audits, catalog/SEO records, `RENDER_LEGACY_FALLBACK`, `wave-345-audit`, `CHANGELOG-rounds-r116-r126.md` |
 | **DEPRECATED** | 17 | `docs/deprecated/` — 6 migration-era guides + the executed `project-plan/00–09` set + the bucket README |
 | **PENDING** | 2 | `docs/pending/embronic-adapter-design.md` (Embronic provider-sync design) + the bucket `README.md` (`FINAL_INVENTORY_LOADING.md` stays CURRENT until Embronic lands). The R150 round REMOVED `docs/pending/whatsapp-cloud-api-migration.md` — WhatsApp Cloud API is permanently excluded from the architecture (R150 mission decision); the supported integration is the self-hosted Baileys gateway, and the R149 record that recommended Cloud API as a future target is superseded by `docs/engineering/R150/round-close.md` (the R149 report itself stays in HISTORY as an audit record) |
-| **ENGINEERING** | 111 (79 md + 32 `.jsonl` lane records) | `docs/engineering/` — the R142+ round records (22 folders, R142→R165), indexed by **`docs/engineering/README.md`** (added R166) |
+| **ENGINEERING** | 132 (96 md + 32 `.jsonl` lane records) | `docs/engineering/` — the R142+ round records (**38 folders + the index README, R142→R182**; R155/R159/R180 have no folder — CHANGELOG-only records), indexed by **`docs/engineering/README.md`** (added R166; the R183 truth pass added the R177–R180 rows) |
 
 Move map for dated ledger entries: `docs/history/README.md`.
 
