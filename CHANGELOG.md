@@ -22,7 +22,7 @@ executed R122, extended R135).
 
 **The improvement pass:** the improvement-scan lane's 22 findings applied — the live-contract `cost_price` OpenAPI description re-worded off the retired calculator (+ orval regen), 9 dangling consumer-list/comments in shared pricing/loyalty/catalog/schema code corrected, the golden-matrix P6 title re-worded to the surviving truth, the V1-M36 test strengthened to prove real rows die (not just empty tables), and the boot-body/chain/r137 floors re-measured to the honest post-removal numbers.
 
-**Gates:** lint 0/0 · typecheck ×3 · backend 2,642/286 files · frontend 2,719/295 files · scripts 59/6 files · parity 79 ops · error-code sync 26 · header params 7/7 · drizzle drift clean · build eager 148,116 B gz (warn gate holds) · prod audit zero.
+**Gates:** lint 0/0 · typecheck ×3 · backend 2,642/286 files · frontend 2,719/295 files · scripts 59/6 files · parity 79 ops · error-code sync 26 · header params 7/7 · drizzle drift clean · build eager 148,116 B gz (warn gate holds) · prod audit zero. **Ship:** CI all-executed-jobs green on `8634b03c` (one mid-round gitleaks false positive closed per the R163/R168 precedent); the Coolify push-to-deploy rotation verified read-only — entry bundle `index-DeBiZuj7.js`, the live chunks carry zero copilot/calculate references, «إعدادات التسعير» + the recompute flow live, `/api/admin/pricing/config` guarded (401), storefront + catalog + flash-sale probes 200.
 
 ## Round R179 — The deprecated-registry retirement + the upstream-unfixable ledger — 2026-10-21
 
