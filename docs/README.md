@@ -306,6 +306,7 @@ ledger; `docs/API.md` owns the API surface.
 | `COMPLIANCE.md` | Data-retention/backup compliance claims | CURRENT (R118-B4a corrections) |
 | `FINAL_MONEY_INVARIANTS.md` | M1–M17 money invariants | CURRENT (R183: the sixth full money audit — anchors re-derived at `72e287b7`; M3's R154 retirement recorded truthfully; M2/M12/M15 re-pointed to their R158/R144-B2 homes; suite index re-measured, routes dir 74→85 files) |
 | `ONBOARDING.md` | The ordered developer path (repo map → setup → law docs → gates → round records) | CURRENT (added R126 — the missing developer journey; suite-size counts restamped R128) |
+| `PROJECT_GUIDE.html` | The owner's Arabic study guide — the whole platform (architecture, services, flows, data model, security, deployment) in one self-contained HTML page | CURRENT (added R184 — the single entry point for re-studying the project; no secrets, env names only) |
 | `PERFORMANCE.md` | The performance record — budget gates, measured numbers, round history | CURRENT (added R126; extracted from the README perf section; R127 boot row + R128-B2 Lighthouse re-measure added R128) |
 | `NEON_MCP_SETUP.md` | Neon MCP probe endpoint | CURRENT |
 | `SEO_PRODUCTS.json` | The 45 curated Arabic product entries (8 original + 37 added R116) | STALE vs live DB (R132 L4-F1: 41/41 seeded rows differ — the live DB is the NEWER truth after the operator's R132 curation pass; the importer is keep-unless-force, so this file is a snapshot, not the source of truth — re-export before bulk edits) |

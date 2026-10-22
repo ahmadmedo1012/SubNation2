@@ -1,9 +1,10 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-22 (R183 — the round-index truth pass:
-> the four missing rows added (R177–R180), the folder count corrected
-> 36→**38**, the header and the R182 row re-synced to the shipped state;
-> prior status R173). The ENGINEERING bucket: the working
+> Status: CURRENT @ 2026-10-22 (R184 — the final organization round:
+> the R184 row + folder count 39→**40**; prior status R183 — the
+> round-index truth pass: the four missing rows added (R177–R180), the
+> folder count corrected 36→38→39, the header and rows re-synced to the
+> shipped state). The ENGINEERING bucket: the working
 > records of the R142+ rounds. The round **ledger** is
 > [`CHANGELOG.md`](../../CHANGELOG.md) (one entry per round, newest first —
 > the authoritative summary of every round); the folders below hold the
@@ -14,7 +15,7 @@
 
 ## The round index
 
-**39 folders covering the R142→R183 span** (R155/R159/R180 have no
+**40 folders covering the R142→R184 span** (R155/R159/R180 have no
 folder — see the gaps section; R177–R179's docs commits never touched
 this index, their rows added by R183). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
@@ -22,6 +23,7 @@ order; each row links the round's primary record and names the CHANGELOG entry
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R184 | 2026-10-22 | The final organization round (the R183 review's F4 teardown gap closed for every `admin-*` query root; the README/state re-stamped to the live truth — the retired payment_reference wording, the R165-frozen counts, the R163-era rounds list; the owner's Arabic study guide `docs/PROJECT_GUIDE.html`) | [`round-close.md`](./R184/round-close.md) |
 | R183 | 2026-10-22 | The precision & truth round (the money-contract truth pass — M3's retirement recorded; the nine-family guard-surface sweep; the latent scope gates + the 401-expiry scope reset; four money behavioral pins with two real latent defects closed; the R172–R182 docs-truth reconciliation) | [`round-close.md`](./R183/round-close.md) |
 | R182 | 2026-10-22 | The whole-product reliability & operational-truth round (the Firecrawl runtime finding classified honestly — not reproducible; the purchasable-floor catalog truth; the enrichment status diagnostic contract; the admin scope-blind 403s + 7 storefront a11y residuals closed; 5,445 tests; **shipped green** — the PAT landed in-session: push fast-forward, CI 7/7, Coolify rotation + all probes green, ship record `72e287b7`) | [`round-close.md`](./R182/round-close.md) |
 | R181 | 2026-10-21 | The permanent feature-removal round (AI Admin Copilot + admin calculator — deleted across UI/API/DB/generated contracts, V1-M36 + chain 0027, the LLM transport relocated for enrichment, the real pricing system preserved and regression-pinned) | [`round-close.md`](./R181/round-close.md) |

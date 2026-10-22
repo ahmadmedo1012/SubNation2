@@ -1,0 +1,2494 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SubNation — دليل المشروع الشامل</title>
+    <meta
+      name="description"
+      content="دليل دراسي شامل لمشروع SubNation: كيف يعمل، الخدمات الخارجية المطلوبة والاختيارية، المسارات الأساسية، قاعدة البيانات، الأمان، والنشر."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --accent: #dc1840;
+        --accent-soft: rgba(220, 24, 64, 0.08);
+        --accent-line: rgba(220, 24, 64, 0.25);
+        --bg: #faf9f7;
+        --panel: #ffffff;
+        --panel-2: #f4f2ef;
+        --ink: #1c1917;
+        --ink-2: #57534e;
+        --ink-3: #8a8580;
+        --line: #e7e4df;
+        --code-bg: #f1efec;
+        --code-ink: #9f1239;
+        --ok: #15803d;
+        --ok-bg: #ecfdf3;
+        --warn: #b45309;
+        --warn-bg: #fffaeb;
+        --info: #1d4ed8;
+        --info-bg: #eff6ff;
+        --shadow: 0 1px 2px rgba(28, 25, 23, 0.05), 0 8px 24px -12px rgba(28, 25, 23, 0.12);
+        --radius: 14px;
+      }
+      [data-theme="dark"] {
+        --accent: #ff5c7a;
+        --accent-soft: rgba(255, 92, 122, 0.1);
+        --accent-line: rgba(255, 92, 122, 0.3);
+        --bg: #141210;
+        --panel: #1d1a18;
+        --panel-2: #262220;
+        --ink: #f2efec;
+        --ink-2: #c4bfb9;
+        --ink-3: #8f8a84;
+        --line: #332f2b;
+        --code-bg: #2a2724;
+        --code-ink: #ffb3c1;
+        --ok: #4ade80;
+        --ok-bg: rgba(74, 222, 128, 0.1);
+        --warn: #fbbf24;
+        --warn-bg: rgba(251, 191, 36, 0.1);
+        --info: #93c5fd;
+        --info-bg: rgba(147, 197, 253, 0.1);
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -14px rgba(0, 0, 0, 0.55);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          "Readex Pro", "Segoe UI", "Noto Naskh Arabic", "Noto Sans Arabic", Tahoma, Arial,
+          sans-serif;
+        font-size: 15.5px;
+        line-height: 1.95;
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      code,
+      .ltr {
+        direction: ltr;
+        unicode-bidi: isolate;
+        font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+      }
+      code {
+        background: var(--code-bg);
+        color: var(--code-ink);
+        padding: 0.1em 0.45em;
+        border-radius: 6px;
+        font-size: 0.86em;
+        white-space: nowrap;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .skip-link {
+        position: absolute;
+        right: -9999px;
+      }
+      .skip-link:focus {
+        position: static;
+      }
+
+      /* ===== Hero ===== */
+      .hero {
+        background: linear-gradient(135deg, #16090d 0%, #3d0a18 55%, var(--accent) 130%);
+        color: #fff;
+        padding: 52px 20px 46px;
+      }
+      .hero-inner {
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .brand-mark {
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.12);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+      }
+      .brand h1 {
+        margin: 0;
+        font-size: clamp(24px, 4vw, 38px);
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+      .brand .en {
+        font-weight: 300;
+        opacity: 0.75;
+        font-size: 0.55em;
+        display: block;
+        letter-spacing: 2px;
+      }
+      .hero p.lead {
+        max-width: 62ch;
+        font-size: clamp(15px, 2vw, 17.5px);
+        opacity: 0.94;
+        margin: 18px 0 0;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+        margin-top: 22px;
+      }
+      .chip {
+        background: rgba(255, 255, 255, 0.13);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 999px;
+        padding: 4px 14px;
+        font-size: 13px;
+        backdrop-filter: blur(4px);
+      }
+      .chip b {
+        font-weight: 600;
+      }
+
+      /* ===== Layout ===== */
+      .layout {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 26px 20px 80px;
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 34px;
+        align-items: start;
+      }
+      .toc {
+        position: sticky;
+        top: 18px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px 10px;
+        box-shadow: var(--shadow);
+      }
+      .toc h2 {
+        margin: 4px 12px 10px;
+        font-size: 13px;
+        color: var(--ink-3);
+        font-weight: 600;
+        letter-spacing: 0.5px;
+      }
+      .toc ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        counter-reset: t;
+      }
+      .toc a {
+        display: flex;
+        gap: 9px;
+        align-items: baseline;
+        padding: 7px 12px;
+        border-radius: 9px;
+        color: var(--ink-2);
+        font-size: 13.8px;
+        line-height: 1.6;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .toc a:hover {
+        background: var(--accent-soft);
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .toc a.active {
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .toc a::before {
+        counter-increment: t;
+        content: counter(t, arabic-indic);
+        font-size: 11.5px;
+        color: var(--ink-3);
+        min-width: 16px;
+      }
+      .toc a.active::before {
+        color: var(--accent);
+      }
+      main {
+        min-width: 0;
+      }
+      section {
+        margin: 0 0 44px;
+        scroll-margin-top: 24px;
+      }
+      section > h2 {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: clamp(19px, 2.6vw, 23px);
+        font-weight: 700;
+        margin: 0 0 6px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--accent-line);
+      }
+      section > h2 .num {
+        background: var(--accent);
+        color: #fff;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      section > p.desc {
+        color: var(--ink-2);
+        margin: 6px 0 20px;
+        font-size: 14.5px;
+      }
+      h3 {
+        font-size: 16.5px;
+        font-weight: 700;
+        margin: 30px 0 10px;
+        color: var(--ink);
+      }
+      h3 .tick {
+        color: var(--accent);
+      }
+
+      /* ===== Cards / grids ===== */
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 20px 22px;
+        box-shadow: var(--shadow);
+        margin: 14px 0;
+      }
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+      .g2 {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+      .g3 {
+        grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+      }
+      .card h4 {
+        margin: 0 0 8px;
+        font-size: 15.5px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex-wrap: wrap;
+      }
+      .card p {
+        margin: 6px 0;
+        color: var(--ink-2);
+        font-size: 14px;
+      }
+      .card ul {
+        margin: 8px 0 2px;
+        padding-right: 18px;
+        color: var(--ink-2);
+        font-size: 14px;
+      }
+      .card ul li {
+        margin: 4px 0;
+      }
+
+      /* ===== Badges ===== */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 999px;
+        padding: 2px 11px;
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .b-req {
+        background: var(--accent-soft);
+        color: var(--accent);
+        border: 1px solid var(--accent-line);
+      }
+      .b-ok {
+        background: var(--ok-bg);
+        color: var(--ok);
+      }
+      .b-warn {
+        background: var(--warn-bg);
+        color: var(--warn);
+      }
+      .b-info {
+        background: var(--info-bg);
+        color: var(--info);
+      }
+      .b-mute {
+        background: var(--panel-2);
+        color: var(--ink-3);
+        border: 1px solid var(--line);
+      }
+
+      /* ===== Tables ===== */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        font-size: 13.8px;
+        margin: 14px 0;
+      }
+      th {
+        background: var(--panel-2);
+        color: var(--ink-2);
+        font-weight: 600;
+        text-align: right;
+        padding: 10px 14px;
+        font-size: 12.8px;
+        letter-spacing: 0.2px;
+      }
+      td {
+        padding: 10px 14px;
+        border-top: 1px solid var(--line);
+        vertical-align: top;
+        color: var(--ink);
+      }
+      tbody tr:hover {
+        background: var(--accent-soft);
+      }
+      td .sub {
+        display: block;
+        color: var(--ink-3);
+        font-size: 12.3px;
+        margin-top: 2px;
+      }
+
+      /* ===== Flow diagrams ===== */
+      .flow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: stretch;
+        margin: 16px 0;
+      }
+      .fstep {
+        flex: 1 1 150px;
+        min-width: 150px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 13px 15px;
+        position: relative;
+        box-shadow: var(--shadow);
+      }
+      .fstep .n {
+        position: absolute;
+        top: -11px;
+        right: 13px;
+        background: var(--accent);
+        color: #fff;
+        width: 24px;
+        height: 24px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 12.5px;
+        font-weight: 700;
+      }
+      .fstep b {
+        display: block;
+        font-size: 13.8px;
+        margin: 4px 0 3px;
+      }
+      .fstep span {
+        font-size: 12.6px;
+        color: var(--ink-2);
+        line-height: 1.7;
+        display: block;
+      }
+      .farrow {
+        align-self: center;
+        color: var(--ink-3);
+        font-size: 18px;
+        flex: 0 0 auto;
+      }
+      .arrow-start-rtl .farrow {
+        transform: scaleX(-1);
+      }
+
+      .atomic {
+        border: 2px dashed var(--accent-line);
+        border-radius: 14px;
+        padding: 16px;
+        margin: 14px 0;
+        background: var(--accent-soft);
+      }
+      .atomic .t {
+        text-align: center;
+        font-weight: 700;
+        color: var(--accent);
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+      .atomic ul {
+        columns: 2;
+        column-gap: 26px;
+        margin: 0;
+        padding-right: 20px;
+        font-size: 13.5px;
+        color: var(--ink);
+      }
+      @media (max-width: 640px) {
+        .atomic ul {
+          columns: 1;
+        }
+      }
+      .atomic ul li {
+        margin: 5px 0;
+        break-inside: avoid;
+      }
+
+      .topo {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin: 16px 0;
+      }
+      .tbox {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 16px;
+        box-shadow: var(--shadow);
+        text-align: center;
+      }
+      .tbox b {
+        font-size: 14px;
+      }
+      .tbox small {
+        display: block;
+        color: var(--ink-3);
+        font-size: 12.3px;
+        margin-top: 2px;
+      }
+      .tbox.core {
+        border-color: var(--accent-line);
+        background: var(--accent-soft);
+      }
+      .tbox.ext {
+        border-style: dashed;
+      }
+      .tdown {
+        text-align: center;
+        color: var(--ink-3);
+        font-size: 17px;
+        line-height: 1;
+      }
+      .tside {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .tree {
+        direction: ltr;
+        text-align: left;
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px 18px;
+        font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+        font-size: 12.8px;
+        line-height: 1.75;
+        color: var(--ink-2);
+        overflow-x: auto;
+        white-space: pre;
+      }
+      .tree b {
+        color: var(--code-ink);
+        font-weight: 600;
+      }
+      .tree i {
+        color: var(--ink-3);
+        font-style: normal;
+      }
+
+      /* ===== Env table code ===== */
+      .kv {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin: 8px 0 2px;
+      }
+      .kv code {
+        white-space: normal;
+      }
+
+      /* ===== Numbers strip ===== */
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+        gap: 12px;
+        margin: 16px 0;
+      }
+      .stat {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+        text-align: center;
+        box-shadow: var(--shadow);
+      }
+      .stat b {
+        display: block;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--accent);
+      }
+      .stat span {
+        font-size: 12.5px;
+        color: var(--ink-3);
+      }
+
+      /* ===== Callouts ===== */
+      .note {
+        border-right: 4px solid var(--accent);
+        background: var(--accent-soft);
+        border-radius: 10px;
+        padding: 12px 16px;
+        margin: 14px 0;
+        font-size: 13.8px;
+        color: var(--ink);
+      }
+      .note.ok {
+        border-right-color: var(--ok);
+        background: var(--ok-bg);
+      }
+      .note.warn {
+        border-right-color: var(--warn);
+        background: var(--warn-bg);
+      }
+      .note b {
+        color: inherit;
+      }
+
+      /* ===== Theme toggle & top ===== */
+      .toolbar {
+        position: fixed;
+        bottom: 22px;
+        left: 22px;
+        display: flex;
+        gap: 9px;
+        z-index: 50;
+      }
+      .toolbar button {
+        background: var(--panel);
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        width: 46px;
+        height: 46px;
+        font-size: 19px;
+        cursor: pointer;
+        box-shadow: var(--shadow);
+        display: grid;
+        place-items: center;
+        transition: transform 0.15s;
+      }
+      .toolbar button:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent-line);
+      }
+
+      footer {
+        border-top: 1px solid var(--line);
+        padding: 30px 20px;
+        text-align: center;
+        color: var(--ink-3);
+        font-size: 13px;
+        background: var(--panel);
+        margin-top: auto;
+      }
+      footer .sep {
+        margin: 0 8px;
+        opacity: 0.5;
+      }
+
+      /* ===== Responsive ===== */
+      @media (max-width: 960px) {
+        .layout {
+          grid-template-columns: 1fr;
+          gap: 20px;
+          padding: 18px 14px 70px;
+        }
+        .toc {
+          position: static;
+          padding: 10px;
+        }
+        .toc ol {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+        }
+        .toc a {
+          padding: 5px 10px;
+          font-size: 12.5px;
+        }
+        .toc h2 {
+          display: none;
+        }
+      }
+      @media print {
+        .toc,
+        .toolbar {
+          display: none;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+          padding: 0;
+        }
+        body {
+          font-size: 12px;
+        }
+        section {
+          break-inside: avoid-page;
+        }
+        .hero {
+          padding: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#content">تخطَّ إلى المحتوى الرئيسي</a>
+
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">S</div>
+          <h1>SubNation <span class="en">PROJECT STUDY GUIDE</span></h1>
+        </div>
+        <p class="lead">
+          دليل شامل لفهم مشروع SubNation من الصفر: ما هو، كيف يعمل من الداخل، الخدمات الخارجية التي
+          يحتاجها، المسارات الأساسية (الدخول، المحفظة، الشراء، التسليم)، قاعدة البيانات، الأمان،
+          والنشر والتشغيل — بلغة عربية مباشرة وبدون معلومات غير لازمة.
+        </p>
+        <div class="chips" role="list" aria-label="حقائق أساسية">
+          <span class="chip" role="listitem">🌍 <b>subnation.ly</b> — بيئة إنتاج حيّة</span>
+          <span class="chip" role="listitem"
+            >🛒 متجر اشتراكات رقمية <b>عربي RTL</b> للسوق الليبي</span
+          >
+          <span class="chip" role="listitem">💳 محفظة داخلية + تسليم مشفّر فوري</span>
+          <span class="chip" role="listitem">🧪 <b>5,465</b> اختبار آلي</span>
+          <span class="chip" role="listitem">📋 إصدار الدليل: <b>R184</b> · 2026-10-22</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="toc" aria-label="فهرس الأقسام">
+        <h2>محتويات الدليل</h2>
+        <ol>
+          <li><a href="#s1">ما هو المشروع؟</a></li>
+          <li><a href="#s2">البنية المعمارية</a></li>
+          <li><a href="#s3">التقنيات المستخدمة</a></li>
+          <li><a href="#s4">الخدمات الخارجية</a></li>
+          <li><a href="#s5">قاعدة البيانات</a></li>
+          <li><a href="#s6">واجهة الـ API</a></li>
+          <li><a href="#s7">المسارات الأساسية</a></li>
+          <li><a href="#s8">لوحة الإدارة</a></li>
+          <li><a href="#s9">الأمان</a></li>
+          <li><a href="#s10">متغيرات البيئة</a></li>
+          <li><a href="#s11">النشر والتشغيل</a></li>
+          <li><a href="#s12">الأرقام الحالية</a></li>
+          <li><a href="#s13">خريطة القراءة</a></li>
+        </ol>
+      </nav>
+
+      <main id="content">
+        <!-- ============ 1 ============ -->
+        <section id="s1">
+          <h2><span class="num" aria-hidden="true">١</span> ما هو المشروع؟</h2>
+          <p class="desc">
+            الهوية، الفكرة، وطريقة عمل المتجر من منظور المستخدم — قبل الغوص في التفاصيل الهندسية.
+          </p>
+
+          <div class="card">
+            <h4>الفكرة في سطر واحد</h4>
+            <p>
+              متجر إلكتروني <b>عربي بالكامل (من اليمين لليسار)</b> لبيع
+              <b>اشتراكات المنصات الرقمية</b> في السوق الليبي — نتفليكس، سبوتيفاي، ChatGPT Plus،
+              ExpressVPN، رخص Windows، أدوبي وغيرها (<b>45 منتجًا</b> حاليًا) — بأسعار بالدينار
+              الليبي (<span class="ltr">LYD</span>)، والدفع عبر <b>محفظة داخلية</b> تُشحن بتحويل
+              مالي، والتسليم <b>فوري ومشفّر</b> بعد الشراء.
+            </p>
+          </div>
+
+          <h3><span class="tick">◆</span> كيف يعمل المتجر — رحلة العميل في 5 خطوات</h3>
+          <div class="flow">
+            <div class="fstep">
+              <span class="n">١</span><b>التسجيل بدون كلمة مرور</b
+              ><span
+                >عبر Google أو Telegram أو رمز تحقّق على واتساب — الجلسة عبارة عن JWT داخل كوكي
+                httpOnly.</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٢</span><b>شحن المحفظة</b
+              ><span
+                >طلب شحن بتحويل مالي (ليبيانا / مدار / سداد / LyPay) → موافقة المشرف → الرصيد يدخل
+                سجلّ المحفظة.</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٣</span><b>الشراء</b
+              ><span
+                >معاملة واحدة ذرّية: خصم من الرصيد + حجز مخزون + خصومات + إنشاء الطلب — الكل أو لا
+                شيء.</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٤</span><b>التسليم المشفّر الفوري</b
+              ><span
+                >بيانات الاشتراك تظهر للعميل فور اكتمال الطلب (مشفّرة AES-256-GCM في قاعدة
+                البيانات).</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٥</span><b>الإدارة والصيانة</b
+              ><span
+                >لوحة إدارة شاملة (مع 2FA وصلاحيات) تدير المنتجات والمخزون والطلبات والمال.</span
+              >
+            </div>
+          </div>
+
+          <div class="grid g3">
+            <div class="card">
+              <h4>🔐 الدخول بلا كلمة مرور</h4>
+              <p>
+                ثلاث طرق للعملاء: <b>Google</b> (عبر Firebase)، <b>Telegram</b> (Widget + Mini App +
+                OIDC)، و<b>واتساب OTP</b>.
+              </p>
+            </div>
+            <div class="card">
+              <h4>💳 محفظة بسجل غير قابل للتعديل</h4>
+              <p>
+                كل حركة مالية سطر جديد في <code>wallet_ledger</code>؛ الرصيد <b>مشتقّ</b> من السجل
+                ولا يُخزَّن كرقم قابل للتلاعب.
+              </p>
+            </div>
+            <div class="card">
+              <h4>🎟️ عروض وولاء</h4>
+              <p>
+                كوبونات، تخفيضات فلاش (تخفيض واحد نشط كحد أقصى)، نقاط ولاء (100 نقطة = 1 د.ل)،
+                وبرنامج إحالات.
+              </p>
+            </div>
+            <div class="card">
+              <h4>📈 مراقبة إنتاجية</h4>
+              <p>
+                Sentry للأخطاء، Prometheus للمقاييس، سجلات منظّمة، وصفحة حالة عامة
+                <span class="ltr">/status</span>.
+              </p>
+            </div>
+            <div class="card">
+              <h4>📱 تطبيق ويب (PWA)</h4>
+              <p>يمكن تثبيت المتجر كتطبيق على الجوال مع دعم أوفلاين جزئي وتحديث تلقائي.</p>
+            </div>
+            <div class="card">
+              <h4>🔒 أمان مُحصَّن</h4>
+              <p>
+                CSP، حماية CSRF، تحديد معدل الطلبات على مستويات متعددة، تشفير بيانات الاعتماد،
+                وتدقيق كامل لكل عملية إدارية.
+              </p>
+            </div>
+          </div>
+
+          <div class="note">
+            <b>ملاحظة مهمة عن هذا الدليل:</b> كل ما فيه مأخوذ من حالة المستودع الفعلية عند إصداره.
+            المرجع الأدق دائمًا هو الكود نفسه و<code>CHANGELOG.md</code>. لا يحتوي هذا الملف على أي
+            أسرار — أسماء متغيرات البيئة فقط.
+          </div>
+        </section>
+
+        <!-- ============ 2 ============ -->
+        <section id="s2">
+          <h2><span class="num" aria-hidden="true">٢</span> البنية المعمارية</h2>
+          <p class="desc">
+            مستودع واحد (Monorepo) + صورة Docker واحدة + قاعدة بيانات خارجية. هذا هو الشكل الكامل
+            للنظام.
+          </p>
+
+          <h3><span class="tick">◆</span> شكل المستودع (pnpm Monorepo)</h3>
+          <div class="tree">
+            <b>SubNation2/</b> ├── <b>backend/</b>
+            <i
+              >— خادم Express 5 + TypeScript: المسارات، الخدمات، المهام المجدولة، الهجرات
+              التلقائية</i
+            >
+            ├── <b>frontend/</b>
+            <i>— تطبيق React 19 + Vite 8 (SPA عربي RTL) — يُبنى ويُقدَّم من نفس الخادم</i> ├──
+            <b>shared/</b> <i>— المشترك بين الجهتين:</i> │ ├── <b>db/</b>
+            <i>مخطط Drizzle + سلسلة هجرات SQL (مصدر الحقيقة للقاعدة)</i> │ ├── <b>api-spec/</b>
+            <i>عقد الـ OpenAPI (79 عملية)</i> │ ├── <b>api-zod/</b>
+            <i>مخططات تحقق Zod (مولّدة آليًا من العقد)</i> │ ├── <b>api-client-react/</b>
+            <i>خطافات React Query (مولّدة آليًا — عميل الواجهة الأمامية)</i> │ └──
+            <b>error-codes/</b> <i>فهرس رموز الأخطاء المشترك (26 رمزًا)</i> ├── <b>scripts/</b>
+            <i>— أدوات التشغيل المحلي: dev / seed / backup / validate</i> ├── <b>docs/</b>
+            <i>— شجرة التوثيق الكاملة + سجلات الجولات الهندسية</i> ├── <b>config/</b>
+            <i>— env.example: المرجع الكامل والمُعلَّق لمتغيرات البيئة</i> ├── <b>deploy/</b>
+            <i>— عقد Docker Compose للبيئة الكاملة (التطبيق + بوابة واتساب)</i> └── <b>specs/</b>
+            <i>— أدلة العمل القديمة المؤرخة (spec / plan / checklists)</i>
+          </div>
+
+          <div class="note ok">
+            <b>مبدأ أساسي:</b> الواجهة الأمامية والخلفية تعملان على <b>نفس الأصل (origin)</b> —
+            المتصفح يستخدم مسارات نسبية <span class="ltr">/api</span> واتصالات WebSocket بنفس
+            النطاق. أبسط نشر: عملية Node واحدة تقدّم كل شيء.
+          </div>
+
+          <h3><span class="tick">◆</span> الطوبولوجيا وقت التشغيل (كما هي منشورة فعليًا)</h3>
+          <div class="topo">
+            <div class="tbox">
+              <b>🌐 المتصفح / تطبيق PWA</b><small>المتجر العربي RTL · React 19 SPA</small>
+            </div>
+            <div class="tdown" aria-hidden="true">↓ ↑</div>
+            <div class="tbox">
+              <b>☁️ Cloudflare</b
+              ><small
+                >DNS فقط (رمادي، بدون بروكسي) — يُستخدم رأس
+                <span class="ltr">CF-Connecting-IP</span> لتحديد IP الحقيقي</small
+              >
+            </div>
+            <div class="tdown" aria-hidden="true">↓ ↑</div>
+            <div class="tbox">
+              <b>🔀 Traefik + Let's Encrypt</b
+              ><small>على الخادم: TLS وتحويل <span class="ltr">www → apex</span></small>
+            </div>
+            <div class="tdown" aria-hidden="true">↓ ↑</div>
+            <div class="tbox core">
+              <b>🐳 Coolify — حاوية Docker واحدة (خادم Contabo)</b
+              ><small
+                >Node 22 Alpine · خادم Express يقدّم: الـ API + ملفات SPA + Socket.IO + المجدولات ·
+                فحص صحة <span class="ltr">/api/healthz</span></small
+              >
+            </div>
+            <div class="tdown" aria-hidden="true">↓ ↑</div>
+            <div class="tside">
+              <div class="tbox ext">
+                <b>🗄️ Neon Postgres (خارجي)</b
+                ><small>قاعدة البيانات الوحيدة — us-east-1 · PG 17 · مُجمَّع الاتصالات</small>
+              </div>
+              <div class="tbox ext">
+                <b>💬 بوابة OpenWA (جانبية)</b
+                ><small
+                  >حاوية واتساب على نفس الخادم — <span class="ltr">localhost:3001</span></small
+                >
+              </div>
+            </div>
+            <div class="note" style="margin: 10px 0 0">
+              <b>Redis اختياري وغير مُفعَّل حاليًا:</b> عند عدم ضبطه تتراجع المعدّات تلقائيًا إلى
+              بدائل داخل العملية (تحديد المعدل، الكاش) وإيجار PostgreSQL للمجدولات — بدون أي انكار
+              خدمة.
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> ثلاث عمليات داخل الخادم الواحد</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>العملية</th>
+                <th>دورها</th>
+                <th>ملاحظات</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>الخادم (Web)</b></td>
+                <td>
+                  يقدّم الـ API والـ SPA واتصالات Socket.IO ويشغّل المجدولات (بعد انتخاب قائد عبر
+                  إيجار PG)
+                </td>
+                <td>هي العملية المنشورة في الإنتاج (<code>dist/index.mjs</code>)</td>
+              </tr>
+              <tr>
+                <td><b>العامل (Worker)</b></td>
+                <td>طبقة اختيارية لمهام الخلفية الثقيلة (الإثراء، التوقعات)</td>
+                <td>
+                  <b>غير منشورة حاليًا</b> — يعمل الخادم بالمهام داخليةً مع
+                  <code>SINGLE_INSTANCE_MODE=true</code>
+                </td>
+              </tr>
+              <tr>
+                <td><b>الهجرات (Boot)</b></td>
+                <td>تُنشئ/تُحدِّث المخطط تلقائيًا عند كل إقلاع — بشكل idempotent (آمن للتكرار)</td>
+                <td>لا توجد خطوة <code>db:push</code> في سير العمل إطلاقًا (قانون صريح)</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ============ 3 ============ -->
+        <section id="s3">
+          <h2><span class="num" aria-hidden="true">٣</span> التقنيات المستخدمة</h2>
+          <p class="desc">
+            كل التقنيات مفتوحة المصدر ومثبتة في ملفات <code>package.json</code> الخاصة بكل حزمة.
+          </p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>الطبقة</th>
+                <th>التقنية</th>
+                <th>التفاصيل</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>الواجهة الأمامية</b></td>
+                <td>React 19 · Vite 8 (Rolldown/Oxc) · Tailwind CSS 4</td>
+                <td>
+                  SPA عربي RTL · wouter للتوجيه · TanStack Query v5 لإدارة حالة الخادم · مكوّنات
+                  بأسلوب shadcn/ui · خط Readex Pro · PWA عبر vite-plugin-pwa
+                </td>
+              </tr>
+              <tr>
+                <td><b>الواجهة الخلفية</b></td>
+                <td>Express 5 · TypeScript · Socket.IO 4</td>
+                <td>
+                  غرف للمستخدمين والمشرفين · هدر أمني (Helmet/CSP) · Pino للسجلات · argon2 لكلمات
+                  مرور المشرفين
+                </td>
+              </tr>
+              <tr>
+                <td><b>قاعدة البيانات</b></td>
+                <td>PostgreSQL (Neon) · Drizzle ORM</td>
+                <td>
+                  المخطط مكتوب بـ TypeScript في <code>shared/db</code> مع مرآة SQL متطابقة يراقبها
+                  CI
+                </td>
+              </tr>
+              <tr>
+                <td><b>عقد الـ API</b></td>
+                <td>OpenAPI 3 + orval</td>
+                <td>
+                  79 عملية موثّقة؛ يُولِّد آليًا: مخططات Zod + خطافات العميل — وCI يمنع أي انحراف
+                </td>
+              </tr>
+              <tr>
+                <td><b>التحقق من المدخلات</b></td>
+                <td>Zod 4</td>
+                <td>على كل حدود الثقة (طلبات الـ API) — مولَّد من نفس العقد</td>
+              </tr>
+              <tr>
+                <td><b>المراقبة</b></td>
+                <td>Sentry · Prometheus (<span class="ltr">@prometheus-io/client</span>) · Pino</td>
+                <td>
+                  تتبع أخطاء + Session Replay كسول التحميل · مقاييس على
+                  <span class="ltr">/api/metrics</span> · سجلات منظّمة مع إخفاء الحساسية
+                </td>
+              </tr>
+              <tr>
+                <td><b>النشر</b></td>
+                <td>Docker (صورة واحدة) · Coolify · GitHub Actions</td>
+                <td>Node 22 Alpine مثبَّت بالهاش · فحص صحة مدمج · CI كامل على كل دفعة</td>
+              </tr>
+              <tr>
+                <td><b>الاختبارات</b></td>
+                <td>Vitest 5 (الوحدات) · Playwright (E2E)</td>
+                <td>5,465 اختبار وحدة عبر الجهات الثلاث + 135 سيناريو E2E للزوار</td>
+              </tr>
+              <tr>
+                <td><b>إدارة الحزم</b></td>
+                <td>pnpm 10 (Monorepo)</td>
+                <td>
+                  مفروضة بالقوة (npm/yarn يفشلان) · حد أدنى لعمر الإصدارات + تجاوزات أمنية مُنسَّقة
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="note">
+            <b>قواعد أداء ملزومة في CI:</b> ميزانية حجم الحزمة الأولية (<span class="ltr"
+              >148,158 B</span
+            >
+            مضغوطة عند قياس R184 — حد تحذير 150 KiB وحد فشل 160 KiB) · تحميل كسول للمخططات وSentry ·
+            تسخين أجزاء المسارات عند تمرير المؤشر.
+          </div>
+        </section>
+
+        <!-- ============ 4 ============ -->
+        <section id="s4">
+          <h2>
+            <span class="num" aria-hidden="true">٤</span> الخدمات الخارجية: ما الذي يحتاجه المشروع
+            فعليًا؟
+          </h2>
+          <p class="desc">
+            هذه أهم قسم في الدليل. كل خدمة خارجية، دورها، متغيراتها، وهل هي <b>إلزامية</b> أم
+            <b>اختيارية</b> — وماذا يحدث عند غيابها.
+          </p>
+
+          <h3><span class="tick">◆</span> الإلزامية عند الإقلاع (بدونها لا يبدأ الخادم)</h3>
+          <div class="grid g2">
+            <div class="card">
+              <h4>🗄️ Neon Postgres <span class="badge b-req">إلزامي</span></h4>
+              <p>قاعدة البيانات الوحيدة — كل شيء فيها: المال، الكتالوج، الجلسات، المخاطر.</p>
+              <div class="kv">
+                <code>DATABASE_URL</code><code>DB_POOL_MAX</code
+                ><code>PG_STATEMENT_TIMEOUT_MS</code>
+              </div>
+              <p><b>عند غيابها:</b> يفشل الإقلاع فورًا — لا قاعدة، لا نظام.</p>
+            </div>
+            <div class="card">
+              <h4>🔑 الأسرار الثلاثة <span class="badge b-req">إلزامية</span></h4>
+              <p>يُتحقق منها عند الإقلاع ويُرفض البدء إن كانت ضعيفة أو ناقصة:</p>
+              <ul>
+                <li><code>SESSION_SECRET</code> — توقيع JWT للمستخدمين (≥32 حرفًا)</li>
+                <li>
+                  <code>ADMIN_JWT_SECRET</code> — توقيع JWT للمشرفين (≥32، ويجب أن يختلف عن السابق)
+                </li>
+                <li>
+                  <code>ENCRYPTION_KEY</code> — مفتاح AES-256-GCM لبيانات الاعتماد (64 سداسيًا)
+                </li>
+              </ul>
+              <p>وفي الإنتاج: قائمة أصول CSRF غير فارغة (<code>CSRF_ALLOWED_ORIGINS</code>).</p>
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> الخدمات المُفعَّلة في الإنتاج الحالي</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>الخدمة</th>
+                <th>الدور بالضبط</th>
+                <th>متغيراتها</th>
+                <th>عند غيابها</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>💬 Telegram Bot</b><span class="sub">بوتان مستقلان في خدمة واحدة</span></td>
+                <td>
+                  <b>١. بوت العمليات:</b> إشعارات المشرف (طلب جديد، شحن جديد، مخزون منخفض) +
+                  <b>أزرار الموافقة/الرفض</b> لطلبات الشحن مباشرة من تيليجرام.<br />
+                  <b>٢. تسجيل دخول Telegram:</b> للعملاء (Widget + Mini App + OIDC حديث) — يُضبط من
+                  لوحة الإدارة (قاعدة بيانات، ليس متغيرات).
+                </td>
+                <td>
+                  <div class="kv">
+                    <code>TELEGRAM_BOT_TOKEN</code><code>TELEGRAM_CHAT_ID</code
+                    ><code>TELEGRAM_WEBHOOK_SECRET</code><code>TELEGRAM_ADMIN_IDS</code>
+                  </div>
+                </td>
+                <td>
+                  لا إشعارات ولا موافقات عبر تيليجرام — تعمل الموافقات من الموقع فقط، ويتعطل دخول
+                  تيليجرام.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <b>🟢 WhatsApp / OpenWA</b
+                  ><span class="sub">بوابة مُستضافة ذاتيًا (مشروع مفتوح المصدر من نفس المالك)</span>
+                </td>
+                <td>
+                  مسار OTP الوحيد عبر واتساب: إرسال رمز التحقق للعملاء + مراقبة صحة القناة + إدارة
+                  جلسة QR من لوحة التشخيص.
+                </td>
+                <td>
+                  <div class="kv">
+                    <code>WHATSAPP_OTP_BASE_URL</code><code>WHATSAPP_OTP_API_KEY</code
+                    ><code>WHATSAPP_OTP_SESSION</code><code>WHATSAPP_OTP_SETTLE_MS</code
+                    ><code>OTP_DAILY_SEND_CAP</code>
+                  </div>
+                </td>
+                <td>يتعطل تسجيل الدخول عبر واتساب — Google وTelegram يستمران.</td>
+              </tr>
+              <tr>
+                <td><b>🔴 Sentry</b></td>
+                <td>تتبع الأخطاء + الأداء + Session Replay (كسول) — في الواجهتين.</td>
+                <td>
+                  <div class="kv">
+                    <code>SENTRY_DSN</code><code>SENTRY_TRACES_SAMPLE_RATE</code>
+                  </div>
+                </td>
+                <td>لا تتبع أخطاء — لا شيء ينكسر وظيفيًا.</td>
+              </tr>
+              <tr>
+                <td><b>📊 Google Analytics 4</b></td>
+                <td>تحليلات الزيارات (يُحمَّل عند الخمول، معتمد في CSP).</td>
+                <td>
+                  <div class="kv"><code>VITE_GA_TRACKING_ID</code></div>
+                </td>
+                <td>لا تحليلات.</td>
+              </tr>
+              <tr>
+                <td><b>🔍 IndexNow</b></td>
+                <td>إبلاغ محركات البحث فورًا عند تغيّر الكتالوج (منتج/متغير/تخفيض/تسعير).</td>
+                <td>
+                  <div class="kv"><code>INDEXNOW_KEY</code></div>
+                </td>
+                <td>الزحف يعتمد على الجدول الاعتيادي فقط.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3><span class="tick">◆</span> خدمات مُعرَّفة لكنها <b>غير مُفعَّلة</b> حاليًا</h3>
+          <div class="grid g2">
+            <div class="card">
+              <h4>⚡ Redis <span class="badge b-warn">اختياري — غير مُفعَّل</span></h4>
+              <p>
+                عند ضبط <code>REDIS_URL</code> يتحسّن: تخزين تحديد المعدل، كاش، قفل الهجرات
+                والمجدولات، ومحوّل Socket.IO عبر الخوادم.
+              </p>
+              <p>
+                <b>الوضع الحالي بدون Redis:</b> بدائل داخل العملية تعمل بشكل كامل والنظام مستقر هكذا
+                منذ 2026-09.
+              </p>
+            </div>
+            <div class="card">
+              <h4>
+                🔥 Firebase (Google)
+                <span class="badge b-warn">اختياري — دخول Google معطَّل بدونه</span>
+              </h4>
+              <p>حساب خدمة للتحقق من رموز Google ID من جهة الخادم.</p>
+              <div class="kv">
+                <code>FIREBASE_AUTH_ENABLED</code><code>FIREBASE_SERVICE_ACCOUNT_JSON</code
+                ><code>VITE_FIREBASE_AUTH_ENABLED</code>
+              </div>
+            </div>
+            <div class="card">
+              <h4>
+                🤖 مزوّد LLM للإثراء
+                <span class="badge b-warn">اختياري — الإثراء معطَّل بدونه</span>
+              </h4>
+              <p>
+                مسودات وصف المنتجات العربية بالذكاء الاصطناعي (OpenRouter أو NVIDIA NIM — بروتوكول
+                متوافق مع OpenAI).
+              </p>
+              <div class="kv">
+                <code>COPILOT_PROVIDER</code><code>COPILOT_API_KEY</code><code>COPILOT_MODEL</code
+                ><code>COPILOT_BASE_URL</code><code>ENRICHMENT_RUNNER_ENABLED</code>
+              </div>
+              <p>
+                <b>لماذا اسم <code>COPILOT_*</code>؟</b> أسماء تاريخية بقيت حرفيًا لأن أسرار Coolify
+                في الإنتاج تحملها — تغيير الاسم يكسر الإثراء عند الإقلاع. الاسم اليوم يعني حصرًا:
+                <b>إعدادات LLM الخاص بميزة الإثراء</b> (لا علاقة له بأي مساعد إداري — تلك الميزة
+                حُذفت نهائيًا).
+              </p>
+            </div>
+            <div class="card">
+              <h4>📣 قنوات تنبيه ثانوية <span class="badge b-mute">اختيارية</span></h4>
+              <p>Discord + Webhook عام كبديل/إضافة لقناة تيليجرام.</p>
+              <div class="kv">
+                <code>DISCORD_WEBHOOK_URL</code><code>GENERIC_ALERT_WEBHOOK_URL</code
+                ><code>ALERTING_ENABLED</code>
+              </div>
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> البنية التحتية المُحيطة</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>المكوّن</th>
+                <th>الدور</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>GitHub</b></td>
+                <td>
+                  المستودع الرسمي (<span class="ltr">ahmadmedo1012/SubNation2</span>) — فرع
+                  <code>main</code> فقط. كل دفعة تشغّل CI، وCoolify يبني ويحدث الإنتاج تلقائيًا
+                  (Webhook).
+                </td>
+              </tr>
+              <tr>
+                <td><b>Coolify (على Contabo)</b></td>
+                <td>
+                  سلطة النشر الوحيدة: بناء Docker + تحديث متدرّج مقيَّد بفحص الصحة (~12–15 دقيقة لكل
+                  دورة).
+                </td>
+              </tr>
+              <tr>
+                <td><b>Cloudflare</b></td>
+                <td>DNS فقط (رمادي) — لا بروكسي. يُقرأ منها رأس IP الحقيقي فقط.</td>
+              </tr>
+              <tr>
+                <td><b>مراقب الجهات الخارجية</b></td>
+                <td>
+                  فحص كل 5 دقائق (الصفحة الرئيسية + healthz + شهادة TLS + المنافذ المكشوفة) مع تنبيه
+                  تيليجرام — يعمل كـ GitHub Action خارجي.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ============ 5 ============ -->
+        <section id="s5">
+          <h2><span class="num" aria-hidden="true">٥</span> قاعدة البيانات — 38 جدولًا</h2>
+          <p class="desc">
+            PostgreSQL واحد عبر Drizzle ORM. المخطط مكتوب بـ TypeScript في <code>shared/db</code>
+            وتُطبَّقه الهجرات التلقائية عند الإقلاع. هذه كل المجالات:
+          </p>
+
+          <div class="grid g2">
+            <div class="card">
+              <h4>👥 المستخدمون والجلسات <span class="badge b-mute">8 جداول</span></h4>
+              <ul>
+                <li><code>users</code> — العملاء (الهاتف، الرصيد مشتق، الطبقة)</li>
+                <li>
+                  <code>user_auth_identities</code> — ربط الحسابات بمزوّدي الدخول
+                  (Google/Telegram/WhatsApp)
+                </li>
+                <li>
+                  <code>sessions</code> · <code>admin_sessions</code> — جلسات العملاء والمشرفين
+                  (قابلة للإبطال)
+                </li>
+                <li><code>admin_users</code> — المشرفون (كلمة مرور argon2 + TOTP)</li>
+                <li><code>login_attempts</code> — محاولات الدخول (قفل تدريجي)</li>
+                <li>
+                  <code>auth_activity</code> · <code>account_link_consents</code> — نشاط المصادقة
+                  وموافقات ربط الحسابات
+                </li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>🛍️ الكتالوج <span class="badge b-mute">3 جداول</span></h4>
+              <ul>
+                <li>
+                  <code>products</code> — المنتجات (الاسم العربي، الوصف، الفئة، الحالة، حقول SEO)
+                </li>
+                <li><code>product_variants</code> — المتغيرات (شهر/3 أشهر… بأسعار مستقلة)</li>
+                <li>
+                  <code>inventory</code> — وحدات المخزون: بيانات اعتماد <b>مشفّرة</b> + حالة
+                  (متاح/محجوز/مُسلَّم)
+                </li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>💰 المال <span class="badge b-mute">5 جداول</span></h4>
+              <ul>
+                <li>
+                  <code>wallet_ledger</code> — <b>سجل المحفظة غير القابل للتعديل</b> (الرصيد يُشتق
+                  منه)
+                </li>
+                <li><code>wallet_topups</code> — طلبات الشحن ودورة موافقاتها</li>
+                <li>
+                  <code>orders</code> — الطلبات (لقطة سعر مجمّدة + بيانات الاعتماد عند التسليم)
+                </li>
+                <li><code>provider_fulfillments</code> — تتبع تسليم كل وحدة مخزون</li>
+                <li><code>idempotency_keys</code> — مفاتيح منع التكرار الدائمة لكل عملية مالية</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>🎟️ العروض والولاء <span class="badge b-mute">4 جداول</span></h4>
+              <ul>
+                <li><code>coupons</code> — كوبونات (نسبة/مبلغ، حدود استخدام، صلاحية)</li>
+                <li>
+                  <code>flash_sales</code> — تخفيض فلاش (<b>واحد نشط كحد أقصى</b> — فهرس فريد جزئي،
+                  ≤95%)
+                </li>
+                <li><code>points_ledger</code> — سجل نقاط الولاء</li>
+                <li><code>referral_events</code> — أحداث الإحالات (مكافآت المُحيل والمُحال)</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>🆘 الدعم والتنبيهات <span class="badge b-mute">5 جداول</span></h4>
+              <ul>
+                <li>
+                  <code>support_tickets</code> · <code>ticket_replies</code> — تذاكر الدعم ونقاشها
+                </li>
+                <li><code>notifications</code> — إشعارات المستخدمين (الجرس)</li>
+                <li><code>admin_alerts</code> — تنبيهات المشرفين (درج التنبيهات + البث اللحظي)</li>
+                <li>
+                  <code>audit_logs</code> — <b>سجل تدقيق كل عملية إدارية</b> (يُحتفظ به 180 يومًا)
+                </li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>🛡️ المخاطر <span class="badge b-mute">4 جداول</span></h4>
+              <ul>
+                <li><code>risk_events</code> — أحداث المخاطر والإجراء المتخذ</li>
+                <li><code>risk_rules</code> — القواعد (بـ DSL خاص قابل للتعديل من اللوحة)</li>
+                <li><code>risk_config</code> · <code>risk_labels</code> — الإعدادات والوسوم</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>✨ الإثراء والتوقعات <span class="badge b-mute">4 جداول</span></h4>
+              <ul>
+                <li>
+                  <code>enrichment_drafts</code> · <code>enrichment_runs</code> — مسودات وصف
+                  المنتجات بالـ AI ودورات تشغيلها
+                </li>
+                <li>
+                  <code>inventory_forecasts</code> · <code>inventory_forecast_runs</code> — توقعات
+                  نفاد المخزون
+                </li>
+              </ul>
+            </div>
+            <div class="card">
+              <h4>⚙️ النظام <span class="badge b-mute">5 جداول</span></h4>
+              <ul>
+                <li><code>cart_items</code> — سلة الشراء (لكل مستخدم)</li>
+                <li><code>system_settings</code> — إعدادات مفتاح/قيمة (التسعير، مزوّدو الدخول…)</li>
+                <li>
+                  <code>whatsapp_otps</code> · <code>openwa_sessions</code> — رموز OTP وجلسات
+                  البوابة
+                </li>
+                <li><code>scheduler_leader_lease</code> — إيجار انتخاب قائد المجدولات</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="note ok">
+            <b>ضمانات على مستوى المخطط نفسه:</b> قيود CHECK حسابية على كل جداول المال، ومفاتيح
+            أجنبية بسياسة <span class="ltr">RESTRICT</span> (لا حذف متسلسل يمسّ المال) — مطبّقة
+            بالتطابق في ثلاث مرايا (مخطط TypeScript + سلسلة Drizzle + هجرات التشغيل) يراقبها CI.
+          </div>
+        </section>
+
+        <!-- ============ 6 ============ -->
+        <section id="s6">
+          <h2><span class="num" aria-hidden="true">٦</span> واجهة الـ API — 79 عملية موثّقة</h2>
+          <p class="desc">
+            كل مسار تحت <span class="ltr">/api</span>. العقد الكامل في
+            <code>shared/api-spec/openapi.yaml</code>
+            ويُمنع أي انحراف بين العقد والمسارات الفعلية بواسطة CI.
+          </p>
+
+          <h3><span class="tick">◆</span> المسارات العامة (للعملاء والزوار)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>العائلة</th>
+                <th>أبرز المسارات</th>
+                <th>ملاحظات</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>الصحة</b></td>
+                <td>
+                  <span class="ltr">GET /healthz</span> · <span class="ltr">/healthz/live</span> ·
+                  <span class="ltr">/healthz/summary</span>
+                </td>
+                <td>
+                  عامة — فحص Coolify يعتمد على <span class="ltr">/api/healthz</span>؛ أما
+                  <span class="ltr">/healthz/ready</span> والفحوص العميقة (Redis/Neon/Firebase)
+                  فمحمية بنطاق settings
+                </td>
+              </tr>
+              <tr>
+                <td><b>المصادقة</b></td>
+                <td>
+                  <span class="ltr">POST /auth/firebase/session</span> ·
+                  <span class="ltr">/auth/telegram</span> ·
+                  <span class="ltr">/auth/whatsapp/start|verify</span> ·
+                  <span class="ltr">GET /auth/me</span> · <span class="ltr">POST /auth/logout</span>
+                </td>
+                <td>بلا كلمة مرور + إدارة الجلسات والأجهزة</td>
+              </tr>
+              <tr>
+                <td><b>الكتالوج</b></td>
+                <td>
+                  <span class="ltr">GET /products</span> (إسقاط خفيف
+                  <span class="ltr">?fields=list</span>) ·
+                  <span class="ltr">/products/:slug</span> ·
+                  <span class="ltr">/catalog/stats</span> · <span class="ltr">/flash-sale</span>
+                </td>
+                <td>بحث عربي (trigram) + توصيات + أرضية سعر قابلة للشراء</td>
+              </tr>
+              <tr>
+                <td><b>السلة</b></td>
+                <td>
+                  <span class="ltr">GET /cart</span> · <span class="ltr">POST /cart/items</span> ·
+                  <span class="ltr">PATCH/DELETE /cart/items/:id</span>
+                </td>
+                <td>تسعير فلاش حيّ · حد كمية 99</td>
+              </tr>
+              <tr>
+                <td><b>الطلبات</b></td>
+                <td>
+                  <span class="ltr">POST /orders</span> · <span class="ltr">GET /orders</span> ·
+                  <span class="ltr">GET /orders/:orderCode</span>
+                </td>
+                <td>Checkout + فك تشفير بيانات الاعتماد للمالك فقط</td>
+              </tr>
+              <tr>
+                <td><b>المحفظة</b></td>
+                <td>
+                  <span class="ltr">GET /wallet</span> ·
+                  <span class="ltr">GET /wallet/topups</span> ·
+                  <span class="ltr">POST /wallet/topups</span>
+                </td>
+                <td>إنشاء طلب الشحن + كشف الحساب</td>
+              </tr>
+              <tr>
+                <td><b>الكوبونات</b></td>
+                <td><span class="ltr">POST /coupons/validate</span></td>
+                <td>عام بمُحدِّد معدل صارم (10/دقيقة)</td>
+              </tr>
+              <tr>
+                <td><b>الولاء والإحالات</b></td>
+                <td>
+                  <span class="ltr">GET /loyalty/*</span> ·
+                  <span class="ltr">POST /loyalty/convert-points</span>
+                </td>
+                <td>تحويل النقاط idempotent دائم</td>
+              </tr>
+              <tr>
+                <td><b>الدعم والإشعارات</b></td>
+                <td>
+                  <span class="ltr">/support/tickets</span> ·
+                  <span class="ltr">/notifications</span>
+                </td>
+                <td>تذاكر + جرس الإشعارات</td>
+              </tr>
+              <tr>
+                <td><b>SEO والقياس</b></td>
+                <td>
+                  <span class="ltr">/robots.txt</span> · <span class="ltr">/sitemap.xml</span> (56
+                  رابطًا) · <span class="ltr">POST /cwv</span>
+                </td>
+                <td>خرائط من قاعدة البيانات + قياس Core Web Vitals</td>
+              </tr>
+              <tr>
+                <td><b>Webhook</b></td>
+                <td><span class="ltr">POST /webhook/telegram</span></td>
+                <td>أزرار موافقة الشحن — تحقق رمز سري + قائمة مشرفين</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3><span class="tick">◆</span> مسارات الإدارة (محمية بـ JWT مشرف + نطاق صلاحية)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>النطاق المطلوب</th>
+                <th>العائلات</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>inventory</code></td>
+                <td>
+                  المنتجات · المتغيرات · المخزون · <b>إعدادات التسعير</b> وإعادة الاحتساب · تخفيضات
+                  الفلاش · الإثراء · التوقعات
+                </td>
+              </tr>
+              <tr>
+                <td><code>orders</code></td>
+                <td>الطلبات · بيانات الاعتماد · الاسترداد · الحالة الجماعية</td>
+              </tr>
+              <tr>
+                <td><code>finance</code></td>
+                <td>طابور الشحن والموافقات · إدارة الكوبونات</td>
+              </tr>
+              <tr>
+                <td><code>users</code></td>
+                <td>المستخدمون · المخاطر · الإحالات (الرصيد يحتاج <code>finance</code> أيضًا)</td>
+              </tr>
+              <tr>
+                <td><code>support</code></td>
+                <td>التذاكر · التنبيهات</td>
+              </tr>
+              <tr>
+                <td><code>admins</code></td>
+                <td>إدارة المشرفين · سجلات التدقيق · أمان المصادقة وإحصاءاتها</td>
+              </tr>
+              <tr>
+                <td><code>settings</code></td>
+                <td>الإعدادات · المراقبة · التشخيص · إعدادات مزوّدي الدخول</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="note">
+            <b>دخول المشرف نفسه:</b> <span class="ltr">POST /api/admin/login</span> (اسم مستخدم +
+            كلمة مرور) ثم تحقق TOTP ثنائي الخطوات — جلسة 8 ساعات بسرّ توقيع مستقل. كل عائلة محمية
+            بمسار 401 → 403 (نطاق خاطئ) → 200 (نطاق صحيح)، وكل اختبار لهذه السلسلة مُثبَّت آليًا.
+          </div>
+        </section>
+
+        <!-- ============ 7 ============ -->
+        <section id="s7">
+          <h2>
+            <span class="num" aria-hidden="true">٧</span> المسارات الأساسية — كيف تعمل بالتفصيل
+          </h2>
+          <p class="desc">هنا يظهر "كيف يعمل" المشروع فعليًا: كل تدفّق خطوة بخطوة.</p>
+
+          <h3><span class="tick">◆</span> 7.1 تسجيل الدخول (ثلاث طرق + المشرفون)</h3>
+          <div class="grid g2">
+            <div class="card">
+              <h4>Google</h4>
+              <p>
+                تسجيل الدخول من المتصفح عبر Firebase → إرسال <b>رمز ID</b> إلى
+                <span class="ltr">/auth/firebase/session</span> → التحقق من الخادم بحساب الخدمة →
+                إيجاد/إنشاء المستخدم + ربط الهوية → جلسة JWT (كوكي httpOnly لمدة 30 يومًا) مع سطر
+                جلسة قابل للإبطال.
+              </p>
+            </div>
+            <div class="card">
+              <h4>Telegram</h4>
+              <p>
+                ثلاث صور: <b>Widget</b> الكلاسيكي (تحقق HMAC)، <b>Mini App</b> (دخول تلقائي داخل
+                التطبيق)، و<b>OIDC حديث</b> (Authorization Code + PKCE ضد
+                <span class="ltr">oauth.telegram.org</span>). بيانات البوت تُدار من لوحة الإدارة
+                وليست متغيرات بيئة.
+              </p>
+            </div>
+            <div class="card">
+              <h4>WhatsApp OTP</h4>
+              <p>
+                <span class="ltr">/auth/whatsapp/start</span> يولّد رمزًا (صلاحية 5 دقائق، ≤5
+                محاولات، سقف إرسال شامل 500/يوم) ويرسله عبر بوابة OpenWA →
+                <span class="ltr">/verify</span> يفحص الرمز → جلسة. حمايات: قفل تدريجي (15→240
+                دقيقة) وحدود إرسال لكل هاتف/IP.
+              </p>
+            </div>
+            <div class="card">
+              <h4>المشرفون</h4>
+              <p>
+                اسم مستخدم + كلمة مرور (argon2) + <b>تحقق TOTP</b> إلزامي إن كان مُسجَّلًا → جلسة 8
+                ساعات بسرّ مستقل + سطر <code>admin_sessions</code>. كل عملية إدارية تُسجَّل في
+                <code>audit_logs</code> وتحمل نطاقًا من:
+                <code>all · orders · finance · inventory · support · users · admins · settings</code
+                >.
+              </p>
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> 7.2 شحن المحفظة (Top-up)</h3>
+          <div class="flow">
+            <div class="fstep">
+              <span class="n">١</span><b>العميل يطلب شحنًا</b
+              ><span
+                >المبلغ + طريقة الدفع (تحويل مصرفي أو LyPay) + الشبكة (ليبيانا/مدار/سداد/LyPay) —
+                بحد أقصى 3 طلبات معلّقة.</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٢</span><b>فحوص الإنشاء</b
+              ><span
+                >تحقق من المبلغ والشبكة + منع تكرار دائم (مفتاح Idempotency) + فحص مخاطر التكرار
+                (تحويل مشابه خلال 24 ساعة → إشارة «⚠ خطر تكرار محتمل» للمشرف — إشارة مراجعة وليست
+                رفضًا).</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٣</span><b>بطاقة المشرف</b
+              ><span
+                >تصل بطاقة تيليجرام للمشرف (⏳ معلّق / ✅ / ❌) — الموافقة من تيليجرام نفسه أو من
+                الموقع.</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٤</span><b>الموافقة الذرّية</b
+              ><span
+                >معاملة واحدة: إعادة فحص الحالة → إضافة الرصيد إلى السجل → مكافأة الإحالة إن كانت
+                أول شحنة → مكافأة ترحيب (5.00 د.ل).</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٥</span><b>إشعار العميل</b
+              ><span>إشعار + تحديث لحظي للمحفظة عبر Socket.IO.</span>
+            </div>
+          </div>
+          <div class="note">
+            <b>لماذا هذا التصميم؟</b> الموافقة idempotent (لا يمكن إضافة الرصيد مرتين لنفس الطلب حتى
+            لو ضُغط الزر مرتين)، والرصيد لا يُعدَّل مباشرة قط — فقط سطور سجل جديدة.
+          </div>
+
+          <h3><span class="tick">◆</span> 7.3 الشراء (Checkout) — قلب النظام المالي</h3>
+          <div class="flow">
+            <div class="fstep">
+              <span class="n">١</span><b>قبل المعاملة</b
+              ><span
+                >حظر المخاطر الصلب (423) → الحاجز الناعم → مفتاح Idempotency (إعادة تشغيل نفس الطلب
+                تُعيد نفس النتيجة) → تسعير نهائي + فحص الرصيد.</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٢</span><b>المعاملة الذرّية</b
+              ><span>كل ما يلي ينجح أو يُلغى معًا — انظر الصندوق أدناه.</span>
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٣</span><b>بعد الالتزام فقط</b
+              ><span
+                >الإشعارات، تحديث تيليجرام، إشارات المخاطر — لا شيء منها يظهر إن رُجعت
+                المعاملة.</span
+              >
+            </div>
+          </div>
+          <div class="atomic">
+            <div class="t">⟦ داخل المعاملة الواحدة — كلها أو لا شيء ⟧</div>
+            <ul>
+              <li>
+                <b>حجز وحدة مخزون</b> — كاتب واحد عبر
+                <span class="ltr">FOR UPDATE SKIP LOCKED</span> (لا يمكن لوحدتين أن تُحجزا مرتين
+                مهما بلغ التزامن)
+              </li>
+              <li>
+                <b>خصم الرصيد</b> — تحقق + خصم متشائميان؛ أي تعارض → 409 قابل لإعادة المحاولة
+                (النقود لم تتحرك)
+              </li>
+              <li><b>استهلاك الكوبون</b> (إن وُجد) وترحيل قيمته</li>
+              <li><b>منح نقاط الولاء</b> — سطر جديد في <code>points_ledger</code></li>
+              <li><b>إنشاء الطلب</b> — بـ <b>لقطة سعر مجمّدة</b> (لا يتغير سعر طلب مكتمل أبدًا)</li>
+              <li><b>سطر سجل المحفظة</b> — الخصم الموثّق</li>
+            </ul>
+          </div>
+          <div class="note ok">
+            <b>التسليم الفوري:</b> بيانات الاعتماد كانت مشفّرة في جدول المخزون (AES-256-GCM)، وتُنقل
+            إلى الطلب لحظة اكتماله — فيظهر للعميل فورًا في صفحة الطلب، ويفكّ الخادم التشفير
+            <b>للمالك فقط</b>. أي فشل في فك التشفير = فشل مقفول (لا تسليم لبيانات فاسدة).
+          </div>
+
+          <h3><span class="tick">◆</span> 7.4 الاسترداد (Refund)</h3>
+          <div class="card">
+            <p>
+              من لوحة الإدارة (نطاق <code>orders</code>) — معاملة واحدة: تغيير حالة الطلب إلى
+              «مُسترد» + <b>إعادة الرصيد</b> بسطر سجل جديد + <b>سحب نقاط الولاء</b> الممنوحة +
+              معالجة خانة الكوبون. الحالة الجماعية تعيد أغلفة <span class="ltr">207</span> متعددة
+              الحالات مع الحقيقة الأرضية لكل طلب (الطلبات الفاشلة لا تحرّك مالًا).
+            </p>
+          </div>
+
+          <h3><span class="tick">◆</span> 7.5 محرك التسعير والخصومات</h3>
+          <div class="card">
+            <h4>كيف يتكوّن السعر؟</h4>
+            <p>
+              قاعدة التحويل مخزنة في الإعدادات (<code>system_settings</code>) وتُدار من صفحة
+              <b>«إعدادات التسعير»</b> في اللوحة:
+            </p>
+            <div class="stats">
+              <div class="stat"><b>10 د.ل</b><span>سعر صرف 1$ (افتراضي)</span></div>
+              <div class="stat"><b>+100%</b><span>هامش الربح (افتراضي)</span></div>
+              <div class="stat"><b>50%</b><span>سقف الخصم المجمّع (10–95%)</span></div>
+            </div>
+            <p style="text-align: center; font-size: 13.5px; color: var(--ink-2)">
+              سعر البيع بالدينار = التكلفة بالدولار × (1 + الهامش%) × سعر الصرف &nbsp;·&nbsp; مثال:
+              تكلفة 1$ ← 20.00 د.ل
+            </p>
+            <h4 style="margin-top: 18px">ترتيب الخصومات (رصة واحدة لا غير — تُستخدم في كل مكان)</h4>
+            <div class="flow">
+              <div class="fstep"><b>السعر المعلن</b><span>من المتغير أو المنتج</span></div>
+              <div class="farrow" aria-hidden="true">←</div>
+              <div class="fstep"><b>تخفيض الفلاش</b><span>إن وُجد تخفيض نشط</span></div>
+              <div class="farrow" aria-hidden="true">←</div>
+              <div class="fstep">
+                <b>الكوبون</b><span>نسبة من الأساس أو مبلغ ثابت (بحدّ الأساس)</span>
+              </div>
+              <div class="farrow" aria-hidden="true">←</div>
+              <div class="fstep">
+                <b>السقف المجمّع</b><span>مجموع النسبتين ≤ السقف وإلا يُرفض الكوبون</span>
+              </div>
+              <div class="farrow" aria-hidden="true">←</div>
+              <div class="fstep"><b>السعر النهائي</b><span>≥ 0 دائمًا</span></div>
+            </div>
+            <p>
+              نفس الدالة بالضبط (<code>lib/pricing.ts</code>) تُستخدم في الكتالوج والسلة والكوبونات
+              والـ Checkout — لا يمكن أن يختلف «السعر المعروض» عن «السعر المحصَّل». وإعادة الاحتساب
+              الجماعية للأسعار تجري بنظام <b>خطوتين</b>: معاينة جافة (dry-run) ثم تنفيذ مؤكَّد.
+            </p>
+          </div>
+
+          <h3><span class="tick">◆</span> 7.6 الولاء والإحالات</h3>
+          <div class="grid g3">
+            <div class="card">
+              <h4>💎 النقاط</h4>
+              <p>
+                <b>100 نقطة = 1.00 د.ل</b>. تُمنح مع كل عملية شراء، وتُحوَّل إلى رصيد بحِزم كاملة
+                فقط — التحويل idempotent دائم.
+              </p>
+            </div>
+            <div class="card">
+              <h4>🏅 الطبقات</h4>
+              <p>
+                مشتقّة من إجمالي الإنفاق المؤهّل: <b>فضية 500</b> · <b>ذهبية 2,000</b> ·
+                <b>بلاتينية 5,000</b> د.ل.
+              </p>
+            </div>
+            <div class="card">
+              <h4>🤝 الإحالات</h4>
+              <p>
+                المُحال الجديد: مكافأة ترحيب <b>5.00 د.ل</b> عند أول شحنة معتمدة. المُحيل:
+                <b>50 نقطة</b> عند أول شحنة معتمدة للمُحال.
+              </p>
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> 7.7 الإثراء بالذكاء الاصطناعي (مسودات الوصف)</h3>
+          <div class="flow">
+            <div class="fstep">
+              <span class="n">١</span><b>التشغيل اليومي</b
+              ><span
+                >03:50 UTC — مشروط بطبقة عامل + تفعيل الميزة + مزوّد LLM مضبوط (سقف 50 ألف توكن/يوم،
+                ≤50 منتجًا للتشغيل).</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٢</span><b>صياغة المسودات</b
+              ><span
+                >قوالب عربية لكل حقل (وصف قصير/طويل، مميزات…) → فحص جودة (نسبة عربية + حدود
+                أطوال).</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٣</span><b>مراجعة المشرف</b
+              ><span
+                >طابور مسودات في اللوحة مع حالة تشخيص حقيقية (لماذا لا تعمل الميزة إن كانت معطّلة —
+                بالترتيب الصحيح للأسباب).</span
+              >
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٤</span><b>النشر اليدوي فقط</b
+              ><span
+                >الموافقة تنشر الحقول عبر مسار تحرير الكتالوج المُدقَّق (مع تدقيق + IndexNow) —
+                <b>النظام لا ينشر شيئًا تلقائيًا أبدًا</b>.</span
+              >
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> 7.8 محرك المخاطر</h3>
+          <div class="card">
+            <p>
+              كل أحداث الدخول/الشراء/الشحن تُصدر إشارات (بعد الالتزام) → محرك التقييم يجمع
+              <b>قواعد قابلة للتعديل من اللوحة</b> (بـ DSL خاص) + إعدادات مُخزَّنة ككاش + صيغة ثقة
+              واتجاه لكل مستخدم → النتيجة واحدة من ثلاث:
+            </p>
+            <ul>
+              <li><b>لا إجراء</b> — الوضع الطبيعي.</li>
+              <li>
+                <b>حاجز ناعم</b> — احتكاك على مسارات المال: إعادة مصادقة إجبارية أو حاجز مؤقت قابل
+                للفك.
+              </li>
+              <li>
+                <b>حظر صلب</b> — رفض 423 مقفول على مسار الشراء (معطَّل افتراضيًا؛ يُفعَّل من إعدادات
+                المخاطر فقط).
+              </li>
+            </ul>
+            <p style="margin-bottom: 0">
+              <b>فلسفة الأمان:</b> أي خطأ داخلي في المحرك يسمح للطلب بالمرور (fail-open على الأداء،
+              والحماية الفعلية في مسارات المال نفسها). لوحة المخاطر (نطاق <code>users</code>) تعرض
+              الأحداث والوسوم والقواعد والإعدادات.
+            </p>
+          </div>
+
+          <h3><span class="tick">◆</span> 7.9 قوانين المال السبعة عشر (M1–M17)</h3>
+          <div class="card">
+            <p>
+              المستودع يفرض <b>17 قانونًا ماليًا</b> موثّقة في
+              <code>docs/FINAL_MONEY_INVARIANTS.md</code> ومُثبَّتة باختبارات. خلاصتها:
+            </p>
+            <ul>
+              <li>
+                الموافقة على الشحن والمشروع (الشراء) والاسترداد: <b>معاملات ذرّية واحدة</b> — لا
+                حالة وسيوية تُلمس المال.
+              </li>
+              <li>
+                <b>منع التكرار الدائم</b> على كل مسار مالي (نفس المفتاح = نفس النتيجة؛ أي تعارض =
+                409 مصنَّف).
+              </li>
+              <li><b>الرصيد السالب مستحيل</b> — بوابات داخل المعاملة.</li>
+              <li><b>سعر الطلب مجمّد</b> — لا يوجد أي مسار يعدّل مبلغ طلب.</li>
+              <li><b>المخزون كاتب واحد</b> — وحدة تُحجز مرة واحدة مهما بلغ التزامن.</li>
+              <li><b>الأحداث بعد الالتزام فقط</b> — لا إشعار كاذب ينجو من تراجع معاملة.</li>
+              <li>
+                <b>عرض الدينار بصيغة واحدة</b> في كل الواجهة:
+                <span class="ltr">1,234.56 د.ل</span> (بلا <span class="ltr">-0</span> وبلا قيم غير
+                منتهية).
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- ============ 8 ============ -->
+        <section id="s8">
+          <h2><span class="num" aria-hidden="true">٨</span> لوحة الإدارة</h2>
+          <p class="desc">
+            20 صفحة إدارية تحت <span class="ltr">/admin</span> — كل واحدة ببوابة نطاق صريحة، ومعالجة
+            كاملة لحالة «لا يملك النطاق».
+          </p>
+
+          <div class="grid g3">
+            <div class="card">
+              <h4>📊 لوحة القيادة</h4>
+              <p>
+                إحصاءات ومخططات حيّة — استعلاماتها تحترم النطاقات وتُظهر لافتة صادقة عند غيابها.
+              </p>
+            </div>
+            <div class="card">
+              <h4>💰 الشحن <span class="badge b-info">finance</span></h4>
+              <p>طابور طلبات الشحن: موافقة/رفض فردي وجماعي + بحث — نفس منطق أزرار تيليجرام.</p>
+            </div>
+            <div class="card">
+              <h4>📦 الطلبات <span class="badge b-info">orders</span></h4>
+              <p>القائمة والتفاصيل، بيانات الاعتماد، الاسترداد، الحالة الجماعية.</p>
+            </div>
+            <div class="card">
+              <h4>🏷️ المنتجات والمتغيرات والمخزون <span class="badge b-info">inventory</span></h4>
+              <p>
+                تحرير كامل (SEO، مميزات، حدود الحقول) + تحميل بيانات اعتماد مشفّرة + بحث عربي إداري.
+              </p>
+            </div>
+            <div class="card">
+              <h4>⚙️ إعدادات التسعير <span class="badge b-info">inventory</span></h4>
+              <p>قواعد (صرف/هامش/سقف) + إعادة احتساب بمعاينة جافة ثم تنفيذ مؤكَّد.</p>
+            </div>
+            <div class="card">
+              <h4>✨ الإثراء <span class="badge b-info">inventory</span></h4>
+              <p>طابور مسودات الـ AI + حالة تشخيص الميزة + نشر/رفض.</p>
+            </div>
+            <div class="card">
+              <h4>🔥 تخفيضات الفلاش <span class="badge b-info">inventory</span></h4>
+              <p>إنشاء/جدولة تخفيض واحد نشط كحد أقصى (≤95%).</p>
+            </div>
+            <div class="card">
+              <h4>👥 المستخدمون <span class="badge b-info">users</span></h4>
+              <p>
+                بحث + إدارة المحفظة (تعديل idempotent بنيّة موثّقة — يتطلب finance أيضًا) + تصدير
+                CSV.
+              </p>
+            </div>
+            <div class="card">
+              <h4>🛡️ المخاطر <span class="badge b-info">users</span></h4>
+              <p>لوحة الأحداث + تفاصيل الحدث + الوسوم + القواعد + الإعدادات.</p>
+            </div>
+            <div class="card">
+              <h4>🎟️ الكوبونات <span class="badge b-info">finance</span></h4>
+              <p>CRUD كامل مع حدود استخدام وصلاحيات بتوقيت دقيق.</p>
+            </div>
+            <div class="card">
+              <h4>🤝 الإحالات <span class="badge b-info">users</span></h4>
+              <p>متابعة أحداث الإحالة ومكافآتها (الرصيد يتطلب finance).</p>
+            </div>
+            <div class="card">
+              <h4>🆘 التذاكر <span class="badge b-info">support</span></h4>
+              <p>طابور الدعم الفني مع نقاش وعمليات جماعية.</p>
+            </div>
+            <div class="card">
+              <h4>🔔 التنبيهات <span class="badge b-info">support</span></h4>
+              <p>درج تنبيهات المشرف + بث لحظي (غرفة Socket خاصة بنطاق support) + اختبار إرسال.</p>
+            </div>
+            <div class="card">
+              <h4>🔐 الأمان <span class="badge b-info">admins</span></h4>
+              <p>نشاط المصادقة، إحصاءات الدخول، إدارة المشرفين وصلاحياتهم.</p>
+            </div>
+            <div class="card">
+              <h4>📜 سجل التدقيق <span class="badge b-info">admins</span></h4>
+              <p>كل عملية إدارية موثّقة (من، ماذا، على ماذا) — 180 يومًا.</p>
+            </div>
+            <div class="card">
+              <h4>🛠️ النظام <span class="badge b-info">settings</span></h4>
+              <p>
+                المراقبة (ملخص/مقاييس/تنبيهات حديثة/جدولة) + التشخيص (بيئة، جلسة واتساب) + إعادة
+                تحديث شاملة.
+              </p>
+            </div>
+            <div class="card">
+              <h4>💬 واتساب <span class="badge b-info">settings</span></h4>
+              <p>إدارة جلسة بوابة OTP (QR/رمز اقتران) من واجهة التشخيص.</p>
+            </div>
+            <div class="card">
+              <h4>🧩 الإعدادات <span class="badge b-info">settings</span></h4>
+              <p>إعدادات النظام + مزوّدو الدخول (تيليجرام يُضبط هنا) + الحساب و2FA.</p>
+            </div>
+          </div>
+
+          <div class="note">
+            <b>تجربة الاستخدام الإدارية مصانة آليًا:</b> كل صفحة تُخفي استعلاماتها عندما تنعدم
+            الجلسة أو النطاق (لا انفجار 403 عند التحميل)، والخروج أو انتهاء الجلسة (401) يمسح فورًا:
+            الرمز، الصلاحيات، كاش الاستعلامات الإداري <b>بكل جذوره</b> (<span class="ltr"
+              >admin-*</span
+            >)، مؤشر التنبيهات، ومقبس المشرف — لا تسرّب بيانات بين مشرفين على جهاز مشترك.
+          </div>
+        </section>
+
+        <!-- ============ 9 ============ -->
+        <section id="s9">
+          <h2><span class="num" aria-hidden="true">٩</span> الأمان</h2>
+          <p class="desc">طبقات دفاع متعددة — كل واحدة مُثبَّتة باختبارات سلوكية.</p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>الطبقة</th>
+                <th>التفاصيل</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>رؤوس الأمان</b></td>
+                <td>
+                  Helmet مع CSP صارم (+ سياسة أذونات)، HSTS، COOP — بلا
+                  <span class="ltr">eval</span> بكل الإنتاج.
+                </td>
+              </tr>
+              <tr>
+                <td><b>CSRF</b></td>
+                <td>
+                  بوابة أصل مزدوجة — قائمة أصول مسموحة غير فارغة في الإنتاج (يتحقق الإقلاع منها).
+                </td>
+              </tr>
+              <tr>
+                <td><b>الجلسات</b></td>
+                <td>
+                  JWT داخل كوكي httpOnly فقط. العملاء 30 يومًا، المشرفون 8 ساعات بسرّ مستقل + سطر
+                  جلسة قابل للإبطال + فحص حيوية دوري للمقابس.
+                </td>
+              </tr>
+              <tr>
+                <td><b>تحديد المعدل</b></td>
+                <td>
+                  عام 600/دقيقة لكل IP · 1200/دقيقة لكل مستخدم · الدخول 10/15 دقيقة · بدء واتساب
+                  20/15 دقيقة · الكوبونات 10/دقيقة · <b>نوايا المال 12/دقيقة</b> (طلبات/شحن/تحويل
+                  نقاط) · التذاكر 5/ساعة إنشاء.
+                </td>
+              </tr>
+              <tr>
+                <td><b>التشفير</b></td>
+                <td>
+                  AES-256-GCM لبيانات اعتماد المخزون — بصيغة نسقية <span class="ltr">v2:</span> مع
+                  مفتاح سابق للفك فقط أثناء التدوير.
+                </td>
+              </tr>
+              <tr>
+                <td><b>المشرفون</b></td>
+                <td>
+                  argon2 + TOTP إلزامي + قفل تدريجي (15→240 دقيقة) + RBAC بثمانية نطاقات + تدقيق كل
+                  عملية.
+                </td>
+              </tr>
+              <tr>
+                <td><b>مقابس Socket</b></td>
+                <td>
+                  تحقق هوية عند المصافحة + إعادة تحقق دورية + حدود اتصال (5/IP) — غرف المستخدمين
+                  معزولة وغرف المشرفين بالنطاق.
+                </td>
+              </tr>
+              <tr>
+                <td><b>إخفاء الحساسية</b></td>
+                <td>
+                  السجلات تخفي الهواتف والأسرار تلقائيًا (طبقات متداخلة)؛ صفحات الحالة والتشخيص لا
+                  تُسرّب أي سرّ.
+                </td>
+              </tr>
+              <tr>
+                <td><b>الاعتماد الأمني</b></td>
+                <td>
+                  CI يمسح الأسرار (gitleaks على كل التاريخ) + تدقيق اعتماديات الإنتاج يمنع الثغرات
+                  الحرجة.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ============ 10 ============ -->
+        <section id="s10">
+          <h2><span class="num" aria-hidden="true">١٠</span> متغيرات البيئة</h2>
+          <p class="desc">
+            كل التهيئة عبر ملف <code>.env</code> واحد — المرجع الكامل المُعلَّق:
+            <code>config/env.example</code>. يمكن التحقق من أي ملف قبل النشر بـ
+            <span class="ltr">pnpm --filter @workspace/scripts run validate:env -- --strict</span>.
+            <b>هنا الأسماء فقط — لا قيم سرية في هذا الدليل.</b>
+          </p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>الفئة</th>
+                <th>المتغيرات</th>
+                <th>الحالة</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>الأساس</b></td>
+                <td>
+                  <div class="kv">
+                    <code>DATABASE_URL</code><code>PORT</code><code>APP_URL</code
+                    ><code>APP_ORIGINS</code><code>CSRF_ALLOWED_ORIGINS</code>
+                  </div>
+                </td>
+                <td><span class="badge b-req">إلزامي</span></td>
+              </tr>
+              <tr>
+                <td><b>الأسرار</b></td>
+                <td>
+                  <div class="kv">
+                    <code>SESSION_SECRET</code><code>ADMIN_JWT_SECRET</code
+                    ><code>ENCRYPTION_KEY</code><code>ENCRYPTION_KEY_PREV</code>
+                  </div>
+                </td>
+                <td><span class="badge b-req">إلزامي (الثلاثة الأولى)</span></td>
+              </tr>
+              <tr>
+                <td><b>تيليجرام</b></td>
+                <td>
+                  <div class="kv">
+                    <code>TELEGRAM_BOT_TOKEN</code><code>TELEGRAM_CHAT_ID</code
+                    ><code>TELEGRAM_WEBHOOK_SECRET</code><code>TELEGRAM_ADMIN_IDS</code>
+                  </div>
+                </td>
+                <td><span class="badge b-ok">مُفعَّل</span></td>
+              </tr>
+              <tr>
+                <td><b>واتساب / OpenWA</b></td>
+                <td>
+                  <div class="kv">
+                    <code>WHATSAPP_OTP_BASE_URL</code><code>WHATSAPP_OTP_API_KEY</code
+                    ><code>WHATSAPP_OTP_SESSION</code><code>WHATSAPP_OTP_SETTLE_MS</code
+                    ><code>OTP_HMAC_KEY</code><code>OTP_DAILY_SEND_CAP</code>
+                  </div>
+                </td>
+                <td><span class="badge b-ok">مُفعَّل</span></td>
+              </tr>
+              <tr>
+                <td><b>LLM الإثراء</b></td>
+                <td>
+                  <div class="kv">
+                    <code>COPILOT_PROVIDER</code><code>COPILOT_API_KEY</code
+                    ><code>COPILOT_MODEL</code><code>COPILOT_BASE_URL</code
+                    ><code>ENRICHMENT_RUNNER_ENABLED</code><code>ENRICHMENT_DAILY_TOKEN_CAP</code>
+                  </div>
+                </td>
+                <td><span class="badge b-warn">اختياري</span></td>
+              </tr>
+              <tr>
+                <td><b>Firebase / Google</b></td>
+                <td>
+                  <div class="kv">
+                    <code>FIREBASE_AUTH_ENABLED</code><code>FIREBASE_SERVICE_ACCOUNT_JSON</code
+                    ><code>VITE_FIREBASE_AUTH_ENABLED</code>
+                  </div>
+                </td>
+                <td><span class="badge b-warn">اختياري</span></td>
+              </tr>
+              <tr>
+                <td><b>المراقبة</b></td>
+                <td>
+                  <div class="kv">
+                    <code>SENTRY_DSN</code><code>SENTRY_TRACES_SAMPLE_RATE</code
+                    ><code>METRICS_ADMIN_TOKEN</code><code>INDEXNOW_KEY</code>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge b-ok">مُفعَّل</span> <span class="badge b-mute">IndexNow</span>
+                </td>
+              </tr>
+              <tr>
+                <td><b>البنية</b></td>
+                <td>
+                  <div class="kv">
+                    <code>REDIS_URL</code><code>SINGLE_INSTANCE_MODE</code><code>WORKER_TIER</code
+                    ><code>DISABLE_BOOT_MIGRATIONS</code><code>GRACEFUL_SHUTDOWN_TIMEOUT_MS</code
+                    ><code>SLOW_QUERY_THRESHOLD_MS</code>
+                  </div>
+                </td>
+                <td><span class="badge b-warn">اختيارية — بسلوك بدائل واضح</span></td>
+              </tr>
+              <tr>
+                <td><b>الواجهة (بناء)</b></td>
+                <td>
+                  <div class="kv">
+                    <code>VITE_GA_TRACKING_ID</code><code>VITE_API_BASE_URL</code
+                    ><code>VITE_SOCKET_URL</code><code>VITE_GSC_VERIFICATION</code>
+                  </div>
+                </td>
+                <td><span class="badge b-mute">بناء-time</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ============ 11 ============ -->
+        <section id="s11">
+          <h2><span class="num" aria-hidden="true">١١</span> النشر والتشغيل</h2>
+          <p class="desc">
+            سلسلة النشر، بوابات CI، النسخ الاحتياطي، والمراقبة — كما تعمل فعليًا اليوم.
+          </p>
+
+          <h3><span class="tick">◆</span> سلسلة النشر (Push-to-Deploy)</h3>
+          <div class="flow">
+            <div class="fstep">
+              <span class="n">١</span><b>git push إلى main</b
+              ><span>دفعة conventional commit واحدة — لا دفع قسري أبدًا.</span>
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٢</span><b>GitHub Actions</b
+              ><span>كل بوابات الجودة على الشجرة الحقيقية (انظر الجدول أدناه).</span>
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٣</span><b>Webhook → Coolify</b
+              ><span>بناء صورة Docker من المستودع مباشرة.</span>
+            </div>
+            <div class="farrow" aria-hidden="true">←</div>
+            <div class="fstep">
+              <span class="n">٤</span><b>تحديث متدرّج مقيَّد بالصحة</b
+              ><span
+                >لا يدخل الجديد إلا بعد نجاح <span class="ltr">/api/healthz</span> — الدورة الكاملة
+                ~12–15 دقيقة.</span
+              >
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> بوابات CI (على كل دفعة كود)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>البوابة</th>
+                <th>ما تمنعه</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>مسح الأسرار</b> (gitleaks — كل التاريخ)</td>
+                <td>أي سرّ يُرتكب في أي لحظة</td>
+              </tr>
+              <tr>
+                <td><b>lint + typecheck</b> (×4 حزم)</td>
+                <td>أي انحراف أسلوب/أنواع</td>
+              </tr>
+              <tr>
+                <td><b>توازن OpenAPI ↔ المسارات</b></td>
+                <td>مسار بلا توثيق أو توثيق بلا مسار</td>
+              </tr>
+              <tr>
+                <td><b>تزامن رموز الأخطاء + معاملات الرؤوس</b></td>
+                <td>رموز غير معرَّفة أو رؤوس تضيع</td>
+              </tr>
+              <tr>
+                <td><b>انجراف Drizzle</b></td>
+                <td>اختلاف المخطط عن سلسلة الهجرات</td>
+              </tr>
+              <tr>
+                <td><b>اختبارات الوحدات ×3</b> (خلفي/أمامي/سكربتات)</td>
+                <td>أي كسر سلوكي — 5,465 اختبارًا</td>
+              </tr>
+              <tr>
+                <td><b>بناء الإنتاج + ميزانية الحجم</b></td>
+                <td>انفجار حجم الحزمة الأولية</td>
+              </tr>
+              <tr>
+                <td><b>تدقيق CVE على اعتماديات الإنتاج</b></td>
+                <td>ثغرة حرجة في مكتبة إنتاج</td>
+              </tr>
+              <tr>
+                <td><b>بوابة نمط واجهة impeccable</b></td>
+                <td>أنماط UI معادية للجودة</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="font-size: 13.5px; color: var(--ink-3); margin-top: -4px">
+            اختبارات E2E تُطلق بالجدولة والطلب اليدوي فقط (ليست على كل دفعة)؛ دفعات التوثيق فقط
+            تتخطى البوابات الثقيلة عبر مرشح المسارات.
+          </p>
+
+          <h3><span class="tick">◆</span> المهام المجدولة (UTC — الأبرز)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>الوقت</th>
+                <th>المهمة</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>00:00</td>
+                <td>تنظيف التنبيهات القديمة + مفاتيح منع التكرار الأقدم من 48 ساعة</td>
+              </tr>
+              <tr>
+                <td>02:15 / 03:35</td>
+                <td>تشغيل توقعات المخزون ثم تنظيفها</td>
+              </tr>
+              <tr>
+                <td>03:30</td>
+                <td>تنظيف أحداث المخاطر (90/97 يومًا)</td>
+              </tr>
+              <tr>
+                <td>03:50 / 04:00</td>
+                <td>تشغيل الإثراء اليومي ثم تنظيفه</td>
+              </tr>
+              <tr>
+                <td>05:00</td>
+                <td>تنظيف الجلسات والإشعارات ومحاولات الدخول (7 أيام) وسجل التدقيق (180 يومًا)</td>
+              </tr>
+              <tr>
+                <td>04:30</td>
+                <td>تنظيف نشاط المصادقة (90 يومًا)</td>
+              </tr>
+              <tr>
+                <td>فرصة</td>
+                <td>
+                  مراقبات المخزون/الكوبونات/الفلاش — تعمل على حركة المرور الحقيقية (لا استعلامات
+                  فارغة على قاعدة خارجية)
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3><span class="tick">◆</span> النسخ الاحتياطي والتعافي</h3>
+          <div class="grid g3">
+            <div class="card">
+              <h4>💾 نسخ ليلي</h4>
+              <p>
+                03:15 UTC على الخادم → ملفات مضغوطة في
+                <span class="ltr">/var/backups/subnation/</span> — يُحتفظ بـ 14 نسخة + رفع خارجي
+                اختياري.
+              </p>
+            </div>
+            <div class="card">
+              <h4>⏱️ Neon PITR</h4>
+              <p>
+                استعادة لنقطة زمنية على خطة Neon الحالية (~6 ساعات نافذة) —
+                <b>النسخة الليلية هي مسار التعافي الأساسي</b>.
+              </p>
+            </div>
+            <div class="card">
+              <h4>🧪 تدريب مثبت</h4>
+              <p>
+                تم تنفيذ تدريبي استعادة ناجحان وموثّقان — السياسات في
+                <code>docs/DISASTER_RECOVERY.md</code>.
+              </p>
+            </div>
+          </div>
+
+          <h3><span class="tick">◆</span> المراقبة والتنبيه اليومي</h3>
+          <div class="grid g2">
+            <div class="card">
+              <h4>🩺 الصحة</h4>
+              <p>
+                <span class="ltr">/api/healthz</span> (عام، هو فحص Coolify) ·
+                <span class="ltr">/healthz/live</span> و<span class="ltr">/summary</span> عامة ·
+                <span class="ltr">/healthz/ready</span> والفحوص العميقة للمشرفين (settings) · صفحة
+                <span class="ltr">/status</span> العامة للمستخدمين.
+              </p>
+            </div>
+            <div class="card">
+              <h4>📈 المقاييس</h4>
+              <p>
+                Prometheus على <span class="ltr">/api/metrics</span> (محمي برمز) — طلبات HTTP، نتائج
+                المصادقة، المقابس، Web Vitals من العملاء (منارة <span class="ltr">/api/cwv</span>).
+              </p>
+            </div>
+            <div class="card">
+              <h4>🚨 التنبيه</h4>
+              <p>
+                Sentry (خطأ/أداء/إعادة تشغيل) + قناة تيليجرام للعمليات + مراقب خارجي كل 5 دقائق
+                (توفر + شهادة TLS + المنافذ).
+              </p>
+            </div>
+            <div class="card">
+              <h4>📕 دليل العمليات</h4>
+              <p>
+                <code>OPERATIONS_RUNBOOK.md</code> في جذر المستودع — نقطة الدخول الرسمية للمناوبات:
+                فرز التنبيهات قاعدة-قاعدة، لوحات القيادة، الاسترجاع.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 12 ============ -->
+        <section id="s12">
+          <h2><span class="num" aria-hidden="true">١٢</span> الأرقام الحالية</h2>
+          <p class="desc">لقطة الحالة عند إصدار هذا الدليل (الجولة R184 — 2026-10-22).</p>
+          <div class="stats">
+            <div class="stat"><b>45</b><span>منتجًا في الكتالوج</span></div>
+            <div class="stat"><b>38</b><span>جدولًا في القاعدة</span></div>
+            <div class="stat"><b>79</b><span>عملية API موثّقة</span></div>
+            <div class="stat"><b>5,465</b><span>اختبار آلي</span></div>
+            <div class="stat"><b>26</b><span>رمز خطأ موحّد</span></div>
+            <div class="stat"><b>148 KB</b><span>الحزمة الأولية (مضغوطة)</span></div>
+            <div class="stat"><b>56</b><span>رابطًا في خريطة الموقع</span></div>
+            <div class="stat"><b>~171</b><span>جزء JS في الإنتاج</span></div>
+          </div>
+          <div class="note ok">
+            <b>حالة الإنتاج:</b> <span class="ltr">healthz 200</span> · CI أخضر على كل الدفعات ·
+            تنبيهات تيليجرام حيّة · نسخ احتياطي ليلي مؤتمت — كل موثّق في <code>CHANGELOG.md</code>.
+          </div>
+        </section>
+
+        <!-- ============ 13 ============ -->
+        <section id="s13">
+          <h2><span class="num" aria-hidden="true">١٣</span> خريطة القراءة — أين أتعمق أكثر؟</h2>
+          <p class="desc">
+            هذا الدليل بوابتك؛ عند الحاجة للتفاصيل الكاملة هذه هي المحطات بالترتيب.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>عندما تريد…</th>
+                <th>افتح</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>تشغيل المشروع محليًا لأول مرة</td>
+                <td><code>README.md</code> → قسم Local development</td>
+              </tr>
+              <tr>
+                <td>طريق المطور الكامل المرتّب</td>
+                <td><code>docs/ONBOARDING.md</code></td>
+              </tr>
+              <tr>
+                <td>فهم قوانين المال بالتفصيل والدليل</td>
+                <td><code>docs/FINAL_MONEY_INVARIANTS.md</code></td>
+              </tr>
+              <tr>
+                <td>خرائط بصرية للنظام (13 خريطة)</td>
+                <td><code>docs/project-graph/</code></td>
+              </tr>
+              <tr>
+                <td>تشغيل وصيانة الإنتاج (المناوبة)</td>
+                <td><code>OPERATIONS_RUNBOOK.md</code></td>
+              </tr>
+              <tr>
+                <td>تاريخ كل تغيير (جولة-بجولة)</td>
+                <td><code>CHANGELOG.md</code> + <code>docs/engineering/</code></td>
+              </tr>
+              <tr>
+                <td>سياسة النسخ والتعافي</td>
+                <td><code>docs/DISASTER_RECOVERY.md</code></td>
+              </tr>
+              <tr>
+                <td>كل ما هو WhatsApp (اقتران/جلسات)</td>
+                <td><code>docs/WHATSAPP_OPERATIONS.md</code></td>
+              </tr>
+              <tr>
+                <td>فهرس التوثيق الكامل</td>
+                <td><code>docs/README.md</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+
+    <footer>
+      <div>
+        <b>SubNation</b> — دليل المشروع الشامل <span class="sep">·</span> أُنشئ آليًا من حالة
+        المستودع الفعلية (الجولة R184 · 2026-10-22) <span class="sep">·</span>
+        <span class="ltr">github.com/ahmadmedo1012/SubNation2</span>
+      </div>
+      <div style="margin-top: 8px; font-size: 12px; opacity: 0.75">
+        ملف مستقل تمامًا — يعمل بلا إنترنت (عدا خط الويب الاختياري). لا يحتوي على أي أسرار: أسماء
+        متغيرات البيئة فقط.
+      </div>
+    </footer>
+
+    <div class="toolbar">
+      <button
+        id="themeBtn"
+        type="button"
+        title="تبديل الوضع الليلي/النهاري"
+        aria-label="تبديل الوضع الليلي/النهاري"
+      >
+        🌓
+      </button>
+      <button id="topBtn" type="button" title="العودة إلى الأعلى" aria-label="العودة إلى الأعلى">
+        ↑
+      </button>
+    </div>
+
+    <script>
+      (function () {
+        var root = document.documentElement,
+          btn = document.getElementById("themeBtn");
+        var saved = null;
+        try {
+          saved = localStorage.getItem("sg-theme");
+        } catch (e) {}
+        var prefers =
+          window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        root.setAttribute("data-theme", saved || (prefers ? "dark" : "light"));
+        btn.addEventListener("click", function () {
+          var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+          root.setAttribute("data-theme", next);
+          try {
+            localStorage.setItem("sg-theme", next);
+          } catch (e) {}
+        });
+        document.getElementById("topBtn").addEventListener("click", function () {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+        var links = document.querySelectorAll(".toc a");
+        var sections = [];
+        links.forEach(function (a) {
+          var s = document.getElementById(a.getAttribute("href").slice(1));
+          if (s) sections.push({ a: a, s: s });
+        });
+        if ("IntersectionObserver" in window) {
+          var io = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (en) {
+                if (en.isIntersecting) {
+                  links.forEach(function (l) {
+                    l.classList.remove("active");
+                  });
+                  var hit = sections.filter(function (x) {
+                    return x.s === en.target;
+                  })[0];
+                  if (hit) hit.a.classList.add("active");
+                }
+              });
+            },
+            { rootMargin: "-15% 0px -70% 0px" },
+          );
+          sections.forEach(function (x) {
+            io.observe(x.s);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
