@@ -159,7 +159,7 @@ export function parseDsl(input: unknown): DslValidationResult {
  * for missing paths (never throws). Used by the rule evaluator
  * to look up values like `user.accountAgeDays`.
  */
-export function readPath(context: unknown, path: string): unknown {
+function readPath(context: unknown, path: string): unknown {
   const parts = path.split(".");
   let cur: unknown = context;
   for (const p of parts) {

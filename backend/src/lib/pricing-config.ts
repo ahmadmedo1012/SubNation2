@@ -41,8 +41,8 @@ import { roundLyd } from "./money";
 export const DEFAULT_USD_TO_LYD = 10;
 export const DEFAULT_MARKUP_PERCENT = 100;
 
-export const SETTING_KEY_USD_TO_LYD = "pricing.usd_to_lyd";
-export const SETTING_KEY_MARKUP_PERCENT = "pricing.markup_percent";
+const SETTING_KEY_USD_TO_LYD = "pricing.usd_to_lyd";
+const SETTING_KEY_MARKUP_PERCENT = "pricing.markup_percent";
 
 /**
  * R115 (Part 14): hard cap on the COMBINED transactional discount
@@ -58,7 +58,7 @@ export const SETTING_KEY_MARKUP_PERCENT = "pricing.markup_percent";
  * Bounds: 10–95 (a cap <10 makes coupons unusable; >95 approaches free).
  */
 export const DEFAULT_MAX_TOTAL_DISCOUNT_PCT = 50;
-export const SETTING_KEY_MAX_TOTAL_DISCOUNT_PCT = "pricing.max_total_discount_pct";
+const SETTING_KEY_MAX_TOTAL_DISCOUNT_PCT = "pricing.max_total_discount_pct";
 
 /** In-process cache lifetime — matches the catalog's 60s edge window. */
 const SETTINGS_TTL_MS = 60_000;

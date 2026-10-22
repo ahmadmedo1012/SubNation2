@@ -164,12 +164,6 @@ export async function isValidAdminSession(sid: string, adminId: number): Promise
   return valid;
 }
 
-/** Test-only hook: drop the 60 s admin-session cache. */
-export function __clearAdminSessionValidityCacheForTests(): void {
-  adminSessionValidityCache.clear();
-  adminCachePruneCounter = 0;
-}
-
 /**
  * Maintenance: purge rows that are expired > 24h or revoked > 30 days.
  * Called from the 05:00 retention cron (see jobs/cron.ts) — keeps the

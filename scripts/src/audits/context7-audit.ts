@@ -59,15 +59,15 @@ export const CONTEXT7_CITATION_MAX_LENGTH = 500;
 /**
  * Repo-relative path of the citations JSON appended by tasks 5.1 and 5.2.
  */
-export const CONTEXT7_CITATIONS_RELATIVE_PATH =
+const CONTEXT7_CITATIONS_RELATIVE_PATH =
   ".kiro/specs/observability-seo-cwv-maturity/inspection-data/context7-citations.json";
 
 /**
  * The Context7_MCP tool calls this module exclusively performs. Both are
  * read-only and therefore satisfy the Phase 1 allowlist (R1.9).
  */
-export const CONTEXT7_TOOL_RESOLVE = "resolve-library-id";
-export const CONTEXT7_TOOL_QUERY = "query-docs";
+const CONTEXT7_TOOL_RESOLVE = "resolve-library-id";
+const CONTEXT7_TOOL_QUERY = "query-docs";
 
 // ---------------------------------------------------------------------------
 // Topic taxonomy — the seven domains the spec requires Context7 evidence for
@@ -382,7 +382,7 @@ export async function recordContext7Citation(
  * the caller (a Phase 1 audit step) is expected to halt the dependent
  * step, matching the contract in design §3.1.16.
  */
-export async function recordContext7Citations(
+async function recordContext7Citations(
   recorder: McpInvocationRecorder,
   captures: readonly Context7CitationCapture[],
   options: RecordContext7Options = {},

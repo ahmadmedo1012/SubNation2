@@ -17,7 +17,7 @@
  * message. product-variants.ts already bounds its labels/sku the same
  * way — this closes the inconsistency the audit flagged.
  */
-export const PRODUCT_FIELD_LIMITS = {
+const PRODUCT_FIELD_LIMITS = {
   name: { max: 255, label: "اسم المنتج" },
   category: { max: 100, label: "الفئة" },
   image_url: { max: 1000, label: "رابط الصورة" },

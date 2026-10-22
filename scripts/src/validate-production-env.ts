@@ -167,7 +167,7 @@ export interface BootSubsetInput {
  * detection, cross-service parity, forbidden equal-secrets, pair rules.
  * Returns silent finding strings (names only — never values).
  */
-export function runBootSubset({ env, templateValues }: BootSubsetInput): string[] {
+function runBootSubset({ env, templateValues }: BootSubsetInput): string[] {
   const out: string[] = [];
   const get = (k: string) => (env[k] !== undefined && env[k] !== "" ? env[k] : undefined);
 

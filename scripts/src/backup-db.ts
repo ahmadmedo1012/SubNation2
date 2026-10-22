@@ -73,7 +73,7 @@ const BACKUP_FILENAME_RE = /^subnation-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}
  * Lexicographic order of the ISO-8601 stamp in the name is chronological,
  * so the oldest `length - keep` names are the ones to prune.
  */
-export function selectFilesToPrune(filenames: string[], keep: number): string[] {
+function selectFilesToPrune(filenames: string[], keep: number): string[] {
   const backups = filenames.filter((name) => BACKUP_FILENAME_RE.test(name)).sort();
   return keep >= backups.length ? [] : backups.slice(0, backups.length - keep);
 }
@@ -117,7 +117,7 @@ function decodeMaybe(value: string): string {
  * Throws a plain Error when the value is not a parseable URL or has no
  * database name.
  */
-export function pgEnvFromUrl(databaseUrl: string): Record<string, string> {
+function pgEnvFromUrl(databaseUrl: string): Record<string, string> {
   let url: URL;
   try {
     url = new URL(databaseUrl);

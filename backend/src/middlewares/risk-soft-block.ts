@@ -69,7 +69,7 @@ interface MaybeAuthenticatedRequest extends Request {
  */
 const SOFT_BLOCK_WINDOW_MS = 30 * 60 * 1000; // 30 min
 
-export interface RiskSoftBlockOptions {
+interface RiskSoftBlockOptions {
   mode?: "reauth-next" | "guard";
 }
 
@@ -123,7 +123,7 @@ async function hasDischargeSentinelAfter(userId: number, date: Date): Promise<bo
   return rows.length > 0;
 }
 
-export function riskSoftBlockMiddleware(options: RiskSoftBlockOptions = {}) {
+function riskSoftBlockMiddleware(options: RiskSoftBlockOptions = {}) {
   const mode = options.mode ?? "reauth-next";
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     if (process.env.RISK_PIPELINE_ENABLED !== "true") {

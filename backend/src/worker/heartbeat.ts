@@ -128,7 +128,7 @@ export function startHeartbeat(redis: RedisClientType): { stop: () => void } {
  * Clears the interval and logs the shutdown.
  * Safe to call multiple times.
  */
-export function stopHeartbeat(): void {
+function stopHeartbeat(): void {
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;

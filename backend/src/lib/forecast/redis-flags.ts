@@ -30,7 +30,10 @@ export async function isAlertingPaused(): Promise<boolean> {
     const v = await redis.get(ALERTS_PAUSED_KEY);
     return v !== null;
   } catch (err) {
-    logger.warn({ err, category: "forecast.flags" }, "[forecast] isAlertingPaused: redis read failed; assuming not paused");
+    logger.warn(
+      { err, category: "forecast.flags" },
+      "[forecast] isAlertingPaused: redis read failed; assuming not paused",
+    );
     return false;
   }
 }
@@ -41,17 +44,10 @@ export async function pauseAlerting(reason: string): Promise<void> {
     if (!redis) return;
     await redis.set(ALERTS_PAUSED_KEY, reason, { NX: true });
   } catch (err) {
-    logger.warn({ err, category: "forecast.flags" }, "[forecast] pauseAlerting: redis write failed");
-  }
-}
-
-export async function resumeAlerting(): Promise<void> {
-  try {
-    const redis = getRedisClient();
-    if (!redis) return;
-    await redis.del(ALERTS_PAUSED_KEY);
-  } catch (err) {
-    logger.warn({ err, category: "forecast.flags" }, "[forecast] resumeAlerting: redis write failed");
+    logger.warn(
+      { err, category: "forecast.flags" },
+      "[forecast] pauseAlerting: redis write failed",
+    );
   }
 }
 

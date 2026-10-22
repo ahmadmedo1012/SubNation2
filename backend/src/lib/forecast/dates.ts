@@ -14,7 +14,7 @@ export function todayUtcDate(now: Date = new Date()): IsoDate {
   return toIsoDate(now);
 }
 
-export function toIsoDate(d: Date): IsoDate {
+function toIsoDate(d: Date): IsoDate {
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
