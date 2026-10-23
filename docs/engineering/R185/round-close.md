@@ -44,7 +44,11 @@ Every symbol below is **used inside its own file** (the implementation stays byt
 - **shadcn sub-component exports** (`AlertDialogPortal`, `AlertDialogOverlay`, …): the upstream component shape; the repo keeps shadcn files intact.
 - **The four non-finding "dead file" candidates** from the reachability pass: `risk-rules.seed.ts` (documented manual operator seed), `playwright.config.ts` / `orval.config.ts` / `drizzle.config.ts` (tool entry configs), `scripts/src/audits/*` (dev tooling with their own test suite), `frontend/src/types/jsdom.d.ts` (ambient typing the test compilation needs).
 
-## 4. The ponytail-debt ledger (`/ponytail-debt` — the standing scan)
+## 4. The orphaned dependency (the deletion's completion — second push)
+
+Deleting `ui/switch.tsx` orphaned its Radix peer: **`@radix-ui/react-switch` had exactly one consumer in the tree** (the deleted component) and zero imports remain after it. The dependency is removed (frontend/package.json −1 line, pnpm-lock.yaml −46 lines) — one fewer package in every install and the production Docker image, with the build proven **byte-identical** after the removal (same entry `index-B_HjZhdV.js`, same eager 147,929 B — the package was installed-but-never-bundled; the win is install weight, not bytes). The ponytail law this closes: *be lazy about the solution, never about the change itself — finish every part the task needs.*
+
+## 5. The ponytail-debt ledger (`/ponytail-debt` — the standing scan)
 
 `git grep -nE '(#|//|/[*]) ?(shortcut|ponytail):'` → **2 markers, 0 with no trigger** — a clean ledger:
 
@@ -55,7 +59,7 @@ Both are documented decisions with named triggers (the ponytail-audit rule: a ma
 
 **Duplicate helpers:** none found — backend `money.ts` and frontend `utils.ts`'s `formatCurrency` serve different packages (server vs client rendering); no same-package duplication.
 
-## 5. Gates (all green, on the round's final tree)
+## 6. Gates (all green, on the round's final tree — re-run on the dep-removal tree)
 
 | Gate | Result |
 |---|---|
@@ -75,17 +79,17 @@ Both are documented decisions with named triggers (the ponytail-audit rule: a ma
 
 **Environmental deferrals (the standing set):** the live-E2E checks requiring real infra and Playwright's pinned browser revision; the e2e/CVE CI jobs remain the by-design skips (e2e = dispatch/schedule-only; CVE = deps-only — no dependency changes this round).
 
-## 6. Ship record — STAGED (closed by the ship-record commit)
+## 7. Ship record — STAGED (closed by the ship-record commit)
 
 - **Starting SHA:** `fec4a5722973f1695b3b3b51d716d9cf2834f1eb` · **Code commit:** `refactor(lean,r185)` (14 files, +21/−119 — the deletions + the un-export sweep) · **Ledger commit:** `docs(r185)` (this round-close + the CHANGELOG entry + the README re-stamp + the round-index row + source-of-truth #27).
 - **Deploy plan (the standing law):** fast-forward push, no force-push, remote HEAD re-verified; CI on the pushed HEAD; the Coolify push-to-deploy webhook rebuilds on the VM (~12–15 min observed rotation window); read-only probes only. The R185 deploy discriminator: the entry chunk rotates to **`index-B_HjZhdV.js`** (R184 live: `index-DhByQZaf.js`) with the eager path at **147,929 B gz** — a byte figure only the R185 tree produces.
 
-## 7. Definition-of-done scorecard
+## 8. Definition-of-done scorecard
 
 1. The ponytail skill applied at full force as a dedicated round: **the complete audit ladder run with purpose-built verification — every dead-surface claim proven by whole-tree grep, not inferred** (§1).
 2. Dead code deleted, not disabled: **1 orphaned component + its orphaned test, 2 fully-dead functions — −98 net lines, zero behavior change by construction** (§2).
 3. Dead API surface closed: **21 value/function exports un-exported; the skipped classes named with reasons** (§3).
-4. The debt ledger clean and the duplicate check run (§4).
-5. Full gates green with the counts reconciled exactly (§5).
-6. Ship: §6's staged sequence — **closed green by the ship-record commit with the real evidence (SHAs, CI run, rotation, probes).**
+4. The debt ledger clean and the duplicate check run (§5).
+5. Full gates green with the counts reconciled exactly (§6).
+6. Ship: §7's staged sequence — **closed green by the ship-record commit with the real evidence (SHAs, CI run, rotation, probes).**
 7. This ledger reflects actual evidence: every claim cites files, tests, commands, or probe outputs.
