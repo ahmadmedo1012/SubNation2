@@ -72,9 +72,20 @@ This round proved the workspace's tool channel **eats the two-char sequences `[h
 - **The `shortcut:` debt ledger:** 4 substring matches repo-wide (2 documented markers with triggers + 2 mid-sentence prose mentions) — see §4.
 - **SC-008's "until an admin re-enables"** wording vs the tree: `resumeAlerting()` was legitimately deleted in R185 (zero callers); the deployed topology (Redis unset) makes the pause key inoperative anyway — the runbook row now carries this caveat honestly.
 
-## 8. Ship record — staged per the sequencing law
+## 8. Ship record — CLOSED GREEN
 
-The round ships as conventional commits on `main` (fast-forward, no force-push, remote HEAD re-verified after the push), with CI verified and the Coolify rotation + read-only production probes re-verified post-push — the evidence lands in §9 at ship time (only after it is true).
+**Push:** `0b428df8..2d51a254` fast-forward (three conventional commits: `305fc7cb` fix(detail,r186) the code harvest · `f2cffa97` docs(truth,r186) the doc-truth harvest · `2d51a254` docs(r186) the round ledger) — **no force-push; remote HEAD re-verified equal to the local HEAD after the push.**
+
+**CI:** run `40135992058` on `2d51a254` — **completed success** (~7 min; all executed jobs green; e2e + CVE = the standing by-design skips on a no-deps push).
+
+**Coolify rotation: LIVE** — the production entry rotated `index-DECX7BZ1.js` → **`index-DWNEm3ty.js`** within ~90 s of the CI completing (one rotation for the push; the docs commits rode the same build).
+
+**Read-only production probes (all green on the rotated tree):**
+- `/api/healthz` **200** in 0.61 s; `/api/catalog/stats` → 45 products, purchasable floor **980**, no flash sale (the R182 contract intact).
+- The five admin-family **401 gates** (session, observability/metrics, enrichment/status, topups, orders).
+- The live entry carries the GA4 `push(arguments)` marker (**1** occurrence — the owner's PR #12 fix still live) and **zero** copilot/calculator residue bytes.
+- A fresh browser session (agent-browser, desktop 1920×1080 + mobile 390×844): homepage renders with zero page/console errors; the PDP (`/product/lifetime-cloud-storage`) renders the variant selector («500 جيجابايت — 980.00 د.ل»), the login-to-buy CTA, and the honest sold-out cards; screenshots captured (desktop + mobile).
+- **GA4 verified LIVE end-to-end**: the gtag.js script 200s, the dataLayer carries processed entries, and `gtm.historyChange` events captured the SPA home→PDP navigation — the owner's fix working in production, not just in tests.
 
 ## 9. Definition-of-done scorecard
 
