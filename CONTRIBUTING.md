@@ -28,8 +28,8 @@ locally first so the PR lands green:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm --filter @workspace/api-server exec vitest run      # backend suite (~289 files, R165)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (~286 files, R165)
+pnpm --filter @workspace/api-server exec vitest run      # backend suite (~290 files, R186)
+pnpm --filter @workspace/subnation run test:run          # frontend suite (~297 files, R186)
 pnpm build                                               # includes the bundle budget gate
 ```
 

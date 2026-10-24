@@ -167,6 +167,28 @@ rows.
 - **Triage:** `auth_activity` and `login_attempts` tables — group by
   `ipAddress`. Coordinated brute force → consider Cloudflare/WAF.
 
+### #forecast-pause — forecast alerts kill criterion (SC-008 — operator clear path)
+
+> **R186 (docs-truth G1-F1):** not an `ALERT_RULES` rule — this is spec
+> 011's SC-008 kill criterion, documented so the on-call runbook carries
+> the pause flag's operator clear path.
+
+- **Threshold:** kill criterion, not a metric: when the latest
+  `inventory_forecast_runs.capture_rate_14d < 0.5`, the retention job
+  (03:30 UTC) sets the Redis key `forecast:alerts:paused` (no TTL —
+  manual-clear only; the admin forecast panel surfaces the calibrating
+  state).
+- **Triage:**
+  1. Pause check: `redis-cli EXISTS forecast:alerts:paused` (`1` = paused).
+  2. Clear after re-tuning: `redis-cli DEL forecast:alerts:paused`.
+  3. Topology caveat: the target topology runs `REDIS_URL` **unset**
+     (§5, #redis) — `getRedisClient()` returns null and `pauseAlerting`
+     no-ops (`backend/src/lib/forecast/redis-flags.ts`), so the key
+     cannot exist and the pause cannot trip as deployed; `EXISTS` → `0`
+     is the expected healthy answer.
+- **Reference:** `specs/011-inventory-demand-forecast/quickstart.md` §5–§6
+  (kill criterion + the operating-shortcuts table).
+
 ## 3. Reading logs (live stack: Docker/Coolify + Neon)
 
 > **LEGACY (pre-cutover):** the Render access below is a historical record,

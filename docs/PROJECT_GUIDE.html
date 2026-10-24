@@ -711,8 +711,8 @@
             >🛒 متجر اشتراكات رقمية <b>عربي RTL</b> للسوق الليبي</span
           >
           <span class="chip" role="listitem">💳 محفظة داخلية + تسليم مشفّر فوري</span>
-          <span class="chip" role="listitem">🧪 <b>5,464</b> اختبار آلي</span>
-          <span class="chip" role="listitem">📋 إصدار الدليل: <b>R185</b> · 2026-10-22</span>
+          <span class="chip" role="listitem">🧪 <b>5,560</b> اختبار آلي</span>
+          <span class="chip" role="listitem">📋 إصدار الدليل: <b>R186</b> · 2026-10-24</span>
         </div>
       </div>
     </header>
@@ -809,8 +809,9 @@
             <div class="card">
               <h4>💳 محفظة بسجل غير قابل للتعديل</h4>
               <p>
-                كل حركة مالية سطر جديد في <code>wallet_ledger</code>؛ الرصيد <b>مشتقّ</b> من السجل
-                ولا يُخزَّن كرقم قابل للتلاعب.
+                كل حركة مالية سطر جديد في <code>wallet_ledger</code>؛ ورصيد المستخدم
+                (<code>wallet_balance</code>) لا يُعدَّل مباشرة قط — يُحدَّث حصرًا داخل نفس المعاملة
+                مع سطر السجل، مع قيد CHECK يمنع السالب.
               </p>
             </div>
             <div class="card">
@@ -866,7 +867,7 @@
             <i>— تطبيق React 19 + Vite 8 (SPA عربي RTL) — يُبنى ويُقدَّم من نفس الخادم</i> ├──
             <b>shared/</b> <i>— المشترك بين الجهتين:</i> │ ├── <b>db/</b>
             <i>مخطط Drizzle + سلسلة هجرات SQL (مصدر الحقيقة للقاعدة)</i> │ ├── <b>api-spec/</b>
-            <i>عقد الـ OpenAPI (79 عملية)</i> │ ├── <b>api-zod/</b>
+            <i>عقد الـ OpenAPI (106 عملية)</i> │ ├── <b>api-zod/</b>
             <i>مخططات تحقق Zod (مولّدة آليًا من العقد)</i> │ ├── <b>api-client-react/</b>
             <i>خطافات React Query (مولّدة آليًا — عميل الواجهة الأمامية)</i> │ └──
             <b>error-codes/</b> <i>فهرس رموز الأخطاء المشترك (26 رمزًا)</i> ├── <b>scripts/</b>
@@ -1008,7 +1009,7 @@
                 <td><b>عقد الـ API</b></td>
                 <td>OpenAPI 3 + orval</td>
                 <td>
-                  79 عملية موثّقة؛ يُولِّد آليًا: مخططات Zod + خطافات العميل — وCI يمنع أي انحراف
+                  106 عملية موثّقة؛ يُولِّد آليًا: مخططات Zod + خطافات العميل — وCI يمنع أي انحراف
                 </td>
               </tr>
               <tr>
@@ -1032,7 +1033,10 @@
               <tr>
                 <td><b>الاختبارات</b></td>
                 <td>Vitest 5 (الوحدات) · Playwright (E2E)</td>
-                <td>5,464 اختبار وحدة عبر الجهات الثلاث + 135 سيناريو E2E للزوار</td>
+                <td>
+                  5,560 اختبار وحدة عبر الجهات الثلاث + سيناريوهات E2E للزوار مع مسار مصادق (15 ملف
+                  مواصفة / 3 مشاريع Playwright — تُطلق بالجدولة والطلب اليدوي فقط)
+                </td>
               </tr>
               <tr>
                 <td><b>إدارة الحزم</b></td>
@@ -1046,9 +1050,9 @@
 
           <div class="note">
             <b>قواعد أداء ملزومة في CI:</b> ميزانية حجم الحزمة الأولية (<span class="ltr"
-              >147,929 B</span
+              >148,921 B</span
             >
-            مضغوطة عند قياس R185 — حد تحذير 150 KiB وحد فشل 160 KiB) · تحميل كسول للمخططات وSentry ·
+            مضغوطة عند قياس R186 — حد تحذير 150 KiB وحد فشل 160 KiB) · تحميل كسول للمخططات وSentry ·
             تسخين أجزاء المسارات عند تمرير المؤشر.
           </div>
         </section>
@@ -1117,8 +1121,8 @@
                   </div>
                 </td>
                 <td>
-                  لا إشعارات ولا موافقات عبر تيليجرام — تعمل الموافقات من الموقع فقط، ويتعطل دخول
-                  تيليجرام.
+                  لا إشعارات ولا موافقات عبر تيليجرام — تعمل الموافقات من الموقع فقط. دخول تيليجرام
+                  للعملاء لا يتأثر (يُضبط من قاعدة البيانات عبر لوحة الإدارة).
                 </td>
               </tr>
               <tr>
@@ -1273,7 +1277,9 @@
             <div class="card">
               <h4>👥 المستخدمون والجلسات <span class="badge b-mute">8 جداول</span></h4>
               <ul>
-                <li><code>users</code> — العملاء (الهاتف، الرصيد مشتق، الطبقة)</li>
+                <li>
+                  <code>users</code> — العملاء (الهاتف، الرصيد محفوظ ومتزامن مع السجل، الطبقة)
+                </li>
                 <li>
                   <code>user_auth_identities</code> — ربط الحسابات بمزوّدي الدخول
                   (Google/Telegram/WhatsApp)
@@ -1387,11 +1393,12 @@
 
         <!-- ============ 6 ============ -->
         <section id="s6">
-          <h2><span class="num" aria-hidden="true">٦</span> واجهة الـ API — 79 عملية موثّقة</h2>
+          <h2><span class="num" aria-hidden="true">٦</span> واجهة الـ API — 106 عملية موثّقة</h2>
           <p class="desc">
             كل مسار تحت <span class="ltr">/api</span>. العقد الكامل في
             <code>shared/api-spec/openapi.yaml</code>
-            ويُمنع أي انحراف بين العقد والمسارات الفعلية بواسطة CI.
+            ويُمنع أي انحراف بين العقد والمسارات الفعلية بواسطة CI. منها 79 عملية منفَّذة متزامنة مع
+            العقد حسب بوابة CI.
           </p>
 
           <h3><span class="tick">◆</span> المسارات العامة (للعملاء والزوار)</h3>
@@ -1853,8 +1860,8 @@
         <section id="s8">
           <h2><span class="num" aria-hidden="true">٨</span> لوحة الإدارة</h2>
           <p class="desc">
-            20 صفحة إدارية تحت <span class="ltr">/admin</span> — كل واحدة ببوابة نطاق صريحة، ومعالجة
-            كاملة لحالة «لا يملك النطاق».
+            18 عائلة إدارية في 20 صفحة تحت <span class="ltr">/admin</span> — منها صفحتا تفاصيل (حدث
+            مخاطرة) والدخول — كل عائلة ببوابة نطاق صريحة، ومعالجة كاملة لحالة «لا يملك النطاق».
           </p>
 
           <div class="grid g3">
@@ -1919,11 +1926,10 @@
             </div>
             <div class="card">
               <h4>🔐 الأمان <span class="badge b-info">admins</span></h4>
-              <p>نشاط المصادقة، إحصاءات الدخول، إدارة المشرفين وصلاحياتهم.</p>
-            </div>
-            <div class="card">
-              <h4>📜 سجل التدقيق <span class="badge b-info">admins</span></h4>
-              <p>كل عملية إدارية موثّقة (من، ماذا، على ماذا) — 180 يومًا.</p>
+              <p>
+                نشاط المصادقة، إحصاءات الدخول، إدارة المشرفين وصلاحياتهم + سجل التدقيق (تبويب
+                «إجراءات المسؤولين» — كل عملية إدارية موثّقة، 180 يومًا).
+              </p>
             </div>
             <div class="card">
               <h4>🛠️ النظام <span class="badge b-info">settings</span></h4>
@@ -2054,8 +2060,7 @@
                 <td><b>الأساس</b></td>
                 <td>
                   <div class="kv">
-                    <code>DATABASE_URL</code><code>PORT</code><code>APP_URL</code
-                    ><code>APP_ORIGINS</code><code>CSRF_ALLOWED_ORIGINS</code>
+                    <code>DATABASE_URL</code><code>APP_URL</code><code>APP_ORIGINS</code>
                   </div>
                 </td>
                 <td><span class="badge b-req">إلزامي</span></td>
@@ -2128,9 +2133,9 @@
                 <td><b>البنية</b></td>
                 <td>
                   <div class="kv">
-                    <code>REDIS_URL</code><code>SINGLE_INSTANCE_MODE</code><code>WORKER_TIER</code
-                    ><code>DISABLE_BOOT_MIGRATIONS</code><code>GRACEFUL_SHUTDOWN_TIMEOUT_MS</code
-                    ><code>SLOW_QUERY_THRESHOLD_MS</code>
+                    <code>PORT</code><code>REDIS_URL</code><code>SINGLE_INSTANCE_MODE</code
+                    ><code>WORKER_TIER</code><code>DISABLE_BOOT_MIGRATIONS</code
+                    ><code>GRACEFUL_SHUTDOWN_TIMEOUT_MS</code><code>SLOW_QUERY_THRESHOLD_MS</code>
                   </div>
                 </td>
                 <td><span class="badge b-warn">اختيارية — بسلوك بدائل واضح</span></td>
@@ -2147,6 +2152,11 @@
               </tr>
             </tbody>
           </table>
+          <p style="font-size: 13.5px; color: var(--ink-3); margin-top: -4px">
+            <code>CSRF_ALLOWED_ORIGINS</code> تجاوز اختياري يوسّع قائمة أصول CSRF — والإلزام
+            الحقيقي: قائمة أصول غير فارغة في الإنتاج، تتحقق من أيٍّ من
+            <code>CSRF_ALLOWED_ORIGINS</code> / <code>APP_ORIGINS</code> / <code>APP_URL</code>.
+          </p>
         </section>
 
         <!-- ============ 11 ============ -->
@@ -2213,7 +2223,7 @@
               </tr>
               <tr>
                 <td><b>اختبارات الوحدات ×3</b> (خلفي/أمامي/سكربتات)</td>
-                <td>أي كسر سلوكي — 5,464 اختبارًا</td>
+                <td>أي كسر سلوكي — 5,560 اختبارًا</td>
               </tr>
               <tr>
                 <td><b>بناء الإنتاج + ميزانية الحجم</b></td>
@@ -2261,7 +2271,10 @@
               </tr>
               <tr>
                 <td>05:00</td>
-                <td>تنظيف الجلسات والإشعارات ومحاولات الدخول (7 أيام) وسجل التدقيق (180 يومًا)</td>
+                <td>
+                  تنظيف الجلسات المنتهية (30 يومًا نافذة الجلسة) والإشعارات المقروءة (90 يومًا) وغير
+                  المقروءة (180 يومًا) ومحاولات الدخول (7 أيام) وسجل التدقيق (180 يومًا)
+                </td>
               </tr>
               <tr>
                 <td>04:30</td>
@@ -2341,12 +2354,12 @@
         <!-- ============ 12 ============ -->
         <section id="s12">
           <h2><span class="num" aria-hidden="true">١٢</span> الأرقام الحالية</h2>
-          <p class="desc">لقطة الحالة عند إصدار هذا الدليل (الجولة R185 — 2026-10-22).</p>
+          <p class="desc">لقطة الحالة عند إصدار هذا الدليل (الجولة R186 — 2026-10-24).</p>
           <div class="stats">
             <div class="stat"><b>45</b><span>منتجًا في الكتالوج</span></div>
             <div class="stat"><b>38</b><span>جدولًا في القاعدة</span></div>
-            <div class="stat"><b>79</b><span>عملية API موثّقة</span></div>
-            <div class="stat"><b>5,464</b><span>اختبار آلي</span></div>
+            <div class="stat"><b>106</b><span>عملية API موثّقة</span></div>
+            <div class="stat"><b>5,560</b><span>اختبار آلي</span></div>
             <div class="stat"><b>26</b><span>رمز خطأ موحّد</span></div>
             <div class="stat"><b>148 KB</b><span>الحزمة الأولية (مضغوطة)</span></div>
             <div class="stat"><b>56</b><span>رابطًا في خريطة الموقع</span></div>
@@ -2417,7 +2430,7 @@
     <footer>
       <div>
         <b>SubNation</b> — دليل المشروع الشامل <span class="sep">·</span> أُنشئ آليًا من حالة
-        المستودع الفعلية (الجولة R185 · 2026-10-22) <span class="sep">·</span>
+        المستودع الفعلية (الجولة R186 · 2026-10-24) <span class="sep">·</span>
         <span class="ltr">github.com/ahmadmedo1012/SubNation2</span>
       </div>
       <div style="margin-top: 8px; font-size: 12px; opacity: 0.75">

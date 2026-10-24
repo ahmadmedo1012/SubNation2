@@ -157,12 +157,13 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (at R185 — the suites grow every round — or shrink by
+Current suite (at R186 — the suites grow every round — or shrink by
 honest deletion, as R185's orphan-test removal did; each round's
 CHANGELOG entry carries the exact centrally-verified counts; CI runs
-both unit suites on every code push): **frontend 296 test files /
-2,737 tests** · **backend 290 test files / 2,668 tests** · **scripts
-6 files / 59 tests** — combined **5,464** · guest-only e2e **14 spec
+both unit suites on every code push): **frontend 307 test files /
+2,802 tests** · **backend 298 test files / 2,696 tests** · **scripts
+7 files / 62 tests** — combined **5,560** (R186's 19 new pinning-test
+files included; owner PR #12's GA4 regression test included) · guest-only e2e **14 spec
 files / 135 runs** (135/135 green on production at R163 — desktop +
 mobile-390 projects; dispatch + weekly heartbeat only — not per-push).
 
@@ -255,10 +256,19 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   `docs/history/`).
 - **CI is green on every code push** ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
   secret scan, lint, typecheck, OpenAPI parity, migration + orval drift
-  gates, both unit suites, production build, a CVE gate on prod deps, and
-  an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy jobs
-  via the workflow's path filter). Round-by-round deployment + audit
-  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R185**
+  gates, both unit suites, production build, a CVE gate on prod deps
+  (dependency-touching pushes + weekly schedule — not every code push),
+  and an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy
+  jobs via the workflow's path filter). Round-by-round deployment + audit
+  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R186**
+  (the all-surface detail-perfection round — a 10-squad parallel audit
+  of every page, API route, integration, and doc: 76 verified findings,
+  9 P2s closed (the TOTP 500+lockout bypass, the 2FA QR silent
+  dead-end, the orders-CSV formula-injection gap, the coupon-admin 401
+  session-teardown, the Redis-adapter crash-loop, the GA4-class
+  silent-failure twins in enrichment + Telegram observability, three
+  study-guide falsehoods) + 67 detail fixes, +96 pinning tests,
+  combined 5,560), **R185**
   (the ponytail full-power lean round — the dead-surface harvest: the
   audit ladder run end-to-end, the orphaned `ui/switch` component + its
   own test, a dead test hook and a dead resume-API deleted, 21 dead
@@ -302,7 +312,7 @@ in [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md):
   variant tree + usage terms: −62.6% of the catalog wire bytes.
 - **Route-chunk warm-up** — pointerenter/focusin delegation pre-imports the
   likely-next route (−150–400 ms perceived nav on 3G/4G), saveData-respecting.
-- **Eager path ≈ 144.5 KiB gz (147,929 B at R185)** (entry + vendor + CSS) under a CI budget gate —
+- **Eager path ≈ 145.4 KiB gz (148,921 B at R186)** (entry + vendor + CSS) under a CI budget gate —
   150 KiB warn (raised from 145 KiB at R144-E2, basis in
   `frontend/vite.config.ts`) / 160 KiB hard-fail, enforced by the production
   build.
