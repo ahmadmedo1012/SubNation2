@@ -1,6 +1,7 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-22 (R185 — the ponytail full-power lean
+> Status: CURRENT @ 2026-10-24 (R186 — the all-surface detail-perfection
+> round: the R186 row + folder count 41→**42**; prior status R185 — the ponytail full-power lean
 > round: the R185 row + folder count 40→**41**; prior status R184 — the
 > final organization round: the R184 row + folder count 39→**40**; the
 > R183 round-index truth pass: the four missing rows added (R177–R180),
@@ -16,7 +17,7 @@
 
 ## The round index
 
-**41 folders covering the R142→R185 span** (R155/R159/R180 have no
+**42 folders covering the R142→R186 span** (R155/R159/R180 have no
 folder — see the gaps section; R177–R179's docs commits never touched
 this index, their rows added by R183). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
@@ -24,6 +25,7 @@ order; each row links the round's primary record and names the CHANGELOG entry
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R186 | 2026-10-24 | The all-surface detail-perfection round (the multi-agent audit + fix wave — 20 agent invocations: 10 audit squads → 76 verified findings → 10 fix squads; the nine P2s incl. the TOTP 500+lockout bypass, the 2FA QR dead-end, the orders-CSV escaper gap, the coupon-admin 401 session-teardown, the Redis-adapter crash-loop, the two GA4-class silent-failure twins; +96 pinning tests → combined 5,560; the study guide re-verified ~150 claims) | [`round-close.md`](./R186/round-close.md) |
 | R185 | 2026-10-22 | The ponytail full-power lean round (the dead-surface harvest — the audit ladder run end-to-end over all 691 non-test source files: the orphaned `ui/switch` component + its own test deleted, the dead test hook + the dead `resumeAlerting` API deleted, 21 dead exports un-exported across 10 files, the orphaned @radix-ui/react-switch dependency removed, −98 lines + −46 lockfile lines, zero behavior change by construction) | [`round-close.md`](./R185/round-close.md) |
 | R184 | 2026-10-22 | The final organization round (the R183 review's F4 teardown gap closed for every `admin-*` query root; the README/state re-stamped to the live truth — the retired payment_reference wording, the R165-frozen counts, the R163-era rounds list; the owner's Arabic study guide `docs/PROJECT_GUIDE.html`) | [`round-close.md`](./R184/round-close.md) |
 | R183 | 2026-10-22 | The precision & truth round (the money-contract truth pass — M3's retirement recorded; the nine-family guard-surface sweep; the latent scope gates + the 401-expiry scope reset; four money behavioral pins with two real latent defects closed; the R172–R182 docs-truth reconciliation) | [`round-close.md`](./R183/round-close.md) |
