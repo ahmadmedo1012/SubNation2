@@ -19,6 +19,7 @@
  */
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
@@ -61,10 +62,15 @@ function resLike(over: { ok?: boolean; status?: number; body?: unknown } = {}) {
 const fetchMock = vi.fn();
 
 function renderPage() {
+  // R186 (C-F8): the list rides useQuery now — a fresh client per render
+  // (retry: false) per the page-test convention.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <Router>
-      <AdminPromotionsPage />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminPromotionsPage />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 
@@ -162,22 +168,22 @@ describe("AdminPromotionsPage — a failed load is an error toast, not a fake-cl
     vi.unstubAllGlobals();
   });
 
-  it("an error envelope toasts the Arabic failure and NEVER renders the empty state", async () => {
+  it("an error envelope surfaces the Arabic failure card and NEVER renders the empty state (R186 C-F8: the query error state)", async () => {
     fetchMock.mockResolvedValue(
       resLike({ ok: false, status: 500, body: { error: "خطأ في الخادم" } }),
     );
 
     renderPage();
 
-    await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
-    const toastArg = toastMock.mock.calls[0][0];
-    expect(toastArg.title).toBe("تعذّر تحميل العروض");
-    expect(String(toastArg.description)).toContain("خطأ في الخادم");
-    expect(toastArg.variant).toBe("destructive");
-    // The outage is NOT presented as a clean, empty promotions
-    // history.
+    // The outage is NOT presented as a clean, empty promotions history —
+    // the 94-C2 (A2 P2-9) error card renders with the server's own
+    // Arabic message (R186 C-F8: the load-error toast retired with the
+    // hand-rolled loader — a 5-min poll failure would re-toast forever;
+    // the card + its retry carry the recovery).
+    expect(await screen.findByText("خطأ في الخادم")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("لا توجد عروض بعد")).not.toBeInTheDocument());
     expect(screen.queryByText("عرض الجمعة")).not.toBeInTheDocument();
+    expect(toastMock).not.toHaveBeenCalled();
   });
 });
 
@@ -219,6 +225,25 @@ describe("AdminPromotionsPage — activating a store-wide discount requires conf
       (c) => (c[1] as RequestInit | undefined)?.method === "PATCH",
     );
     expect(patchCalls).toHaveLength(0);
+  });
+
+  it("R186 (C-F9): the confirm composes ONE direction word — «وينتهي خلال ساعتين», never the doubled «حتى خلال»", async () => {
+    // A sale ending exactly 2 hours out: formatRelativeTime's own
+    // output carries the direction («خلال ساعتين»), so the sentence
+    // must compose «وينتهي …» — the old copy prefixed «حتى …» and read
+    // «فورًا حتى خلال ساعتين» (a doubled preposition, the 93-C6/F-06
+    // class this helper's other consumers already killed).
+    const endingSoon = {
+      ...STOPPED_SALE,
+      ends_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+    };
+    fetchMock.mockImplementation(async () => resLike({ body: { flash_sales: [endingSoon] } }));
+
+    renderPage();
+    const dialog = await openActivateConfirm();
+    const description = within(dialog).getByText(/ينتهي/).textContent ?? "";
+    expect(description).toMatch(/وينتهي خلال ساعتين\./);
+    expect(description).not.toMatch(/حتى خلال/);
   });
 
   it("confirming fires the activation PATCH with is_active:true", async () => {

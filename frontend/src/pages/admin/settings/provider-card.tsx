@@ -346,7 +346,10 @@ export function ProviderCard({
             </a>
 
             {/* R139 (precision): inline error ink joins the one-status-source channel (text-status-error, the 139-i triage decision — bare error TEXT rides the status family; composed destructive BOXES keep their themed surface family). */}
-            {error && <span className="text-xs text-status-error mr-auto">{error}</span>}
+            {/* R186 (D-F8): mr-auto → ms-auto — the logical-property twin
+                every sibling uses (the lone physical-margin outlier on
+                the admin surface). */}
+            {error && <span className="text-xs text-status-error ms-auto">{error}</span>}
           </div>
         </div>
       )}

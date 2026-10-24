@@ -12,7 +12,15 @@ import { productOgUrl } from "./product-art";
 
 const DEFAULT_ORIGIN = "https://subnation.ly";
 
-function getOrigin(): string {
+/**
+ * The ONE app-origin resolver (R186 H-F2): `VITE_APP_ORIGIN` → the apex
+ * default — the documented "product domain, not hosting" ladder
+ * (ENVIRONMENT_MATRIX.md). MetaTags (canonical/og:url) imports this
+ * instead of a private twin whose extra window.location.origin middle
+ * step split the runtime tags from the JSON-LD origin on any non-apex
+ * host with the env unset.
+ */
+export function getAppOrigin(): string {
   const fromEnv = (import.meta.env.VITE_APP_ORIGIN as string | undefined)?.trim();
   return (fromEnv?.replace(/\/$/, "") || DEFAULT_ORIGIN).replace(/\/$/, "");
 }
@@ -20,7 +28,7 @@ function getOrigin(): string {
 // ── Organization ─────────────────────────────────────────────────────────────
 
 export function buildOrganizationLd() {
-  const origin = getOrigin();
+  const origin = getAppOrigin();
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -99,7 +107,7 @@ export interface ProductLdInput {
 }
 
 export function buildProductLd(p: ProductLdInput) {
-  const origin = getOrigin();
+  const origin = getAppOrigin();
   // Stable absolute path: prefer slug (canonical for SEO) over numeric
   // id. Falls through to id when slug is missing (legacy rows pre-
   // backfill — should be impossible after the migration but keeps the
@@ -186,7 +194,7 @@ export interface BreadcrumbItem {
 }
 
 export function buildBreadcrumbLd(items: BreadcrumbItem[], id?: string) {
-  const origin = getOrigin();
+  const origin = getAppOrigin();
   // R178 (RH-55): the raw shell already emits the same BreadcrumbList with
   // this @id. Reusing it lets the hydrated page merge into ONE node instead
   // of shipping a second, anonymous BreadcrumbList beside the shell's.
@@ -240,7 +248,7 @@ export function buildFaqLd(items: FaqItem[]) {
 // because home.tsx already drives its catalog filter from that param.
 
 export function buildWebsiteLd() {
-  const origin = getOrigin();
+  const origin = getAppOrigin();
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
@@ -280,7 +288,7 @@ export interface ItemListEntry {
 }
 
 export function buildItemListLd(items: ItemListEntry[]) {
-  const origin = getOrigin();
+  const origin = getAppOrigin();
   return {
     "@context": "https://schema.org",
     "@type": "ItemList",

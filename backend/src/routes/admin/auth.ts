@@ -89,6 +89,14 @@ const USERNAME_LOCKOUT_POLICY: LockoutPolicy = {
   baseLockoutMinutes: 15,
 };
 
+// E-F1 (R186): otplib's verifySync throws on malformed shapes ("12345") — a typo must not 500 past the lockout budget.
+function isValidTotpCode(code: unknown): code is string {
+  return typeof code === "string" && /^\d{6}$/.test(code.trim());
+}
+const INVALID_TOTP_BODY = createErrorResponse(
+  "رمز التحقق يجب أن يكون 6 أرقام",
+  ErrorCode.INVALID_DATA,
+);
 // R126-L4 (A7-F3, P3): no-store parity with the 98-F3 / R123-E5 pattern —
 // this was the last admin-family router WITHOUT a router-level header, so
 // its auth rejection paths answered with NO Cache-Control: the inline
@@ -310,6 +318,8 @@ router.post("/login/verify-2fa", async (req, res) => {
   const { temp_token, code } = req.body ?? {};
   if (!temp_token || !code)
     return res.status(400).json(createErrorResponse("بيانات غير مكتملة", ErrorCode.INVALID_DATA));
+
+  if (!isValidTotpCode(code)) return res.status(400).json(INVALID_TOTP_BODY);
 
   try {
     const decoded = jwt.verify(temp_token, ADMIN_JWT_SECRET, { algorithms: ["HS256"] }) as {
@@ -944,6 +954,8 @@ router.post("/2fa/verify-setup", requireAdmin, async (req, res) => {
   const { code } = req.body ?? {};
   if (typeof code !== "string" || !code.trim())
     return res.status(400).json(createErrorResponse("الرمز مطلوب", ErrorCode.INVALID_DATA));
+
+  if (!isValidTotpCode(code)) return res.status(400).json(INVALID_TOTP_BODY);
 
   const [admin] = await db
     .select()

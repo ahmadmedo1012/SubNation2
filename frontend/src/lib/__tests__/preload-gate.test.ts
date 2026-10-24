@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   PRELOAD_GATE_ASSET_FILE,
   PRELOAD_GATE_SOURCE,
+  ROUTE_FAMILY_RE,
   buildPreloadGateTag,
   injectPreloadGate,
 } from "../../../vite.config";
@@ -281,6 +282,23 @@ describe("R143 (L11-1) — deep-link route-chunk head-start", () => {
     expect(runGate("https://subnation.ly/product", buildPreloadGateTag([HOME], ROUTES))).toEqual([
       `/${HOME}`,
     ]);
+  });
+
+  it("an ADMIN products-*.js bundle key yields NO route token under ROUTE_FAMILY_RE (R186 H-F4 — the plural exclusion)", () => {
+    // The `product-` anchor requires the hyphen directly after the
+    // family, so the plural admin chunk (assets/products-*.js)
+    // deliberately falls OUT of the bundle collection — the admin leg
+    // never boots through the gate (runtime early return), so warming
+    // it from storefront deep-links would be pure waste. The old
+    // comment above the regex CLAIMED it was legitimately matched; a
+    // future "fix" widening the anchor to `products?` would preload an
+    // admin chunk on every storefront product deep-link.
+    expect("assets/products-abc123.js".match(ROUTE_FAMILY_RE)).toBeNull();
+    // Positive controls: the singular family and the one legitimate
+    // extra rider (checkout-errors rides the checkout route's own
+    // import graph) still collect tokens.
+    expect("assets/product-abc123.js".match(ROUTE_FAMILY_RE)?.[1]).toBe("product");
+    expect("assets/checkout-errors-abc.js".match(ROUTE_FAMILY_RE)?.[1]).toBe("checkout");
   });
 
   it("the tag carries data-route-chunks as family=/url tokens (omitted when none)", () => {

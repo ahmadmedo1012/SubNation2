@@ -416,9 +416,28 @@ router.patch(
         }
       } catch (err) {
         if (err instanceof AdjustmentError) {
-          return res
-            .status(err.statusCode)
-            .json(createErrorResponse(err.message, mapAdjustmentErrorToCode(err.code)));
+          // E-F4 (R186): when the loyalty branch already committed and the
+          // wallet branch then failed, the old plain-409 envelope hid the
+          // partial application — the operator re-sent BOTH fields (the
+          // self-heal) with no idea the points side had already landed.
+          // 409 semantics stay intact; the envelope just becomes honest.
+          const message = loyaltyApplied
+            ? `${err.message} — تم تطبيق تعديل نقاط الولاء بالفعل (النقاط الآن ${loyaltyApplied.after})`
+            : err.message;
+          return res.status(err.statusCode).json(
+            createErrorResponse(
+              message,
+              mapAdjustmentErrorToCode(err.code),
+              loyaltyApplied
+                ? {
+                    partial: {
+                      reason: "loyalty_applied_wallet_failed",
+                      loyalty_points_after: loyaltyApplied.after,
+                    },
+                  }
+                : undefined,
+            ),
+          );
         }
         throw err;
       }

@@ -87,8 +87,13 @@ describe("R137 (FE) — admin/coupons.tsx decomposition: page stays an orchestra
     expect(page).toContain('title: "أرشفة الكوبون؟",');
     expect(page).toContain('confirmLabel: "أرشفة",');
     expect(page).toContain('{ method: "DELETE", headers }');
-    // The session-aware list fetch + the 401 sentinel handling.
-    expect(page).toContain("const fetchCoupons = useCallback(");
+    // The session-aware list query + the 401 sentinel handling.
+    // [R186 C-F8] the hand-rolled fetchCoupons useCallback became the
+    // page-owned useQuery on the documented base key — same fetch, now
+    // with the enabled/poll contract every sibling rides (the C-F8
+    // source-pin suite pins the key + gate).
+    expect(page).toContain("useQuery<Coupon[]>({");
+    expect(page).toContain("queryKey: COUPONS_ADMIN_QUERY_KEY,");
     expect(page).toContain('adminFetchJson<Coupon[]>("/api/coupons/admin", { headers })');
     expect(page).toContain("if (err instanceof AdminSessionExpiredError) return;");
     // The confirm gate + the per-row busy atoms are page-owned too.
@@ -97,12 +102,11 @@ describe("R137 (FE) — admin/coupons.tsx decomposition: page stays an orchestra
 
   it("the cross-section state atoms stay centralized in the page (values + setters flow down)", () => {
     // One source: the dialog's draft (useDirtyGuard identity-compares
-    // it against EMPTY_FORM), the parity-guard error, the per-row busy
-    // ids and the list window all key off these atoms.
+    // it against EMPTY_FORM), the parity-guard error and the per-row busy
+    // ids all key off these atoms; the list window + its failure state
+    // moved to the C-F8 useQuery (data/isError/error — pinned in the
+    // money-path test above).
     for (const atom of [
-      "const [coupons, setCoupons] = useState<Coupon[]>([]);",
-      "const [loading, setLoading] = useState(true);",
-      "const [loadError, setLoadError] = useState<string | null>(null);",
       "const [showCreate, setShowCreate] = useState(false);",
       "const [form, setForm] = useState<CreateForm>(EMPTY_FORM);",
       "const [creating, setCreating] = useState(false);",

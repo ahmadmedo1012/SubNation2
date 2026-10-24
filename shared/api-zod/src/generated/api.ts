@@ -3798,6 +3798,16 @@ export const GetAdminObservabilityMetricsResponse = zod
                 .record(zod.string(), zod.number())
                 .describe('"rule:severity:outcome" → count.'),
             }),
+            telegram: zod
+              .object({
+                sendsTotal: zod
+                  .record(zod.string(), zod.number())
+                  .describe('"event:outcome" → count (ok | skip | retry | failure).'),
+              })
+              .optional()
+              .describe(
+                "R186 (F-F1) — optional: present whenever telegram_sends_total\nhas at least one labelled cell (the counter's doc contract).\n",
+              ),
             monitoringErrors: zod.number(),
             scheduler: zod
               .object({

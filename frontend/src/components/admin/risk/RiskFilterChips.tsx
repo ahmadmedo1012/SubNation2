@@ -12,10 +12,15 @@ import { FILTERS, LEVEL_META, TONE_CHIP, type RiskLevel } from "@/components/adm
 export function RiskFilterChips({
   filter,
   counts,
+  countsReady,
   onFilterChange,
 }: {
   filter: "all" | RiskLevel;
   counts: Record<RiskLevel | "all", number>;
+  /** R186 (D-F9): false while the level-agnostic count source is still
+   * in flight/errored under an active level filter — the counts render
+   * blank instead of describing the filtered window as the totals. */
+  countsReady: boolean;
   onFilterChange: (value: "all" | RiskLevel) => void;
 }) {
   return (
@@ -47,7 +52,7 @@ export function RiskFilterChips({
               }`}
             >
               {f.label}
-              <span className="ms-1.5">({counts[f.value]})</span>
+              <span className="ms-1.5">{countsReady ? `(${counts[f.value]})` : ""}</span>
             </button>
           );
         })}

@@ -71,11 +71,18 @@ export const USER_SESSION_EXPIRED_MESSAGE = "انتهت الجلسة — سجّ�
 const DEDUPE_WINDOW_MS = 15_000;
 
 function isAdminApiUrl(url: string): boolean {
+  // R186 (H-F1): /api/coupons/admin is an ADMIN surface — mirror
+  // admin-session's R122 (A2-P2) arms so a coupon-admin 401 through
+  // customFetch delegates to the admin handler instead of being
+  // misrouted to the USER expiry path (valid user session torn down +
+  // /login) while the admin handler concurrently redirects to
+  // /admin/login.
   if (url.includes("://")) {
     // Absolute URL (Expo base-URL deployments): the path segment still
     // decides. Cheap containment check — mirrors admin-session.
-    return url.includes("/api/admin/");
+    return url.includes("/api/admin/") || url.includes("/api/coupons/admin");
   }
+  if (url.startsWith("/api/coupons/admin")) return true;
   return url.startsWith("/api/admin/");
 }
 

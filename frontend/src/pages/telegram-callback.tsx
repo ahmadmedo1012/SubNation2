@@ -6,6 +6,11 @@ import { Link, useLocation } from "wouter";
 import { readApiError } from "@/components/checkout/checkout-errors";
 import { Button } from "@/components/ui/button";
 import { useSeo } from "@/hooks/useSeo";
+// B-F3 (R186): the open-redirect guard is the CANONICAL one
+// (lib/utils.sanitizeInternalPath, extracted in R123-E4a so every auth
+// surface shares it) — this page's module-local readRedirectTarget fork
+// had byte-identical semantics and was deleted.
+import { sanitizeInternalPath } from "@/lib/utils";
 
 const HANG_TIMEOUT_MS = 12_000;
 
@@ -101,27 +106,6 @@ function decodeTelegramPayload(): DecodedTelegramPayload | null {
   return null;
 }
 
-/**
- * 93-C5 / F-15 (A4 #3): read + validate the ?redirect= guarded destination
- * that TelegramLoginButton re-appended to this page's URL. Same-origin
- * internal paths only (slash-prefixed, no protocol/host, no "//") so the
- * param can't be abused as an open redirect — mirrors login.tsx's
- * readRedirectTarget. Without this the Telegram path ALWAYS landed on "/"
- * and the checkout funnel broke for Telegram-first users.
- */
-function readRedirectTarget(): string | null {
-  if (typeof window === "undefined") return null;
-  const target = new URLSearchParams(window.location.search).get("redirect");
-  if (!target || !target.startsWith("/") || target.startsWith("//")) return null;
-  try {
-    const url = new URL(target, window.location.origin);
-    if (url.origin !== window.location.origin) return null;
-    return url.pathname + url.search;
-  } catch {
-    return null;
-  }
-}
-
 export default function TelegramCallbackPage() {
   const { setToken } = useAuth();
   const [, navigate] = useLocation();
@@ -196,8 +180,12 @@ export default function TelegramCallbackPage() {
         // return_to=/auth/telegram-callback?redirect=/checkout) instead
         // of the hardcoded "/" — closes the last redirect-dropping
         // provider. Read it BEFORE the fragment strip below
-        // (replaceState rewrites window.location).
-        const redirectTarget = readRedirectTarget();
+        // (replaceState rewrites window.location) through the canonical
+        // sanitizeInternalPath guard (B-F3/R186: same null/reject
+        // semantics the local fork carried).
+        const redirectTarget = sanitizeInternalPath(
+          new URLSearchParams(window.location.search).get("redirect"),
+        );
         // Strip ONLY the fragment from the URL bar (keep the query) before
         // navigating away — the replace-navigation below rewrites the URL
         // anyway, but the strip must not consume the redirect param first.

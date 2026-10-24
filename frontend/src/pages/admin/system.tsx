@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useChartColors } from "@/lib/chart-theme";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
-import { Activity, Cpu } from "lucide-react";
+import { Activity, Cpu, Send } from "lucide-react";
 import { type ReactElement, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
@@ -465,6 +465,57 @@ export default function AdminSystemPage(): ReactElement | null {
             {/* ── Panel 7: Socket.IO + Job Activity ── */}
             {metrics && <SocketJobsSection metrics={metrics} />}
 
+            {/* ── Panel 7.6: Telegram delivery outcomes (F-F1, R186) ── */}
+            {/* The telegramSendsTotal counter's doc block always promised
+                operator surfacing; the snapshot + this tile make it true —
+                the "deliveries stopped" signal (failure/retry rows) is
+                readable without opening the Prometheus scrape. Gated like
+                every sibling: no metrics → no tile. */}
+            {metrics && Object.keys(metrics.telegram.sendsTotal).length > 0 && (
+              <DetailsSection title="إشعارات تيليجرام (آخر التسليمات)">
+                <div className="bg-card border border-border/60 rounded-2xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Send className="w-4 h-4 text-status-info" />
+                    <h3 className="text-sm font-bold">إشعارات تيليجرام</h3>
+                    <span className="text-3xs text-muted-foreground ms-auto">نتائج التسليم</span>
+                  </div>
+                  {/* The record-tile idiom the background-jobs panel uses —
+                      one row per event:outcome cell, dot by outcome tone. */}
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                    {Object.entries(metrics.telegram.sendsTotal)
+                      .sort(([, a], [, b]) => b - a)
+                      .slice(0, 8)
+                      .map(([key, count]) => {
+                        const [event, outcome] = key.split(":");
+                        const dot =
+                          outcome === "failure"
+                            ? "bg-status-error"
+                            : outcome === "retry"
+                              ? "bg-status-warning"
+                              : outcome === "skip"
+                                ? "bg-muted-foreground/50"
+                                : "bg-status-success";
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center gap-2 text-xs py-1 border-b border-border/30 last:border-0"
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+                            <span className="font-mono text-muted-foreground truncate" dir="ltr">
+                              {event}
+                            </span>
+                            <span className="text-3xs text-muted-foreground shrink-0">
+                              {outcome}
+                            </span>
+                            <span className="font-bold tabular-nums shrink-0 ms-auto">{count}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </DetailsSection>
+            )}
+
             {/* ── Panel 7.5: Core Web Vitals p75 ── */}
             {metrics && Object.keys(metrics.cwv.p75).length > 0 && (
               <CoreWebVitalsSection metrics={metrics} />
@@ -545,7 +596,12 @@ export default function AdminSystemPage(): ReactElement | null {
         {/* End of SECTION 2 — ADVANCED DIAGNOSTICS */}
 
         {/* ── Panel 9: Recent observability alerts ── */}
-        <RecentAlertsSection alertsLoading={recentAlertsQ.isLoading} recentAlerts={recentAlerts} />
+        <RecentAlertsSection
+          alertsLoading={recentAlertsQ.isLoading}
+          alertsError={recentAlertsQ.isError}
+          onRetryAlerts={() => void recentAlertsQ.refetch()}
+          recentAlerts={recentAlerts}
+        />
 
         {/* ── Panel 10: External dashboards ── */}
         {summary &&

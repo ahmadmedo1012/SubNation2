@@ -138,7 +138,13 @@ export default function OrdersPage() {
           headers: { Authorization: token ? `Bearer ${token}` : "" },
           signal,
         });
-        return Array.isArray(d) ? (d as Order[]) : [];
+        // B-F6 (R186): a well-formed-JSON but wrong-shaped 200 (proxy
+        // envelope, future API shape change) is an ERROR, not an empty
+        // purchase history — the empty hero must never mask a contract
+        // drift (the notifications/loyalty shape-guard class). Flows into
+        // the catch's preserve-cause wrap below.
+        if (!Array.isArray(d)) throw new Error("تعذّر تحميل الطلبات");
+        return d as Order[];
       } catch (err) {
         // preserve-caught-error: the original ApiError/network error rides
         // as `cause` for Sentry/console diagnostics.

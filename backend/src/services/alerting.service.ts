@@ -906,7 +906,8 @@ class AlertingService {
       this.alertsDispatchedTotal?.inc({ rule, severity, channel, outcome });
     } catch (err) {
       this.incrementMonitoringError("alerting");
-      console.error("Alerts dispatched metric increment failed:", err);
+      // R186-3 (I-F8b): alertingLogger() like the sibling three lines up.
+      alertingLogger().error({ err }, "Alerts dispatched metric increment failed");
     }
   }
 
@@ -914,7 +915,7 @@ class AlertingService {
     try {
       this.monitoringErrorsTotal?.inc({ component });
     } catch (err) {
-      console.error("Monitoring errors metric increment failed:", err);
+      alertingLogger().error({ err }, "Monitoring errors metric increment failed");
     }
   }
 }

@@ -29,6 +29,9 @@ export function ReferralsFilters({
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           <Input
             placeholder="بحث برقم المُحيل أو المُحال…"
+            /* R186 (D-F6): placeholder-only naming — the house R125-I5
+               convention (a placeholder is not an accessible name). */
+            aria-label="بحث في الإحالات"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             className="ps-9 h-9 text-sm"

@@ -166,6 +166,29 @@ describe("AdminLayout last-updated pill — reflects real query state (R122 A2-P
     expect(pillDot(container)).not.toContain("animate-pulse");
     expect(screen.queryAllByText("الآن")).toHaveLength(0);
   });
+
+  it("R186 (C-F2): a badge-scope-less admin renders NO pill at all — never an eternal «جارٍ التحديث…»", async () => {
+    // Neither finance NOR support: both badge queries stay disabled →
+    // no data ever lands, no error ever fires. The old pill rendered the
+    // gray dot + «جارٍ التحديث…» forever on every page, claiming an
+    // update was in flight that could never land.
+    authState.finance = false;
+    authState.support = false;
+    fetchMock.mockImplementation(routeBadgeFetch());
+
+    renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByText("page-body")).toBeInTheDocument();
+    });
+    // Give any (disabled) query a beat to prove nothing fires.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText(/جارٍ التحديث/)).toBeNull();
+    expect(screen.queryByText(/تعذّر التحديث/)).toBeNull();
+    expect(screen.queryAllByText("الآن")).toHaveLength(0);
+    // The badge fetches never fired either (the scope gates held).
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("GlobalSearch — scope-honest sections (R122 A2-P2)", () => {

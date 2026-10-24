@@ -233,6 +233,9 @@ export function TicketDetailPane({
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             placeholder={selected.status === "closed" ? "التذكرة مغلقة…" : "اكتب ردك هنا…"}
+            /* R186 (D-F6): placeholder-only naming — the house R125-I5
+               convention (a placeholder is not an accessible name). */
+            aria-label="كتابة رد على التذكرة"
             className="flex-1 h-10"
             disabled={selected.status === "closed"}
             dir="rtl"

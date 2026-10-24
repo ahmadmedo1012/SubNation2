@@ -14,11 +14,12 @@ import { getErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/useToast";
 import { useDirtyGuard } from "@/hooks/useDirtyGuard";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, Eye, EyeOff, Key, Loader2, Save, UserCog } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
 /** R125-I5 (A3-9): `role` is a free varchar (default "admin"; the admin
@@ -77,18 +78,43 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
   const [, navigate] = useLocation();
   const [session, setSession] = useState<AdminSession | null>(null);
   const [loading, setLoading] = useState(true);
+  // R186 (D-F7): a plain outage (non-401) on the session probe is NOT
+  // the 401/null path — the old dead-end line prescribed re-login for a
+  // failure re-login cannot fix. Tracked separately so the retry card
+  // below owns the recoverable class while the 401 path keeps the
+  // re-login line (the global guard owns that redirect).
+  const [loadFailed, setLoadFailed] = useState(false);
   const headers = useAdminHeaders({ json: true });
 
-  useEffect(() => {
+  // R186 (D-F7): the probe hoisted into one callback so the mount effect
+  // and the retry button share the exact same chain.
+  const loadSession = useCallback(() => {
+    setLoading(true);
+    setLoadFailed(false);
     // R123 (E3 item 1): adminFetch for uniformity — the session endpoint
     // is response-exempt in the global 401 handler, so behavior is
     // byte-identical to the raw fetch (reject-on-!ok → null session).
     adminFetch("/api/admin/session", { credentials: "include", headers })
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))
       .then(setSession)
-      .catch(() => setSession(null))
+      .catch((err: unknown) => {
+        // 401 (the raw Response rejection — the endpoint is exempt from
+        // the sentinel) and the sentinel itself stay the old quiet null
+        // path: re-login is genuinely the fix there. Everything else
+        // (5xx Response, network TypeError) is a retriable outage.
+        const status =
+          typeof (err as { status?: number } | null)?.status === "number"
+            ? (err as { status: number }).status
+            : null;
+        setLoadFailed(status !== 401 && !(err instanceof AdminSessionExpiredError));
+        setSession(null);
+      })
       .finally(() => setLoading(false));
   }, [headers]);
+
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
 
   // ── Profile (username + display name) form state ──
   const [profileUsername, setProfileUsername] = useState("");
@@ -229,6 +255,15 @@ export function AccountTab({ adminToken: _adminToken }: { adminToken: string }) 
         <Skeleton className="h-10 rounded-xl mt-2" />
         <Skeleton className="h-10 rounded-xl" />
       </div>
+    );
+  }
+
+  if (loadFailed) {
+    // R186 (D-F7): the retriable outage gets the shared retry card — the
+    // settings tab's sibling failure contract (a dead-end «أعد تسجيل
+    // الدخول» cannot fix a 500).
+    return (
+      <FetchErrorCard size="section" title="تعذّر تحميل بيانات الحساب" onRetry={loadSession} />
     );
   }
 

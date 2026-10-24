@@ -89,22 +89,25 @@ describe("R137 (FE) — admin/promotions.tsx decomposition: page stays an orches
     expect(page).toContain(
       'await adminFetchJson(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });',
     );
-    // The session-aware list fetch + the confirm gate are page-owned too.
+    // The session-aware list query + the confirm gate are page-owned too.
     // [R169 lint-zero] load became a useCallback (same page-owned body;
     // the wrapper lets the mount effect key on it without a refetch loop).
-    expect(page).toContain("const load = useCallback(async () => {");
+    // [R186 C-F8] the hand-rolled load useCallback became the page-owned
+    // useQuery on the documented base key — same fetch, same envelope
+    // guard, now with the enabled/poll contract every sibling rides (the
+    // coupons twin + the C-F8 source-pin suite pin the key + gate).
+    expect(page).toContain("useQuery<{ flash_sales?: FlashSale[] }>({");
+    expect(page).toContain("queryKey: FLASH_SALES_QUERY_KEY,");
     expect(page).toContain("const { confirm, ConfirmDialog } = useConfirm();");
     expect(page).toContain("if (err instanceof AdminSessionExpiredError) return;");
   });
 
   it("the cross-section state atoms stay centralized in the page (values + setters flow down)", () => {
-    // One source: the list window + the error card branch, the form
-    // draft (useDirtyGuard identity-compares it against EMPTY_FORM) and
-    // the submitting flag all key off these atoms.
+    // One source: the form draft (useDirtyGuard identity-compares it
+    // against EMPTY_FORM) and the submitting flag all key off these
+    // atoms; the list window + its failure state moved to the C-F8
+    // useQuery (data/isError/error — pinned in the money-path test).
     for (const atom of [
-      "const [sales, setSales] = useState<FlashSale[]>([]);",
-      "const [loading, setLoading] = useState(true);",
-      "const [loadError, setLoadError] = useState<string | null>(null);",
       "const [showForm, setShowForm] = useState(false);",
       "const [form, setForm] = useState(EMPTY_FORM);",
       "const [submitting, setSubmitting] = useState(false);",

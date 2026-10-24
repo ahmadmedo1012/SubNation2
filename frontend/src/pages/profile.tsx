@@ -629,7 +629,12 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={refetchProviders}
-                  className="shrink-0 text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80 px-3 py-1.5 rounded-xl transition-colors press-spring"
+                  /* B-F10 (R186): inline-flex items-center min-h-11 — the
+                     44px touch floor every sibling control in this card
+                     rides (the unlink twin :582, logout :717); the
+                     error-ink underline register is untouched
+                     (geometry-only change). */
+                  className="shrink-0 inline-flex items-center min-h-11 text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80 px-3 py-1.5 rounded-xl transition-colors press-spring"
                 >
                   {/* R139 (precision): the boxed error-border retry →
                       the error-ink underline register (139-h's

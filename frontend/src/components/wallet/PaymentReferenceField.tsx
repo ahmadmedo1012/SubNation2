@@ -11,40 +11,37 @@ import { Label } from "@/components/ui/label";
 // and event semantics are byte-identical.
 
 /**
- * 93-C5 / F-03 (A2 P1 #2): transfer-receipt reference field, rendered
- * under the amount in BOTH topup flows. Programmatic label + htmlFor
- * (A4 P3 #37 — placeholder-only names), dir="ltr" + font-mono for the
- * receipt/reference runs (typically Latin digits), maxLength 100
- * matching the backend's boundary.
+ * 93-C5 / F-03 (A2 P1 #2): transfer-receipt reference field. Programmatic
+ * label + htmlFor (A4 P3 #37 — placeholder-only names), dir="ltr" +
+ * font-mono for the receipt/reference runs (typically Latin digits),
+ * maxLength 100 matching the backend's boundary.
  *
- * R123-E4a (P1): the mobile_transfer flow passes required — the backend
- * has hard-required the reference there since B4-R1 (backend
- * wallet.ts:380-392, 400 «رمز التحويل (رقم العملية من إيصال التحويل)
- * مطلوب…» — R126-L2/A8 F4 aligned the message to the «رمز التحويل»
- * canon) while this field said «اختياري», so users on the
- * Libyana/Madar flow who skipped the receipt hit a post-submit 400.
- * lypay keeps it genuinely optional (gateway receipts are not
- * consistently exposed to users).
+ * R154 (P1-A): the field exists solely as the LYPAY flow's OPTIONAL
+ * bank-receipt reference — mobile_transfer retired it entirely that
+ * round (the telecom USSD channel doesn't reliably surface a receipt
+ * to the customer; the mobile flow's duplicate-risk signal is computed
+ * from amount/network/sender-phone evidence instead). The backend's
+ * dedup battery keys on the reference whenever present. The old
+ * R123-E4a mandatory-prop era (mobile_transfer) died with that
+ * retirement — R186-6 (A-F4) deleted its verified-dead true branch;
+ * the copy is unconditionally optional now.
  */
 export function PaymentReferenceField({
   value,
   onChange,
   id,
-  required,
 }: {
   value: string;
   onChange: (v: string) => void;
   id: string;
-  required: boolean;
 }) {
   return (
     <div className="mt-3">
       <Label htmlFor={id} className="text-xs font-bold text-muted-foreground mb-2 block">
         {/* R116-S2: unified «رمز» family (رمز التحويل above, رمز الكوبون)
             — was «رقم مرجع التحويل», the only «رقم مرجع» outlier on the
-            topup money flow. R123-E4a: (مطلوب) on the mobile flow — the
-            backend rejects a blank reference there (B4-R1). */}
-        رمز التحويل <span className="font-semibold">{required ? "(مطلوب)" : "(اختياري)"}</span>
+            topup money flow. */}
+        رمز التحويل <span className="font-semibold">(اختياري)</span>
       </Label>
       <Input
         id={id}
@@ -54,7 +51,6 @@ export function PaymentReferenceField({
         placeholder="رقم إيصال التحويل كما ورد في رسالة التحويل"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        required={required}
         dir="ltr"
         autoComplete="off"
         /* R139 (precision): border-border/50 + focus:border-primary/45
@@ -64,9 +60,7 @@ export function PaymentReferenceField({
         className="text-left font-mono h-11 bg-card"
       />
       <p className="text-2xs text-muted-foreground mt-1.5 leading-relaxed">
-        {required
-          ? "مطلوب للتحقق من تحويلك ومنع احتسابه مرتين."
-          : "يساعد رمز التحويل فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين."}
+        يساعد رمز التحويل فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين.
       </p>
     </div>
   );

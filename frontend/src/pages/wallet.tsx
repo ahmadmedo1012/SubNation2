@@ -30,6 +30,7 @@ import {
   saveTopupPreferences,
 } from "@/components/wallet/topup-preferences";
 import {
+  NETWORKS,
   NETWORK_PRESETS,
   type Method,
   readInitialMethodFromUrl,
@@ -320,7 +321,11 @@ export default function WalletPage() {
   // Load saved preferences on mount
   useEffect(() => {
     const prefs = getTopupPreferences();
-    setNetwork(prefs.network);
+    // R186-6 (A-F3): prefs come from a bare JSON.parse with no shape
+    // validation — the network restore is whitelisted like the method
+    // restore below (a bogus value would leave no selected tile, zero
+    // presets and an invalid enum POSTed).
+    setNetwork(NETWORKS.some((n) => n.value === prefs.network) ? prefs.network : "libyana");
     setAmount(prefs.amount);
     // A9-3 (R126-L6): an explicit ?method= seed outranks the stored
     // preference — the prefs effect must not clobber the URL's choice.

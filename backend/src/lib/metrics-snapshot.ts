@@ -78,6 +78,10 @@ export interface MetricsSnapshot {
     dispatchedTotal: Record<string, number>; // "rule:severity:outcome" -> count
   };
 
+  telegram: {
+    sendsTotal: Record<string, number>; // "event:outcome" -> count
+  };
+
   monitoringErrors: number;
 
   scheduler: ReturnType<typeof getSchedulerState>;
@@ -94,10 +98,7 @@ export interface MetricsSnapshot {
  *                terminal bucket (encoded as le=Infinity in prom-client).
  * @param q       Quantile in (0, 1].
  */
-function estimateQuantile(
-  buckets: Array<{ le: number; value: number }>,
-  q: number,
-): number | null {
+function estimateQuantile(buckets: Array<{ le: number; value: number }>, q: number): number | null {
   if (buckets.length === 0) return null;
   const total = buckets[buckets.length - 1].value;
   if (total === 0) return null;
@@ -193,8 +194,7 @@ function groupHistogramByLabels(
     } else if (sourceName?.endsWith("_sum")) {
       entry.sum = raw.value;
     } else if ("le" in raw.labels || (raw as RawBucket).bucket !== undefined) {
-      const le =
-        (raw as RawBucket).bucket ?? Number(raw.labels.le ?? Number.POSITIVE_INFINITY);
+      const le = (raw as RawBucket).bucket ?? Number(raw.labels.le ?? Number.POSITIVE_INFINITY);
       entry.buckets.push({ le, value: raw.value });
     } else if (raw.labels.le === undefined) {
       // Counter-shaped value without a bucket — likely the implicit count.
@@ -208,14 +208,15 @@ function groupHistogramByLabels(
   return out;
 }
 
-function toRecord(values: Array<RawValue | RawBucket>, keyFields: string[]): Record<string, number> {
+function toRecord(
+  values: Array<RawValue | RawBucket>,
+  keyFields: string[],
+): Record<string, number> {
   const out: Record<string, number> = {};
   for (const v of values) {
     if ("bucket" in v && v.bucket !== undefined) continue; // skip histogram buckets
     if ("le" in v.labels) continue; // skip histogram buckets via label
-    const key = keyFields
-      .map((f) => v.labels[f] ?? "?")
-      .join(":");
+    const key = keyFields.map((f) => v.labels[f] ?? "?").join(":");
     out[key] = (out[key] ?? 0) + v.value;
   }
   return out;
@@ -293,8 +294,7 @@ export async function buildMetricsSnapshot(): Promise<MetricsSnapshot> {
         totalSum += raw.value;
         continue;
       }
-      const le =
-        raw.bucket ?? Number(raw.labels.le ?? Number.POSITIVE_INFINITY);
+      const le = raw.bucket ?? Number(raw.labels.le ?? Number.POSITIVE_INFINITY);
       totalBuckets.set(le, (totalBuckets.get(le) ?? 0) + raw.value);
     }
     const buckets = Array.from(totalBuckets.entries())
@@ -317,7 +317,9 @@ export async function buildMetricsSnapshot(): Promise<MetricsSnapshot> {
 
   // ── Auth ──
   const authOutcomes = findMetric(metrics, "auth_outcomes_total");
-  const authOutcomesRecord = authOutcomes ? toRecord(authOutcomes.values, ["method", "outcome"]) : {};
+  const authOutcomesRecord = authOutcomes
+    ? toRecord(authOutcomes.values, ["method", "outcome"])
+    : {};
   const authTotal = Object.values(authOutcomesRecord).reduce((a, b) => a + b, 0);
   const authFailure = Object.entries(authOutcomesRecord)
     .filter(([k]) => k.endsWith(":failure") || k.endsWith(":lockout"))
@@ -399,6 +401,13 @@ export async function buildMetricsSnapshot(): Promise<MetricsSnapshot> {
     ? toRecord(alertsDispatched.values, ["rule", "severity", "outcome"])
     : {};
 
+  // ── Telegram ──
+  // R186 (F-F1): telegramSendsTotal's doc block promised operator
+  // surfacing but the snapshot never carried it — the "deliveries
+  // stopped" signal lived only on the Prometheus scrape.
+  const telegramSends = findMetric(metrics, "telegram_sends_total");
+  const telegramRecord = telegramSends ? toRecord(telegramSends.values, ["event", "outcome"]) : {};
+
   // ── Monitoring errors ──
   const monErrors = findMetric(metrics, "monitoring_errors_total");
   const monitoringErrors = monErrors ? sumValues(monErrors.values) : 0;
@@ -441,6 +450,8 @@ export async function buildMetricsSnapshot(): Promise<MetricsSnapshot> {
     cwv: { samples: cwvByName, p75: cwvP75 },
 
     alerts: { dispatchedTotal: alertsRecord },
+
+    telegram: { sendsTotal: telegramRecord },
 
     monitoringErrors,
 

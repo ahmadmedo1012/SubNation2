@@ -15,7 +15,8 @@ import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatCurrency, localDateTimeToUtcIso } from "@/lib/utils";
 import { AlertCircle, Tag } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 // R123 (E3 P3a): two-way URL sync — useSearch re-renders on ?sort=
 // changes (the users.tsx ?tier=/?sort= idiom).
 import { useLocation, useSearch } from "wouter";
@@ -52,6 +53,11 @@ import { CreateCouponDialog } from "@/components/admin/coupons/CreateCouponDialo
 import { CouponsTable } from "@/components/admin/coupons/CouponsTable";
 import { CouponsTableSkeleton } from "@/components/admin/coupons/CouponsTableSkeleton";
 
+// R186 (C-F8): the list's TanStack Query key — the documented base key
+// every invalidation (this page's mutations, future socket pushes) keys
+// off, mirroring the orders/topups/users "/api/admin/…" convention.
+const COUPONS_ADMIN_QUERY_KEY = ["/api/coupons/admin"] as const;
+
 export default function AdminCouponsPage() {
   const { adminToken, hasAdminPermission } = useAuth();
   // R134 (A3-F1): the scope gate — see components/admin/AdminScopeGate.tsx.
@@ -67,13 +73,6 @@ export default function AdminCouponsPage() {
   // native confirm never did.
   const { confirm, ConfirmDialog } = useConfirm();
 
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [loading, setLoading] = useState(true);
-  // Round-4 (org §2/§6a): the old fetchCoupons swallowed BOTH network
-  // errors and non-OK HTTP responses with a bare `catch {}` — the admin
-  // list could fail with zero UI signal. The failure now surfaces as an
-  // inline banner (plus a toast on the initial load).
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
@@ -112,44 +111,41 @@ export default function AdminCouponsPage() {
   // and the 401 session-expiry observer rides along).
   const headers = useAdminHeaders({ json: true });
 
-  const fetchCoupons = useCallback(
-    async (silent = false) => {
-      // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
-      if (!adminToken || !canView) return;
-      if (!silent) setLoading(true);
-      try {
-        // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe
-        // error-body parse (the old unguarded error-path r.json() threw
-        // an English SyntaxError into an Arabic toast on a non-JSON 502).
-        const list = await adminFetchJson<Coupon[]>("/api/coupons/admin", { headers });
-        setLoadError(null);
-        setCoupons(list);
-      } catch (err) {
-        // Session expiry already toasted + redirected — no noise on top.
-        if (err instanceof AdminSessionExpiredError) return;
-        // Network-level failure (offline/DNS) or a non-OK envelope —
-        // same surfacing the inline !r.ok path had.
-        const msg = getErrorMessage(err);
-        setLoadError(msg);
-        if (!silent) {
-          toast({ title: "تعذّر تحميل الكوبونات", description: msg, variant: "destructive" });
-        }
-      } finally {
-        if (!silent) setLoading(false);
-      }
-    },
-    [adminToken, headers, canView, toast],
-  );
+  // R186 (C-F8): the list rides TanStack Query (the last hand-rolled
+  // useState+fetch admin-core list) — the 5-minute poll fallback + the
+  // `enabled` token/scope gate every sibling page rides, so another
+  // admin's coupon writes reach an open tab of this page without a
+  // manual refresh (the query cache + this page's mutations share the
+  // COUPONS_ADMIN_QUERY_KEY base). The old silent/visible reload pair
+  // maps to TanStack's own first-load isLoading vs background-refetch
+  // semantics: the skeleton shows only before any data exists; a
+  // refetch keeps the rendered rows standing while it lands.
+  const queryClient = useQueryClient();
+  const {
+    data: couponsData,
+    isLoading: loading,
+    isError: couponsQueryError,
+    error: couponsError,
+    refetch: refetchCoupons,
+  } = useQuery<Coupon[]>({
+    queryKey: COUPONS_ADMIN_QUERY_KEY,
+    queryFn: () => adminFetchJson<Coupon[]>("/api/coupons/admin", { headers }),
+    enabled: !!adminToken && canView,
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: false,
+  });
+  // R186 (C-F8): the empty-list fallback gets a memoized identity so
+  // the sortedCoupons deps below stay stable while the query is loading
+  // (a fresh []  per render would defeat the memo every frame).
+  const coupons = useMemo(() => couponsData ?? [], [couponsData]);
+  // Round-4 (org §2/§6a): the load failure surfaces as the inline
+  // banner below (a toast on every 5-min poll failure would be noise —
+  // the banner + its retry carry the recovery).
+  const loadError = couponsQueryError ? getErrorMessage(couponsError) : null;
 
   useEffect(() => {
-    if (!adminToken) {
-      navigate("/admin/login");
-      return;
-    }
-    fetchCoupons();
-    // R169 (lint-zero): fetchCoupons keys on (adminToken, headers,
-    // canView, toast) — all stable, so this still fires once per token.
-  }, [adminToken, navigate, fetchCoupons]);
+    if (!adminToken) navigate("/admin/login");
+  }, [adminToken, navigate]);
 
   // R123 (E3 P3a): URL → sort (a ?sort= change lands without clobbering
   // a sort the operator already picked locally — the users.tsx
@@ -249,7 +245,10 @@ export default function AdminCouponsPage() {
       // 110-M (109-m P3): the guard error dies with the form it belonged
       // to.
       setValueError(null);
-      fetchCoupons(true);
+      // R186 (C-F8): the query cache refreshes off the shared base key
+      // (was fetchCoupons(true) — the silent refetch kept rows standing,
+      // exactly what a background query refetch does by construction).
+      void queryClient.invalidateQueries({ queryKey: COUPONS_ADMIN_QUERY_KEY });
     } catch (err: unknown) {
       // R123 (E3 item 1): 401 = session expiry — the global handler
       // already toasted + redirected; no generic error toast on top.
@@ -275,7 +274,8 @@ export default function AdminCouponsPage() {
         headers,
         body: JSON.stringify({ is_active: !coupon.is_active }),
       });
-      fetchCoupons(true);
+      // R186 (C-F8): invalidate the shared base key (see handleCreate).
+      void queryClient.invalidateQueries({ queryKey: COUPONS_ADMIN_QUERY_KEY });
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
@@ -310,7 +310,8 @@ export default function AdminCouponsPage() {
     setArchiving(coupon.id);
     try {
       await adminFetchJson(`/api/coupons/admin/${coupon.id}`, { method: "DELETE", headers });
-      fetchCoupons(true);
+      // R186 (C-F8): invalidate the shared base key (see handleCreate).
+      void queryClient.invalidateQueries({ queryKey: COUPONS_ADMIN_QUERY_KEY });
       // R124-I5 (A6 F1): success variant. R125-I3 (A2-16): the toast
       // names the ARCHIVE outcome, matching what the API did.
       toast({ title: "تمت أرشفة الكوبون", variant: "success" });
@@ -343,7 +344,7 @@ export default function AdminCouponsPage() {
   }
 
   return (
-    <AdminLayout onRefresh={() => fetchCoupons()}>
+    <AdminLayout onRefresh={() => void refetchCoupons()}>
       <div className="space-y-5">
         <CouponsHeader
           couponsCount={coupons.length}
@@ -415,7 +416,7 @@ export default function AdminCouponsPage() {
                 <span className="min-w-0 text-sm font-bold text-foreground/80">{loadError}</span>
                 <button
                   type="button"
-                  onClick={() => fetchCoupons()}
+                  onClick={() => void refetchCoupons()}
                   className="ms-auto shrink-0 text-xs font-bold text-status-error underline underline-offset-2 hover:opacity-80"
                 >
                   إعادة المحاولة

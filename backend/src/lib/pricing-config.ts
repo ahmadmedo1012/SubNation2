@@ -34,6 +34,7 @@
  */
 import { eq } from "drizzle-orm";
 import { db, systemSettingsTable } from "@workspace/db";
+import { logger } from "./logger";
 import { roundLyd } from "./money";
 
 // ── Defaults (the operator's official numbers) ─────────────────────────────
@@ -85,11 +86,6 @@ export interface PricingConfig {
  */
 export function computeRetailLYD(costUsd: number, config: PricingConfig): number {
   return round2(costUsd * (1 + config.markupPercent / 100) * config.usdToLyd);
-}
-
-/** Selling price in USD (before the LYD conversion) — admin display only. */
-export function computeRetailUSD(costUsd: number, config: PricingConfig): number {
-  return round2(costUsd * (1 + config.markupPercent / 100));
 }
 
 /**
@@ -162,7 +158,14 @@ export async function getPricingConfig(): Promise<PricingConfig> {
       if (rate !== null) config = { ...config, usdToLyd: rate };
       if (markup !== null) config = { ...config, markupPercent: markup };
       if (cap !== null && cap >= 10 && cap <= 95) config = { ...config, maxTotalDiscountPct: cap };
-    } catch {
+    } catch (err) {
+      // I-F4 (R186-3): the docblock + function comment promise "logs and
+      // falls back" — the log half was missing, so a dead settings read
+      // was indistinguishable from "operator chose defaults".
+      logger.warn(
+        { err, category: "pricing" },
+        "[pricing-config] settings read failed — serving compiled defaults",
+      );
       // fall back to defaults — see docblock.
     }
     cache = { config, expiresAt: Date.now() + SETTINGS_TTL_MS };
@@ -214,30 +217,37 @@ export async function savePricingConfig(
     next.maxTotalDiscountPct = round2(patch.maxTotalDiscountPct);
   }
 
-  await db
-    .insert(systemSettingsTable)
-    .values({ key: SETTING_KEY_USD_TO_LYD, value: JSON.stringify(next.usdToLyd) })
-    .onConflictDoUpdate({
-      target: systemSettingsTable.key,
-      set: { value: JSON.stringify(next.usdToLyd), updatedAt: new Date() },
-    });
-  await db
-    .insert(systemSettingsTable)
-    .values({ key: SETTING_KEY_MARKUP_PERCENT, value: JSON.stringify(next.markupPercent) })
-    .onConflictDoUpdate({
-      target: systemSettingsTable.key,
-      set: { value: JSON.stringify(next.markupPercent), updatedAt: new Date() },
-    });
-  await db
-    .insert(systemSettingsTable)
-    .values({
-      key: SETTING_KEY_MAX_TOTAL_DISCOUNT_PCT,
-      value: JSON.stringify(next.maxTotalDiscountPct),
-    })
-    .onConflictDoUpdate({
-      target: systemSettingsTable.key,
-      set: { value: JSON.stringify(next.maxTotalDiscountPct), updatedAt: new Date() },
-    });
+  // I-F5 (R186-3): one transaction — the three upserts used to be three
+  // autocommit writes, so a mid-failure persisted a HYBRID config (new
+  // rate + old markup + old cap) that the 60 s cache then served. The
+  // settings triple is consumed as one coherent unit, so it is written as
+  // one (same db.transaction idiom as the money services).
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(systemSettingsTable)
+      .values({ key: SETTING_KEY_USD_TO_LYD, value: JSON.stringify(next.usdToLyd) })
+      .onConflictDoUpdate({
+        target: systemSettingsTable.key,
+        set: { value: JSON.stringify(next.usdToLyd), updatedAt: new Date() },
+      });
+    await tx
+      .insert(systemSettingsTable)
+      .values({ key: SETTING_KEY_MARKUP_PERCENT, value: JSON.stringify(next.markupPercent) })
+      .onConflictDoUpdate({
+        target: systemSettingsTable.key,
+        set: { value: JSON.stringify(next.markupPercent), updatedAt: new Date() },
+      });
+    await tx
+      .insert(systemSettingsTable)
+      .values({
+        key: SETTING_KEY_MAX_TOTAL_DISCOUNT_PCT,
+        value: JSON.stringify(next.maxTotalDiscountPct),
+      })
+      .onConflictDoUpdate({
+        target: systemSettingsTable.key,
+        set: { value: JSON.stringify(next.maxTotalDiscountPct), updatedAt: new Date() },
+      });
+  });
 
   cache = { config: next, expiresAt: Date.now() + SETTINGS_TTL_MS };
   return next;

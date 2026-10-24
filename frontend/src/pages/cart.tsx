@@ -8,6 +8,7 @@ import { useSeo } from "@/hooks/useSeo";
 import { useAuth } from "@/lib/auth";
 import {
   useCart,
+  effectivePrice,
   lineStockNotice,
   lineStockBlocksCheckout,
   cartHasBlockingStock,
@@ -28,9 +29,8 @@ import {
   type WalletInfo,
 } from "@workspace/api-client-react";
 
-function effectivePrice(item: LocalCartItem): number {
-  return item.salePriceLYD ?? item.priceLYD;
-}
+// R186-6 (A-F6): effectivePrice is imported from @/lib/cart — the
+// page-local byte-duplicate of the lib's helper is deleted.
 
 function CartSkeleton() {
   return (

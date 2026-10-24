@@ -1,7 +1,7 @@
 import { db, referralEventsTable, usersTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { Router } from "express";
-import { intParam, queryString, rowsFromResult } from "../../lib/http";
+import { escapeLikeTerm, intParam, queryString, unwrapRows } from "../../lib/http";
 import { idempotency } from "../../middlewares/idempotency";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { writeAuditLog } from "../../lib/audit";
@@ -39,6 +39,18 @@ router.get("/referrals", requireAdmin, async (req, res) => {
   // they share nothing but the (optional) status filter — run concurrently.
   // R115: the points_earned / total_points literals are parameterized from
   // lib/loyalty-policy POINTS_PER_REFERRAL — one source of truth.
+  // E-F3 (R186): the ?search= filter ran IN JS on the LIMIT-200 page — a
+  // matching row older than the newest 200 was silently invisible (sibling
+  // admin lists filter in SQL). Pushed into the WHERE below (escaped LIKE
+  // on the phone columns, the admin/orders.ts idiom); LIMIT 200 stays.
+  const searchLike = `%${escapeLikeTerm(search.toLowerCase())}%`;
+  const listConditions = [
+    ...(status !== "" ? [sql`re.status = ${status}`] : []),
+    ...(search !== ""
+      ? [sql`(LOWER(r.phone) LIKE ${searchLike} OR LOWER(e.phone) LIKE ${searchLike})`]
+      : []),
+  ];
+
   const [rowsRaw, topReferrersRaw, statsRaw] = await Promise.all([
     db.execute(sql`
       SELECT
@@ -53,7 +65,7 @@ router.get("/referrals", requireAdmin, async (req, res) => {
       FROM referral_events re
       JOIN users r ON r.id = re.referrer_id
       JOIN users e ON e.id = re.referee_id
-      ${status !== "" ? sql`WHERE re.status = ${status}` : sql``}
+      ${listConditions.length > 0 ? sql`WHERE ${sql.join(listConditions, sql` AND `)}` : sql``}
       ORDER BY re.created_at DESC
       LIMIT 200
     `),
@@ -79,14 +91,15 @@ router.get("/referrals", requireAdmin, async (req, res) => {
     `),
   ]);
   // R136 (SEC-1): typed — was `rowsFromResult<any>` ×3 (the R135
-  // sweep's tail). db.execute yields Record<string, unknown> rows; the
-  // consumers narrow per field exactly as before.
-  const rows = rowsFromResult<Record<string, unknown>>(rowsRaw);
-  const topReferrers = rowsFromResult<Record<string, unknown>>(topReferrersRaw);
-  const [statsRow = {}] = rowsFromResult<Record<string, unknown>>(statsRaw);
+  // sweep's tail). R186 (E-F6): the helper is unwrapRows — the
+  // same-named rowsFromResult is migrate/shared.ts's (extractRows core).
+  // db.execute yields Record<string, unknown> rows; the consumers narrow
+  // per field exactly as before.
+  const rows = unwrapRows<Record<string, unknown>>(rowsRaw);
+  const topReferrers = unwrapRows<Record<string, unknown>>(topReferrersRaw);
+  const [statsRow = {}] = unwrapRows<Record<string, unknown>>(statsRaw);
 
-  const searchStr = search.toLowerCase();
-  let list = rows.map((r) => ({
+  const list = rows.map((r) => ({
     id: Number(r.id),
     status: r.status as string,
     created_at: new Date(r.created_at as string).toISOString(),
@@ -96,12 +109,6 @@ router.get("/referrals", requireAdmin, async (req, res) => {
     referee_phone: r.referee_phone as string,
     points_earned: r.status === "credited" ? POINTS_PER_REFERRAL : 0,
   }));
-
-  if (searchStr) {
-    list = list.filter(
-      (r) => r.referrer_phone.includes(searchStr) || r.referee_phone.includes(searchStr),
-    );
-  }
 
   return res.json({
     stats: {

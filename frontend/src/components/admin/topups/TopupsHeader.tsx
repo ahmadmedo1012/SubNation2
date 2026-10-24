@@ -90,7 +90,12 @@ export function TopupsHeader({
                     as the r138 discount-keeps-success rule. Weight +
                     tabular-nums carry the emphasis. */}
                 <span className="text-status-warning font-bold tabular-nums">
-                  {formatCurrency(pendingTotal)} إجمالي قيد الانتظار
+                  {/* R186 (C-F7): the money line joins the count line's
+                      knownTotal honesty — over a partial window the sum
+                      only covers what is actually shown, never a
+                      «إجمالي» the window cannot prove. */}
+                  {formatCurrency(pendingTotal)}{" "}
+                  {knownTotal ? "إجمالي قيد الانتظار" : "قيد الانتظار (ضمن المعروض)"}
                 </span>
               </>
             ) : null;

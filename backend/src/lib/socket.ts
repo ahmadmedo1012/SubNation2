@@ -181,6 +181,17 @@ export function initSocket(server: HttpServer) {
     const pubClient = createClient({ url: process.env.REDIS_URL });
     const subClient = pubClient.duplicate();
 
+    // I-F1 (R186-3): node-redis's reconnect loop reports failures as
+    // 'error' EVENTS (not promise rejections), and an EventEmitter that
+    // emits 'error' with ZERO listeners THROWS — with Redis down the
+    // adapter clients would crash the process on the first reconnect
+    // tick, contradicting the singleton's H12 stay-up posture. Attach
+    // warn listeners BEFORE connect() so the window never opens; the
+    // adapter's own later handlers are additional listeners, not
+    // replacements.
+    pubClient.on("error", (err) => logger.warn({ err }, "[socket] Redis adapter pub client error"));
+    subClient.on("error", (err) => logger.warn({ err }, "[socket] Redis adapter sub client error"));
+
     Promise.all([pubClient.connect(), subClient.connect()])
       .then(() => {
         io!.adapter(createAdapter(pubClient, subClient));

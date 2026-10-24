@@ -206,3 +206,152 @@ describe("AdminSystemPage — settings-scope gate + honest healthz failure (A3-F
     });
   });
 });
+
+// ── R186 (fix-squad 2) ──────────────────────────────────────────────────────
+
+/** A full /admin/observability/metrics snapshot value (the page's
+ *  MetricsSnapshot contract) — carries the R186 telegram record so the
+ *  F-F1 tile renders. */
+const METRICS_PAYLOAD = {
+  timestamp: "2026-09-22T00:00:00.000Z",
+  uptimeSec: 60,
+  http: {
+    totalRequests: 100,
+    requestsByStatusClass: { "2xx": 90, "3xx": 0, "4xx": 9, "5xx": 1, other: 0 },
+    errorRate: 0.01,
+    latency: { p50Ms: 10, p95Ms: 50, p99Ms: 90, meanMs: 20 },
+    topRoutes: [],
+  },
+  auth: { outcomes: { "password:success": 5 }, totalAttempts: 5, failureRate: 0 },
+  redis: {
+    available: false,
+    opsTotal: {},
+    errorsTotal: {},
+    pingLatencyMs: { p50: null, p95: null, p99: null },
+    degradedEvents: 0,
+  },
+  socket: { connectedClients: 2, eventsTotal: {} },
+  worker: { jobsTotal: { "session_prune:success": 4 } },
+  cwv: { samples: {}, p75: {} },
+  alerts: { dispatchedTotal: {} },
+  telegram: { sendsTotal: { "order_new:failure": 3, "user_new:ok": 7 } },
+  monitoringErrors: 0,
+};
+
+describe("AdminSystemPage — D-F4 (R186): a failed alerts load is an error, not a false empty state", () => {
+  it("a 500 from /api/admin/observability/alerts/recent renders «تعذّر تحميل التنبيهات» — «لا توجد تنبيهات حديثة» must NOT render", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/healthz/ready") {
+        return Promise.resolve(
+          resLike({ body: { status: "ok", checks: {}, version: "testsha", uptimeSec: 5 } }),
+        );
+      }
+      if (url === "/api/admin/observability/alerts/recent") {
+        return Promise.resolve(resLike({ ok: false, status: 500, body: { error: "boom" } }));
+      }
+      if (url === "/api/admin/observability/scheduler") {
+        return Promise.resolve(resLike({ body: SCHEDULER_OK }));
+      }
+      return Promise.resolve(resLike({ ok: false, status: 500, body: {} }));
+    });
+
+    renderPage();
+
+    // Scoped to the alerts section — the metrics 500 renders its own
+    // error surface elsewhere on the page (same scoping as the health
+    // tests above).
+    const section = (await screen.findByText("آخر التنبيهات")).closest("section");
+    expect(section).not.toBeNull();
+    expect(
+      await within(section as HTMLElement).findByText("تعذّر تحميل التنبيهات"),
+    ).toBeInTheDocument();
+    // The false-empty verdict is gone — an outage is not "no alerts".
+    expect(
+      within(section as HTMLElement).queryByText("لا توجد تنبيهات حديثة"),
+    ).not.toBeInTheDocument();
+    // The retry is wired (recentAlertsQ.refetch flows down).
+    expect(
+      within(section as HTMLElement).getByRole("button", { name: "إعادة المحاولة" }),
+    ).toBeInTheDocument();
+  });
+
+  it("the alerts error card's retry refetches the endpoint and recovers when it answers", async () => {
+    let alertsCalls = 0;
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/healthz/ready") {
+        return Promise.resolve(
+          resLike({ body: { status: "ok", checks: {}, version: "testsha", uptimeSec: 5 } }),
+        );
+      }
+      if (url === "/api/admin/observability/alerts/recent") {
+        alertsCalls += 1;
+        if (alertsCalls === 1) {
+          return Promise.resolve(resLike({ ok: false, status: 500, body: { error: "boom" } }));
+        }
+        return Promise.resolve(resLike({ body: { alerts: [], stale: false } }));
+      }
+      if (url === "/api/admin/observability/scheduler") {
+        return Promise.resolve(resLike({ body: SCHEDULER_OK }));
+      }
+      return Promise.resolve(resLike({ ok: false, status: 500, body: {} }));
+    });
+
+    renderPage();
+
+    const section = (await screen.findByText("آخر التنبيهات")).closest("section");
+    expect(section).not.toBeNull();
+    const retry = await within(section as HTMLElement).findByRole("button", {
+      name: "إعادة المحاولة",
+    });
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(alertsCalls).toBeGreaterThanOrEqual(2);
+    });
+    // Recovered: the error card is gone; the (honest, now-real) empty
+    // state renders instead.
+    await waitFor(() => {
+      expect(screen.queryByText("تعذّر تحميل التنبيهات")).not.toBeInTheDocument();
+    });
+    expect(await screen.findByText("لا توجد تنبيهات حديثة")).toBeInTheDocument();
+  });
+});
+
+describe("AdminSystemPage — F-F1 (R186): the Telegram delivery-outcome tile", () => {
+  it("a snapshot carrying telegram.sendsTotal renders «إشعارات تيليجرام (آخر التسليمات)» with event:outcome → count rows", async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === "/api/healthz/ready") {
+        return Promise.resolve(
+          resLike({ body: { status: "ok", checks: {}, version: "testsha", uptimeSec: 5 } }),
+        );
+      }
+      if (url === "/api/admin/observability/metrics") {
+        return Promise.resolve(
+          resLike({
+            body: { value: METRICS_PAYLOAD, lastKnownGoodAt: null, stale: false },
+          }),
+        );
+      }
+      if (url === "/api/admin/observability/alerts/recent") {
+        return Promise.resolve(resLike({ body: { alerts: [], stale: false } }));
+      }
+      if (url === "/api/admin/observability/scheduler") {
+        return Promise.resolve(resLike({ body: SCHEDULER_OK }));
+      }
+      return Promise.resolve(resLike({ ok: false, status: 500, body: {} }));
+    });
+
+    renderPage();
+
+    // The tile (a native <details> in the advanced-diagnostics stack).
+    const tile = (await screen.findByText("إشعارات تيليجرام (آخر التسليمات)")).closest("details");
+    expect(tile).not.toBeNull();
+    // The record rows: event (mono) + outcome + count — the
+    // "deliveries stopped" cell is readable without the Prometheus
+    // scrape (sorted desc → user_new:ok 7 first, order_new:failure 3).
+    expect(within(tile as HTMLElement).getByText("order_new")).toBeInTheDocument();
+    expect(within(tile as HTMLElement).getByText("failure")).toBeInTheDocument();
+    expect(within(tile as HTMLElement).getByText("3")).toBeInTheDocument();
+    expect(within(tile as HTMLElement).getByText("user_new")).toBeInTheDocument();
+  });
+});

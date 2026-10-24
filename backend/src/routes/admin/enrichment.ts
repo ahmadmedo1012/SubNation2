@@ -12,6 +12,9 @@
 
 import { Router, type Request, type Response } from "express";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+// E-F2 (R186): digit-exact :id parsing — every sibling admin route already
+// rides intParam (lib/http); see the route bodies for why parseInt was wrong.
+import { intParam } from "../../lib/http";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
 import {
   listByState,
@@ -142,8 +145,11 @@ router.get("/enrichment/status", requireAdmin, async (_req: Request, res: Respon
 
 router.post("/enrichment/:id/publish", requireAdmin, async (req: Request, res: Response) => {
   const adminReq = req as AdminAuthenticatedRequest;
-  const id = Number.parseInt(String(req.params.id ?? ""), 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  // E-F2 (R186): Number.parseInt silently truncated "12abc" → 12 and
+  // published the WRONG draft; intParam is digit-exact (null → the same
+  // 400 envelope as every other malformed input above).
+  const id = intParam(req, "id");
+  if (id === null) {
     res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
@@ -200,8 +206,10 @@ router.post("/enrichment/:id/publish", requireAdmin, async (req: Request, res: R
 
 router.post("/enrichment/:id/reject", requireAdmin, async (req: Request, res: Response) => {
   const adminReq = req as AdminAuthenticatedRequest;
-  const id = Number.parseInt(String(req.params.id ?? ""), 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  // E-F2 (R186): same digit-exact swap as /publish above — "12abc" must
+  // 400, never act on draft 12.
+  const id = intParam(req, "id");
+  if (id === null) {
     res.status(400).json(createErrorResponse("معرّف غير صالح", ErrorCode.INVALID_DATA));
     return;
   }

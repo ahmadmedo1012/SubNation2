@@ -107,7 +107,11 @@ export function OrdersHeader({
           variant="outline"
           className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
           onClick={onExport}
-          disabled={filteredCount === 0}
+          /* R186 (C-F3): a live selection keeps the export clickable even
+             when the current filter window is empty — the page's
+             exportSelected reads the SELECTION, not the filtered window
+             (the label counts it, the bulk action applies it). */
+          disabled={selectedCount === 0 && filteredCount === 0}
         >
           <Download className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">

@@ -140,6 +140,35 @@ describe("R136 (FE-1) — wallet.tsx decomposition: page stays an orchestration 
   });
 });
 
+describe("R186-6 (A-F4) — PaymentReferenceField's retired required prop stays dead", () => {
+  it("the component declares no required prop and its sole consumer passes none (R154 truth: the lypay-only optional field)", () => {
+    // R154 (P1-A) retired the field from the mobile_transfer flow;
+    // since then the prop's true branch was verified-dead (LyPayFlow
+    // passed required={false}, the mobile form stopped importing it).
+    // R186-6 deleted the prop + its three true-branch renders and
+    // rewrote the docblock to the R154 truth — this pin keeps the dead
+    // branch from quietly growing back.
+    const reference = read("src/components/wallet/PaymentReferenceField.tsx");
+    // The word itself must not resurface anywhere in the file — not as
+    // a prop, not as an HTML attribute, not as the stale R123-E4a
+    // docblock claim that asserted the opposite of the live wiring.
+    expect(reference).not.toContain("required");
+    // The optional copy is unconditional now.
+    expect(reference).toContain("(اختياري)");
+    expect(reference).toContain(
+      "يساعد رمز التحويل فريق المراجعة في التحقق من تحويلك ومنع احتسابه مرتين.",
+    );
+
+    // The sole consumer passes value/onChange/id only.
+    const lypay = read("src/components/wallet/LyPayFlow.tsx");
+    const usage = lypay.match(/<PaymentReferenceField[\s\S]*?\/>/)?.[0] ?? "";
+    expect(usage).toContain('id="topup-payment-reference-lypay"');
+    expect(usage).toContain("value={paymentReference}");
+    expect(usage).toContain("onChange={onReferenceChange}");
+    expect(usage).not.toContain("required");
+  });
+});
+
 describe("R136 (FE-1) — the extracts are self-contained presentational units", () => {
   it("no extract re-declares page state (they take values + callbacks only — no duplicated truth)", () => {
     // Unlike product.tsx's extracts, NONE of the wallet extracts even

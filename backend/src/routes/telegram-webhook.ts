@@ -148,14 +148,26 @@ async function handleCallbackQuery(
   // old single "تمت معالجة هذا الطلب مسبقاً" toast left an operator who
   // tapped a stale button unable to tell an approved topup from a rejected
   // one (the production report that opened this round).
-  const [topup] = await db
-    .select({
-      status: walletTopupsTable.status,
-      reviewedBy: walletTopupsTable.reviewedBy,
-    })
-    .from(walletTopupsTable)
-    .where(eq(walletTopupsTable.id, topupId))
-    .limit(1);
+  let topup: { status: string; reviewedBy: string | null } | undefined;
+  try {
+    [topup] = await db
+      .select({
+        status: walletTopupsTable.status,
+        reviewedBy: walletTopupsTable.reviewedBy,
+      })
+      .from(walletTopupsTable)
+      .where(eq(walletTopupsTable.id, topupId))
+      .limit(1);
+  } catch (err) {
+    // E-F5 (R186): a transient DB blip on this pre-check used to escape
+    // handleCallbackQuery into the route's catch-all — the tap was acked
+    // 200 (correct: Telegram retries non-200s aggressively) but the
+    // operator's toast never fired, so the tap silently vanished. Same
+    // answer-the-tapper idiom as the action catch below.
+    logger.warn({ err, topupId }, "[telegram-webhook] pre-check read failed");
+    await answerCallbackQuery(botToken, cq.id, "فشل تنفيذ الإجراء، حاول مجدداً", true);
+    return;
+  }
 
   if (!topup) {
     await answerCallbackQuery(botToken, cq.id, "الطلب غير موجود", true);
@@ -233,17 +245,23 @@ async function handleCallbackQuery(
     if (err instanceof ServiceError) {
       message = err.message;
       if (err.message.includes("تمت معالجته مسبقاً")) {
-        const [fresh] = await db
-          .select({ status: walletTopupsTable.status, reviewedBy: walletTopupsTable.reviewedBy })
-          .from(walletTopupsTable)
-          .where(eq(walletTopupsTable.id, topupId))
-          .limit(1);
-        if (fresh && fresh.status !== "pending") {
-          const by = fresh.reviewedBy ? ` بواسطة ${fresh.reviewedBy}` : "";
-          message =
-            fresh.status === "approved"
-              ? `هذا الطلب معتمد بالفعل${by}`
-              : `هذا الطلب مرفوض بالفعل${by}`;
+        // E-F5 (R186): the re-read shares the pre-check's exposure — a
+        // throw here would skip the answer below and swallow the toast.
+        try {
+          const [fresh] = await db
+            .select({ status: walletTopupsTable.status, reviewedBy: walletTopupsTable.reviewedBy })
+            .from(walletTopupsTable)
+            .where(eq(walletTopupsTable.id, topupId))
+            .limit(1);
+          if (fresh && fresh.status !== "pending") {
+            const by = fresh.reviewedBy ? ` بواسطة ${fresh.reviewedBy}` : "";
+            message =
+              fresh.status === "approved"
+                ? `هذا الطلب معتمد بالفعل${by}`
+                : `هذا الطلب مرفوض بالفعل${by}`;
+          }
+        } catch (readErr) {
+          logger.warn({ err: readErr, topupId }, "[telegram-webhook] state re-read failed");
         }
       }
     } else {

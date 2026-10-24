@@ -150,6 +150,36 @@ export async function runEnrichment(args: RunArgs): Promise<RunResult> {
       tokensSpent,
       capReached,
     };
+
+    // F-F2 (R186): an all-calls-failed run is a FAILURE, not a hollow
+    // success — 0 drafts + every candidate skipped as "error" means the
+    // LLM leg never delivered anything, yet the row below used to read
+    // outcome=success with a null failure_reason (the silently-dead
+    // loader class). markFailure + the failure return mirror the outer
+    // catch's exact shape so the admin status surface renders the
+    // reason truthfully.
+    if (
+      candidates.length > 0 &&
+      draftsGenerated === 0 &&
+      (skipped.error ?? 0) === candidates.length
+    ) {
+      const reason = `all ${candidates.length} LLM calls failed`;
+      await markFailure(run.id, reason, counts).catch(() => {});
+      logger.error(
+        { runId: run.id, candidates: candidates.length, category: "enrichment.run" },
+        `[enrichment] run failed — ${reason}`,
+      );
+      return {
+        runId: run.id,
+        outcome: "failure",
+        draftsGenerated,
+        draftsInvalid,
+        productsSkipped: skipped,
+        tokensSpent,
+        capReached,
+      };
+    }
+
     await markSuccess(run.id, counts);
 
     // FR-RUN-004 audit row.

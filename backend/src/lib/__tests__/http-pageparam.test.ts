@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Request } from "express";
-import { limitParam, pageParam } from "../http";
+import { limitParam, pageParam, unwrapRows } from "../http";
 
 /**
  * R122 (A3-P2-2): pageParam clamped the FLOOR only (page ≥ 1; garbage/0 →
@@ -59,5 +59,27 @@ describe("limitParam — unchanged sibling contract (regression guard for the sa
     expect(limitParam(reqWithQuery({ limit: "500" }), 100, 200)).toBe(200);
     expect(limitParam(reqWithQuery({ limit: "0" }), 100, 200)).toBe(1);
     expect(limitParam(reqWithQuery({ limit: "abc" }), 100, 200)).toBe(100);
+  });
+});
+
+/**
+ * R186 (E-F6): the helper is now `unwrapRows` — migrate/shared.ts owns the
+ * same-named rowsFromResult (the extractRows core), and the duplicate
+ * export name was an R185 dup-check miss. Behavior is byte-identical; this
+ * pins the dual-driver unwrap contract under the new name.
+ */
+describe("unwrapRows — dual-driver result unwrap (R186 E-F6)", () => {
+  it("a bare-array driver result (pglite) is returned as itself", () => {
+    const rows = [{ id: 1 }, { id: 2 }];
+    expect(unwrapRows(rows)).toBe(rows);
+  });
+
+  it("a node-postgres { rows } result yields .rows", () => {
+    const rows = [{ id: 1 }];
+    expect(unwrapRows({ rows })).toBe(rows);
+  });
+
+  it("a result without .rows yields [] (defensive default unchanged)", () => {
+    expect(unwrapRows({})).toEqual([]);
   });
 });

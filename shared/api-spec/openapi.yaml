@@ -7925,6 +7925,18 @@ components:
               additionalProperties:
                 type: number
           required: [dispatchedTotal]
+        telegram:
+          type: object
+          description: |
+            R186 (F-F1) — optional: present whenever telegram_sends_total
+            has at least one labelled cell (the counter's doc contract).
+          properties:
+            sendsTotal:
+              type: object
+              description: '"event:outcome" → count (ok | skip | retry | failure).'
+              additionalProperties:
+                type: number
+          required: [sendsTotal]
         monitoringErrors:
           type: number
         scheduler:

@@ -154,4 +154,18 @@ describe("OrdersPage — A6-F1 UI consumption: walking past the 200-row cap (R12
     expect(screen.queryByText("لا توجد طلبات بعد")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
   });
+
+  it("a 200 with a NON-ARRAY body surfaces the error card, never the empty state (B-F6/R186 shape guard)", async () => {
+    // A well-formed-JSON but wrong-shaped 200 (proxy middleware envelope,
+    // future API shape change) used to degrade to `[]` — the outage-class
+    // contract drift masqueraded as "لا توجد طلبات بعد". The queryFn now
+    // THROWS into its catch → isError → FetchErrorCard (the
+    // notifications/loyalty shape-guard class).
+    fetchMock.mockImplementation(async () => jsonRes({ items: [] }));
+    renderPage();
+
+    expect(await screen.findByText("تعذّر تحميل الطلبات")).toBeInTheDocument();
+    expect(screen.queryByText("لا توجد طلبات بعد")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+  });
 });

@@ -28,7 +28,7 @@
  * page itself arms no timers on the happy/error paths.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -80,6 +80,7 @@ function event(
 /** Mutable per-test router state (both mount queries read from it). */
 const state = {
   overviewFail: false,
+  eventsFail: false,
   events: [] as Array<Record<string, unknown>>,
 };
 
@@ -91,10 +92,13 @@ beforeEach(() => {
   customFetchMock.mockReset();
   toastMock.mockClear();
   state.overviewFail = false;
+  state.eventsFail = false;
   state.events = [];
   // URL router: /api/loyalty (overview) × /api/loyalty/referrals
   // (history). A network-level rejection models the outage the page's
-  // error branch is contractually distinct from "no data".
+  // error branch is contractually distinct from "no data";
+  // state.eventsFail models a 200 whose JSON body is NOT an array
+  // (the B-F6/R186 shape-guard leg).
   customFetchMock.mockImplementation(async (input: unknown) => {
     const url = String(input);
     if (url === "/api/loyalty") {
@@ -102,6 +106,7 @@ beforeEach(() => {
       return OVERVIEW;
     }
     if (url === "/api/loyalty/referrals") {
+      if (state.eventsFail) return { notifications: [] };
       return [...state.events];
     }
     throw new Error(`unexpected url: ${url}`);
@@ -232,5 +237,105 @@ describe("ReferralsPage — outage ≠ empty, copy + points contracts (R118-A5 #
     // Not an error — the code card still renders with live data.
     expect(screen.queryByText("تعذّر تحميل بيانات الإحالات")).not.toBeInTheDocument();
     expect(screen.getByText("SNXYZ99")).toBeInTheDocument();
+  });
+
+  it("a 200 with a NON-ARRAY referrals body renders the error card, never the empty state (B-F6/R186 shape guard)", async () => {
+    // A well-formed-JSON but wrong-shaped 200 (proxy envelope, future API
+    // shape change) used to degrade to `[]` — zeroed stats + «لا توجد
+    // إحالات بعد» masking a contract drift. The queryFn now throws into
+    // the page's loadError → FetchErrorCard derivation.
+    state.eventsFail = true;
+
+    renderPage();
+
+    expect(await screen.findByText("تعذّر تحميل بيانات الإحالات")).toBeInTheDocument();
+    // Crucially NOT the false empty state, and NOT the money-adjacent
+    // stats grid either.
+    expect(screen.queryByText("لا توجد إحالات بعد")).not.toBeInTheDocument();
+    expect(screen.queryByText("إجمالي الإحالات")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+  });
+});
+
+// ── B-F9 (R186): handleShare failure discrimination ──────────────────────
+// navigator.share rejects BOTH for user cancel (AbortError — a silent
+// no-op by design) and for real failures; the old bare `catch {}` swallowed
+// both, leaving a real failure with ZERO feedback while the no-share-API
+// arm got the clipboard fallback toast for the same intent.
+describe("ReferralsPage — a real navigator.share failure routes to the clipboard fallback; a user cancel stays silent (B-F9)", () => {
+  /** Installs the web-share + clipboard seams (jsdom ships neither). */
+  function installShareSeams(shareImpl?: () => Promise<void>) {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    if (shareImpl) {
+      Object.defineProperty(navigator, "share", {
+        value: shareImpl,
+        configurable: true,
+      });
+    }
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    // jsdom reports no isSecureContext (undefined → falsy) — shadow it so
+    // copyToClipboard takes the primary clipboard branch, exactly like a
+    // real https origin (the CopyBtn leg's idiom above).
+    Object.defineProperty(window, "isSecureContext", {
+      value: true,
+      configurable: true,
+    });
+    return { writeText };
+  }
+
+  function cleanupShareSeams() {
+    Reflect.deleteProperty(navigator, "share");
+    Reflect.deleteProperty(navigator, "clipboard");
+    Reflect.deleteProperty(window, "isSecureContext");
+  }
+
+  async function clickShare() {
+    renderPage();
+    await screen.findByText("SNXYZ99");
+    fireEvent.click(screen.getByRole("button", { name: "مشاركة الرابط" }));
+  }
+
+  it("a non-AbortError share rejection fires the copied-to-clipboard fallback toast", async () => {
+    // A REAL failure (invalid data / permission) — not a user cancel.
+    const { writeText } = installShareSeams(() => Promise.reject(new Error("share failed")));
+
+    try {
+      await clickShare();
+
+      await waitFor(() => {
+        expect(toastMock).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "تم نسخ الرسالة", description: "شاركها مع أصدقائك!" }),
+        );
+      });
+      // The fallback actually reached the clipboard with the share text.
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(String(writeText.mock.calls[0][0])).toContain("SNXYZ99");
+    } finally {
+      cleanupShareSeams();
+    }
+  });
+
+  it("an AbortError rejection (user cancel) stays silent — no toast, no clipboard write", async () => {
+    const cancel = Object.assign(new Error("user cancel"), { name: "AbortError" });
+    const { writeText } = installShareSeams(() => Promise.reject(cancel));
+
+    try {
+      await clickShare();
+
+      // Drain the share rejection chain — nothing may fire.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(toastMock).not.toHaveBeenCalled();
+      expect(writeText).not.toHaveBeenCalled();
+    } finally {
+      cleanupShareSeams();
+    }
   });
 });

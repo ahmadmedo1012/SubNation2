@@ -7,7 +7,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { AdminSessionExpiredError, adminFetchJson } from "@/lib/admin-session";
 // R123 (E3 P3c): see the configDirty guard below.
 import { useDirtyGuard } from "@/hooks/useDirtyGuard";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/useToast";
@@ -85,16 +85,39 @@ export default function AdminPricingPage() {
   // R115 (policy 7): the combined flash+coupon discount cap (10–95).
   const [capInput, setCapInput] = useState("");
 
-  // Seed the inputs once from the effective rule (later refetches keep the
-  // same data identity via structural sharing, so operator edits survive).
-  const configSeededRef = useRef(false);
+  // R186 (C-F4): seed the inputs whenever the operator has NOT edited
+  // them. The old seed-once ref made a REMOTE rule change (another
+  // admin's save → the shared query key refetches) leave an untouched
+  // form reading dirty against the live config — save enabled + the
+  // beforeunload armed for a form nobody touched, and a save at that
+  // moment silently reverted the other admin's rule. "Dirty" now means
+  // OPERATOR edits: a pristine form re-seeds to the remote rule; an
+  // edited one keeps the operator's draft (the intent the old comment
+  // below already documented). A successful save re-seeds through the
+  // raw setters, so the next remote change re-adopts cleanly.
+  const inputsTouchedRef = useRef(false);
   useEffect(() => {
-    if (configSeededRef.current || !pricingConfig) return;
-    configSeededRef.current = true;
+    if (inputsTouchedRef.current || !pricingConfig) return;
     setRateInput(String(pricingConfig.usd_to_lyd));
     setMarkupInput(String(pricingConfig.markup_percent));
     setCapInput(String(pricingConfig.max_total_discount_pct));
   }, [pricingConfig]);
+
+  // R186 (C-F4): the setters handed to the card mark the operator's
+  // edit ownership (the page's own re-seeds above deliberately keep the
+  // form "pristine" so a later remote change can re-adopt it).
+  const setRateInputT: Dispatch<SetStateAction<string>> = (v) => {
+    inputsTouchedRef.current = true;
+    setRateInput(v);
+  };
+  const setMarkupInputT: Dispatch<SetStateAction<string>> = (v) => {
+    inputsTouchedRef.current = true;
+    setMarkupInput(v);
+  };
+  const setCapInputT: Dispatch<SetStateAction<string>> = (v) => {
+    inputsTouchedRef.current = true;
+    setCapInput(v);
+  };
 
   const rateNum = parseFloat(rateInput);
   const markupNum = parseFloat(markupInput);
@@ -135,6 +158,10 @@ export default function AdminPricingPage() {
         // Re-seed to the SERVER-rounded values (e.g. 10.999 → 11) and
         // refresh the rule for every other consumer (products page,
         // variant dialog previews) — the config is cached in TanStack.
+        // R186 (C-F4): the committed draft is no longer an operator edit
+        // — re-arm the re-seed so the NEXT remote rule change re-adopts
+        // instead of re-creating the false-dirty window.
+        inputsTouchedRef.current = false;
         setRateInput(String(config.usd_to_lyd));
         setMarkupInput(String(config.markup_percent));
         setCapInput(String(config.max_total_discount_pct));
@@ -315,13 +342,13 @@ export default function AdminPricingPage() {
           configLoadError={configLoadError}
           onRetryConfig={() => void refetchConfig()}
           rateInput={rateInput}
-          setRateInput={setRateInput}
+          setRateInput={setRateInputT}
           rateValid={rateValid}
           markupInput={markupInput}
-          setMarkupInput={setMarkupInput}
+          setMarkupInput={setMarkupInputT}
           markupValid={markupValid}
           capInput={capInput}
-          setCapInput={setCapInput}
+          setCapInput={setCapInputT}
           capValid={capValid}
           exampleFactor={exampleFactor}
           exampleRate={exampleRate}

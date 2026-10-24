@@ -205,8 +205,10 @@ describe("ProductPage — unknown product 404 SEO (R124 A10-F1)", () => {
     // category.tsx A7-F1 pattern).
     expect(document.title).toBe("المنتج غير موجود — SubNation");
     expect(metaContent('meta[name="robots"]')).toBe("noindex,follow");
+    // R186 (H-F2): MetaTags' canonical rides the single-sourced
+    // getAppOrigin() (env → apex default), not jsdom's origin.
     expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(
-      `${window.location.origin}/product/${OUT_OF_STOCK_PRODUCT.id}`,
+      `https://subnation.ly/product/${OUT_OF_STOCK_PRODUCT.id}`,
     );
 
     // No structured data on the not-found surface (no Product/Offer LD

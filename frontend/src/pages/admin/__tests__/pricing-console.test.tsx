@@ -21,11 +21,11 @@
  * (vitest-config pattern); the dry-run rides the stubbed global fetch.
  */
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import AdminPricingPage from "@/pages/admin/pricing";
 
 /**
@@ -42,20 +42,23 @@ const h = vi.hoisted(() => {
       destructive?: boolean;
     }>,
     confirmResult: true,
+    // R186 (C-F4): the live config the mocked query serves — mutable so
+    // the remote-drift test can land a REFRESHED rule (config B) on an
+    // already-mounted page, exactly like the shared query key refetch.
+    pricingConfig: {
+      usd_to_lyd: 10,
+      markup_percent: 100,
+      max_total_discount_pct: 50,
+    } as { usd_to_lyd: number; markup_percent: number; max_total_discount_pct: number },
   };
 });
 
 vi.mock("@workspace/api-client-react", () => {
-  const PRICING_CONFIG = {
-    usd_to_lyd: 10,
-    markup_percent: 100,
-    max_total_discount_pct: 50,
-  };
   return {
     getGetAdminPricingConfigQueryKey: () => ["/api/admin/pricing/config"],
     getListAdminProductsQueryKey: () => ["/api/admin/products"],
     useGetAdminPricingConfig: () => ({
-      data: PRICING_CONFIG,
+      data: h.pricingConfig,
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -68,7 +71,7 @@ vi.mock("@workspace/api-client-react", () => {
       isPending: false,
       mutate: (vars: { data: Record<string, unknown> }) => {
         h.updateConfigBodies.push(vars.data);
-        mutation?.onSuccess?.({ ...PRICING_CONFIG, ...vars.data });
+        mutation?.onSuccess?.({ ...h.pricingConfig, ...vars.data });
       },
     }),
     useRecomputeCatalogPrices: ({
@@ -156,6 +159,7 @@ describe("AdminPricingPage — the two-step recompute (A5 P1-1)", () => {
     h.recomputeCalls = 0;
     h.confirmCalls = [];
     h.confirmResult = true;
+    h.pricingConfig = { usd_to_lyd: 10, markup_percent: 100, max_total_discount_pct: 50 };
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState({}, "", "/");
@@ -243,6 +247,7 @@ describe("AdminPricingPage — max_total_discount_pct config (policy 7)", () => 
     h.updateConfigBodies = [];
     h.recomputeCalls = 0;
     h.confirmCalls = [];
+    h.pricingConfig = { usd_to_lyd: 10, markup_percent: 100, max_total_discount_pct: 50 };
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState({}, "", "/");
@@ -292,12 +297,140 @@ describe("AdminPricingPage — max_total_discount_pct config (policy 7)", () => 
   });
 });
 
+/** R186 (C-F4) — "dirty" means OPERATOR edits, not remote drift.
+ *
+ * The seed-once ref made a REMOTE rule change (another admin's save →
+ * the shared pricing-config query key refetches) leave an UNTOUCHED
+ * form reading dirty against the live config: the save button enabled
+ * and the beforeunload armed for a form nobody edited — and saving at
+ * that moment silently reverted the other admin's rule to the stale
+ * seed. The seed guard now keys on operator input ownership: a pristine
+ * form re-seeds to the remote rule; an edited one keeps the draft.
+ *
+ * The refresh lands through a wrapper-triggered re-render (the mocked
+ * query serves the mutated hoisted config) — the form itself receives
+ * ZERO user events in the drift test.
+ */
+describe("AdminPricingPage — a remote rule drift re-seeds a PRISTINE form (R186 C-F4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.updateConfigBodies = [];
+    h.recomputeCalls = 0;
+    h.confirmCalls = [];
+    h.pricingConfig = { usd_to_lyd: 10, markup_percent: 100, max_total_discount_pct: 50 };
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Renders the page inside a wrapper whose state flip simulates the
+   *  query refetch landing (new data identity, no form user events). The
+   *  page element is minted INSIDE the wrapper so each flip re-renders it
+   *  (the same-element-identity bail-out would otherwise skip it). */
+  function renderWithRefetchLanding() {
+    let landRefetch!: () => void;
+    const LandingWrapper = () => {
+      const [, setTick] = useState(0);
+      landRefetch = () => setTick((n) => n + 1);
+      return (
+        <Router>
+          <AdminPricingPage />
+        </Router>
+      );
+    };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const utils = render(
+      <QueryClientProvider client={client}>
+        <LandingWrapper />
+      </QueryClientProvider>,
+    );
+    return {
+      ...utils,
+      landRefetch: () => act(() => landRefetch()),
+    };
+  }
+
+  it("config A → refetched config B (different rate), zero form events: inputs re-seed to B and save stays disabled", async () => {
+    const { landRefetch } = renderWithRefetchLanding();
+
+    const rateInput = screen.getByLabelText("سعر الصرف — دينار لكل دولار ($1 =)");
+    const save = screen.getByRole("button", { name: "حفظ الإعدادات" });
+    // Seeded from config A; nothing edited → save disabled.
+    expect((rateInput as HTMLInputElement).value).toBe("10");
+    expect(save).toBeDisabled();
+
+    // The remote drift lands: another admin saved rate 11.5 and the
+    // shared query key refetched. ZERO user events on this form.
+    h.pricingConfig = { usd_to_lyd: 11.5, markup_percent: 100, max_total_discount_pct: 50 };
+    landRefetch();
+
+    // The pristine form ADOPTS the remote rule (was: stale seed read
+    // dirty — save enabled + beforeunload armed for an untouched form).
+    await waitFor(() => {
+      expect((rateInput as HTMLInputElement).value).toBe("11.5");
+    });
+    expect(save).toBeDisabled();
+    expect(h.updateConfigBodies).toHaveLength(0);
+  });
+
+  it("an OPERATOR-edited form keeps the draft over the drift (ownership, not staleness)", async () => {
+    const { landRefetch } = renderWithRefetchLanding();
+
+    const rateInput = screen.getByLabelText("سعر الصرف — دينار لكل دولار ($1 =)");
+    fireEvent.change(rateInput, { target: { value: "12" } });
+    expect(screen.getByRole("button", { name: "حفظ الإعدادات" })).toBeEnabled();
+
+    // The same remote drift lands — the operator's draft survives.
+    h.pricingConfig = { usd_to_lyd: 11.5, markup_percent: 100, max_total_discount_pct: 50 };
+    landRefetch();
+
+    await waitFor(() => {
+      expect((rateInput as HTMLInputElement).value).toBe("12");
+    });
+    expect(screen.getByRole("button", { name: "حفظ الإعدادات" })).toBeEnabled();
+    expect(h.updateConfigBodies).toHaveLength(0);
+  });
+
+  it("a successful save re-arms re-adoption: the NEXT remote drift re-seeds the committed form", async () => {
+    const { landRefetch } = renderWithRefetchLanding();
+
+    const rateInput = screen.getByLabelText("سعر الصرف — دينار لكل دولار ($1 =)");
+    fireEvent.change(rateInput, { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الإعدادات" }));
+
+    // The save's onSuccess re-seeds to the server-rounded values, and
+    // the invalidateQueries refetch lands the SAME saved rule (the mock
+    // serves the merged config — the real refetch's answer).
+    h.pricingConfig = { usd_to_lyd: 12, markup_percent: 100, max_total_discount_pct: 50 };
+    landRefetch();
+
+    // Saved and settled: the committed draft no longer counts as an
+    // operator edit — the form is NOT dirty against the landed rule.
+    await waitFor(() => expect((rateInput as HTMLInputElement).value).toBe("12"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "حفظ الإعدادات" })).toBeDisabled();
+    });
+
+    // A later remote drift re-adopts (no second false-dirty window).
+    h.pricingConfig = { usd_to_lyd: 13, markup_percent: 100, max_total_discount_pct: 50 };
+    landRefetch();
+    await waitFor(() => {
+      expect((rateInput as HTMLInputElement).value).toBe("13");
+    });
+    expect(screen.getByRole("button", { name: "حفظ الإعدادات" })).toBeDisabled();
+  });
+});
+
 describe("AdminPricingPage — R181: the calculator simulator is gone, the settings remain", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.updateConfigBodies = [];
     h.recomputeCalls = 0;
     h.confirmCalls = [];
+    h.pricingConfig = { usd_to_lyd: 10, markup_percent: 100, max_total_discount_pct: 50 };
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     window.history.replaceState({}, "", "/");

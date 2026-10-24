@@ -27,6 +27,10 @@ import { adminEnrichmentRouter } from "../admin/enrichment";
  *   - the cap measures the TRIMMED text (publish.ts trims before
  *     persisting — surrounding whitespace must not hide extra chars).
  *
+ * E-F2 (R186) also pins the digit-exact :id parse here (same fixture, same
+ * no-side-effect assertion shape): "<id>abc" must 400, never act on the
+ * truncated id.
+ *
  * The at-cap boundary passthrough (guard passes, service receives the
  * raw text) is pinned in the sibling file
  * admin-enrichment-final-text-cap-passthrough.test.ts with a mocked
@@ -204,6 +208,34 @@ describe("admin enrichment publish — final_text cap (R120-B6/A6-F12)", () => {
         .from(enrichmentDraftsTable)
         .where(eq(enrichmentDraftsTable.id, draftId));
       expect(draft.state).toBe("drafted");
+    } finally {
+      close();
+    }
+  });
+});
+
+describe("admin enrichment publish — digit-exact :id parse (E-F2, R186)", () => {
+  it("POST /{id}abc/publish → 400 INVALID_DATA — parseInt used to silently truncate to the REAL draft id and act on it", async () => {
+    const { draftId, token } = await seedDraftFixture();
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await fetch(`${url}/api/admin/enrichment/${draftId}abc/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: `admin_token=${token}` },
+        body: JSON.stringify({ final_text: "نص كان سينشر على المسودة الخطأ" }),
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()) as Record<string, unknown>).toMatchObject({ code: "INVALID_DATA" });
+
+      // The pre-fix truncation acted on the real draft: same no-side-effect
+      // pin as the cap tests above — draft stays drafted, product untouched.
+      const [draft] = await db
+        .select()
+        .from(enrichmentDraftsTable)
+        .where(eq(enrichmentDraftsTable.id, draftId));
+      expect(draft.state).toBe("drafted");
+      const [product] = await db.select().from(productsTable).limit(1);
+      expect(product.description).toBe("الوصف الأصلي");
     } finally {
       close();
     }

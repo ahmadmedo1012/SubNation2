@@ -148,4 +148,13 @@ describe("R166 (F8) — shell SHELL_NOINDEX_RES ≡ SPA NOINDEX_ROUTES (family p
       expect(spaNoindex(pub), `SPA must not noindex ${pub}`).toBe(false);
     }
   });
+
+  it("the docblock points at the REAL NOINDEX_ROUTES module (R186 H-F7 comment-truth)", () => {
+    // NOINDEX_ROUTES has lived at frontend/src/app/route-shapes.ts since
+    // the R137 decomposition — this suite itself already reads that
+    // file (ROUTE_SHAPES_TS above); only the spa-shell comment lagged
+    // with the pre-R137 App.tsx pointer.
+    expect(SHELL_TS).not.toContain("frontend/src/App.tsx");
+    expect(SHELL_TS).toContain("frontend/src/app/route-shapes.ts");
+  });
 });

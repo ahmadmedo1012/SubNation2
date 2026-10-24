@@ -379,7 +379,11 @@ export default function AdminRiskEventPage() {
               /* R139 (precision): text-destructive → text-status-error —
                  the page's red vocabulary is the --status-error family
                  (the honest-reason gates above already rode it). */
-              <div className="text-xs text-status-error">{(labelMut.error as Error).message}</div>
+              /* R186 (D-F3): the raw `.message` leaked network-level
+                 English (TypeError "Failed to fetch") into this Arabic
+                 line — getErrorMessage (already imported) collapses it
+                 to the Arabic generic, the R148 3-errcopy class. */
+              <div className="text-xs text-status-error">{getErrorMessage(labelMut.error)}</div>
             )}
             {labelMut.isSuccess && (
               <div className="text-xs text-status-success">تم حفظ التصنيف.</div>

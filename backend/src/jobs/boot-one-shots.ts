@@ -27,6 +27,7 @@
 
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
+import { safeInc, workerJobsTotal } from "../lib/metrics";
 import { pruneStaleAdminSessions } from "../lib/admin-session";
 import { checkExpiringCoupons } from "./couponWatcher";
 import { cleanupOldAuthActivity } from "./cleanup-auth-activity";
@@ -105,12 +106,26 @@ const RETRY_MESSAGE_BY_KIND: Record<"cron" | "opportunistic" | "boot-only", stri
   "boot-only": "boot-only — will retry on the next boot/deploy",
 };
 
-function fireOneShotsSequentially(jobs: Array<[name: string, fn: () => Promise<unknown>]>): void {
+/**
+ * Run the [name, fn] pairs strictly sequentially, counting each leg's
+ * outcome on worker_jobs_total (R186 I-F2/F-F3 — the counter the admin
+ * system page's background-jobs panel reads was never incremented, so
+ * the panel showed its empty state forever). safeInc: a metrics failure
+ * must never break a job leg.
+ *
+ * Exported for the R186 contract pin (one succeeding + one throwing
+ * fake job → both labels land on worker_jobs_total).
+ */
+export function fireOneShotsSequentially(
+  jobs: Array<[name: string, fn: () => Promise<unknown>]>,
+): void {
   void (async () => {
     for (const [name, fn] of jobs) {
       try {
         await fn();
+        safeInc(workerJobsTotal, { job: name, status: "success" });
       } catch (err) {
+        safeInc(workerJobsTotal, { job: name, status: "failure" });
         // R127-L3 (B7 P3-1): capture to Sentry under the same
         // subsystem="scheduler" + job_name tag set every cron slot
         // uses, with the boot trigger recorded; the message below is

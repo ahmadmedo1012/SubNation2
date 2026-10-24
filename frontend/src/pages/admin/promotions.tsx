@@ -15,7 +15,8 @@ import {
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { formatRelativeTime } from "@/lib/utils";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
@@ -45,6 +46,11 @@ import { PromotionsHeader } from "@/components/admin/promotions/PromotionsHeader
 import { CreatePromotionForm } from "@/components/admin/promotions/CreatePromotionForm";
 import { PromotionsList } from "@/components/admin/promotions/PromotionsList";
 
+// R186 (C-F8): the list's TanStack Query key — the documented base key
+// this page's mutations invalidate and any future socket push keys off
+// (the orders/topups/users "/api/admin/…" convention).
+const FLASH_SALES_QUERY_KEY = ["/api/admin/flash-sales"] as const;
+
 /**
  * Admin Promotions / Flash Sales
  *
@@ -66,13 +72,6 @@ export default function AdminPromotionsPage() {
   const { confirm, ConfirmDialog } = useConfirm();
   const [, navigate] = useLocation();
 
-  const [sales, setSales] = useState<FlashSale[]>([]);
-  const [loading, setLoading] = useState(true);
-  // 94-C2 (A2 P2-9): the failure is a first-class surface — an error
-  // card replaces the empty state so an outage can't masquerade as a
-  // clean «لا توجد عروض بعد» history (the toast alone still left the
-  // misleading empty card under it).
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -103,43 +102,42 @@ export default function AdminPromotionsPage() {
 
   const headers = useAdminHeaders({ json: true });
 
-  // R169 (lint-zero): load wrapped in useCallback so the mount effect
-  // can key on it honestly (canView/headers/toast all stable — boolean,
-  // the useAdminHeaders useMemo, the useToast module-level fn).
-  const load = useCallback(async () => {
-    // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
-    if (!canView) return;
-    if (!adminToken) return;
-    setLoading(true);
-    setLoadError(null);
-    try {
-      // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse
-      // (the old inline path parsed the error envelope by hand).
-      const d = await adminFetchJson<{ flash_sales?: FlashSale[] }>("/api/admin/flash-sales", {
-        headers,
-      });
-      setSales(Array.isArray(d?.flash_sales) ? d.flash_sales : []);
-    } catch (err) {
-      // Session expiry already toasted + redirected — not a load error.
-      if (err instanceof AdminSessionExpiredError) return;
-      // R148 (3-errcopy): getErrorMessage passes the wrapper's Arabic
-      // body messages through and collapses network-level English —
-      // the raw extractor leaked it into the error card + toast.
-      const message = getErrorMessage(err);
-      setLoadError(message);
-      toast({
-        title: "تعذّر تحميل العروض",
-        description: message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [canView, adminToken, headers, toast]);
+  // R186 (C-F8): the list rides TanStack Query (the last hand-rolled
+  // useState+fetch admin-core list) — the 5-minute poll fallback + the
+  // `enabled` token/scope gate every sibling page rides, so another
+  // admin's flash-sale writes reach an open tab of this page without a
+  // manual refresh. 94-C2 (A2 P2-9) keeps its first-class failure
+  // surface: the error card below renders from isError (the old
+  // load-error toast would re-fire on every 5-min poll failure — the
+  // card + its retry carry the recovery).
+  const queryClient = useQueryClient();
+  const {
+    data: salesData,
+    isLoading: loading,
+    isError: salesQueryError,
+    error: salesError,
+    refetch: refetchSales,
+  } = useQuery<{ flash_sales?: FlashSale[] }>({
+    queryKey: FLASH_SALES_QUERY_KEY,
+    queryFn: () =>
+      adminFetchJson<{ flash_sales?: FlashSale[] }>("/api/admin/flash-sales", { headers }),
+    enabled: !!adminToken && canView,
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: false,
+  });
+  // The envelope guard survives verbatim (a garbage 200 must not render
+  // as an empty history); the memo keeps the identity stable across
+  // unrelated re-renders (the sibling pages' data-derivation idiom).
+  const sales = useMemo(
+    () => (Array.isArray(salesData?.flash_sales) ? salesData.flash_sales : []),
+    [salesData],
+  );
+  const loadError = salesQueryError ? getErrorMessage(salesError) : null;
 
-  useEffect(() => {
-    void load();
-  }, [adminToken, load]);
+  // R186 (C-F8): every mutation path refreshes the shared base key —
+  // exactly the old `void load()` contract, now one invalidation.
+  const refreshSales = () =>
+    void queryClient.invalidateQueries({ queryKey: FLASH_SALES_QUERY_KEY });
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -206,7 +204,7 @@ export default function AdminPromotionsPage() {
       setForm(EMPTY_FORM);
       setDiscountError(null);
       setEndsAtError(null);
-      void load();
+      refreshSales();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
@@ -230,7 +228,7 @@ export default function AdminPromotionsPage() {
     if (next) {
       const ok = await confirm({
         title: "تفعيل العرض على كامل المتجر؟",
-        description: `سيُطبّق خصم ${sale.discount_percent}% على جميع المنتجات فورًا حتى ${formatRelativeTime(sale.ends_at)}.`,
+        description: `سيُطبّق خصم ${sale.discount_percent}% على جميع المنتجات فورًا وينتهي ${formatRelativeTime(sale.ends_at)}.`,
         confirmLabel: "تفعيل",
         destructive: false,
       });
@@ -265,7 +263,7 @@ export default function AdminPromotionsPage() {
       }
       // R124-I5 (A6 F1): success variant.
       toast({ title: next ? "تم التفعيل" : "تم الإيقاف", variant: "success" });
-      void load();
+      refreshSales();
     } catch (err) {
       // L13-1 (R143): the expired-session sentinel — the global handler
       // already toasted + redirected; stay quiet.
@@ -307,7 +305,7 @@ export default function AdminPromotionsPage() {
       // R124-I5 (A6 F1): success variant. R125-I3 (A2-6): the toast
       // names the DESTRUCTIVE outcome — «تم حذف العرض».
       toast({ title: "تم حذف العرض", variant: "success" });
-      void load();
+      refreshSales();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
@@ -335,7 +333,7 @@ export default function AdminPromotionsPage() {
   }
 
   return (
-    <AdminLayout onRefresh={load}>
+    <AdminLayout onRefresh={() => void refetchSales()}>
       <div className="max-w-4xl mx-auto space-y-5">
         <PromotionsHeader
           showForm={showForm}
@@ -370,7 +368,7 @@ export default function AdminPromotionsPage() {
           sales={sales}
           loading={loading}
           loadError={loadError}
-          onRetry={load}
+          onRetry={() => void refetchSales()}
           busyId={busyId}
           onToggleActive={toggleActive}
           onDelete={handleDelete}

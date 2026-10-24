@@ -31,13 +31,27 @@ function applyTheme(theme: Theme) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    const stored = localStorage.getItem("sn_theme") as Theme | null;
-    return stored === "light" ? "light" : "dark";
+    // R186-6 (H-F5): storage-blocked embeds throw on access and this
+    // initializer runs in render above every error boundary — degrade
+    // to the dark default instead of unmounting the whole root.
+    try {
+      const stored = localStorage.getItem("sn_theme") as Theme | null;
+      return stored === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
   });
 
   useEffect(() => {
     applyTheme(theme);
-    localStorage.setItem("sn_theme", theme);
+    // Best-effort persistence: a throwing setItem (quota/private mode)
+    // must not kill the effect — the theme already applied for this
+    // session (the auth/cart storage guards' sibling).
+    try {
+      localStorage.setItem("sn_theme", theme);
+    } catch {
+      // ignore — storage unavailable, preference is session-only then
+    }
   }, [theme]);
 
   const setTheme = useCallback((t: Theme) => setThemeState(t), []);

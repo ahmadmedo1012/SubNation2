@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { initCronJobs } from "./jobs/cron";
 import { runBootOneShots } from "./jobs/boot-one-shots";
 import { logger } from "./lib/logger";
-import { getRedisClient, initRedisClient } from "./lib/redis-client";
+import { closeRedisClient, getRedisClient, initRedisClient } from "./lib/redis-client";
 import { startHeartbeat } from "./worker/heartbeat";
 
 // B7-P1-6: hard ceiling for graceful drain — a hung close must not wedge
@@ -22,7 +22,8 @@ const REDIS_RECOVERY_POLL_MS = 30_000;
  * Install the worker's SIGTERM/SIGINT handlers (B7-P1-6).
  *
  * Drain order: stop schedulers (heartbeat / alerting / watchers) first,
- * then drain shared resources (DB pool, Sentry queue), then exit(0).
+ * then drain shared resources (DB pool, Redis singleton, Sentry queue),
+ * then exit(0).
  * A force-exit timer bounds the whole sequence. `exit` is injectable so
  * tests can register handlers and fire them via `process.emit("SIGTERM")`
  * without killing the test runner.
@@ -173,6 +174,15 @@ async function startWorker() {
         if (pool && typeof pool.end === "function") await pool.end();
       } catch (err) {
         logger.warn({ err }, "[worker] DB pool end error during shutdown");
+      }
+      try {
+        // R186-3 (I-F3): the web tier's drain closes the Redis singleton —
+        // this drain used to skip it (same open-socket + live-watchdog
+        // state at exit). Static import above: redis-client was already
+        // in this module's import-time graph.
+        await closeRedisClient();
+      } catch (err) {
+        logger.warn({ err }, "[worker] Redis close error during shutdown");
       }
       try {
         const Sentry = await import("@sentry/node");

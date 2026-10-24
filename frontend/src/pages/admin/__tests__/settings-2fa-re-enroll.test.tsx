@@ -49,12 +49,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
 import AdminSettingsPage from "@/pages/admin/settings";
 
-const { toastMock, setAdminTokenMock } = vi.hoisted(() => ({
-  toastMock: vi.fn(),
-  // R126-L2 (A3-1): the password-change success path clears the
-  // in-memory session — the mock must be a stable reference to pin it.
-  setAdminTokenMock: vi.fn(),
-}));
+const { toastMock, setAdminTokenMock, qrOk, qrToDataURLMock } = vi.hoisted(() => {
+  // D-F1 (R186): the QR seam is now CONTROLLABLE — the default keeps the
+  // original always-success behavior for every pre-existing test; the
+  // new failure case flips toDataURL per-test via mockImplementationOnce.
+  const qrOk = (_url: string, cb: (err: Error | null, url: string) => void) =>
+    cb(null, "data:image/png;base64,mock-qr");
+  return {
+    toastMock: vi.fn(),
+    // R126-L2 (A3-1): the password-change success path clears the
+    // in-memory session — the mock must be a stable reference to pin it.
+    setAdminTokenMock: vi.fn(),
+    qrOk,
+    qrToDataURLMock: vi.fn(qrOk),
+  };
+});
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({
     adminToken: "test-admin-token",
@@ -77,11 +86,11 @@ vi.mock("@/hooks/useToast", () => ({
 
 // The QR tile is generated client-side via `import("qrcode")` after the
 // backend mints the secret — mock the dynamic import (deterministic, no
-// canvas work in jsdom).
+// canvas work in jsdom). toDataURL is the hoisted controllable seam so
+// the D-F1 failure case can invoke its callback with an Error.
 vi.mock("qrcode", () => ({
   default: {
-    toDataURL: (_url: string, cb: (err: Error | null, url: string) => void) =>
-      cb(null, "data:image/png;base64,mock-qr"),
+    toDataURL: qrToDataURLMock,
   },
 }));
 
@@ -137,6 +146,10 @@ beforeEach(() => {
   toastMock.mockReset();
   setAdminTokenMock.mockReset();
   fetchMock.mockReset();
+  // D-F1 (R186): QR seam back to the default success — a failure test's
+  // mockImplementationOnce is once-only, this is the belt-and-braces reset
+  // (the file's own test-order-coupling lesson above).
+  qrToDataURLMock.mockImplementation(qrOk);
   // R125 fix (parent): both fixtures are module-level lets — reset them
   // HERE too, or a test that reassigns one (the 429 case) leaks its
   // response into every later test in the file (test-order coupling).
@@ -289,6 +302,35 @@ describe("AdminSettingsPage security tab — 2FA re-enroll flow (A3-1 P2)", () =
 
     // The verify input resolves through its label, not just placeholder.
     expect(await screen.findByLabelText("رمز التحقق المكوّن من 6 أرقام")).toBeInTheDocument();
+  });
+});
+
+describe("AdminSettingsPage security tab — QR generation failure (D-F1, R186)", () => {
+  it("a dead toDataURL no longer dead-ends the fresh enrollment: Arabic error + base32 secret + verify step render, no infinite skeleton", async () => {
+    sessionFixture = SESSION_FRESH;
+    // D-F1: the QR render fails AFTER the backend already rotated the
+    // secret (2FA stays OFF until the new code is verified) — the old
+    // code silently dropped the error: no QR, no message, no manual path.
+    qrToDataURLMock.mockImplementationOnce(
+      (_url: string, cb: (err: Error | null, url: string) => void) =>
+        cb(new Error("qr render failed"), ""),
+    );
+    const { container } = renderSettingsTab("security");
+
+    fireEvent.click(await screen.findByRole("button", { name: "إعداد المصادقة الثنائية" }));
+
+    // THE Arabic failure line — it points at the manual path below.
+    expect(
+      await screen.findByText("تعذّر توليد رمز الاستجابة السريعة — أدخل المفتاح يدوياً أدناه."),
+    ).toBeInTheDocument();
+    // The base32 secret is reachable (manual enrollment without a QR)…
+    expect(await screen.findByText("JBSWY3DPEHPK3PXP")).toBeInTheDocument();
+    // …and so is the verify step (the flow completes without a QR).
+    expect(await screen.findByLabelText("رمز التحقق المكوّن من 6 أرقام")).toBeInTheDocument();
+    // No infinite skeleton: the shimmer tile must be gone once the
+    // failure state landed (a static muted tile renders instead — the
+    // only skeleton-shimmer on this surface is the QR tile itself).
+    expect(container.querySelector(".skeleton-shimmer")).toBeNull();
   });
 });
 

@@ -27,9 +27,10 @@ import { cn } from "@/lib/utils";
  *     sticky summary aside (mirrors pages/checkout.tsx exactly).
  *
  * 93-C7 / C-UX1 (A12 F-09, doc-rot removal): the checkout shape IS
- * wired — App.tsx ROUTE_SHAPES maps /^\/checkout/ → "checkout"
- * (App.tsx:114, round-92 C7). The stale NOTE that claimed otherwise
- * was deleted so future agents stop re-fixing a non-issue.
+ * wired — app/route-shapes.ts ROUTE_SHAPES maps /^\/checkout/ →
+ * "checkout" (route-shapes.ts:54, round-92 C7). The stale NOTE that
+ * claimed otherwise was deleted so future agents stop re-fixing a
+ * non-issue.
  *
  * All shells use `skeleton-shimmer` so they share the brand-tinted
  * sweep introduced in the theme polish pass.

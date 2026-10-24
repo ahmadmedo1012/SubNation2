@@ -283,3 +283,21 @@ describe("RouteSkeleton — the /55 resting edge is banned (R143 L2-2)", () => {
     );
   });
 });
+
+// ── R186 (H-F7): comment-pointer truth ───────────────────────────────────────
+
+describe("RouteSkeleton — the ROUTE_SHAPES pointer names route-shapes.ts (R186 H-F7)", () => {
+  it("no stale pre-R137 App.tsx ROUTE_SHAPES / App.tsx:1xx pointer survives in the docblock", () => {
+    // ROUTE_SHAPES has lived at app/route-shapes.ts (checkout entry
+    // :54) since the R137 route-registry decomposition; App.tsx:114 is
+    // unrelated code. Raw source, comments INCLUDED (the `strip` helper
+    // above would erase the docblock this pin guards).
+    const raw = readFileSync(
+      resolve(process.cwd(), "src/components/ui/route-skeleton.tsx"),
+      "utf8",
+    );
+    expect(raw).not.toContain("App.tsx ROUTE_SHAPES");
+    expect(raw).not.toContain("App.tsx:114");
+    expect(raw).toContain("route-shapes.ts:54");
+  });
+});

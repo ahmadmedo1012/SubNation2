@@ -290,7 +290,10 @@ function capRaise(requested: number, current: number, ceiling: number): number {
 const CartCommandsContext = createContext<CartCommandsValue | null>(null);
 const CartStateContext = createContext<CartStateValue | null>(null);
 
-function effectivePrice(item: LocalCartItem): number {
+// R186-6 (A-F6): exported for the cart page (was module-private, so
+// pages/cart.tsx byte-duplicated it) — the line's effective unit price,
+// the sale ?? base idiom every money total here keys off.
+export function effectivePrice(item: LocalCartItem): number {
   return item.salePriceLYD ?? item.priceLYD;
 }
 
@@ -373,18 +376,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // v1 → v2 migration: legacy lines (no variant fields) are re-shaped
     // with variantId=null so the rest of the app can assume the field
     // exists. Content is otherwise preserved.
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
-    const migrated = parseCartItems(raw);
-    if (migrated) setItems(migrated);
-    // R98-10a (r98 frontend-deep §2 / R98-10): the legacy key has done
-    // its job the moment it is read — its content was just migrated
-    // (or it was superseded by a v2 entry, or it was unreadable junk).
-    // Leaving it in place kept a 2015-style key living forever in every
-    // pre-migration browser; remove it once, right here.
+    // R186-6 (H-F5): the read joins the removeItem's guard — CartProvider
+    // is an outermost boot provider, and a storage-thrown getItem here
+    // unmounted the whole tree; a throw reads as an absent cart instead.
     try {
+      const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+      const migrated = parseCartItems(raw);
+      if (migrated) setItems(migrated);
+      // R98-10a (r98 frontend-deep §2 / R98-10): the legacy key has done
+      // its job the moment it is read — its content was just migrated
+      // (or it was superseded by a v2 entry, or it was unreadable junk).
+      // Leaving it in place kept a 2015-style key living forever in every
+      // pre-migration browser; remove it once, right here.
       localStorage.removeItem(LEGACY_STORAGE_KEY);
     } catch {
-      // ignore — storage unavailable, nothing to clean
+      // ignore — storage unavailable: no cart to load, nothing to clean
     }
     setIsLoaded(true);
   }, []);

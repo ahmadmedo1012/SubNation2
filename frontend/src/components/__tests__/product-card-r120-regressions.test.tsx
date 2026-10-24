@@ -205,6 +205,39 @@ describe("ProductCard — chrome + imagery + type regressions (R120-B1)", () => 
   });
 });
 
+describe("ProductCard — memo comparator covers the list projection's variant signals (R186-6 / A-F1)", () => {
+  it("a refetch that changes ONLY variant_count/price_from re-renders the badge + the «تبدأ من» qualifier", () => {
+    // The ?fields=list shape: `variants` is always undefined there, so
+    // variant_count + price_from are the ONLY variant signals the card
+    // reads (badge + qualifier). Before the fix they were missing from
+    // the memo comparator: a background refetch (e.g. checkout's
+    // post-purchase catalog invalidation) changed only them → every
+    // compared field was identical → memo returned true → the card
+    // kept the stale «N باقات» badge and no qualifier until remount.
+    const before = { ...AVAILABLE_PRODUCT, variant_count: 1, price_from: false };
+    const after = { ...AVAILABLE_PRODUCT, variant_count: 3, price_from: true };
+    const { rerender } = renderCard(before as typeof AVAILABLE_PRODUCT);
+
+    // Pre-refetch: single variant — no badge, no qualifier.
+    expect(screen.queryByText("3 باقات")).not.toBeInTheDocument();
+    expect(screen.queryByText("تبدأ من")).not.toBeInTheDocument();
+
+    // New props object, EVERY compared field identical (id/slug/name/
+    // description/image_url/price/sale_price/category/discount_percent/
+    // order_count/stock_count/is_available/variants(undefined)/index) —
+    // only the two list-projection signals differ.
+    rerender(
+      <Router>
+        <ProductCard product={after as typeof AVAILABLE_PRODUCT} index={0} />
+      </Router>,
+    );
+
+    // The comparator must return false → the card re-renders.
+    expect(screen.getByText("3 باقات")).toBeInTheDocument();
+    expect(screen.getByText("تبدأ من")).toBeInTheDocument();
+  });
+});
+
 describe("ProductCard — RTL anchor on Latin names (R128-A2 F-1)", () => {
   it('the h3 keeps dir="auto" isolation AND pins text-right — Latin titles don\'t float off the RTL reading edge', () => {
     renderCard(AVAILABLE_PRODUCT);

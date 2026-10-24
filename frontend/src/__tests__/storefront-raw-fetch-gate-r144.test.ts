@@ -61,7 +61,7 @@ const RAW_FETCH_ALLOWLIST: Record<string, number> = {
   // whose success path hard-redirects (window.location) before a
   // wrapper's error surface could matter. R122/R118 audit markers in
   // the file document each.
-  "src/lib/auth.tsx": 5,
+  "src/lib/auth.tsx": 4, // R186 (B-F4): the dead logoutAllDevices twin deleted (5 -> 4)
   // Pre-React auth bootstrap against an explicit ${base} origin — the
   // token getter / 401 observers customFetch relies on are not wired
   // yet at this stage of boot (96-F3 / Round-3 notes).

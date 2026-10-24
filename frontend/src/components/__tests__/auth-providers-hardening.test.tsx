@@ -16,6 +16,10 @@
  *   3. Network failure + Firebase configured ⇒ the degraded
  *      Google-only button still renders (unchanged UX).
  *   4. Healthy response ⇒ the server list renders.
+ *   5. R186 (B-F1): a healthy response that OMITS Google renders no
+ *      Google button even with the Firebase env configured — the
+ *      settled list is server-authoritative; the client seed never
+ *      overrides the server's omission.
  */
 
 import { render, screen } from "@testing-library/react";
@@ -69,7 +73,7 @@ import { __resetPublicAuthProvidersCacheForTests } from "@/hooks/usePublicAuthPr
 function renderProviders() {
   return render(
     <Router>
-      <AuthProviders dividerLabel="أو" />
+      <AuthProviders />
     </Router>,
   );
 }
@@ -201,6 +205,26 @@ describe("AuthProviders — R145 (D7): unavailable providers are never presented
     expect(await screen.findByRole("button", { name: "المتابعة عبر Google" })).toBeInTheDocument();
     // The API row wins over the client seed (no duplicate google button).
     expect(screen.getAllByRole("button", { name: "المتابعة عبر Google" })).toHaveLength(1);
+  });
+
+  it("R186 (B-F1): a healthy response that omits Google renders NO Google button even with the Firebase env configured — the seed never overrides the server's omission", async () => {
+    // The D7 truth table's missing leg: the server disabled/omitted the
+    // google row while THIS build carries VITE_FIREBASE_* — the client
+    // seed used to resurrect it as a clickable button whose exchange
+    // could dead-end. The settled list is server-authoritative now.
+    firebaseConfigured.configured = true;
+    fetchMock.mockResolvedValue(resLike({ body: { providers: [appleRow] } }));
+
+    renderProviders();
+
+    // The renderable peer proves the settled list landed BEFORE the
+    // absence assertion (an assertion raced ahead of the microtask would
+    // false-pass forever)…
+    expect(await screen.findByRole("button", { name: "المتابعة عبر Apple" })).toBeInTheDocument();
+    // …and the client-side seed did NOT resurrect the omitted Google row.
+    expect(screen.queryByRole("button", { name: "المتابعة عبر Google" })).not.toBeInTheDocument();
+    // The load SUCCEEDED — no error line either.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it.each([

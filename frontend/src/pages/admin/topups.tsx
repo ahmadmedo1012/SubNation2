@@ -107,7 +107,26 @@ export default function AdminTopupsPage() {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
-  const [processingId, setProcessingId] = useState<number | null>(null);
+  // R186 (C-F10): per-row busy Set (the orders.tsx credentialsInFlight
+  // idiom) — the single processingId re-enabled A's card the moment B's
+  // approve started, and A's success re-enabled B's mid-flight card.
+  // Each money POST adds its OWN id on confirm and deletes it — and only
+  // it — in its mutation's onSuccess/onError; membership tests drive the
+  // card props, the RejectModal loading flag and the ESC guard.
+  const [processingIds, setProcessingIds] = useState<Set<number>>(() => new Set());
+  const markProcessing = (id: number) =>
+    setProcessingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  const clearProcessing = (id: number) =>
+    setProcessingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   const [rejectTarget, setRejectTarget] = useState<AdminTopupRow | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkAction, setBulkAction] = useState<"approve" | "reject" | "approveAll" | null>(null);
@@ -136,10 +155,13 @@ export default function AdminTopupsPage() {
         // still running (double-action window). The modal itself guards
         // ESC/backdrop with `loading` — this global handler defers to it.
         if (rejectTarget) {
-          const rejecting = processingId === rejectTarget.id;
+          const rejecting = processingIds.has(rejectTarget.id);
           if (!rejecting) {
             setRejectTarget(null);
-            setProcessingId(null);
+            // R186 (C-F10): the old setProcessingId(null) here ALSO
+            // re-enabled any OTHER row's in-flight money action — the
+            // single-id model's overlap bug; !rejecting means the target
+            // holds no in-flight POST, so there is nothing to clear.
           }
         }
         // Don't dismiss the bulk confirm mid-loop: the money requests
@@ -254,7 +276,8 @@ export default function AdminTopupsPage() {
         headers: withIdempotencyKey(headers, idempotencyKey),
       }),
     onSuccess(_, vars) {
-      setProcessingId(null);
+      // R186 (C-F10): delete OWN id — B's card stays busy while A lands.
+      clearProcessing(vars.id);
       invalidate();
       const t = allTopups.find((x) => x.id === vars.id);
       // R124-I5 (A6 F1): success variant — the single approve/reject are
@@ -273,8 +296,9 @@ export default function AdminTopupsPage() {
         variant: "success",
       });
     },
-    onError(err: unknown) {
-      setProcessingId(null);
+    onError(err: unknown, vars: { id: number }) {
+      // R186 (C-F10): delete OWN id (see onSuccess above).
+      clearProcessing(vars.id);
       // 93-C6 / F-07 (SIM P1 + A5 S-1): the error envelope is parsed —
       // C1's backend now returns 409 DUPLICATE_PAYMENT_REFERENCE with
       // a full Arabic explanation (sibling topup ids) and 409 CONFLICT
@@ -303,7 +327,9 @@ export default function AdminTopupsPage() {
         headers: withIdempotencyKey(headers, idempotencyKey),
       }),
     onSuccess(_, vars) {
-      setProcessingId(null);
+      // R186 (C-F10): delete OWN id — an in-flight approve on another
+      // row keeps its busy state while this reject lands.
+      clearProcessing(vars.id);
       setRejectTarget(null);
       invalidate();
       const t = allTopups.find((x) => x.id === vars.id);
@@ -316,8 +342,9 @@ export default function AdminTopupsPage() {
         variant: "success",
       });
     },
-    onError(err: unknown) {
-      setProcessingId(null);
+    onError(err: unknown, vars: { id: number }) {
+      // R186 (C-F10): delete OWN id (see onSuccess above).
+      clearProcessing(vars.id);
       // 93-C6 / F-07: same envelope-parsing as approve (see above).
       toast({
         title: "فشل الرفض",
@@ -409,7 +436,8 @@ export default function AdminTopupsPage() {
         confirmLabel: "موافقة",
       });
       if (!ok) return;
-      setProcessingId(id);
+      // R186 (C-F10): mark THIS row busy (the Set adds its own id).
+      markProcessing(id);
       // F-008: one Idempotency-Key per click. React Query reuses these
       // variables on internal retries, so the key survives a transient
       // network failure and the backend replays the cached response
@@ -426,7 +454,8 @@ export default function AdminTopupsPage() {
   const handleReject = useCallback(
     (note: string) => {
       if (!rejectTarget) return;
-      setProcessingId(rejectTarget.id);
+      // R186 (C-F10): mark the reject target's OWN row busy.
+      markProcessing(rejectTarget.id);
       rejectMutation.mutate({
         id: rejectTarget.id,
         data: { admin_note: note || "مرفوض" },
@@ -694,9 +723,12 @@ export default function AdminTopupsPage() {
         onConfirm={handleReject}
         onCancel={() => {
           setRejectTarget(null);
-          setProcessingId(null);
+          // R186 (C-F10): the modal's cancel/ESC are loading-guarded
+          // (dismissable={!loading} + disabled buttons), so this path
+          // can only run while the target holds NO in-flight POST —
+          // nothing to clear, and other rows' busy states stay put.
         }}
-        loading={!!rejectTarget && processingId === rejectTarget.id}
+        loading={!!rejectTarget && processingIds.has(rejectTarget.id)}
       />
 
       {/* Bulk action confirmation modal — also backs the approveAll
@@ -827,8 +859,8 @@ export default function AdminTopupsPage() {
                 topup={t}
                 idx={i}
                 isSelected={selectedIds.has(t.id)}
-                isProcessing={processingId === t.id}
-                isRejecting={processingId === t.id && rejectTarget?.id === t.id}
+                isProcessing={processingIds.has(t.id)}
+                isRejecting={processingIds.has(t.id) && rejectTarget?.id === t.id}
                 onSelect={handleSelect}
                 onApprove={handleApprove}
                 onReject={setRejectTarget}

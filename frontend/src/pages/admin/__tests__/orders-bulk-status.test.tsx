@@ -63,6 +63,16 @@ vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 
+// R186 (C-F3): the export-selection pin needs the rows argument the
+// page hands downloadCsv — the real orderCsvRows rides along (importActual)
+// so the row content stays the production builder's, only the download
+// side effect is a spy.
+const { downloadCsvMock } = vi.hoisted(() => ({ downloadCsvMock: vi.fn() }));
+vi.mock("@/components/admin/orders/orders-csv", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/admin/orders/orders-csv")>();
+  return { ...actual, downloadCsv: downloadCsvMock };
+});
+
 function mockOrdersResult(data: unknown[]) {
   // 94-C2 (A2 P1-1): the page's useInfiniteQuery resolves this promise
   // as page 1 — the rows land asynchronously, so tests await them.
@@ -505,5 +515,132 @@ describe("AdminOrdersPage — select-all branches on MEMBERSHIP, not size (R126-
     expect(rowSelected("SN-1002")).toBe(false);
     // The bulk bar (gated on size > 0) is gone entirely.
     expect(screen.queryByText(/طلب محدد/)).not.toBeInTheDocument();
+  });
+});
+
+/** R186 (C-F3) — the export's selection semantics must match the bulk
+ *  action's and the label's: the selection deliberately survives filter
+ *  narrows (the R126-L3 convention), so exportSelected reads the
+ *  SELECTION (allOrders ∩ selectedIds), not the filtered window, and the
+ *  header button stays clickable while a live selection exists even over
+ *  an empty filtered window (was: disabled on filteredCount === 0). */
+describe("AdminOrdersPage — export selection semantics (R186 C-F3)", () => {
+  // Two completed + two pending — the tabs split them 2/2, and the «فشل»
+  // tab matches NOTHING (the empty-window case).
+  const MIXED = [
+    {
+      id: 1,
+      order_code: "SN-1001",
+      user_phone: "0911111111",
+      product_name: "Netflix 1M",
+      amount: 25,
+      status: "completed",
+      created_at: "2026-09-01T10:00:00.000Z",
+    },
+    {
+      id: 2,
+      order_code: "SN-1002",
+      user_phone: "0912222222",
+      product_name: "Spotify 3M",
+      amount: 40,
+      status: "completed",
+      created_at: "2026-09-02T10:00:00.000Z",
+    },
+    {
+      id: 3,
+      order_code: "SN-1003",
+      user_phone: "0913333333",
+      product_name: "Netflix 3M",
+      amount: 55,
+      status: "pending",
+      created_at: "2026-09-03T10:00:00.000Z",
+    },
+    {
+      id: 4,
+      order_code: "SN-1004",
+      user_phone: "0914444444",
+      product_name: "Spotify 1M",
+      amount: 15,
+      status: "pending",
+      created_at: "2026-09-04T10:00:00.000Z",
+    },
+  ];
+
+  const statusTab = (label: string): HTMLButtonElement => {
+    const tab = screen
+      .getAllByRole("button")
+      .find(
+        (b) => (b.textContent ?? "").trim().startsWith(label) && b.hasAttribute("aria-pressed"),
+      );
+    if (!tab) throw new Error(`status tab not found: ${label}`);
+    return tab as HTMLButtonElement;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOrdersResult(MIXED);
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState(null, "", "/admin/orders");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/admin/orders");
+  });
+
+  it("a row selected then hidden by the status tab still ships in the header export", async () => {
+    renderPage();
+    await screen.findAllByText("SN-1001");
+
+    // Select the two COMPLETED rows on «الكل»…
+    selectRow("SN-1001");
+    selectRow("SN-1002");
+
+    // …then narrow the tab to «قيد الانتظار» — the selection survives
+    // (the documented convention) while BOTH selected rows leave the
+    // filtered window.
+    fireEvent.click(statusTab("قيد الانتظار"));
+    await screen.findAllByText("SN-1003");
+    await waitFor(() => expect(screen.queryAllByText("SN-1001")).toHaveLength(0));
+
+    // The label counts the SELECTION (2)…
+    fireEvent.click(screen.getByRole("button", { name: "تصدير (2)" }));
+
+    // …and the shipped rows are the selection — the hidden SN-1001 and
+    // SN-1002 ARE in the rows argument (was filtered∩selected: the two
+    // pending rows the operator never picked, or nothing at all).
+    expect(downloadCsvMock).toHaveBeenCalledTimes(1);
+    const [rows, filename] = downloadCsvMock.mock.calls[0] as [(string | number)[][], string];
+    expect(filename).toContain("orders_selected_");
+    const shippedCodes = rows.map((r) => r.join(","));
+    expect(shippedCodes.some((r) => r.includes("SN-1001"))).toBe(true);
+    expect(shippedCodes.some((r) => r.includes("SN-1002"))).toBe(true);
+    expect(shippedCodes.some((r) => r.includes("SN-1003"))).toBe(false);
+    expect(shippedCodes.some((r) => r.includes("SN-1004"))).toBe(false);
+  });
+
+  it("a live selection keeps the export button ENABLED over an EMPTY filtered window (was: disabled)", async () => {
+    renderPage();
+    await screen.findAllByText("SN-1001");
+
+    selectRow("SN-1001");
+    selectRow("SN-1002");
+
+    // The «فشل» tab matches nothing — filtered is EMPTY while the
+    // selection (2) is live.
+    fireEvent.click(statusTab("فشل"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "تصدير (2)" })).toBeInTheDocument();
+    });
+    expect(screen.getByText("لا توجد طلبات")).toBeInTheDocument();
+
+    const exportButton = screen.getByRole("button", { name: "تصدير (2)" });
+    expect(exportButton).toBeEnabled();
+
+    // And the export ships the live selection, not the empty window.
+    fireEvent.click(exportButton);
+    expect(downloadCsvMock).toHaveBeenCalledTimes(1);
+    const [rows] = downloadCsvMock.mock.calls[0] as [(string | number)[][]];
+    expect(rows.filter((r) => r.join(",").includes("SN-10")).length).toBe(2); // the 2 selected rows
   });
 });

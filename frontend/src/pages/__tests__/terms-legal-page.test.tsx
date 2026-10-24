@@ -22,6 +22,8 @@
  */
 
 import { fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TermsPage from "@/pages/terms";
 
@@ -84,5 +86,43 @@ describe("TermsPage — long-form reading measure (R125-I7 / A7 B-13)", () => {
     // …and the cap actually wraps the legal prose (the stamp lives
     // inside it).
     expect(measureCap!.textContent).toContain("آخر تحديث");
+  });
+});
+
+// ── B-F7 / B-F8 (R186): the tab write-back is query-preserving and its
+// docblock tells the truth ──────────────────────────────────────────
+describe("TermsPage — the tab hash write-back preserves the query string (B-F7)", () => {
+  it("clicking the privacy tab keeps ?utm_source=wa and lands the hash on #privacy", () => {
+    window.history.pushState({}, "", "/terms?utm_source=wa");
+    render(<TermsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /سياسة الخصوصية/ }));
+
+    // The utm param SURVIVED the write-back (the old replaceState built
+    // `${pathname}#${next}` and silently dropped attribution params on
+    // an indexable legal page)…
+    expect(window.location.search).toContain("utm_source=wa");
+    // …and the deep-link hash still landed.
+    expect(window.location.hash).toBe("#privacy");
+    expect(window.location.pathname).toBe("/terms");
+  });
+
+  it("with NO query string the write-back stays the clean canonical /terms#privacy form", () => {
+    render(<TermsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /سياسة الخصوصية/ }));
+
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("#privacy");
+  });
+
+  it("the effect's docblock no longer claims pushState semantics the code deliberately avoids (B-F8)", () => {
+    // Source pin (the decomposition-suite idiom): the old docblock said
+    // "Push a new hash when the user clicks a tab" while the handler
+    // deliberately replaceStates — a future agent "fixing" toward the
+    // docblock would change back-button behavior by accident.
+    const source = readFileSync(resolve(process.cwd(), "src/pages/terms.tsx"), "utf8");
+    expect(source).not.toContain("Push a new hash");
+    expect(source).toContain("replaceState");
   });
 });

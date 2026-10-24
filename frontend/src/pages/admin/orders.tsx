@@ -672,7 +672,14 @@ export default function AdminOrdersPage() {
   };
 
   const exportSelected = () => {
-    const sel = filtered.filter((o) => selectedIds.has(o.id));
+    // R186 (C-F3): the selection deliberately survives filter/search
+    // narrows (the R126-L3 convention applyBulkStatus relies on — it
+    // sends ALL selected ids), so the export must read the SAME set:
+    // filtered∩selected silently shipped fewer rows than the label
+    // advertised (or zero, with the button disabled) after a status-tab
+    // flip. allOrders∩selectedIds keeps label, bulk action and export
+    // on one semantic.
+    const sel = allOrders.filter((o) => selectedIds.has(o.id));
     downloadCsv(orderCsvRows(sel), `orders_selected_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 

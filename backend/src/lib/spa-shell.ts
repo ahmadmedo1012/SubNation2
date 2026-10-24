@@ -347,9 +347,10 @@ async function lookupProductForShareSurfaces(
 
 /**
  * A7-F16: static-shell noindex families — the SAME path families the
- * SPA's NOINDEX_ROUTES (frontend/src/App.tsx) and robots.txt Disallow
- * list cover. `noindex,follow` (not none) so crawlers keep walking
- * outbound links instead of treating them as dangling.
+ * SPA's NOINDEX_ROUTES (frontend/src/app/route-shapes.ts) and
+ * robots.txt Disallow list cover. `noindex,follow` (not none) so
+ * crawlers keep walking outbound links instead of treating them as
+ * dangling.
  */
 const SHELL_NOINDEX_RES: RegExp[] = [
   /^\/login$/,

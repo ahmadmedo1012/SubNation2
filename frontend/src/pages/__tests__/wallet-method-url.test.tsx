@@ -150,3 +150,31 @@ describe("WalletPage — topup method tab ↔ ?method= URL (A9-3, R126-L6)", () 
     });
   });
 });
+
+describe("WalletPage — the restored prefs.network is whitelisted (R186-6 / A-F3)", () => {
+  it("a bogus stored network falls back to libyana: tile pressed + preset chips render", async () => {
+    // getTopupPreferences() is a bare JSON.parse with no shape
+    // validation — the same untrusted-localStorage input class the
+    // page already whitelists for ?method=. A bogus restored network
+    // used to yield NO selected tile, ZERO preset chips and a bogus
+    // payment_network enum POSTed; the mount-restore now validates it
+    // against the NETWORKS catalog (libyana fallback).
+    localStorage.setItem(
+      "subnation_topup_preferences",
+      JSON.stringify({ network: "bogus", amount: "50", method: "mobile_transfer" }),
+    );
+    renderPage();
+
+    // THE FIX: the libyana tile is the pressed one…
+    await waitFor(() => {
+      expect(screen.getByText("ليبيانا").closest("button")).toHaveAttribute("aria-pressed", "true");
+    });
+    expect(screen.getByText("مدار").closest("button")).toHaveAttribute("aria-pressed", "false");
+
+    // …and the preset chips render (NETWORK_PRESETS["libyana"]) — the
+    // bogus key rendered an empty ?? [] chips row. The restored amount
+    // "50" presses its own chip.
+    expect(screen.getByText("10 د.ل")).toBeInTheDocument();
+    expect(screen.getByText("50 د.ل").closest("button")).toHaveAttribute("aria-pressed", "true");
+  });
+});

@@ -87,7 +87,10 @@ export function escapeLikeTerm(term: string): string {
   return term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-export function rowsFromResult<T>(result: T[] | { rows?: T[] }): T[] {
+// R186 (E-F6): renamed from rowsFromResult — migrate/shared.ts owns the
+// same-named helper (the extractRows core); the duplicate export name was
+// an R185 dup-check miss. Same semantics, byte-identical body.
+export function unwrapRows<T>(result: T[] | { rows?: T[] }): T[] {
   if (Array.isArray(result)) return result;
   return result.rows ?? [];
 }

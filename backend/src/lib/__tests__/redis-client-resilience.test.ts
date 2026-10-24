@@ -29,6 +29,7 @@ vi.mock("redis", () => ({
 interface FakeClientOptions {
   connect?: () => Promise<unknown>;
   isReady?: boolean;
+  quit?: () => Promise<unknown>;
 }
 
 interface FakeClient {
@@ -36,6 +37,7 @@ interface FakeClient {
   connect: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn>;
   ping: ReturnType<typeof vi.fn>;
+  quit: ReturnType<typeof vi.fn>;
   sendCommand: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
   set: ReturnType<typeof vi.fn>;
@@ -60,6 +62,7 @@ function makeFakeClient(options: FakeClientOptions = {}): FakeClient {
       return client;
     }),
     ping: vi.fn(() => Promise.resolve("PONG")),
+    quit: vi.fn(options.quit ?? (() => Promise.resolve("OK"))),
     sendCommand: vi.fn(HANG),
     get: vi.fn(HANG),
     set: vi.fn(HANG),
@@ -116,7 +119,7 @@ describe("R1 — boot settles within REDIS_CONNECT_TIMEOUT_MS (degraded, never h
     expect(result).toBeNull();
     // The boot is CONSIDERED settled (server.ts proceeds) even though Redis
     // never answered — the whole point of R1.
-    expect(mod.isRedisInitialised()).toBe(true);
+    expect(mod.__isRedisInitialisedForTests()).toBe(true);
   });
 
   it("does not hand out the not-ready client after a degraded boot (R2)", async () => {
@@ -174,7 +177,55 @@ describe("R1 — no REDIS_URL (existing dev/prod single-tier mode stays intact)"
     const result = await mod.initRedisClient();
     expect(result).toBeNull();
     expect(redisModule.createClient).not.toHaveBeenCalled();
-    expect(mod.isRedisInitialised()).toBe(true);
+    expect(mod.__isRedisInitialisedForTests()).toBe(true);
+    expect(mod.getRedisClient()).toBeNull();
+  });
+});
+
+describe("R186-3 (I-F3) — closeRedisClient drains the singleton", () => {
+  it("quits a live client exactly once and nulls the singleton (drain contract)", async () => {
+    process.env.REDIS_URL = "redis://127.0.0.1:6399";
+    const client = makeFakeClient({
+      connect: () => Promise.resolve(client),
+      isReady: true,
+    });
+
+    const mod = await loadModuleWithClient(client);
+    await mod.initRedisClient();
+    expect(mod.getRedisClient()).toBe(client as never);
+
+    await mod.closeRedisClient();
+
+    expect(client.quit).toHaveBeenCalledTimes(1);
+    // Null semantics: callers racing the drain must not see the quitting
+    // client (isReady can lag quit() on a real socket).
+    expect(mod.getRedisClient()).toBeNull();
+    // Idempotent — a second drain call is a no-op, not a second quit.
+    await mod.closeRedisClient();
+    expect(client.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows quit() errors — the process is exiting either way", async () => {
+    process.env.REDIS_URL = "redis://127.0.0.1:6399";
+    const client = makeFakeClient({
+      connect: () => Promise.resolve(client),
+      isReady: true,
+      quit: () => Promise.reject(new Error("Connection is closed.")),
+    });
+
+    const mod = await loadModuleWithClient(client);
+    await mod.initRedisClient();
+
+    await expect(mod.closeRedisClient()).resolves.toBeUndefined();
+    expect(client.quit).toHaveBeenCalledTimes(1);
+    expect(mod.getRedisClient()).toBeNull();
+  });
+
+  it("is a no-op when no client was ever created (no REDIS_URL)", async () => {
+    const mod = await import("../redis-client");
+    await mod.initRedisClient();
+
+    await expect(mod.closeRedisClient()).resolves.toBeUndefined();
     expect(mod.getRedisClient()).toBeNull();
   });
 });

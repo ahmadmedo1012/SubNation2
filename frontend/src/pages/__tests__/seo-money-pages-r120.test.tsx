@@ -108,12 +108,14 @@ function metaContent(selector: string): string | null {
   return document.head.querySelector<HTMLMetaElement>(selector)?.content ?? null;
 }
 
-/** seo-builders' getOrigin() — no env override in tests, so its
- * DEFAULT_ORIGIN ("https://subnation.ly") builds every LD URL.
- * MetaTags' getAppOrigin() instead falls back to jsdom's origin for the
- * canonical link — both are asserted with their OWN value below. */
+/** R186 (H-F2, other squad's fix this suite must track): MetaTags now
+ * single-sources getAppOrigin() from seo-builders — canonical/og:url
+ * and every JSON-LD URL share ONE ladder (VITE_APP_ORIGIN → the apex
+ * default). With no env override in tests both are the apex; the
+ * jsdom-origin split this suite used to encode was the exact drift
+ * H-F2 deleted. */
 const LD_ORIGIN = "https://subnation.ly";
-const CANONICAL_ORIGIN = window.location.origin;
+const CANONICAL_ORIGIN = LD_ORIGIN;
 
 // ── A7-F1: /category/:slug ─────────────────────────────────────────────────
 
@@ -238,8 +240,10 @@ describe("R120-B3 A7-F2 — anonymous /support: public FAQ surface, no redirect"
     window.history.pushState({}, "", "/support");
     fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    // Full anonymous AuthContextType (the real 12-field shape — a bare
-    // {token} stub no longer typechecks against AuthContextType).
+    // Full anonymous AuthContextType (the real 10-field shape — a bare
+    // {token} stub no longer typechecks against AuthContextType;
+    // logoutAllDevices was deleted in R186 B-F4 — SessionManager owns
+    // the logout-all surface).
     useAuth.mockReturnValue({
       token: null,
       adminToken: null,
@@ -251,7 +255,6 @@ describe("R120-B3 A7-F2 — anonymous /support: public FAQ surface, no redirect"
       hasAdminPermission: () => false,
       logout: vi.fn(),
       adminLogout: vi.fn(),
-      logoutAllDevices: vi.fn(),
     });
   });
 

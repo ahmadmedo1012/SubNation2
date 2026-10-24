@@ -60,7 +60,13 @@ import { WhatsappSessionsList } from "@/components/admin/whatsapp/WhatsappSessio
 export default function AdminWhatsAppPage() {
   const headers = useAdminHeaders();
   const jsonHeaders = useAdminHeaders({ json: true });
-  const { hasAdminPermission } = useAuth();
+  // R186 (D-F2): the token rides the guard too — on a session-expiry
+  // re-render (setAdminToken(null) → the headers identity flips →
+  // loadSessions is recreated → the mount effect refires) the page used
+  // to fire a guaranteed-401 fetch during the redirect window; this is
+  // the one page in the surface whose load trigger had no token-less
+  // arm (every query-bearing sibling gates on `!!adminToken && scope`).
+  const { adminToken, hasAdminPermission } = useAuth();
   // R134 (A3-F1): the whatsapp console rides the settings-scoped
   // diagnostics mount (backend routes/admin/index.ts) — the nav hides
   // it from scope-less admins, but a deep link used to fire loadSessions
@@ -101,7 +107,8 @@ export default function AdminWhatsAppPage() {
 
   const loadSessions = useCallback(async () => {
     // R134 (A3-F1): fetch-free for a scope-less deep-link mount.
-    if (!canView) return;
+    // R186 (D-F2): …and for the token-less redirect window (above).
+    if (!adminToken || !canView) return;
     // R125-I5 (A3-4c): every mutation handler ends with `await
     // loadSessions()` — the old unconditional setLoading(true) collapsed
     // the whole session list into a spinner on every create/start/pair/
@@ -131,7 +138,7 @@ export default function AdminWhatsAppPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [headers, canView]);
+  }, [headers, canView, adminToken]);
 
   useEffect(() => {
     void loadSessions();

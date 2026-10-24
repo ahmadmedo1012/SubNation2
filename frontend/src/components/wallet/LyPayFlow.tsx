@@ -180,7 +180,6 @@ export function LyPayFlow({
             id="topup-payment-reference-lypay"
             value={paymentReference}
             onChange={onReferenceChange}
-            required={false}
           />
         </div>
 

@@ -16,10 +16,15 @@
  */
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CartPage from "@/pages/cart";
 import { CartProvider, type LocalCartItem } from "@/lib/cart";
+
+/** Source-pin reader (the decomposition-suite convention). */
+const read = (rel: string): string => readFileSync(resolve(process.cwd(), rel), "utf8");
 
 const sonnerToastMock = vi.fn();
 // Lazy delegation (not a direct reference) — vi.mock factories are hoisted
@@ -580,5 +585,26 @@ describe("CartPage — the no-image fallback letter is honestly readable (R125-I
     const letter = screen.getByText("N");
     expect(letter.className).toContain("text-muted-foreground");
     expect(letter.className).not.toMatch(/text-primary\/\d+/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// R186-6 (A-F6) — the page-local effectivePrice byte-duplicate is gone:
+// the lib's helper (lib/cart.tsx, beside roundToCents) is the one
+// source. Source-pin (the decomposition-suite convention): the import is
+// the contract, a re-declared local copy is the regression.
+// ─────────────────────────────────────────────────────────────────────
+
+describe("CartPage — effectivePrice single source (R186-6 / A-F6)", () => {
+  it("cart.tsx imports effectivePrice from @/lib/cart and declares no local copy", () => {
+    const page = read("src/pages/cart.tsx");
+    // The lib import carries the helper (the same import block as
+    // useCart / lineStockNotice / stockAwareCeiling).
+    expect(page).toContain("effectivePrice,");
+    // The page-local byte-duplicate is deleted…
+    expect(page).not.toContain("function effectivePrice(");
+    // …and the lib export is the one definition left.
+    const lib = read("src/lib/cart.tsx");
+    expect(lib).toContain("export function effectivePrice(item: LocalCartItem): number {");
   });
 });

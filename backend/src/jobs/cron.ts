@@ -14,6 +14,7 @@ import { pruneStaleLoginAttempts, pruneOldAuditLogs } from "./auth-audit-retenti
 import { checkAdminTotpAdvisory } from "./security-advisories";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
+import { safeInc, workerJobsTotal } from "../lib/metrics";
 
 /** Stop handle for everything initCronJobs() started (R6/R8). */
 export interface CronJobsHandle {
@@ -35,6 +36,12 @@ export function initCronJobs(): CronJobsHandle {
   // documented slot (incl. the 05:00 pre-peak window). The runtime image
   // also pins ENV TZ=UTC (Dockerfile); this is the belt to that suspender.
   const tasks: Array<{ stop: () => void }> = [];
+  // R186 (I-F2/F-F3): every slot's try/catch also counts its leg on
+  // worker_jobs_total (job = the slot's per-job Sentry tag, status
+  // success|failure) — the counter the admin system page's
+  // background-jobs panel reads was never incremented anywhere, so the
+  // panel showed its empty state forever. safeInc so a metrics failure
+  // can never break a job.
   const schedule = (...args: Parameters<typeof cron.schedule>) => {
     const task = cron.schedule(...args);
     tasks.push(task);
@@ -61,12 +68,14 @@ export function initCronJobs(): CronJobsHandle {
       try {
         const staled = await markStaleUnreadAlertsRead(14);
         const pruned = await pruneReadAlerts(30);
+        safeInc(workerJobsTotal, { job: "admin_alert_retention", status: "success" });
         if (staled + pruned > 0)
           logger.info(
             { category: "alerts.retention", staled, pruned },
             "Admin-alert retention complete",
           );
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "admin_alert_retention", status: "failure" });
         logger.error({ err, category: "alerts.retention" }, "Admin-alert retention failed");
         captureSchedulerFailure("admin_alert_retention", err, {
           cron_expression: "0 0 * * *",
@@ -92,12 +101,14 @@ export function initCronJobs(): CronJobsHandle {
     async () => {
       try {
         const removed = await pruneOldIdempotencyKeys();
+        safeInc(workerJobsTotal, { job: "idempotency_keys_retention", status: "success" });
         if (removed > 0)
           logger.info(
             { category: "idempotency.retention", removed },
             `Pruned ${removed} idempotency key row(s) older than 48h`,
           );
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "idempotency_keys_retention", status: "failure" });
         logger.error(
           { err, category: "idempotency.retention" },
           "idempotency_keys retention failed",
@@ -124,7 +135,9 @@ export function initCronJobs(): CronJobsHandle {
     async () => {
       try {
         await checkAdminTotpAdvisory();
+        safeInc(workerJobsTotal, { job: "totp_advisory", status: "success" });
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "totp_advisory", status: "failure" });
         logger.error({ err, category: "security" }, "TOTP advisory cron failed");
         captureSchedulerFailure("totp_advisory", err, {
           cron_expression: "5 0 * * *",
@@ -151,12 +164,14 @@ export function initCronJobs(): CronJobsHandle {
       // blanket "session_prune" tag that mislabeled which prune died.
       try {
         const removed = await pruneExpiredSessions();
+        safeInc(workerJobsTotal, { job: "session_prune", status: "success" });
         if (removed > 0)
           logger.info(
             { category: "sessions.retention", removed },
             `Pruned ${removed} expired session row(s)`,
           );
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "session_prune", status: "failure" });
         logger.error({ err, category: "sessions.retention" }, "Session prune failed");
         captureSchedulerFailure("session_prune", err, {
           cron_expression: "0 5 * * *",
@@ -166,12 +181,14 @@ export function initCronJobs(): CronJobsHandle {
       // session rows — expired > 24h or revoked > 30 days.
       try {
         const adminRemoved = await pruneStaleAdminSessions();
+        safeInc(workerJobsTotal, { job: "admin_session_prune", status: "success" });
         if (adminRemoved > 0)
           logger.info(
             { category: "sessions.retention", removed: adminRemoved },
             `Pruned ${adminRemoved} stale admin session row(s)`,
           );
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "admin_session_prune", status: "failure" });
         logger.error({ err, category: "sessions.retention" }, "Admin-session prune failed");
         captureSchedulerFailure("admin_session_prune", err, {
           cron_expression: "0 5 * * *",
@@ -182,12 +199,14 @@ export function initCronJobs(): CronJobsHandle {
       // job) + the boot one-shot for the restart gap.
       try {
         const notifRemoved = await pruneOldNotifications();
+        safeInc(workerJobsTotal, { job: "notifications_retention", status: "success" });
         if (notifRemoved > 0)
           logger.info(
             { category: "notifications.retention", removed: notifRemoved },
             `Pruned ${notifRemoved} old notification row(s)`,
           );
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "notifications_retention", status: "failure" });
         logger.error(
           { err, category: "notifications.retention" },
           "Notifications retention failed",
@@ -203,12 +222,14 @@ export function initCronJobs(): CronJobsHandle {
       // try/catch + per-job Sentry tag pattern as the prunes above.
       try {
         const attemptsRemoved = await pruneStaleLoginAttempts();
+        safeInc(workerJobsTotal, { job: "login_attempts_retention", status: "success" });
         if (attemptsRemoved > 0)
           logger.info(
             { category: "login_attempts.retention", removed: attemptsRemoved },
             `Pruned ${attemptsRemoved} stale login_attempt row(s)`,
           );
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "login_attempts_retention", status: "failure" });
         logger.error(
           { err, category: "login_attempts.retention" },
           "login_attempts retention failed",
@@ -223,12 +244,14 @@ export function initCronJobs(): CronJobsHandle {
       // wallet_ledger + topups — this is the META trail only.
       try {
         const auditRemoved = await pruneOldAuditLogs();
+        safeInc(workerJobsTotal, { job: "audit_logs_retention", status: "success" });
         if (auditRemoved > 0)
           logger.info(
             { category: "audit_logs.retention", removed: auditRemoved },
             `Pruned ${auditRemoved} audit row(s) older than 180d`,
           );
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "audit_logs_retention", status: "failure" });
         logger.error({ err, category: "audit_logs.retention" }, "audit_logs retention failed");
         captureSchedulerFailure("audit_logs_retention", err, {
           cron_expression: "0 5 * * *",
@@ -276,6 +299,7 @@ export function initCronJobs(): CronJobsHandle {
     async () => {
       try {
         const result = await reapExpiredRiskEvents();
+        safeInc(workerJobsTotal, { job: "risk_retention", status: "success" });
         if (
           result.unlabeledDeleted + result.labeledExpiredDeleted + result.orphanLabelsDeleted >
           0
@@ -291,6 +315,7 @@ export function initCronJobs(): CronJobsHandle {
           );
         }
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "risk_retention", status: "failure" });
         logger.error({ err, category: "risk.retention" }, "risk-events retention failed");
         captureSchedulerFailure("risk_retention", err, {
           cron_expression: "30 3 * * *",
@@ -314,7 +339,9 @@ export function initCronJobs(): CronJobsHandle {
     async () => {
       try {
         await runForecastIfPermitted();
+        safeInc(workerJobsTotal, { job: "forecast_runner", status: "success" });
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "forecast_runner", status: "failure" });
         logger.error({ err, category: "forecast.cron" }, "forecast cron failed");
         captureSchedulerFailure("forecast_runner", err, {
           cron_expression: "15 2 * * *",
@@ -336,7 +363,9 @@ export function initCronJobs(): CronJobsHandle {
       if (process.env.WORKER_TIER !== "true") return;
       try {
         await runForecastRetention();
+        safeInc(workerJobsTotal, { job: "forecast_retention", status: "success" });
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "forecast_retention", status: "failure" });
         logger.error({ err, category: "forecast.retention" }, "forecast retention failed");
         captureSchedulerFailure("forecast_retention", err, {
           cron_expression: "35 3 * * *",
@@ -358,7 +387,9 @@ export function initCronJobs(): CronJobsHandle {
     async () => {
       try {
         await runEnrichmentIfPermitted();
+        safeInc(workerJobsTotal, { job: "enrichment_runner", status: "success" });
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "enrichment_runner", status: "failure" });
         logger.error({ err, category: "enrichment.cron" }, "enrichment cron failed");
         captureSchedulerFailure("enrichment_runner", err, {
           cron_expression: "50 3 * * *",
@@ -376,7 +407,9 @@ export function initCronJobs(): CronJobsHandle {
       if (process.env.WORKER_TIER !== "true") return;
       try {
         await runEnrichmentRetention();
+        safeInc(workerJobsTotal, { job: "enrichment_retention", status: "success" });
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "enrichment_retention", status: "failure" });
         logger.error({ err, category: "enrichment.retention" }, "enrichment retention failed");
         captureSchedulerFailure("enrichment_retention", err, {
           cron_expression: "0 4 * * *",
@@ -398,6 +431,7 @@ export function initCronJobs(): CronJobsHandle {
     async () => {
       try {
         const removed = await cleanupOldAuthActivity();
+        safeInc(workerJobsTotal, { job: "auth_activity_retention", status: "success" });
         if (removed > 0) {
           logger.info(
             { category: "auth.retention", removed },
@@ -405,6 +439,7 @@ export function initCronJobs(): CronJobsHandle {
           );
         }
       } catch (err) {
+        safeInc(workerJobsTotal, { job: "auth_activity_retention", status: "failure" });
         logger.error({ err, category: "auth.retention" }, "auth-activity retention failed");
         captureSchedulerFailure("auth_activity_retention", err, {
           cron_expression: "30 4 * * *",

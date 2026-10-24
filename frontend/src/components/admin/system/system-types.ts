@@ -104,5 +104,8 @@ export interface MetricsSnapshot {
   };
   cwv: { samples: Record<string, number>; p75: Record<string, number | null> };
   alerts: { dispatchedTotal: Record<string, number> };
+  // R186 (F-F1): the Telegram delivery-outcome record the backend
+  // snapshot now carries ("event:outcome" → count).
+  telegram: { sendsTotal: Record<string, number> };
   monitoringErrors: number;
 }

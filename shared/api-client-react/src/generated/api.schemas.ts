@@ -2382,6 +2382,20 @@ export type AdminMetricsSnapshotAlerts = {
 };
 
 /**
+ * "event:outcome" → count (ok | skip | retry | failure).
+ */
+export type AdminMetricsSnapshotTelegramSendsTotal = { [key: string]: number };
+
+/**
+ * R186 (F-F1) — optional: present whenever telegram_sends_total
+ * has at least one labelled cell (the counter's doc contract).
+ */
+export type AdminMetricsSnapshotTelegram = {
+  /** "event:outcome" → count (ok | skip | retry | failure). */
+  sendsTotal: AdminMetricsSnapshotTelegramSendsTotal;
+};
+
+/**
  * The prom registry re-shaped (lib/metrics-snapshot.ts) — bounded
  * top-N route aggregation, interpolated histogram percentiles,
  * "key:status"-joined record counters.
@@ -2396,6 +2410,11 @@ export interface AdminMetricsSnapshot {
   worker: AdminMetricsSnapshotWorker;
   cwv: AdminMetricsSnapshotCwv;
   alerts: AdminMetricsSnapshotAlerts;
+  /**
+   * R186 (F-F1) — optional: present whenever telegram_sends_total
+   * has at least one labelled cell (the counter's doc contract).
+   */
+  telegram?: AdminMetricsSnapshotTelegram;
   monitoringErrors: number;
   scheduler: AdminSchedulerState;
 }

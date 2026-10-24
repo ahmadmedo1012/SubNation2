@@ -128,20 +128,26 @@ router.post("/", requireUser, ticketCreateLimiter, async (req, res) => {
   }
   const { title, message, category } = parse.data;
 
-  const [ticket] = await db
-    .insert(supportTicketsTable)
-    .values({
-      userId,
-      title,
-      category: category ?? "other",
-      status: "open",
-    })
-    .returning();
-
-  await db.insert(ticketRepliesTable).values({
-    ticketId: ticket.id,
-    authorType: "user",
-    message,
+  // E-F6 (R186): ticket + first-reply were two autocommit statements — a
+  // reply-insert failure stranded a hollow ticket row (visible to the
+  // user, answerable by no one). One transaction (the money-service tx
+  // idiom): the reply rides the ticket's commit.
+  const ticket = await db.transaction(async (tx) => {
+    const [t] = await tx
+      .insert(supportTicketsTable)
+      .values({
+        userId,
+        title,
+        category: category ?? "other",
+        status: "open",
+      })
+      .returning();
+    await tx.insert(ticketRepliesTable).values({
+      ticketId: t.id,
+      authorType: "user",
+      message,
+    });
+    return t;
   });
 
   return res.status(201).json({

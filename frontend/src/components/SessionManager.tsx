@@ -148,7 +148,11 @@ export function SessionManager() {
           <button
             type="button"
             onClick={() => setReloadKey((k) => k + 1)}
-            className="text-xs underline underline-offset-2 hover:opacity-80"
+            /* B-F10 (R186): inline-flex items-center min-h-11 — the 44px
+               touch floor the logout-all sibling below rides (the row's
+               ONLY recovery affordance, ~18px before); underline register
+               untouched (geometry-only). */
+            className="inline-flex items-center min-h-11 text-xs underline underline-offset-2 hover:opacity-80"
           >
             إعادة المحاولة
           </button>

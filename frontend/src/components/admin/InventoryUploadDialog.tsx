@@ -190,6 +190,10 @@ export function InventoryUploadDialog({
       toast({
         title: "تم الرفع",
         description: data?.message ?? `تم إضافة ${data?.added ?? 0} عنصر`,
+        // R186 (C-F5): the R124-I5 success-variant sweep miss — the one
+        // inventory write surface whose success landed in the default
+        // info/blue register while every sibling rides green.
+        variant: "success",
       });
       onUploaded();
     } catch (err) {

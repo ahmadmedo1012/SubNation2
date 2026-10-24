@@ -533,11 +533,15 @@ export default function ProductPage() {
   // phone used to add qty 2 in one gesture (and the funnel charged twice
   // at checkout); the toast already confirms the first add, so the second
   // tap inside the lock window is safely swallowed.
-  const lastAddTapRef = useRef(0);
+  // R186-6 (A-F2): null (not 0) so the FIRST tap always passes regardless
+  // of the clock — ProductCard.tsx:174's documented twin idiom (a 0-init
+  // ref swallowed the first tap at epoch-0 test clocks; null models
+  // "never tapped" explicitly).
+  const lastAddTapRef = useRef<number | null>(null);
   const handleAddToCart = () => {
     if (!product) return;
     const now = Date.now();
-    if (now - lastAddTapRef.current < 500) return;
+    if (lastAddTapRef.current !== null && now - lastAddTapRef.current < 500) return;
     lastAddTapRef.current = now;
     // Variant-aware line: the selected option's price + label ride the
     // cart line so checkout charges exactly what the product page showed.
@@ -667,9 +671,12 @@ export default function ProductPage() {
   // on home while the banner had just promised «سجّل دخولك لإكمال شراء «X»».
   // The ?intent= mechanism keeps working (the banner still reads it); the
   // redirect param simply threads the product context through sign-in.
+  // R186-6 (A-F5): bound the RAW name before encoding — slicing the
+  // percent-encoded string could cut a %XX escape mid-sequence and leak
+  // a dangling «%D8» into login's intent banner.
   const loginWithIntent = () =>
     navigate(
-      `/login?intent=buy&product=${encodeURIComponent(product.name).slice(0, 200)}&redirect=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`,
+      `/login?intent=buy&product=${encodeURIComponent(product.name.slice(0, 70))}&redirect=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`,
     );
   const walletWithReturn = () =>
     navigate(`/wallet?return=${encodeURIComponent(`/product/${product.slug ?? product.id}`)}`);

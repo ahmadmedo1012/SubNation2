@@ -26,9 +26,13 @@
  * This is the exact parity the admin surface landed in R97-02.
  */
 
-let currentUserToken: string | null = null;
+// R186 (H-F6): the sentinel is imported from the cycle-free leaf
+// ./auth-sentinel — importing it from lib/auth would be an import cycle
+// (auth.tsx imports THIS holder), which is why the literal used to be
+// re-declared here with nothing pinning the two definitions together.
+import { COOKIE_AUTH_SENTINEL } from "./auth-sentinel";
 
-const COOKIE_AUTH_SENTINEL = "__cookie_session__";
+let currentUserToken: string | null = null;
 
 export function setUserAuthToken(token: string | null): void {
   currentUserToken = token;

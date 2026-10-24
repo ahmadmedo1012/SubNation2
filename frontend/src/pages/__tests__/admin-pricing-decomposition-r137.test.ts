@@ -94,8 +94,10 @@ describe("R137/R181 (FE) — admin/pricing.tsx decomposition: page stays an orch
     expect(page).toContain("const previewRecompute = async () => {");
     expect(page).toContain("const recomputeCatalog = async () => {");
     expect(page).toContain("recomputeMutation.mutate(undefined);");
-    // catalog-recon: the config seed runs exactly once per loaded rule.
-    expect(page).toContain("configSeededRef.current = true;");
+    // catalog-recon: the config seed re-runs while the form is PRISTINE
+    // (R186 C-F4: the guard is inputsTouchedRef — a remote rule change
+    // re-seeds an untouched form instead of reading it dirty).
+    expect(page).toContain("if (inputsTouchedRef.current || !pricingConfig) return;");
     // The mutations themselves (and their invalidateQueries/toast
     // wiring) stay beside the handlers that fire them.
     expect(page).toContain("useUpdateAdminPricingConfig({");
@@ -123,8 +125,9 @@ describe("R137/R181 (FE) — admin/pricing.tsx decomposition: page stays an orch
     ]) {
       expect(page, atom).toContain(atom);
     }
-    // The refs stay with them.
-    expect(page).toContain("const configSeededRef = useRef(false);");
+    // The refs stay with them (R186 C-F4: configSeededRef became
+    // inputsTouchedRef — dirty means operator-edited, not drifted).
+    expect(page).toContain("const inputsTouchedRef = useRef(false);");
     // R123 (E3 P3c): the unsaved pricing RULE is the highest-impact
     // dirty form in the admin — the beforeunload guard rides the page.
     expect(page).toContain("useDirtyGuard(configDirty);");

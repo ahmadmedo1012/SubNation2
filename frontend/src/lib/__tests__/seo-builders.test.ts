@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { createElement } from "react";
+import { render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MetaTags } from "@/components/seo/MetaTags";
 import { buildProductLd } from "../seo-builders";
 
 /**
@@ -91,5 +96,60 @@ describe("buildProductLd — offers.availability follows real stock (D2-F2)", ()
     // Legacy slug-less rows keep the numeric-id canonical form.
     const legacy = buildProductLd({ ...BASE, slug: null });
     expect((legacy as Record<string, unknown>).url).toBe("https://subnation.ly/product/5");
+  });
+});
+
+// ── R186 (H-F2): the single origin resolver ──────────────────────────────────
+
+describe("getAppOrigin — ONE resolver for the runtime tags AND the JSON-LD (R186 H-F2)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("with VITE_APP_ORIGIN unset, MetaTags' canonical/og:url and buildProductLd share ONE origin", () => {
+    // H-F2: MetaTags used to keep a private getAppOrigin with a
+    // window.location.origin middle step, so on any non-apex host with
+    // the env unset (preview deploys, prod-mode local builds) the
+    // runtime canonical/og:url emitted the CURRENT host while the
+    // JSON-LD @id/url/image stayed https://subnation.ly — a
+    // split-domain consolidation signal on one page. MetaTags now
+    // imports the shared getAppOrigin (env → apex default), so both
+    // surfaces agree by construction. jsdom's http://localhost:3000
+    // plays the non-apex host: the old ladder would emit it here and
+    // fail this pin.
+    vi.stubEnv("VITE_APP_ORIGIN", "");
+    render(
+      createElement(MetaTags, {
+        title: "Netflix شهر",
+        description: "اشتراك شهري",
+        path: "/product/netflix-1m",
+        type: "product",
+      }),
+    );
+    const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute("href");
+    const ogUrl = document.querySelector('meta[property="og:url"]')?.getAttribute("content");
+    const ldUrl = buildProductLd(BASE).url;
+    expect(canonical).toBe(ldUrl);
+    expect(ogUrl).toBe(ldUrl);
+    expect(ldUrl).toBe("https://subnation.ly/product/netflix-1m");
+  });
+
+  it("MetaTags.tsx carries no window.location-origin ladder (source-scan — the category-parity idiom)", () => {
+    // Byte-level twin of the behavioral pin above: immune to whatever
+    // origin the test jsdom happens to carry. Comments are stripped
+    // first (the route-skeleton-card suite idiom) so rationale prose
+    // may NAME the retired window.location ladder without tripping the
+    // ban — only CODE using it fails.
+    const src = readFileSync(resolve(process.cwd(), "src/components/seo/MetaTags.tsx"), "utf8");
+    const strip = (s: string): string =>
+      s
+        .replace(/^\s*\/\/.*$/gm, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\*.*$/gm, "");
+    expect(strip(src)).not.toContain("window.location");
+    // seo-builders keeps exactly one resolver, exported for both sides.
+    const builders = readFileSync(resolve(process.cwd(), "src/lib/seo-builders.ts"), "utf8");
+    expect(strip(builders)).not.toContain("window.location");
+    expect(builders).toContain("export function getAppOrigin");
   });
 });

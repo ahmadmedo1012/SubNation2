@@ -20,6 +20,8 @@
  * chunk; only the catalog fetch is home-scoped.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isHomeBootPath } from "@/App";
 
@@ -67,5 +69,22 @@ describe("R111-F4-F3: head-start home-route gate (isHomeBootPath)", () => {
       expect(isHomeBootPath("/sub/product/netflix-1m", "/sub")).toBe(false);
       expect(isHomeBootPath("/sub/cart", "/sub")).toBe(false);
     });
+  });
+});
+
+// ── R186 (H-F3): docblock key-shape truth ────────────────────────────────────
+
+describe("R186 (H-F3): boot-head-start's docblock names the REAL seeded key", () => {
+  it("contains no bare {}-params claim (the pre-A2-F3 key shape the code no longer seeds)", () => {
+    // The seeded key is getListProductsQueryKey({ fields: "list" }) —
+    // a `{}` key would hash to a DIFFERENT key and seed nothing (the
+    // comment at the prefetch site documents this). The stale {}-params
+    // phrase described the pre-A2-F3 key shape and invited a future
+    // "correction" toward it, silently breaking the head-start↔home
+    // cache dedupe. Source-scan (the category-parity idiom): raw source,
+    // comments included — the claim is docblock prose.
+    const src = readFileSync(resolve(process.cwd(), "src/app/boot-head-start.ts"), "utf8");
+    expect(src).not.toContain("{}-params");
+    expect(src).toContain('getListProductsQueryKey({ fields: "list" })');
   });
 });

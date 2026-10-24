@@ -33,6 +33,7 @@
  */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
@@ -90,10 +91,15 @@ function resLike(body: unknown) {
 const fetchMock = vi.fn();
 
 function renderPage() {
+  // R186 (C-F8): the list rides useQuery now — a fresh client per render
+  // (retry: false) per the page-test convention.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <Router>
-      <AdminCouponsPage />
-    </Router>,
+    <QueryClientProvider client={client}>
+      <Router>
+        <AdminCouponsPage />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 

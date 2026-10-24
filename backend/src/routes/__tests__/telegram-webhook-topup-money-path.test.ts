@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Express } from "express";
 import { eq } from "drizzle-orm";
 import {
@@ -909,5 +909,54 @@ describe("POST /api/webhook/telegram — always-200 ack policy", () => {
     } finally {
       close();
     }
+  });
+});
+
+// ── 9) Transient DB blip on the pre-check — the tap is still answered ───────
+
+describe("POST /api/webhook/telegram — pre-check DB failure (E-F5)", () => {
+  it("a transient DB failure on the pre-check read → failure toast + 200 ack, zero mutation", async () => {
+    const user = await seedUser("10.00");
+    const topup = await seedTopup(user.id, "pending");
+
+    // The pre-check select throws — the exact transient-blip shape. The
+    // old code let it escape handleCallbackQuery into the route's
+    // catch-all: the update was acked 200 (correct — Telegram retries
+    // non-200s aggressively) but the tapper's toast never fired, so the
+    // tap silently vanished.
+    const selectSpy = vi.spyOn(db, "select").mockImplementation((() => {
+      throw new Error("simulated pre-check DB blip (E-F5)");
+    }) as never);
+
+    const { url, close } = await listen(buildApp());
+    let res: Awaited<ReturnType<typeof postUpdate>>;
+    try {
+      res = await postUpdate(
+        url,
+        callbackUpdate(ADMIN_WITH_USERNAME, `topup_app:${topup.id}`, "cq-dbblip"),
+      );
+    } finally {
+      selectSpy.mockRestore();
+      close();
+    }
+
+    // The webhook still acks 200 (never a 5xx — the retry policy).
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+
+    // THE FIX: the tapper is answered with the failure toast.
+    const answers = answersFor("cq-dbblip");
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toMatchObject({
+      text: "فشل تنفيذ الإجراء، حاول مجدداً",
+      show_alert: true,
+    });
+
+    // Nothing moved and no card edits were attempted.
+    expect(botCalls("editMessageReplyMarkup")).toHaveLength(0);
+    expect(botCalls("editMessageText")).toHaveLength(0);
+    expect((await topupRow(topup.id)).status).toBe("pending");
+    expect(await balanceOf(user.id)).toBe("10.00");
+    expect(await ledgerFor(user.id)).toHaveLength(0);
   });
 });

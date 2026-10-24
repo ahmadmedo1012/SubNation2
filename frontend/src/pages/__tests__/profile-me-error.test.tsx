@@ -203,4 +203,35 @@ describe("ProfilePage — /auth/me failure no longer silently vanishes the ident
     // The advice card is correctly absent — one provider IS linked.
     expect(screen.queryByText("حماية حسابك")).not.toBeInTheDocument();
   });
+
+  it("B-F10 (R186): the providers-error retry button rides the 44px touch floor (className pin)", async () => {
+    vi.mocked(useGetMe).mockReturnValue({
+      data: ME_FIXTURE,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as MeResult);
+
+    // /auth/me is healthy; the linked-providers probe FAILS — the in-card
+    // error row (its OWN retry, not the me-error FetchErrorCard's) renders.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "internal" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("تعذّر تحميل الحسابات المرتبطة")).toBeInTheDocument();
+    // The row's ONLY recovery affordance sits on the app-wide 44px floor
+    // (the status-page className-pin style) — it measured ~28px before.
+    const retry = screen.getByRole("button", { name: "إعادة المحاولة" });
+    expect(retry.className).toContain("min-h-11");
+    expect(retry.className).toContain("inline-flex");
+  });
 });

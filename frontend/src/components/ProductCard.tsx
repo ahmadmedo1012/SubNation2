@@ -778,6 +778,13 @@ export const ProductCard = memo(
        variants array reference across refetches unless the data deeply
        changed — and a deep change re-renders, exactly as it must. */
     prev.product.variants === next.product.variants &&
+    /* R186-6 (A-F1): variant_count + price_from — the ONLY variant
+       signals the ?fields=list projection carries (variants is always
+       undefined there, so the R124 arm above is inert in the grids);
+       without these arms a refetch that changed only them kept the
+       «N باقات» badge and «تبدأ من» qualifier stale until remount. */
+    prev.product.variant_count === next.product.variant_count &&
+    prev.product.price_from === next.product.price_from &&
     prev.index === next.index &&
     /* R168: the list context threads through the memo — a grid whose
        filter context changed must not keep firing the old

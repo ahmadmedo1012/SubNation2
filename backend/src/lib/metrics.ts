@@ -10,6 +10,7 @@
  */
 
 import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from "@prometheus-io/client";
+import { logger } from "./logger";
 
 /**
  * R179 — the library's (unexported) LabelValues<T> shape, mirrored.
@@ -242,6 +243,26 @@ export const socketEventsTotal = new Counter({
 });
 
 // ============================================================================
+// Worker / Jobs Metrics
+// ============================================================================
+
+/**
+ * Background job executions by job and status.
+ *
+ * R186 (I-F2 + F-F3): the counter was read everywhere (metrics-snapshot
+ * "worker" block → the admin system page's background-jobs panel) but
+ * never registered or incremented — the panel showed its empty state
+ * forever. job mirrors the per-job Sentry tag each scheduler catch
+ * already uses; status is "success" | "failure".
+ */
+export const workerJobsTotal = new Counter({
+  name: "worker_jobs_total",
+  help: "Background job executions by job and status",
+  labelNames: ["job", "status"] as const,
+  registers: [getRegistry()],
+});
+
+// ============================================================================
 // Neon Database Metrics
 // ============================================================================
 
@@ -377,7 +398,7 @@ export function safeInc<T extends string>(
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
     // Log but don't throw - instrumentation failures must not crash the app
-    console.error("Metric emission failed:", err);
+    logger.error({ err, component: "metrics" }, "Metric emission failed");
   }
 }
 
@@ -409,7 +430,7 @@ export function safeObserve<T extends string>(
     }
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
-    console.error("Histogram observation failed:", err);
+    logger.error({ err, component: "metrics" }, "Histogram observation failed");
   }
 }
 
@@ -425,7 +446,7 @@ export function safeGaugeInc<T extends string>(gauge: Gauge<T>, labels?: MetricL
     }
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
-    console.error("Gauge increment failed:", err);
+    logger.error({ err, component: "metrics" }, "Gauge increment failed");
   }
 }
 
@@ -441,7 +462,7 @@ export function safeGaugeDec<T extends string>(gauge: Gauge<T>, labels?: MetricL
     }
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
-    console.error("Gauge decrement failed:", err);
+    logger.error({ err, component: "metrics" }, "Gauge decrement failed");
   }
 }
 
@@ -466,7 +487,7 @@ export function safeGaugeSet<T extends string>(
     }
   } catch (err) {
     monitoringErrorsTotal.inc({ component: "metrics" });
-    console.error("Gauge set failed:", err);
+    logger.error({ err, component: "metrics" }, "Gauge set failed");
   }
 }
 

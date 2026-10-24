@@ -167,6 +167,14 @@ export default function AdminRiskPage() {
   });
 
   const events = useMemo(() => (eventsPages?.pages ?? []).flatMap((p) => p.events), [eventsPages]);
+  // R186 (D-F9): while a level filter is active, the level-chip counts
+  // are only honest once the level-agnostic background query has ACTUALLY
+  // resolved — the old `?? events` fallback derived them from the FILTERED
+  // window while the all-query was in flight (or errored, with no retry/
+  // refetch), so «الكل (3) / حرج (3)» could read while 200 events existed
+  // (the 94-C2 wrong-counts class). countsReady suppresses the numbers
+  // until the source is real.
+  const countsReady = filter === "all" || allEventsQuery.isSuccess;
   const countSource = filter === "all" ? events : (allEventsQuery.data?.events ?? events);
   const counts = useMemo(() => {
     const c: Record<RiskLevel | "all", number> = {
@@ -236,7 +244,12 @@ export default function AdminRiskPage() {
           onRetry={() => void dashboard.refetch()}
         />
 
-        <RiskFilterChips filter={filter} counts={counts} onFilterChange={setFilter} />
+        <RiskFilterChips
+          filter={filter}
+          counts={counts}
+          countsReady={countsReady}
+          onFilterChange={setFilter}
+        />
 
         {/* Empty / loading / error / list — R125-I4 (A3-2): an error
             is an error and ONLY an error. The old layout rendered the

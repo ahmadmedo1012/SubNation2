@@ -85,11 +85,33 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
         body: enrolled ? JSON.stringify({ current_password: currentPassword }) : undefined,
       });
 
-      import("qrcode").then((QRCode) => {
-        QRCode.default.toDataURL(data.otpauth_url, (err: Error | null | undefined, url: string) => {
-          if (!err) setSetupData({ ...data, qrCode: url });
+      // D-F1 (R186): the setup POST already rotated the secret server-side
+      // (2FA stays OFF until the new code is verified), so a dead QR must
+      // not dead-end the operator — the old code swallowed the toDataURL
+      // error and had no .catch on the dynamic import, leaving a setup
+      // with no QR, no error, and no manual-secret path (the secret +
+      // verify step render only inside setupData). Handle BOTH failure
+      // shapes honestly: a render error still lands the setup data (the
+      // base32 secret below IS the manual enrollment path) with the
+      // Arabic reason; a failed import (offline/asset 404) asks for a
+      // retry — no secret ever rendered on that branch.
+      import("qrcode")
+        .then((QRCode) => {
+          QRCode.default.toDataURL(
+            data.otpauth_url,
+            (err: Error | null | undefined, url: string) => {
+              if (err) {
+                setSetupData({ ...data });
+                setError("تعذّر توليد رمز الاستجابة السريعة — أدخل المفتاح يدوياً أدناه.");
+                return;
+              }
+              setSetupData({ ...data, qrCode: url });
+            },
+          );
+        })
+        .catch(() => {
+          setError("تعذّر تحميل مكوّن رمز الاستجابة السريعة — أعد المحاولة.");
         });
-      });
     } catch (err: unknown) {
       if (err instanceof AdminSessionExpiredError) return;
       // R148 (3-errcopy): getErrorMessage passes the wrapper's Arabic
@@ -172,6 +194,12 @@ export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string
                 // so any fixed number would be a lie.
                 decoding="async"
               />
+            ) : error ? (
+              // D-F1 (R186): QR generation FAILED (the Arabic line under the
+              // verify step says so) — the shimmer skeleton below promises
+              // an image that will never arrive. Static muted tile; the
+              // manual secret beside it is the enrollment path now.
+              <div className="w-32 h-32 rounded-md bg-muted/30" />
             ) : (
               // QR is generated client-side after the backend mints the
               // 2FA secret — usually <100ms, but on slow devices the

@@ -248,8 +248,9 @@ export default function AdminDashboardPage() {
   // Auto-set sensible default granularity based on period
   const onChangeDays = (days: number) => {
     setChartDays(days);
-    if (days <= 14) setGranularity("daily");
-    else if (days <= 30) setGranularity("daily");
+    // R186 (C-F6): the days<=14 / days<=30 arms were byte-identical dead
+    // branches (the picker offers {7,14,30,90}) — collapsed to one cover.
+    if (days <= 30) setGranularity("daily");
     else setGranularity("weekly");
   };
 

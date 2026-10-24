@@ -32,7 +32,7 @@ export interface StructuredLogFields {
   trace?: string;
   service: "web" | "worker";
   version: string; // release short SHA (GIT_SHA / RENDER_GIT_COMMIT)
-  category?: "auth" | "worker" | "alerting" | "monitoring" | "cwv" | "seo";
+  category?: "auth" | "worker" | "alerting" | "monitoring" | "cwv" | "seo" | "pricing";
 }
 
 /**
@@ -201,7 +201,11 @@ const baseLogger = pino({
 });
 
 /**
- * Child logger factory that auto-binds correlation context from AsyncLocalStorage.
+ * Child logger factory — category-only child bindings. It does NOT read
+ * AsyncLocalStorage or otherwise bind correlation context: request-scoped
+ * correlation rides pino-http's genReqId on the request log line (app.ts
+ * binds genReqId to the correlation id) and Sentry's beforeSend request
+ * contexts on captured events.
  * All convenience helpers (alertingLogger, cwvLogger, etc.) use this internally.
  * R166-B4: unexported — zero external consumers; the convenience helpers below
  * are the module's public logger surface.

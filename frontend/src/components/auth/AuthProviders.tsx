@@ -229,16 +229,15 @@ interface AuthProvidersProps {
   // (an explicit redirect target keeps precedence on the page side).
   onSuccess?: (token: string, isNewUser?: boolean) => void;
   buttonClassName?: string;
-  dividerLabel?: string;
 }
 
-export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: AuthProvidersProps) {
+export function AuthProviders({ onSuccess, buttonClassName }: AuthProvidersProps) {
   const { setToken } = useAuth();
   const [, navigate] = useLocation();
   // Seed with the synchronously-known Firebase Google provider so its
   // (inline-SVG) button paints on first render — before the
-  // /api/auth/providers round-trip resolves. The fetch below then merges
-  // the full server list (Telegram, etc.) in place.
+  // /api/auth/providers round-trip resolves. The probe below then
+  // replaces the seed with the server's settled list (Telegram, etc.).
   const [providers, setProviders] = useState<Provider[]>(() => includeFirebaseGoogleProvider([]));
   // R157: whether the /api/auth/providers round-trip settled (success OR
   // error). While it runs, a skeleton row reserves the next provider's
@@ -281,11 +280,14 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
         // R145 (D7 honesty): renderableProviders() (see its block comment)
         // drops the rows this client cannot honestly present as available —
         // the API's client_side Google row is dead without the Firebase env.
-        // Applied BEFORE includeFirebaseGoogleProvider so the seed-vs-row
-        // precedence is unchanged: Firebase configured ⇒ the API row is
-        // renderable and the seed skips (id collision); not configured ⇒
-        // the row drops and the seed is a no-op anyway.
-        setProviders(includeFirebaseGoogleProvider(renderableProviders(d.providers as Provider[])));
+        // R186 (B-F1): the settled list is server-authoritative — NO
+        // includeFirebaseGoogleProvider here. The pre-settlement seed above
+        // still paints Google while the probe runs (and the offline .catch
+        // fallback below keeps the degraded Google-only arm), but a server
+        // answer WITHOUT a google row means the operator disabled it — the
+        // client seed must not resurrect it as a button whose click can
+        // dead-end at the exchange.
+        setProviders(renderableProviders(d.providers as Provider[]));
         setSettled(true);
       })
       .catch(() => {
@@ -409,13 +411,6 @@ export function AuthProviders({ onSuccess, buttonClassName, dividerLabel }: Auth
     // hover:border-border, press-spring + active:scale-[0.97]) — no real
     // drift found, nothing "fixed" by taste.
     <div className="space-y-2.5">
-      {dividerLabel && (
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border/50" />
-          <span className="text-xs text-muted-foreground">{dividerLabel}</span>
-          <div className="flex-1 h-px bg-border/50" />
-        </div>
-      )}
       {providers.map((provider) => {
         if (provider.id === "telegram" && provider.bot_id) {
           return (

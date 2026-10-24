@@ -19,7 +19,7 @@
  * module boundary.
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SupportPage from "@/pages/support";
@@ -244,5 +244,102 @@ describe("SupportPage — a proxy 502 answering HTML never leaks English into th
       "رد تجريبي",
     );
     await waitFor(() => expect(screen.getByRole("button", { name: "إرسال الرد" })).toBeEnabled());
+  });
+});
+
+// ── B-F2 (R186): openTicket's request-identity guard ───────────────────────
+// Two clicks, the SLOW first response settling after the fast second one:
+// the stale thread used to silently overwrite the last-clicked ticket's
+// view. The monotonic seq (B-F2) drops every post-await write from the
+// older call — the LAST-CLICKED ticket's thread is the one that stays.
+describe("SupportPage — a stale slow openTicket response never overwrites the newer thread (B-F2)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    toastSpy.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const LIST = [
+    {
+      id: 1,
+      title: "مشكلة في الطلب",
+      category: "order",
+      status: "open",
+      created_at: new Date(Date.now() - 3600_000).toISOString(),
+      last_reply: null,
+    },
+    {
+      id: 2,
+      title: "استفسار عن الدفع",
+      category: "payment",
+      status: "open",
+      created_at: new Date(Date.now() - 2400_000).toISOString(),
+      last_reply: null,
+    },
+  ];
+
+  const detail = (id: number, title: string) => ({
+    id,
+    title,
+    category: "order",
+    status: "open",
+    created_at: new Date(Date.now() - 3600_000).toISOString(),
+    last_reply: null,
+    replies: [
+      {
+        id: 11,
+        author_type: "user",
+        message: `رد تذكرة ${id}`,
+        created_at: new Date().toISOString(),
+      },
+    ],
+  });
+
+  it("the LAST-CLICKED ticket's thread renders after both detail fetches settle (reverse resolution order)", async () => {
+    // Deferred detail responses the test resolves in REVERSE click order:
+    // click ticket 1 (slow) → click ticket 2 (fast) → B settles → A settles.
+    let resolveA!: (r: Response) => void;
+    let resolveB!: (r: Response) => void;
+    const detailA = new Promise<Response>((res) => {
+      resolveA = res;
+    });
+    const detailB = new Promise<Response>((res) => {
+      resolveB = res;
+    });
+    fetchMock
+      .mockResolvedValueOnce(resLike({ body: LIST }))
+      .mockImplementationOnce(() => detailA) // click #1 → ticket 1 (slow)
+      .mockImplementationOnce(() => detailB); // click #2 → ticket 2 (fast)
+
+    renderPage();
+    fireEvent.click(await screen.findByText("مشكلة في الطلب"));
+    // The list stays rendered while both fetches are in flight — the
+    // second row is clickable.
+    fireEvent.click(screen.getByText("استفسار عن الدفع"));
+
+    // The fast (last-clicked) response lands first.
+    await act(async () => {
+      resolveB(resLike({ body: detail(2, "استفسار عن الدفع") }));
+      await detailB;
+    });
+    expect(await screen.findByText("رد تذكرة 2")).toBeInTheDocument();
+
+    // …then the SLOW first-click response settles — it must be DROPPED.
+    await act(async () => {
+      resolveA(resLike({ body: detail(1, "مشكلة في الطلب") }));
+      await detailA;
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("استفسار عن الدفع");
+    });
+    // The stale thread's message and title never rendered (the list view
+    // is hidden while a thread is open, so a leaked stale write would show
+    // BOTH the wrong h1 and the wrong reply).
+    expect(screen.queryByText("رد تذكرة 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("مشكلة في الطلب")).not.toBeInTheDocument();
   });
 });

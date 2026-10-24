@@ -1,5 +1,10 @@
 import { useEffect } from "react";
 import { productOgUrl } from "@/lib/product-art";
+// R186 (H-F2): the origin resolver is single-sourced from seo-builders —
+// the old private twin below inserted a window.location.origin middle
+// step that split canonical/og:url from the JSON-LD origin on any
+// non-apex host with VITE_APP_ORIGIN unset.
+import { getAppOrigin } from "@/lib/seo-builders";
 
 export interface SeoInput {
   /** ≤ 60 chars title shown in `<title>` and og:title */
@@ -81,14 +86,6 @@ const fallbackListeners = new Set<() => void>();
 
 function notifyFallback(): void {
   for (const fn of fallbackListeners) fn();
-}
-
-function getAppOrigin(): string {
-  // Vite-injected build-time origin, falling back to runtime origin.
-  const fromEnv = (import.meta.env.VITE_APP_ORIGIN as string | undefined)?.trim();
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-  if (typeof window !== "undefined" && window.location) return window.location.origin;
-  return "https://subnation.ly";
 }
 
 function clamp(text: string, max: number, preserveBrand = false): string {

@@ -455,6 +455,67 @@ describe("R138 (visual) — the PDP's calm-surface contracts (the deep visual ro
   });
 });
 
+describe("A-F2 (R186-6) — the PDP's add-to-cart lock models «never tapped» as null", () => {
+  it("the FIRST tap at an epoch-0 clock still adds (a 0-init ref swallowed it); the second tap inside 500ms is still locked", async () => {
+    // ProductCard.tsx:174's documented twin idiom: lastAddTapRef starts
+    // at null, NOT 0 — a 0-init ref made `now - 0 < 500` swallow the
+    // first tap whenever Date.now() reads epoch-0 (test clocks) and
+    // modeled "tapped at the epoch" instead of "never tapped".
+    const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(0);
+    try {
+      renderPage();
+
+      const addButtons = screen.getAllByRole("button", {
+        name: "أضف للسلة — سجّل الدخول عند إتمام الطلب",
+      });
+      await act(async () => {
+        fireEvent.click(addButtons[0]!);
+      });
+      // THE FIX: the first tap passes at the epoch-0 clock.
+      expect(addItemMock).toHaveBeenCalledTimes(1);
+
+      // The lock itself still holds: the second tap inside the window
+      // is swallowed (96-F4 double-tap contract unchanged).
+      await act(async () => {
+        fireEvent.click(addButtons[0]!);
+      });
+      expect(addItemMock).toHaveBeenCalledTimes(1);
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+});
+
+describe("A-F5 (R186-6) — the login intent param never cuts a %XX escape mid-sequence", () => {
+  it("a 100-char Arabic name: every % in the built ?product= param starts a complete 3-char escape triplet", async () => {
+    // The old code sliced the PERCENT-ENCODED string (200 chars) — for
+    // long Arabic names the cut could land inside a %D8%-style escape
+    // and leak a dangling «%D8» into login's intent banner. The fix
+    // bounds the RAW name (70 chars) BEFORE encoding, so every escape
+    // is complete by construction.
+    const longName = "اشتراك".repeat(20); // 100 chars, 5 × 20
+    pageProduct.current = { ...VARIANT_PRODUCT, name: longName };
+    renderPage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل الدخول للشراء" }));
+    });
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/login");
+    });
+    expect(window.location.search).toContain("intent=buy");
+
+    const rawProduct = new URLSearchParams(window.location.search).get("product") ?? "";
+    // THE FIX (both directions):
+    // ① every % starts a complete %XX triplet — no dangling escape…
+    expect(rawProduct.match(/%(?![0-9A-Fa-f]{2})/)).toBeNull();
+    // ② …and the bound is on the RAW name (70 chars), not the encoded
+    //    string: the decoded param is exactly the first 70 characters.
+    expect(decodeURIComponent(rawProduct)).toBe(longName.slice(0, 70));
+  });
+});
+
 /** Exact-text lookup scoped to a container (the bar renders «بدائل»
  * inside a button; the desktop twin's label is a longer sentence). */
 function getByTextExact(container: HTMLElement, text: string): HTMLElement | null {

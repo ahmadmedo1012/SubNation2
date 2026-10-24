@@ -130,7 +130,12 @@ export default function ReferralsPage() {
     queryKey: ["loyalty", "referrals"],
     queryFn: async () => {
       const d = await customFetch<ReferralEvent[]>("/api/loyalty/referrals", { headers });
-      return Array.isArray(d) ? d : [];
+      // B-F6 (R186): a malformed 200 body THROWS into the page's error
+      // card (loadError → FetchErrorCard) — never the zeroed stats +
+      // «لا توجد إحالات بعد» false empty (the notifications/loyalty
+      // shape-guard class).
+      if (!Array.isArray(d)) throw new Error("تعذّر تحميل بيانات الإحالات");
+      return d;
     },
     enabled: !!token,
     staleTime: 60_000,
@@ -181,11 +186,10 @@ export default function ReferralsPage() {
   const handleShare = async () => {
     if (!overview) return;
     const msg = `انضم إلى SubNation — متجر الاشتراكات الرقمية بالدينار الليبي 🎬\nاستخدم رمز الإحالة: ${overview.referral_code}\n${referralLink}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "SubNation", text: msg, url: referralLink });
-      } catch {}
-    } else {
+    // B-F9 (R186): the clipboard fallback is shared by BOTH arms — the
+    // else-branch's exact copied/failed toast, reused when navigator.share
+    // fails for a real reason (a user cancel via AbortError stays silent).
+    const copyFallback = async () => {
       // Same shared helper as CopyBtn — the raw clipboard fallback used
       // to reject silently with no user feedback (B4 P2-27, twin of P1-2).
       const ok = await copyToClipboard(msg);
@@ -194,6 +198,20 @@ export default function ReferralsPage() {
         description: ok ? "شاركها مع أصدقائك!" : "انسخ الرمز أو الرابط يدوياً من الحقل أعلاه",
         variant: ok ? "default" : "destructive",
       });
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "SubNation", text: msg, url: referralLink });
+      } catch (err) {
+        // navigator.share rejects BOTH for user cancel (AbortError — a
+        // silent no-op by design) and for real failures; only the latter
+        // fall through to the same clipboard fallback the no-share-API
+        // path takes — the old bare `catch {}` swallowed both.
+        if ((err as { name?: string })?.name === "AbortError") return;
+        await copyFallback();
+      }
+    } else {
+      await copyFallback();
     }
   };
 

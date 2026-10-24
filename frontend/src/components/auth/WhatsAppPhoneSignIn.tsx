@@ -28,18 +28,16 @@ export { toLatinDigits, normalizePhoneInput } from "@/hooks/useWhatsAppOtp";
  *      issues JWT + httpOnly cookie, returns { token, is_new_user }.
  *   5. We store the token via the auth context and navigate to /.
  *
- * Renders nothing if the gateway isn't enabled (caller decides whether
- * to mount it via the `enabled` prop, typically backed by a
- * /api/auth/providers probe — whatsapp_status:"settling" renders an
- * honest hint under the button).
+ * Mounted only while the gateway is enabled — login/register decide
+ * by conditional mounting off the /api/auth/providers probe
+ * (whatsapp_status:"settling" renders an honest hint under the
+ * button).
  *
  * R158 (hooks lane): every stateful/networked step above lives in
  * @/hooks/useWhatsAppOtp now; this component renders it.
  */
 
 interface WhatsAppPhoneSignInProps {
-  /** When false, the component renders nothing. */
-  enabled?: boolean;
   /**
    * Live gateway pairing status (r95): "ready" | "settling" | OpenWA
    * lifecycle value | null (unknown). When set and not "ready", a
@@ -49,8 +47,6 @@ interface WhatsAppPhoneSignInProps {
    * and becomes ready within a minute.
    */
   channelStatus?: string | null;
-  /** Optional divider label rendered above the form. */
-  dividerLabel?: string;
   /**
    * 93-C5 / F-15 (A4 #3): called on successful sign-in INSTEAD of the
    * default navigate("/") — lets the login page honor ?redirect=
@@ -67,12 +63,7 @@ function formatMSS(totalSec: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function WhatsAppPhoneSignIn({
-  enabled = true,
-  channelStatus,
-  dividerLabel,
-  onSuccess,
-}: WhatsAppPhoneSignInProps) {
+export function WhatsAppPhoneSignIn({ channelStatus, onSuccess }: WhatsAppPhoneSignInProps) {
   const {
     phone,
     setPhone,
@@ -94,20 +85,8 @@ export function WhatsAppPhoneSignIn({
     tryPasteFromClipboard,
   } = useWhatsAppOtp({ onSuccess });
 
-  // Guard AFTER all hooks so hook count is identical on every render
-  // (rules-of-hooks). A return before the useWhatsAppOtp call above
-  // would call a different number of hooks when `enabled` flips.
-  if (!enabled) return null;
-
   return (
     <div className="space-y-2.5">
-      {dividerLabel && (
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border/50" />
-          <span className="text-xs text-muted-foreground">{dividerLabel}</span>
-          <div className="flex-1 h-px bg-border/50" />
-        </div>
-      )}
       {step === "pristine" ? (
         // Pristine entry — matches the Google/Telegram visual: a single
         // tappable button. The 2-step OTP form is revealed only after

@@ -57,7 +57,11 @@ export function SocketJobsSection({ metrics }: { metrics: MetricsSnapshot }) {
                 .slice(0, 8)
                 .map(([key, count]) => {
                   const [job, status] = key.split(":");
-                  const isFailed = status === "failed";
+                  // R186 (F0, cross-squad handoff): the counter's status
+                  // label value is "failure" (metrics.ts workerJobsTotal
+                  // safeInc sites) — comparing "failed" left failure rows
+                  // with a success-colored dot.
+                  const isFailed = status === "failure";
                   return (
                     <div
                       key={key}

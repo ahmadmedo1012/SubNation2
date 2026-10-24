@@ -90,6 +90,10 @@ const KNOWN_UNDOCUMENTED: ReadonlyArray<{ method: string; path: string; category
   { method: "post", path: "/api/cwv", category: "internal" },
   { method: "get", path: "/robots.txt", category: "internal" },
   { method: "get", path: "/sitemap.xml", category: "internal" },
+  // R176 (SEO): retired category URL kept as a 301 to /category/software —
+  // crawler-facing redirect, surfaced to the gate by the R186 app-level
+  // leaf recording (I-F7).
+  { method: "get", path: "/category/productivity", category: "internal" },
   // internal — 200-always session probes (auth.ts:347, admin/auth.ts:188)
   // (98-F9: /api/auth/probe moved OUT of this list — it is now fully
   // documented in openapi.yaml together with the rest of the auth mint
@@ -534,14 +538,21 @@ function parseRouteFile(file: string): RouteFileInfo {
  * Resolve the full route tree from app.ts down. `receiver → calls` are
  * grouped per receiver variable so files defining several routers
  * (auth-settings.ts) stay correct.
+ *
+ * R186 (I-F7): exported + parameterized (defaults = the real repo paths)
+ * so the parser test can feed fixture app/routes trees; main() runs only
+ * when the file is executed directly.
  */
-function resolveImplementedOps(): Map<string, Op> {
+export function resolveImplementedOps(
+  appPath: string = appTsPath,
+  routesRoot: string = routesDir,
+): Map<string, Op> {
   const files = new Map<string, RouteFileInfo>();
-  for (const file of listTsFiles(routesDir)) {
+  for (const file of listTsFiles(routesRoot)) {
     files.set(path.resolve(file), parseRouteFile(file));
   }
-  const appInfo = parseRouteFile(appTsPath);
-  files.set(path.resolve(appTsPath), appInfo);
+  const appInfo = parseRouteFile(appPath);
+  files.set(path.resolve(appPath), appInfo);
 
   const ops = new Map<string, Op>();
   const visited = new Set<string>();
@@ -606,6 +617,14 @@ function resolveImplementedOps(): Map<string, Op> {
       if (!targetLocal) continue;
       resolveRouter(imp.file, targetLocal, prefix);
     }
+  }
+
+  // R186 (I-F7): app-level LEAF routes (app.get("/category/productivity")
+  // — the SEO 301) never pass through a router mount, so the app.use walk
+  // above cannot see them; record them directly at the app root.
+  for (const leaf of appInfo.leafCalls) {
+    if (leaf.receiver !== "app") continue;
+    record(leaf.method, joinPaths("", leaf.path));
   }
 
   return ops;
@@ -715,4 +734,14 @@ function main(): void {
   }
 }
 
-main();
+// Only auto-run when executed as a script (not when imported by tests) —
+// the scripts/inspect.ts + scripts/validate.ts idiom.
+const invokedAsScript = (() => {
+  try {
+    return process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsScript) main();

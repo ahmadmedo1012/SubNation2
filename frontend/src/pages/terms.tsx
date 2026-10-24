@@ -203,8 +203,9 @@ export default function TermsPage() {
   );
 
   // Sync the active tab when the hash changes (back/forward, or another
-  // intra-app link to /terms#privacy). Push a new hash when the user
-  // clicks a tab so deep-links stay shareable.
+  // intra-app link to /terms#privacy). Reflect the active tab in the hash
+  // via replaceState — the back button still leaves /terms cleanly, and
+  // shareable #privacy deep-links keep working.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onHashChange = () => setTab(tabFromHash(window.location.hash));
@@ -216,8 +217,16 @@ export default function TermsPage() {
     setTab(next);
     if (typeof window !== "undefined") {
       // Use replaceState so back-button still leaves /terms cleanly.
-      const newUrl = `${window.location.pathname}#${next}`;
-      window.history.replaceState(null, "", newUrl);
+      // B-F7 (R186): carry the query string (?utm_*, future params)
+      // through the hash write-back — orders.tsx's ?filter= mirror
+      // preserves unknown params; the old write silently dropped them.
+      const qs = new URLSearchParams(window.location.search);
+      const query = qs.toString();
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}#${next}`,
+      );
     }
   };
 

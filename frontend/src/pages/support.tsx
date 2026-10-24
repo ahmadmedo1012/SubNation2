@@ -57,6 +57,11 @@ export default function SupportPage() {
   const isAuthenticated = !!token;
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // B-F2 (R186): openTicket's request-identity guard — a monotonic seq so
+  // a stale slow thread response can never overwrite the ticket a NEWER
+  // click opened (the Round-3 8-f §6 race class; the poll twin below
+  // guards the same window with its functional set).
+  const openTicketSeq = useRef(0);
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +105,11 @@ export default function SupportPage() {
 
   const openTicket = useCallback(
     async (id: number) => {
+      // B-F2 (R186): every post-await write below is gated on this seq —
+      // only the LATEST open request may touch the thread/toast/loading
+      // atoms. A slow response from an earlier click settles into a no-op
+      // instead of silently swapping the rendered thread.
+      const seq = ++openTicketSeq.current;
       setTicketLoading(true);
       try {
         // L6-1 (R143): generated getSupportTicket rides customFetch (20 s
@@ -109,6 +119,7 @@ export default function SupportPage() {
         // shape guard stays: a contract drift must toast, never crash the
         // page at `selectedTicket.replies.length`.
         const d: unknown = await getSupportTicket(id, { headers });
+        if (seq !== openTicketSeq.current) return;
         if (!d || !Array.isArray((d as TicketDetail).replies)) {
           toast({
             title: "تعذّر تحميل التذكرة",
@@ -121,13 +132,15 @@ export default function SupportPage() {
         setReplyText("");
         setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
       } catch {
+        if (seq !== openTicketSeq.current) return;
         toast({
           title: "تعذّر تحميل التذكرة",
           description: "حدث خطأ في الاتصال — حاول مجدداً",
           variant: "destructive",
         });
       } finally {
-        setTicketLoading(false);
+        // A stale request must not clear the newest request's loading.
+        if (seq === openTicketSeq.current) setTicketLoading(false);
       }
     },
     [headers, toast],

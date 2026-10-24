@@ -12,6 +12,11 @@ import {
 } from "react";
 import { setupFirebaseTokenRefresh } from "./firebase-auth";
 import { setUserAuthToken } from "./auth-token-holder";
+// R186 (H-F6): the sentinel constant lives in the cycle-free leaf
+// ./auth-sentinel (auth-token-holder imports it too — it cannot import
+// THIS module, which imports the holder; the literal used to be
+// re-declared there with nothing pinning the two together).
+import { COOKIE_AUTH_SENTINEL } from "./auth-sentinel";
 import { disconnectSocket } from "./socket";
 
 interface AuthContextType {
@@ -43,36 +48,15 @@ interface AuthContextType {
   hasAdminPermission: (scope: string) => boolean;
   logout: () => void;
   adminLogout: () => void;
-  logoutAllDevices: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-/**
- * Sentinel value placed in `token` state when the user is authenticated
- * via the httpOnly `auth_token` cookie but the actual JWT is not
- * accessible to JavaScript (which is the desired security property).
- *
- * Effects:
- *   - `!!token` checks across the codebase resolve truthy (so
- *     `enabled: !!token`, `if (token) ...`, etc. work unchanged).
- *   - `Authorization: Bearer ${token}` headers send a useless string,
- *     but the backend's `requireUser` middleware reads `req.cookies.
- *     auth_token` FIRST and ignores invalid Authorization headers, so
- *     this is harmless. (verified in middlewares/requireUser.ts)
- *   - 98-F3 (R98 backend round — mirror of R97-02): the session-mint
- *     routes (POST /api/auth/firebase/session, /firebase/refresh,
- *     /whatsapp/verify, /telegram, /telegram/webapp) no longer return
- *     the raw JWT in the body — they return THIS sentinel string in the
- *     `token` field (the httpOnly cookie is the sole session
- *     transport). Every real sign-in therefore ALSO lands here:
- *     WhatsAppPhoneSignIn / AuthProviders / telegram-callback /
- *     use-telegram-webapp-auto-login call `setToken(data.token)` and
- *     store the sentinel, exactly like the boot probe below. No raw
- *     user JWT is reachable from JS memory anymore (the admin surface
- *     closed the same gap in R97-02).
- */
-export const COOKIE_AUTH_SENTINEL = "__cookie_session__";
+// R186 (H-F6): the sentinel + its why-docblock moved to the cycle-free
+// leaf ./auth-sentinel (imported above for the boot probes). Re-exported
+// so existing `import { COOKIE_AUTH_SENTINEL } from "@/lib/auth"` sites
+// keep working.
+export { COOKIE_AUTH_SENTINEL } from "./auth-sentinel";
 
 /**
  * A5-2 (R116): hard ceiling for the boot probes. A hanging /api/auth/probe
@@ -224,7 +208,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /**
    * Admin sign-in / sign-out path — the ADMIN identity-switch choke
    * point (login page, adminLogout, the 401 redirect handler via
-   * useAdminHeaders' mirror callback, App.tsx's session guard).
+   * useAdminHeaders' mirror callback, app/routes.tsx's
+   * AdminProtectedRoutes guard).
    *
    * 97-F5 (R97-A4 §6 / F-04 — P2): on any admin identity switch the
    * admin-scoped query cache is REMOVED (not invalidated — removal
@@ -247,9 +232,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // silently swallowed (poll uses ?since=<stale cursor>). Placed here
       // (the admin identity-switch choke point) rather than in
       // adminLogout alone so the 401-expiry path (useAdminHeaders'
-      // clearAdminSession mirror) and App.tsx's session guard get the
-      // same reset for free — every "admin session ends" route goes
-      // through setAdminToken(null).
+      // clearAdminSession mirror) and app/routes.tsx's
+      // AdminProtectedRoutes guard get the same reset for free — every
+      // "admin session ends" route goes through setAdminToken(null).
       if (t === null) {
         // R183: the 401-expiry path must reset the SCOPE state too — every
         // prior "admin session ends" route cleared the token, cache, alert
@@ -285,10 +270,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             typeof first === "string" &&
             (first === "admin" ||
               // A5-3 (R116): the "admin" root carries the AdminProtectedRoutes
-              // session guard (App.tsx). A stale "session valid" verdict from
-              // the previous operator must never admit the next one without a
-              // fresh /api/admin/session round-trip — every admin-session-END
-              // path (logout, 401 expiry, App.tsx's guard) funnels through
+              // session guard (app/routes.tsx, since R137). A stale "session
+              // valid" verdict from the previous operator must never admit
+              // the next one without a fresh /api/admin/session round-trip —
+              // every admin-session-END path (logout, 401 expiry,
+              // app/routes.tsx's guard) funnels through
               // setAdminToken(null), so the guard cache dies with the session.
               first.startsWith("/api/admin") ||
               // R184 (the R183 review's logged F4): the "admin-" prefix
@@ -363,23 +349,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAdminPermissionsState([]);
     }
   }, [setAdminToken]);
-
-  const logoutAllDevices = useCallback(async () => {
-    try {
-      await fetch("/api/auth/logout-all-devices", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch {
-      // Best-effort — local logout still happens in the finally block.
-      // Sentry's network instrumentation captures the actual error.
-    } finally {
-      logout();
-    }
-  }, [token, logout]);
 
   // ── Auth hydration probe ─────────────────────────────────────────────
   //
@@ -567,7 +536,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasAdminPermission,
       logout,
       adminLogout,
-      logoutAllDevices,
     }),
     [
       token,
@@ -580,7 +548,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasAdminPermission,
       logout,
       adminLogout,
-      logoutAllDevices,
     ],
   );
 

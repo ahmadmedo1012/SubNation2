@@ -15,7 +15,7 @@ import { bootMigrations } from "./lib/boot-migrations";
 import { instrumentDbPool } from "./lib/db-instrumentation";
 import { assertEncryptionKeyConfigured } from "./lib/encryption";
 import { logger } from "./lib/logger";
-import { getRedisClient, initRedisClient } from "./lib/redis-client";
+import { closeRedisClient, getRedisClient, initRedisClient } from "./lib/redis-client";
 import { getIO, initSocket } from "./lib/socket";
 import { startWebSchedulers, type WebSchedulerHandle } from "./lib/web-scheduler";
 import { logTelegramBootStatus } from "./telegram";
@@ -169,31 +169,48 @@ function listen(port: number, remainingAttempts = DEFAULT_FALLBACK_ATTEMPTS): Se
   httpServer.keepAliveTimeout = 61_000;
   initSocket(httpServer);
 
-  httpServer.listen(port, () => {
+  // I-F10 (R186-3): the dev-only EADDRINUSE retry used to recurse into
+  // listen() and DISCARD the returned server — main()'s httpServer, the
+  // boot log and registerShutdown all stayed bound to the FIRST (dead)
+  // server while a second gated app + Socket.IO server (and a second `io`
+  // singleton overwrite) served the retry port. Node emits a failed bind's
+  // 'error' asynchronously — AFTER listen() has already returned — so no
+  // mutable-return threading can hand the winner back; instead THIS
+  // server is re-listened on the next port, making the instance everyone
+  // holds the serving one. Production passes 0 retry attempts, so its
+  // error path is byte-identical.
+  let currentPort = port;
+  let attemptsLeft = remainingAttempts;
+
+  const onListening = () => {
     const address = httpServer.address();
-    const actualPort = typeof address === "object" && address ? address.port : port;
+    const actualPort = typeof address === "object" && address ? address.port : currentPort;
 
     logger.info({ port: actualPort, ready: bootReady }, "Server listening");
-  });
+  };
 
   httpServer.on("error", (err: NodeJS.ErrnoException) => {
     if (
       process.env.NODE_ENV !== "production" &&
       err.code === "EADDRINUSE" &&
-      port !== 0 &&
-      port < 65535 &&
-      remainingAttempts > 0
+      currentPort !== 0 &&
+      currentPort < 65535 &&
+      attemptsLeft > 0
     ) {
-      const nextPort = port + 1;
+      const nextPort = currentPort + 1;
 
-      logger.warn({ port, nextPort }, "Port in use, trying next port");
-      listen(nextPort, remainingAttempts - 1);
+      logger.warn({ port: currentPort, nextPort }, "Port in use, trying next port");
+      currentPort = nextPort;
+      attemptsLeft -= 1;
+      httpServer.listen(nextPort, onListening);
       return;
     }
 
-    logger.error({ err, port }, "Error listening on port");
+    logger.error({ err, port: currentPort }, "Error listening on port");
     process.exit(1);
   });
+
+  httpServer.listen(port, onListening);
 
   return httpServer;
 }
@@ -277,8 +294,10 @@ async function bootstrapCore(): Promise<boolean> {
 //   3. httpServer.close() (waits for in-flight requests; idle keep-alive
 //      connections are closed proactively);
 //   4. pool.end() (drains DB connections);
-//   5. Sentry flush;
-//   6. exit(0) — with a 10s force-exit timer so a hung step can't wedge
+//   5. close the Redis singleton (bounded quit — R186-3 / I-F3: it was
+//      the one drain-time resource never closed);
+//   6. Sentry flush;
+//   7. exit(0) — with a 10s force-exit timer so a hung step can't wedge
 //      the deploy.
 function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): void {
   let shuttingDown = false;
@@ -354,7 +373,15 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
         logger.warn({ err }, "[server] lockPool end error during shutdown");
       }
 
-      // 5. Sentry queue flush.
+      // 5. Redis singleton (R186-3 / I-F3) — bounded, best-effort quit
+      //    (see closeRedisClient); same try/catch shape as the pool steps.
+      try {
+        await closeRedisClient();
+      } catch (err) {
+        logger.warn({ err }, "[server] Redis close error during shutdown");
+      }
+
+      // 6. Sentry queue flush.
       try {
         await Sentry.close(2000);
       } catch {

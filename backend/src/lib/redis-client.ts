@@ -364,10 +364,44 @@ function startPingWatchdog() {
   pingWatchdog.unref?.();
 }
 
-export function stopPingWatchdog(): void {
+/**
+ * R186-3 (I-F6): module-private since R186-3 — zero external callers
+ * existed even before closeRedisClient() became its only consumer.
+ * Clears the ping watchdog started by startPingWatchdog().
+ */
+function stopPingWatchdog(): void {
   if (pingWatchdog) {
     clearInterval(pingWatchdog);
     pingWatchdog = null;
+  }
+}
+
+/**
+ * R186-3 (I-F3): drain-time close for the singleton. The shutdown drains
+ * (server.ts / worker.ts) used to close every OTHER long-lived resource
+ * (scheduler lock, Socket.IO, HTTP server, DB pools, Sentry) while the
+ * Redis socket + its ping watchdog silently outlived the orderly exit —
+ * the process died with an open socket and a ticking timer. Best-effort
+ * and bounded: quit() on a half-dead socket never settles (2 s cap), and
+ * errors are swallowed because the process is exiting either way.
+ */
+export async function closeRedisClient(): Promise<void> {
+  stopPingWatchdog();
+  const client = redisClient;
+  if (!client) return;
+  // Null the singleton FIRST so callers racing the drain see null instead
+  // of queueing commands into a quitting client (isReady can lag quit()).
+  redisClient = null;
+  try {
+    await Promise.race([
+      client.quit(),
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 2_000);
+        timer.unref?.();
+      }),
+    ]);
+  } catch {
+    // best-effort only — see docblock.
   }
 }
 
@@ -405,8 +439,11 @@ export function requireRedisClient(): RedisClientType {
   return redisClient;
 }
 
-/** True once initRedisClient() has either connected or fallen back. */
-export function isRedisInitialised(): boolean {
+/** True once initRedisClient() has either connected or fallen back.
+ * R186-3 (I-F6): zero production callers — renamed onto the `__…ForTests`
+ * convention so the export surface names its only consumers (the
+ * resilience-suite assertions); production code must not branch on it. */
+export function __isRedisInitialisedForTests(): boolean {
   return initialised;
 }
 

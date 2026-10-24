@@ -44,12 +44,13 @@ import { productArtUrl } from "@/lib/product-art";
 //
 // ── R111-F4-F3 (P3): the catalog prefetch is HOME-ROUTE-ONLY ────────
 //
-// The {}-params key the head-start seeds is consumed by the home
-// route alone — every other entry path (WhatsApp product deep-links,
-// the dominant storefront traffic; category pages with their own
-// params keys; /cart, /wallet, /login…) paid the full-catalog fetch
-// (~4.7KB gz + ~53KB JSON.parse on the main thread) for a cache entry
-// it would never read, contending with the actually-needed route
+// The `{ fields: "list" }` key the head-start seeds (the A2-F3 grid
+// projection — see the NOTE at the prefetch site below) is consumed by
+// the home route alone — every other entry path (WhatsApp product
+// deep-links, the dominant storefront traffic; category pages with
+// their own params keys; /cart, /wallet, /login…) paid the full-catalog
+// fetch (~4.7KB gz + ~53KB JSON.parse on the main thread) for a cache
+// entry it would never read, contending with the actually-needed route
 // chunk + data. The prefetch now fires only when the INITIAL path at
 // module-eval time is the home route; every other boot skips leg (b)
 // entirely (leg (a), the tiny home chunk warm-up, stays for any
@@ -189,11 +190,11 @@ if (typeof window !== "undefined" && import.meta.env.MODE !== "test") {
 /**
  * R111-F4-F3 (P3): pure predicate for the head-start home-route gate.
  * TRUE only when the module-eval pathname is the home route — the sole
- * consumer of the {}-params products key the catalog prefetch seeds.
- * Exported for the gating regression test (same pattern as
- * shapeForRoute above): every non-home entry path (WhatsApp product
- * deep-links — the dominant storefront traffic; category/cart/wallet/
- * login boots) must skip the full-catalog prefetch (~4.7KB gz +
+ * consumer of the `{ fields: "list" }` products key the catalog
+ * prefetch seeds. Exported for the gating regression test (same
+ * pattern as shapeForRoute above): every non-home entry path (WhatsApp
+ * product deep-links — the dominant storefront traffic; category/cart/
+ * wallet/login boots) must skip the full-catalog prefetch (~4.7KB gz +
  * ~53KB parse) it would never read.
  *
  * `routerBase` is BASE_URL with its trailing slash stripped (the same

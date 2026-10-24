@@ -18,7 +18,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 //    the marker shape lets the db mock resolve the awaited chain by key.
 // 2. @workspace/db: the aliased pglite harness is replaced by an in-memory
 //    system_settings Map — no database needed for config math tests.
+//    R186-3: `transaction` buffers upserts in a pending map and commits
+//    them only when the callback resolves (rejection = rollback), so the
+//    I-F5 atomicity pin exercises real commit/rollback semantics; the
+//    `rejectNextSelect` / `failUpsertOnKey` hooks force the I-F4 / I-F5
+//    failure shapes per-test.
+// 3. ../logger: hoisted warn spy (the origins-boot-warn.test.ts idiom) —
+//    pins the I-F4 "logs and falls back" contract.
 const settingsRows = new Map<string, string>();
+let rejectNextSelect = false;
+let failUpsertOnKey: string | null = null;
+const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
+
+vi.mock("../logger", () => ({
+  logger: { warn, info: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn() },
+}));
+
 vi.mock("drizzle-orm", () => ({
   eq: (_col: unknown, val: unknown) => ({ __eqVal: String(val) }),
 }));
@@ -29,6 +44,10 @@ vi.mock("@workspace/db", () => ({
       from: () => ({
         where: (clause: { __eqVal?: string }) => ({
           limit: async () => {
+            if (rejectNextSelect) {
+              rejectNextSelect = false; // one-shot: exactly the next read fails
+              throw new Error("forced settings read failure");
+            }
             const key = clause?.__eqVal;
             const out: { value: string }[] = [];
             if (key != null && settingsRows.has(key)) {
@@ -40,13 +59,29 @@ vi.mock("@workspace/db", () => ({
         }),
       }),
     }),
-    insert: () => ({
-      values: () => ({
-        onConflictDoUpdate: () => ({
-          then: (resolve: (v: unknown) => void) => resolve(undefined),
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+      const pending = new Map<string, string>();
+      const tx = {
+        insert: () => ({
+          values: (row: { key: string; value: string }) => ({
+            onConflictDoUpdate: () => ({
+              then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+                if (failUpsertOnKey === row.key) {
+                  reject(new Error("forced upsert failure"));
+                  return;
+                }
+                pending.set(row.key, row.value);
+                resolve(undefined);
+              },
+            }),
+          }),
         }),
-      }),
-    }),
+      };
+      // Rejection propagates and `pending` is discarded — rollback.
+      const out = await fn(tx);
+      for (const [k, v] of pending) settingsRows.set(k, v);
+      return out;
+    },
   },
 }));
 
@@ -56,7 +91,6 @@ import {
   DEFAULT_USD_TO_LYD,
   __resetPricingConfigCache,
   computeRetailLYD,
-  computeRetailUSD,
   getPricingConfig,
   round2,
   savePricingConfig,
@@ -64,6 +98,9 @@ import {
 
 beforeEach(() => {
   settingsRows.clear();
+  rejectNextSelect = false;
+  failUpsertOnKey = null;
+  warn.mockClear();
   __resetPricingConfigCache();
 });
 
@@ -88,7 +125,9 @@ describe("computeRetailLYD — cost × 2 × 10", () => {
   });
 
   it("applies the exact directive example: $7.50 → $15 → 150 LYD", () => {
-    expect(computeRetailUSD(7.5, DEFAULTS)).toBe(15);
+    // I-F9 (R186-3): computeRetailUSD is deleted (zero production
+    // callers); the $7.50 → $15 USD half stays pinned through the LYD
+    // twin — 150 LYD at the default rate IS the $15 selling price.
     expect(computeRetailLYD(7.5, DEFAULTS)).toBe(150);
   });
 
@@ -132,13 +171,6 @@ describe("computeRetailLYD — cost × 2 × 10", () => {
   });
 });
 
-describe("computeRetailUSD — the pre-conversion selling price", () => {
-  it("doubles the cost at the default markup", () => {
-    expect(computeRetailUSD(5, DEFAULTS)).toBe(10);
-    expect(computeRetailUSD(3.99, DEFAULTS)).toBe(7.98);
-  });
-});
-
 // ── Settings-backed config (fallback + override + cache) ───────────────────
 
 describe("getPricingConfig", () => {
@@ -170,14 +202,54 @@ describe("getPricingConfig", () => {
     __resetPricingConfigCache();
     expect((await getPricingConfig()).usdToLyd).toBe(99);
   });
+
+  it("warns and serves compiled defaults when the settings read fails (I-F4)", async () => {
+    rejectNextSelect = true;
+
+    const config = await getPricingConfig();
+
+    expect(config).toEqual({ usdToLyd: 10, markupPercent: 100, maxTotalDiscountPct: 50 });
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [fields, message] = warn.mock.calls[0]! as [{ err: Error; category: string }, string];
+    expect(message).toBe("[pricing-config] settings read failed — serving compiled defaults");
+    expect(fields.category).toBe("pricing");
+    expect(fields.err).toBeInstanceOf(Error);
+
+    // One-shot failure: once the cache window is dropped, a healthy read
+    // picks overrides up again — the warn was degradation, not poisoning.
+    __resetPricingConfigCache();
+    settingsRows.set("pricing.usd_to_lyd", "4.85");
+    warn.mockClear();
+    expect((await getPricingConfig()).usdToLyd).toBe(4.85);
+    expect(warn).not.toHaveBeenCalled();
+  });
 });
 
 describe("savePricingConfig", () => {
-  it("persists a partial patch on top of the current config", async () => {
+  it("persists the settings triple through one transaction (rows land + cache warms)", async () => {
     const next = await savePricingConfig({ usdToLyd: 4.9 });
     expect(next).toEqual({ usdToLyd: 4.9, markupPercent: 100, maxTotalDiscountPct: 50 });
     // and the cache is warmed — reads see it immediately
     expect((await getPricingConfig()).usdToLyd).toBe(4.9);
+    // …and the transaction committed every row of the coherent triple
+    expect(settingsRows.get("pricing.usd_to_lyd")).toBe("4.9");
+    expect(settingsRows.get("pricing.markup_percent")).toBe("100");
+    expect(settingsRows.get("pricing.max_total_discount_pct")).toBe("50");
+  });
+
+  it("rolls back ALL three upserts when a mid-transaction write fails (I-F5 atomicity)", async () => {
+    failUpsertOnKey = "pricing.markup_percent"; // the SECOND upsert
+
+    await expect(savePricingConfig({ usdToLyd: 4.9 })).rejects.toThrow("forced upsert failure");
+
+    // No hybrid config: the FIRST key's row must not survive the failed
+    // transaction (the old three-autocommit shape persisted it).
+    expect(settingsRows.has("pricing.usd_to_lyd")).toBe(false);
+    expect(settingsRows.has("pricing.markup_percent")).toBe(false);
+    expect(settingsRows.has("pricing.max_total_discount_pct")).toBe(false);
+    // …and a fresh read still serves the untouched prior config.
+    __resetPricingConfigCache();
+    expect((await getPricingConfig()).usdToLyd).toBe(10);
   });
 
   it("rejects an out-of-bounds exchange rate", async () => {

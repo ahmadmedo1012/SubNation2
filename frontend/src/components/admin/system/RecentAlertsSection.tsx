@@ -1,4 +1,5 @@
-import { AlertTriangle, ChevronLeft, Inbox } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Inbox, RefreshCw } from "lucide-react";
+import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { SkeletonText } from "@/components/ui/Skeleton";
 import { formatRelativeTime } from "@/lib/utils";
 import { Link } from "wouter";
@@ -13,9 +14,15 @@ import type { RecentAlert } from "@/components/admin/system/system-types";
 
 export function RecentAlertsSection({
   alertsLoading,
+  alertsError,
+  onRetryAlerts,
   recentAlerts,
 }: {
   alertsLoading: boolean;
+  /** recentAlertsQ.isError — the page owns the query. */
+  alertsError: boolean;
+  /** recentAlertsQ.refetch — the page owns the query. */
+  onRetryAlerts: () => void;
   recentAlerts: RecentAlert[];
 }) {
   return (
@@ -29,7 +36,20 @@ export function RecentAlertsSection({
           </span>
         </Link>
       </div>
-      {alertsLoading ? (
+      {alertsError ? (
+        // D-F4 (R186): a failed /observability/alerts/recent load used to
+        // fall through to the empty state — «لا توجد تنبيهات حديثة» is a
+        // lying verdict on an outage (the FetchErrorCard idiom every
+        // sibling panel on this page already carries; the 90 s poll keeps
+        // retrying behind it).
+        <FetchErrorCard
+          size="section"
+          retryIcon={RefreshCw}
+          title="تعذّر تحميل التنبيهات"
+          description="تعذّر جلب آخر التنبيهات — تحقّق من الاتصال بالخادم ثم أعد المحاولة"
+          onRetry={onRetryAlerts}
+        />
+      ) : alertsLoading ? (
         /* R136 (UX-1): SkeletonText — the 3-row alerts stack,
            geometry verbatim; the pair is net-new. */
         <SkeletonText

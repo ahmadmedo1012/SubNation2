@@ -340,3 +340,57 @@ describe("cart money totals — cent rounding (R94-A1 #1)", () => {
     expect(49.97 < total).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// R186-6 (H-F5) — storage-blocked boot: CartProvider is an outermost
+// provider (no error boundary above it), so a localStorage that THROWS
+// on access (SecurityError in storage-blocked embeds / legacy
+// private-mode) must read as an absent cart — never unmount the tree
+// into a permanent blank page. The read now rides the same try/catch
+// shape that already guarded the removeItem below it.
+// ─────────────────────────────────────────────────────────────────────
+
+describe("CartProvider — storage-blocked boot degrades to an empty cart (R186-6 / H-F5)", () => {
+  it("a throwing localStorage: mounts, renders children, loads an EMPTY cart, and does not crash", async () => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    try {
+      render(
+        <CartProvider>
+          <LocalCartConsumer />
+        </CartProvider>,
+      );
+      // Children render (the boot survived)…
+      expect(screen.getByTestId("count")).toBeInTheDocument();
+      // …and the mount effect's guarded read treated the throw as an
+      // absent cart: zero items, zero total — not a crashed boot.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByTestId("count")).toHaveTextContent(/^0$/);
+      expect(screen.getByTestId("total")).toHaveTextContent(/^0$/);
+      // The cart is still USABLE for the session (commands ride
+      // state, not storage) — an add lands in memory.
+      await act(async () => {
+        screen.getByTestId("add").click();
+      });
+      expect(screen.getByTestId("count")).toHaveTextContent(/^1$/);
+    } finally {
+      // Restore a plain fake storage for any test that follows.
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        writable: true,
+        value: {
+          getItem: vi.fn(() => null),
+          setItem: vi.fn(),
+          removeItem: vi.fn(),
+          clear: vi.fn(),
+        },
+      });
+    }
+  });
+});

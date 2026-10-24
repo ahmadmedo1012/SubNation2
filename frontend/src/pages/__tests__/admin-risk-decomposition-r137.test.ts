@@ -152,7 +152,7 @@ describe("R137 (FE) — admin/risk.tsx decomposition: page stays an orchestratio
     // The chip bar's aria-pressed toggle + live counters.
     const chips = read("src/components/admin/risk/RiskFilterChips.tsx");
     expect(chips).toContain("aria-pressed={active}");
-    expect(chips).toContain("({counts[f.value]})");
+    expect(chips).toContain('countsReady ? `(${counts[f.value]})` : ""'); // R186 (D-F9): counts render only when countsReady
     // The dashboard panel's R133 triad + the pipeline verdict tile.
     const panel = read("src/components/admin/risk/RiskDashboardPanel.tsx");
     expect(panel).toContain("خط الأنابيب معطَّل (RISK_PIPELINE_ENABLED=false)");

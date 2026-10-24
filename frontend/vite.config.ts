@@ -582,6 +582,24 @@ export function injectCriticalFontPreloads(html: string, tags: string[]): string
 }
 
 /**
+ * R143 (L11-1): the deep-link route-chunk families — the same five
+ * route-chunk-warmup families (product/category/cart/checkout/wallet),
+ * collected from the bundle by this chunk-name pattern.
+ *
+ * R186 (H-F4, comment-truth): `products-*.js` (the ADMIN products page
+ * chunk) is deliberately NOT matched — the `product-` anchor requires
+ * the hyphen directly after the family, so the plural falls out (and
+ * the admin leg never boots through the runtime gate either way —
+ * PRELOAD_GATE_SOURCE early-returns on /admin). The one EXTRA match is
+ * `checkout-errors-*.js`, legitimately collected: it rides the checkout
+ * route's own import graph, so warming it with the family is correct,
+ * not waste. Exported for preload-gate.test.ts, which pins the plural
+ * exclusion.
+ */
+export const ROUTE_FAMILY_RE =
+  /^assets\/(product|category|cart|checkout|wallet)-[A-Za-z0-9_-]+\.js$/;
+
+/**
  * Build-time injection of the critical Readex Pro woff2 font preloads
  * (Arabic 400/600/700 + Latin 400 — the LCP-text faces) plus the admin-
  * gated home-chunk preload. The tag EMISSION (which woff2 files, which
@@ -720,17 +738,10 @@ function criticalPreloadInject(): Plugin {
         const homeChunks = Object.keys(bundle).filter((name) =>
           /^assets\/home-[A-Za-z0-9_-]+\.js$/.test(name),
         );
-        // R143 (L11-1): the deep-link families — the same five
-        // route-chunk-warmup families (product/category/cart/checkout/
-        // wallet), collected from the bundle by chunk-name pattern.
-        // NOTE the anchors: `products-*.js` (the ADMIN products page
-        // chunk) and `checkout-errors-*.js` are both legitimately
-        // matched by their family prefixes — the admin leg never boots
-        // through this gate (early return) and checkout-errors rides
-        // the checkout route's own import graph, so warming it with the
-        // family is correct, not waste.
-        const ROUTE_FAMILY_RE =
-          /^assets\/(product|category|cart|checkout|wallet)-[A-Za-z0-9_-]+\.js$/;
+        // R143 (L11-1): the deep-link families — collected by the
+        // module-scope ROUTE_FAMILY_RE (its docblock documents the
+        // products-*/checkout-errors anchor truth: the plural admin
+        // chunk deliberately falls OUT, checkout-errors rides along).
         const routeChunks: Array<[string, string]> = [];
         for (const name of Object.keys(bundle)) {
           const family = name.match(ROUTE_FAMILY_RE)?.[1];

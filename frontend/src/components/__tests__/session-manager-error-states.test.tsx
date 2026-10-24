@@ -98,7 +98,13 @@ describe("SessionManager — honest load state (B15-2)", () => {
     ).toBeInTheDocument();
     // The false-empty line is gone on failure.
     expect(screen.queryByText("لا توجد جلسات نشطة لعرضها.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "إعادة المحاولة" });
+    expect(retry).toBeInTheDocument();
+    // B-F10 (R186): the row's ONLY recovery affordance rides the app-wide
+    // 44px touch floor (className pin, the status-page style) — the bare
+    // text-xs underline measured ~18px before.
+    expect(retry.className).toContain("min-h-11");
+    expect(retry.className).toContain("inline-flex");
   });
 
   it("a server-provided Arabic reason rides the error line verbatim (96-F7 guard)", async () => {

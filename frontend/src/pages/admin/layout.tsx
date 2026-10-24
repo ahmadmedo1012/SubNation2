@@ -205,6 +205,15 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
   // stale age of whatever did land), emerald pulse only once data has
   // actually landed and no badge query is failing.
   const anyBadgeQueryError = alertsQueryError || statsQueryError;
+  // R186 (C-F2): an admin holding NEITHER badge scope (e.g. an
+  // inventory-only operator) has both queries permanently disabled —
+  // dataUpdatedAt stays 0, the queries never error, and the old pill
+  // rendered «جارٍ التحديث…» forever on every page, claiming an update
+  // was in flight that could never land. The pill now renders only when
+  // a badge subscription actually applies (or data/error already did —
+  // defensive for a mid-session scope flip); a scope-less top bar shows
+  // no freshness signal at all, which is the truth.
+  const badgeSubscriptionActive = canSeeSupportBadge || canSeeFinanceBadge;
   useEffect(() => {
     if (dataRefreshedAt > 0) {
       setLastUpdated(new Date(dataRefreshedAt));
@@ -648,43 +657,48 @@ export function AdminLayout({ children, onRefresh, badges }: AdminLayoutProps) {
                 nothing. An sr-only twin carries the same text; sm:hidden
                 removes it from the a11y tree once the visible text
                 exists (no double read on ≥sm). */}
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-              {anyBadgeQueryError ? (
-                <span
-                  aria-hidden="true"
-                  className="w-1.5 h-1.5 rounded-full bg-status-warning inline-block"
-                  title="تعذّر تحديث البيانات"
-                />
-              ) : lastUpdated ? (
-                <span
-                  aria-hidden="true"
-                  className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse inline-block"
-                />
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 inline-block"
-                />
-              )}
-              <span className="hidden sm:inline">
-                {anyBadgeQueryError
-                  ? lastUpdated
-                    ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
-                    : "تعذّر التحديث"
-                  : lastUpdated
-                    ? refreshLabel
-                    : "جارٍ التحديث…"}
-              </span>
-              <span className="sr-only sm:hidden">
-                {anyBadgeQueryError
-                  ? lastUpdated
-                    ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
-                    : "تعذّر التحديث"
-                  : lastUpdated
-                    ? refreshLabel
-                    : "جارٍ التحديث…"}
-              </span>
-            </div>
+            {/* R186 (C-F2): the whole pill hides for admins with neither
+                badge scope — both queries are disabled (no data, no
+                error), so every state it could render would lie. */}
+            {(badgeSubscriptionActive || lastUpdated || anyBadgeQueryError) && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+                {anyBadgeQueryError ? (
+                  <span
+                    aria-hidden="true"
+                    className="w-1.5 h-1.5 rounded-full bg-status-warning inline-block"
+                    title="تعذّر تحديث البيانات"
+                  />
+                ) : lastUpdated ? (
+                  <span
+                    aria-hidden="true"
+                    className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse inline-block"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 inline-block"
+                  />
+                )}
+                <span className="hidden sm:inline">
+                  {anyBadgeQueryError
+                    ? lastUpdated
+                      ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
+                      : "تعذّر التحديث"
+                    : lastUpdated
+                      ? refreshLabel
+                      : "جارٍ التحديث…"}
+                </span>
+                <span className="sr-only sm:hidden">
+                  {anyBadgeQueryError
+                    ? lastUpdated
+                      ? `تعذّر التحديث · آخر تحديث ${refreshLabel}`
+                      : "تعذّر التحديث"
+                    : lastUpdated
+                      ? refreshLabel
+                      : "جارٍ التحديث…"}
+                </span>
+              </div>
+            )}
 
             {/* Theme toggle — always visible. Reuses the app-level
                 ThemeProvider context so the toggle in the public navbar

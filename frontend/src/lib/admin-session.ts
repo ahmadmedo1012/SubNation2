@@ -1,9 +1,10 @@
 /**
  * Global admin-session-expiry handler — 93-C6 / F-07 (A5 S-3, round-93).
  *
- * Problem: the httpOnly admin cookie can expire MID-WORK. App.tsx's
- * guard only validates /api/admin/session on mount/token-change, so
- * every page fetch after expiry returns 401 «جلسة الإدارة منتهية» while
+ * Problem: the httpOnly admin cookie can expire MID-WORK. app/routes.tsx's
+ * AdminProtectedRoutes guard only validates /api/admin/session on
+ * mount/token-change, so every page fetch after expiry returns 401
+ * «جلسة الإدارة منتهية» while
  * the UI keeps telling the operator to RETRY a permanently
  * unauthenticated request (orders.tsx: "فشل تنفيذ العملية، حاول مرة
  * أخرى") — and money actions look "failed" when they were simply
@@ -43,7 +44,8 @@
  *   - storefront /api/auth/* 401s (out of scope — user sessions are
  *     C5's domain),
  *   - admin login/probe/session endpoints (wrong password is 401 on
- *     /api/admin/login; App.tsx already owns /api/admin/session),
+ *     /api/admin/login; app/routes.tsx's AdminProtectedRoutes guard
+ *     already owns /api/admin/session),
  *   - 401s while no admin session is believed active (logged-out use
  *     of an admin page — the per-page token guards handle that).
  */
@@ -89,7 +91,7 @@ const DEDUPE_WINDOW_MS = 15_000;
 const AUTH_EXEMPT_PREFIXES = [
   "/api/admin/login", // wrong password → 401 is the login form's business
   "/api/admin/probe", // 200-always hydration probe
-  "/api/admin/session", // App.tsx's own guard owns this 401
+  "/api/admin/session", // app/routes.tsx's AdminProtectedRoutes guard owns this 401
 ];
 
 function isAdminApiUrl(url: string): boolean {

@@ -119,7 +119,7 @@ describe("R137 (FE) — admin/topups.tsx decomposition: page stays an orchestrat
       "const [statusFilter, setStatusFilter] = useState(() => {",
       'const [search, setSearch] = useState("");',
       'const [debouncedSearch, setDebouncedSearch] = useState("");',
-      "const [processingId, setProcessingId] = useState<number | null>(null);",
+      "const [processingIds, setProcessingIds] = useState<Set<number>>(() => new Set());", // R186 (C-F10): the Set model (per-row busy under overlap)
       "const [rejectTarget, setRejectTarget] = useState<AdminTopupRow | null>(null);",
       "const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());",
       'const [bulkAction, setBulkAction] = useState<"approve" | "reject" | "approveAll" | null>(null);',

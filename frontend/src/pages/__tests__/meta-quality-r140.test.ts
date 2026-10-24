@@ -132,9 +132,11 @@ beforeEach(() => {
   resetHead();
 });
 
-/** getAppOrigin()'s test-env path: no VITE_APP_ORIGIN override, so the
- * canonical/og URLs build on jsdom's own origin. */
-const origin = (): string => window.location.origin;
+/** R186 (H-F2): MetaTags single-sources getAppOrigin() from
+ * seo-builders — with no VITE_APP_ORIGIN override the canonical/og URLs
+ * build on the apex default (the jsdom-origin middle step this helper
+ * used to return was the exact drift the fix deleted). */
+const origin = (): string => "https://subnation.ly";
 
 // ── 1. MECHANISM — noindex + the in-place upsert contract ───────────────
 
