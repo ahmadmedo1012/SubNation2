@@ -64,9 +64,17 @@ export function initAnalytics(): void {
 
   // gtag.js boilerplate (verbatim shape from Google's docs, just
   // factored into TS-typed assignments).
+  //
+  // IMPORTANT: gtag.js expects the live `arguments` object here, not a
+  // rest-parameter array. Pushing `args` silently stops GA4 from processing
+  // the queue: `gtag/js` loads, dataLayer fills, but no `/g/collect` request
+  // or `_ga` cookie is ever produced. Keep the function non-arrow and keep
+  // `arguments`; the loader regression test asserts both.
   window.dataLayer = window.dataLayer || [];
-  window.gtag = function gtag(...args: unknown[]) {
-    window.dataLayer!.push(args);
+  window.gtag = function gtag() {
+    // gtag.js silently ignores a rest-parameter array; it needs arguments.
+    // eslint-disable-next-line prefer-rest-params
+    window.dataLayer!.push(arguments);
   };
   window.gtag("js", new Date());
   window.gtag("config", id, {

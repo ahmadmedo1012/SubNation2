@@ -1,11 +1,11 @@
 /**
  * R168 — the GA4 ecommerce event layer's unit contract.
  *
- * The app-side contract under test is the dataLayer push (gtag.js
- * suppresses collect beacons under automated browsers — the R168
- * verification note — so transmission is deliberately NOT asserted
- * here; the e2e spec covers loader + config + Enhanced Measurement
- * against the live surface).
+ * The app-side contract under test is the dataLayer push. Transmission is
+ * deliberately NOT asserted here: this file only proves the app prepares
+ * GA4-shaped payloads. The loader's own regression test proves gtag.js gets
+ * the live `arguments` object, and a real-browser network capture proves the
+ * resulting `/g/collect` page_view.
  *
  * jsdom's REAL localStorage rides the purchase dedup guard; module
  * state (the search dedupe variable + the in-memory sent-set) is
