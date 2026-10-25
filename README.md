@@ -81,7 +81,9 @@ Full-resolution JPEGs live in
    WhatsApp OTP; the session is a JWT in an httpOnly cookie.
 2. **Top up the wallet** — operator-approved top-ups (mobile transfer with
    duplicate-risk review signals, or manual admin credit) land in an append-only
-   ledger; the balance is derived, never a mutable number.
+   ledger; the balance is a stored column (`users.wallet_balance`, schema
+   `shared/db/src/schema/users.ts:48`) updated only inside the same
+   transaction as its ledger row, under a never-negative CHECK.
 3. **Buy** — checkout is one atomic transaction: wallet debit, single-writer
    inventory claim, coupon/loyalty pricing, order row — all-or-nothing,
    idempotent by `Idempotency-Key`.
@@ -157,15 +159,16 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (at R186 — the suites grow every round — or shrink by
+Current suite (at R187 — the suites grow every round — or shrink by
 honest deletion, as R185's orphan-test removal did; each round's
 CHANGELOG entry carries the exact centrally-verified counts; CI runs
-both unit suites on every code push): **frontend 307 test files /
-2,802 tests** · **backend 298 test files / 2,696 tests** · **scripts
-7 files / 62 tests** — combined **5,560** (R186's 19 new pinning-test
-files included; owner PR #12's GA4 regression test included) · guest-only e2e **14 spec
-files / 135 runs** (135/135 green on production at R163 — desktop +
-mobile-390 projects; dispatch + weekly heartbeat only — not per-push).
+both unit suites on every code push): **frontend 317 test files /
+2,889 tests** · **backend 306 test files / 2,739 tests** · **scripts
+8 files / 74 tests** — combined **5,702** (R187's 19 new pinning-test
+files included; extended-suite legs included) · guest-only e2e
+**15 spec files / 3 projects** (desktop-chromium, mobile-390, tablet-768 —
+the R160 tablet band; **135 runs, 135/135 green on production at R163** —
+the dated run-count; dispatch + weekly heartbeat only — not per-push).
 
 > **Schema note:** schema changes flow exclusively through the idempotent
 > boot migrations (`backend/src/migrate.ts`), which the dev server runs
@@ -260,7 +263,17 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   (dependency-touching pushes + weekly schedule — not every code push),
   and an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy
   jobs via the workflow's path filter). Round-by-round deployment + audit
-  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R186**
+  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R187**
+  (the continuation detail-perfection round — a 12-squad parallel audit
+  incl. two NEW lenses (the cross-layer contract chain and the test
+  quality lens): 91 verified findings, 16 P2s closed (the rec-rail
+  flash-sale price, the refund's never-refreshed wallet surfaces, the
+  last unbounded auth fetches, the viewport keyboard-fix strip on
+  admin boots, the referrals «0 نقطة» confirm, the alerts meta
+  covering 6/11 backend types, POST /orders' undocumented 503, the
+  crypto legacy-hash pin that wasn't, README's derived-balance
+  falsehood, the R186 commit overclaims repaired via entry #28) +
+  75 detail fixes, +142 pinning tests, combined 5,702), **R186**
   (the all-surface detail-perfection round — a 10-squad parallel audit
   of every page, API route, integration, and doc: 76 verified findings,
   9 P2s closed (the TOTP 500+lockout bypass, the 2FA QR silent
@@ -312,7 +325,7 @@ in [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md):
   variant tree + usage terms: −62.6% of the catalog wire bytes.
 - **Route-chunk warm-up** — pointerenter/focusin delegation pre-imports the
   likely-next route (−150–400 ms perceived nav on 3G/4G), saveData-respecting.
-- **Eager path ≈ 145.4 KiB gz (148,921 B at R186)** (entry + vendor + CSS) under a CI budget gate —
+- **Eager path ≈ 145.5 KiB gz (149,029 B at R187)** (entry + vendor + CSS) under a CI budget gate —
   150 KiB warn (raised from 145 KiB at R144-E2, basis in
   `frontend/vite.config.ts`) / 160 KiB hard-fail, enforced by the production
   build.

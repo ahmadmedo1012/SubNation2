@@ -1,6 +1,7 @@
 # Engineering — Round Records Index (R142+)
 
-> Status: CURRENT @ 2026-10-24 (R186 — the all-surface detail-perfection
+> Status: CURRENT @ 2026-10-25 (R187 — the continuation detail-perfection
+> round: the R187 row + folder count 42→**43**; prior status R186 — the all-surface detail-perfection
 > round: the R186 row + folder count 41→**42**; prior status R185 — the ponytail full-power lean
 > round: the R185 row + folder count 40→**41**; prior status R184 — the
 > final organization round: the R184 row + folder count 39→**40**; the
@@ -17,7 +18,7 @@
 
 ## The round index
 
-**42 folders covering the R142→R186 span** (R155/R159/R180 have no
+**43 folders covering the R142→R187 span** (R155/R159/R180 have no
 folder — see the gaps section; R177–R179's docs commits never touched
 this index, their rows added by R183). Newest first, matching the CHANGELOG's
 order; each row links the round's primary record and names the CHANGELOG entry
@@ -25,8 +26,9 @@ order; each row links the round's primary record and names the CHANGELOG entry
 
 | Round | Date | Title (from the CHANGELOG entry) | Folder contents (measured shape) |
 |---|---|---|---|
+| R187 | 2026-10-25 | The continuation detail-perfection round (12-squad audit + 9-squad fix wave — 21 agent invocations + the central desk: 12 read-only audit squads incl. TWO NEW LENSES — the cross-layer contract chain and the test-quality lens → 91 verified findings (16×P2) → 9 fix squads on disjoint scopes; the P2 highlights: the rec-rail flash-sale price, the refund's never-refreshed wallet surfaces, the last unbounded auth fetches, the viewport keyboard-fix strip on admin boots, the referrals «0 نقطة» confirm, the alerts meta covering 6/11 types, POST /orders' undocumented 503, the crypto legacy-hash pin that wasn't, README's derived-balance falsehood, the R186 commit overclaims repaired with entry #28; +142 tests → combined 5,702) | [`round-close.md`](./R187/round-close.md) |
 | R186 | 2026-10-24 | The all-surface detail-perfection round (the multi-agent audit + fix wave — 20 agent invocations: 10 audit squads → 76 verified findings → 10 fix squads; the nine P2s incl. the TOTP 500+lockout bypass, the 2FA QR dead-end, the orders-CSV escaper gap, the coupon-admin 401 session-teardown, the Redis-adapter crash-loop, the two GA4-class silent-failure twins; +96 pinning tests → combined 5,560; the study guide re-verified ~150 claims) | [`round-close.md`](./R186/round-close.md) |
-| R185 | 2026-10-22 | The ponytail full-power lean round (the dead-surface harvest — the audit ladder run end-to-end over all 691 non-test source files: the orphaned `ui/switch` component + its own test deleted, the dead test hook + the dead `resumeAlerting` API deleted, 21 dead exports un-exported across 10 files, the orphaned @radix-ui/react-switch dependency removed, −98 lines + −46 lockfile lines, zero behavior change by construction) | [`round-close.md`](./R185/round-close.md) |
+| R185 | 2026-10-22 | The ponytail full-power lean round (the dead-surface harvest — the audit ladder run end-to-end over all 691 non-test source files: the orphaned `ui/switch` component + its own test deleted, the dead test hook + the dead `resumeAlerting` API deleted, 21 dead exports un-exported across 10 files, the orphaned @radix-ui/react-switch dependency removed, −98 lines [R187 errata: net −92 — `b4aee69a`'s numstat is 29+/121−] + −46 lockfile lines, zero behavior change by construction) | [`round-close.md`](./R185/round-close.md) |
 | R184 | 2026-10-22 | The final organization round (the R183 review's F4 teardown gap closed for every `admin-*` query root; the README/state re-stamped to the live truth — the retired payment_reference wording, the R165-frozen counts, the R163-era rounds list; the owner's Arabic study guide `docs/PROJECT_GUIDE.html`) | [`round-close.md`](./R184/round-close.md) |
 | R183 | 2026-10-22 | The precision & truth round (the money-contract truth pass — M3's retirement recorded; the nine-family guard-surface sweep; the latent scope gates + the 401-expiry scope reset; four money behavioral pins with two real latent defects closed; the R172–R182 docs-truth reconciliation) | [`round-close.md`](./R183/round-close.md) |
 | R182 | 2026-10-22 | The whole-product reliability & operational-truth round (the Firecrawl runtime finding classified honestly — not reproducible; the purchasable-floor catalog truth; the enrichment status diagnostic contract; the admin scope-blind 403s + 7 storefront a11y residuals closed; 5,445 tests; **shipped green** — the PAT landed in-session: push fast-forward, CI 7/7, Coolify rotation + all probes green, ship record `72e287b7`) | [`round-close.md`](./R182/round-close.md) |

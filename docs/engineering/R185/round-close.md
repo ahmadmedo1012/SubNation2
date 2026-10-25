@@ -96,7 +96,7 @@ Both are documented decisions with named triggers (the ponytail-audit rule: a ma
 ## 8. Definition-of-done scorecard
 
 1. The ponytail skill applied at full force as a dedicated round: **the complete audit ladder run with purpose-built verification — every dead-surface claim proven by whole-tree grep, not inferred** (§1).
-2. Dead code deleted, not disabled: **1 orphaned component + its orphaned test, 2 fully-dead functions — −98 net lines, zero behavior change by construction** (§2).
+2. Dead code deleted, not disabled: **1 orphaned component + its orphaned test, 2 fully-dead functions — −98 net lines [R187 errata: net −92 — `b4aee69a`'s numstat is 29+/121−; −98 was the pre-ship estimate], zero behavior change by construction** (§2).
 3. Dead API surface closed: **21 value/function exports un-exported; the skipped classes named with reasons** (§3).
 4. The debt ledger clean and the duplicate check run (§5).
 5. Full gates green with the counts reconciled exactly (§6).

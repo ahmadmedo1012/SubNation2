@@ -28,12 +28,12 @@ locally first so the PR lands green:
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm --filter @workspace/api-server exec vitest run      # backend suite (~290 files, R186)
-pnpm --filter @workspace/subnation run test:run          # frontend suite (~297 files, R186)
+pnpm --filter @workspace/api-server exec vitest run      # backend suite (298 files at R186; the R187 pins grow it)
+pnpm --filter @workspace/subnation run test:run          # frontend suite (307 files at R186; the R187 pins grow it)
 pnpm build                                               # includes the bundle budget gate
 ```
 
-(Suite sizes are approximations that grow every round — the CHANGELOG's
+(Suite sizes are round-stamped and grow every round — the CHANGELOG's
 round entries carry the exact centrally-verified counts.)
 
 Contract rules the gates enforce:

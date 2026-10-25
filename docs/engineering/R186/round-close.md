@@ -40,7 +40,7 @@
 ## 4. The consciously-skipped items (named, per the ponytail discipline)
 
 - **F-F5 (OpenWA 200-with-error-body):** the repo's own evidence-first rule — the live gateway's send-text error shape must be verified (one curl against the internal gateway on the VPS) before hardening the OTP transport; the exact patch is drafted in the audit report (the round workspace, not committed) for the round that can verify it. Filing it as a blind hotfix would repeat the class of bug it guards against.
-- **D-F5 (the `shortcut:` ledger truth):** repo-wide there are 4 substring matches — the 2 documented markers (web-scheduler.ts:149, PriceStockPanel.tsx:26, both with named triggers) + 2 mid-sentence prose mentions (TelegramStatusRows.tsx:29, check-openapi-header-params.ts:201). The R185 ledger's scan regex only matches comment-opening markers, so it counted 2 **by its own definition**; this ledger records the honest 4 with classification. No code change.
+- **D-F5 (the `shortcut:` ledger truth):** repo-wide there are 4 substring matches — the 2 documented markers (web-scheduler.ts:149, PriceStockPanel.tsx:26, both with named triggers) + 2 mid-sentence prose mentions (TelegramStatusRows.tsx:29, check-openapi-header-params.ts:201). The R185 ledger's scan regex only matches comment-opening markers, so it counted 2 **by its own definition**; this ledger records the honest 4 with classification. No code change. [R187 errata: the honest count is 6 in code files — the 4 above + orders.tsx:520 + products.tsx:327, both "Keyboard shortcut:" mid-sentence prose; and of the 6, 3 carry the marker form with named triggers (web-scheduler.ts:149, PriceStockPanel.tsx:26, TelegramStatusRows.tsx:29 — this ledger misfiled the last as prose, matching R187-L's 3-marker count).]
 - **~125 exported signature types, shadcn sub-component exports, the single `COPILOT_API_KEY` keep** — the standing documented conventions, untouched.
 
 ## 5. Gates (all green, on the round's final tree)
@@ -52,7 +52,7 @@
 | Backend suite | **298 test files / 2,696 tests** (was 290/2,668 — +8 files / +28 tests: the R186 pinning suites) |
 | Frontend suite | **307 / 2,802** (was 297/2,738 at HEAD — +10 files / +64 tests) |
 | Scripts suite | **7 / 62** (was 6/59 — +1 file / +3 tests: the parity-gate parser fixture suite) |
-| **Combined** | **5,560** (was 5,464 at R185 — **+96 tests, every one a named finding's pin**) |
+| **Combined** | **5,560** (was 5,464 at R185 — **+96 tests, every one a named finding's pin**) [R187 errata: +95 round pins + the owner's PR #12 GA4 regression test = +96 — the "every one" attribution overclaimed; README's own parenthetical already carried the distinction] |
 | OpenAPI ↔ Express parity | **79 enforced implemented ops in sync** — and the gate now **sees app-level leaf routes** (E-F5), with the SEO 301 `/category/productivity` honestly allowlisted |
 | ErrorCode sync | **26 codes**, both directions |
 | Header-param survival | **7/7** |
@@ -60,7 +60,7 @@
 | Orval drift | **consistent** (the telegram snapshot field regenerated + committed together) |
 | Production build | **green — eager 148,921 B gz** (+992 B vs R185: the MetaTags→seo-builders single-sourcing, exactly the predicted size; the 150/160 KiB gates hold), 163 emitted JS chunks |
 | R181 residue regression | **clean** — 163 chunks swept, 1 hit = the documented `COPILOT_API_KEY` env-name keep in the enrichment chunk |
-| Size gates | auth.ts **1026** (= its growth-banned register max — the E-F1 gate compacted to one shared helper + body so the fix fits the ceiling without touching the register); alerting.service.ts **1082** ≤ 1083 |
+| Size gates | auth.ts **1026** (= its growth-banned register max — the E-F1 gate compacted to one shared helper + body so the fix fits the ceiling without touching the register) [R187 errata: the gate counter (split-newline) read 1024 at the R186 ship — 1026 is the register max, not the file's size]; alerting.service.ts **1082** ≤ 1083 [R187 errata: the gate counter read 1083 — at the register ceiling, zero headroom; 1082 is the wc count] |
 
 ## 6. The workspace display-quirk discovery (recorded for every future round)
 
@@ -69,7 +69,7 @@ This round proved the workspace's tool channel **eats the two-char sequences `[h
 ## 7. Errata for the record (the no-history-rewrite rule)
 
 - **R185 round-close §2.3 + source-of-truth #27(a):** the redis-cli clear path was documented in **spec 011's quickstart.md only**, not "the runbook" — the runbook coverage exists as of R186's G1-F1 fix.
-- **The `shortcut:` debt ledger:** 4 substring matches repo-wide (2 documented markers with triggers + 2 mid-sentence prose mentions) — see §4.
+- **The `shortcut:` debt ledger:** 4 substring matches repo-wide (2 documented markers with triggers + 2 mid-sentence prose mentions) — see §4. [R187 errata: 6 in code files (the 4 + orders.tsx:520 + products.tsx:327 mid-sentence prose); 3 carry the marker form — see the §4 errata]
 - **SC-008's "until an admin re-enables"** wording vs the tree: `resumeAlerting()` was legitimately deleted in R185 (zero callers); the deployed topology (Redis unset) makes the pause key inoperative anyway — the runbook row now carries this caveat honestly.
 
 ## 8. Ship record — CLOSED GREEN

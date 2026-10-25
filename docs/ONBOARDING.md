@@ -46,9 +46,10 @@ The guest-only Playwright smoke needs a running stack:
 
 1. **[`docs/FINAL_MONEY_INVARIANTS.md`](./FINAL_MONEY_INVARIANTS.md)** —
    M1–M17 are law: single-transaction checkout, no negative balance,
-   idempotent top-up, `payment_reference` guard on `mobile_transfer`,
-   single-writer inventory, domain events after commit. Any change near
-   wallet/orders/refunds/loyalty requires the money suite green.
+   idempotent top-up, the mobile-transfer duplicate-risk **operator review
+   signal** (the `payment_reference` hard requirement was retired R154,
+   recorded R183), single-writer inventory, domain events after commit. Any
+   change near wallet/orders/refunds/loyalty requires the money suite green.
 2. **The no-`db:push` rule** — schema changes flow exclusively through the
    idempotent boot migrations (`backend/src/migrate.ts`); there is no
    `db:push` step in any workflow, and the script **must never be run
@@ -72,7 +73,9 @@ scans every push).
 
 - **Arabic-first, RTL** — copy is Arabic by default; layout must work
   right-to-left (see the existing RTL tests, e.g.
-  `frontend/src/components/__tests__/switch-rtl.test.tsx`).
+  `frontend/src/components/__tests__/product-card-r120-regressions.test.tsx`
+  — the `dir="auto"` title-isolation + text-right RTL-edge pins; the
+  R185-deleted `switch-rtl.test.tsx` no longer exists).
 - **Same-origin SPA** — the backend serves the built frontend; the browser
   uses relative `/api` paths and same-origin WebSockets.
 - Data fetching goes through the generated client hooks
