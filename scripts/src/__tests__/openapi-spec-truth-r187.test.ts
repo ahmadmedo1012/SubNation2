@@ -222,15 +222,12 @@ describe("R187-3 spec truth — status arms the implementations actually emit", 
   it("POST /auth/whatsapp/start: 503 reasons are the four real ones; 500/502 documented (I-F2)", () => {
     const keys = responseKeys("/auth/whatsapp/start", "post");
     expect(keys).toEqual(expect.arrayContaining(["500", "502", "503"]));
-    const enumLine = opBlock("/auth/whatsapp/start", "post").find((l) =>
-      l.includes(
-        "enum: [gateway_disabled, whatsapp_not_paired, whatsapp_settling, gateway_waking]",
-      ),
+    // Prettier wraps long flow sequences across lines — assert on the
+    // whitespace-normalized block text, not a single line.
+    const blockText = opBlock("/auth/whatsapp/start", "post").join(" ").replace(/\s+/g, " ");
+    expect(blockText, "the 503 details.reason enum must carry the four real 503 reasons").toContain(
+      "enum: [ gateway_disabled, whatsapp_not_paired, whatsapp_settling, gateway_waking, ]",
     );
-    expect(
-      enumLine,
-      "the 503 details.reason enum must carry the four real 503 reasons",
-    ).toBeTruthy();
     // store_failed is NOT a 503 reason — it answers 500 now.
     expect(responseDescription("/auth/whatsapp/start", "post", "503")).not.toContain(
       "store_failed",
@@ -242,11 +239,30 @@ describe("R187-3 spec truth — status arms the implementations actually emit", 
 
 describe("R187-3 spec truth — enums, params and shapes", () => {
   it("whatsapp_status is the real OpenWA lifecycle domain — no fabricated 'unavailable' (I-F1)", () => {
-    const enumLine = specLines.find((l) => /^ {20}enum: \[created, initializing, qr_ready/.test(l));
-    expect(enumLine, "the whatsapp_status enum must stay the emitted domain").toBeTruthy();
-    expect(enumLine).toContain("failed");
-    expect(enumLine).toContain("settling");
-    expect(enumLine).not.toContain("unavailable");
+    // Format-independent: the whatsapp_status enum block, normalized.
+    const wsIdx = specLines.findIndex((l) => l.includes("whatsapp_status:"));
+    const wsBlock = specLines
+      .slice(wsIdx, wsIdx + 30)
+      .join(" ")
+      .replace(/\s+/g, " ");
+    const enumMatch = /enum: \[ ([^\]]*) \]/.exec(wsBlock);
+    expect(enumMatch, "the whatsapp_status enum must stay the emitted domain").toBeTruthy();
+    const members = enumMatch?.[1].split(",").map((s) => s.trim()) ?? [];
+    expect(members).toContain("failed");
+    expect(members).toContain("settling");
+    expect(members).not.toContain("unavailable");
+    expect(members).toEqual(
+      expect.arrayContaining([
+        "created",
+        "initializing",
+        "qr_ready",
+        "authenticating",
+        "ready",
+        "settling",
+        "disconnected",
+        "failed",
+      ]),
+    );
   });
 
   it("GET /notifications documents the opt-in page/limit params + the paged envelope (F-F3)", () => {

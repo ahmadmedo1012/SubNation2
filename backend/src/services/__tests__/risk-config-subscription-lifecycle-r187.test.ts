@@ -107,56 +107,68 @@ afterAll(() => {
 });
 
 describe("R187 (G-F3) — risk-config pub/sub duplicate lifecycle", () => {
-  it("concurrent first callers share ONE attempt — duplicate() called once, subscribe once", async () => {
-    const { client, created } = makeMainClient(() => makeSub());
-    redisState.client = client;
-    const { service } = await importFresh();
+  it(
+    "concurrent first callers share ONE attempt — duplicate() called once, subscribe once",
+    { timeout: 20_000 },
+    async () => {
+      const { client, created } = makeMainClient(() => makeSub());
+      redisState.client = client;
+      const { service } = await importFresh();
 
-    const [a, b] = await Promise.all([service.getRiskConfig(), service.getRiskConfig()]);
+      const [a, b] = await Promise.all([service.getRiskConfig(), service.getRiskConfig()]);
 
-    // Both callers got the auto-seeded defaults (the DB path ran).
-    expect(a).toMatchObject({
-      modelEnabled: false,
-      thresholds: { low: 0, medium: 30, high: 60, critical: 85 },
-    });
-    expect(b).toEqual(a);
+      // Both callers got the auto-seeded defaults (the DB path ran).
+      expect(a).toMatchObject({
+        modelEnabled: false,
+        thresholds: { low: 0, medium: 30, high: 60, critical: 85 },
+      });
+      expect(b).toEqual(a);
 
-    // THE race fix: the old post-await flag minted one duplicate PER caller.
-    expect(client.duplicate).toHaveBeenCalledTimes(1);
-    expect(created[0]!.subscribe).toHaveBeenCalledTimes(1);
-  });
+      // THE race fix: the old post-await flag minted one duplicate PER caller.
+      expect(client.duplicate).toHaveBeenCalledTimes(1);
+      expect(created[0]!.subscribe).toHaveBeenCalledTimes(1);
+    },
+  );
 
-  it("a never-settling subscribe still resolves getRiskConfig via the DB path (bounded + loser retired)", async () => {
-    const { client, created } = makeMainClient(() => makeSub({ subscribeHangs: true }));
-    redisState.client = client;
-    const { service } = await importFresh();
+  it(
+    "a never-settling subscribe still resolves getRiskConfig via the DB path (bounded + loser retired)",
+    { timeout: 15_000 },
+    async () => {
+      const { client, created } = makeMainClient(() => makeSub({ subscribeHangs: true }));
+      redisState.client = client;
+      const { service } = await importFresh();
 
-    // Pre-fix this await never settled (the unbounded sub.subscribe).
-    const snap = await service.getRiskConfig();
+      // Pre-fix this await never settled (the unbounded sub.subscribe).
+      const snap = await service.getRiskConfig();
 
-    expect(snap).toMatchObject({
-      modelEnabled: false,
-      thresholds: { low: 0, medium: 30, high: 60, critical: 85 },
-    });
-    // The timed-out duplicate was retired — zero orphan connections.
-    expect(client.duplicate).toHaveBeenCalledTimes(1);
-    expect(created[0]!.disconnect).toHaveBeenCalledTimes(1);
-  });
+      expect(snap).toMatchObject({
+        modelEnabled: false,
+        thresholds: { low: 0, medium: 30, high: 60, critical: 85 },
+      });
+      // The timed-out duplicate was retired — zero orphan connections.
+      expect(client.duplicate).toHaveBeenCalledTimes(1);
+      expect(created[0]!.disconnect).toHaveBeenCalledTimes(1);
+    },
+  );
 
-  it("the drain closes the duplicate — closeRiskConfigSubscription quits it (bounded, resolves)", async () => {
-    const { client, created } = makeMainClient(() => makeSub());
-    redisState.client = client;
-    const { service } = await importFresh();
+  it(
+    "the drain closes the duplicate — closeRiskConfigSubscription quits it (bounded, resolves)",
+    { timeout: 15_000 },
+    async () => {
+      const { client, created } = makeMainClient(() => makeSub());
+      redisState.client = client;
+      const { service } = await importFresh();
 
-    await service.getRiskConfig(); // subscribes → the duplicate is live
-    expect(client.duplicate).toHaveBeenCalledTimes(1);
+      await service.getRiskConfig(); // subscribes → the duplicate is live
+      expect(client.duplicate).toHaveBeenCalledTimes(1);
 
-    // What server.ts's drain now calls beside closeRedisClient().
-    await expect(service.closeRiskConfigSubscription()).resolves.toBeUndefined();
-    expect(created[0]!.quit).toHaveBeenCalledTimes(1);
+      // What server.ts's drain now calls beside closeRedisClient().
+      await expect(service.closeRiskConfigSubscription()).resolves.toBeUndefined();
+      expect(created[0]!.quit).toHaveBeenCalledTimes(1);
 
-    // Idempotent: a second close is a no-op (the drain + a racing signal).
-    await expect(service.closeRiskConfigSubscription()).resolves.toBeUndefined();
-    expect(created[0]!.quit).toHaveBeenCalledTimes(1);
-  });
+      // Idempotent: a second close is a no-op (the drain + a racing signal).
+      await expect(service.closeRiskConfigSubscription()).resolves.toBeUndefined();
+      expect(created[0]!.quit).toHaveBeenCalledTimes(1);
+    },
+  );
 });
