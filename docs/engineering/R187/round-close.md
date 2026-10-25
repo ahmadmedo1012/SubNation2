@@ -83,13 +83,19 @@
 - **R186's ledger (carried by this round's docs squad):** the size-gate units (auth 1024 not 1026; alerting 1083 at ceiling); R185's −98 → −92; the shortcut count 4 → 6; the +96 attribution (+95 + the owner's PR #12 test); the study-guide 8 → 9. All bracketed in-place where the record is editable; the two commit messages stay immutable.
 - **The R186 source-of-truth entry #28 overclaim:** repaired by THIS round's K-F3 — the entry now exists, with the errata naming both overclaiming commits.
 
-## 8. Ship record — CLOSED GREEN
+## 8. Ship record — repo-side CLOSED GREEN; the Coolify rotation PENDING at record time
 
-**Push:** fast-forward, no force-push, remote HEAD re-verified after the push (the conventional commits + the SHA recorded at push time in the round's worklog).
+**Push:** `6e0da9c7..fa9a8218` fast-forward (three conventional commits: `0cf47628` fix(detail,r187) the code harvest · `6c782020` docs(truth,r187) the doc-truth harvest · `fa9a8218` docs(r187) the round ledger) — **no force-push; remote HEAD re-verified equal to the local HEAD after the push.**
 
-**CI:** the run + result recorded at push time. **Coolify rotation:** verified live within ~10 min of CI (the entry hash rotated).
+**CI round 1 (fa9a8218): 2 CI-only failures, both repaired.** (1) The scripts job: the spec-truth pins anchored single-line enum formats that lint-staged's `prettier --write` wrapped at commit time (the committed yaml's flow sequences span lines — the local runs had tested the pre-commit formatting) → both assertions reworked to whitespace-normalized block matching, format-independent by construction. (2) The backend job: the risk-config subscription lifecycle's concurrent-first-callers leg timed out at vitest's 5 s default under CI's v8-coverage instrumentation (local green ~2.7 s ×3; CI's failing leg ran 5.0 s+) → explicit per-test timeouts (20 s/15 s), assertions unchanged. **A new harness law rides the CI-repair commit: never trust the pre-commit-hook formatting of files your pins byte-match — run the suite on the COMMITTED tree (or anchor format-independently).**
 
-**Read-only production probes (all green on the rotated tree):** healthz 200; the purchasable floor; the admin-family 401 gates; the live entry's residue sweep (zero copilot/calculator bytes beyond the documented keep); a fresh browser session with zero page/console errors.
+**CI round 2: run `40155145392` on `31c90c08` — completed success** (~7 min; all executed jobs green; e2e + CVE = the standing by-design skips on a no-deps push).
+
+**Docker image: `docker.yml` dispatched per the sequencing law (push → CI green → dispatch) — run `40157409224` completed success** (the GHCR `main-amd64` + `sha-31c90c08-amd64` tags landed).
+
+**The Coolify rotation: PENDING at this record's writing.** Both pushes' webhooks were delivered and **accepted (HTTP 202** — deliveries `3850214496660357120` @ 02:37:18Z for `31c90c08` and `3850213072580911104` @ 02:26:15Z for `fa9a8218`), but ~80 minutes later the production entry still serves the pre-R187 tree (`index-BsMhX6At.js` — which itself rotated after R186 via the owner's own Oct-24-evening pushes; byte-proven pre-R187: the entry lacks the round's `["loyalty"]` socket-resync marker). The watcher is owner-side (outside repo view — the standing #17 record); a VPS build-queue backlog is the likeliest cause. **Owner action if it stays stale: check the Coolify deployments queue / redeploy `main` from the panel.**
+
+**Read-only production probes (all green on the serving tree at record time):** `/api/healthz` **200** (0.60–0.62 s); `/api/catalog/stats` → 45 products, purchasable floor **980** (the R182 contract intact); the five admin-family **401 gates** (session, metrics, enrichment/status, topups, orders); the live entry's residue sweep — **zero** copilot/calculator bytes, the GA4 `push(arguments)` marker ×1 + the `G-RKRV3ZC3MF` id (the owner's PR #12 fix still live); a fresh browser session (agent-browser): the homepage + the PDP (`/product/lifetime-cloud-storage`) render with **zero page/console errors**, the Product-LD carries the honest `980.00 LYD` floor + `InStock`, screenshot captured (`/tmp/r187-live-pdp.png`).
 
 ## 9. Definition-of-done scorecard
 
