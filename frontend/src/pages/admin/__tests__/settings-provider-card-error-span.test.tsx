@@ -180,3 +180,98 @@ describe("ProviderCard — B14-14: the inline error span is wired (R127-L11)", (
     expect(document.body.textContent).not.toContain("Conflict");
   });
 });
+
+/** R187E-F5 — the "[SET]" secret placeholder was unreachable dead code.
+ *
+ * The server masks configured secrets as the literal "[SET]" string
+ * (services/auth-settings-store.ts buildMaskedConfig); the card rendered
+ * that literal as the password input's VALUE, so the designed
+ * «••••••••••• (مُعيَّن)» placeholder — which only renders on an EMPTY
+ * value — could never appear for any configured secret. The input now
+ * renders empty (the placeholder visible) while the STATE keeps "[SET]"
+ * until the operator types, so an untouched save PATCHes the exact mask
+ * the backend already skips (routes/auth-settings.ts:794).
+ */
+describe('ProviderCard — R187E-F5: a configured secret shows its placeholder, not the "[SET]" literal', () => {
+  const SECRET_PROVIDER: AuthProvider = {
+    id: "google",
+    label: "Google",
+    icon: "google",
+    color: "",
+    auth_type: "oauth_redirect",
+    description: "الدخول عبر حساب Google",
+    setup_url: "https://example.com/setup",
+    fields: [
+      { key: "client_id", label: "معرّف العميل", isSecret: false, placeholder: "123…" },
+      { key: "client_secret", label: "الرمز السري", isSecret: true, placeholder: "abc…" },
+    ],
+    enabled: true,
+    config: { client_id: "123.apps.google", client_secret: "[SET]" },
+  };
+
+  function renderSecretCard(onUpdate = vi.fn()) {
+    render(
+      <ProviderCard provider={SECRET_PROVIDER} adminToken="test-admin-token" onUpdate={onUpdate} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "إظهار إعدادات Google" }));
+    return { onUpdate };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("the masked secret input is EMPTY with the «(مُعيَّن)» placeholder visible — never the literal [SET]", () => {
+    renderSecretCard();
+
+    // The secret label carries the «سري» badge beside it — regex match.
+    const secret = screen.getByLabelText(/^الرمز السري/) as HTMLInputElement;
+    expect(secret).toHaveValue("");
+    expect(secret).toHaveAttribute("placeholder", "••••••••••• (مُعيَّن)");
+    // Still a password field until revealed.
+    expect(secret).toHaveAttribute("type", "password");
+    // The literal mask never renders into the DOM as the value.
+    expect(secret.value).not.toBe("[SET]");
+    // The non-secret field keeps its real value untouched.
+    expect(screen.getByLabelText("معرّف العميل") as HTMLInputElement).toHaveValue(
+      "123.apps.google",
+    );
+  });
+
+  it('an untouched save PATCHes the "[SET]" mask — behavior-identical (the backend skips it)', async () => {
+    const fetchMock = adminFetchJson as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce({
+      enabled: true,
+      config: { client_id: "123.apps.google", client_secret: "[SET]" },
+    });
+    const { onUpdate } = renderSecretCard();
+
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التغييرات" }));
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
+    // The body carried the untouched state: the mask (not "") — the
+    // display change never altered the save contract. adminFetchJson's
+    // call shape is (url, init) — the JSON body rides init.body.
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as Record<string, string>;
+    expect(body.client_secret).toBe("[SET]");
+    expect(body.client_id).toBe("123.apps.google");
+  });
+
+  it("typing a new secret replaces the mask in state (the operator's edit wins)", async () => {
+    const fetchMock = adminFetchJson as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce({
+      enabled: true,
+      config: { client_id: "123.apps.google", client_secret: "[SET]" },
+    });
+    renderSecretCard();
+
+    fireEvent.change(screen.getByLabelText(/^الرمز السري/), {
+      target: { value: "new-secret-456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التغييرات" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body)) as Record<string, string>;
+    expect(body.client_secret).toBe("new-secret-456");
+  });
+});

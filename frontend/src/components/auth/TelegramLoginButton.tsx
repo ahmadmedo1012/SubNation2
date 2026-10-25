@@ -1,6 +1,12 @@
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { getErrorMessage } from "@/lib/errors";
+// B-F3/R186 + C-F3/R187: the open-redirect guard is the CANONICAL one
+// (lib/utils.sanitizeInternalPath — extracted in R123-E4a so every
+// auth surface shares it). This component's module-local
+// readRedirectTarget fork (byte-identical semantics) is deleted — the
+// same class R186 closed on telegram-callback.tsx.
+import { sanitizeInternalPath } from "@/lib/utils";
 // R167-C (F17): the paper plane rides the shared brand glyph
 // (components/brand/TelegramGlyph) — byte-identical path + 18px size;
 // aria-hidden opted in to match this site's pre-extraction markup.
@@ -34,15 +40,19 @@ import { TelegramGlyph } from "@/components/brand/TelegramGlyph";
  *   2. Telegram authenticates the user on its own domain (no iframe,
  *      no postMessage, runs in Telegram's CSP context).
  *
- *   3. Telegram redirects the browser to {CALLBACK_URL} with the
- *      signed payload appended as URL query params:
- *        ?id=…&first_name=…&last_name=…&username=…&photo_url=…
- *        &auth_date=…&hash=…
+ *   3. Telegram redirects the browser back to {CALLBACK_URL} with the
+ *      signed payload as a URL FRAGMENT (#tgAuthResult=<base64>) —
+ *      fragments never reach server access logs (Telegram's chosen
+ *      security property), so the callback must be a SPA route that
+ *      reads window.location.hash.
  *
- *   4. Our backend GET /api/auth/telegram/callback verifies the HMAC,
- *      runs replay protection, finds-or-creates the user, signs a
- *      JWT, and 302s the browser to /auth/callback?token=… which
- *      stores the JWT and lands on /.
+ *   4. The SPA callback page (pages/telegram-callback.tsx) decodes the
+ *      fragment and POSTs the payload to /api/auth/telegram, which
+ *      verifies the HMAC, runs replay protection, and finds-or-creates
+ *      the user; the session token returns in the response BODY and is
+ *      stored via the auth context (never in the URL — H-4/R142 and
+ *      F-010 killed the legacy token-in-URL redirect transport), then
+ *      the page navigates.
  *
  * Top-level navigations are NOT controlled by `script-src`,
  * `frame-src`, `connect-src`, or `form-action` CSP directives, so this
@@ -93,31 +103,14 @@ function readReferralFromUrl(): string | undefined {
   return trimmed || undefined;
 }
 
-/**
- * 93-C5 / F-15 (A4 #3): read + validate the ?redirect= buy-intent target
- * from the login page's URL. Same-origin internal paths only
- * (slash-prefixed, no protocol/host, no "//") so it can't be abused as
- * an open redirect — mirrors login.tsx's readRedirectTarget. The target
- * must survive the Telegram round-trip, so it is re-appended to the
- * return_to URL and honored by telegram-callback after sign-in.
- */
-function readRedirectTargetFromUrl(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  const target = new URLSearchParams(window.location.search).get("redirect");
-  if (!target || !target.startsWith("/") || target.startsWith("//")) return undefined;
-  try {
-    const url = new URL(target, window.location.origin);
-    if (url.origin !== window.location.origin) return undefined;
-    return url.pathname + url.search;
-  } catch {
-    return undefined;
-  }
-}
-
 export function TelegramLoginButton({ botId, oidc = false, onError }: TelegramLoginButtonProps) {
   const [loading, setLoading] = useState(false);
 
   const handleClick = () => {
+    // R187 (C-F6): a new attempt clears the stale error banner FIRST
+    // (the useWhatsAppOtp sendCode convention — the `error &&` render
+    // gate in the parents treats "" as hidden).
+    onError("");
     if (!botId) {
       onError("لم يتم إعداد بوت Telegram");
       return;
@@ -130,8 +123,10 @@ export function TelegramLoginButton({ botId, oidc = false, onError }: TelegramLo
       // 93-C5 / F-15 (A4 #3): the guarded destination must survive the
       // round-trip (the legacy flow re-appends it to return_to; the
       // R154 OIDC flow passes it to the login endpoint which binds it
-      // into the server-side state).
-      const redirect = readRedirectTargetFromUrl();
+      // into the server-side state) — read through the canonical guard.
+      const redirect =
+        sanitizeInternalPath(new URLSearchParams(window.location.search).get("redirect")) ??
+        undefined;
 
       if (oidc) {
         // R154 (P2) — the modern transport: one top-level navigation to

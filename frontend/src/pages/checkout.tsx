@@ -411,12 +411,11 @@ export default function CheckoutPage() {
       { productId: number; variantId: number | null; units: number }
     >();
     const couponCode = coupon.trim().toUpperCase();
-    // R168: GA4 begin_checkout — once per confirm attempt, after the
-    // group-token mint and before the per-unit loop (retries re-fire:
-    // a new begin, honestly). The value is the coupon-adjusted
-    // cent-rounded total the buyer pays (comparisonTotal — the same
-    // number the balance gate compares against).
-    trackBeginCheckout(items.map(cartLineToItem), comparisonTotal, couponCode);
+    // R187 (A-F4): beginValue starts as the render-time comparisonTotal
+    // — a typed-but-unapplied VALID coupon adopted by the pre-flight
+    // below overwrites it with the cent-rounded finalAmount (the same
+    // number the next render's comparisonTotal/balance gate will use).
+    let beginValue = comparisonTotal;
 
     try {
       // 93-C5 / F-15 (A4 #9) + 98-F2 (R98-A3 F1 / P1): pre-flight the
@@ -460,10 +459,21 @@ export default function CheckoutPage() {
               final_amount: result.finalAmount,
               discount_amount: result.discountAmount,
             });
+            // R187 (A-F4): the attempt's begin_checkout value must be
+            // the coupon-adjusted total, not the pre-adoption snapshot.
+            beginValue = roundToCents(result.finalAmount);
           }
           // "network" — inconclusive, fail-open (see above).
         }
       }
+
+      // R168: GA4 begin_checkout — once per confirm attempt, AFTER the
+      // coupon pre-flight and before the per-unit loop (retries re-fire:
+      // a new begin, honestly; R187 A-F4 moved the fire here so the
+      // value is the coupon-adjusted cent-rounded total the buyer pays
+      // — beginValue above — and attempts that abort at the invalid-
+      // coupon return never report a begin at all).
+      trackBeginCheckout(items.map(cartLineToItem), beginValue, couponCode);
 
       for (const it of items) {
         const unitsWanted = Math.min(it.quantity, MAX_UNITS_PER_LINE);

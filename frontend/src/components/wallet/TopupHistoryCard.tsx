@@ -55,8 +55,13 @@ export function TopupHistoryCard({
                   (line 680 in this file already uses it for the pending
                   counter). R166-A (F16): standalone count chip → the
                   shared SUBJECT registry form («طلبان»); rendered bytes
-                  unchanged. */}
-              {formatCount(topups.length, ORDER_COUNT_FORMS_SUBJECT)}
+                  unchanged. R187 (B-F4): the backend caps the list at
+                  200 rows — a full page is a TRUNCATED window, not the
+                  user's total topups. The caption states what's shown
+                  (the WalletStatementCard honesty idiom). */}
+              {topups.length >= 200
+                ? "عرض آخر 200 طلب شحن"
+                : formatCount(topups.length, ORDER_COUNT_FORMS_SUBJECT)}
             </span>
           )}
         </div>

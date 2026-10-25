@@ -81,11 +81,12 @@ describe("R137 (FE) — admin/promotions.tsx decomposition: page stays an orches
       "if (isAdminUnauthorized(r, `/api/admin/flash-sales/${sale.id}`)) return;",
     );
     expect(page).toContain('r.status === 409 ? "يوجد عرض نشط آخر" : "تعذّر التحديث"');
-    // handleDelete: the confirm-gated permanent DELETE (R125-I3 A2-6 —
-    // the honest «حذف نهائي» verb beside the reversible «إيقاف»).
+    // handleDelete: the confirm-gated soft-deactivate archive (R187
+    // D-F2 — the honest «إيقاف وأرشفة» verb; the backend keeps the row
+    // and التفعيل restores it, so the old «حذف نهائي» copy lied).
     expect(page).toContain("async function handleDelete(sale: FlashSale) {");
-    expect(page).toContain('title: "حذف العرض نهائياً؟",');
-    expect(page).toContain('confirmLabel: "حذف نهائي",');
+    expect(page).toContain('title: "إيقاف وأرشفة العرض؟",');
+    expect(page).toContain('confirmLabel: "إيقاف وأرشفة",');
     expect(page).toContain(
       'await adminFetchJson(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });',
     );
@@ -137,10 +138,10 @@ describe("R137 (FE) — admin/promotions.tsx decomposition: page stays an orches
     expect(form).toContain('"جارٍ الإنشاء…" : "إنشاء وتفعيل"');
     // The list's row affordances + the 94-C2 honest failure surfaces.
     const list = read("src/components/admin/promotions/PromotionsList.tsx");
-    expect(list).toContain("aria-label={`حذف العرض «${s.title}» نهائياً`}");
+    expect(list).toContain("aria-label={`إيقاف وأرشفة العرض «${s.title}»`}");
     expect(list).toContain("منتهٍ — في انتظار التنظيف التلقائي");
     expect(list).toContain("لا توجد عروض بعد");
-    expect(list).toContain("حاول مجدداً");
+    expect(list).toContain("إعادة المحاولة");
     // The header's one-active-sale CTA gate + warning copy.
     const header = read("src/components/admin/promotions/PromotionsHeader.tsx");
     expect(header).toContain("disabled={hasActive && !showForm}");

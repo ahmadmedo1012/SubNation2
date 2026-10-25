@@ -60,6 +60,7 @@ import {
   isTelegramCallbackSameOrigin,
   telegramCallbackAllowedOrigins,
 } from "../lib/telegram-callback";
+import { sanitizeInternalPath } from "../lib/sanitize-internal-path";
 
 // A3 split plan E (R126-L9): the moved predicate stays importable from
 // THIS module — routes/index.ts and the pinning test
@@ -613,6 +614,21 @@ authProviderPublicRouter.get("/telegram/callback", async (req, res) => {
 // "[telegram-oidc] ID token validation failed".
 
 // GET /api/auth/telegram/oidc/login — start the flow (302 to Telegram).
+
+/**
+ * R187 (C-F5 backend): the Telegram OIDC failure legs dropped the
+ * `?redirect=` return path the success legs honor — a failed hop landed
+ * the user on /login with the guarded destination lost (the login hop's
+ * own request carries it; the callback may too). Thread the
+ * sanitize-validated param through every /login?error= redirect — the
+ * same sanitizeInternalPath policy the state store applies at flow start.
+ */
+function loginErrorRedirect(req: Request, error: string): string {
+  const raw = (req.query as Record<string, string | undefined>).redirect;
+  const redirect = sanitizeInternalPath(typeof raw === "string" ? raw : null);
+  return `/login?error=${encodeURIComponent(error)}${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ""}`;
+}
+
 authProviderPublicRouter.get("/telegram/oidc/login", async (req, res) => {
   try {
     const query = req.query as Record<string, string | undefined>;
@@ -624,12 +640,12 @@ authProviderPublicRouter.get("/telegram/oidc/login", async (req, res) => {
     if ("error" in start) {
       // provider_disabled | misconfigured_origin — both are honest
       // "not ready" states surfaced on the login page, never a mint.
-      return res.redirect(`/login?error=${encodeURIComponent(start.error)}`);
+      return res.redirect(loginErrorRedirect(req, start.error));
     }
     return res.redirect(start.authorizationUrl);
   } catch (err) {
     Sentry.captureException(err);
-    return res.redirect("/login?error=server_error");
+    return res.redirect(loginErrorRedirect(req, "server_error"));
   }
 });
 
@@ -658,12 +674,12 @@ authProviderPublicRouter.get("/telegram/oidc/callback", async (req, res) => {
         { category: "auth", providerError: query.error.slice(0, 64) },
         "[telegram-oidc] provider redirected back with an error",
       );
-      return res.redirect(`/login?error=${encodeURIComponent(query.error)}`);
+      return res.redirect(loginErrorRedirect(req, query.error));
     }
     const code = typeof query.code === "string" ? query.code : "";
     const state = typeof query.state === "string" ? query.state : "";
     if (!code || !state) {
-      return res.redirect("/login?error=cancelled");
+      return res.redirect(loginErrorRedirect(req, "cancelled"));
     }
 
     const result = await completeTelegramOidcLogin({
@@ -673,7 +689,7 @@ authProviderPublicRouter.get("/telegram/oidc/callback", async (req, res) => {
       client: getClientInfo(req),
     });
     if (!result.ok) {
-      return res.redirect(`/login?error=${encodeURIComponent(result.reason)}`);
+      return res.redirect(loginErrorRedirect(req, result.reason));
     }
 
     // Cookie-first session transport (F-010 parity with every other mint
@@ -684,7 +700,7 @@ authProviderPublicRouter.get("/telegram/oidc/callback", async (req, res) => {
     return res.redirect(result.redirect ?? "/auth/callback");
   } catch (err) {
     Sentry.captureException(err);
-    return res.redirect("/login?error=server_error");
+    return res.redirect(loginErrorRedirect(req, "server_error"));
   }
 });
 

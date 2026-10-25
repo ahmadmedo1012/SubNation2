@@ -441,7 +441,9 @@ export default function AdminSettingsPage() {
                   </p>
                 </div>
               </div>
-              <TwoFactorSetup adminToken={adminToken} />
+              {/* R187 (C-F8): the dead adminToken prop dropped — headers
+                  come from useAdminHeaders inside the component. */}
+              <TwoFactorSetup />
             </div>
 
             <div className="bg-card border border-border/60 rounded-2xl p-6 float-in delay-75">

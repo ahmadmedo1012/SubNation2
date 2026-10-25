@@ -9,8 +9,25 @@ import type { AdminAlert, AdminAlertsPage } from "@workspace/api-client-react";
 // (the optimistic cache patches + toasts fire only through page-owned
 // onMutate/onError handlers).
 
+// R187E-F2: the union now mirrors the backend's FULL writer set — the
+// 11-member AlertType union in jobs/alertLogger.ts:25-35 PLUS "risk"
+// (services/risk-alerts.service.ts inserts it directly into admin_alerts,
+// outside the logger). Five real types used to fall through to the
+// generic «نظام» chip with no filter affordance — inventory_corrupt /
+// refunded_live_credentials are SEVERE rows that read as info noise.
 export type AlertType =
-  "coupon_maxed" | "coupon_expiring" | "low_stock" | "no_stock" | "system" | "forecast_stockout";
+  | "coupon_maxed"
+  | "coupon_expiring"
+  | "coupon_expired"
+  | "flash_sale_expired"
+  | "low_stock"
+  | "no_stock"
+  | "inventory_corrupt"
+  | "forecast_stockout"
+  | "refunded_live_credentials"
+  | "whatsapp_channel"
+  | "risk"
+  | "system";
 
 /** R126-L8b: rows come from the generated client now — AdminAlert.type
  * is an open string (the spec deliberately keeps it non-enum so a new
@@ -23,19 +40,26 @@ export type AlertsPageData = AdminAlertsPage;
 
 export type FilterType = "all" | "unread" | AlertType;
 
-/** R125 (A3 #6): the filter tabs now cover EVERY type TYPE_META renders
- * (system + forecast_stockout rows were rendered but unfilterable —
- * the filter runs client-side over the loaded window, so both entries
- * are a pure UI completion; the backend list endpoint has no type
- * param to consult). */
+/** R125 (A3 #6) → R187E-F2: the filter tabs cover EVERY type TYPE_META
+ * renders (system + forecast_stockout rows were rendered but
+ * unfilterable — the filter runs client-side over the loaded window, so
+ * both entries are a pure UI completion; the backend list endpoint has
+ * no type param to consult). R187E-F2 completes the list to the full
+ * backend writer set + "risk" — still one tab per TYPE_META key. */
 export const FILTERS: { value: FilterType; label: string }[] = [
   { value: "all", label: "الكل" },
   { value: "unread", label: "غير مقروء" },
   { value: "no_stock", label: "نفاد مخزون" },
   { value: "low_stock", label: "مخزون منخفض" },
   { value: "forecast_stockout", label: "نفاد متوقع" },
+  { value: "inventory_corrupt", label: "مخزون غير متسق" },
   { value: "coupon_maxed", label: "كوبون استُنفد" },
-  { value: "coupon_expiring", label: "كوبون منتهٍ" },
+  { value: "coupon_expiring", label: "كوبون منتهٍ قريباً" },
+  { value: "coupon_expired", label: "كوبون منتهي" },
+  { value: "flash_sale_expired", label: "عرض منتهي" },
+  { value: "refunded_live_credentials", label: "بيانات مستردة" },
+  { value: "whatsapp_channel", label: "قناة واتساب" },
+  { value: "risk", label: "مخاطرة" },
   { value: "system", label: "نظام" },
 ];
 

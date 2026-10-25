@@ -7,9 +7,9 @@
  * order #201+ (the exact user-visible harm the P2 described). The page
  * now rides the accumulating useInfiniteQuery idiom (admin/orders.tsx
  * 94-C2 A2 P1-1): a real QueryClient + the mocked global fetch (the
- * generated client can't express `page` until the orval/zod alignment
- * lands — see the api-zod hand-edit note; the page fetches the raw
- * /api/orders?page=N URL like admin tickets).
+ * raw-URL /api/orders?page=N fetch is a deliberate choice — R187 I-F7
+ * retired the stale "generated client can't express page" comment —
+ * and the page fetches the raw URL like admin tickets).
  *
  * Pinned here:
  *   • the first page is requested with ?page=1;

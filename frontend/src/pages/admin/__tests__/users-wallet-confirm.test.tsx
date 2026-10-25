@@ -182,6 +182,10 @@ async function openWalletConfirm(
   return confirmDialog;
 }
 
+// R187 (J-F3): the canonical UUID v4 shape — a constant key would
+// pass expect.any(String) and 409/replay the second adjustment.
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -242,7 +246,9 @@ describe("AdminUsersPage — wallet adjust confirmation (S-1/U-1)", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/admin/users/16");
     expect(init.method).toBe("PATCH");
-    expect(init.headers).toMatchObject({ "Idempotency-Key": expect.any(String) });
+    // R187 (J-F3): the UUID v4 shape, not expect.any(String).
+    const walletHeaders = init.headers as Record<string, string>;
+    expect(String(walletHeaders["Idempotency-Key"])).toMatch(UUID_V4_REGEX);
     expect(JSON.parse(String(init.body))).toMatchObject({
       wallet_adjustment: 25,
       // (r110) the note rides the PATCH exactly when a wallet field

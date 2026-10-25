@@ -258,7 +258,7 @@ export interface Product {
   seo_description?: string | null;
   /** @nullable */
   image_url?: string | null;
-  /** Cheapest active variant's LYD price when variants exist (MIN(variants.price) — the storefront "تبدأ من" number), otherwise the product-level LYD price. */
+  /** Cheapest BUYABLE variant's LYD price when variants exist (active ∧ deliverable stock — the R130 A7-F1 «تبدأ من» number; falls back to the availability-blind min when EVERY variant is drained, since the product renders sold-out anyway), otherwise the product-level LYD price. */
   price: number;
   /** True when multiple active variants exist (card renders "تبدأ من"). */
   price_from: boolean;
@@ -293,7 +293,7 @@ export interface ProductListItem {
   description?: string | null;
   /** @nullable */
   image_url?: string | null;
-  /** Cheapest active variant's LYD price when variants exist, otherwise the product-level LYD price. */
+  /** Cheapest BUYABLE variant's LYD price when variants exist (active ∧ deliverable stock — the R130 A7-F1 semantics with the availability-blind fallback when every variant is drained), otherwise the product-level LYD price. */
   price: number;
   /** True when multiple active variants exist (card renders "تبدأ من"). */
   price_from: boolean;
@@ -919,8 +919,9 @@ export const CreateSupportTicketBodyCategory = {
 } as const;
 
 /**
- * title and message are trimmed; an unknown category silently
- * falls back to "other".
+ * title and message are trimmed; the category is a closed enum —
+ * an unknown value is rejected with 400 INVALID_DATA (omit it for
+ * the "other" default).
  */
 export interface CreateSupportTicketBody {
   /**
@@ -929,8 +930,9 @@ export interface CreateSupportTicketBody {
    */
   title: string;
   /**
-   * Becomes the first reply (author_type=user).
+   * Becomes the first reply (author_type=user) — capped at 4000 chars (SEC-92-07 storage bound).
    * @minLength 1
+   * @maxLength 4000
    */
   message: string;
   category?: CreateSupportTicketBodyCategory;
@@ -1011,6 +1013,16 @@ export interface NotificationItem {
   link?: string | null;
   is_read: boolean;
   created_at: string;
+}
+
+export interface NotificationsPage {
+  notifications: NotificationItem[];
+  /** Honest row count for the user (not the page length). */
+  total: number;
+  page: number;
+  limit: number;
+  /** offset + page length < total. */
+  hasMore: boolean;
 }
 
 export interface AdminLoginBody {
@@ -1765,10 +1777,12 @@ export interface BulkUpdateOrderStatusPartial {
 export interface AdminAlert {
   id: number;
   /**
-   * varchar(30) — known values: system, low_stock, no_stock,
-   * forecast_stockout, coupon_maxed, coupon_expiring. Kept an
-   * open string (not an enum) so a new producer cannot break
-   * the contract.
+   * varchar(30) — the backend AlertType union (jobs/alertLogger.ts):
+   * system, low_stock, no_stock, forecast_stockout, coupon_maxed,
+   * coupon_expiring, coupon_expired, flash_sale_expired,
+   * inventory_corrupt, refunded_live_credentials, whatsapp_channel.
+   * Kept an open string (not an enum) so a new producer cannot
+   * break the contract.
    */
   type: string;
   title: string;
@@ -2885,8 +2899,10 @@ export type StartWhatsappOtp503DetailsReason =
   (typeof StartWhatsappOtp503DetailsReason)[keyof typeof StartWhatsappOtp503DetailsReason];
 
 export const StartWhatsappOtp503DetailsReason = {
+  gateway_disabled: "gateway_disabled",
+  whatsapp_not_paired: "whatsapp_not_paired",
   whatsapp_settling: "whatsapp_settling",
-  store_failed: "store_failed",
+  gateway_waking: "gateway_waking",
 } as const;
 
 export type StartWhatsappOtp503Details = {
@@ -2938,7 +2954,7 @@ export type ListPublicAuthProviders200ProvidersItem = {
 };
 
 /**
- * Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.
+ * Live OTP channel readiness: the OpenWA session lifecycle values (created, initializing, qr_ready, authenticating, ready, disconnected, failed) with the route-synthesized "settling" for the post-link warm-up window; null when the channel is not configured or the gateway is unreachable. "failed" = pairing revoked (operator must re-pair); "qr_ready" = pairing pending a scan.
  * @nullable
  */
 export type ListPublicAuthProviders200WhatsappStatus =
@@ -2946,15 +2962,20 @@ export type ListPublicAuthProviders200WhatsappStatus =
   | null;
 
 export const ListPublicAuthProviders200WhatsappStatus = {
+  created: "created",
+  initializing: "initializing",
+  qr_ready: "qr_ready",
+  authenticating: "authenticating",
   ready: "ready",
   settling: "settling",
-  unavailable: "unavailable",
+  disconnected: "disconnected",
+  failed: "failed",
 } as const;
 
 export type ListPublicAuthProviders200 = {
   providers: ListPublicAuthProviders200ProvidersItem[];
   /**
-   * Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.
+   * Live OTP channel readiness: the OpenWA session lifecycle values (created, initializing, qr_ready, authenticating, ready, disconnected, failed) with the route-synthesized "settling" for the post-link warm-up window; null when the channel is not configured or the gateway is unreachable. "failed" = pairing revoked (operator must re-pair); "qr_ready" = pairing pending a scan.
    * @nullable
    */
   whatsapp_status: ListPublicAuthProviders200WhatsappStatus;
@@ -3275,6 +3296,21 @@ export type ListReferralsParams = {
    * @nullable
    */
   page?: number | null;
+};
+
+export type ListNotificationsParams = {
+  /**
+   * 1-based page number (default 1). Naming the param at all
+   * (even `?page=` empty → page 1) switches the response to the
+   * paged envelope; omit it entirely for the legacy bell array.
+   * @nullable
+   */
+  page?: number | null;
+  /**
+   * Page size, clamped to [1, 100] (default 20) — paged-envelope branch only.
+   * @nullable
+   */
+  limit?: number | null;
 };
 
 export type ListAdminOrdersParams = {

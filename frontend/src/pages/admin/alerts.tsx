@@ -244,6 +244,17 @@ export default function AdminAlertsPage() {
   const unreadCount = data?.pages[0]?.unreadCount ?? 0;
   const totalAlerts = data?.pages[0]?.total;
   const readCount = alerts.filter((a) => a.isRead).length;
+  // R187E-F6: the backend's deleteReadAlerts deletes EVERY read row
+  // table-wide, not just the loaded window — the operator used to
+  // approve «حذف N مقروء» naming the in-window count while 10× more
+  // existed. The header chip + confirm ride the honest server scope
+  // (total − unread, both page-1 envelope fields), falling back to the
+  // window count only when the envelope carries no usable total — the
+  // deleteAll twin's «ride the server total» honesty (R125 A3 #6).
+  const readTotal =
+    typeof totalAlerts === "number" && totalAlerts > 0
+      ? Math.max(0, totalAlerts - unreadCount)
+      : readCount;
 
   // R120-B4 (A2-F6): confirm BEFORE the DELETE fires — the destructive
   // single-alert path now matches the bulk-delete friction (the dialog
@@ -267,10 +278,12 @@ export default function AdminAlertsPage() {
   // deleteRead fired immediately on tap. The mounted styled confirm
   // now names the read-count the button itself displays, in the same
   // copy style as the single-delete dialog above.
+  // R187E-F6: that count is readTotal — the table-wide scope the POST
+  // actually deletes (total − unread), never the loaded window's.
   const confirmDeleteRead = async () => {
     const confirmed = await confirm({
       title: "حذف التنبيهات المقروءة؟",
-      description: `سيتم حذف ${formatCount(readCount, ALERT_COUNT_FORMS)} مقروء نهائياً — لا يمكن التراجع عن الحذف. التنبيهات غير المقروءة لن تُمس.`,
+      description: `سيتم حذف ${formatCount(readTotal, ALERT_COUNT_FORMS)} مقروء نهائياً — لا يمكن التراجع عن الحذف. التنبيهات غير المقروءة لن تُمس.`,
       confirmLabel: "حذف",
       destructive: true,
     });
@@ -319,7 +332,7 @@ export default function AdminAlertsPage() {
         {/* Header */}
         <AlertsHeader
           unreadCount={unreadCount}
-          readCount={readCount}
+          readCount={readTotal}
           alertsCount={alerts.length}
           markAllPending={markAllRead.isPending}
           deleteReadPending={deleteRead.isPending}
@@ -424,7 +437,10 @@ export default function AdminAlertsPage() {
                 {typeof totalAlerts === "number" && totalAlerts > alerts.length
                   ? ` من ${totalAlerts}`
                   : ""}{" "}
-                · {unreadCount} غير مقروء
+                {/* R187L-F1: the unread adjective chip rides formatCount
+                    too — the count noun pluralizes beside the frozen
+                    «غير مقروء» adjective exactly as :423's counter does. */}
+                · {formatCount(unreadCount, ALERT_COUNT_FORMS)} غير مقروء
               </span>
             </div>
 

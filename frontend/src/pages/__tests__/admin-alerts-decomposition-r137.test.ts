@@ -225,3 +225,86 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
     expect(typeMeta).toContain('label: "نفاد متوقع"');
   });
 });
+
+describe("R187E-F2 — TYPE_META covers the backend's FULL alert writer set (source parity)", () => {
+  // The backend has TWO writers: the alertLogger union (11 types) and
+  // risk-alerts.service.ts, which inserts `type: "risk"` rows directly
+  // into admin_alerts. The frontend map used to cover only 6 — five
+  // real types (incl. SEVERE inventory_corrupt / refunded_live_
+  // credentials) fell through to the generic «نظام» info chip with no
+  // filter chip. This pin reads the BACKEND sources live (the R161-C
+  // taxonomy-consistency cross-package idiom) so a future backend type
+  // lands in the same failing test that forgets to extend TYPE_META.
+  const backendAlertLogger = read("../backend/src/jobs/alertLogger.ts");
+  const riskService = read("../backend/src/services/risk-alerts.service.ts");
+
+  function backendAlertTypes(): Set<string> {
+    const unionStart = backendAlertLogger.indexOf("export type AlertType");
+    expect(unionStart, "alertLogger.ts still declares the AlertType union").toBeGreaterThan(-1);
+    const unionBlock = backendAlertLogger.slice(
+      unionStart,
+      backendAlertLogger.indexOf(";", unionStart),
+    );
+    const members = Array.from(unionBlock.matchAll(/"([a-z_]+)"/g)).map((m) => m[1]);
+    expect(members.length, "the union still carries its members").toBeGreaterThanOrEqual(11);
+    const types = new Set(members);
+    // The direct-insert writer outside the logger.
+    expect(riskService, 'risk-alerts.service still inserts type: "risk"').toContain('type: "risk"');
+    types.add("risk");
+    return types;
+  }
+
+  it('every backend AlertType member (logger union + the direct-insert "risk") is a TYPE_META key', async () => {
+    const { TYPE_META } = await import("@/components/admin/alerts/alerts-meta");
+    const keys = Object.keys(TYPE_META);
+    for (const type of backendAlertTypes()) {
+      expect(keys, `TYPE_META is missing the backend type "${type}"`).toContain(type);
+    }
+  });
+
+  it("TYPE_META carries no invented type the backend never writes (the map stays an honest mirror)", async () => {
+    const { TYPE_META } = await import("@/components/admin/alerts/alerts-meta");
+    const backend = backendAlertTypes();
+    for (const key of Object.keys(TYPE_META)) {
+      expect(backend, `TYPE_META key "${key}" has no backend writer`).toContain(key);
+    }
+  });
+
+  it("the FILTERS tab list + the chips' derived key list both cover every TYPE_META key (no unfilterable row)", async () => {
+    const { FILTERS } = await import("@/components/admin/alerts/alerts-inbox-meta");
+    const { TYPE_META } = await import("@/components/admin/alerts/alerts-meta");
+    const filterValues = new Set(FILTERS.map((f) => f.value));
+    for (const key of Object.keys(TYPE_META)) {
+      expect(filterValues, `FILTERS is missing the tab for "${key}"`).toContain(key);
+    }
+    // The chips bar derives its key list from TYPE_META's own keys —
+    // the hardcoded six-entry array stays dead (a future AlertType can
+    // never again render rows its chip bar silently omits).
+    const chips = read("src/components/admin/alerts/AlertsTypeChips.tsx");
+    expect(chips).toContain("(Object.keys(TYPE_META) as AlertType[])");
+    expect(chips).not.toContain('key: "no_stock"');
+    expect(chips).not.toContain('key: "system"');
+  });
+
+  it("the new severe types carry the error tone, not the generic info one", async () => {
+    const { TYPE_META } = await import("@/components/admin/alerts/alerts-meta");
+    for (const key of ["inventory_corrupt", "refunded_live_credentials", "risk"]) {
+      expect(TYPE_META[key as keyof typeof TYPE_META].color, key).toBe("text-status-error");
+    }
+    // And the labels mirror layout.tsx's ALERT_LABELS (cross-surface
+    // consistency: the inbox chip and the live toast name one concept
+    // one way) — "risk" is NOT in the layout map, so its label is the
+    // honest standalone (pinned by the render suite).
+    const layout = read("src/pages/admin/layout.tsx");
+    for (const [key, label] of [
+      ["inventory_corrupt", "بيانات مخزون غير متسقة"],
+      ["refunded_live_credentials", "بيانات وصول حيّة مُستردة"],
+      ["flash_sale_expired", "عرض محدود منتهي"],
+      ["coupon_expired", "كوبون منتهي"],
+      ["whatsapp_channel", "قناة واتساب"],
+    ] as const) {
+      expect(layout, `layout.tsx ALERT_LABELS entry for ${key}`).toContain(`${key}: "${label}"`);
+      expect(TYPE_META[key].label).toBe(label);
+    }
+  });
+});

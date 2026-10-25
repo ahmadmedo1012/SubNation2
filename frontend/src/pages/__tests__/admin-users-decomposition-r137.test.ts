@@ -158,6 +158,12 @@ describe("R137 (FE) — admin/users.tsx decomposition: page stays an orchestrati
     expect(dialog).toContain("aria-pressed={form.wallet_mode === opt.value}");
     expect(dialog).toContain("سبب تعديل المحفظة / النقاط");
     expect(dialog).toContain("disabled={saving || !canEditMoney || (noteRequired && !noteValid)}");
+    // R187 (D-F1): the wallet amount rides the 2-decimal step (the
+    // wallet column is numeric(10,2); the old step="0.5" fired a
+    // native mismatch bubble on a 44.99 adjustment). The behavior leg
+    // lives in admin-money-input-step-r187.test.tsx.
+    expect(dialog).toContain('step="0.01"');
+    expect(dialog).not.toContain('step="0.5"');
     // The desktop tier pill's tone map rides the pure module the row
     // imports (the R125-I4 StatusBadge migration).
     const row = read("src/components/admin/users/DesktopUserRow.tsx");

@@ -20,6 +20,14 @@ import {
   useUpdateAdminPricingConfig,
 } from "@workspace/api-client-react";
 import { SlidersHorizontal } from "lucide-react";
+import { formatCount } from "@/lib/utils";
+// R187L-F1: the recompute copy rides the shared plural engine — the
+// VARIANT/PRODUCT forms families the variants toolbar + products header
+// already carry (the frozen «باقة» + the 1/other-only «منتج» ternary
+// miscounted few/many/dual on both the success toast and the preview-
+// armed confirm).
+import { VARIANT_COUNT_FORMS } from "@/components/admin/product-variants/variants-meta";
+import { PRODUCT_COUNT_FORMS } from "@/components/admin/products/products-meta";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 // R137 (FE decomposition): the page's self-contained subcomponents and
@@ -165,6 +173,12 @@ export default function AdminPricingPage() {
         setRateInput(String(config.usd_to_lyd));
         setMarkupInput(String(config.markup_percent));
         setCapInput(String(config.max_total_discount_pct));
+        // R187E-F3: a save changes the RULE, and the file's own contract
+        // below says "a preview is a function of the rule" — drop it so
+        // the stale old-rule sample can't linger beside the new rule
+        // (the input-seeding effect can't do this: the re-seeded strings
+        // match the operator's typed values, so it never re-fires).
+        setDryRun(null);
         void queryClient.invalidateQueries({ queryKey: getGetAdminPricingConfigQueryKey() });
         toast({ title: "تم حفظ إعدادات التسعير", variant: "success" });
       },
@@ -199,9 +213,10 @@ export default function AdminPricingPage() {
         if (result.variants_updated > 0) {
           toast({
             title: "أُعيد احتساب أسعار الكتالوج",
-            description: `حُدّثت أسعار ${result.variants_updated} باقة عبر ${result.products_updated} ${
-              result.products_updated === 1 ? "منتج" : "منتجات"
-            }`,
+            // R187L-F1: formatCount rides both nouns (the shared
+            // VARIANT/PRODUCT forms — was «N باقة» + a 1/other-only
+            // منتج ternary).
+            description: `حُدّثت أسعار ${formatCount(result.variants_updated, VARIANT_COUNT_FORMS)} عبر ${formatCount(result.products_updated, PRODUCT_COUNT_FORMS)}`,
             variant: "success",
           });
         } else {
@@ -287,9 +302,7 @@ export default function AdminPricingPage() {
       description: `${
         dryRun
           ? dryRun.variants_drifted > 0
-            ? `المعاينة: ${dryRun.variants_drifted} باقة ستنحرف عبر ${dryRun.products_affected} ${
-                dryRun.products_affected === 1 ? "منتج" : "منتجات"
-              }. `
+            ? `المعاينة: ${formatCount(dryRun.variants_drifted, VARIANT_COUNT_FORMS)} ستنحرف عبر ${formatCount(dryRun.products_affected, PRODUCT_COUNT_FORMS)}. `
             : "المعاينة: لا تغييرات — كل الأسعار مطابقة للقاعدة الحالية. "
           : ""
       }سيُعاد حساب سعر كل باقة نشطة من تكلفتها بالقاعدة الحالية — بما فيها الأسعار المخصّصة يدويًا — وتُحدّث أسعار العرض تلقائيًا. لا يمكن التراجع بعد التنفيذ.`,

@@ -77,10 +77,17 @@ export async function exchangeFirebaseIdToken(
   }
 
   const base = getApiBaseUrl();
+  // R187 (C-F1): the LAST unbounded auth fetches — every sibling mint
+  // gained a 20 s budget (customFetch/adminFetch/boot probes); a black-
+  // holed TCP here held the Google sign-in button spinning to the ~300 s
+  // OS timeout and burned an authLimiter slot. The abort rejects the
+  // fetch; the caller's catch → getErrorMessage maps it to the Arabic
+  // network copy (raw-fetch semantics otherwise preserved).
   const res = await fetch(`${base}/api/auth/firebase/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
       id_token: idToken,
       referral_code: referralCode || undefined,
@@ -113,10 +120,12 @@ export async function exchangeFirebaseIdToken(
 
 async function refreshFirebaseSession(idToken: string) {
   const base = getApiBaseUrl();
+  // R187 (C-F1): the refresh twin carries the same 20 s budget (above).
   const res = await fetch(`${base}/api/auth/firebase/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({ id_token: idToken }),
   });
   const data = (await res.json()) as { token: string; user: unknown; error?: string };

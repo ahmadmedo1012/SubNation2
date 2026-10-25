@@ -440,6 +440,14 @@ router.delete("/products/:id", requireAdmin, async (req, res) => {
  */
 const INVENTORY_PREVIEW_LIMIT = 200;
 
+/**
+ * R187 (F5): inventory.account_email is varchar(255) — an over-long
+ * email 500'd (22001) at the batch INSERT instead of answering the
+ * house 400. Handler-enforced bound, the exact ACCOUNT_PASSWORD_
+ * PLAINTEXT_MAX discipline beside it (products-field-limits.ts).
+ */
+const ACCOUNT_EMAIL_MAX = 255;
+
 router.get("/products/:id/inventory", requireAdmin, async (req, res) => {
   const productId = intParam(req, "id");
   if (productId === null)
@@ -568,6 +576,18 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
               createErrorResponse(`السطر ${i + 1}: بيانات الحساب ناقصة`, ErrorCode.INVALID_DATA),
             );
         }
+        // R187 (F5): the email column's own varchar(255) bound — see
+        // ACCOUNT_EMAIL_MAX above for the derivation.
+        if (email.length > ACCOUNT_EMAIL_MAX) {
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                `السطر ${i + 1}: بريد الحساب طويل جداً (الحد الأقصى ${ACCOUNT_EMAIL_MAX} حرف)`,
+                ErrorCode.INVALID_DATA,
+              ),
+            );
+        }
         // R119-B1 (A1 F-4): keep the v2 ciphertext inside varchar(512) —
         // see ACCOUNT_PASSWORD_PLAINTEXT_MAX above for the derivation.
         if (password.length > ACCOUNT_PASSWORD_PLAINTEXT_MAX) {
@@ -625,6 +645,19 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
       const parts = lines[li].split(/[|,\t]/);
       if (parts.length >= 2) {
         const password = parts[1].trim();
+        const email = parts[0].trim();
+        // R187 (F5): same varchar(255) budget as the structured path —
+        // guard the legacy ingest shape identically.
+        if (email.length > ACCOUNT_EMAIL_MAX) {
+          return res
+            .status(400)
+            .json(
+              createErrorResponse(
+                `السطر ${li + 1}: بريد الحساب طويل جداً (الحد الأقصى ${ACCOUNT_EMAIL_MAX} حرف)`,
+                ErrorCode.INVALID_DATA,
+              ),
+            );
+        }
         // R119-B1 (A1 F-4): same varchar(512) budget as the structured
         // path — guard the legacy ingest shape identically.
         if (password.length > ACCOUNT_PASSWORD_PLAINTEXT_MAX) {
@@ -638,7 +671,7 @@ router.post("/products/:id/inventory", requireAdmin, async (req, res) => {
             );
         }
         items.push({
-          accountEmail: parts[0].trim(),
+          accountEmail: email,
           accountPassword: encrypt(password),
           // F7: plaintext for the dedup pass; encrypted at INSERT.
           plainExtra: parts[2]?.trim() || null,

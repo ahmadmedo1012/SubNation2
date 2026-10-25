@@ -11,6 +11,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { intParam } from "../../lib/http";
 import { isAlertingPaused } from "../../lib/forecast/redis-flags";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { latestAtRisk, latestForProduct } from "../../services/forecast/forecast-store";
@@ -94,8 +95,10 @@ router.get("/forecast/at-risk", requireAdmin, async (req: Request, res: Response
 });
 
 router.get("/forecast/products/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = Number.parseInt(String(req.params.id ?? ""), 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  // R187 (F-F1): digit-exact intParam — parseInt("12abc") silently
+  // queried product 12; malformed ids now take this 400 shape instead.
+  const id = intParam(req, "id");
+  if (id === null) {
     res.status(400).json(createErrorResponse("معرّف المنتج غير صالح", ErrorCode.INVALID_DATA));
     return;
   }

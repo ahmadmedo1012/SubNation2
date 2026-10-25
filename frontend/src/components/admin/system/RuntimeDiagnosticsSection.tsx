@@ -43,7 +43,7 @@ export function RuntimeDiagnosticsSection({
         <div className="bg-card border border-status-warning/20 rounded-2xl p-4 flex items-center gap-3">
           <AlertCircle className="w-4 h-4 text-status-warning shrink-0" />
           <span className="text-xs text-muted-foreground">
-            تعذّر جلب تشخيص وقت التشغيل (يتطلب صلاحيات إدارية).
+            تعذّر تحميل تشخيص وقت التشغيل (يتطلب صلاحيات إدارية).
           </span>
         </div>
       ) : (

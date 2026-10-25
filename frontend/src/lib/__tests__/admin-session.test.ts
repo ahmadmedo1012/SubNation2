@@ -1,8 +1,10 @@
 /**
  * 93-C6 / F-07 (round-93 — A5 S-3) — global admin session-expiry tests.
  *
- * The httpOnly admin cookie can expire MID-WORK: App.tsx's guard only
- * re-validates on mount/token-change, so every page fetch after expiry
+ * The httpOnly admin cookie can expire MID-WORK: the route guard's
+ * (App.tsx's in round-93 — the route registry + its guards live in
+ * app/routes.tsx since R137) re-validates only on mount/token-change,
+ * so every page fetch after expiry
  * returned 401 while the UI told the operator to RETRY a permanently
  * unauthenticated request. lib/admin-session is the single choke point
  * both fetch layers route through; these tests pin its contract:

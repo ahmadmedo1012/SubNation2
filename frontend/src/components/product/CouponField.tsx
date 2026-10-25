@@ -77,6 +77,11 @@ export function CouponField({
             autoComplete="off"
             enterKeyHint="send"
             className="ps-9 h-11 text-base [@media(min-width:48rem)_and_(pointer:fine)]:text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans"
+            /* R187 (L-F3): the checkout twin's dir guard (CouponCard) —
+               a Latin coupon code in an RTL block mis-places the caret
+               and mirrors neutral punctuation; the mono code-entry run
+               is LTR on every surface. */
+            dir="ltr"
             disabled={!!couponResult}
           />
         </div>

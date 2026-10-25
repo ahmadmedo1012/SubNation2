@@ -102,6 +102,7 @@ import {
   usersTable,
 } from "../../test/db";
 import { verifyUserToken } from "../../lib/jwt";
+import { logger } from "../../lib/logger";
 import { resolveFirebaseSession } from "../../services/firebase-auth.service";
 import { authRouter } from "../auth";
 
@@ -480,6 +481,57 @@ describe("POST /api/auth/firebase/refresh — unknown-error 500 (the anti-infini
       expect(recovered.setCookie).toContain("auth_token=");
     } finally {
       close();
+    }
+  });
+});
+
+// R187 (F9): same log-level truth as /firebase/session — the route's
+// error-level log fired BEFORE the FirebaseAuthError classification, so
+// every ROUTINE refresh noise (expired token on a returning device)
+// logged at ERROR. The line now lives only on the non-Firebase branch.
+// Pinned by message so the service's own verify diagnostics stay out of
+// the assertion.
+describe("R187 (F9) — log-level truth on POST /firebase/refresh", () => {
+  it("an expired Firebase token (401) does NOT fire the route's error log", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    fb.rejectWith = Object.assign(new Error("Firebase ID token has expired"), {
+      code: "auth/id-token-expired",
+    });
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await postRefresh(url, { id_token: makeIdToken() });
+      expect(res.status).toBe(401);
+      expect(res.body).toMatchObject({ code: "INVALID_TOKEN" });
+
+      const routeErrors = errorSpy.mock.calls.filter(
+        (c) => c[1] === "Firebase session refresh failed",
+      );
+      expect(routeErrors).toHaveLength(0);
+    } finally {
+      close();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("a NON-Firebase failure (500) still error-logs exactly once (control)", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    // The suite's established seam: the resolver rejects with a plain
+    // Error → the non-Firebase arm, the only one that error-logs.
+    resolveSessionMock.mockRejectedValueOnce(
+      new Error("simulated database failure (R187 F9 control)"),
+    );
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await postRefresh(url, { id_token: makeIdToken() });
+      expect(res.status).toBe(500);
+
+      const routeErrors = errorSpy.mock.calls.filter(
+        (c) => c[1] === "Firebase session refresh failed",
+      );
+      expect(routeErrors).toHaveLength(1);
+    } finally {
+      close();
+      errorSpy.mockRestore();
     }
   });
 });

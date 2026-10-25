@@ -149,7 +149,7 @@ describe("AdminSystemPage — settings-scope gate + honest healthz failure (A3-F
     // findBy — the query's rejection lands asynchronously after the
     // section header paints.
     expect(
-      await within(section as HTMLElement).findByText("تعذّر جلب حالة الصحة"),
+      await within(section as HTMLElement).findByText("تعذّر تحميل حالة الصحة"),
     ).toBeInTheDocument();
     expect(
       within(section as HTMLElement).getByRole("button", { name: "إعادة المحاولة" }),
@@ -199,7 +199,7 @@ describe("AdminSystemPage — settings-scope gate + honest healthz failure (A3-F
     // Recovered: the error card is gone and the health section renders
     // the real tiles (the aggregate pill with the ok verdict).
     await waitFor(() => {
-      expect(screen.queryByText("تعذّر جلب حالة الصحة")).not.toBeInTheDocument();
+      expect(screen.queryByText("تعذّر تحميل حالة الصحة")).not.toBeInTheDocument();
     });
     await waitFor(() => {
       expect(screen.getByText("النظام يعمل")).toBeInTheDocument();

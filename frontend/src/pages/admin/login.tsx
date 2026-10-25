@@ -349,10 +349,12 @@ export default function AdminLoginPage() {
             )}
 
             {error && (
+              // R187 (C-F9): no aria-live override — role="alert" already
+              // implies aria-live="assertive"; the explicit polite
+              // downgraded the verdict to a murmur for assistive tech.
               <div
                 id="admin-login-error"
                 role="alert"
-                aria-live="polite"
                 className="flex items-center gap-2 text-destructive text-sm bg-destructive/10 border border-destructive/20 px-3 py-2.5 rounded-xl"
               >
                 <AlertCircle className="w-4 h-4 shrink-0" />

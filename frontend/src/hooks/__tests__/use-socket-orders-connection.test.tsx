@@ -19,10 +19,12 @@
  * by a stable id.
  */
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import {
+  getGetMeQueryKey,
   getGetOrderQueryKey,
+  getGetWalletLedgerQueryKey,
   getGetWalletQueryKey,
   getListOrdersQueryKey,
 } from "@workspace/api-client-react";
@@ -145,6 +147,87 @@ describe("useSocket — order-updated invalidates every /api/orders* key and toa
         id: "order-42-processing",
       }),
     );
+  });
+});
+
+// ── R187 (B-F1): the order-updated handler mirrors the topup twin's
+// money invalidations ─────────────────────────────────────────────
+describe("useSocket — order-updated mirrors the topup twin's money invalidations (R187 B-F1)", () => {
+  beforeEach(() => {
+    connectSocketMock.mockReset();
+    toastMock.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("a refunded order refires the cached wallet + me + ledger queries — the refund's money reaches every balance surface", async () => {
+    const socket = fakeSocket();
+    connectSocketMock.mockResolvedValue(socket);
+
+    const calls = { wallet: 0, me: 0, ledger: 0 };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Seed the three money entries so their observers mount settled —
+    // the ONLY thing that can refire them afterwards is an
+    // invalidation (the wallet page is poll-less, focus-refetch off).
+    client.setQueryData(getGetWalletQueryKey(), { balance: 100 });
+    client.setQueryData(getGetMeQueryKey(), { id: 42, wallet_balance: 100 });
+    client.setQueryData(getGetWalletLedgerQueryKey(), []);
+
+    function Observers() {
+      useQuery({
+        queryKey: getGetWalletQueryKey(),
+        queryFn: async () => {
+          calls.wallet += 1;
+          return { balance: 100 };
+        },
+      });
+      useQuery({
+        queryKey: getGetMeQueryKey(),
+        queryFn: async () => {
+          calls.me += 1;
+          return { id: 42, wallet_balance: 100 };
+        },
+      });
+      useQuery({
+        queryKey: getGetWalletLedgerQueryKey(),
+        queryFn: async () => {
+          calls.ledger += 1;
+          return [];
+        },
+      });
+      useSocket(42);
+      return null;
+    }
+
+    render(
+      <QueryClientProvider client={client}>
+        <Observers />
+      </QueryClientProvider>,
+    );
+
+    // Wait for the handler registrations + the initial fetch legs to
+    // settle, then snapshot the counters.
+    await waitFor(() => expect(socket.on).toHaveBeenCalled());
+    await waitFor(() => expect(calls.wallet).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(calls.me).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(calls.ledger).toBeGreaterThanOrEqual(1));
+    const before = { ...calls };
+
+    // THE refund shape: admin/orders.ts emits order-updated
+    // status="refunded" AFTER RefundService credited wallet + ledger +
+    // points — the handler must push that money to the same surfaces
+    // the topup-updated twin covers.
+    await act(async () => {
+      socket.fire("order-updated", { id: 77, status: "refunded", order_code: "SNDB2026X" });
+    });
+
+    await waitFor(() => {
+      expect(calls.wallet).toBeGreaterThan(before.wallet);
+      expect(calls.me).toBeGreaterThan(before.me);
+      expect(calls.ledger).toBeGreaterThan(before.ledger);
+    });
   });
 });
 

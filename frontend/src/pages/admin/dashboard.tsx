@@ -88,7 +88,19 @@ export default function AdminDashboardPage() {
   // scope-less admins instead of the error card.
   const canSeeOrders = hasAdminPermission("orders");
 
-  const { data: stats, isLoading: statsLoading } = useGetAdminStats({
+  // R187 (D-F3): the stats observer's failure arm — `isError` was never
+  // destructured, so a failed query (finance admin, 5xx outage) left
+  // stats undefined + statsLoading settled false and the KPI fold
+  // rendered an unexplained ZERO-tile void above the recent-orders
+  // stream while the chart column + the stream carried error surfaces
+  // of their own. The honest state is the scope-banner idiom below
+  // (same warning tokens) + the retry that calls the query's refetch.
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    isError: statsError,
+    refetch: refetchStats,
+  } = useGetAdminStats({
     query: {
       queryKey: getGetAdminStatsQueryKey(),
       // R126 (R1-P3): /api/admin/stats is finance-gated server-side
@@ -429,6 +441,25 @@ export default function AdminDashboardPage() {
           {!canSeeMoney && !stats && !statsLoading ? (
             <p className="text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2">
               بطاقات المؤشرات تتطلب صلاحية المعاملات المالية — تواصل مع مسؤول النظام
+            </p>
+          ) : /* R187 (D-F3): the failed-query arm — the same warning-tinted
+                 banner shape as the scope notice above, now with the
+                 honest «تعذّر تحميل» copy + a retry that re-runs the
+                 stats observer (the topups stale-banner retry idiom);
+                 role="alert" announces the async failure. */
+          canSeeMoney && !stats && !statsLoading && statsError ? (
+            <p
+              role="alert"
+              className="text-sm text-status-warning bg-status-warning/10 border border-status-warning/30 rounded-xl px-3 py-2 flex items-center gap-2 flex-wrap"
+            >
+              <span>تعذّر تحميل بطاقات المؤشرات — تحقّق من الشبكة ثم أعد المحاولة</span>
+              <button
+                type="button"
+                onClick={() => void refetchStats()}
+                className="ms-auto shrink-0 text-xs font-bold underline underline-offset-2 hover:opacity-80"
+              >
+                إعادة المحاولة
+              </button>
             </p>
           ) : statsLoading ? (
             /* R136 (UX-1): SkeletonText — the 6-card KPI grid becomes one

@@ -633,7 +633,10 @@ describe("R-140-o D — topup-updated → wallet query invalidation: keys align 
     // R153: 5 → 6 — the paged notifications-history family joined the
     // reconnect-resync set (the /notifications page holds no socket of
     // its own; without this entry a reconnect left its rows stale).
-    expect(spy).toHaveBeenCalledTimes(6);
+    // R187 (B-F3): 6 → 7 — the loyalty family joined (the /loyalty and
+    // /referrals pages hold no socket of their own either; the R153
+    // rationale finally covers them).
+    expect(spy).toHaveBeenCalledTimes(7);
     const keys = spy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
@@ -643,6 +646,9 @@ describe("R-140-o D — topup-updated → wallet query invalidation: keys align 
     expect(keys).toContain(JSON.stringify(["/api/wallet/ledger"]));
     expect(keys).toContain(JSON.stringify(["/api/auth/me"]));
     expect(keys).toContain(JSON.stringify(["/api/notifications"]));
+    // R187 (B-F3): the loyalty family (the shared ["loyalty", …] prefix
+    // key the loyalty/referrals pages ride).
+    expect(keys).toContain(JSON.stringify(["loyalty"]));
     // The orders leg is the PREDICATE sweep (list variants + every open
     // detail page) — and it never touches the catalog family.
     const predicateCall = spy.mock.calls

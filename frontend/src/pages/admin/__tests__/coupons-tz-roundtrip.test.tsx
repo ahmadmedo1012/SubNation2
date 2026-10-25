@@ -307,3 +307,83 @@ describe("AdminCouponsPage — type chips expose aria-pressed (R126-L3)", () => 
     expect(screen.queryByPlaceholderText("20")).not.toBeInTheDocument();
   });
 });
+
+describe("AdminCouponsPage — create-form server-bound parity guards (R187 D-F7)", () => {
+  beforeEach(() => {
+    toastMock.mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockImplementation(async (input: unknown, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST") return resLike({ body: { id: 1, code: "X" } });
+      return resLike({ body: [] });
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("the code + description inputs carry the server's bounds as maxLength attrs", async () => {
+    renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "كوبون جديد" }));
+
+    // The native maxLength is the prevention: a browser truncates the
+    // 41st character at the input, so the doomed-POST class dies at the
+    // source. (jsdom does not emulate native truncation on programmatic
+    // value sets — the ATTRIBUTE is the mutation-sensitive surface.)
+    expect(screen.getByPlaceholderText("SUMMER20")).toHaveAttribute("maxlength", "40");
+    expect(screen.getByPlaceholderText("مثال: خصم الصيف على الاشتراكات")).toHaveAttribute(
+      "maxlength",
+      "200",
+    );
+
+    // A 40-char code still flows through cleanly (the bound does not
+    // block legal values).
+    fireEvent.change(screen.getByPlaceholderText("SUMMER20"), {
+      target: { value: "A".repeat(40) },
+    });
+    fireEvent.change(screen.getByPlaceholderText("20"), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الكوبون" }));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "POST");
+      expect(post).toBeTruthy();
+    });
+    const post = fetchMock.mock.calls.find((c) => (c[1]?.method ?? "GET") === "POST")!;
+    expect(JSON.parse(String(post[1]?.body)).code).toHaveLength(40);
+  });
+
+  it("max_uses=0 (the «بلا حد» typo) is blocked with a field-specific Arabic toast, zero POSTs", async () => {
+    renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "كوبون جديد" }));
+    fireEvent.change(screen.getByPlaceholderText("SUMMER20"), { target: { value: "ZEROUSES" } });
+    fireEvent.change(screen.getByPlaceholderText("20"), { target: { value: "20" } });
+    fireEvent.change(screen.getByPlaceholderText("بلا حد"), { target: { value: "0" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الكوبون" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0][0].description).toContain("الحد الأقصى للاستخدام");
+    expect(fetchMock.mock.calls.filter((c) => (c[1]?.method ?? "GET") === "POST")).toHaveLength(0);
+  });
+
+  it("a negative min-order amount is blocked with a field-specific Arabic toast, zero POSTs", async () => {
+    renderPage();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByRole("button", { name: "كوبون جديد" }));
+    fireEvent.change(screen.getByPlaceholderText("SUMMER20"), { target: { value: "NEGMIN" } });
+    fireEvent.change(screen.getByPlaceholderText("20"), { target: { value: "20" } });
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "-5" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء الكوبون" }));
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0][0].description).toContain("الحد الأدنى للطلب");
+    expect(fetchMock.mock.calls.filter((c) => (c[1]?.method ?? "GET") === "POST")).toHaveLength(0);
+  });
+});

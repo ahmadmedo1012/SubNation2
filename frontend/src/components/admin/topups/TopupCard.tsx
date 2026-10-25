@@ -107,7 +107,11 @@ export const TopupCard = React.memo(function TopupCard({
           <div className="flex items-center mb-3">
             <button
               onClick={() => onSelect(t.id)}
-              className="p-1 rounded hover:bg-secondary/50 transition-colors"
+              /* R187 (D-F11): the row-selector hit-area idiom
+                 (DesktopOrderRow.tsx:58's p-2 -m-1 ≈ 28px) — this
+                 checkbox feeds the BULK MONEY actions and rode a ~24px
+                 target under the family's own floor. */
+              className="p-2 -m-1 rounded hover:bg-secondary/50 transition-colors"
               /* A1-6 (R125): per-row naming — the generic «اختيار»/
                  «إلغاء الاختيار» labels were indistinguishable across
                  the queue; orders.tsx:256 names the row it selects. */

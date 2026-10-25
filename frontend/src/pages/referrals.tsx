@@ -502,7 +502,12 @@ export default function ReferralsPage() {
                 /* R139 (precision): the count chip joins the static-badge
                     box family (muted/30 fill + /30 edge). */
                 <span className="text-xs text-muted-foreground bg-muted/30 border border-border/30 px-2 py-0.5 rounded-full font-bold tabular-nums">
-                  {events.length}
+                  {/* R187 (B-F4): the backend caps the list at 200 rows —
+                      a full page is a TRUNCATED window, not the user's
+                      total referrals (the stat tiles above carry the
+                      TRUE aggregate). The caption states what's shown
+                      (the WalletStatementCard honesty idiom). */}
+                  {events.length >= 200 ? "عرض آخر 200 إحالة" : events.length}
                 </span>
               )}
             </div>
@@ -566,8 +571,15 @@ export default function ReferralsPage() {
                             silent no-op under the global Arabic
                             letter-spacing guard (index.css:917), so this
                             LTR mono phone run rendered with 0 spacing
-                            (unified with the referral-code runs). */}
-                        <p className="text-sm font-bold text-foreground/90 font-mono tracking-[0.2em]">
+                            (unified with the referral-code runs).
+                            R187 (B-F2): dir="ltr" joins the code twin
+                            above — the mask "091****567" carries internal
+                            neutrals, so the RTL base direction visually
+                            flips its segments ("567****091"). */}
+                        <p
+                          dir="ltr"
+                          className="text-sm font-bold text-foreground/90 font-mono tracking-[0.2em]"
+                        >
                           {ev.phone_masked}
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">

@@ -244,6 +244,11 @@ describe("copy & a11y contract (A6 #16/#17, A1 P1-4, A2 P2-9)", () => {
     const phone = openPhoneStep();
     expect(phone.className).toContain("text-base");
     expect(phone.getAttribute("enterkeyhint")).toBe("done");
+    // R187 (C-F7): the majority-provider sign-in field carries the
+    // autoComplete contract every other auth input has
+    // (username/current-password/one-time-code) — WCAG 1.3.5; autofill
+    // can now offer the saved phone.
+    expect(phone).toHaveAttribute("autocomplete", "tel");
     // R145 (D7): the field's resting SURFACE rides the --input token —
     // bg-card on the bg-card auth card left the border alone carrying
     // the field extent (the live VLM audit's "input fields have zero

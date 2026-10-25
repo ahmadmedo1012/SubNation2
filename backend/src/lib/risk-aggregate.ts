@@ -128,7 +128,10 @@ export async function invalidateUserAggregate(userId: number): Promise<void> {
   try {
     const redis = getRedisClient();
     if (redis) {
-      await redis.del(cacheKey(userId));
+      // R187 (G-F2): the last unwrapped Redis command in the backend —
+      // bound like the get/set above so a gray-zone socket can't wedge
+      // scoreEvent's persistence block forever.
+      await withRedisCommandTimeout("risk_agg_del", () => redis.del(cacheKey(userId)));
     }
   } catch {
     // best-effort

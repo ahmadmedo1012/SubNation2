@@ -37,30 +37,22 @@ export function AlertsTypeChips({
 }) {
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      {[
-        { key: "no_stock", count: alerts.filter((a) => a.type === "no_stock").length },
-        { key: "low_stock", count: alerts.filter((a) => a.type === "low_stock").length },
-        {
-          key: "forecast_stockout",
-          count: alerts.filter((a) => a.type === "forecast_stockout").length,
-        },
-        {
-          key: "coupon_maxed",
-          count: alerts.filter((a) => a.type === "coupon_maxed").length,
-        },
-        {
-          key: "coupon_expiring",
-          count: alerts.filter((a) => a.type === "coupon_expiring").length,
-        },
-        { key: "system", count: alerts.filter((a) => a.type === "system").length },
-      ]
+      {/* R187E-F2: the key list derives from TYPE_META's own keys — the
+          hardcoded six-entry array is gone, so a future AlertType can
+          never again render rows its chip bar silently omits (the order
+          is TYPE_META's key order, system last as before). */}
+      {(Object.keys(TYPE_META) as AlertType[])
+        .map((key) => ({
+          key,
+          count: alerts.filter((a) => a.type === key).length,
+        }))
         .filter((s) => s.count > 0)
         .map((s) => {
-          const m = TYPE_META[s.key as AlertType];
+          const m = TYPE_META[s.key];
           return (
             <button
               key={s.key}
-              onClick={() => onSetFilter(filter === s.key ? "all" : (s.key as FilterType))}
+              onClick={() => onSetFilter(filter === s.key ? "all" : s.key)}
               aria-pressed={filter === s.key}
               /* R139 (precision): the ACTIVE chip's severity tuple is
                  verified, not changed — TYPE_META already drives it

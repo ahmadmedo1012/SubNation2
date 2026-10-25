@@ -325,14 +325,17 @@ export function CatalogFiltersBar({
                                text-foreground (R130-A2-F4); tabular-nums
                                + «د.ل» ride formatCurrency. The «تبدأ من»
                                qualifier stays honest for variant
-                               products (the ProductCard idiom). */}
+                               products (the ProductCard idiom).
+                               R187 (A-F2): the price itself is the
+                               ProductCard idiom too — sale_price when a
+                               flash sale is active, base otherwise. */}
                             <span className="shrink-0 flex items-baseline gap-1 text-xs font-bold text-foreground tabular-nums">
                               {p.price_from && (
                                 <span className="text-3xs font-semibold text-muted-foreground">
                                   تبدأ من
                                 </span>
                               )}
-                              {formatCurrency(p.price)}
+                              {formatCurrency(p.sale_price ?? p.price)}
                             </span>
                           </button>
                         );

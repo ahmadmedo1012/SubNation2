@@ -1,4 +1,5 @@
 import { AlertCircle } from "lucide-react";
+import { formatCount } from "@/lib/utils";
 import {
   REFERRALS_SERVER_CAP,
   type ReferralRow,
@@ -13,6 +14,18 @@ import { ReferralRowItem } from "@/components/admin/referrals/ReferralRowItem";
 // through onCredit (the page's credit handler, useCallback-stable so the
 // memoized rows bail out on keystrokes). The move only changes its
 // address; DOM, classes and Arabic copy are byte-identical.
+
+/** Arabic plural forms for إحالة — R187L-F1: the footer's count noun
+ *  (the storefront StatsRow's family, bare — its own objects carry the
+ *  «قيد الانتظار» suffix). */
+const REFERRAL_COUNT_FORMS = {
+  zero: "إحالات",
+  one: "إحالة",
+  two: "إحالتان",
+  few: "إحالات",
+  many: "إحالةً",
+  other: "إحالة",
+};
 
 export function ReferralsTable({
   list,
@@ -76,9 +89,13 @@ export function ReferralsTable({
           tabular-nums on the count. */}
       <div className="px-4 py-2.5 border-t border-border/20 bg-muted/10 flex items-center justify-between text-xs text-muted-foreground tabular-nums">
         <span>
+          {/* R187L-F1: the count rides formatCount — the storefront
+              StatsRow's إحالة family (one/two/few/many/other) as a
+              local object (the ALERT_COUNT_FORMS idiom); was the frozen
+              «N إحالة» (3 → «3 إحالات», 11 → «11 إحالةً»). */}
           {list.length >= REFERRALS_SERVER_CAP
             ? `عرض ${list.length} (الأحدث أولاً)`
-            : `${list.length} إحالة`}
+            : formatCount(list.length, REFERRAL_COUNT_FORMS)}
         </span>
         <span className="flex items-center gap-1">
           <AlertCircle className="w-3 h-3" />

@@ -18,7 +18,7 @@
  * module boundary (vitest-config pattern).
  */
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -29,13 +29,22 @@ vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ adminToken: "test-admin-token", hasAdminPermission: () => true }),
 }));
 
-vi.mock("@/pages/admin/layout", () => ({
-  AdminLayout: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+const { toastMock, layoutRefresh } = vi.hoisted(() => ({
+  toastMock: vi.fn(),
+  // R187 (D-F6): captures the layout's refresh callback so the
+  // stale-keep test can drive a failed BACKGROUND refetch (the query
+  // already holds cached rows) without a 5-minute interval wait.
+  layoutRefresh: { onRefresh: null as null | (() => void) },
 }));
-
-const { toastMock } = vi.hoisted(() => ({ toastMock: vi.fn() }));
 vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
+}));
+
+vi.mock("@/pages/admin/layout", () => ({
+  AdminLayout: ({ children, onRefresh }: { children?: ReactNode; onRefresh?: () => void }) => {
+    layoutRefresh.onRefresh = onRefresh ?? null;
+    return <div>{children}</div>;
+  },
 }));
 
 /** An INACTIVE sale with a future end — the «تفعيل» row. */
@@ -286,7 +295,7 @@ describe("AdminPromotionsPage — activating a store-wide discount requires conf
       expect(screen.getByRole("button", { name: "تفعيل" })).toBeDisabled();
     });
     // …alongside its destructive sibling.
-    expect(screen.getByRole("button", { name: "حذف العرض «عرض الجمعة» نهائياً" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "إيقاف وأرشفة العرض «عرض الجمعة»" })).toBeDisabled();
 
     // Release the PATCH — exactly ONE fired, then the success toast.
     release();
@@ -324,5 +333,104 @@ describe("AdminPromotionsPage — activating a store-wide discount requires conf
     expect(String(toastArg.description)).not.toMatch(/^HTTP/);
     expect(String(toastArg.description)).not.toContain("Bad Request");
     expect(toastArg.variant).toBe("destructive");
+  });
+});
+
+describe("AdminPromotionsPage — the DELETE confirm tells the soft-deactivate truth (R187 D-F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async () => resLike({ body: { flash_sales: [STOPPED_SALE] } }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("the confirm says the row يبقى في السجل and is reactivatable — never «نهائياً»/«لا يمكن التراجع»", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "إيقاف وأرشفة العرض «عرض الجمعة»" }));
+    const title = await screen.findByText("إيقاف وأرشفة العرض؟");
+    const dialog = title.closest('[role="alertdialog"]') as HTMLElement;
+    const description = within(dialog).getByText(/يبقى في السجل/).textContent ?? "";
+
+    // The honest keep+reactivate story…
+    expect(description).toContain("يبقى");
+    expect(description).toContain("تفعيل");
+    // …and the hard-delete over-promise is byte-gone (backend DELETE
+    // soft-deactivates: isActive:false, row kept, flash_sale.deactivate
+    // audit — flash-sales.ts docblock says so itself).
+    expect(description).not.toContain("نهائياً");
+    expect(description).not.toContain("لا يمكن التراجع");
+    expect(within(dialog).queryByText("حذف نهائي")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "إيقاف وأرشفة" })).toBeInTheDocument();
+
+    // Confirming fires the DELETE and toasts the honest outcome.
+    fireEvent.click(within(dialog).getByRole("button", { name: "إيقاف وأرشفة" }));
+    await waitFor(() => {
+      const del = fetchMock.mock.calls.find(
+        (c) => (c[1] as RequestInit | undefined)?.method === "DELETE",
+      );
+      expect(del?.[0]).toBe("/api/admin/flash-sales/7");
+    });
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "تم إيقاف وأرشفة العرض", variant: "success" }),
+      );
+    });
+  });
+
+  it("cancel fires no DELETE — the archive only rides an explicit confirm", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "إيقاف وأرشفة العرض «عرض الجمعة»" }));
+    const title = await screen.findByText("إيقاف وأرشفة العرض؟");
+    const dialog = title.closest('[role="alertdialog"]') as HTMLElement;
+    fireEvent.click(within(dialog).getByRole("button", { name: "إلغاء" }));
+    await waitFor(() => expect(screen.queryByText("إيقاف وأرشفة العرض؟")).not.toBeInTheDocument());
+
+    expect(
+      fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "DELETE"),
+    ).toHaveLength(0);
+  });
+});
+
+describe("AdminPromotionsPage — a failed BACKGROUND refetch keeps the stale rows + surfaces the banner (R187 D-F6)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async () => resLike({ body: { flash_sales: [STOPPED_SALE] } }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("rows already rendered + a failed refetch → role=alert banner with retry ABOVE the rows, rows stay", async () => {
+    renderPage();
+    await screen.findByText("عرض الجمعة");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // The network dies AFTER a clean load (the background-refetch
+    // shape: the query keeps its cached rows while isError lands).
+    fetchMock.mockResolvedValue(
+      resLike({ ok: false, status: 500, body: { error: "خطأ في الشبكة" } }),
+    );
+    await act(async () => {
+      layoutRefresh.onRefresh?.();
+    });
+
+    // The stale-list banner renders ABOVE whatever data exists (the
+    // coupons.tsx:394 idiom) — the old `loadError && sales.length === 0`
+    // gate rendered NOTHING here (a silent failed refetch).
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toContain("خطأ في الشبكة");
+    expect(within(banner).getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+
+    // The stale rows stay standing (a failed refresh never blanks a
+    // list the operator was already looking at).
+    expect(screen.getByText("عرض الجمعة")).toBeInTheDocument();
+    expect(screen.queryByText("لا توجد عروض بعد")).not.toBeInTheDocument();
   });
 });

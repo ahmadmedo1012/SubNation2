@@ -24,6 +24,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NotificationsPage from "@/pages/notifications";
+import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
 import { formatCount } from "@/lib/utils";
 
 vi.mock("@/lib/auth", () => ({
@@ -98,13 +99,17 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  render(
     <QueryClientProvider client={queryClient}>
       <Router>
         <NotificationsPage />
       </Router>
     </QueryClientProvider>,
   );
+  // R187 (B-F7): the client rides out so the stale-keep pin can observe
+  // the query settling into error WITH cached data — the page itself
+  // deliberately renders nothing for that state (that's the fix).
+  return { queryClient };
 }
 
 describe("NotificationsPage — A9-F2 paged history (R128-IMP-5)", () => {
@@ -234,5 +239,38 @@ describe("NotificationsPage — A9-F2 paged history (R128-IMP-5)", () => {
       );
     });
     expect(window.location.pathname).toBe("/orders");
+  });
+
+  it("R187 (B-F7): a background-refetch failure keeps the rendered rows (stale-keep, the referrals idiom)", async () => {
+    const { queryClient } = renderPage();
+    expect(await screen.findByText("إشعار رقم 1")).toBeInTheDocument();
+    expect(screen.getByText("إشعار رقم 20")).toBeInTheDocument();
+
+    // The page's own freshness lanes (the 60 s poll / the
+    // NOTIFICATION_NEW_EVENT socket accelerator) fail mid-session.
+    fetchMock.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: "down" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    window.dispatchEvent(new Event(NOTIFICATION_NEW_EVENT));
+
+    // The failure really LANDS — the query settles into error WITH the
+    // page-1 data still cached (observed on the client, not the DOM: the
+    // page deliberately renders nothing for a stale-keep failure).
+    await waitFor(() => {
+      const state = queryClient.getQueryState(["/api/notifications", "paged"]);
+      expect(state?.status).toBe("error");
+      expect(state?.data).not.toBeNull();
+    });
+
+    // …but the cached rows stay on screen and the outage card never
+    // replaces them — the error card is only for a failed FIRST load
+    // (bare isError used to blank the fully-rendered list).
+    expect(screen.getByText("إشعار رقم 1")).toBeInTheDocument();
+    expect(screen.getByText("إشعار رقم 20")).toBeInTheDocument();
+    expect(screen.queryByText("تعذّر تحميل الإشعارات")).not.toBeInTheDocument();
   });
 });

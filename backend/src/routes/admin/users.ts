@@ -161,11 +161,13 @@ router.get("/users", requireAdmin, async (req, res) => {
  *     (closes F-008). The `Idempotency-Key` header is currently
  *     advisory; absence logs a warning, the call proceeds. Will be
  *     tightened to required after the admin UI ships the header.
- *   - Loyalty fields (`loyalty_points`, `loyalty_tier`) keep their
- *     legacy direct-update path — they are not financial integrity
- *     concerns and have no ledger — BUT the points write is now a
- *     guarded (optimistic-lock) UPDATE (93-A1 S6 / 93-A2, round-93):
- *     see the M5/S6 block inside the handler.
+ *   - Loyalty fields (`loyalty_points`, `loyalty_tier`) — the pre-R115
+ *     legacy direct-update path is GONE: `loyalty_tier` is REJECTED 400
+ *     (tiers derive from net qualifying spend, R115 Part 11), and
+ *     `loyalty_points` commits in ONE transaction together with its
+ *     `points_ledger` admin_set row (note mandatory, `finance` scope
+ *     required — points are LYD-convertible money):
+ *     see the R115 block inside the handler.
  */
 router.patch(
   "/users/:id",

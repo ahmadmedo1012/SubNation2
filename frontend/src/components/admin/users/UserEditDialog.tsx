@@ -240,7 +240,12 @@ export function UserEditDialog({
                   id="user-edit-wallet"
                   type="number"
                   min="0"
-                  step="0.5"
+                  /* R187 (D-F1): the half-unit step is retired for the
+                     cent step the wallet column speaks (numeric(10,2) —
+                     every adjustment rides 2-decimal cents), so a 44.99
+                     adjustment no longer fires a native step-mismatch
+                     bubble. Matches the products price editor's fix. */
+                  step="0.01"
                   disabled={!canEditMoney}
                   title={canEditMoney ? undefined : "يتطلب صلاحية المالية"}
                   aria-describedby="user-edit-wallet-hint"

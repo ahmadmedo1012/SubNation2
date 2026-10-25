@@ -34,6 +34,7 @@ import { writeAuditLog } from "../../lib/audit";
 import { logger } from "../../lib/logger";
 import { notifyAdminStats } from "../../lib/socket";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
+import { intParam } from "../../lib/http";
 import { parseDsl } from "../../lib/risk-dsl";
 import { recordLabel } from "../../lib/risk-metrics";
 import { requireAdmin, type AdminAuthenticatedRequest } from "../../middlewares/requireAdmin";
@@ -302,8 +303,10 @@ router.get("/risk/events", requireAdmin, async (req, res) => {
 // GET /events/:id — full investigation view; stamps shown_at on first read
 // ────────────────────────────────────────────────────────────────────────
 router.get("/risk/events/:id", requireAdmin, async (req, res) => {
-  const id = Number.parseInt(String(req.params.id ?? ""), 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  // R187 (F-F1): digit-exact intParam — parseInt("12abc") silently
+  // acted on event 12; malformed ids now take this 400 shape instead.
+  const id = intParam(req, "id");
+  if (id === null) {
     res.status(400).json(createErrorResponse("معرّف الحدث غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
@@ -379,8 +382,10 @@ router.get("/risk/events/:id", requireAdmin, async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────
 router.post("/risk/events/:id/label", requireAdmin, async (req, res) => {
   const adminReq = req as AdminAuthenticatedRequest;
-  const id = Number.parseInt(String(req.params.id ?? ""), 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  // R187 (F-F1): same digit-exact swap as the GET above — this is a WRITE
+  // (a risk_labels row on the parsed id); "12abc" must 400, not label 12.
+  const id = intParam(req, "id");
+  if (id === null) {
     res.status(400).json(createErrorResponse("معرّف الحدث غير صالح", ErrorCode.INVALID_DATA));
     return;
   }
@@ -547,8 +552,9 @@ router.get("/risk/rules", requireAdmin, async (_req, res) => {
 // ────────────────────────────────────────────────────────────────────────
 router.put("/risk/rules/:id", requireAdmin, async (req, res) => {
   const adminReq = req as AdminAuthenticatedRequest;
-  const id = Number.parseInt(String(req.params.id ?? ""), 10);
-  if (!Number.isFinite(id) || id <= 0) {
+  // R187 (F-F1): same digit-exact swap — a WRITE on the parsed rule id.
+  const id = intParam(req, "id");
+  if (id === null) {
     res.status(400).json(createErrorResponse("معرّف القاعدة غير صالح", ErrorCode.INVALID_DATA));
     return;
   }

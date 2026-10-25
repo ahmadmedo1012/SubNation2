@@ -302,3 +302,74 @@ describe("AdminProductsPage — in-flight save re-entry guard + busy submit regi
     expect(updateMutate).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("AdminProductsPage — ⌘S runs INTERACTIVE validation like the button click (R187 D-F4)", () => {
+  // The create path: the name input is `required`, but zod carries no
+  // name min — the old dispatchEvent(new Event("submit")) skipped
+  // constraint validation entirely, so ⌘S on an empty editor minted a
+  // NAMELESS product (201). requestSubmit() is the programmatic twin
+  // of the submit-button click: jsdom gates it on checkValidity().
+  const createHook = { isPending: false, mutate: vi.fn() };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useListAdminProducts as unknown as Mock).mockReturnValue({
+      data: PRODUCTS,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    (useCreateProduct as unknown as Mock).mockReturnValue(createHook);
+    (useUpdateProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    (useDeleteProduct as unknown as Mock).mockReturnValue({
+      isPending: false,
+      mutate: vi.fn(),
+    });
+    createHook.isPending = false;
+    createHook.mutate.mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("⌘S with an EMPTY required name fires ZERO creates — native validation blocks the submit", async () => {
+    renderPage();
+
+    // Open the CREATE editor (fresh session — the name input is empty
+    // and required; the price input is also required and empty).
+    fireEvent.click(await screen.findByRole("button", { name: "منتج جديد" }));
+    expect(await screen.findByText("إضافة منتج جديد")).toBeInTheDocument();
+
+    // The exact production defect: the synthetic ⌘S submit used to
+    // bypass constraint validation and fire the create POST.
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    await act(async () => {});
+    expect(createHook.mutate).not.toHaveBeenCalled();
+    // jsdom reports the form invalid (the required-name gate).
+    const form = document.getElementById("product-form") as HTMLFormElement;
+    expect(form.checkValidity()).toBe(false);
+  });
+
+  it("⌘S with a VALID form still submits exactly once (validation gates, never swallows)", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "منتج جديد" }));
+    expect(await screen.findByText("إضافة منتج جديد")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/اسم المنتج/), { target: { value: "Netflix 1M" } });
+    fireEvent.change(screen.getByLabelText(/السعر \(د\.ل\)/), { target: { value: "12.5" } });
+
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(createHook.mutate).toHaveBeenCalledTimes(1));
+    const { data } = createHook.mutate.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(data.name).toBe("Netflix 1M");
+    expect(data.price).toBe(12.5);
+  });
+});

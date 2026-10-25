@@ -1,7 +1,14 @@
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { db, initTestDb, inventoryTable, productsTable, resetTestDb } from "../../test/db";
+import {
+  db,
+  flashSalesTable,
+  initTestDb,
+  inventoryTable,
+  productsTable,
+  resetTestDb,
+} from "../../test/db";
 import { productsRouter } from "../products";
 
 /**
@@ -213,6 +220,63 @@ describe("GET /api/products/:id/recommendations — null-category guard (R120-B6
         name: "Undeliverable Peer D",
         image_url: "https://cdn.example.com/rec-sold-d.webp",
         price: 45,
+        is_available: false,
+      },
+    ]);
+  });
+
+  it("R187 (A-F1): an ACTIVE flash sale discounts the rail — peers at 100.00 under a 20% sale render 80.00", async () => {
+    // The PDP recommendations loader selected the raw products.price and
+    // mapped it verbatim while every sibling surface (list :547-548, detail
+    // buildProductDetailDto, /catalog/stats floor) applied the active flash
+    // sale — during any sale the rail overstated every recommended price.
+    //
+    // Cache discipline (file header): nine fillers put this case's target
+    // on id 10 (resident keys after the cases above: 2, 3, 4, 7, 9).
+    const ids = await seed([
+      { name: "Filler G1", slug: "rec-filler-g1", category: "tools" },
+      { name: "Filler G2", slug: "rec-filler-g2", category: "tools" },
+      { name: "Filler G3", slug: "rec-filler-g3", category: "tools" },
+      { name: "Filler G4", slug: "rec-filler-g4", category: "tools" },
+      { name: "Filler G5", slug: "rec-filler-g5", category: "tools" },
+      { name: "Filler G6", slug: "rec-filler-g6", category: "tools" },
+      { name: "Filler G7", slug: "rec-filler-g7", category: "tools" },
+      { name: "Filler G8", slug: "rec-filler-g8", category: "tools" },
+      { name: "Filler G9", slug: "rec-filler-g9", category: "tools" },
+      { name: "Sale Target", slug: "rec-sale-target", category: "streaming", price: "120.00" },
+      { name: "Sale Peer A", slug: "rec-sale-peer-a", category: "streaming", price: "100.00" },
+      { name: "Sale Peer B", slug: "rec-sale-peer-b", category: "streaming", price: "100.00" },
+    ]);
+    const target = ids[9]!;
+    const peerA = ids[10]!;
+    const peerB = ids[11]!;
+
+    // Active 20% flash sale — the product-detail-shape fixture idiom.
+    await db.insert(flashSalesTable).values({
+      title: "Rec Rail Sale",
+      discountPercent: "20.00",
+      endsAt: new Date(Date.now() + 60 * 60 * 1000),
+      isActive: true,
+    });
+
+    const { status, body } = await call(buildApp(), `/api/products/${target}/recommendations`);
+    expect(status).toBe(200);
+    expect(body).toEqual([
+      {
+        id: peerA,
+        slug: "rec-sale-peer-a",
+        name: "Sale Peer A",
+        image_url: "https://cdn.example.com/rec-sale-peer-a.webp",
+        // computeFlashSalePrice(100, 20) = 80 — the list loader's idiom.
+        price: 80,
+        is_available: false,
+      },
+      {
+        id: peerB,
+        slug: "rec-sale-peer-b",
+        name: "Sale Peer B",
+        image_url: "https://cdn.example.com/rec-sale-peer-b.webp",
+        price: 80,
         is_available: false,
       },
     ]);

@@ -81,7 +81,7 @@ export function HealthOverviewSection({
         <FetchErrorCard
           size="section"
           retryIcon={RefreshCw}
-          title="تعذّر جلب حالة الصحة"
+          title="تعذّر تحميل حالة الصحة"
           description="تعذّر الوصول إلى فحوص الجهوزية — تحقّق من الاتصال بالخادم ثم أعد المحاولة"
           onRetry={onRetryHealth}
         />

@@ -236,19 +236,27 @@ router.post("/:id/reply", requireUser, ticketReplyLimiter, async (req, res) => {
   }
   const trimmed = messageParse.data.message;
 
-  const [reply] = await db
-    .insert(ticketRepliesTable)
-    .values({
-      ticketId: id,
-      authorType: "user",
-      message: trimmed,
-    })
-    .returning();
+  // R187 (F7): the reply INSERT and the status UPDATE were two autocommit
+  // statements — a status-update failure 500'd with the reply already
+  // committed, and the client's retry duplicated it. One transaction (the
+  // E-F6 ticket-create idiom): the status flip rides the reply's commit.
+  const reply = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(ticketRepliesTable)
+      .values({
+        ticketId: id,
+        authorType: "user",
+        message: trimmed,
+      })
+      .returning();
 
-  await db
-    .update(supportTicketsTable)
-    .set({ status: "in_progress" })
-    .where(eq(supportTicketsTable.id, id));
+    await tx
+      .update(supportTicketsTable)
+      .set({ status: "in_progress" })
+      .where(eq(supportTicketsTable.id, id));
+
+    return row;
+  });
 
   return res.status(201).json({
     id: reply.id,

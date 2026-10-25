@@ -97,6 +97,10 @@ async function openApproveConfirm() {
   return dialog;
 }
 
+// R187 (J-F3): a hardcoded constant key would pass expect.any(String) —
+// the pin now demands the canonical UUID v4 shape the mint generates.
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 describe("AdminTopupsPage — single approve confirmation (T-1/S-1)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -143,8 +147,9 @@ describe("AdminTopupsPage — single approve confirmation (T-1/S-1)", () => {
     ];
     expect(id).toBe(11);
     expect(data).toMatchObject({ admin_note: "تمت الموافقة" });
-    // F-008: one Idempotency-Key per logical click.
-    expect(opts.headers).toMatchObject({ "Idempotency-Key": expect.any(String) });
+    // F-008: one Idempotency-Key per logical click (R187 J-F3: the UUID v4
+    // shape, not expect.any(String) — a constant key would pass that).
+    expect(String(opts.headers?.["Idempotency-Key"])).toMatch(UUID_V4_REGEX);
 
     // Success feedback includes the amount (not silent).
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));

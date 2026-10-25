@@ -18,7 +18,6 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { Minus, Plus, ShoppingCart, Trash2, X, Sparkles, Wallet } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
-import { useMemo } from "react";
 import { Link } from "wouter";
 import { formatCount } from "@/lib/utils";
 import { productArtUrl } from "@/lib/product-art";
@@ -78,7 +77,11 @@ export default function CartPage() {
   // the page renders the local cart directly. Verified unused in the
   // r4-1-c org audit (docs/ux-audit-storefront.md:73 documents the
   // remnant as known-dead since rounds ago).
-  const { items, isLoaded, updateQuantity, removeItem, clear, addItem } = useCart();
+  const { items, isLoaded, updateQuantity, removeItem, clear, addItem, totalLYD } = useCart();
+  // R187 (A-F5): the grand total is the context's totalLYD (lib/cart.tsx,
+  // roundToCents — the same value checkout's balance gate compares
+  // against); the page-local +items.reduce(...).toFixed(2) twin is
+  // deleted.
 
   // R115-I1 (A7 P3-4): the wallet balance chip next to the total — the
   // same data point checkout's summary shows («رصيدك: …»). Decorative
@@ -89,10 +92,6 @@ export default function CartPage() {
     request: { headers: { Authorization: token ? `Bearer ${token}` : "" } },
   });
   const walletBalance = (wallet as WalletInfo | undefined)?.balance;
-
-  const total = useMemo(() => {
-    return +items.reduce((s, i) => s + effectivePrice(i) * i.quantity, 0).toFixed(2);
-  }, [items]);
 
   // 96-F4 (R96 A2 P1-1): every line removal (minus-at-qty-1 AND the trash
   // button) now carries a 6s undo toast that re-adds the item WITH ITS
@@ -566,7 +565,11 @@ export default function CartPage() {
               rides weight+size (not color) — verified, untouched. */}
           <div className="bg-card border border-border/60 rounded-2xl p-5 slide-up shadow-calm">
             <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-              <span className="text-sm text-muted-foreground font-bold">المجموع</span>
+              {/* R187 (L-F5): same-funnel label — checkout's
+                  CartSummaryAside and order-detail call this concept
+                  «الإجمالي» (المجموع الفرعي is the subtotal); the cart's
+                  «المجموع» drifted one word off the family. */}
+              <span className="text-sm text-muted-foreground font-bold">الإجمالي</span>
               <div className="flex items-center gap-2">
                 {/* R115-I1 (A7 P3-4): wallet balance chip — context for the
                     total (can I cover it?) without duplicating checkout's
@@ -578,7 +581,7 @@ export default function CartPage() {
                     رصيدك {formatCurrency(walletBalance)}
                   </span>
                 )}
-                <span className="font-bold text-2xl tabular-nums">{formatCurrency(total)}</span>
+                <span className="font-bold text-2xl tabular-nums">{formatCurrency(totalLYD)}</span>
               </div>
             </div>
             {/* R168-L3 (fix 1): wallet-shortfall warning — the buyer used to
@@ -590,10 +593,10 @@ export default function CartPage() {
                 when the probe answered AND the balance is short;
                 sufficient/unknown render nothing (never a fabricated
                 shortfall — the chip's own honesty rule). */}
-            {token && walletBalance != null && walletBalance < total && (
+            {token && walletBalance != null && walletBalance < totalLYD && (
               <div className="-mt-2 mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-status-warning">
                 <span className="font-semibold tabular-nums">
-                  تحتاج شحن {formatCurrency(+(total - walletBalance).toFixed(2))} لإتمام الطلب
+                  تحتاج شحن {formatCurrency(+(totalLYD - walletBalance).toFixed(2))} لإتمام الطلب
                 </span>
                 <Link
                   href="/wallet?return=/cart"

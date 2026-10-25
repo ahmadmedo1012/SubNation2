@@ -16,7 +16,10 @@ import { Input } from "@/components/ui/input";
 import { CheckCircle, Loader2, RefreshCw, Shield, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
-export function TwoFactorSetup({ adminToken: _adminToken }: { adminToken: string }) {
+// R187 (C-F8): the adminToken prop is DEAD (underscore-unused since the
+// R158 useAdminHeaders extraction — every request builds its headers
+// there); dropped from the signature, settings.tsx mounts it bare.
+export function TwoFactorSetup() {
   const headers = useAdminHeaders();
   const jsonHeaders = useAdminHeaders({ json: true });
   // R125-I5 (A3-1 P2): the component used to be mounted unconditionally

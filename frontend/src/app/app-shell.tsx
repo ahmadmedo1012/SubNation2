@@ -76,7 +76,8 @@ export function DeferredSocketInitializer() {
   return (
     /* R-140-f (r140 error lane): the socket initializer was the LAST
        defer-mounted chrome block without a boundary. It mounts ABOVE the
-       app route boundary (App.tsx's AuthGate sibling, outside AppRoutes),
+       app route boundary (it renders INSIDE App.tsx's AuthGate, beside
+       the router — outside AppRoutes),
        so a render throw here — or a lazyWithRetry SECOND chunk failure
        (the first reloads; the second rethrows) — had NO boundary between
        it and the React root: React 19 unmounts the ENTIRE tree for an

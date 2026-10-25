@@ -217,7 +217,12 @@ describe("AdminPricingPage — the two-step recompute (A5 P1-1)", () => {
     const confirm = h.confirmCalls[0];
     expect(confirm.title).toBe("إعادة احتساب أسعار الكتالوج؟");
     expect(confirm.destructive).toBe(true);
-    expect(confirm.description).toContain("المعاينة: 3 باقة ستنحرف عبر 2 منتجات");
+    // R187L-F1: the preview counts ride formatCount (VARIANT/PRODUCT
+    // forms) — 3 → «باقات» (few), 2 → «منتجان» (dual), never the frozen
+    // «باقة» + the 1/other-only «منتجات».
+    expect(confirm.description).toContain("المعاينة: 3 باقات ستنحرف عبر 2 منتجان");
+    expect(confirm.description).not.toContain("3 باقة ");
+    expect(confirm.description).not.toContain("2 منتجات");
     expect(confirm.description).toContain("لا يمكن التراجع بعد التنفيذ");
 
     // Approved → the REAL recompute hook fires (once).
@@ -238,6 +243,54 @@ describe("AdminPricingPage — the two-step recompute (A5 P1-1)", () => {
     expect(toastMock.mock.calls[0][0].title).toBe("تعذّرت المعاينة");
     expect(screen.queryByText("معاينة إعادة الاحتساب")).not.toBeInTheDocument();
     expect(h.recomputeCalls).toBe(0);
+  });
+
+  // R187E-F3: a preview is a function of the rule (the page's own
+  // contract at pricing.tsx:263-265) — a successful SAVE changes the
+  // rule, so the preview card must unmount. The input-seeding effect
+  // can't do it: onSuccess re-seeds the operator's exact typed values
+  // (same strings), so the effect never re-fires and the stale
+  // old-rule sample used to linger beside the new rule — with the
+  // destructive recompute confirm still citing its old-rule counts.
+  it("a successful SAVE drops the preview card (a save changes the rule the preview was computed under)", async () => {
+    fetchMock.mockImplementation((input: unknown) => {
+      const url = String(input);
+      if (url.includes("/api/admin/pricing/recompute")) {
+        return Promise.resolve(resLike({ body: DRY_RUN }));
+      }
+      return Promise.resolve(resLike({ body: {} }));
+    });
+
+    renderPage();
+
+    // The finding's exact sequence: the operator's edits happen FIRST
+    // (the draft is already dirty), THEN the preview runs (the dry-run
+    // computes under the SERVER's old rule — rate 10), THEN the save
+    // commits the draft. An edit AFTER the preview would clear it via
+    // the input effect; this order leaves only onSuccess to do it.
+    const rateInput = screen.getByLabelText("سعر الصرف — دينار لكل دولار ($1 =)");
+    fireEvent.change(rateInput, { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("button", { name: "معاينة التغييرات" }));
+    expect(await screen.findByText("معاينة إعادة الاحتساب")).toBeInTheDocument();
+
+    // Step 2: save the operator's exact typed values (the PUT).
+    fireEvent.click(screen.getByRole("button", { name: "حفظ الإعدادات" }));
+
+    expect(h.updateConfigBodies).toHaveLength(1);
+    expect(h.updateConfigBodies[0]).toMatchObject({ usd_to_lyd: 12 });
+
+    // The save's onSuccess re-seeds the SAME typed strings — so the
+    // stale-preview-clearing effect never fires; only the explicit
+    // setDryRun(null) unmounts the card.
+    await waitFor(() => {
+      expect(screen.queryByText("معاينة إعادة الاحتساب")).not.toBeInTheDocument();
+    });
+    expect((rateInput as HTMLInputElement).value).toBe("12");
+    // And the recompute confirm no longer carries the stale preview
+    // counts (the "no preview" arm).
+    fireEvent.click(screen.getByRole("button", { name: "إعادة احتساب أسعار الكتالوج" }));
+    await waitFor(() => expect(h.confirmCalls).toHaveLength(1));
+    expect(h.confirmCalls[0].description).not.toContain("المعاينة: 3");
   });
 });
 

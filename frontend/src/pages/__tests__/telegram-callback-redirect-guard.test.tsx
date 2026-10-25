@@ -116,3 +116,93 @@ describe("TelegramCallbackPage — the redirect guard is the canonical sanitizeI
     expect(window.location.pathname).toBe("/checkout");
   });
 });
+
+// ── R187 (C-F2) — the query-string fallback never forwards OUR routing
+// params into the signed payload ────────────────────────────────────────────
+describe("TelegramCallbackPage — the query fallback excludes ?redirect from the HMAC payload (C-F2/R187)", () => {
+  it("a query-string payload with ?redirect= POSTs a body carrying NO redirect key", async () => {
+    // No fragment → the defence-in-depth query fallback builds the
+    // data object. ?redirect is OUR own routing param, never part of
+    // the Telegram HMAC: forwarding it guaranteed bad_signature for
+    // every flow carrying a return path.
+    await renderAndAwaitLanding(
+      "/auth/telegram-callback?redirect=%2Fcheckout&id=42&hash=abc123&auth_date=1761000000&first_name=T",
+      "/checkout",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toContain("/api/auth/telegram");
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    // The Telegram auth fields ride the payload…
+    expect(body).toMatchObject({ id: "42", hash: "abc123", auth_date: "1761000000" });
+    // …our own routing param never does (nor the referral param).
+    expect(body).not.toHaveProperty("redirect");
+    expect(body).not.toHaveProperty("ref");
+  });
+});
+
+// ── R187 (C-F5) — the error legs keep the return path ──────────────────────
+describe("TelegramCallbackPage — /login?error= legs carry the sanitized redirect (C-F5/R187)", () => {
+  /** Renders at `path`, drains to /login, returns the settled search. */
+  async function renderAndAwaitLoginError(path: string): Promise<string> {
+    window.history.pushState(null, "", path);
+    const view = render(
+      <Router>
+        <TelegramCallbackPage />
+      </Router>,
+    );
+    await act(async () => {
+      for (let i = 0; i < 20 && window.location.pathname !== "/login"; i++) {
+        await Promise.resolve();
+      }
+    });
+    expect(window.location.pathname).toBe("/login");
+    const search = window.location.search;
+    view.unmount();
+    return search;
+  }
+
+  it("a mint that returns no token keeps ?redirect=/checkout on the /login?error= hop", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: "تعذّر التحقق", reason: "bad_signature" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const search = await renderAndAwaitLoginError(
+      `/auth/telegram-callback?redirect=${encodeURIComponent("/checkout")}${tgFragment()}`,
+    );
+
+    // The reason rides first, the guarded return path second — the
+    // exact format the backend's loginErrorRedirect emits (C-F5).
+    expect(search).toBe("?error=bad_signature&redirect=%2Fcheckout");
+  });
+
+  it("the cancelled leg (no usable payload) keeps the return path too", async () => {
+    // ?redirect present, no fragment, no id/hash/auth_date → the
+    // decode returns null → the cancelled navigation.
+    const search = await renderAndAwaitLoginError(
+      `/auth/telegram-callback?redirect=${encodeURIComponent("/checkout")}`,
+    );
+
+    expect(search).toBe("?error=cancelled&redirect=%2Fcheckout");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("an open-redirect value is still dropped on the error legs (the guard runs there too)", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const search = await renderAndAwaitLoginError(
+      `/auth/telegram-callback?redirect=${encodeURIComponent("//evil.com")}${tgFragment()}`,
+    );
+
+    // The network-level catch leg: the reason rides, the rejected
+    // protocol-relative target does not.
+    expect(search).toBe("?error=server_error");
+    expect(window.location.host).not.toContain("evil");
+  });
+});

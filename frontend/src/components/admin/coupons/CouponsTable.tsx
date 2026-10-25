@@ -30,15 +30,17 @@ import { type Coupon } from "@/components/admin/coupons/coupons-meta";
 export function CouponsTable({
   coupons,
   activeCount,
-  toggling,
-  archiving,
+  togglingIds,
+  archivingIds,
   onToggle,
   onDelete,
 }: {
   coupons: Coupon[];
   activeCount: number;
-  toggling: number | null;
-  archiving: number | null;
+  /** R187 (D-F5): the page's per-row busy Sets — overlapping actions
+   *  on different rows no longer clear each other's busy state. */
+  togglingIds: Set<number>;
+  archivingIds: Set<number>;
   onToggle: (coupon: Coupon) => void;
   /** R125-I3 (A2-16): the soft-archive DELETE — confirm-gated in the page. */
   onDelete: (coupon: Coupon) => void;
@@ -228,7 +230,7 @@ export function CouponsTable({
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => onToggle(coupon)}
-                    disabled={toggling === coupon.id}
+                    disabled={togglingIds.has(coupon.id)}
                     title={coupon.is_active ? "تعطيل" : "تفعيل"}
                     aria-label={
                       coupon.is_active
@@ -243,7 +245,7 @@ export function CouponsTable({
                        ≥24px (p-1.5 + w-4 = 26px). */
                     className="p-1.5 rounded-lg hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
                   >
-                    {toggling === coupon.id ? (
+                    {togglingIds.has(coupon.id) ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                     ) : coupon.is_active ? (
                       <ToggleRight className="w-4 h-4 text-status-success" />
@@ -257,12 +259,12 @@ export function CouponsTable({
                        soft archive (isActive:false), not a hard
                        delete; the old «حذف» label over-promised
                        destruction the API never performs. */
-                    disabled={archiving === coupon.id}
+                    disabled={archivingIds.has(coupon.id)}
                     title="أرشفة"
                     aria-label={`أرشفة الكوبون ${coupon.code}`}
                     className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
                   >
-                    {archiving === coupon.id ? (
+                    {archivingIds.has(coupon.id) ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                     ) : (
                       <Trash2 className="w-3.5 h-3.5" />

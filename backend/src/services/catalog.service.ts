@@ -731,22 +731,29 @@ export async function loadProductDetailById(id: number) {
  * cached loader.
  */
 export async function loadProductRecommendations(id: number) {
-  const [product] = await db
-    .select({ category: productsTable.category })
-    .from(productsTable)
-    .where(
-      and(
-        eq(productsTable.id, id),
-        // R143 (L4-5): the 110-F visibility mirror — the lookup stage is
-        // the one public product surface without it: archived/deactivated
-        // ids answered 200 + live peers while every sibling detail route
-        // 404s (catalog-security pins those). The peers query below
-        // already filters; the anchor product must obey the same rule.
-        eq(productsTable.isActive, true),
-        eq(productsTable.isArchived, false),
-      ),
-    )
-    .limit(1);
+  const [[product], flashSale] = await Promise.all([
+    db
+      .select({ category: productsTable.category })
+      .from(productsTable)
+      .where(
+        and(
+          eq(productsTable.id, id),
+          // R143 (L4-5): the 110-F visibility mirror — the lookup stage is
+          // the one public product surface without it: archived/deactivated
+          // ids answered 200 + live peers while every sibling detail route
+          // 404s (catalog-security pins those). The peers query below
+          // already filters; the anchor product must obey the same rule.
+          eq(productsTable.isActive, true),
+          eq(productsTable.isArchived, false),
+        ),
+      )
+      .limit(1),
+    // R187 (A-F1): the flash sale rides the SAME Promise.all the list
+    // loader (:521) and the detail loaders use — the rail used to select
+    // the raw products.price and ignore an active sale, overstating every
+    // recommended price the sibling surfaces discount.
+    getActiveFlashSale(),
+  ]);
 
   if (!product) return { found: false as const };
 
@@ -807,15 +814,24 @@ export async function loadProductRecommendations(id: number) {
     .orderBy(desc(recStockExpr), asc(productsTable.id))
     .limit(4);
 
+  const discountPercent = flashSale ? parseFloat(String(flashSale.discount_percent)) : 0;
+
   return {
     found: true as const,
-    items: recommendations.map((r) => ({
-      id: r.id,
-      slug: r.slug,
-      name: r.name,
-      image_url: r.imageUrl,
-      price: parseFloat(String(r.price)),
-      is_available: r.isAvailable,
-    })),
+    items: recommendations.map((r) => {
+      const basePrice = parseFloat(String(r.price));
+      return {
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        image_url: r.imageUrl,
+        // R187 (A-F1): the list loader's exact idiom — computeFlashSalePrice
+        // on the base when a sale is active. The rec DTO carries a single
+        // price field (no sale_price twin), so the discounted value IS the
+        // price the rail must render.
+        price: discountPercent > 0 ? computeFlashSalePrice(basePrice, discountPercent) : basePrice,
+        is_available: r.isAvailable,
+      };
+    }),
   };
 }

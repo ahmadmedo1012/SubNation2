@@ -247,7 +247,16 @@ export function ProviderCard({
                     <Input
                       id={fieldId}
                       type={field.isSecret && !showSecret[field.key] ? "password" : "text"}
-                      value={config[field.key] ?? ""}
+                      /* R187E-F5: the "[SET]" server mask never renders as
+                         the input's VALUE — the literal mask in a password
+                         field made the designed «••••••••••• (مُعيَّن)»
+                         placeholder unreachable dead code for every
+                         configured secret. The STATE still holds "[SET]"
+                         until the operator types, so an untouched save
+                         PATCHes the mask the backend already skips
+                         (routes/auth-settings.ts:794) — behavior-identical
+                         on save, honest on display. */
+                      value={config[field.key] === "[SET]" ? "" : (config[field.key] ?? "")}
                       onChange={(e) =>
                         setConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
                       }

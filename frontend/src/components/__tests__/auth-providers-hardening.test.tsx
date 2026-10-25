@@ -22,10 +22,11 @@
  *      overrides the server's omission.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { AuthProviders } from "@/components/auth/AuthProviders";
+import { signInWithFirebaseGoogle } from "@/lib/firebase-auth";
 
 const firebaseConfigured = vi.hoisted(() => ({ configured: false }));
 
@@ -262,4 +263,68 @@ describe("AuthProviders — R145 (D7): unavailable providers are never presented
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     },
   );
+
+  it("R187 (C-F10): an enabled+configured client_side Apple row renders NO button — a silent no-op is never presented as an option", async () => {
+    // The D7 truth table's missing row: client_side rows other than
+    // Google have NO executor in this component — the button rendered,
+    // the click did nothing (no error, no navigation). The gate now
+    // drops them exactly like the unconfigured Google row.
+    const appleClientSideRow = { ...appleRow, auth_type: "client_side" as const };
+    firebaseConfigured.configured = true;
+    fetchMock.mockResolvedValue(resLike({ body: { providers: [appleClientSideRow, googleRow] } }));
+
+    renderProviders();
+
+    // The renderable peer proves the settled list landed BEFORE the
+    // absence assertion (an assertion raced ahead of the microtask
+    // would false-pass forever)…
+    expect(await screen.findByRole("button", { name: "المتابعة عبر Google" })).toBeInTheDocument();
+    // …and the client_side Apple row never paints its no-op button.
+    expect(screen.queryByRole("button", { name: "المتابعة عبر Apple" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+// ── R187 (C-F6): the stale error banner clears on a new attempt ────────────
+describe("AuthProviders — attempt-start error reset (C-F6/R187)", () => {
+  // The R145 truth table's actionable Google row (client_side + env
+  // configured below → the click path is real).
+  const googleRow = {
+    id: "google",
+    label: "Google",
+    color: "#4285F4",
+    icon: "google",
+    auth_type: "client_side",
+    enabled: true,
+    has_config: true,
+    client_id: null,
+  };
+
+  it("after an error renders, a new provider click hides the banner while pending", async () => {
+    firebaseConfigured.configured = true;
+    fetchMock.mockResolvedValue(resLike({ body: { providers: [googleRow] } }));
+    const signIn = vi.mocked(signInWithFirebaseGoogle);
+    signIn.mockReset();
+    // First attempt: the popup dies → getErrorMessage collapses the
+    // English message to the Arabic generic → the banner renders.
+    signIn.mockRejectedValueOnce(new Error("popup closed by user"));
+    // Second attempt: never settles — the attempt stays pending so the
+    // banner's hidden-while-pending state is observable.
+    signIn.mockReturnValueOnce(new Promise(() => {}));
+
+    renderProviders();
+
+    const button = await screen.findByRole("button", { name: "المتابعة عبر Google" });
+    fireEvent.click(button);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    // The retry: the reset fires at attempt start, so the stale banner
+    // is hidden while the new attempt is in flight (the useWhatsAppOtp
+    // sendCode convention — the `error &&` render gate treats "" as
+    // hidden).
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
 });

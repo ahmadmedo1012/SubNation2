@@ -70,9 +70,14 @@ export function ConvertPointsCard({
                 «نقطة» was wrong for 3-10 (should be «نقاط»). Routed
                 through the shared formatCount plural engine like the
                 20+ other count sites (utils.ts:49). R115: the
-                threshold itself is the API's points_per_lyd. */}
+                threshold itself is the API's points_per_lyd. R187
+                (B-F6): the one/two branches join the family contract
+                (StatsRow's POINTS_COUNT_FORMS) — remainder 1 reads
+                «نقطة واحدة», 2 «نقطتان», not the many-form «نقطة». */}
             <span className="font-bold text-foreground">
               {formatCount(pointsPerLyd - data.points, {
+                one: "نقطة واحدة",
+                two: "نقطتان",
                 few: "نقاط",
                 many: "نقطة",
                 other: "نقطة",

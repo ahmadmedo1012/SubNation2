@@ -259,6 +259,27 @@ describe("HomePage — live product suggestions (R161-B)", () => {
     expect(screen.getByRole("button", { name: "عرض كل النتائج" })).toBeInTheDocument();
   });
 
+  it("a flash-sale row renders the SALE price — the ProductCard idiom, never the undiscounted base (R187 A-F2)", async () => {
+    // The list projection carries sale_price (api.schemas.ts); a row
+    // under an active flash sale must sell the discounted number, the
+    // same sale_price ?? price idiom every sibling product surface
+    // (ProductCard :139) rides.
+    const sale = routeSuggest(() =>
+      resLike({ body: [{ ...SUGGEST_ROW(4, "Netflix Flash"), sale_price: 20 }] }),
+    );
+    vi.stubGlobal("fetch", sale);
+
+    renderPage();
+    typeInto("نتفلكس");
+    await advance(300);
+
+    // Scoped to the suggestion listbox — the sort <select> renders its
+    // own <option> elements on the same page.
+    const row = within(suggestionListbox()).getByRole("option");
+    expect(row.textContent).toContain("20.00 د.ل");
+    expect(row.textContent).not.toContain("25.00 د.ل");
+  });
+
   it("inputs under 2 chars never fetch and render no panel", async () => {
     renderPage();
 

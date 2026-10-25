@@ -149,9 +149,11 @@ export function AuthErrorBanner() {
   const Icon = entry.tone === "info" ? Info : AlertCircle;
 
   return (
+    // R187 (C-F9): no aria-live override — role="alert" already implies
+    // aria-live="assertive"; the explicit polite downgraded the verdict
+    // to a murmur for assistive tech.
     <div
       role="alert"
-      aria-live="polite"
       className={`mb-4 px-3 py-2.5 border rounded-xl text-sm flex items-center gap-2.5 ${palette}`}
     >
       <Icon className="w-4 h-4 shrink-0" />

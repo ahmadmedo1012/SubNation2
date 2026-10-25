@@ -150,6 +150,12 @@ export default function NotificationsPage() {
     refetchOnMount: true,
   });
 
+  // R187 (B-F7): background refetch failures (the 60 s poll, the socket
+  // accelerator) with stale rows still on screen are NOT an error screen
+  // — only a failed first load is (the referrals.tsx loadError
+  // derivation). Bare isError blanked fully-rendered cached rows.
+  const loadError = isError && (pages?.pages.length ?? 0) === 0;
+
   // R153: NOTIFICATION_NEW_EVENT → immediate refetch (the bell's twin —
   // the event fires from hooks/useSocket.ts wherever a storefront socket
   // is mounted in this tab).
@@ -312,7 +318,7 @@ export default function NotificationsPage() {
       ) : /* R139 (precision): /35 → /60 — row-frame parity with the loaded
            list (read rows rest at /60 after this round; the 139-a
            loading→loaded frame-swap discipline). */
-      isError ? (
+      loadError ? (
         /* Distinct from "no notifications": an outage must never read as
            an empty history (the 93-C5 / F-05 class). */
         <FetchErrorCard

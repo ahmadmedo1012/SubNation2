@@ -228,19 +228,27 @@ router.post("/tickets/:id/reply", requireAdmin, async (req, res) => {
   if (!ticket)
     return res.status(404).json(createErrorResponse("التذكرة غير موجودة", ErrorCode.NOT_FOUND));
 
-  const [reply] = await db
-    .insert(ticketRepliesTable)
-    .values({
-      ticketId: id,
-      authorType: "admin",
-      message: message.trim(),
-    })
-    .returning();
+  // R187 (F7): the reply INSERT and the status UPDATE were two autocommit
+  // statements — a status-update failure 500'd with the reply already
+  // committed, and the admin UI's retry duplicated it. One transaction (the
+  // E-F6 ticket-create idiom): the status flip rides the reply's commit.
+  const reply = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(ticketRepliesTable)
+      .values({
+        ticketId: id,
+        authorType: "admin",
+        message: message.trim(),
+      })
+      .returning();
 
-  await db
-    .update(supportTicketsTable)
-    .set({ status: "in_progress" })
-    .where(eq(supportTicketsTable.id, id));
+    await tx
+      .update(supportTicketsTable)
+      .set({ status: "in_progress" })
+      .where(eq(supportTicketsTable.id, id));
+
+    return row;
+  });
 
   await createNotification(
     ticket.userId,

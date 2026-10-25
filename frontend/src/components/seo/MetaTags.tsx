@@ -224,7 +224,12 @@ export function MetaTags(input: Omit<SeoInput, "jsonLd">): null {
       'meta[name="viewport"]',
       "name",
       "viewport",
-      "width=device-width, initial-scale=1, viewport-fit=cover",
+      // R187 (H-F1): byte-identical to the static shell (index.html) —
+      // the upsert used to rewrite it WITHOUT interactive-widget
+      // (the R96 Android keyboard reflow key), silently stripping it
+      // on every route; the Navbar MutationObserver guard only covers
+      // the storefront, so this string is the fix that holds on /admin.
+      "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
     );
     upsertMeta('meta[name="theme-color"]:not([media])', "name", "theme-color", THEME_COLOR_DARK);
     upsertMeta(

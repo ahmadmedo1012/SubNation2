@@ -492,7 +492,11 @@ export default function AdminTopupsPage() {
   // fallback so the ledger always carries SOME reason.
   const handleBulkAction = async (action: "approve" | "reject", note = "") => {
     setIsBulkProcessing(true);
-    const ids = Array.from(selectedIds);
+    // R187 (D-F10): the CONFIRM counts pending∩selected, so the loop must
+    // send exactly that scope — a stale id (its row approved in another
+    // tab/session, pruned from pending on refetch) used to ride along as
+    // an N+1th request that 409'd into an unexplained «N من N+1» toast.
+    const ids = pendingTopups.filter((t) => selectedIds.has(t.id)).map((t) => t.id);
     let successCount = 0;
     const failures: Array<{ id: number; reason: string }> = [];
     // R123 (E3 P3h): the session-expiry exit breaks and returns INSIDE

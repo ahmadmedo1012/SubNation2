@@ -332,7 +332,10 @@ export function MobileTransferForm({
           <div
             id="wallet-error"
             role="alert"
-            aria-live="polite"
+            /* R187 (L-F2): no explicit aria-live — role="alert" alone
+                carries the implicit assertive semantics a money-path
+                error banner needs; the old aria-live="polite" override
+                queued it behind other announcements. */
             className="flex items-center gap-2.5 text-destructive text-sm bg-destructive/8 border border-destructive/18 px-4 py-3 rounded-xl mb-3 shake"
           >
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -351,7 +354,8 @@ export function MobileTransferForm({
              CTA itself): the visible «جارٍ الإرسال…» label is
              already the accessible name. No page-level aria-live
              twin for the outcome: the #wallet-error banner below
-             is role="alert" + aria-live="polite", and success
+             is role="alert" (assertive — R187 L-F2 removed the
+             polite override), and success
              hands off to TopupWaitingModal whose body carries
              its own role=status live region — adding one here
              would double-announce. The lypay twin CTA below

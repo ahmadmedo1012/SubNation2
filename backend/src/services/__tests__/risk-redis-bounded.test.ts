@@ -50,6 +50,7 @@ function makeBlackHoledClient(): Record<string, () => unknown> {
 
 import { getRiskConfig, invalidateRiskConfig } from "../risk-config-cache.service";
 import { scoreEvent } from "../risk-scoring.service";
+import { invalidateUserAggregate } from "../../lib/risk-aggregate";
 
 const SAVED_TIMEOUT_MS = process.env.REDIS_COMMAND_TIMEOUT_MS;
 
@@ -104,6 +105,14 @@ describe("R146 F1 — risk pipeline Redis ops are bounded (black-holed socket)",
     // Seed the in-memory cache first so the invalidation has state to clear.
     await getRiskConfig();
     await expect(invalidateRiskConfig()).resolves.toBeUndefined();
+  });
+
+  it("R187 (G-F2): invalidateUserAggregate settles when DEL black-holes (the last unwrapped command)", async () => {
+    // risk-aggregate's get (:49) and cachePut (:111) were bounded by
+    // 99-R1/R2; the del in invalidateUserAggregate was the ONLY unwrapped
+    // Redis command left in the backend — pre-fix this await never settled
+    // and the test times out.
+    await expect(invalidateUserAggregate(42)).resolves.toBeUndefined();
   });
 
   it("scoreEvent settles when the degraded-flag SET black-holes (persist fails → markPipelineDegraded)", async () => {

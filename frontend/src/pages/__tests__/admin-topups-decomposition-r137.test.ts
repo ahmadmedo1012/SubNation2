@@ -269,3 +269,13 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
     expect(meta).toContain("?.status === 401;");
   });
 });
+
+describe("R187 (D-F11) — the row-selector checkbox rides the family hit-area idiom", () => {
+  it("TopupCard's selection button carries the p-2 -m-1 row-selector recipe", () => {
+    // The checkbox feeds the BULK MONEY actions and rode a ~24px target
+    // (p-1) under the family's own documented row-selector hit-area
+    // idiom (DesktopOrderRow.tsx:58's p-2 -m-1 ≈ 28px).
+    const card = read("src/components/admin/topups/TopupCard.tsx");
+    expect(card).toContain('className="p-2 -m-1 rounded hover:bg-secondary/50');
+  });
+});

@@ -367,7 +367,10 @@ export const monitoringErrorsTotal = new Counter({
  * rule: alert rule name (e.g., "api-5xx-rate", "auth-failure-rate")
  * severity: "info" | "warning" | "critical"
  * channel: "telegram" | "discord" | "webhook"
- * outcome: "delivered" | "deduped" | "rate-limited" | "failed"
+ * outcome: "delivered" | "deduped" | "rate-limited" | "failed" |
+ *   "would-dispatch" (ALERTING_ENABLED=false dark launch) |
+ *   "skipped" (channel unconfigured) — R187 (G-F1): the counter used to
+ *   conflate the last two into "rate-limited"
  */
 export const alertsDispatchedTotal = new Counter({
   name: "alerts_dispatched_total",

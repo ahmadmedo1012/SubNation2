@@ -97,14 +97,16 @@ export const ALERT_RULES: AlertRuleSpec[] = [
     name: "auth_failure_rate_high",
     severity: "warning",
     windowSec: 300,
-    threshold: "> 20%",
+    // R187 (G-F6): a failure COUNT per 60s tick (delta ≥ 20, ALERT_AUTH_FAILURE_DELTA), not a %.
+    threshold: "≥ 20 auth failures / 60s evaluator tick",
     runbookSection: "#auth-failure",
   },
   {
     name: "firebase_verifyidtoken_failures",
     severity: "critical",
     windowSec: 300,
-    threshold: "> 5",
+    // R187 (G-F6): a plain delta count (≥ 5 failures), not a rate.
+    threshold: "≥ 5 token-verify failures / 300s window",
     runbookSection: "#firebase-verify",
   },
   {
@@ -153,7 +155,8 @@ export const ALERT_RULES: AlertRuleSpec[] = [
     name: "abnormal_lockouts",
     severity: "warning",
     windowSec: 300,
-    threshold: "≥ 10 lockouts (per IP or global)",
+    // R187 (G-F6): the implemented arm is GLOBAL-only (no per-IP dimension exists).
+    threshold: "≥ 10 lockouts (global) / 300s window",
     runbookSection: "#lockouts",
   },
 ];
@@ -184,11 +187,11 @@ function alertThresholdEnv(name: string, fallback: number): number {
 // ── F1 (round-98, 98-F5): bounded in-memory dedup fallback ───────────────────
 //
 // The Redis path above is unchanged and preferred; this store only answers
-// when getRedisClient() returns null (REDIS_URL unset → the current production
-// shape, or a mid-run outage). Mirrors lib/telegram-replay.ts's capped-store
-// pattern: exact-key claims, TTL'd entries, size-capped with FIFO eviction
-// (Map preserves insertion order), opportunistic prune — no timers, so the
-// unref discipline of the evaluator interval is preserved.
+// when getRedisClient() returns null (REDIS_URL unset → the production shape,
+// or a mid-run outage). Mirrors telegram-replay.ts's capped-store pattern:
+// exact-key claims, TTL'd entries, size-capped FIFO eviction (Map preserves
+// insertion order), opportunistic prune — no timers, so the evaluator
+// interval's unref discipline is preserved.
 const DEDUP_MEMORY_MAX_ENTRIES = 128;
 /** Mutable only for tests via __test.setDedupMemoryStoreLimit. */
 let dedupMemoryStoreLimit = DEDUP_MEMORY_MAX_ENTRIES;
@@ -268,11 +271,10 @@ class AlertingService {
   public start(): void {
     if (this.evaluatorInterval) return;
     // 99-R2 (R99-A1 P3): baselines do NOT survive a stop/start gap. The
-    // first tick after a leadership handover (demote → re-acquire, or a
-    // worker-tier restart) measured its delta over the ENTIRE gap,
-    // violating each rule's documented windowSec (e.g. auth_failure
-    // windowSec=300 saw a 40-minute delta) — a single burst before the
-    // gap then fired a false alert on the new leader's first tick.
+    // first tick after a handover (demote → re-acquire, or a worker restart)
+    // measured its delta over the ENTIRE gap, violating each rule's
+    // windowSec (auth_failure 300s saw a 40-minute delta) — one burst
+    // before the gap fired a false alert on the new leader's first tick.
     // Fresh maps make the first tick re-seed the baseline (delta 0).
     this.counterBaseline.clear();
     this.histogramBaseline.clear();
@@ -399,12 +401,10 @@ class AlertingService {
   private async evalWorkerHeartbeatMissing(rule: AlertRuleSpec): Promise<boolean> {
     const redis = getRedisClient();
     if (!redis) return false; // can't evaluate without Redis; fail safe (no alert)
-    // F8 (round-94 A6): R5 discipline — this was the one raw, unbounded
-    // `redis.get` left in the rule evaluator. During an outage the
-    // offline-queued command never settled, hanging the entire sequential
-    // evaluation cycle. Bounded now; a timeout/Redis error propagates to
-    // evaluateRules' catch (monitoring-error counter + fail-safe no-alert),
-    // exactly like every other bounded Redis op in this family.
+    // F8 (round-94 A6): the one raw, unbounded `redis.get` left in the rule
+    // evaluator — an offline-queued command hung the whole sequential cycle.
+    // Bounded now; a timeout/Redis error propagates to evaluateRules' catch
+    // (monitoring-error counter + fail-safe no-alert), like every sibling.
     const raw = await withRedisCommandTimeout(
       "heartbeat_rule_get",
       () => redis.get("worker:heartbeat"),
@@ -631,11 +631,12 @@ class AlertingService {
     if (process.env.ALERTING_ENABLED === "false") {
       const outcome: ChannelDeliveryResult["outcome"] = "would-dispatch";
       for (const channel of ["telegram", "discord", "webhook"] as AlertChannel[]) {
+        // R187 (G-F1): the real outcome — the dark launch never consults the limiter.
         this.incrementAlertsDispatched(
           alertEvent.rule,
           alertEvent.severity,
           channel,
-          "rate-limited",
+          "would-dispatch",
         );
         results.push({ channel, outcome, attempts: 0 });
       }
@@ -696,7 +697,8 @@ class AlertingService {
 
     // Channel skip (no creds configured) — record but do not fail
     if (!this.channelHasCredentials(channel)) {
-      this.incrementAlertsDispatched(alertEvent.rule, alertEvent.severity, channel, "rate-limited");
+      // R187 (G-F1): the real outcome — this branch never consulted the limiter.
+      this.incrementAlertsDispatched(alertEvent.rule, alertEvent.severity, channel, "skipped");
       return { channel, outcome: "skipped", attempts: 0 };
     }
 
@@ -768,13 +770,11 @@ class AlertingService {
         const body = await response.text().catch(() => "");
         throw new Error(`Telegram API ${response.status}: ${body.slice(0, 200)}`);
       }
-      // F5 (round-98, 98-F5): Telegram answers HTTP 200 with body.ok:false
-      // for application-level rejections ("message is too long", blocked
-      // bot, wrong chat) — src/telegram.ts:18-25 documents the contract.
-      // Checking response.ok alone marked those "delivered" while no page
-      // was sent and the counter showed green. Parse the body (same idiom
-      // as telegram.ts:403-420) and throw so dispatchToChannel's retry +
-      // failure accounting engage.
+      // F5 (round-98, 98-F5): Telegram answers HTTP 200 with body.ok:false for
+      // application-level rejections ("message is too long", blocked bot,
+      // wrong chat) — telegram.ts:18-25 documents the contract. response.ok
+      // alone marked those "delivered" while no page was sent. Parse the body
+      // (telegram.ts:403-420's idiom) and throw so retry + failure accounting engage.
       const body = (await response.json().catch(() => null)) as {
         ok?: boolean;
         description?: string;
@@ -900,7 +900,7 @@ class AlertingService {
     rule: string,
     severity: AlertSeverity,
     channel: AlertChannel,
-    outcome: "delivered" | "deduped" | "rate-limited" | "failed",
+    outcome: ChannelDeliveryResult["outcome"],
   ): void {
     try {
       this.alertsDispatchedTotal?.inc({ rule, severity, channel, outcome });

@@ -192,6 +192,13 @@ const KNOWN_DROPPED: ReadonlyArray<{ method: string; path: string; header: strin
   { method: "post", path: "/admin/referrals/{id}/credit", header: "Idempotency-Key" },
   { method: "patch", path: "/admin/users/{id}", header: "Idempotency-Key" },
   { method: "post", path: "/webhook/telegram", header: "x-telegram-bot-api-secret-token" },
+  // R187-3 (F-F2): the two money mutations whose idempotency contract
+  // the spec previously omitted — the header params landed with the
+  // documented 200/409 arms; same orval react-query drop class as the
+  // six ledger rows above (per-call RequestInit headers through
+  // customFetch).
+  { method: "post", path: "/wallet/topups", header: "Idempotency-Key" },
+  { method: "post", path: "/loyalty/convert-points", header: "Idempotency-Key" },
 ];
 
 const reactClientFiles = ["api.ts", "api.schemas.ts"].map((f) => path.join(reactClientDir, f));

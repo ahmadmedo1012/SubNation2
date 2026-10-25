@@ -201,9 +201,10 @@ describe("AdminTicketsPage — a failed queue load is an error, not a false empt
     expect(await screen.findByText("لم يصل الاشتراك")).toBeInTheDocument();
 
     // The awaiting row carries the cue badge; the open-without-it row
-    // does not — plus the header count chip («1 بانتظار ردك»).
+    // does not — plus the header count chip («1 تذكرة بانتظار ردك»,
+    // formatCount's dual/plural family — R187L-F1).
     expect(screen.getAllByText("بانتظار ردك").length).toBe(1);
-    expect(screen.getByText("1 بانتظار ردك")).toBeInTheDocument();
+    expect(screen.getByText("1 تذكرة بانتظار ردك")).toBeInTheDocument();
     // The cue rides the awaiting row (its card contains the badge).
     const awaitingCard = screen.getByText("لم يصل الاشتراك").closest("button")!;
     expect(within(awaitingCard).getByText("بانتظار ردك")).toBeInTheDocument();

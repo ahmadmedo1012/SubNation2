@@ -257,6 +257,40 @@ describe("ReferralsPage — outage ≠ empty, copy + points contracts (R118-A5 #
   });
 });
 
+// ── R187 (B-F2 / B-F4): the LTR phone run + the truncated-window chip ────
+describe("ReferralsPage — R187 account-page fixes", () => {
+  it("the masked-phone run carries dir=ltr (B-F2: the mask's internal neutrals flip in the RTL base)", async () => {
+    // "091****567" is the backend mask's exact class (routes/loyalty.ts):
+    // Latin digits with NEUTRAL asterisks between them — under the RTL
+    // base direction the Unicode bidi algorithm visually reorders the
+    // segments ("567****091"). The <p> is the referral-code sibling's
+    // dir="ltr" twin.
+    state.events = [{ ...event(1, "pending", 40), phone_masked: "091****567" }];
+
+    renderPage();
+
+    const phone = await screen.findByText("091****567");
+    expect(phone.tagName).toBe("P");
+    expect(phone).toHaveAttribute("dir", "ltr");
+  });
+
+  it("a full 200-row window captions «عرض آخر 200 إحالة», never the raw window count (B-F4)", async () => {
+    // The backend caps GET /api/loyalty/referrals at 200 rows/page and
+    // this page fetches page 1 only — a full window is TRUNCATED while
+    // the stat tiles above carry the TRUE aggregate (referrals_total).
+    // The chip states what's shown (the WalletStatementCard honesty
+    // idiom), never the window count presented as the total.
+    state.events = Array.from({ length: 200 }, (_, i) => event(i + 1, "credited", 50));
+
+    renderPage();
+    await screen.findByText("••••1");
+
+    expect(screen.getByText("عرض آخر 200 إحالة")).toBeInTheDocument();
+    // …and the plain-count branch (the raw window count) does not render.
+    expect(screen.queryByText("200")).not.toBeInTheDocument();
+  });
+});
+
 // ── B-F9 (R186): handleShare failure discrimination ──────────────────────
 // navigator.share rejects BOTH for user cancel (AbortError — a silent
 // no-op by design) and for real failures; the old bare `catch {}` swallowed

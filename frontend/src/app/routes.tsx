@@ -179,7 +179,10 @@ export function ProductsAliasRedirect() {
   return null;
 }
 
-function AdminProtectedRoutes() {
+/** R187 (H-F2): exported for the admin session-guard timeout pin test
+ *  (the R129-B1 ProductsAliasRedirect precedent — App.tsx re-exports
+ *  stay untouched). */
+export function AdminProtectedRoutes() {
   const { adminToken, setAdminToken } = useAuth();
   const [location, navigate] = useLocation();
 
@@ -205,10 +208,25 @@ function AdminProtectedRoutes() {
     gcTime: 5 * 60 * 1000,
     retry: false,
     queryFn: async ({ signal }) => {
+      // R187 (H-F2): the guard fetch is bounded at 10 s (the sibling
+      // session-validity probes' budget — auth.tsx's boot probes since
+      // R116 A5-2). A black-holed TCP used to leave isPending FOREVER:
+      // the whole admin console sat on the route skeleton with retry:
+      // false and no error card. The merged signal (AbortSignal.any,
+      // first abort wins) keeps TanStack's unmount cancellation intact;
+      // engines lacking the static degrade to the caller signal alone
+      // (the custom-fetch resolveRequestSignal idiom — dropping the
+      // ceiling beats breaking unmount semantics). The timeout abort
+      // rejects the query → the guard falls through to rendering
+      // children, the documented transient-failure posture below.
+      const guardSignal =
+        typeof AbortSignal.any === "function" && typeof AbortSignal.timeout === "function"
+          ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
+          : signal;
       try {
         const response = await fetch("/api/admin/session", {
           headers: { Authorization: `Bearer ${adminToken}` },
-          signal,
+          signal: guardSignal,
         });
         if (response.ok) return { valid: true };
 

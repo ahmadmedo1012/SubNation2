@@ -233,3 +233,14 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
     expect(csv).toContain("export function orderCsvRows(");
   });
 });
+
+describe("R187 (D-F8) — the stats panel toggle exposes its expanded state", () => {
+  it("OrdersStatsPanel's toggle button carries aria-expanded (the sibling collapsible idiom)", () => {
+    // Every sibling collapsible (StockoutRiskPanel, the products editor,
+    // UsersToolbar) carries aria-expanded — the stats panel's toggle was
+    // the lone miss, leaving AT users without the collapsed/expanded
+    // verdict on the orders console.
+    const panel = read("src/components/admin/orders/OrdersStatsPanel.tsx");
+    expect(panel).toContain("aria-expanded={showStats}");
+  });
+});

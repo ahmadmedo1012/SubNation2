@@ -327,6 +327,71 @@ describe("POST /admin/products/:id/inventory — R119-B1 (A1 F-4) credential pas
   });
 });
 
+describe("POST /admin/products/:id/inventory — R187 (F5) account email length guard", () => {
+  // inventory.account_email is varchar(255): a longer email 500'd (22001)
+  // at the batch INSERT instead of answering the house 400 — the exact
+  // R119-B1 password-bound class, on the email column beside it.
+
+  it("a 256-char email (structured entries) → 400 INVALID_DATA, nothing inserted", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+
+      const res = await postInventory(url, token, productId, {
+        entries: [{ kind: "credentials", email: `${"e".repeat(248)}@t.local`, password: "pw-ok" }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      expect((res.body as { error: string }).error).toContain("بريد الحساب");
+      expect((res.body as { error: string }).error).toContain("255");
+      // The batch is rejected whole — no partial row leaked past the guard.
+      expect(await inventoryRows(productId)).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+
+  it("a 255-char email (the exact column boundary) passes the guard", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+      const email = `${"e".repeat(247)}@t.local`; // 247 + 8 ("@t.local") = 255
+
+      const res = await postInventory(url, token, productId, {
+        entries: [{ kind: "credentials", email, password: "pw-edge" }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ added: 1, skipped_duplicates: 0 });
+
+      const rows = await inventoryRows(productId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].accountEmail).toBe(email);
+    } finally {
+      close();
+    }
+  });
+
+  it("the legacy bulk_text path guards the same 255-char email bound", async () => {
+    const { url, close } = await listen(buildApp());
+    try {
+      const token = await seedAdmin();
+      const productId = await seedProduct();
+
+      const res = await postInventory(url, token, productId, {
+        bulk_text: `${"e".repeat(248)}@t.local|pw-ok`,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: "INVALID_DATA" });
+      expect((res.body as { error: string }).error).toContain("بريد الحساب");
+      expect(await inventoryRows(productId)).toHaveLength(0);
+    } finally {
+      close();
+    }
+  });
+});
+
 describe("GET /admin/products/:id/inventory — R122 (A4-P2-7) preview cap", () => {
   // The route used to materialize EVERY inventory row of the product (the
   // upload path allows up to 100,000) + one GCM decrypt per row. The fix:

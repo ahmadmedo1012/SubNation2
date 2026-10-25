@@ -107,7 +107,10 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
 
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(6);
+    // R187 (B-F3): +1 — the loyalty family joined the storefront resync
+    // set (the /loyalty + /referrals pages hold no socket of their own;
+    // the R153 rationale finally covers them).
+    expect(invalidateSpy).toHaveBeenCalledTimes(7);
 
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
@@ -120,6 +123,9 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     // §4 ledger surface stale contradicted the money screen itself.
     expect(keys).toContain(JSON.stringify(["/api/wallet/ledger"]));
     expect(keys).toContain(JSON.stringify(["/api/auth/me"]));
+    // R187 (B-F3): the loyalty family (overview/ledger/referrals ride
+    // the shared ["loyalty", …] prefix key).
+    expect(keys).toContain(JSON.stringify(["loyalty"]));
     // R153: the paged notifications-history family (the /notifications
     // page holds no socket of its own — the resync is its freshness net).
     expect(keys).toContain(JSON.stringify(["/api/notifications"]));
@@ -144,12 +150,13 @@ describe("SessionActivityManager — visibility resync (R104)", () => {
     // Rapid re-focus — throttled.
     now += 1_000;
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(6);
+    // R187 (B-F3): 7 — the loyalty family joined the set (throttled leg).
+    expect(invalidateSpy).toHaveBeenCalledTimes(7);
 
-    // 31 s later — fresh resync allowed.
+    // 31 s later — fresh resync allowed (two full 7-key sets).
     now += 30_000;
     await fireVisible();
-    expect(invalidateSpy).toHaveBeenCalledTimes(12);
+    expect(invalidateSpy).toHaveBeenCalledTimes(14);
 
     dateNowSpy.mockRestore();
   });
@@ -318,7 +325,9 @@ describe("SessionActivityManager — admin-family visibility resync (R127-B6-2)"
     // set (stats/orders/topups/users/tickets/risk×2/products — the R134
     // additions: chart-data + referrals + pricing/config — the R153
     // additions: the alerts families, closing the reconnect badge gap).
-    expect(invalidateSpy).toHaveBeenCalledTimes(19);
+    // R187 (B-F3): +1 — the storefront set's loyalty family joins the
+    // combined count (7 storefront + 13 admin keys).
+    expect(invalidateSpy).toHaveBeenCalledTimes(20);
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
@@ -380,13 +389,16 @@ describe("SessionActivityManager — SOCKET_RESYNC_EVENT storefront consumer (R1
       window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(6); // R153: +the notifications history family
+    // R187 (B-F3): 7 — +the loyalty family (R153's +notifications).
+    expect(invalidateSpy).toHaveBeenCalledTimes(7);
     const keys = invalidateSpy.mock.calls
       .map((call) => call[0])
       .filter((arg): arg is { queryKey: unknown[] } => Boolean(arg?.queryKey))
       .map((arg) => JSON.stringify(arg.queryKey));
     expect(keys).toContain(JSON.stringify(["/api/wallet"]));
     expect(keys).toContain(JSON.stringify(["/api/wallet/topups"]));
+    // R187 (B-F3): the loyalty family rides the event path too.
+    expect(keys).toContain(JSON.stringify(["loyalty"]));
     // R-140-o: the ledger family rides the resync event too (the
     // storefront money set is ONE definition — lib/socket-resync.ts).
     expect(keys).toContain(JSON.stringify(["/api/wallet/ledger"]));
@@ -407,7 +419,9 @@ describe("SessionActivityManager — SOCKET_RESYNC_EVENT storefront consumer (R1
       window.dispatchEvent(new CustomEvent("subnation:socket-resync"));
     });
 
-    expect(invalidateSpy).toHaveBeenCalledTimes(12);
+    // R187 (B-F3): 14 — two full storefront sets (2 × 7, the loyalty
+    // family included) on two consecutive events.
+    expect(invalidateSpy).toHaveBeenCalledTimes(14);
   });
 
   it("admin-only session: SAM does NOT invalidate on the event (SocketInitializer owns the admin branch)", async () => {

@@ -200,14 +200,19 @@ export const ListPublicAuthProvidersResponse = zod.object({
   ),
   whatsapp_status: zod
     .union([
+      zod.literal("created"),
+      zod.literal("initializing"),
+      zod.literal("qr_ready"),
+      zod.literal("authenticating"),
       zod.literal("ready"),
       zod.literal("settling"),
-      zod.literal("unavailable"),
+      zod.literal("disconnected"),
+      zod.literal("failed"),
       zod.literal(null),
     ])
     .nullable()
     .describe(
-      "Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.",
+      'Live OTP channel readiness: the OpenWA session lifecycle values (created, initializing, qr_ready, authenticating, ready, disconnected, failed) with the route-synthesized "settling" for the post-link warm-up window; null when the channel is not configured or the gateway is unreachable. "failed" = pairing revoked (operator must re-pair); "qr_ready" = pairing pending a scan.',
     ),
 });
 
@@ -535,7 +540,7 @@ export const ListProductsResponseItem = zod
     price: zod
       .number()
       .describe(
-        "Cheapest active variant's LYD price when variants exist, otherwise the product-level LYD price.",
+        "Cheapest BUYABLE variant's LYD price when variants exist (active ∧ deliverable stock — the R130 A7-F1 semantics with the availability-blind fallback when every variant is drained), otherwise the product-level LYD price.\n",
       ),
     price_from: zod
       .boolean()
@@ -591,7 +596,7 @@ export const GetProductResponse = zod.object({
   price: zod
     .number()
     .describe(
-      'Cheapest active variant\'s LYD price when variants exist (MIN(variants.price) — the storefront "تبدأ من" number), otherwise the product-level LYD price.\n',
+      "Cheapest BUYABLE variant's LYD price when variants exist (active ∧ deliverable stock — the R130 A7-F1 «تبدأ من» number; falls back to the availability-blind min when EVERY variant is drained, since the product renders sold-out anyway), otherwise the product-level LYD price.\n",
     ),
   price_from: zod
     .boolean()
@@ -720,7 +725,7 @@ export const GetProductBySlugResponse = zod.object({
   price: zod
     .number()
     .describe(
-      'Cheapest active variant\'s LYD price when variants exist (MIN(variants.price) — the storefront "تبدأ من" number), otherwise the product-level LYD price.\n',
+      "Cheapest BUYABLE variant's LYD price when variants exist (active ∧ deliverable stock — the R130 A7-F1 «تبدأ من» number; falls back to the availability-blind min when EVERY variant is drained, since the product renders sold-out anyway), otherwise the product-level LYD price.\n",
     ),
   price_from: zod
     .boolean()
@@ -1112,8 +1117,29 @@ export const ListTopupsResponseItem = zod.object({
 export const ListTopupsResponse = zod.array(ListTopupsResponseItem);
 
 /**
+ * Mounted behind the idempotency middleware (routeKey
+ * wallet.topups.create) — send a fresh Idempotency-Key per top-up
+ * so a network retry or double-tap cannot insert a second pending
+ * row. The service ALSO carries the durable in-transaction guard
+ * (TopupService.createPendingTopup): a retry after a Redis flush /
+ * TTL boundary replays the ORIGINAL topup (200 + Idempotent-Replayed:
+ * true) instead of re-inserting; a same-key re-send with a different
+ * body returns 409 IDEMPOTENCY_KEY_REUSE; the same key while the
+ * original request is still executing returns 409 (in-flight).
  * @summary Submit a top-up request
  */
+export const createTopupHeaderIdempotencyKeyMax = 100;
+
+export const CreateTopupHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(createTopupHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Client-generated idempotency key. The middleware only engages\nwhen the key is at least 8 characters; shorter (or absent) keys\npass through (transitional). With a valid key, duplicate\nsubmissions of the same body replay the cached response for\n24h (per user + route), the same key re-sent with a different\nbody returns 409 IDEMPOTENCY_KEY_REUSE, and the same key while\nthe original request is still executing returns 409 (in-flight\nconflict).\n",
+    ),
+});
+
 export const createTopupBodyAmountMin = 0.01;
 export const createTopupBodyAmountMax = 10000;
 
@@ -1506,8 +1532,24 @@ export const GetLoyaltyResponse = zod
  * lock on both mutated columns, and a wallet_ledger row
  * (type=adjustment, referenceType=loyalty_conversion). Concurrent
  * mutations lose the optimistic lock → 409 CONFLICT (retry-safe).
+ * Mounted behind the idempotency middleware (routeKey
+ * loyalty.convert) PLUS the durable idempotency_keys guard — send
+ * a stable per-intent Idempotency-Key (the frontend does) so a
+ * lost-response retry cannot double-convert.
  * @summary Convert loyalty points to wallet credit (money-creation path)
  */
+export const convertPointsHeaderIdempotencyKeyMax = 100;
+
+export const ConvertPointsHeader = zod.object({
+  "Idempotency-Key": zod
+    .string()
+    .max(convertPointsHeaderIdempotencyKeyMax)
+    .optional()
+    .describe(
+      "Client-generated idempotency key. The middleware only engages\nwhen the key is at least 8 characters; shorter (or absent) keys\npass through (transitional). With a valid key, duplicate\nsubmissions of the same body replay the cached response for\n24h (per user + route), the same key re-sent with a different\nbody returns 409 IDEMPOTENCY_KEY_REUSE, and the same key while\nthe original request is still executing returns 409\nIDEMPOTENCY_IN_FLIGHT.\n",
+    ),
+});
+
 export const convertPointsBodyPointsOneMin = 100;
 export const convertPointsBodyPointsOneMultipleOf = 100;
 
@@ -1622,21 +1664,30 @@ export const ListSupportTicketsResponseItem = zod.object({
 export const ListSupportTicketsResponse = zod.array(ListSupportTicketsResponseItem);
 
 /**
- * The message becomes the first reply (author_type=user). An
- * unknown category silently falls back to "other". 429 bodies are
- * the standard {error, code: RATE_LIMITED} envelope.
+ * The message becomes the first reply (author_type=user). The
+ * category is a closed enum — an unknown value is rejected with
+ * 400 INVALID_DATA (omit it for the "other" default). 429 bodies
+ * are the standard {error, code: RATE_LIMITED} envelope.
  * @summary Open a support ticket (rate-limited: 5/hour/user)
  */
 export const createSupportTicketBodyTitleMax = 255;
 
+export const createSupportTicketBodyMessageMax = 4000;
+
 export const CreateSupportTicketBody = zod
   .object({
     title: zod.string().min(1).max(createSupportTicketBodyTitleMax),
-    message: zod.string().min(1).describe("Becomes the first reply (author_type=user)."),
+    message: zod
+      .string()
+      .min(1)
+      .max(createSupportTicketBodyMessageMax)
+      .describe(
+        "Becomes the first reply (author_type=user) — capped at 4000 chars (SEC-92-07 storage bound).",
+      ),
     category: zod.enum(["billing", "technical", "order", "account", "other"]).optional(),
   })
   .describe(
-    'title and message are trimmed; an unknown category silently\nfalls back to "other".\n',
+    'title and message are trimmed; the category is a closed enum —\nan unknown value is rejected with 400 INVALID_DATA (omit it for\nthe "other" default).\n',
   );
 
 export const CreateSupportTicketResponse = zod.object({
@@ -1691,18 +1742,61 @@ export const ReplySupportTicketResponse = zod.object({
 });
 
 /**
- * @summary List the current user's notifications (≤40, newest first)
+ * R128-IMP-5 (A9-F2 / B1 item 8): the response shape is OPT-IN by
+ * naming the `page` param. Paramless (or a bare `?page=` with an
+ * empty value) → the legacy bell array (NotificationBell guards
+ * `Array.isArray(data)`; newest first, 40-row cap). `?page=N` →
+ * the paged envelope (NotificationsPage — the admin alerts inbox
+ * idiom) with the honest total and hasMore. Same createdAt-DESC +
+ * id-DESC ordering on both branches so offset pages never shuffle
+ * same-timestamp rows. Cache-Control: no-store.
+ * @summary List the current user's notifications (≤40 newest first; opt-in paged envelope)
  */
-export const ListNotificationsResponseItem = zod.object({
-  id: zod.int(),
-  type: zod.string().describe('e.g. "order" | "loyalty" | "system".'),
-  title: zod.string(),
-  message: zod.string().nullish(),
-  link: zod.string().nullish(),
-  is_read: zod.boolean(),
-  created_at: zod.string(),
+export const ListNotificationsQueryParams = zod.object({
+  page: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe(
+      "1-based page number (default 1). Naming the param at all\n(even `?page=` empty → page 1) switches the response to the\npaged envelope; omit it entirely for the legacy bell array.\n",
+    ),
+  limit: zod.coerce
+    .number()
+    .int()
+    .nullish()
+    .describe("Page size, clamped to [1, 100] (default 20) — paged-envelope branch only."),
 });
-export const ListNotificationsResponse = zod.array(ListNotificationsResponseItem);
+
+export const ListNotificationsResponse = zod.union([
+  zod.array(
+    zod.object({
+      id: zod.int(),
+      type: zod.string().describe('e.g. "order" | "loyalty" | "system".'),
+      title: zod.string(),
+      message: zod.string().nullish(),
+      link: zod.string().nullish(),
+      is_read: zod.boolean(),
+      created_at: zod.string(),
+    }),
+  ),
+  zod.object({
+    notifications: zod.array(
+      zod.object({
+        id: zod.int(),
+        type: zod.string().describe('e.g. "order" | "loyalty" | "system".'),
+        title: zod.string(),
+        message: zod.string().nullish(),
+        link: zod.string().nullish(),
+        is_read: zod.boolean(),
+        created_at: zod.string(),
+      }),
+    ),
+    total: zod.int().describe("Honest row count for the user (not the page length)."),
+    page: zod.int(),
+    limit: zod.int(),
+    hasMore: zod.boolean().describe("offset + page length < total."),
+  }),
+]);
 
 /**
  * @summary Mark all of the caller's notifications read
@@ -2977,16 +3071,21 @@ export const ListAdminUsersResponse = zod.array(ListAdminUsersResponseItem);
  * both are present) route through AdjustmentService: transactional
  * optimistic-lock update + a wallet_ledger row of type=adjustment,
  * so every monetary change stays reconstructable from the ledger
- * (Constitution Principle I). Loyalty fields
- * (`loyalty_points`, `loyalty_tier`) use a legacy direct-update
- * path with no ledger.
+ * (Constitution Principle I). Loyalty points (`loyalty_points`)
+ * commit in the SAME single transaction as their points_ledger
+ * admin_set row (R115: attributed, finance-gated, note mandatory,
+ * CAS-guarded — the ledger row is the authoritative record).
+ * `loyalty_tier` is REJECTED with 400 INVALID_DATA: tiers derive
+ * strictly from net qualifying spend and are never directly
+ * writable (a manual value would be silently clobbered by the next
+ * checkout/refund tier computation).
  *
  * Mounted behind the idempotency middleware (routeKey
  * admin.users.patch) so a network retry / admin double-click
  * cannot double-credit — send a fresh Idempotency-Key per edit.
  * The audit row records the fields changed and the resulting
  * wallet balance.
- * @summary Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+ * @summary Edit a user — wallet adjustment/set, loyalty points with ledger (requireAdmin + users scope; moves wallet money)
  */
 export const UpdateAdminUserParams = zod.object({
   id: zod.coerce.number().int(),
@@ -3074,7 +3173,7 @@ export const ListAdminAlertsResponse = zod
           type: zod
             .string()
             .describe(
-              "varchar(30) — known values: system, low_stock, no_stock,\nforecast_stockout, coupon_maxed, coupon_expiring. Kept an\nopen string (not an enum) so a new producer cannot break\nthe contract.\n",
+              "varchar(30) — the backend AlertType union (jobs/alertLogger.ts):\nsystem, low_stock, no_stock, forecast_stockout, coupon_maxed,\ncoupon_expiring, coupon_expired, flash_sale_expired,\ninventory_corrupt, refunded_live_credentials, whatsapp_channel.\nKept an open string (not an enum) so a new producer cannot\nbreak the contract.\n",
             ),
           title: zod.string(),
           message: zod.string().nullable(),
@@ -3945,7 +4044,7 @@ export const GetAdminObservabilityAlertsRecentResponse = zod
           type: zod
             .string()
             .describe(
-              "varchar(30) — known values: system, low_stock, no_stock,\nforecast_stockout, coupon_maxed, coupon_expiring. Kept an\nopen string (not an enum) so a new producer cannot break\nthe contract.\n",
+              "varchar(30) — the backend AlertType union (jobs/alertLogger.ts):\nsystem, low_stock, no_stock, forecast_stockout, coupon_maxed,\ncoupon_expiring, coupon_expired, flash_sale_expired,\ninventory_corrupt, refunded_live_credentials, whatsapp_channel.\nKept an open string (not an enum) so a new producer cannot\nbreak the contract.\n",
             ),
           title: zod.string(),
           message: zod.string().nullable(),
@@ -4057,7 +4156,7 @@ export const ListAdminNewAlertsResponse = zod
           type: zod
             .string()
             .describe(
-              "varchar(30) — known values: system, low_stock, no_stock,\nforecast_stockout, coupon_maxed, coupon_expiring. Kept an\nopen string (not an enum) so a new producer cannot break\nthe contract.\n",
+              "varchar(30) — the backend AlertType union (jobs/alertLogger.ts):\nsystem, low_stock, no_stock, forecast_stockout, coupon_maxed,\ncoupon_expiring, coupon_expired, flash_sale_expired,\ninventory_corrupt, refunded_live_credentials, whatsapp_channel.\nKept an open string (not an enum) so a new producer cannot\nbreak the contract.\n",
             ),
           title: zod.string(),
           message: zod.string().nullable(),

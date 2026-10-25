@@ -22,7 +22,7 @@
  * module boundary (vitest-config pattern).
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +49,11 @@ vi.mock("@/hooks/useToast", () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn() }),
 }));
 
-/** A pending row is the only shape that renders the «منح نقاط» button. */
+/** A pending row is the only shape that renders the «منح نقاط» button.
+ *  R187E-F1: points_earned: 0 — the REAL backend shape (routes/admin/
+ *  referrals.ts sends `status === "credited" ? POINTS_PER_REFERRAL : 0`);
+ *  the old 50 fixture papered over the pending-row zero the confirm
+ *  used to misstate. */
 const pendingPayload = {
   stats: { total: 1, credited: 0, pending: 1, total_points: 0 },
   top_referrers: [],
@@ -62,7 +66,7 @@ const pendingPayload = {
       referrer_phone: "0911111111",
       referrer_id: 7,
       referee_phone: "0922222222",
-      points_earned: 50,
+      points_earned: 0,
     },
   ],
 };
@@ -144,5 +148,47 @@ describe("AdminReferralsPage — credit button finance gate (R122 A2-P1)", () =>
       expect(fetchMock.mock.calls.length).toBe(listCalls);
     });
     expect(fetchMock.mock.calls.every((c) => !String(c[0]).includes("/credit"))).toBe(true);
+  });
+});
+
+describe("AdminReferralsPage — the credit confirm names the real mint amount (R187E-F1)", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async () => resLike(pendingPayload));
+    vi.stubGlobal("fetch", fetchMock);
+    authState["finance"] = true;
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    for (const k of Object.keys(authState)) delete authState[k];
+  });
+
+  it("on a REAL-backend-shape pending row (points_earned: 0) the confirm carries «50 نقطة» + «0.50 د.ل»", async () => {
+    renderPage();
+
+    // The only row is PENDING with points_earned: 0 — the shape the
+    // backend actually sends for the only rows that render this
+    // button. The confirm must preview the mint (50 points / 0.50
+    // LYD), never the row's zeroed field.
+    fireEvent.click(await screen.findByRole("button", { name: /منح نقاط/ }));
+
+    const title = await screen.findByText("تأكيد منح النقاط");
+    const dialog = title.closest('[role="alertdialog"]');
+    if (!dialog) throw new Error("credit confirm dialog not rendered");
+    const text = (dialog as HTMLElement).textContent ?? "";
+    expect(text).toContain("50 نقطة");
+    expect(text).toContain("0.50 د.ل");
+    // The misstatement the finding named — «سيتم قيد 0 نقطة … 0.00 د.ل»
+    // — never renders on a pending row again (the full phrase, not a
+    // bare «0 نقطة» — «50 نقطة» legitimately ends in those bytes).
+    expect(text).not.toContain("سيتم قيد 0 نقطة");
+    expect(text).not.toContain("0.00 د.ل");
+
+    // Cancel performs no mint (the confirm gate is the surface under
+    // test; the POST itself is pinned by the idempotency suites).
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "إلغاء" }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.every((c) => !String(c[0]).includes("/credit"))).toBe(true),
+    );
   });
 });

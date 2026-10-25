@@ -71,6 +71,13 @@ export function invalidateStorefrontTransactionalFamilies(queryClient: QueryClie
   // page holds no socket of its own, so a reconnect previously left its
   // rows stale until a remount (the bell recovered, the page did not).
   void queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+  // R187 (B-F3): the loyalty family — loyalty.tsx/referrals.tsx ride the
+  // shared ["loyalty", …] keys (R120-B5) and hold no socket of their
+  // own either; referral credits, refund point reversals and purchase
+  // awards had no client-side invalidation on this path. Same rationale
+  // as the notifications entry above (the R153 "page holds no socket of
+  // its own" precedent).
+  void queryClient.invalidateQueries({ queryKey: ["loyalty"] });
 }
 
 /**

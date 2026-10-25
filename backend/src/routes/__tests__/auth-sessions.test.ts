@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { eq, sql } from "drizzle-orm";
@@ -7,6 +7,7 @@ import {
   db,
   initTestDb,
   resetTestDb,
+  authActivityTable,
   sessionsTable,
   userAuthIdentitiesTable,
   usersTable,
@@ -416,5 +417,70 @@ describe("R122 (A5-P2-3) — no-store on the two straggler authenticated GETs", 
     } finally {
       close();
     }
+  });
+});
+
+// R187 (F8): the logout auth-activity telemetry insert was UNGUARDED and
+// ran AFTER the session rows were already deleted — a DB blip 500'd an
+// already-revoked logout (and never cleared the cookie). Both call sites
+// (/logout, and the /logout-all-devices non-Firebase fall-through) now
+// carry the R183 orders-notification backstop: try/catch → logger.warn,
+// the cookie still clears, the answer stays 200 {success:true}.
+describe("R187 (F8) — a failing auth-activity insert never fails the logout", () => {
+  /** Fail ONLY the auth_activity insert (logAuthActivity's write). */
+  function failAuthActivityInsert(): () => void {
+    const originalInsert = db.insert.bind(db);
+    const spy = vi.spyOn(db, "insert").mockImplementation((table: unknown) => {
+      if (table === authActivityTable) {
+        throw new Error("simulated auth_activity insert failure (R187 F8)");
+      }
+      return originalInsert(table as never);
+    });
+    return () => spy.mockRestore();
+  }
+
+  it("POST /logout still answers 200 {success:true} with the cookie cleared and the session row revoked", async () => {
+    const user = await seedUser();
+    const current = await createSession(user.id);
+
+    const restore = failAuthActivityInsert();
+    let res: Awaited<ReturnType<typeof request>>;
+    const { url, close } = await listen(buildApp());
+    try {
+      res = await request(url, "POST", "/logout", current.token);
+    } finally {
+      restore();
+      close();
+    }
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true });
+    // The cookie still clears on the revoked logout.
+    expect(res.setCookie).toContain("auth_token=");
+    expect(res.setCookie).toContain("Expires=Thu, 01 Jan 1970");
+    // And the session row really is gone (the revocation already happened).
+    expect(await sessionIdsFor(user.id)).toHaveLength(0);
+  });
+
+  it("POST /logout-all-devices (non-Firebase fall-through) still answers 200 with the cookie cleared", async () => {
+    const user = await seedUser();
+    const current = await createSession(user.id);
+    await createSession(user.id);
+
+    const restore = failAuthActivityInsert();
+    let res: Awaited<ReturnType<typeof request>>;
+    const { url, close } = await listen(buildApp());
+    try {
+      res = await request(url, "POST", "/logout-all-devices", current.token);
+    } finally {
+      restore();
+      close();
+    }
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true });
+    expect(res.setCookie).toContain("auth_token=");
+    expect(res.setCookie).toContain("Expires=Thu, 01 Jan 1970");
+    expect(await sessionIdsFor(user.id)).toHaveLength(0);
   });
 });

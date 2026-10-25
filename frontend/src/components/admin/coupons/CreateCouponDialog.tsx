@@ -89,6 +89,10 @@ export function CreateCouponDialog({
             value={form.code}
             onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
             placeholder="SUMMER20"
+            /* R187 (D-F7): the server bound (routes/coupons.ts code max
+               40) enforced at the input — a 41st character never enters
+               the draft, so the doomed-POST class dies at the source. */
+            maxLength={40}
             className="font-mono uppercase"
           />
         </div>
@@ -234,6 +238,9 @@ export function CreateCouponDialog({
             value={form.description}
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             placeholder="مثال: خصم الصيف على الاشتراكات"
+            /* R187 (D-F7): the server bound (description max 200) at the
+               input — same doomed-POST prevention as the code cap. */
+            maxLength={200}
           />
         </div>
       </div>

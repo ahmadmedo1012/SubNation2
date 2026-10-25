@@ -330,9 +330,14 @@ export default function AdminProductsPage() {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
-        document
-          .getElementById("product-form")
-          ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+        // R187 (D-F4): requestSubmit runs the form's INTERACTIVE
+        // validation exactly like a submit-button click — the old
+        // dispatchEvent(new Event("submit")) skipped constraint
+        // validation, so ⌘S on a nameless product bypassed the
+        // required name input (zod has no name min → a nameless
+        // product was created). The R148 (D1) in-flight guard inside
+        // handleSubmit stays the re-entry killer for the valid case.
+        (document.getElementById("product-form") as HTMLFormElement | null)?.requestSubmit();
       }
       if (e.key === "Escape") cancelForm();
     };

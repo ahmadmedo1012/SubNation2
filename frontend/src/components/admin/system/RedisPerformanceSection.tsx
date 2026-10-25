@@ -2,6 +2,7 @@ import { AlertCircle, Clock, Wifi, Zap } from "lucide-react";
 import type { ChartColors } from "@/lib/chart-theme";
 import { DetailsSection } from "@/components/admin/system/DetailsSection";
 import { MetricCard } from "@/components/admin/system/MetricCard";
+import { formatCount } from "@/lib/utils";
 import { formatMs, formatNumber } from "@/components/admin/system/system-format";
 import type { MetricsSnapshot } from "@/components/admin/system/system-types";
 
@@ -11,6 +12,18 @@ import type { MetricsSnapshot } from "@/components/admin/system/system-types";
 // query stays in the page — the snapshot + the redis-ops sparkline series
 // flow down as values; the move only changes its address, DOM/classes
 // byte-identical.
+
+/** Arabic plural forms for تخفيض — R187L-F1: the connection tile's
+ *  degraded-events sub-count (the ALERT_COUNT_FORMS local-object idiom;
+ *  was the frozen «N تخفيض»). */
+const DEGRADE_COUNT_FORMS = {
+  zero: "تخفيضات",
+  one: "تخفيض",
+  two: "تخفيضان",
+  few: "تخفيضات",
+  many: "تخفيضًا",
+  other: "تخفيض",
+};
 
 export function RedisPerformanceSection({
   metrics,
@@ -29,7 +42,7 @@ export function RedisPerformanceSection({
           value={metrics.redis.available ? "متصل" : "غير متصل"}
           sub={
             metrics.redis.degradedEvents > 0
-              ? `${metrics.redis.degradedEvents} تخفيض`
+              ? formatCount(metrics.redis.degradedEvents, DEGRADE_COUNT_FORMS)
               : "بدون تخفيضات"
           }
           icon={Wifi}

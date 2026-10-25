@@ -139,6 +139,49 @@ describe("R154 — GET /api/auth/telegram/oidc/login", () => {
       close();
     }
   });
+
+  // R187 (C-F5 backend): the failure legs dropped the ?redirect= return
+  // path the success legs honor — a failed hop landed the user on /login
+  // with the guarded destination lost. The param now rides every
+  // /login?error= redirect, sanitize-validated.
+  it("R187: a provider_disabled failure carries the sanitize-validated ?redirect back to /login", async () => {
+    await db.execute(
+      sql`INSERT INTO system_settings (key, value) VALUES ('auth.telegram', ${JSON.stringify({
+        enabled: true,
+        bot_token: "1234567890:AAH-x",
+      })})`,
+    );
+    const { url, close } = await listen();
+    try {
+      const res = await get(url, "/api/auth/telegram/oidc/login?redirect=%2Fcheckout");
+      expect(res.status).toBe(302);
+      expect(res.location).toBe("/login?error=provider_disabled&redirect=%2Fcheckout");
+    } finally {
+      close();
+    }
+  });
+
+  it("R187: an open-redirect-shaped ?redirect is dropped, not appended", async () => {
+    await db.execute(
+      sql`INSERT INTO system_settings (key, value) VALUES ('auth.telegram', ${JSON.stringify({
+        enabled: true,
+        bot_token: "1234567890:AAH-x",
+      })})`,
+    );
+    const { url, close } = await listen();
+    try {
+      const res = await get(
+        url,
+        `/api/auth/telegram/oidc/login?redirect=${encodeURIComponent("//evil.com")}`,
+      );
+      expect(res.status).toBe(302);
+      // sanitizeInternalPath rejects protocol-relative (and any non-slash-
+      // prefixed) target — the failure redirect never becomes an open one.
+      expect(res.location).toBe("/login?error=provider_disabled");
+    } finally {
+      close();
+    }
+  });
 });
 
 describe("R154 — GET /api/auth/telegram/oidc/callback", () => {
@@ -180,6 +223,47 @@ describe("R154 — GET /api/auth/telegram/oidc/callback", () => {
       expect(res.location).toBe("/login?error=oidc_state");
       // Never a mint on a forged state.
       expect(res.setCookie).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it("R187: the /login?error=oidc_state redirect still carries the redirect param when the original request had one", async () => {
+    await db.execute(
+      sql`INSERT INTO system_settings (key, value) VALUES ('auth.telegram', ${JSON.stringify({
+        enabled: true,
+        bot_token: "1234567890:AAH-x",
+        oidc_client_id: CLIENT_ID,
+        oidc_client_secret: CLIENT_SECRET,
+      })})`,
+    );
+    const { url, close } = await listen();
+    try {
+      const res = await get(
+        url,
+        "/api/auth/telegram/oidc/callback?code=x&state=forged&redirect=%2Fcheckout",
+      );
+      expect(res.status).toBe(302);
+      expect(res.location).toBe("/login?error=oidc_state&redirect=%2Fcheckout");
+      expect(res.setCookie).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it("R187: the provider-error and cancelled legs carry the redirect param too", async () => {
+    const { url, close } = await listen();
+    try {
+      const providerError = await get(
+        url,
+        "/api/auth/telegram/oidc/callback?error=access_denied&redirect=%2Forders",
+      );
+      expect(providerError.status).toBe(302);
+      expect(providerError.location).toBe("/login?error=access_denied&redirect=%2Forders");
+
+      const cancelled = await get(url, "/api/auth/telegram/oidc/callback?redirect=%2Fwallet");
+      expect(cancelled.status).toBe(302);
+      expect(cancelled.location).toBe("/login?error=cancelled&redirect=%2Fwallet");
     } finally {
       close();
     }

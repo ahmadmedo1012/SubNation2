@@ -15,9 +15,9 @@
  * vitest config's documented pattern for page-level component tests).
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { Router } from "wouter";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecommendationsSection } from "@/components/product/RecommendationsSection";
 
 const recsMock = { current: [] as unknown[] };
@@ -119,3 +119,65 @@ describe("RecommendationsSection — R147 sold-out honesty", () => {
     expect(link?.getAttribute("href")).toBe("/product/rec-stocked");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// R187 (A-F3) — the rail's list→PDP hop is GA4-visible: the card click
+// fires select_item with the rail's own item_list_id (the same event
+// every other card surface — ProductCard :339, flash-sales :104 —
+// fires), alongside the R168 view_item_list impression above.
+// ─────────────────────────────────────────────────────────────────────
+
+describe("RecommendationsSection — card click fires select_item (R187 A-F3)", () => {
+  /** Arm the R164 loader's own gtag shape (the analytics-events idiom):
+   * pushes land on window.dataLayer. */
+  beforeEach(() => {
+    window.dataLayer = [];
+    window.gtag = (...args: unknown[]) => {
+      window.dataLayer!.push(args);
+    };
+    // jsdom's window.scrollTo is a not-implemented no-op — silence it
+    // (the route-change-focus idiom).
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    delete window.gtag;
+    window.dataLayer = [];
+    vi.restoreAllMocks();
+  });
+
+  it("one select_item with item_list_id pdp-recommendations + items[0].item_id = the card's id", () => {
+    recsMock.current = [
+      {
+        id: 13,
+        slug: "rec-ga4",
+        name: "GA4 Peer",
+        image_url: null,
+        price: 25,
+        is_available: true,
+      },
+    ];
+    renderSection();
+
+    // The mount impression (view_item_list, R168) — never select_item.
+    let selectPushes = layerEntries("select_item");
+    expect(selectPushes).toHaveLength(0);
+    expect(layerEntries("view_item_list")).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("GA4 Peer"));
+
+    selectPushes = layerEntries("select_item");
+    expect(selectPushes).toHaveLength(1);
+    const payload = selectPushes[0]![2] as Record<string, unknown>;
+    expect(payload.item_list_id).toBe("pdp-recommendations");
+    expect((payload.items as Array<{ item_id: string }>)[0]!.item_id).toBe("13");
+  });
+});
+
+/** The payloads of every pushed occurrence of `eventName` (the
+ * analytics-events suite's `fired` idiom, inlined for this file). */
+function layerEntries(eventName: string): [string, string, Record<string, unknown>][] {
+  return ((window.dataLayer ?? []) as unknown as unknown[][])
+    .filter((e) => e[0] === "event" && e[1] === eventName)
+    .map((e) => e as [string, string, Record<string, unknown>]);
+}

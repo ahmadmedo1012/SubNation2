@@ -46,7 +46,7 @@ export function RecentAlertsSection({
           size="section"
           retryIcon={RefreshCw}
           title="تعذّر تحميل التنبيهات"
-          description="تعذّر جلب آخر التنبيهات — تحقّق من الاتصال بالخادم ثم أعد المحاولة"
+          description="تعذّر تحميل آخر التنبيهات — تحقّق من الاتصال بالخادم ثم أعد المحاولة"
           onRetry={onRetryAlerts}
         />
       ) : alertsLoading ? (

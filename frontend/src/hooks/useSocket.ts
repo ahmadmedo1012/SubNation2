@@ -80,6 +80,18 @@ export function useSocket(userId?: number | string) {
                 return typeof first === "string" && first.startsWith("/api/orders");
               },
             });
+            // R187 (B-F1): a REFUND emits exactly this event after
+            // RefundService credited wallet + ledger + points
+            // (routes/admin/orders.ts) — the money must reach the same
+            // balance surfaces the topup-updated twin below covers
+            // (R-140-o), or the poll-less wallet page and the Navbar
+            // balance chip stay stale while the toast claims success.
+            // Unconditional for the twin's own documented reason: a
+            // non-refund status moves no money, and the extra refetch of
+            // unchanged data is harmless — ONE code path for the pair.
+            void queryClient.invalidateQueries({ queryKey: getGetWalletQueryKey() });
+            void queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+            void queryClient.invalidateQueries({ queryKey: getGetWalletLedgerQueryKey() });
             // R94-A1 #15 (P3): every storefront surface identifies orders
             // by order_code (SNDB…) — a "#42" toast sent the user hunting
             // for an id format that exists nowhere in the UI. The payload

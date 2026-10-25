@@ -161,6 +161,13 @@ describe("R137 (FE) — admin/products.tsx decomposition: page stays an orchestr
     expect(editor).toContain('id="product-form"');
     expect(editor).toContain("حفظ التعديلات");
     expect(editor).toContain("عنوان SEO (اختياري)");
+    // R187 (D-F1): the price input rides the same cent step as its cost
+    // twin below it (the server price contract is 2-decimal; the old
+    // step="0.5" fired a native mismatch bubble on 44.99 and pre-failed
+    // the editor on a variant-priced product's seeded 79.8). The
+    // behavior leg lives in admin-money-input-step-r187.test.tsx.
+    expect(editor).toContain('step="0.01"');
+    expect(editor).not.toContain('step="0.5"');
     const card = read("src/components/admin/products/ProductCard.tsx");
     expect(card).toContain("بلا باقات");
     expect(card).toContain("نفد المخزون");

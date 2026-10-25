@@ -145,6 +145,32 @@ export async function runForecast(): Promise<RunResult> {
       }
     }
 
+    // R187 (G-F4): an all-products-failed run is a FAILURE, not a hollow
+    // success — the enrichment twin's class (R186 F-F2): 0 predicted +
+    // every product skipped as "error" means the run delivered nothing,
+    // yet the row below used to read outcome=success / null reason.
+    // markFailure + the failure return mirror the outer catch's shape.
+    if (products.length > 0 && predicted === 0 && (skipped.error ?? 0) === products.length) {
+      const reason = `all ${products.length} product forecasts failed`;
+      await markFailure(run.id, reason).catch(() => {});
+      recordForecastRun("failure");
+      const durationSeconds = Number(process.hrtime.bigint() - startedAt) / 1e9;
+      recordRunDuration(durationSeconds);
+      logger.error(
+        { runId: run.id, products: products.length, category: "forecast.run" },
+        `[forecast] run failed — ${reason}`,
+      );
+      return {
+        runId: run.id,
+        outcome: "failure",
+        productsPredicted: predicted,
+        productsSkipped: skipped,
+        alertsEmitted: 0,
+        alertsCapped: false,
+        durationSeconds,
+      };
+    }
+
     // US3 — alert dispatch for the just-completed run.
     const alertResult = await dispatchForecastAlerts(run.id).catch((err) => {
       logger.warn({ err, runId: run.id, category: "forecast.run" }, "[forecast] alerts threw");

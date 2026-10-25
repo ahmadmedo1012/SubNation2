@@ -159,6 +159,7 @@ import type {
   ListAdminTicketsParams,
   ListAdminTopupsParams,
   ListAdminUsersParams,
+  ListNotificationsParams,
   ListOrdersParams,
   ListProductsParams,
   ListPublicAuthProviders200,
@@ -167,6 +168,7 @@ import type {
   ListTopupsParams,
   LoyaltySummary,
   NotificationItem,
+  NotificationsPage,
   Order,
   PatchCouponBody,
   PricingConfig,
@@ -3439,6 +3441,15 @@ export const getCreateTopupUrl = () => {
 };
 
 /**
+ * Mounted behind the idempotency middleware (routeKey
+ * wallet.topups.create) — send a fresh Idempotency-Key per top-up
+ * so a network retry or double-tap cannot insert a second pending
+ * row. The service ALSO carries the durable in-transaction guard
+ * (TopupService.createPendingTopup): a retry after a Redis flush /
+ * TTL boundary replays the ORIGINAL topup (200 + Idempotent-Replayed:
+ * true) instead of re-inserting; a same-key re-send with a different
+ * body returns 409 IDEMPOTENCY_KEY_REUSE; the same key while the
+ * original request is still executing returns 409 (in-flight).
  * @summary Submit a top-up request
  */
 export const createTopup = async (
@@ -3475,7 +3486,7 @@ export const createTopup = async (
 export const getCreateTopupMutationKey = () => ["createTopup"] as const;
 
 export const getCreateTopupMutationOptions = <
-  TError = ErrorType<ErrorResponse | TopupLimitErrorResponse>,
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse | TopupLimitErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3512,14 +3523,16 @@ export const getCreateTopupMutationOptions = <
 
 export type CreateTopupMutationResult = NonNullable<Awaited<ReturnType<typeof createTopup>>>;
 export type CreateTopupMutationBody = BodyType<CreateTopupBody>;
-export type CreateTopupMutationError = ErrorType<ErrorResponse | TopupLimitErrorResponse>;
+export type CreateTopupMutationError = ErrorType<
+  ErrorResponse | IdempotencyConflictResponse | TopupLimitErrorResponse
+>;
 export type CreateTopupMutationVariables = { data: BodyType<CreateTopupBody> };
 
 /**
  * @summary Submit a top-up request
  */
 export const useCreateTopup = <
-  TError = ErrorType<ErrorResponse | TopupLimitErrorResponse>,
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse | TopupLimitErrorResponse>,
   TContext = unknown,
 >(
   options?: {
@@ -4649,6 +4662,10 @@ export const getConvertPointsUrl = () => {
  * lock on both mutated columns, and a wallet_ledger row
  * (type=adjustment, referenceType=loyalty_conversion). Concurrent
  * mutations lose the optimistic lock → 409 CONFLICT (retry-safe).
+ * Mounted behind the idempotency middleware (routeKey
+ * loyalty.convert) PLUS the durable idempotency_keys guard — send
+ * a stable per-intent Idempotency-Key (the frontend does) so a
+ * lost-response retry cannot double-convert.
  * @summary Convert loyalty points to wallet credit (money-creation path)
  */
 export const convertPoints = async (
@@ -4685,7 +4702,7 @@ export const convertPoints = async (
 export const getConvertPointsMutationKey = () => ["convertPoints"] as const;
 
 export const getConvertPointsMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -4722,13 +4739,16 @@ export const getConvertPointsMutationOptions = <
 
 export type ConvertPointsMutationResult = NonNullable<Awaited<ReturnType<typeof convertPoints>>>;
 export type ConvertPointsMutationBody = BodyType<ConvertPointsBody>;
-export type ConvertPointsMutationError = ErrorType<ErrorResponse>;
+export type ConvertPointsMutationError = ErrorType<ErrorResponse | IdempotencyConflictResponse>;
 export type ConvertPointsMutationVariables = { data: BodyType<ConvertPointsBody> };
 
 /**
  * @summary Convert loyalty points to wallet credit (money-creation path)
  */
-export const useConvertPoints = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+export const useConvertPoints = <
+  TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof convertPoints>>,
@@ -5141,9 +5161,10 @@ export const getCreateSupportTicketUrl = () => {
 };
 
 /**
- * The message becomes the first reply (author_type=user). An
- * unknown category silently falls back to "other". 429 bodies are
- * the standard {error, code: RATE_LIMITED} envelope.
+ * The message becomes the first reply (author_type=user). The
+ * category is a closed enum — an unknown value is rejected with
+ * 400 INVALID_DATA (omit it for the "other" default). 429 bodies
+ * are the standard {error, code: RATE_LIMITED} envelope.
  * @summary Open a support ticket (rate-limited: 5/hour/user)
  */
 export const createSupportTicket = async (
@@ -5480,39 +5501,63 @@ export const useReplySupportTicket = <TError = ErrorType<ErrorResponse>, TContex
   return useMutation(getReplySupportTicketMutationOptions(options), queryClient);
 };
 
-export const getListNotificationsUrl = () => {
-  return `/api/notifications`;
+export const getListNotificationsUrl = (params?: ListNotificationsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/notifications?${stringifiedParams}`
+    : `/api/notifications`;
 };
 
 /**
- * @summary List the current user's notifications (≤40, newest first)
+ * R128-IMP-5 (A9-F2 / B1 item 8): the response shape is OPT-IN by
+ * naming the `page` param. Paramless (or a bare `?page=` with an
+ * empty value) → the legacy bell array (NotificationBell guards
+ * `Array.isArray(data)`; newest first, 40-row cap). `?page=N` →
+ * the paged envelope (NotificationsPage — the admin alerts inbox
+ * idiom) with the honest total and hasMore. Same createdAt-DESC +
+ * id-DESC ordering on both branches so offset pages never shuffle
+ * same-timestamp rows. Cache-Control: no-store.
+ * @summary List the current user's notifications (≤40 newest first; opt-in paged envelope)
  */
 export const listNotifications = async (
+  params?: ListNotificationsParams,
   options?: Parameters<typeof customFetch>[1],
-): Promise<NotificationItem[]> => {
-  return customFetch<NotificationItem[]>(getListNotificationsUrl(), {
+): Promise<NotificationItem[] | NotificationsPage> => {
+  return customFetch<NotificationItem[] | NotificationsPage>(getListNotificationsUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getListNotificationsQueryKey = () => {
-  return [`/api/notifications`] as const;
+export const getListNotificationsQueryKey = (params?: ListNotificationsParams) => {
+  return [`/api/notifications`, ...(params ? [params] : [])] as const;
 };
 
 export const getListNotificationsQueryOptions = <
   TData = Awaited<ReturnType<typeof listNotifications>>,
   TError = ErrorType<ErrorResponse>,
->(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listNotifications>>, TError, TData>>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: ListNotificationsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listNotifications>>, TError, TData>>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListNotificationsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getListNotificationsQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof listNotifications>>> = ({ signal }) =>
-    listNotifications({ signal, ...requestOptions });
+    listNotifications(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listNotifications>>,
@@ -5530,6 +5575,7 @@ export function useListNotifications<
   TData = Awaited<ReturnType<typeof listNotifications>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params: undefined | ListNotificationsParams,
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listNotifications>>, TError, TData>> &
       Pick<
@@ -5548,6 +5594,7 @@ export function useListNotifications<
   TData = Awaited<ReturnType<typeof listNotifications>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: ListNotificationsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listNotifications>>, TError, TData>> &
       Pick<
@@ -5566,6 +5613,7 @@ export function useListNotifications<
   TData = Awaited<ReturnType<typeof listNotifications>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: ListNotificationsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listNotifications>>, TError, TData>>;
     request?: SecondParameter<typeof customFetch>;
@@ -5573,20 +5621,21 @@ export function useListNotifications<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
- * @summary List the current user's notifications (≤40, newest first)
+ * @summary List the current user's notifications (≤40 newest first; opt-in paged envelope)
  */
 
 export function useListNotifications<
   TData = Awaited<ReturnType<typeof listNotifications>>,
   TError = ErrorType<ErrorResponse>,
 >(
+  params?: ListNotificationsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listNotifications>>, TError, TData>>;
     request?: SecondParameter<typeof customFetch>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getListNotificationsQueryOptions(options);
+  const queryOptions = getListNotificationsQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;
@@ -8631,16 +8680,21 @@ export const getUpdateAdminUserUrl = (id: number) => {
  * both are present) route through AdjustmentService: transactional
  * optimistic-lock update + a wallet_ledger row of type=adjustment,
  * so every monetary change stays reconstructable from the ledger
- * (Constitution Principle I). Loyalty fields
- * (`loyalty_points`, `loyalty_tier`) use a legacy direct-update
- * path with no ledger.
+ * (Constitution Principle I). Loyalty points (`loyalty_points`)
+ * commit in the SAME single transaction as their points_ledger
+ * admin_set row (R115: attributed, finance-gated, note mandatory,
+ * CAS-guarded — the ledger row is the authoritative record).
+ * `loyalty_tier` is REJECTED with 400 INVALID_DATA: tiers derive
+ * strictly from net qualifying spend and are never directly
+ * writable (a manual value would be silently clobbered by the next
+ * checkout/refund tier computation).
  *
  * Mounted behind the idempotency middleware (routeKey
  * admin.users.patch) so a network retry / admin double-click
  * cannot double-credit — send a fresh Idempotency-Key per edit.
  * The audit row records the fields changed and the resulting
  * wallet balance.
- * @summary Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+ * @summary Edit a user — wallet adjustment/set, loyalty points with ledger (requireAdmin + users scope; moves wallet money)
  */
 export const updateAdminUser = async (
   id: number,
@@ -8720,7 +8774,7 @@ export type UpdateAdminUserMutationError = ErrorType<ErrorResponse | Idempotency
 export type UpdateAdminUserMutationVariables = { id: number; data: BodyType<UpdateAdminUserBody> };
 
 /**
- * @summary Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+ * @summary Edit a user — wallet adjustment/set, loyalty points with ledger (requireAdmin + users scope; moves wallet money)
  */
 export const useUpdateAdminUser = <
   TError = ErrorType<ErrorResponse | IdempotencyConflictResponse>,

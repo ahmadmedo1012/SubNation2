@@ -81,13 +81,20 @@ router.post("/logout", requireUser, async (req, res) => {
     }
   }
 
-  await logAuthActivity({
-    userId,
-    identifier: user?.phone || `user_${userId}`,
-    action: "logout",
-    success: true,
-    ...clientInfo,
-  });
+  // R187 (F8): the telemetry insert runs AFTER the session row is already
+  // deleted — a blip here must never 500 an already-revoked logout (the
+  // R183 orders-notification backstop idiom; the cookie still clears).
+  try {
+    await logAuthActivity({
+      userId,
+      identifier: user?.phone || `user_${userId}`,
+      action: "logout",
+      success: true,
+      ...clientInfo,
+    });
+  } catch (err) {
+    logger.warn({ err, userId }, "Failed to write logout auth-activity row");
+  }
 
   // Clear the session cookie — previously logout only revoked Firebase
   // refresh tokens and left `auth_token` set, so for non-Firebase users
@@ -163,13 +170,20 @@ router.post("/logout-all-devices", requireUser, async (req, res) => {
     }
   }
 
-  await logAuthActivity({
-    userId,
-    identifier: user?.phone || `user_${userId}`,
-    action: "logout_all",
-    success: true,
-    ...clientInfo,
-  });
+  // R187 (F8): same backstop as /logout — every session row is already
+  // deleted above; the telemetry insert must not turn the revoked logout
+  // into a 500 (the cookie still clears below).
+  try {
+    await logAuthActivity({
+      userId,
+      identifier: user?.phone || `user_${userId}`,
+      action: "logout_all",
+      success: true,
+      ...clientInfo,
+    });
+  } catch (err) {
+    logger.warn({ err, userId }, "Failed to write logout-all auth-activity row");
+  }
 
   // Clear httpOnly cookie
   res.clearCookie("auth_token", {
@@ -566,7 +580,13 @@ router.post("/firebase/session", async (req, res) => {
 
     const result = await resolveFirebaseSession(
       decoded,
-      typeof referral_code === "string" ? referral_code.trim().toUpperCase() : undefined,
+      // R187 (F6): the 16-char cap both sibling mints carry
+      // (auth-whatsapp.ts /telegram/verify, auth-settings.ts
+      // /telegram/webapp) — an unbounded referral_code flowed raw into
+      // the resolver's referral lookup.
+      typeof referral_code === "string"
+        ? referral_code.trim().toUpperCase().slice(0, 16)
+        : undefined,
       currentUserId,
       typeof link_consent_token === "string" ? link_consent_token : undefined,
     );
@@ -674,10 +694,13 @@ router.post("/firebase/session", async (req, res) => {
         candidate_hint: err.candidateHint,
       });
     }
-    logger.error({ err, id_token_length: id_token?.length }, "Firebase session creation failed");
     if (err instanceof FirebaseAuthError) {
       // R146 (audit finding 1): mirror the /firebase/refresh twin — the
       // expected user-facing failure still leaves an audit trail.
+      // R187 (F9): this arm is EXPECTED 4xx noise (expired/invalid token) —
+      // it error-logged before the classification check; the error-level
+      // line now lives only on the non-Firebase branch below (the R142
+      // E-3 verify-2fa precedent).
       await logAuthActivity({
         identifier: `firebase_session_error`,
         action: "login",
@@ -691,10 +714,11 @@ router.post("/firebase/session", async (req, res) => {
         .status(err.statusCode)
         .json(createErrorResponse(getFirebaseErrorMessage(err), code));
     }
-    // Non-Firebase error (database, network, etc.) — capture for Sentry
-    // triage. FirebaseAuthError above is expected user-facing failure
-    // noise (invalid/expired token); we only escalate the unexpected
-    // path that warrants engineer attention.
+    // Non-Firebase error (database, network, etc.) — the only arm that
+    // warrants the error-level log + Sentry triage. FirebaseAuthError
+    // above is expected user-facing failure noise (invalid/expired token);
+    // we only escalate the unexpected path that warrants engineer attention.
+    logger.error({ err, id_token_length: id_token?.length }, "Firebase session creation failed");
     captureAuthFailure("firebase", err, { id_token_length: id_token?.length });
     // Return 500, not 401. A 401 here would cause the frontend to enter
     // an infinite refresh loop because it would interpret it as "session
@@ -755,8 +779,9 @@ router.post("/firebase/refresh", async (req, res) => {
       token: COOKIE_SESSION_SENTINEL,
     });
   } catch (err) {
-    logger.error({ err, id_token_length: id_token?.length }, "Firebase session refresh failed");
     if (err instanceof FirebaseAuthError) {
+      // R187 (F9): same log-level truth as /firebase/session — the expected
+      // 4xx arm never error-logs; the line moved to the non-Firebase branch.
       const code = err.statusCode === 503 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.INVALID_TOKEN;
       await logAuthActivity({
         identifier: `firebase_refresh_error`,
@@ -778,9 +803,11 @@ router.post("/firebase/refresh", async (req, res) => {
       provider: "firebase",
       ...clientInfo,
     });
-    // Non-Firebase error (database, network, etc.) — capture for Sentry
-    // triage. The FirebaseAuthError branch above is expected user-facing
-    // noise; we only escalate the unexpected path.
+    // Non-Firebase error (database, network, etc.) — the only arm that
+    // warrants the error-level log + Sentry triage. The FirebaseAuthError
+    // branch above is expected user-facing noise; we only escalate the
+    // unexpected path.
+    logger.error({ err, id_token_length: id_token?.length }, "Firebase session refresh failed");
     captureAuthFailure("firebase", err, { id_token_length: id_token?.length });
     // Return 500, not 401. A 401 here would trigger the frontend's
     // onIdTokenChanged listener to retry indefinitely, creating an

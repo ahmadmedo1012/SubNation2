@@ -107,6 +107,12 @@ function renderableProviders(providers: Provider[]): Provider[] {
     if (provider.id === "google" && provider.auth_type === "client_side") {
       return isFirebaseAuthConfigured();
     }
+    // R187 (C-F10): a client_side row OTHER than Google has no executor
+    // here — an enabled+configured Apple row in that auth_type passed the
+    // gate and rendered a silent no-op button (the click did nothing,
+    // with no error, no navigation). oauth_redirect/widget rows stay:
+    // the SERVER executes the former, TelegramLoginButton owns the latter.
+    if (provider.auth_type === "client_side" && provider.id !== "google") return false;
     return true;
   });
 }
@@ -151,6 +157,10 @@ function ProviderButton({
   const Icon = ICONS[provider.icon] ?? (() => null);
 
   const handle = async () => {
+    // R187 (C-F6): a new attempt clears the stale error banner FIRST
+    // (the useWhatsAppOtp sendCode convention — the `error &&` render
+    // gate treats "" as hidden).
+    onError("");
     setLoading(true);
     try {
       if (provider.auth_type === "oauth_redirect") {

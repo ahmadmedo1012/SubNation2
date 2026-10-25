@@ -33,6 +33,18 @@ vi.mock("@/lib/auth", () => ({
 
 type InfiniteResult = ReturnType<typeof useInfiniteQuery>;
 
+/** A GET /api/orders row (the orders-load-more.test.tsx fixture shape). */
+const ORDER = (i: number) => ({
+  id: i,
+  order_code: `SNDB${String(i).padStart(4, "0")}`,
+  status: "completed",
+  amount: 25,
+  product_name: `منتج رقم ${i}`,
+  product_image_url: null,
+  variant_label: null,
+  created_at: "2026-09-08T10:00:00.000Z",
+});
+
 function mockInfiniteResult(over: Partial<InfiniteResult>) {
   vi.mocked(useInfiniteQuery).mockReturnValue({
     data: { pages: [[]], pageParams: [1] },
@@ -57,7 +69,10 @@ function renderPage() {
 
 describe("OrdersPage — a failed query is an error, not an empty list (B4 P1-4)", () => {
   it("renders the error card with a retry action when the orders query fails", () => {
-    mockInfiniteResult({ isError: true });
+    // R187 (B-F7): a failed FIRST load leaves `data` undefined (the real
+    // react-query shape — the old mock's pre-seeded empty page made the
+    // same state unreachable). loadError keys on exactly this shape.
+    mockInfiniteResult({ data: undefined, isError: true });
 
     renderPage();
 
@@ -66,6 +81,23 @@ describe("OrdersPage — a failed query is an error, not an empty list (B4 P1-4)
     // to masquerade as an empty purchase history.
     expect(screen.queryByText("لا توجد طلبات بعد")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+  });
+
+  it("R187 (B-F7): a background-refetch failure keeps the rendered rows (stale-keep, the referrals idiom)", () => {
+    // Page 1 SUCCEEDED and is cached; a later refetch (socket/resync
+    // lane) failed. Bare isError used to blank the fully-rendered list
+    // with the outage card — a transient failure must not destroy
+    // on-screen data (referrals.tsx's loadError derivation).
+    mockInfiniteResult({
+      data: { pages: [[ORDER(1), ORDER(2)]], pageParams: [1] },
+      isError: true,
+    });
+
+    renderPage();
+
+    expect(screen.getByText(/منتج رقم 1$/)).toBeInTheDocument();
+    expect(screen.getByText(/منتج رقم 2$/)).toBeInTheDocument();
+    expect(screen.queryByText("تعذّر تحميل الطلبات")).not.toBeInTheDocument();
   });
 
   it("still renders the empty state when the query succeeds with zero orders", () => {

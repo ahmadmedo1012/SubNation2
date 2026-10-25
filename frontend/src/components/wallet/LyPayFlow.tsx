@@ -215,7 +215,11 @@ export function LyPayFlow({
             <div
               id="wallet-error-2"
               role="alert"
-              aria-live="polite"
+              /* R187 (L-F2): no explicit aria-live — role="alert" alone
+                  carries the implicit assertive semantics a money-path
+                  error banner needs; the old aria-live="polite" override
+                  queued it behind other announcements (the mobile form's
+                  #wallet-error twin). */
               className="flex items-center gap-2.5 text-destructive text-sm bg-destructive/8 border border-destructive/18 px-4 py-3 rounded-xl mb-3 shake"
             >
               <AlertCircle className="w-4 h-4 shrink-0" />

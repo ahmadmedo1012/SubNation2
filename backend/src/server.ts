@@ -16,6 +16,7 @@ import { instrumentDbPool } from "./lib/db-instrumentation";
 import { assertEncryptionKeyConfigured } from "./lib/encryption";
 import { logger } from "./lib/logger";
 import { closeRedisClient, getRedisClient, initRedisClient } from "./lib/redis-client";
+import { closeRiskConfigSubscription } from "./services/risk-config-cache.service";
 import { getIO, initSocket } from "./lib/socket";
 import { startWebSchedulers, type WebSchedulerHandle } from "./lib/web-scheduler";
 import { logTelegramBootStatus } from "./telegram";
@@ -295,7 +296,9 @@ async function bootstrapCore(): Promise<boolean> {
 //      connections are closed proactively);
 //   4. pool.end() (drains DB connections);
 //   5. close the Redis singleton (bounded quit — R186-3 / I-F3: it was
-//      the one drain-time resource never closed);
+//      the one drain-time resource never closed) + the risk-config
+//      pub/sub duplicate (R187 / G-F3c: the one connection the singleton
+//      quit never covered);
 //   6. Sentry flush;
 //   7. exit(0) — with a 10s force-exit timer so a hung step can't wedge
 //      the deploy.
@@ -375,8 +378,11 @@ function registerShutdown(httpServer: Server, schedulers: WebSchedulerHandle): v
 
       // 5. Redis singleton (R186-3 / I-F3) — bounded, best-effort quit
       //    (see closeRedisClient); same try/catch shape as the pool steps.
+      //    R187 (G-F3c): the risk-config pub/sub duplicate rides the same
+      //    step — its own bounded quit (closeRiskConfigSubscription).
       try {
         await closeRedisClient();
+        await closeRiskConfigSubscription();
       } catch (err) {
         logger.warn({ err }, "[server] Redis close error during shutdown");
       }

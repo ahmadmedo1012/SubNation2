@@ -107,7 +107,13 @@ export function ProductEditorCard({
             id="product-editor-price"
             type="number"
             min="0"
-            step="0.5"
+            /* R187 (D-F1): the half-unit step is retired for the cent
+               step the server price contract speaks (zod min 0.01; the
+               variants engine writes MIN(priceLyd) in cents) and the
+               cost twin right below already rides — a 44.99 price used
+               to fire a native step-mismatch bubble and pre-fail the
+               editor on any variant-priced product's seeded 79.8. */
+            step="0.01"
             value={form.price}
             onChange={(e) => onFormChange((f) => ({ ...f, price: e.target.value }))}
             required

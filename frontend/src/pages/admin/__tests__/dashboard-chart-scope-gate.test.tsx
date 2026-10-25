@@ -28,7 +28,7 @@
  * sends no bytes at all — exactly the R123 zero-bytes contract).
  */
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -272,5 +272,61 @@ describe("AdminDashboardPage — the chart payload is finance-scoped at the FETC
     // …and the scope-safe recent-orders stream stays (the page is
     // alive for the operator's own scope, not a dead shell).
     expect(screen.getByText("آخر الطلبات")).toBeInTheDocument();
+  });
+});
+
+describe("AdminDashboardPage — a FAILED stats query is an explained fold, not a zero-tile void (R187 D-F3)", () => {
+  const refetchStats = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The production failure shape: the finance admin's stats observer
+    // errored — data stays undefined, isLoading settles false, isError
+    // carries the arm the page never destructured before R187.
+    (useGetAdminStats as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("HTTP 500 Internal Server Error"),
+      refetch: refetchStats,
+    });
+    (useListAdminOrders as ReturnType<typeof vi.fn>).mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockResolvedValue(resLike({ body: [] }));
+    authState.finance = true;
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("the KPI fold renders the warning banner + retry (role=alert) and ZERO tiles", async () => {
+    renderPage();
+
+    // The honest failure surface: the scope-banner idiom's warning
+    // tokens + the «تعذّر تحميل» copy + a retry affordance — announced
+    // as an alert (an async failure the operator must know about).
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toContain("تعذّر تحميل بطاقات المؤشرات");
+    expect(within(banner).getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
+
+    // The grid renders NO tiles (the unexplained void is gone — the
+    // banner IS the fold now, same as the scope arm beside it).
+    for (const tile of ["المستخدمون", "المخزون المتاح", "إجمالي الإيرادات", "رصيد المحافظ"]) {
+      expect(screen.queryByText(tile)).not.toBeInTheDocument();
+    }
+    // The scope-safe recent-orders stream stays alive.
+    expect(screen.getByText("آخر الطلبات")).toBeInTheDocument();
+
+    // The retry re-runs the stats observer (its own refetch, not the
+    // layout-wide refresh).
+    fireEvent.click(within(banner).getByRole("button", { name: "إعادة المحاولة" }));
+    expect(refetchStats).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { AdminSessionExpiredError, adminFetch, isAdminUnauthorized } from "@/lib/admin-session";
 import { useAuth } from "@/lib/auth";
 import { useChartColors } from "@/lib/chart-theme";
+import { formatCount } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { Activity, Cpu, Send } from "lucide-react";
@@ -54,7 +55,10 @@ import { HttpAnalyticsSection } from "@/components/admin/system/HttpAnalyticsSec
 import { AuthSecuritySection } from "@/components/admin/system/AuthSecuritySection";
 import { RedisPerformanceSection } from "@/components/admin/system/RedisPerformanceSection";
 import { SocketJobsSection } from "@/components/admin/system/SocketJobsSection";
-import { CoreWebVitalsSection } from "@/components/admin/system/CoreWebVitalsSection";
+import {
+  CoreWebVitalsSection,
+  SAMPLE_COUNT_FORMS,
+} from "@/components/admin/system/CoreWebVitalsSection";
 import { RecentAlertsSection } from "@/components/admin/system/RecentAlertsSection";
 import { ExternalDashboardsSection } from "@/components/admin/system/ExternalDashboardsSection";
 import { type CheckStatus, type HealthCheck, type HealthzReadyResponse } from "@/lib/healthz";
@@ -100,7 +104,7 @@ export default function AdminSystemPage(): ReactElement | null {
         throw new Error("SESSION_EXPIRED");
       }
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status} — تعذّر جلب بيانات المراقبة`);
+        throw new Error(`HTTP ${res.status} — تعذّر تحميل بيانات المراقبة`);
       }
       return (await res.json()) as T;
     };
@@ -529,7 +533,10 @@ export default function AdminSystemPage(): ReactElement | null {
                     <Activity className="w-4 h-4 text-primary" />
                     <h3 className="text-sm font-bold">معدل الطلبات (طلب/ث)</h3>
                     <span className="text-3xs text-muted-foreground ms-auto">
-                      آخر {Math.min(samples.length, 60)} عيّنة · ~
+                      {/* R187L-F1: the rps window count rides formatCount
+                          — the CoreWebVitalsSection SAMPLE_COUNT_FORMS
+                          family (was the frozen «N عيّنة»). */}
+                      آخر {formatCount(Math.min(samples.length, 60), SAMPLE_COUNT_FORMS)} · ~
                       {Math.min(samples.length, 60) * 15}ث
                     </span>
                   </div>

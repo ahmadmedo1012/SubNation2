@@ -6,6 +6,7 @@ import { insertPointsLedgerEntry } from "../lib/points-ledger";
 import { emitToAdmins, emitToUser } from "../lib/socket";
 import { createNotification } from "../notify";
 import { settleTopupCard } from "../lib/telegram-cards";
+import { logger } from "../lib/logger";
 
 import { roundLyd, formatLyd } from "../lib/money";
 import { notifyTopupApproved, notifyTopupRejected } from "../telegram";
@@ -248,17 +249,18 @@ export class TopupService {
     // credits the wallet 2× for one real transfer. (Empty/null references
     // carry no dedup signal and are allowed.)
     //
-    // B4-R1 (R111, round-111 B4 audit): blank references are now a CLOSED
-    // class — POST /api/wallet/topups REQUIRES a non-blank payment_reference
-    // for mobile_transfer at CREATION, so every new pending row carries a
-    // dedup signal and the battery in this transaction (exact-ref check +
-    // V1-M9 partial unique + composite soft-dedup) plus the route's
-    // creation-time same-receipt guard closes the "two approvable ref-less
-    // pendings" window. APPROVAL deliberately keeps accepting blank refs: the live
-    // table holds pre-fix blank-ref rows (2 pending as of 2026-09-24) whose
-    // operators must still be able to review them — enforcing the
-    // requirement here would strand real customer money in un-approvable
-    // limbo. Do NOT add a ref requirement to this method.
+    // B4-R1 (r111) → R154 retirement → R187 comment truth (M3): the
+    // blank-reference REQUIREMENT at creation was RETIRED by R154
+    // (`490597ce`) — refs are optional; the ref-less duplicate risk is
+    // surfaced as the operator review signal (the `⚠ خطر تكرار محتمل`
+    // admin note from topup-create.service.ts's duplicateRiskIds probe),
+    // never a rejection. The battery in this transaction (exact-ref check
+    // + V1-M9 partial unique + composite soft-dedup) still guards every
+    // reference-carrying pair. APPROVAL deliberately accepts blank refs:
+    // the live table holds pre-fix blank-ref rows whose operators must
+    // still be able to review them — enforcing a requirement here would
+    // strand real customer money in un-approvable limbo. Do NOT add a
+    // ref requirement to this method.
     const ref = (topup.paymentReference ?? "").trim();
 
     // B2-04: whether THIS approve actually awarded the referral bonus —
@@ -639,18 +641,28 @@ export class TopupService {
       // happen). R123 (E1): keyed on the fresh in-tx read the award itself
       // used — never the stale pre-tx outer value.
       if (referralCredited && freshReferredBy) {
-        const [referrer] = await db
-          .select()
-          .from(usersTable)
-          .where(eq(usersTable.id, freshReferredBy))
-          .limit(1);
-        if (referrer) {
-          await createNotification(
-            referrer.id,
-            "loyalty",
-            `حصلت على ${POINTS_PER_REFERRAL} نقطة من إحالة!`,
-            "تمت مكافأتك بنجاح لأن صديقك أتم أول شحن",
-            "/loyalty",
+        // R187 (G-F5): post-commit read — failure-isolated like the
+        // createNotification calls below it (a transient DB blip must not
+        // 500 an already-committed money op; the credit + ledger are IN).
+        try {
+          const [referrer] = await db
+            .select()
+            .from(usersTable)
+            .where(eq(usersTable.id, freshReferredBy))
+            .limit(1);
+          if (referrer) {
+            await createNotification(
+              referrer.id,
+              "loyalty",
+              `حصلت على ${POINTS_PER_REFERRAL} نقطة من إحالة!`,
+              "تمت مكافأتك بنجاح لأن صديقك أتم أول شحن",
+              "/loyalty",
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            { err, referrerId: freshReferredBy, topupId, category: "topup" },
+            "[topup] post-commit referrer read/notification failed (non-fatal — approval committed)",
           );
         }
       }
@@ -734,37 +746,48 @@ export class TopupService {
       throw new ServiceError(409, "الطلب تمت معالجته مسبقاً");
     }
 
-    const [rejUser] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, topup.userId))
-      .limit(1);
+    // R187 (G-F5): the user re-read + notify tail is post-commit (the
+    // guarded flip above IS the money write) — failure-isolated like the
+    // approve path's notifications: a transient blip must not 500 the
+    // already-committed rejection.
+    try {
+      const [rejUser] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.id, topup.userId))
+        .limit(1);
 
-    if (rejUser) {
-      notifyTopupRejected({
-        phone: rejUser.phone,
-        amount: parseFloat(String(topup.amount)),
-        topupId: topup.id,
-      });
-      await createNotification(
-        rejUser.id,
-        "wallet",
-        // R128 (B8-D3): formatLyd — en-US grouping canon, approve-parity.
-        `تم رفض طلب الشحن (${formatLyd(parseFloat(String(topup.amount)))})`,
-        "تواصل مع الدعم إذا كنت ترى أن هذا خطأ",
-        "/support",
+      if (rejUser) {
+        notifyTopupRejected({
+          phone: rejUser.phone,
+          amount: parseFloat(String(topup.amount)),
+          topupId: topup.id,
+        });
+        await createNotification(
+          rejUser.id,
+          "wallet",
+          // R128 (B8-D3): formatLyd — en-US grouping canon, approve-parity.
+          `تم رفض طلب الشحن (${formatLyd(parseFloat(String(topup.amount)))})`,
+          "تواصل مع الدعم إذا كنت ترى أن هذا خطأ",
+          "/support",
+        );
+        // R123 (E1, P3): amount rides the reject payload too (approve-parity
+        // field set) — the frontend reject-toast dedupe key is
+        // `topup-${amount}-rejected`; without it every rejection shared the
+        // single `topup-undefined-rejected` id and the second distinct
+        // rejection toast was silently deduped away.
+        emitToUser(rejUser.id, "topup-updated", {
+          id: topup.id,
+          status: "rejected",
+          amount: topup.amount,
+        });
+        emitToAdmins("admin-stats-update", { type: "topup-rejected" });
+      }
+    } catch (err) {
+      logger.warn(
+        { err, userId: topup.userId, topupId, category: "topup" },
+        "[topup] post-commit rejection read/notifications failed (non-fatal — rejection committed)",
       );
-      // R123 (E1, P3): amount rides the reject payload too (approve-parity
-      // field set) — the frontend reject-toast dedupe key is
-      // `topup-${amount}-rejected`; without it every rejection shared the
-      // single `topup-undefined-rejected` id and the second distinct
-      // rejection toast was silently deduped away.
-      emitToUser(rejUser.id, "topup-updated", {
-        id: topup.id,
-        status: "rejected",
-        amount: topup.amount,
-      });
-      emitToAdmins("admin-stats-update", { type: "topup-rejected" });
     }
 
     // R153: the reject twin of the approve settlement — same fire-and-forget

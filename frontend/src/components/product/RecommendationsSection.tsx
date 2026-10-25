@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { Lock } from "lucide-react";
 import { useEffect } from "react";
 import { formatCurrency } from "@/lib/utils";
-import { productToItem, trackViewItemList } from "@/lib/analytics-events";
+import { productToItem, trackSelectItem, trackViewItemList } from "@/lib/analytics-events";
 import { productArtUrl } from "@/lib/product-art";
 import {
   getGetProductRecommendationsQueryKey,
@@ -85,7 +85,15 @@ export function RecommendationsSection({ numericId }: { numericId: number }) {
               <Link
                 key={r.id}
                 href={`/product/${r.slug ?? r.id}`}
-                onClick={() => window.scrollTo(0, 0)}
+                /* R187 (A-F3): the list→PDP hop is GA4-visible — the
+                   same select_item every other card surface fires
+                   (ProductCard :339), carrying the rail's own
+                   "pdp-recommendations" list id alongside the
+                   view_item_list impression above. */
+                onClick={() => {
+                  trackSelectItem(productToItem(r), "pdp-recommendations");
+                  window.scrollTo(0, 0);
+                }}
                 className="block bg-card border border-border/50 rounded-2xl p-3.5 space-y-3 cursor-pointer hover:border-primary/40 transition-all group"
               >
                 <div className="aspect-[4/3] bg-muted/30 rounded-xl overflow-hidden relative">

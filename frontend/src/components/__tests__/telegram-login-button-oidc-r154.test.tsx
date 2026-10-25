@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { TelegramLoginButton } from "@/components/auth/TelegramLoginButton";
 
 /**
@@ -99,5 +101,47 @@ afterEach(() => {
     configurable: true,
     writable: true,
     value: ORIGINAL_LOCATION,
+  });
+});
+
+// ── R187 (C-F3/F4/F6) — the honesty pins ────────────────────────────────────
+describe("R187 — TelegramLoginButton source + attempt-reset pins (C-F3/F4/F6)", () => {
+  const read = () =>
+    readFileSync(resolve(process.cwd(), "src/components/auth/TelegramLoginButton.tsx"), "utf8");
+
+  it("C-F3: the open-redirect guard is the CANONICAL sanitizeInternalPath — no local origin-resolving fork remains", () => {
+    // Source pin (the R186 telegram-callback-redirect-guard style): the
+    // module-local readRedirectTargetFromUrl duplicate of lib/utils'
+    // canonical guard is deleted; the reader goes through the import.
+    const source = read();
+    expect(source).toContain('import { sanitizeInternalPath } from "@/lib/utils";');
+    expect(source).toContain("sanitizeInternalPath(");
+    expect(source).not.toContain("readRedirectTargetFromUrl");
+    expect(source).not.toContain("function readRedirectTarget");
+  });
+
+  it("C-F4: the docblock documents the shipped fragment + POST flow — zero ?token= occurrences (the B-F8 style)", () => {
+    // The deleted token-in-URL redirect transport (H-4/R142, F-010)
+    // must not resurrect in the documentation — a future agent "fixing"
+    // toward a docblock that describes ?token= 302s would reintroduce
+    // the security audit's finding by accident.
+    const source = read();
+    expect(source).not.toContain("?token=");
+    expect(source).toContain("#tgAuthResult=");
+    expect(source).toContain("/api/auth/telegram");
+  });
+
+  it("C-F6: a new attempt resets the stale error banner first (the useWhatsAppOtp sendCode convention)", () => {
+    const loc = mockLocation();
+    render(<TelegramLoginButton botId="1234567890" onError={onError} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "المتابعة عبر Telegram" }));
+
+    // The FIRST thing the handler does is clear the parent's error
+    // state (the `error &&` render gate treats "" as hidden)…
+    expect(onError).toHaveBeenCalledWith("");
+    // …and the happy redirect path lands no other error.
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(loc.href).toContain("https://oauth.telegram.org/auth");
   });
 });

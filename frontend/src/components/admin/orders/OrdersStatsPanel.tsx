@@ -44,6 +44,7 @@ export function OrdersStatsPanel({
     <div className="bg-card border border-border/60 rounded-2xl overflow-hidden float-in stagger-1">
       <button
         onClick={onToggleStats}
+        aria-expanded={showStats}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/10 transition-colors"
       >
         <div className="flex items-center gap-2 text-sm font-bold">

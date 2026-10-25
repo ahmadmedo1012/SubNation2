@@ -667,8 +667,13 @@ export default function ProfilePage() {
             {/* Link-more block — single source of truth. Renders the
                 provider link buttons that aren't already in the
                 linkedProviders list. Telegram appears automatically
-                via AuthProviders when admin enables it. */}
-            {!loadingProviders && linkedProviders.length < 2 && (
+                via AuthProviders when admin enables it.
+                R187 (B-F5): gated on !providersError too — a failed
+                /providers/linked probe means the list is UNKNOWN, not
+                empty (the advice card's R94-A1 #8 sibling this block
+                missed: false-empty evidence must not render the
+                link-your-account affordance). */}
+            {!loadingProviders && !providersError && linkedProviders.length < 2 && (
               <div className="pt-1 space-y-2">
                 {!linkedProviders.find((i) => i.provider === "google.com") && (
                   <AuthProviders

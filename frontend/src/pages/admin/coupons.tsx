@@ -79,11 +79,43 @@ export default function AdminCouponsPage() {
   // 110-M (109-m P3): inline validation error for the value field (see
   // the handleCreate parity guards) — cleared on any value/type edit.
   const [valueError, setValueError] = useState<string | null>(null);
-  const [toggling, setToggling] = useState<number | null>(null);
+  // R187 (D-F5): the per-row busy atoms are Sets now (the topups
+  // processingIds idiom) — the single-id models re-enabled row A's
+  // spinner the moment row B's action started, and A's finally then
+  // cleared B's mid-flight busy. Each mutation marks its OWN id and
+  // clears it — and only it — in its finally. Two sets (not one): the
+  // toggle and archive buttons each own their spinner identity.
+  const [togglingIds, setTogglingIds] = useState<Set<number>>(() => new Set());
+  const markToggling = (id: number) =>
+    setTogglingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  const clearToggling = (id: number) =>
+    setTogglingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   // R125-I3 (A2-16): per-row busy guard for the archive DELETE — a
   // double-click fired two DELETEs; the second 404'd and stacked an
   // error toast on top of the success toast.
-  const [archiving, setArchiving] = useState<number | null>(null);
+  const [archivingIds, setArchivingIds] = useState<Set<number>>(() => new Set());
+  const markArchiving = (id: number) =>
+    setArchivingIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  const clearArchiving = (id: number) =>
+    setArchivingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   // R160 (coupons sort affordance): the CLIENT-side ?sort= state — the
   // admin list API returns the ENTIRE capped list (≤200) in one fetch,
   // so the sort ranks the full dataset in memory (the users-directory
@@ -210,6 +242,32 @@ export default function AdminCouponsPage() {
       return;
     }
 
+    // R187 (D-F7): the remaining server bounds (routes/coupons.ts) get
+    // field-specific Arabic guards BEFORE the round-trip — the old path
+    // surfaced these only as the generic «بيانات غير صالحة» 400 toast.
+    if (form.min_order_amount) {
+      const minOrder = parseFloat(form.min_order_amount);
+      if (isNaN(minOrder) || minOrder < 0 || minOrder > 1_000_000) {
+        toast({
+          title: "خطأ",
+          description: "الحد الأدنى للطلب يجب أن يكون بين 0 و 1,000,000 د.ل",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    if (form.max_uses) {
+      const maxUses = Number.parseInt(form.max_uses, 10);
+      if (isNaN(maxUses) || maxUses < 1 || maxUses > 1_000_000) {
+        toast({
+          title: "خطأ",
+          description: "الحد الأقصى للاستخدام يجب أن يكون عددًا صحيحًا بين 1 و 1,000,000",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setCreating(true);
     try {
       const body: Record<string, unknown> = {
@@ -267,7 +325,8 @@ export default function AdminCouponsPage() {
   };
 
   const handleToggle = async (coupon: Coupon) => {
-    setToggling(coupon.id);
+    // R187 (D-F5): mark THIS row busy (the Set adds its own id).
+    markToggling(coupon.id);
     try {
       await adminFetchJson(`/api/coupons/admin/${coupon.id}`, {
         method: "PATCH",
@@ -285,7 +344,9 @@ export default function AdminCouponsPage() {
         variant: "destructive",
       });
     } finally {
-      setToggling(null);
+      // R187 (D-F5): clears OWN id only — another row's in-flight
+      // action keeps its busy state.
+      clearToggling(coupon.id);
     }
   };
 
@@ -307,7 +368,8 @@ export default function AdminCouponsPage() {
       destructive: true,
     });
     if (!confirmed) return;
-    setArchiving(coupon.id);
+    // R187 (D-F5): mark THIS row busy (the Set adds its own id).
+    markArchiving(coupon.id);
     try {
       await adminFetchJson(`/api/coupons/admin/${coupon.id}`, { method: "DELETE", headers });
       // R186 (C-F8): invalidate the shared base key (see handleCreate).
@@ -329,7 +391,8 @@ export default function AdminCouponsPage() {
         variant: "destructive",
       });
     } finally {
-      setArchiving(null);
+      // R187 (D-F5): clears OWN id only (the Set model).
+      clearArchiving(coupon.id);
     }
   };
 
@@ -446,8 +509,8 @@ export default function AdminCouponsPage() {
               <CouponsTable
                 coupons={sortedCoupons}
                 activeCount={activeCount}
-                toggling={toggling}
-                archiving={archiving}
+                togglingIds={togglingIds}
+                archivingIds={archivingIds}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
               />

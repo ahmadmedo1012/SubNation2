@@ -7,6 +7,11 @@ import { useToast } from "@/hooks/useToast";
 import { useAuth } from "@/lib/auth";
 import { getErrorMessage, NETWORK_ERROR_DESCRIPTION } from "@/lib/errors";
 import { generateIdempotencyKey, withIdempotencyKey } from "@/lib/idempotency";
+// R187E-F1: the confirm's amounts ride the documented backend mirror —
+// the list route sends points_earned: 0 on PENDING rows (the only rows
+// with a credit button) while the POST mints POINTS_PER_REFERRAL, so
+// row.points_earned understated the money-adjacent preview by 100%.
+import { POINTS_PER_REFERRAL } from "@/lib/referral-policy";
 import { formatCurrency } from "@/lib/utils";
 // R127-L1 (B1 §3.3): the list + credit ride the generated client from
 // the batch-1 spec exposure — useListAdminReferrals (params in the
@@ -139,9 +144,12 @@ export default function AdminReferralsPage() {
       // R127-L1 (B1 B15-3): the confirm previews the LYD equivalent too
       // (the users.tsx R126 points-preview idiom — «كل 100 نقطة = 1 د.ل»)
       // so both currencies are named honestly before the mint.
+      // R187E-F1: POINTS_PER_REFERRAL, not row.points_earned — the
+      // backend zeroes that field on pending rows (routes/admin/
+      // referrals.ts), so the row value misstated the mint by 100%.
       const ok = await confirm({
         title: "تأكيد منح النقاط",
-        description: `سيتم قيد ${row.points_earned} نقطة ولاء للمُحيل ${row.referrer_phone} (إحالة ${row.referee_phone}) — القيمة بالدينار عند التحويل: ${formatCurrency(row.points_earned / 100)} (كل 100 نقطة = 1 د.ل).`,
+        description: `سيتم قيد ${POINTS_PER_REFERRAL} نقطة ولاء للمُحيل ${row.referrer_phone} (إحالة ${row.referee_phone}) — القيمة بالدينار عند التحويل: ${formatCurrency(POINTS_PER_REFERRAL / 100)} (كل 100 نقطة = 1 د.ل).`,
         confirmLabel: "منح النقاط",
       });
       if (!ok) return;

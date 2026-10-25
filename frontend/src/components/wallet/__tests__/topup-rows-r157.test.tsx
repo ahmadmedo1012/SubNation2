@@ -18,6 +18,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LatestTopupPin } from "@/components/wallet/LatestTopupPin";
 import { TopupHistoryCard } from "@/components/wallet/TopupHistoryCard";
+import { formatCount, ORDER_COUNT_FORMS_SUBJECT } from "@/lib/utils";
 import type { LatestTopup } from "@/components/wallet/LatestTopupPin";
 
 afterEach(cleanup);
@@ -95,5 +96,26 @@ describe("R157 #2 — a rejected topup keeps its admin_note in the history", () 
     const { container } = renderHistory([row({ status: "approved", admin_note: "ملاحظة" })]);
     expect(screen.queryByText("ملاحظة")).not.toBeInTheDocument();
     expect(container.querySelector(".line-clamp-2")).toBeNull();
+  });
+});
+
+// ── R187 (B-F4): the count chip states what's shown, never a capped-window total ──
+describe("R187 B-F4 — the topup-history count chip over the backend's 200-row cap", () => {
+  it("a full 200-row window captions «عرض آخر 200 طلب شحن» (the WalletStatementCard honesty idiom)", () => {
+    renderHistory(Array.from({ length: 200 }, (_, i) => row({ id: i + 1 })));
+
+    // The backend caps GET /wallet/topups at 200 rows/page and the wallet
+    // page loads page 1 only — a full window is TRUNCATED, not the user's
+    // total topups. The caption states what's shown.
+    expect(screen.getByText("عرض آخر 200 طلب شحن")).toBeInTheDocument();
+    // …and the plain-count branch does not render over the capped window.
+    expect(screen.queryByText(formatCount(200, ORDER_COUNT_FORMS_SUBJECT))).not.toBeInTheDocument();
+  });
+
+  it("a short window keeps the pluralized count (the chip is unchanged below the cap)", () => {
+    renderHistory([row({ id: 1 })]);
+
+    expect(screen.getByText(formatCount(1, ORDER_COUNT_FORMS_SUBJECT))).toBeInTheDocument();
+    expect(screen.queryByText("عرض آخر 200 طلب شحن")).not.toBeInTheDocument();
   });
 });

@@ -14,6 +14,7 @@
 
 import { db, riskConfigTable, type RiskConfig } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import type { RedisClientType } from "redis";
 
 import { logger } from "../lib/logger";
 import { getRedisClient, withRedisCommandTimeout } from "../lib/redis-client";
@@ -43,6 +44,11 @@ const DEFAULTS: RiskConfigDefaults = {
 let inMemoryCache: RiskConfig | null = null;
 let inMemoryCacheExpiresAt = 0;
 let invalidationSubscribed = false;
+// R187 (G-F3): the pub/sub duplicate's lifecycle state — the shared
+// first-attempt promise (concurrent first callers must mint ONE
+// connection, not one each) and the tracked duplicate the drain closes.
+let invalidationSubscriptionPromise: Promise<void> | null = null;
+let invalidationSub: RedisClientType | null = null;
 
 export interface RiskConfigSnapshot {
   thresholds: { low: number; medium: number; high: number; critical: number };
@@ -166,6 +172,28 @@ export async function invalidateRiskConfig(): Promise<void> {
 
 async function ensureInvalidationSubscription(): Promise<void> {
   if (invalidationSubscribed) return;
+  // R187 (G-F3): share ONE in-flight attempt — the old post-await flag
+  // let every concurrent first caller mint its own duplicate connection.
+  // Cleared on completion so a failed attempt retries on the next expiry.
+  if (!invalidationSubscriptionPromise) {
+    invalidationSubscriptionPromise = subscribeInvalidationChannel().finally(() => {
+      invalidationSubscriptionPromise = null;
+    });
+  }
+  await invalidationSubscriptionPromise;
+}
+
+/** R187 (G-F3): retire a half-open duplicate so a failed attempt leaks
+ * zero orphan connections (the connect path already did this). */
+function retireSubscriber(sub: { disconnect(): void }): void {
+  try {
+    sub.disconnect();
+  } catch {
+    /* already gone */
+  }
+}
+
+async function subscribeInvalidationChannel(): Promise<void> {
   try {
     const redis = getRedisClient();
     if (!redis) return;
@@ -186,23 +214,56 @@ async function ensureInvalidationSubscription(): Promise<void> {
     } catch (err) {
       // R146 review F1: retire the loser so a sustained outage (connect
       // times out every 60 s cache expiry) leaks zero orphan duplicates.
-      try {
-        sub.disconnect();
-      } catch {
-        /* already gone */
-      }
+      retireSubscriber(sub);
       throw err;
     }
-    await sub.subscribe(INVALIDATION_CHANNEL, () => {
-      inMemoryCache = null;
-      inMemoryCacheExpiresAt = 0;
-    });
+    // R187 (G-F3): subscribe bounded like the connect above — it was the
+    // last unbounded op on this path (a gray-zone socket queued it forever
+    // and hung getRiskConfig after the DB read had already succeeded).
+    try {
+      await withRedisCommandTimeout("risk_config_sub_subscribe", () =>
+        sub.subscribe(INVALIDATION_CHANNEL, () => {
+          inMemoryCache = null;
+          inMemoryCacheExpiresAt = 0;
+        }),
+      );
+    } catch (err) {
+      retireSubscriber(sub);
+      throw err;
+    }
+    invalidationSub = sub;
     invalidationSubscribed = true;
   } catch (err) {
     logger.warn(
       { err, category: "risk-config" },
       "[risk-config] redis pub/sub unavailable; cache will still TTL out",
     );
+  }
+}
+
+/**
+ * R187 (G-F3c): drain-time close for the pub/sub duplicate — the shutdown
+ * drain quits the Redis singleton (closeRedisClient) while this dedicated
+ * connection silently outlived it. Best-effort + bounded like its sibling
+ * (a quit on a half-dead socket never settles); resets the subscription
+ * state so a post-close getRiskConfig re-subscribes instead of assuming a
+ * live subscriber.
+ */
+export async function closeRiskConfigSubscription(): Promise<void> {
+  invalidationSubscribed = false;
+  const sub = invalidationSub;
+  invalidationSub = null;
+  if (!sub) return;
+  try {
+    await Promise.race([
+      sub.quit(),
+      new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 2_000);
+        timer.unref?.();
+      }),
+    ]);
+  } catch {
+    // best-effort only — the process is exiting
   }
 }
 

@@ -1,5 +1,6 @@
 import { DetailsSection } from "@/components/admin/system/DetailsSection";
 import { STATUS_META } from "@/components/admin/system/system-meta";
+import { formatCount } from "@/lib/utils";
 import type { MetricsSnapshot } from "@/components/admin/system/system-types";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/system.tsx —
@@ -8,6 +9,19 @@ import type { MetricsSnapshot } from "@/components/admin/system/system-types";
 // metrics query and the panel's visibility gate stay in the page — the
 // snapshot flows down as a value; the move only changes its address,
 // DOM/classes byte-identical.
+
+/** Arabic plural forms for عيّنة — R187L-F1: the vitals' sample counts
+ *  (the ALERT_COUNT_FORMS local-object idiom; was the frozen «N عيّنة»).
+ *  Exported for the page's rps-chart window count (the same noun, one
+ *  family — no second hand-typed copy to drift). */
+export const SAMPLE_COUNT_FORMS = {
+  zero: "عيّنات",
+  one: "عيّنة",
+  two: "عيّنتان",
+  few: "عيّنات",
+  many: "عيّنةً",
+  other: "عيّنة",
+};
 
 export function CoreWebVitalsSection({ metrics }: { metrics: MetricsSnapshot }) {
   return (
@@ -43,7 +57,7 @@ export function CoreWebVitalsSection({ metrics }: { metrics: MetricsSnapshot }) 
             <div
               key={key}
               className={`bg-card border ${meta.border} rounded-2xl p-4`}
-              title={`${samples} عيّنة · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
+              title={`${formatCount(samples, SAMPLE_COUNT_FORMS)} · حد الجيد: ${good}${unit} · حد الضعيف: ${poor}${unit}`}
             >
               <div className="flex items-center justify-between gap-2 mb-2">
                 <span className="text-3xs text-muted-foreground font-bold">{label}</span>
@@ -60,7 +74,9 @@ export function CoreWebVitalsSection({ metrics }: { metrics: MetricsSnapshot }) 
               <div className={`font-bold text-base leading-none tabular-nums ${meta.color}`}>
                 {display}
               </div>
-              <div className="text-3xs text-muted-foreground mt-1">{samples} عيّنة</div>
+              <div className="text-3xs text-muted-foreground mt-1">
+                {formatCount(samples, SAMPLE_COUNT_FORMS)}
+              </div>
             </div>
           );
         })}

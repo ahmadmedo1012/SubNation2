@@ -63,7 +63,13 @@ vi.mock("@/hooks/useConfirm", () => ({
 }));
 
 vi.mock("@/components/SessionManager", () => ({ SessionManager: () => null }));
-vi.mock("@/components/auth/AuthProviders", () => ({ AuthProviders: () => null }));
+// R187 (B-F5 pin): a REAL button, not a null stub — the link-more gate's
+// absence is only observable if the mocked AuthProviders actually renders
+// an affordance (queryByRole(/Google/) against a null mock passes
+// vacuously, on BOTH sides of the gate).
+vi.mock("@/components/auth/AuthProviders", () => ({
+  AuthProviders: () => <button type="button">Google</button>,
+}));
 
 type MeResult = ReturnType<typeof useGetMe>;
 
@@ -233,5 +239,37 @@ describe("ProfilePage — /auth/me failure no longer silently vanishes the ident
     const retry = screen.getByRole("button", { name: "إعادة المحاولة" });
     expect(retry.className).toContain("min-h-11");
     expect(retry.className).toContain("inline-flex");
+  });
+
+  it("R187 (B-F5): a failed providers probe renders NO link-your-account affordance (false-empty evidence)", async () => {
+    vi.mocked(useGetMe).mockReturnValue({
+      data: ME_FIXTURE,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as MeResult);
+
+    // The probe 500s — the provider list is UNKNOWN, not empty. The
+    // link-more block must not render the Google affordance (the
+    // R94-A1 #8 advice-card gate this sibling missed): a user whose
+    // google.com identity EXISTS would be told to link it again.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "internal" }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    renderPage();
+
+    // The in-card error row renders (the honest state for a failed probe)…
+    expect(await screen.findByText("تعذّر تحميل الحسابات المرتبطة")).toBeInTheDocument();
+    // …while the link-more affordance does NOT (the mocked AuthProviders
+    // renders a real Google button — see the module mock note above).
+    expect(screen.queryByRole("button", { name: /Google/ })).toBeNull();
   });
 });

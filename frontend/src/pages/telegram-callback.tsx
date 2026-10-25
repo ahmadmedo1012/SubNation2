@@ -98,7 +98,10 @@ function decodeTelegramPayload(): DecodedTelegramPayload | null {
   if (search.has("id") && search.has("hash") && search.has("auth_date")) {
     const data: Record<string, string> = {};
     search.forEach((value, key) => {
-      if (key !== "ref") data[key] = value;
+      // R187 (C-F2): OUR own routing params are never part of the
+      // Telegram HMAC — forwarding ?redirect into the signed payload
+      // guarantees bad_signature for every flow carrying a return path.
+      if (key !== "ref" && key !== "redirect") data[key] = value;
     });
     return { data, referralCode };
   }
@@ -134,11 +137,27 @@ export default function TelegramCallbackPage() {
     if (handled.current) return;
     handled.current = true;
 
+    // R187 (C-F5): the guarded destination is read ONCE, up front
+    // (before any leg's navigation rewrites the URL) through the
+    // canonical sanitizeInternalPath guard. The success leg AND every
+    // /login?error= leg below honor it — the same return-path contract
+    // the backend's loginErrorRedirect applies on its OIDC error legs
+    // (error first, redirect second), so a failed Telegram attempt
+    // returns the user to the page they started from instead of the
+    // bare login.
+    const redirectTarget = sanitizeInternalPath(
+      new URLSearchParams(window.location.search).get("redirect"),
+    );
+    const errorHref = (reason: string) =>
+      `/login?error=${encodeURIComponent(reason)}${
+        redirectTarget ? `&redirect=${encodeURIComponent(redirectTarget)}` : ""
+      }`;
+
     const payload = decodeTelegramPayload();
     if (!payload) {
       // No fragment AND no usable query — user cancelled, came back
       // to the URL manually, or the redirect was malformed.
-      navigate("/login?error=cancelled", { replace: true });
+      navigate(errorHref("cancelled"), { replace: true });
       return;
     }
 
@@ -167,7 +186,7 @@ export default function TelegramCallbackPage() {
 
         if (!json.token) {
           const reason = json.reason || "server_error";
-          navigate(`/login?error=${encodeURIComponent(reason)}`, { replace: true });
+          navigate(errorHref(reason), { replace: true });
           return;
         }
 
@@ -179,13 +198,11 @@ export default function TelegramCallbackPage() {
         // (login?redirect=/checkout →
         // return_to=/auth/telegram-callback?redirect=/checkout) instead
         // of the hardcoded "/" — closes the last redirect-dropping
-        // provider. Read it BEFORE the fragment strip below
+        // provider. Read BEFORE the fragment strip below
         // (replaceState rewrites window.location) through the canonical
         // sanitizeInternalPath guard (B-F3/R186: same null/reject
-        // semantics the local fork carried).
-        const redirectTarget = sanitizeInternalPath(
-          new URLSearchParams(window.location.search).get("redirect"),
-        );
+        // semantics the local fork carried; hoisted to the top of this
+        // effect by C-F5/R187 so the error legs share it).
         // Strip ONLY the fragment from the URL bar (keep the query) before
         // navigating away — the replace-navigation below rewrites the URL
         // anyway, but the strip must not consume the redirect param first.
@@ -214,11 +231,11 @@ export default function TelegramCallbackPage() {
         const api = readApiError(err);
         if (api !== null || (err instanceof Error && err.name === "ResponseParseError")) {
           const reason = (api?.data?.reason as string | undefined) || "server_error";
-          navigate(`/login?error=${encodeURIComponent(reason)}`, { replace: true });
+          navigate(errorHref(reason), { replace: true });
           return;
         }
         setError("server_error");
-        navigate("/login?error=server_error", { replace: true });
+        navigate(errorHref("server_error"), { replace: true });
       }
     })();
   }, [setToken, navigate]);

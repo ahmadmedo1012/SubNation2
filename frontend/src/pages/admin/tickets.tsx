@@ -225,8 +225,10 @@ export default function AdminTicketsPage() {
   // a user-initiated open — they clicked a row and it failed), but a
   // refresh AFTER a successful primary mutation must NOT surface its
   // failure as «خطأ»: the reply/status already committed, and a refresh
-  // blip is not a mutation failure. The next 25 s poll or the operator's
-  // next open re-syncs the thread silently.
+  // blip is not a mutation failure. The operator's next open (or the
+  // socket-driven list refetch — this page has no polling) re-syncs the
+  // thread silently. (R187 E-F4: the old comment claimed the storefront
+  // support page's 25-second timer as this page's healer.)
   const refreshSelectedSilently = async (id: number): Promise<void> => {
     try {
       const d = await getAdminTicket(id, { headers });
@@ -417,14 +419,19 @@ export default function AdminTicketsPage() {
                   voice. */}
               {pendingCount > 0 && (
                 <span className="bg-status-info/15 text-status-info border border-status-info/30 text-xs font-bold px-2.5 py-1 rounded-full">
-                  {pendingCount} نشطة
+                  {/* R187L-F1: the chip count rides formatCount (the
+                      page's own TICKET_COUNT_FORMS family — was the
+                      frozen «N نشطة»). */}
+                  {formatCount(pendingCount, TICKET_COUNT_FORMS)} نشطة
                 </span>
               )}
               {/* R125-I4 (A3-3): the queue's most important number — how
                   many customers are waiting on US right now. */}
               {awaitingReplyCount > 0 && (
                 <span className="bg-status-warning/15 text-status-warning border border-status-warning/30 text-xs font-bold px-2.5 py-1 rounded-full">
-                  {awaitingReplyCount} بانتظار ردك
+                  {/* R187L-F1: formatCount here too — the adjective
+                      «بانتظار ردك» stays, the count noun pluralizes. */}
+                  {formatCount(awaitingReplyCount, TICKET_COUNT_FORMS)} بانتظار ردك
                 </span>
               )}
             </div>

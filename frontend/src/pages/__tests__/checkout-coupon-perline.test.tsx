@@ -48,7 +48,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import CheckoutPage from "@/pages/checkout";
 import { validateCouponForLines } from "@/components/checkout/coupon-quote";
-import { CartProvider } from "@/lib/cart";
+import { CartProvider, roundToCents } from "@/lib/cart";
 
 const createOrderMock = vi.fn();
 const getMeMock = vi.fn(async () => ({ wallet_balance: 1_000_000 }));
@@ -493,6 +493,91 @@ describe("CheckoutPage — per-line coupon pre-flight (98-F2 / R98-A3 F1 P1)", (
     const notice = await screen.findByText(/كوبون غير موجود/);
     expect(notice).toHaveAttribute("role", "alert");
     expect(screen.queryByText(/تعذّر التحقق من الكوبون/)).not.toBeInTheDocument();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// R187 (A-F4) — begin_checkout value honesty. The event used to fire
+// BEFORE the coupon pre-flight: a typed-but-unapplied coupon reported
+// the UNDISCOUNTED comparisonTotal as value, and attempts that aborted
+// at the invalid-coupon return still reported a begin. The fire now
+// sits AFTER the pre-flight with the adopted roundToCents(finalAmount).
+// gtag is armed with the analytics-events suite's dataLayer idiom.
+// ─────────────────────────────────────────────────────────────────────
+
+describe("CheckoutPage — begin_checkout value honesty (R187 A-F4)", () => {
+  beforeEach(() => {
+    window.dataLayer = [];
+    window.gtag = (...args: unknown[]) => {
+      window.dataLayer!.push(args);
+    };
+  });
+
+  afterEach(() => {
+    delete window.gtag;
+    window.dataLayer = [];
+  });
+
+  /** The payloads of every pushed occurrence of `eventName`. */
+  function fired(eventName: string): Record<string, unknown>[] {
+    return ((window.dataLayer ?? []) as unknown as unknown[][])
+      .filter((e) => e[0] === "event" && e[1] === eventName)
+      .map((e) => e[2] as Record<string, unknown>);
+  }
+
+  /** Types the code WITHOUT pressing «تحقق» — the typed-but-unapplied
+   *  basket state the confirm-time pre-flight exists for. */
+  async function typeCouponOnly(code: string) {
+    fireEvent.change(await screen.findByPlaceholderText("أدخل رمز الكوبون"), {
+      target: { value: code },
+    });
+  }
+
+  it("a typed-but-unapplied VALID coupon: begin_checkout value = roundToCents(finalAmount), not the pre-coupon total", async () => {
+    // fixed 10 × qty 3 @ 25 → the pre-flight adopts finalAmount 45; the
+    // event must report 45 (the pre-coupon comparisonTotal was 75).
+    seedCart([{ productId: 5, variantId: 101, name: "Netflix شهر", price: 25, quantity: 3 }]);
+    fixedCoupon("FIXED10", 10);
+    renderPage();
+
+    await typeCouponOnly("FIXED10");
+    expect(fired("begin_checkout")).toHaveLength(0); // nothing before the click
+
+    createOrderMock.mockImplementation(async () => ({ order_code: "SNR187A4" }));
+    await clickConfirm();
+    await waitFor(() => expect(createOrderMock).toHaveBeenCalledTimes(3));
+
+    const begins = fired("begin_checkout");
+    expect(begins).toHaveLength(1);
+    // validateCouponForLines's finalAmount (45 = 3 × 15), cent-rounded —
+    // the number the next render's comparisonTotal/balance gate will use.
+    expect(begins[0]!.value).toBe(roundToCents(45));
+    expect(begins[0]!.value).not.toBe(75);
+    expect(begins[0]!.coupon_code).toBe("FIXED10");
+    // items[] = the cart LINES (cartLineToItem): one line, quantity 3.
+    const [item] = begins[0]!.items as Array<{ item_id: string; quantity: number }>;
+    expect(item!.item_id).toBe("5");
+    expect(item!.quantity).toBe(3);
+  });
+
+  it("an attempt that aborts at the invalid-coupon return fires NO begin_checkout at all", async () => {
+    // min-order 30 > unit 25: the pre-flight rejects and handleConfirm
+    // returns before the loop — a checkout that never began must not
+    // report a begin (the old pre-flight-position fire did).
+    seedCart([{ productId: 5, variantId: 101, name: "Netflix شهر", price: 25, quantity: 1 }]);
+    minOrderCoupon("MIN30", 30);
+    renderPage();
+
+    await typeCouponOnly("MIN30");
+    await clickConfirm();
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "تعذّر تطبيق الكوبون" }),
+      ),
+    );
+    expect(createOrderMock).not.toHaveBeenCalled();
+    expect(fired("begin_checkout")).toHaveLength(0);
   });
 });
 

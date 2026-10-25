@@ -109,12 +109,13 @@ export default function OrdersPage() {
   // R120-B7 (reviewer finding — A6-F1 UI consumption): the list rides
   // the accumulating useInfiniteQuery idiom (admin/orders.tsx 94-C2
   // A2 P1-1) over the route's ?page= param — a reseller past 200
-  // orders could never reach order #201+ before. The generated client
-  // can't express `page` yet (orval/zod alignment pending — see the
-  // api-zod hand-edit note), so the page fetch is the raw-URL idiom
-  // admin tickets already use (R120-B5 / A2-F9). The key keeps the
-  // "/api/orders" prefix so the product-page and checkout purchase
-  // invalidations still refresh this list (TanStack prefix match).
+  // orders could never reach order #201+ before. The page fetch is the
+  // raw-URL idiom admin tickets already use (R120-B5 / A2-F9) — a
+  // deliberate choice, not an orval gap (R187 I-F7: ListOrdersParams
+  // DOES express `page`; the old "api-zod hand-edit note" it cited never
+  // existed). The key keeps the "/api/orders" prefix so the product-page
+  // and checkout purchase invalidations still refresh this list
+  // (TanStack prefix match).
   const {
     data: ordersPages,
     isLoading,
@@ -159,6 +160,12 @@ export default function OrdersPage() {
       lastPage.length === ORDERS_PAGE_SIZE ? allPages.length + 1 : undefined,
     enabled: !!token,
   });
+
+  // R187 (B-F7): background refetch failures with stale rows still on
+  // screen are NOT an error screen — only a failed first load is (the
+  // referrals.tsx loadError derivation). Bare isError discarded
+  // fully-rendered cached rows on a transient refetch failure.
+  const loadError = isError && (ordersPages?.pages.length ?? 0) === 0;
 
   // Accumulated list — dedup by id (admin/tickets.tsx R120-B5 idiom):
   // a purchase between page requests shifts offset boundaries, so a
@@ -340,7 +347,7 @@ export default function OrdersPage() {
       {/* Loading */}
       {isLoading ? (
         <SkeletonCard count={4} wrapperClassName="space-y-2.5" />
-      ) : isError ? (
+      ) : loadError ? (
         /* Distinct from "no orders": an API outage / expired session
            previously fell into the empty state below — an incident read
            as "you never bought anything" (B4 P1-4, the last page in the

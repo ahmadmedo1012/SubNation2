@@ -144,7 +144,13 @@ describe("R137 (FE) — admin/settings.tsx decomposition: page stays an orchestr
     // title IN this file — the whole security pane (the TwoFactorSetup
     // mount included) stays inline.
     expect(page).toContain("حقائق الأمان المطبَّقة");
-    expect(page).toContain("<TwoFactorSetup adminToken={adminToken} />");
+    // R187 (C-F8): the dead adminToken prop dropped — headers come from
+    // useAdminHeaders inside TwoFactorSetup, so the mount is bare.
+    expect(page).toContain("<TwoFactorSetup />");
+    // And the component's signature carries no prop surface at all.
+    expect(read("src/pages/admin/settings/two-factor-setup.tsx")).toContain(
+      "export function TwoFactorSetup() {",
+    );
     // settings-2fa-re-enroll + the R126-L9 split still reach the tab
     // modules through the page.
     expect(page).toContain('import { AccountTab } from "./settings/account-tab";');

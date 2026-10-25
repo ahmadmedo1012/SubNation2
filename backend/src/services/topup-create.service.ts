@@ -8,6 +8,7 @@ import {
   scopeIdempotencyKey,
 } from "../lib/idempotency";
 import { formatLyd, roundLydString } from "../lib/money";
+import { logger } from "../lib/logger";
 // R158 (B-F4): the shared payment-network registry (allowlist + labels).
 import {
   PAYMENT_NETWORK_ALLOWLIST,
@@ -553,6 +554,12 @@ export async function createPendingTopup(
   // phone and derivePrimaryProvider needs telegramId/firebaseUid (the
   // other identity fields ride the projection for future notify use; a
   // bare select() pulled every users column for nothing).
+  //
+  // R187 (G-F5): failure-isolated post-commit read (the createNotification
+  // idiom — a transient DB blip must not 500 the already-committed 201).
+  // The catch degrades currentUser to undefined: no operator card, and the
+  // risk emit below still fires without the phone — both already
+  // best-effort.
   const [currentUser] = await db
     .select({
       id: usersTable.id,
@@ -565,7 +572,14 @@ export async function createPendingTopup(
     })
     .from(usersTable)
     .where(eq(usersTable.id, userId))
-    .limit(1);
+    .limit(1)
+    .catch((err: unknown) => {
+      logger.warn(
+        { err, userId, topupId: topup.id, category: "topup-create" },
+        "[topup-create] post-commit user read failed (non-fatal — topup committed)",
+      );
+      return [];
+    });
   // R128 (B8-D2): ONE operator card per PENDING topup — notifyNewTopup
   // now carries the ✅/❌ approve/reject inline keyboard (canon labels,
   // mapped network names, formatLyd amount, «رمز التحويل» — the field

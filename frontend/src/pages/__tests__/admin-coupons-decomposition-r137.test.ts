@@ -111,8 +111,11 @@ describe("R137 (FE) — admin/coupons.tsx decomposition: page stays an orchestra
       "const [form, setForm] = useState<CreateForm>(EMPTY_FORM);",
       "const [creating, setCreating] = useState(false);",
       "const [valueError, setValueError] = useState<string | null>(null);",
-      "const [toggling, setToggling] = useState<number | null>(null);",
-      "const [archiving, setArchiving] = useState<number | null>(null);",
+      // R187 (D-F5): the per-row busy atoms are Sets now (the topups
+      // processingIds idiom) — overlapping rows no longer clear each
+      // other's busy state.
+      "const [togglingIds, setTogglingIds] = useState<Set<number>>(() => new Set());",
+      "const [archivingIds, setArchivingIds] = useState<Set<number>>(() => new Set());",
     ]) {
       expect(page, atom).toContain(atom);
     }

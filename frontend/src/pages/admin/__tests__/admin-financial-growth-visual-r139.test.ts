@@ -158,15 +158,16 @@ describe("R139 (139-j) — promotions: calm cards + receipt preview + quiet dang
     );
   });
 
-  it("the permanent-delete trigger rests quiet-danger; the severity lives in the page confirm", () => {
+  it("the archive trigger rests quiet-danger; the severity lives in the page confirm", () => {
     // R139: text-destructive resting ink → muted ink + error hover;
-    // the page's confirm keeps destructive:true + «حذف نهائي».
+    // R187 (D-F2): the page's confirm keeps destructive:true + the
+    // honest «إيقاف وأرشفة» verb (the backend DELETE soft-deactivates).
     expect(promoList).toContain(
       '"gap-1.5 text-muted-foreground hover:text-status-error hover:bg-status-error/10"',
     );
     expect(stripComments(promoList)).not.toContain("text-destructive hover:text-destructive");
     expect(promoPage).toContain("destructive: true");
-    expect(promoPage).toContain('confirmLabel: "حذف نهائي"');
+    expect(promoPage).toContain('confirmLabel: "إيقاف وأرشفة"');
   });
 });
 

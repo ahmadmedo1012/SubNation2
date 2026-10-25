@@ -21,7 +21,7 @@ import { resolve } from "node:path";
 import { Router } from "wouter";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CartPage from "@/pages/cart";
-import { CartProvider, type LocalCartItem } from "@/lib/cart";
+import { CartProvider, roundToCents, type LocalCartItem } from "@/lib/cart";
 
 /** Source-pin reader (the decomposition-suite convention). */
 const read = (rel: string): string => readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -606,5 +606,74 @@ describe("CartPage — effectivePrice single source (R186-6 / A-F6)", () => {
     // …and the lib export is the one definition left.
     const lib = read("src/lib/cart.tsx");
     expect(lib).toContain("export function effectivePrice(item: LocalCartItem): number {");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// R187 (A-F5) — the summary total single-sources the provider's
+// totalLYD (lib/cart.tsx, roundToCents — “so every consumer of the
+// context gets the same cent-accurate value”); the page-local
+// +items.reduce(...).toFixed(2) twin (a drifting rounding idiom — the
+// exact class R186-6 closed for effectivePrice) is deleted.
+// R187 (L-F5) — the total row speaks the funnel's «الإجمالي» label
+// (checkout's CartSummaryAside + order-detail; المجموع الفرعي is the
+// subtotal), not the drifted «المجموع».
+// ─────────────────────────────────────────────────────────────────────
+
+describe("CartPage — the summary total is the provider's totalLYD (R187 A-F5)", () => {
+  beforeEach(() => {
+    sonnerToastMock.mockReset();
+    toastSpy.mockReset();
+    localStorage.clear();
+    sessionStorage.clear();
+    authState.token = null;
+    walletMock.data = undefined;
+  });
+
+  it("source pin: totalLYD rides the useCart destructure — no page-local reduce total", () => {
+    const page = read("src/pages/cart.tsx");
+    // The provider's cent-accurate total rides the context destructure…
+    expect(page).toMatch(/const \{[^}]*totalLYD[^}]*\} = useCart\(\)/);
+    expect(page).toContain("formatCurrency(totalLYD)");
+    // …the hand-rolled +reduce().toFixed(2) memo is gone (roundToCents
+    // in lib/cart.tsx:596 is the one definition — checkout's balance
+    // gate compares against the same value). The negative matches the
+    // CODE idiom (reduce-callback over items), not prose.
+    expect(page).not.toContain("const total = useMemo");
+    expect(page).not.toMatch(/items\.reduce\(\(s, i\) =>/);
+  });
+
+  it("a dust-zone basket renders the provider's cent-accurate total (8.33 × 6 = 49.98)", async () => {
+    localStorage.setItem(
+      "subnation_cart_v2",
+      JSON.stringify([
+        {
+          ...CART_ITEM,
+          priceLYD: 8.33,
+          salePriceLYD: null,
+          discountPercent: null,
+          quantity: 6,
+        },
+      ]),
+    );
+    renderPage();
+    await screen.findByText("Netflix شهر");
+
+    // 8.33 × 6 = 49.980000000000004 raw — the provider's roundToCents
+    // total is 49.98, and BOTH rendered totals (line + summary) show
+    // exactly that number.
+    expect(roundToCents(8.33 * 6)).toBe(49.98);
+    expect(screen.getAllByText("49.98 د.ل")).toHaveLength(2);
+  });
+
+  it("L-F5: the summary total row's label is «الإجمالي» — the checkout/order-detail family word", async () => {
+    seedCart(1);
+    renderPage();
+    await findRow();
+
+    expect(screen.getByText("الإجمالي")).toBeInTheDocument();
+    // The drifted bare «المجموع» is gone (المجموع الفرعي — the
+    // SUBTOTAL — is checkout's row, never this page's total).
+    expect(screen.queryByText(/^المجموع$/)).not.toBeInTheDocument();
   });
 });

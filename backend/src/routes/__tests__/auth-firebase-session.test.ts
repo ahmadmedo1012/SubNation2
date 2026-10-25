@@ -85,6 +85,7 @@ import {
   userAuthIdentitiesTable,
   usersTable,
 } from "../../test/db";
+import { logger } from "../../lib/logger";
 import { authRouter } from "../auth";
 
 // ── Harness ──────────────────────────────────────────────────────────────────
@@ -525,6 +526,61 @@ describe("POST /api/auth/firebase/session — provisioning (R118-A5 #2)", () => 
       expect(await countRows(usersTable)).toBe(0);
     } finally {
       close();
+    }
+  });
+});
+
+// R187 (F9): the route's error-level log fired BEFORE the FirebaseAuthError
+// classification — every expected 4xx (expired/invalid token) logged at
+// ERROR. The line now lives only on the non-Firebase branch (the R142 E-3
+// verify-2fa precedent). Pinned by message so the service's own verify
+// diagnostics (a different, deliberate log line) stay out of the assertion.
+describe("R187 (F9) — log-level truth on POST /firebase/session", () => {
+  it("an expired Firebase token (401) does NOT fire the route's error log", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    fb.rejectWith = Object.assign(new Error("Firebase ID token has expired"), {
+      code: "auth/id-token-expired",
+    });
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await postSession(url, { id_token: makeIdToken() });
+      expect(res.status).toBe(401);
+      expect(res.body).toMatchObject({ code: "INVALID_TOKEN" });
+
+      const routeErrors = errorSpy.mock.calls.filter(
+        (c) => c[1] === "Firebase session creation failed",
+      );
+      expect(routeErrors).toHaveLength(0);
+    } finally {
+      close();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("a NON-Firebase failure (500) still error-logs exactly once (control)", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    // Fail ONLY the sessions insert: createUserSession throws a plain
+    // Error → the non-Firebase arm, the only one that error-logs.
+    const originalInsert = db.insert.bind(db);
+    const insertSpy = vi.spyOn(db, "insert").mockImplementation((table: unknown) => {
+      if (table === sessionsTable) {
+        throw new Error("simulated sessions insert failure (R187 F9)");
+      }
+      return originalInsert(table as never);
+    });
+    const { url, close } = await listen(buildApp());
+    try {
+      const res = await postSession(url, { id_token: makeIdToken() });
+      expect(res.status).toBe(500);
+
+      const routeErrors = errorSpy.mock.calls.filter(
+        (c) => c[1] === "Firebase session creation failed",
+      );
+      expect(routeErrors).toHaveLength(1);
+    } finally {
+      close();
+      insertSpy.mockRestore();
+      errorSpy.mockRestore();
     }
   });
 });

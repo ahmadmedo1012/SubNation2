@@ -200,7 +200,9 @@ paths:
                     type: string
                     description: ISO timestamp when the code expires (5 minutes).
         "400":
-          description: Missing/invalid phone
+          description: |
+            Missing/invalid phone — or the number is not registered on
+            WhatsApp at all (details.reason=recipient_not_on_whatsapp).
           content:
             application/json:
               schema:
@@ -211,12 +213,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: |
+            The code WAS delivered but persisting it failed twice
+            (details.reason=store_failed, code INTERNAL_ERROR) — a short
+            30 s cooldown (retry_after_sec + Retry-After header) so the
+            client does not instantly re-send a SECOND WhatsApp message
+            while the first is still live.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: |
+            Gateway delivery failure (details.reason=delivery_failed) —
+            the message never went out; retrying is safe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: >-
-            WhatsApp channel not ready: details.reason = whatsapp_settling
-            (freshly linked channel warming up — details.retry_after_sec
-            present + Retry-After header) or store_failed (delivery store
-            failure, 30s retry hint).
+            WhatsApp channel not ready — details.reason is one of:
+            gateway_disabled (the gateway service is not enabled),
+            whatsapp_not_paired (the session is unpaired or dropped —
+            an operator action is pending), whatsapp_settling (freshly
+            linked channel warming up — details.retry_after_sec present
+            + Retry-After header), or gateway_waking (the gateway
+            service itself is booting after an idle sleep — 30 s
+            retry hint).
           content:
             application/json:
               schema:
@@ -229,7 +254,13 @@ paths:
                         properties:
                           reason:
                             type: string
-                            enum: [whatsapp_settling, store_failed]
+                            enum:
+                              [
+                                gateway_disabled,
+                                whatsapp_not_paired,
+                                whatsapp_settling,
+                                gateway_waking,
+                              ]
                           retry_after_sec:
                             type: integer
           headers:
@@ -286,6 +317,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: |
+            Exhausted attempts — the 5 wrong-code attempts for this OTP
+            are spent (details.reason=exhausted); request a NEW code via
+            /auth/whatsapp/start instead of retrying the same one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /auth/providers:
     get:
@@ -335,12 +375,37 @@ paths:
                           type: boolean
                           description: R154 — true when the operator configured BotFather's OIDC Client ID + Secret; the SPA switches the Telegram button to the OIDC Authorization Code + PKCE flow (GET /auth/telegram/oidc/login) instead of the legacy widget redirect.
                   whatsapp_status:
-                    # R123 (contract-suite finding): the handler emits null when the
-                    # WhatsApp OTP channel is not configured — the enum covers the
-                    # CONFIGURED states only. Nullable so the contract matches reality.
+                    # R187 (I-F1): the handler passes the OpenWA gateway
+                    # session lifecycle status through VERBATIM
+                    # (readiness.status) and only synthesizes "ready"
+                    # (settled + warm) and "settling" (inside the
+                    # post-link warm-up window). "unavailable" was never
+                    # emitted by anyone — the enum below is the real
+                    # emitted domain (auth-settings.ts + openwa gateway-client
+                    # SessionStatus), nullable when the channel is not
+                    # configured or the gateway probe fails.
                     type: ["string", "null"]
-                    enum: [ready, settling, unavailable, null]
-                    description: Live OTP channel readiness (round-96/97 settling contract); null when the channel is not configured.
+                    enum:
+                      [
+                        created,
+                        initializing,
+                        qr_ready,
+                        authenticating,
+                        ready,
+                        settling,
+                        disconnected,
+                        failed,
+                        null,
+                      ]
+                    description: >-
+                      Live OTP channel readiness: the OpenWA session
+                      lifecycle values (created, initializing, qr_ready,
+                      authenticating, ready, disconnected, failed) with
+                      the route-synthesized "settling" for the post-link
+                      warm-up window; null when the channel is not
+                      configured or the gateway is unreachable.
+                      "failed" = pairing revoked (operator must re-pair);
+                      "qr_ready" = pairing pending a scan.
 
   /auth/telegram:
     post:
@@ -1050,7 +1115,12 @@ paths:
           description: |
             Round-94 (F1): risk soft-block refusal — the buyer is tagged
             with a live soft_block risk event; re-authenticate and retry
-            (the refusal wipes the current sessions).
+            (the refusal wipes the current sessions). The hard-block
+            flavor (risk-hard-block middleware, mounted FIRST so it
+            answers before the soft guard): a recent hard_block verdict
+            on the same 423 — «تم تعليق هذا الإجراء مؤقتًا — يرجى
+            التواصل مع الدعم»; re-authentication does not discharge it,
+            contact support.
           content:
             application/json:
               schema:
@@ -1060,6 +1130,19 @@ paths:
             Price data-integrity failure (INVALID_PRICE guard — non-finite
             or non-positive computed price). Not client-fixable; contact
             support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: |
+            Inventory integrity failure (INVENTORY_CORRUPT — the claimed
+            unit's credentials are undecryptable with the current key or
+            empty; code SERVICE_UNAVAILABLE). NOTHING was charged: the
+            transaction failed closed before any wallet deduction or
+            inventory mutation («لم يُخصم أي مبلغ من محفظتك»). Retryable
+            later, or contact support — the operator already received a
+            deduped inventory_corrupt alert with the product + unit id.
           content:
             application/json:
               schema:
@@ -1191,6 +1274,32 @@ paths:
       operationId: createTopup
       tags: [wallet]
       summary: Submit a top-up request
+      description: |
+        Mounted behind the idempotency middleware (routeKey
+        wallet.topups.create) — send a fresh Idempotency-Key per top-up
+        so a network retry or double-tap cannot insert a second pending
+        row. The service ALSO carries the durable in-transaction guard
+        (TopupService.createPendingTopup): a retry after a Redis flush /
+        TTL boundary replays the ORIGINAL topup (200 + Idempotent-Replayed:
+        true) instead of re-inserting; a same-key re-send with a different
+        body returns 409 IDEMPOTENCY_KEY_REUSE; the same key while the
+        original request is still executing returns 409 (in-flight).
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Client-generated idempotency key. The middleware only engages
+            when the key is at least 8 characters; shorter (or absent) keys
+            pass through (transitional). With a valid key, duplicate
+            submissions of the same body replay the cached response for
+            24h (per user + route), the same key re-sent with a different
+            body returns 409 IDEMPOTENCY_KEY_REUSE, and the same key while
+            the original request is still executing returns 409 (in-flight
+            conflict).
+          schema:
+            type: string
+            maxLength: 100
       requestBody:
         required: true
         content:
@@ -1200,6 +1309,37 @@ paths:
       responses:
         "201":
           description: Top-up request submitted
+          headers:
+            Idempotent-Replayed:
+              description: |
+                "true" when this body is a cached replay of the original
+                request (same Idempotency-Key + body).
+              schema:
+                type: string
+                enum: ["true"]
+            Idempotent-Original-At:
+              description: |
+                ISO-8601 completion timestamp of the original request —
+                present on idempotent replays.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Topup"
+        "200":
+          description: |
+            Durable idempotent REPLAY — this call returned the top-up a
+            previous request with the same Idempotency-Key already created
+            (nothing inserted now). Distinguished from 201 by the status
+            code and the Idempotent-Replayed header; operator cards,
+            customer notifications and risk events are not re-fired.
+          headers:
+            Idempotent-Replayed:
+              description: Always "true" on this response.
+              schema:
+                type: string
+                enum: ["true"]
           content:
             application/json:
               schema:
@@ -1216,6 +1356,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: |
+            Conflict — an idempotency-key mismatch (same key re-used with
+            a different body → IDEMPOTENCY_KEY_REUSE / same key still in
+            flight → IDEMPOTENCY_IN_FLIGHT — those bodies carry
+            success:false and a legacy `message` alias alongside `error`),
+            a concurrent same-key submission still executing
+            (IN_FLIGHT_CONFLICT, CONFLICT envelope), or the same receipt
+            (user + payment reference + amount) already holding a PENDING
+            row (DUPLICATE_PENDING_REFERENCE — details carry
+            existing_topup_id; nothing was inserted).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/IdempotencyConflictResponse"
         "429":
           description: |
             Too many pending top-up requests — max 3 concurrent pending
@@ -1231,7 +1388,12 @@ paths:
           description: |
             Round-94 (F1): risk soft-block refusal — the user is tagged
             with a live soft_block risk event; re-authenticate and retry
-            (the refusal wipes the current sessions).
+            (the refusal wipes the current sessions). The hard-block
+            flavor (risk-hard-block middleware, mounted FIRST so it
+            answers before the soft guard): a recent hard_block verdict
+            on the same 423 — «تم تعليق هذا الإجراء مؤقتًا — يرجى
+            التواصل مع الدعم»; re-authentication does not discharge it,
+            contact support.
           content:
             application/json:
               schema:
@@ -1647,13 +1809,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/LoyaltySummary"
         "401":
-          description: Not authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: User row vanished (NOT_FOUND)
+          description: |
+            Not authenticated — or the session's user row vanished
+            (ACCOUNT_NOT_FOUND; r103: one failure class, one shape for a
+            session-bearing request, was 404 NOT_FOUND).
           content:
             application/json:
               schema:
@@ -1670,6 +1829,26 @@ paths:
         lock on both mutated columns, and a wallet_ledger row
         (type=adjustment, referenceType=loyalty_conversion). Concurrent
         mutations lose the optimistic lock → 409 CONFLICT (retry-safe).
+        Mounted behind the idempotency middleware (routeKey
+        loyalty.convert) PLUS the durable idempotency_keys guard — send
+        a stable per-intent Idempotency-Key (the frontend does) so a
+        lost-response retry cannot double-convert.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Client-generated idempotency key. The middleware only engages
+            when the key is at least 8 characters; shorter (or absent) keys
+            pass through (transitional). With a valid key, duplicate
+            submissions of the same body replay the cached response for
+            24h (per user + route), the same key re-sent with a different
+            body returns 409 IDEMPOTENCY_KEY_REUSE, and the same key while
+            the original request is still executing returns 409
+            IDEMPOTENCY_IN_FLIGHT.
+          schema:
+            type: string
+            maxLength: 100
       requestBody:
         required: true
         content:
@@ -1698,11 +1877,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Points/balance changed concurrently (CONFLICT — retry with fresh state)
+          description: |
+            Points/balance changed concurrently (CONFLICT — retry with
+            fresh state), or an idempotency conflict: same key re-sent
+            with a different body (IDEMPOTENCY_KEY_REUSE) / same key
+            still in flight (IDEMPOTENCY_IN_FLIGHT) / same key already
+            converted (CONFLICT — «تم تنفيذ هذا التحويل مسبقاً بنفس
+            المفتاح»). The idempotency bodies carry success:false and a
+            legacy `message` alias alongside `error`.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - $ref: "#/components/schemas/IdempotencyConflictResponse"
 
   /loyalty/ledger:
     get:
@@ -1825,9 +2013,10 @@ paths:
       tags: [support]
       summary: "Open a support ticket (rate-limited: 5/hour/user)"
       description: |
-        The message becomes the first reply (author_type=user). An
-        unknown category silently falls back to "other". 429 bodies are
-        the standard {error, code: RATE_LIMITED} envelope.
+        The message becomes the first reply (author_type=user). The
+        category is a closed enum — an unknown value is rejected with
+        400 INVALID_DATA (omit it for the "other" default). 429 bodies
+        are the standard {error, code: RATE_LIMITED} envelope.
       requestBody:
         required: true
         content:
@@ -1956,16 +2145,43 @@ paths:
     get:
       operationId: listNotifications
       tags: [notifications]
-      summary: List the current user's notifications (≤40, newest first)
+      summary: List the current user's notifications (≤40 newest first; opt-in paged envelope)
+      description: |
+        R128-IMP-5 (A9-F2 / B1 item 8): the response shape is OPT-IN by
+        naming the `page` param. Paramless (or a bare `?page=` with an
+        empty value) → the legacy bell array (NotificationBell guards
+        `Array.isArray(data)`; newest first, 40-row cap). `?page=N` →
+        the paged envelope (NotificationsPage — the admin alerts inbox
+        idiom) with the honest total and hasMore. Same createdAt-DESC +
+        id-DESC ordering on both branches so offset pages never shuffle
+        same-timestamp rows. Cache-Control: no-store.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: |
+            1-based page number (default 1). Naming the param at all
+            (even `?page=` empty → page 1) switches the response to the
+            paged envelope; omit it entirely for the legacy bell array.
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+          description: Page size, clamped to [1, 100] (default 20) — paged-envelope branch only.
       responses:
         "200":
-          description: Notifications
+          description: |
+            Notifications — the bare bell array (paramless) OR the paged
+            envelope (any `page` param present).
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NotificationItem"
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/NotificationItem"
+                  - $ref: "#/components/schemas/NotificationsPage"
         "401":
           description: Not authenticated
           content:
@@ -3418,7 +3634,7 @@ paths:
       security:
         - adminCookieAuth: []
           adminBearerAuth: []
-      summary: Edit a user — wallet adjustment/set, loyalty fields (requireAdmin + users scope; moves wallet money)
+      summary: Edit a user — wallet adjustment/set, loyalty points with ledger (requireAdmin + users scope; moves wallet money)
       description: |
         THE admin money-edit route. Wallet mutations
         (`wallet_adjustment` relative delta, or `wallet_balance` absolute
@@ -3426,9 +3642,14 @@ paths:
         both are present) route through AdjustmentService: transactional
         optimistic-lock update + a wallet_ledger row of type=adjustment,
         so every monetary change stays reconstructable from the ledger
-        (Constitution Principle I). Loyalty fields
-        (`loyalty_points`, `loyalty_tier`) use a legacy direct-update
-        path with no ledger.
+        (Constitution Principle I). Loyalty points (`loyalty_points`)
+        commit in the SAME single transaction as their points_ledger
+        admin_set row (R115: attributed, finance-gated, note mandatory,
+        CAS-guarded — the ledger row is the authoritative record).
+        `loyalty_tier` is REJECTED with 400 INVALID_DATA: tiers derive
+        strictly from net qualifying spend and are never directly
+        writable (a manual value would be silently clobbered by the next
+        checkout/refund tier computation).
 
         Mounted behind the idempotency middleware (routeKey
         admin.users.patch) so a network retry / admin double-click
@@ -5350,9 +5571,11 @@ components:
         price:
           type: number
           description: >
-            Cheapest active variant's LYD price when variants exist
-            (MIN(variants.price) — the storefront "تبدأ من" number),
-            otherwise the product-level LYD price.
+            Cheapest BUYABLE variant's LYD price when variants exist
+            (active ∧ deliverable stock — the R130 A7-F1 «تبدأ من»
+            number; falls back to the availability-blind min when EVERY
+            variant is drained, since the product renders sold-out
+            anyway), otherwise the product-level LYD price.
         price_from:
           type: boolean
           description: True when multiple active variants exist (card renders "تبدأ من").
@@ -5411,7 +5634,11 @@ components:
           type: ["string", "null"]
         price:
           type: number
-          description: Cheapest active variant's LYD price when variants exist, otherwise the product-level LYD price.
+          description: >
+            Cheapest BUYABLE variant's LYD price when variants exist
+            (active ∧ deliverable stock — the R130 A7-F1 semantics with
+            the availability-blind fallback when every variant is
+            drained), otherwise the product-level LYD price.
         price_from:
           type: boolean
           description: True when multiple active variants exist (card renders "تبدأ من").
@@ -6121,8 +6348,9 @@ components:
     CreateSupportTicketBody:
       type: object
       description: |
-        title and message are trimmed; an unknown category silently
-        falls back to "other".
+        title and message are trimmed; the category is a closed enum —
+        an unknown value is rejected with 400 INVALID_DATA (omit it for
+        the "other" default).
       properties:
         title:
           type: string
@@ -6131,7 +6359,8 @@ components:
         message:
           type: string
           minLength: 1
-          description: Becomes the first reply (author_type=user).
+          maxLength: 4000
+          description: Becomes the first reply (author_type=user) — capped at 4000 chars (SEC-92-07 storage bound).
         category:
           type: string
           enum: [billing, technical, order, account, other]
@@ -6215,6 +6444,29 @@ components:
         created_at:
           type: string
       required: [id, type, title, is_read, created_at]
+
+    # R128-IMP-5: the opt-in paged envelope for GET /notifications —
+    # present ONLY when the request names the `page` param (the
+    # AdminAlertsPage inbox idiom; the paramless branch stays the bare
+    # bell array so NotificationBell's Array.isArray guard holds).
+    NotificationsPage:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationItem"
+        total:
+          type: integer
+          description: Honest row count for the user (not the page length).
+        page:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+          description: offset + page length < total.
+      required: [notifications, total, page, limit, hasMore]
 
     # ── Admin ─────────────────────────────────────────────────────────────────
     AdminLoginBody:
@@ -7125,10 +7377,12 @@ components:
         type:
           type: string
           description: |
-            varchar(30) — known values: system, low_stock, no_stock,
-            forecast_stockout, coupon_maxed, coupon_expiring. Kept an
-            open string (not an enum) so a new producer cannot break
-            the contract.
+            varchar(30) — the backend AlertType union (jobs/alertLogger.ts):
+            system, low_stock, no_stock, forecast_stockout, coupon_maxed,
+            coupon_expiring, coupon_expired, flash_sale_expired,
+            inventory_corrupt, refunded_live_credentials, whatsapp_channel.
+            Kept an open string (not an enum) so a new producer cannot
+            break the contract.
         title:
           type: string
         message:

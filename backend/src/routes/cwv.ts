@@ -35,7 +35,8 @@ const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
 // /api/metrics response bloat = cardinality DoS). Every value that can
 // reach the registry is now drawn from THIS bounded table:
 //   - exact matches against STATIC_ROUTE_LABELS (the SPA route table from
-//     frontend/src/App.tsx),
+//     frontend/src/app/routes.tsx — App.tsx's registry until the R137
+//     decomposition moved it),
 //   - dynamic routes collapsed to their pattern via DYNAMIC_ROUTE_RULES
 //     ("/product/netflix-premium" → "/product/:slug"),
 //   - everything else → "other".
@@ -61,7 +62,7 @@ const STATIC_ROUTE_LABELS = new Set([
   "/flash-sales",
   "/auth/callback",
   "/auth/telegram-callback",
-  // admin (frontend/src/App.tsx admin routes)
+  // admin (app/routes.tsx admin routes — App.tsx's until R137)
   "/admin",
   "/admin/login",
   "/admin/topups",

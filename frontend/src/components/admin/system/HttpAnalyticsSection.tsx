@@ -2,6 +2,7 @@ import { AlertCircle, Box, Clock, Radio, ShieldCheck } from "lucide-react";
 import type { ChartColors } from "@/lib/chart-theme";
 import { DetailsSection } from "@/components/admin/system/DetailsSection";
 import { MetricCard } from "@/components/admin/system/MetricCard";
+import { formatCount } from "@/lib/utils";
 import { formatMs, formatNumber } from "@/components/admin/system/system-format";
 import type { MetricsSnapshot } from "@/components/admin/system/system-types";
 
@@ -11,6 +12,18 @@ import type { MetricsSnapshot } from "@/components/admin/system/system-types";
 // in the page — data/error + the retry callback + the req/err/p95 series
 // flow down as values; the move only changes its address, DOM/classes
 // byte-identical.
+
+/** Arabic plural forms for «مسار نشط» — R187L-F1: the requests tile's
+ *  active-route sub-count (compound noun+adjective, the StatsRow
+ *  family idiom — every form agrees; was the frozen «N مسار نشط»). */
+const ROUTE_COUNT_FORMS = {
+  zero: "مسارات نشطة",
+  one: "مسار نشط",
+  two: "مساران نشطان",
+  few: "مسارات نشطة",
+  many: "مسارًا نشطًا",
+  other: "مسار نشط",
+};
 
 export function HttpAnalyticsSection({
   metrics,
@@ -43,7 +56,7 @@ export function HttpAnalyticsSection({
         >
           <AlertCircle className="w-4 h-4 text-status-warning shrink-0" />
           <span className="text-xs text-muted-foreground flex-1 min-w-40">
-            تعذّر جلب مقاييس المراقبة — قد تكون الجلسة منتهية أو الخدمة غير متاحة.
+            تعذّر تحميل مقاييس المراقبة — قد تكون الجلسة منتهية أو الخدمة غير متاحة.
           </span>
           <button
             type="button"
@@ -62,7 +75,7 @@ export function HttpAnalyticsSection({
             <MetricCard
               label="إجمالي الطلبات"
               value={formatNumber(metrics.http.totalRequests)}
-              sub={`منذ آخر إقلاع · ${metrics.http.topRoutes.length} مسار نشط`}
+              sub={`منذ آخر إقلاع · ${formatCount(metrics.http.topRoutes.length, ROUTE_COUNT_FORMS)}`}
               icon={Radio}
               color="text-primary"
               bg="bg-primary/10"

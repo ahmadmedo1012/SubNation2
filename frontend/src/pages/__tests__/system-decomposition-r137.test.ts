@@ -192,7 +192,7 @@ describe("R137 (FE) — admin/system.tsx decomposition: page stays an orchestrat
     expect(schedulerModule).toContain("خدمة worker المستقلة لا تستجيب");
     const health = read("src/components/admin/system/HealthOverviewSection.tsx");
     expect(health).toContain("نظرة سريعة على الصحة");
-    expect(health).toContain("تعذّر جلب حالة الصحة");
+    expect(health).toContain("تعذّر تحميل حالة الصحة");
     const runtime = read("src/components/admin/system/RuntimeDiagnosticsSection.tsx");
     expect(runtime).toContain("وقت التشغيل والذاكرة (RSS · event-loop · إصدار · أعلام)");
     const http = read("src/components/admin/system/HttpAnalyticsSection.tsx");

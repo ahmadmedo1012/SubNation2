@@ -545,10 +545,14 @@ describe("R140-j — source pins: error wiring (aria-describedby → id'd error 
     const mobile = s("src/components/wallet/MobileTransferForm.tsx");
     expect(mobile).toContain('id="wallet-error"');
     expect(mobile).toContain('role="alert"');
-    expect(mobile).toContain('aria-live="polite"');
+    // R187 (L-F2): role="alert" alone — the explicit aria-live="polite"
+    // override downgraded the money-error banner to polite (queued behind
+    // other announcements); assertive is implicit in the role.
+    expect(mobile).not.toContain("aria-live=");
     const lypay = s("src/components/wallet/LyPayFlow.tsx");
     expect(lypay).toContain('id="wallet-error-2"');
     expect(lypay).toContain('role="alert"');
+    expect(lypay).not.toContain("aria-live=");
   });
 });
 

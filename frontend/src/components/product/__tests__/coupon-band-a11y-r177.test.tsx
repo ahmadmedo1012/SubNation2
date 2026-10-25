@@ -86,3 +86,30 @@ describe("R177 — the PDP validate button keeps its accessible name mid-request
     expect(clear).toHaveAttribute("title", "إزالة الكوبون");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// R187 (L-F3) — the PDP coupon input carries the dir guard its checkout
+// twin (CouponCard) has carried all along: a Latin coupon code typed in
+// an RTL block mis-places the caret and mirrors neutral punctuation —
+// the mono code-entry run is LTR on every surface.
+// ─────────────────────────────────────────────────────────────────────
+
+describe("R187 (L-F3) — the coupon input runs LTR (checkout-twin parity)", () => {
+  it('the coupon input carries dir="ltr"', () => {
+    render(
+      <CouponField
+        couponInput="SAVE10"
+        couponResult={null}
+        couponError=""
+        couponValidating={false}
+        token="t"
+        onCouponChange={vi.fn()}
+        onCouponValidate={vi.fn()}
+        onCouponClear={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText("رمز الكوبون");
+    expect(input).toHaveAttribute("dir", "ltr");
+  });
+});

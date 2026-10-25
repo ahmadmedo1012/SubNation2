@@ -244,10 +244,15 @@ export function statusLabel(status: string): string {
     approved: "موافق عليه",
     rejected: "مرفوض",
     // 93-C7 / C-UX2 (A12 §11.1 rule 1): the label side of the status
-    // unification — every status the STATUS_TONE mapper (ui/status-badge)
-    // covers can now resolve an Arabic label here, so filter tabs and
-    // row badges on admin pages derive from ONE map instead of drifting
-    // («معلق/قيد الانتظار», «مفتوحة», «نشط» were per-page literals).
+    // unification — Arabic labels for the CANONICAL semantic set (the
+    // 16 statuses of this map) so filter tabs and row badges on admin pages
+    // derive from ONE map instead of drifting («معلق/قيد الانتظار»,
+    // «مفتوحة», «نشط» were per-page literals). Parity with STATUS_TONE
+    // (ui/status-badge) holds for exactly this set: its 11 domain-level
+    // statuses (whatsapp session phases, risk/queue lifecycle) keep
+    // their LOCAL label maps per status-badge's own docblock rule
+    // (whatsapp-meta.ts, risk-event.tsx) — routed through statusLabel
+    // they hit the raw-status fallback below, by design.
     open: "مفتوحة",
     in_progress: "قيد المعالجة",
     closed: "مغلقة",

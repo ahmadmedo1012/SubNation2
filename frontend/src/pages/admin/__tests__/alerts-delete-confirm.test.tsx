@@ -40,6 +40,7 @@ import AdminAlertsPage from "@/pages/admin/alerts";
 import {
   deleteAdminAlert,
   deleteAllAdminAlerts,
+  deleteReadAdminAlerts,
   listAdminAlerts,
 } from "@workspace/api-client-react";
 
@@ -376,5 +377,201 @@ describe("AdminAlertsPage — read/unread state is not color-only (R125 A6 B-15)
     const unreadRow = screen.getByText("صيانة مجدولة الليلة").closest(".group");
     expect(unreadRow!.className).toContain("bg-card");
     expect(unreadRow!.className).not.toContain("bg-card/40");
+  });
+});
+
+/** R187E-F2: the backend's other five writer types + the risk service's
+ *  direct inserts used to render under the generic «نظام» info chip with
+ *  no filter affordance — the SEVERE inventory_corrupt /
+ *  refunded_live_credentials rows read as info noise. One row per
+ *  formerly-uncovered type; the label expectations mirror TYPE_META. */
+const NEW_TYPE_ROWS = [
+  { type: "inventory_corrupt", title: "مخزون غير متسق للطلب #12", label: "بيانات مخزون غير متسقة" },
+  { type: "coupon_expired", title: "انتهى كوبون WELCOME10", label: "كوبون منتهي" },
+  { type: "flash_sale_expired", title: "انتهت تخفيضات الخريف", label: "عرض محدود منتهي" },
+  {
+    type: "refunded_live_credentials",
+    title: "استرداد ببيانات حية: ORD-77",
+    label: "بيانات وصول حيّة مُستردة",
+  },
+  { type: "whatsapp_channel", title: "قناة WhatsApp غير جاهزة", label: "قناة واتساب" },
+  { type: "risk", title: "Critical risk: velocity (score 91)", label: "مخاطرة حرجة" },
+] as const;
+
+describe("AdminAlertsPage — the full backend writer set renders honest chips + filters (R187E-F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (listAdminAlerts as unknown as Mock).mockResolvedValue({
+      alerts: NEW_TYPE_ROWS.map((r, i) => ({
+        id: 500 + i,
+        type: r.type,
+        title: r.title,
+        message: null,
+        isRead: false,
+        createdAt: "2026-09-08T10:00:00.000Z",
+      })),
+      unreadCount: NEW_TYPE_ROWS.length,
+      total: NEW_TYPE_ROWS.length,
+      page: 1,
+      limit: 50,
+      hasMore: false,
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each(NEW_TYPE_ROWS)(
+    "a $type row renders its OWN honest label — never the generic «نظام» fallback",
+    async ({ type, title, label }) => {
+      renderPage();
+      await screen.findByText(title);
+
+      // The ROW's own type chip carries the honest label…
+      const row = screen.getByText(title).closest(".group");
+      expect(row).not.toBeNull();
+      within(row as HTMLElement).getByText(label);
+      // …never the generic «نظام» fallback the uncovered types used to
+      // get (the «نظام» TAB still renders in the filter tray — that is
+      // the system type's own affordance, not this row's chip).
+      expect(within(row as HTMLElement).queryByText("نظام")).not.toBeInTheDocument();
+
+      // The filter affordance exists for the type: a chip-bar button
+      // whose accessible name carries the label, and clicking it narrows
+      // the list to exactly this row.
+      const filterButtons = screen
+        .getAllByRole("button")
+        .filter((b) => b.textContent?.includes(label));
+      expect(filterButtons.length).toBeGreaterThanOrEqual(1);
+      fireEvent.click(filterButtons[0]);
+      expect(screen.getByText(title)).toBeInTheDocument();
+      for (const other of NEW_TYPE_ROWS) {
+        if (other.type !== type) {
+          expect(screen.queryByText(other.title)).not.toBeInTheDocument();
+        }
+      }
+    },
+  );
+
+  it("an inventory_corrupt row carries the SEVERE error tone, not the info one", async () => {
+    renderPage();
+    await screen.findByText("مخزون غير متسق للطلب #12");
+
+    // The row's type chip rides the error tuple (the finding's SEVERE
+    // call) — text-status-error ink, never the info ink the «نظام»
+    // fallback carried.
+    const chip = screen
+      .getAllByText("بيانات مخزون غير متسقة")
+      .map((el) => el.closest("span"))
+      .find((span) => span?.className.includes("text-status-error"));
+    expect(chip).toBeDefined();
+  });
+});
+
+describe("AdminAlertsPage — حذف المقروءة names the table-wide scope (R187E-F6)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (listAdminAlerts as unknown as Mock).mockResolvedValue({
+      // A truncated first page: 4 read rows in-window while the server
+      // envelope says 120 total / 10 unread → 110 read rows table-wide.
+      alerts: [
+        {
+          id: 601,
+          type: "low_stock" as const,
+          title: "مخزون Netflix منخفض",
+          message: null,
+          isRead: true,
+          createdAt: "2026-09-08T10:00:00.000Z",
+        },
+        {
+          id: 602,
+          type: "system" as const,
+          title: "صيانة مجدولة الليلة",
+          message: null,
+          isRead: true,
+          createdAt: "2026-09-08T11:00:00.000Z",
+        },
+        {
+          id: 603,
+          type: "no_stock" as const,
+          title: "نفاد Spotify",
+          message: null,
+          isRead: true,
+          createdAt: "2026-09-08T12:00:00.000Z",
+        },
+        {
+          id: 604,
+          type: "coupon_maxed" as const,
+          title: "كوبون SAVE5 استُنفد",
+          message: null,
+          isRead: true,
+          createdAt: "2026-09-08T13:00:00.000Z",
+        },
+        {
+          id: 605,
+          type: "forecast_stockout" as const,
+          title: "نفاد متوقع لـ Disney+",
+          message: null,
+          isRead: false,
+          createdAt: "2026-09-08T14:00:00.000Z",
+        },
+      ],
+      unreadCount: 10,
+      total: 120,
+      page: 1,
+      limit: 50,
+      hasMore: true,
+    });
+    (deleteReadAdminAlerts as unknown as Mock).mockResolvedValue({ success: true });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("the button chip + the confirm name 110 — the honest table-wide read count, not the 4 in-window rows", async () => {
+    renderPage();
+    await screen.findByText("نفاد متوقع لـ Disney+");
+
+    // The header chip rides the same honest scope as the confirm.
+    expect(screen.getByRole("button", { name: "حذف المقروءة (110)" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "حذف المقروءة (110)" }));
+    const title = await screen.findByText("حذف التنبيهات المقروءة؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    if (!dialog) throw new Error("delete-read confirm dialog not rendered");
+    const text = (dialog as HTMLElement).textContent ?? "";
+    // 120 − 10 unread = 110 read rows table-wide; the in-window count
+    // (4) is the understatement the finding named.
+    expect(text).toContain("110");
+    expect(text).not.toContain("سيتم حذف 4");
+  });
+
+  it("a missing/zero total still names the in-window count (the honest fallback)", async () => {
+    (listAdminAlerts as unknown as Mock).mockResolvedValue({
+      alerts: [
+        {
+          id: 601,
+          type: "low_stock" as const,
+          title: "مخزون Netflix منخفض",
+          message: null,
+          isRead: true,
+          createdAt: "2026-09-08T10:00:00.000Z",
+        },
+      ],
+      unreadCount: 0,
+      total: 0,
+      page: 1,
+      limit: 50,
+      hasMore: false,
+    });
+
+    renderPage();
+    await screen.findByText("مخزون Netflix منخفض");
+
+    fireEvent.click(screen.getByRole("button", { name: "حذف المقروءة (1)" }));
+    const title = await screen.findByText("حذف التنبيهات المقروءة؟");
+    const dialog = title.closest('[role="alertdialog"]');
+    if (!dialog) throw new Error("delete-read confirm dialog not rendered");
+    expect((dialog as HTMLElement).textContent).toContain("1");
   });
 });

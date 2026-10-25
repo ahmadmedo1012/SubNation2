@@ -140,6 +140,10 @@ describe("AdminAlertsPage — accumulating load-more + honest counts (A2 P1-1)",
     expect(screen.getByText(/عرض 50/)).toBeInTheDocument();
     expect(screen.getByText(/من 62/)).toBeInTheDocument();
     expect(screen.queryByText(/إجمالاً/)).not.toBeInTheDocument();
+    // R187L-F1: the unread adjective rides formatCount too — the count
+    // noun pluralizes (30 → «تنبيهًا», the many form), never the frozen
+    // «30 غير مقروء».
+    expect(screen.getByText(/30 تنبيهًا غير مقروء/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "تحميل المزيد" }));
 
@@ -206,12 +210,14 @@ describe("AdminAlertsPage — mutations surface failures instead of silently res
 
     // R123 (E3 item 3): «حذف المقروءة» now routes through the mounted
     // styled confirm (it was the last one-tap destructive bulk action on
-    // the page) — the dialog names the read-count the button itself
-    // displays (PAGE_ONE carries 20 read rows).
+    // the page) — R187E-F6: the dialog names the TABLE-WIDE read scope
+    // (total 62 − unread 30 = 32), never the 20 read rows the loaded
+    // window happens to carry.
     const title = await screen.findByText("حذف التنبيهات المقروءة؟");
     const dialog = title.closest('[role="alertdialog"]');
     if (!dialog) throw new Error("delete-read confirm dialog not rendered");
-    expect((dialog as HTMLElement).textContent).toContain("20");
+    expect((dialog as HTMLElement).textContent).toContain("32");
+    expect((dialog as HTMLElement).textContent).not.toContain("20");
     fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "حذف" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));

@@ -17,12 +17,15 @@ import { productArtUrl } from "@/lib/product-art";
 
 // ── 96-F3 (R96 F-1 / mobile-performance-pwa §5): boot parallelization ──────
 //
-// The AuthGate below blocks the ENTIRE route tree until the
-// /api/auth/probe resolves (measured live at 210–650 ms through the
-// Vercel→Render proxy hop). Only AFTER it did the home route's lazy
-// import() and useListProducts fire — three SERIAL round-trips
-// (probe → home chunk → /api/products) before a single product
-// painted, ~+0.6–1.2 s of LCP on 3G/4G.
+// App.tsx's AuthGate (the consumer of this module since the R137
+// decomposition — there is no AuthGate in THIS file) blocks the ENTIRE
+// route tree until the /api/auth/probe resolves (measured live at
+// 210–650 ms at R96, through the since-RETIRED Vercel→Render proxy
+// hop — see lib/api-config.ts; today's single-origin equivalent is
+// App.tsx's full-origin-RTT 0.6–0.9 s note). Only AFTER it did the
+// home route's lazy import() and useListProducts fire — three SERIAL
+// round-trips (probe → home chunk → /api/products) before a single
+// product painted, ~+0.6–1.2 s of LCP on 3G/4G.
 //
 // The gate itself stays (it is what prevents the logout flicker); the
 // waterfall around it goes: while the probe is in flight we

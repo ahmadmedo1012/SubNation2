@@ -178,6 +178,11 @@ export function WhatsAppPhoneSignIn({ channelStatus, onSuccess }: WhatsAppPhoneS
                   onChange={(e) => setPhone(normalizePhoneInput(e.target.value))}
                   placeholder="09XXXXXXXX"
                   aria-label="رقم الهاتف"
+                  /* R187 (C-F7): the majority-provider sign-in field joins
+                     the autoComplete contract every other auth input
+                     carries (username/current-password/one-time-code) —
+                     WCAG 1.3.5, lets autofill offer the saved phone. */
+                  autoComplete="tel"
                   disabled={loading || settlingAuto}
                   dir="ltr"
                   enterKeyHint="done"

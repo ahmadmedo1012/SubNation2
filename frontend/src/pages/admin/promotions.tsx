@@ -25,7 +25,7 @@ import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 // moves — the money path stays HERE: the sales list fetch, handleCreate
 // (the create POST with the 0–95% + 5-minute + 30-day guards), toggleActive
 // (the money-gated activate confirm + the activate/deactivate PATCH) and
-// handleDelete (the confirm-gated permanent DELETE), plus every
+// handleDelete (the confirm-gated soft-deactivate archive), plus every
 // form/busy atom; the extracts render the byte-identical DOM they
 // rendered inline yesterday). Import surface:
 //   • promotions-meta — the pure module (the FlashSale/PromotionForm
@@ -82,10 +82,28 @@ export default function AdminPromotionsPage() {
   const [discountError, setDiscountError] = useState<string | null>(null);
   const [endsAtError, setEndsAtError] = useState<string | null>(null);
   // R147 (2-c D3): per-row busy guard for the store-repricing
-  // activate/stop PATCH and the permanent DELETE — a double-click fired
+  // activate/stop PATCH and the soft-archive DELETE — a double-click fired
   // two requests; the coupons.tsx `toggling`/`archiving` idiom (armed
   // only AFTER the confirm accepts, reset on every exit path).
-  const [busyId, setBusyId] = useState<number | null>(null);
+  // R187 (D-F5): the single busyId is a Set now (the topups
+  // processingIds idiom) — starting row B's action used to clear row
+  // A's spinner while A's PATCH was still in flight, and A's finally
+  // then cleared B's mid-flight busy. Each mutation marks its OWN id
+  // and clears it — and only it — in its finally.
+  const [busyIds, setBusyIds] = useState<Set<number>>(() => new Set());
+  const markBusy = (id: number) =>
+    setBusyIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  const clearBusy = (id: number) =>
+    setBusyIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
 
   // 98-F7 (R98-05): dirty-state guard — an edited flash-sale draft is
   // un-submitted work; a refresh/tab-close mid-edit now prompts instead
@@ -234,7 +252,7 @@ export default function AdminPromotionsPage() {
       });
       if (!ok) return;
     }
-    setBusyId(sale.id);
+    markBusy(sale.id);
     try {
       // L13-1 (R143): adminFetch threads the shared 20 s timeout — the
       // action that reprices the WHOLE store used to ride a raw fetch
@@ -277,46 +295,51 @@ export default function AdminPromotionsPage() {
     } finally {
       // R147 (2-c D3): reset on EVERY exit path (the session-expiry
       // return included) — a stranded busy id would freeze the row.
-      setBusyId(null);
+      // R187 (D-F5): clears OWN id only — another row's in-flight
+      // action keeps its busy state.
+      clearBusy(sale.id);
     }
   }
 
   async function handleDelete(sale: FlashSale) {
     if (!adminToken) return;
-    // R125-I3 (A2-6): permanent DELETE and reversible PAUSE shared the
-    // same confirm verb («إيقاف») and the same success toast («تم
-    // الإيقاف») — an operator who meant to pause had no signal they had
-    // just destroyed the row (and vice versa). The destructive path now
-    // names the action on both the message AND the button (the clarify
-    // rubric); pause keeps «إيقاف»/«تم الإيقاف».
+    // R187 (D-F2): the confirm now tells the truth about what the
+    // backend actually does — DELETE /flash-sales/:id SOFT-DEACTIVATES
+    // (flash-sales.ts sets isActive:false, keeps the row, audits
+    // flash_sale.deactivate; PATCH is_active:true reactivates). The old
+    // «حذف نهائي / لا يمكن التراجع» copy promised a hard delete that
+    // does not exist — the row stays in السجل with a working تفعيل
+    // button. Same wording discipline as the coupons soft-archive
+    // («أرشفة الكوبون؟ … يبقى في السجل»); pause keeps «إيقاف».
     const ok = await confirm({
-      title: "حذف العرض نهائياً؟",
-      description: `سيتم حذف العرض "${sale.title}" نهائياً من السجل. لا يمكن التراجع عن هذه العملية — للإيقاف المؤقت استخدم زر الإيقاف.`,
-      confirmLabel: "حذف نهائي",
+      title: "إيقاف وأرشفة العرض؟",
+      description: `سيتم إيقاف العرض "${sale.title}" وأرشفته — يتوقف الخصم فوراً، لكن العرض يبقى في السجل ويمكن إعادة تفعيله لاحقاً.`,
+      confirmLabel: "إيقاف وأرشفة",
       destructive: true,
     });
     if (!ok) return;
-    setBusyId(sale.id);
+    markBusy(sale.id);
     try {
       // R123 (E3 item 1): adminFetchJson owns the ok-guard + safe parse
       // — the failure toast keeps its Arabic envelope mapping via the
       // wrapper's getErrorMessage.
       await adminFetchJson(`/api/admin/flash-sales/${sale.id}`, { method: "DELETE", headers });
-      // R124-I5 (A6 F1): success variant. R125-I3 (A2-6): the toast
-      // names the DESTRUCTIVE outcome — «تم حذف العرض».
-      toast({ title: "تم حذف العرض", variant: "success" });
+      // R124-I5 (A6 F1): success variant. R187 (D-F2): the toast names
+      // the honest outcome — a stop+archive, not a deletion.
+      toast({ title: "تم إيقاف وأرشفة العرض", variant: "success" });
       refreshSales();
     } catch (err) {
       if (err instanceof AdminSessionExpiredError) return;
       toast({
-        title: "تعذّر الحذف",
+        title: "تعذّر الإيقاف",
         // R148 (3-errcopy): route through getErrorMessage (see load).
         description: getErrorMessage(err),
         variant: "destructive",
       });
     } finally {
       // R147 (2-c D3): reset on EVERY exit path — see toggleActive.
-      setBusyId(null);
+      // R187 (D-F5): clears OWN id only (the Set model).
+      clearBusy(sale.id);
     }
   }
 
@@ -369,7 +392,7 @@ export default function AdminPromotionsPage() {
           loading={loading}
           loadError={loadError}
           onRetry={() => void refetchSales()}
-          busyId={busyId}
+          busyIds={busyIds}
           onToggleActive={toggleActive}
           onDelete={handleDelete}
         />
