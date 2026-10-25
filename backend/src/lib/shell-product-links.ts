@@ -8,7 +8,8 @@ import { withCatalogCache } from "./catalog-cache";
  * The shell used to carry only category/support links, so every product
  * page was an orphan in raw HTML. Query the same public-active catalog
  * predicate the storefront uses, cache it with the catalog generation,
- * and keep the list small (12) so the shell stays light.
+ * keeping the list small — 12 on home/PDP, 24 on category pages so
+ * the full live category set (streaming = 17) is never orphaned.
  */
 export interface ShellProductLink {
   slug: string;
@@ -34,7 +35,7 @@ export async function listShellProductLinks(
       .from(productsTable)
       .where(and(...where))
       .orderBy(asc(productsTable.id))
-      .limit(12);
+      .limit(category ? 24 : 12);
 
     return rows.flatMap((row) => (row.slug ? [{ slug: row.slug, name: row.name }] : []));
   });

@@ -992,6 +992,28 @@ describe("SPA shell rewrite — no-JS fallback H1 + internal links (R176)", () =
     expect(r.body).toContain(`href="https://subnation.ly/product/${activeProduct.slug}"`);
   });
 
+  it("category shell links the full live category set beyond the old 12-link cap", async () => {
+    // RH-293: streaming has 17 live products, but the shell used to cap
+    // every category at 12 — leaving fox-now/funimation/hallmark/shudder
+    // orphaned in raw HTML. The category cap is now 24; home/PDP stay 12.
+    const rows = Array.from({ length: 17 }, (_, i) => ({
+      name: `Streaming orphan ${i}`,
+      slug: `streaming-orphan-${i}`,
+      description: "وصف اختبار",
+      price: "10.00",
+      category: "streaming",
+      isActive: true,
+    }));
+    await db.insert(productsTable).values(rows);
+    bumpCatalogCache();
+
+    const r = await get("/category/streaming");
+    expect(r.status).toBe(200);
+    for (const row of rows) {
+      expect(r.body).toContain(`href="https://subnation.ly/product/${row.slug}"`);
+    }
+  });
+
   it("product shell uses the Product-LD name as the fallback H1 (unclamped)", async () => {
     const r = await get(`/product/${activeProduct.slug}`);
     expect(r.body).toContain(">ExpressVPN اشتراك اختبار</h1>");
