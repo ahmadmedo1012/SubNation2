@@ -6,7 +6,7 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "vitest.config.ts"],
   "references": [
     {
       "path": "../shared/db"

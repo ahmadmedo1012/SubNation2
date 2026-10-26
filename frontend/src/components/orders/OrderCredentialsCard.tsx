@@ -207,8 +207,8 @@ export function OrderCredentialsCard({ order }: { order: Order }) {
                   else and «ستصلك إشعار» presumed a notification path a
                   completed order never fires. */}
         <p className="text-xs text-muted-foreground leading-relaxed max-w-xs mx-auto">
-          سيتم تسليم بيانات الحساب فور اكتمال الطلب — عادةً فوراً، وبحد أقصى 24 ساعة. سنُشعرك عند
-          الجاهزية.
+          سيتم تسليم بيانات الحساب فور اكتمال الطلب — عادةً فوراً، وبحد أقصى 24 ساعة. سنُشعرك فور
+          جهوزيته.
         </p>
       </div>
     )

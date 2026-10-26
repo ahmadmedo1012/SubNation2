@@ -109,6 +109,14 @@ describe("flashSaleWatcher — expired-sale sweep (the deactivation authority)",
     expect(alerts[0].type).toBe("flash_sale_expired");
     expect(alerts[0].dedupeKey).toBe(`flash_sale_expired:${sale.id}`);
     expect(alerts[0].title).toBe("انتهت تخفيضات: FSW Sale");
+    // R188-3 (D-F13): the expiry is localized exactly like couponWatcher's
+    // expiry line (ar-LY / Africa/Tripoli, Latin digits) — a raw ISO
+    // timestamp bidi-scrambles inside the RTL alert line.
+    const endsAt = (await saleRow(sale.id)).endsAt;
+    expect(alerts[0].message).toBe(
+      `تم إنهاء التخفيضات تلقائياً بعد انتهاء وقتها (${endsAt.toLocaleString("ar-LY", { timeZone: "Africa/Tripoli" })}).`,
+    );
+    expect(alerts[0].message).not.toContain(endsAt.toISOString());
 
     // The sweep is idempotent: a second run neither re-flips (already
     // false — the UPDATE re-applies its own predicate) nor re-alerts.

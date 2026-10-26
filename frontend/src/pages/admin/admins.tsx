@@ -273,6 +273,12 @@ export default function AdminAdminsPage() {
   // the invite flow's POST stays page-owned) ──────────────────────────
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // B-F4 (R188-6): in-flight re-entry guard — the dialog form is
+    // Enter-submittable past the disabled submit button, and the invite
+    // POST carries no Idempotency-Key: two submits during one POST
+    // mint TWO admin accounts. preventDefault stays FIRST (no native
+    // form GET).
+    if (createSaving) return;
     if (createSelectedScopes.length === 0) {
       toast({ title: "اختر صلاحية واحدة على الأقل", variant: "destructive" });
       return;
@@ -315,6 +321,9 @@ export default function AdminAdminsPage() {
   // stays page-owned) ─────────────────────────────────────────────────
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // B-F4 (R188-6): the create twin's guard on the permission-save
+    // PATCH (same Enter-past-the-disabled-button window).
+    if (editSaving) return;
     if (!editing) return;
     if (!editingIsSuper && editSelectedScopes.length === 0) {
       toast({ title: "اختر صلاحية واحدة على الأقل", variant: "destructive" });

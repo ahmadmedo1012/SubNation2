@@ -144,9 +144,10 @@ describe("R140-i F2 — raw text-primary small text converted to the text-primar
   });
 
   it("BulkActionBar: the «N منتج محدد» count line (sweep :31)", () => {
-    expect(BULK_ACTION_BAR).toContain(
-      '<span className="text-sm font-bold text-primary-text">{selectedCount} منتج محدد</span>',
-    );
+    // R188-5 (D-F3): the count rides formatCount (the compound family) —
+    // the span keeps the /primary-text bold register the sweep pinned.
+    expect(BULK_ACTION_BAR).toContain('<span className="text-sm font-bold text-primary-text">');
+    expect(BULK_ACTION_BAR).toContain("{formatCount(selectedCount, PRODUCT_SELECTED_COUNT_FORMS)}");
   });
 
   it("ReferralRowItem: the credit CTA chip (sweep :114)", () => {

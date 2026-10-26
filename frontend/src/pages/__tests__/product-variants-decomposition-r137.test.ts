@@ -93,3 +93,16 @@ describe("R137 (FE, closing) — the variants extracts are self-contained presen
     expect(meta).toContain("export const EMPTY_FORM = {");
   });
 });
+
+describe("R188 (B-F2) — submitForm carries the in-flight re-entry guard (the R148 D1 twin)", () => {
+  it("the variant POST is guarded by `busy` right after preventDefault (no Idempotency-Key — a double-submit minted two identical rows)", () => {
+    // The sibling page form (pages/admin/products.tsx handleSubmit) has
+    // carried the house fix for this exact class since R148 (D1): a
+    // submit event bypasses the disabled submit button, so two presses
+    // during one POST minted two products. The variant dialog's own
+    // submitForm (⌘S / implicit Enter reach it past the disabled
+    // button) was the lone unguarded twin — the variant POST carries
+    // no Idempotency-Key either.
+    expect(dialog).toContain("if (busy) return;");
+  });
+});

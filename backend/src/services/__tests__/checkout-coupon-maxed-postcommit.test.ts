@@ -100,6 +100,17 @@ async function couponMaxedAlerts(): Promise<Array<{ type: string }>> {
   return (res as unknown as { rows?: Array<{ type: string }> }).rows ?? [];
 }
 
+async function couponMaxedAlertMessages(): Promise<string[]> {
+  // R188 desk (D-F10): the alert's message column carries the pluralized
+  // «مرة» phrase — the TIMES_USED_FORMS the operator Telegram card renders.
+  const res = await db.execute(
+    sql`SELECT message FROM admin_alerts WHERE type = ${"coupon_maxed"}`,
+  );
+  return ((res as unknown as { rows?: Array<{ message: string | null }> }).rows ?? []).map(
+    (r) => r.message ?? "",
+  );
+}
+
 describe("F8: coupon_maxed side effects live on the post-commit side", () => {
   it("committed purchase that consumes the last slot → alert emitted (true positive)", async () => {
     const user = await seedUser("50.00");
@@ -246,5 +257,11 @@ describe("R146 F2 — concurrent exhaustion of the last slots fires the operator
     // THE R146 F2 assertion — the operator was warned (this is the alert
     // the stale-computed count used to swallow).
     expect(await couponMaxedAlerts()).toHaveLength(1);
+
+    // R188 desk (D-F10): maxUses=2 renders «مرتين» — never the frozen
+    // «2 مرة» singular the audit found on this surface.
+    const [alertMessage] = await couponMaxedAlertMessages();
+    expect(alertMessage).toContain("(مرتين)");
+    expect(alertMessage).not.toContain("2 مرة");
   });
 });

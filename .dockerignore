@@ -61,3 +61,10 @@ specs
 .specify
 *.md
 .gitleaks.toml
+
+# R188-8 (F-F5): round-art corpora (r175 product art ~2.5 MB, r176 real
+# art ~4.7 MB, r178 transparent art ~84 KB) — inspection artifacts the
+# builder never reads; without this they rode every build context.
+scripts/r175-product-art
+scripts/r176-real-art
+scripts/r178-transparent-art

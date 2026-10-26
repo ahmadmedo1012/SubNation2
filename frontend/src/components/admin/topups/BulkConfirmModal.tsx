@@ -19,7 +19,7 @@ import { TOPUP_COUNT_FORMS } from "@/components/admin/topups/topups-queue-meta";
 // F3-03 (R111 WCAG 4.1.2 + 2.4.3): same hand-rolled-overlay retirement as
 // RejectModal above — Radix focus trap/return, aria-modal, real DialogTitle,
 // and ESC/backdrop guarded while the sequential money loop runs
-// (`dismissable`). The live "جاري done/total" counter is additionally a
+// (`dismissable`). The live "جارٍ done/total" counter is additionally a
 // role=status region so the per-item progress reaches screen readers while
 // the loop runs (the old subtitle swap was visual-only).
 // R122 (A2-P2): the modal gains the SAME optional note field the
@@ -61,7 +61,7 @@ export function BulkConfirmModal({
         if (!o) onCancel();
       }}
       title={action === "approve" ? "تأكيد الموافقة الجماعية" : "تأكيد الرفض الجماعي"}
-      description={`${formatCount(count, TOPUP_COUNT_FORMS)} سيتم معالجته`}
+      description={`سيتم معالجة ${formatCount(count, TOPUP_COUNT_FORMS)}`}
       dismissable={!loading}
       size="sm"
       footer={
@@ -94,7 +94,7 @@ export function BulkConfirmModal({
             disabled={loading}
           >
             {loading && progress
-              ? `جاري ${progress.done}/${progress.total}…`
+              ? `جارٍ ${progress.done}/${progress.total}…`
               : loading
                 ? "جارٍ المعالجة…"
                 : action === "approve"
@@ -147,7 +147,7 @@ export function BulkConfirmModal({
           aria-live="polite"
           className="px-1 pt-2 text-xs text-muted-foreground tabular-nums min-h-[1rem]"
         >
-          {loading && progress ? `جاري ${progress.done}/${progress.total}…` : ""}
+          {loading && progress ? `جارٍ ${progress.done}/${progress.total}…` : ""}
         </div>
       </AppDialogBody>
     </AppDialog>

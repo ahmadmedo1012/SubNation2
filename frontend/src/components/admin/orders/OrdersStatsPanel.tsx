@@ -54,7 +54,8 @@ export function OrdersStatsPanel({
         <div className="flex items-center gap-3">
           {!showStats && (
             <span className="text-xs text-muted-foreground font-normal tabular-nums">
-              {couponCount} طلب بكوبون · خصم {formatCurrency(totalDiscounts)}
+              {formatCount(couponCount, ORDER_COUNT_FORMS)} بكوبون · خصم{" "}
+              {formatCurrency(totalDiscounts)}
             </span>
           )}
           {showStats ? (
@@ -132,7 +133,7 @@ export function OrdersStatsPanel({
                 كوبونات مستخدمة
               </div>
               <div className="font-bold text-base tabular-nums">{uniqueCouponCount}</div>
-              <div className="text-3xs text-muted-foreground mt-0.5">كود فريد</div>
+              <div className="text-3xs text-muted-foreground mt-0.5">رمز فريد</div>
             </div>
           </div>
 

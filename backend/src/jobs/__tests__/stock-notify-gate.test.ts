@@ -105,6 +105,37 @@ describe("stockWatcher — fresh alert notifies Telegram exactly once", () => {
   });
 });
 
+describe("stockWatcher — R188-3 (D-F2): the low-stock drawer message pluralizes the unit count", () => {
+  it("stock 1 / 2 / 3 render «تبقّى وحدة واحدة فقط» / «تبقّى وحدتان فقط» / «تبقّى 3 وحدات فقط»", async () => {
+    const one = await seedProduct("One Unit", 1);
+    await checkLowStockForTests();
+    let alerts = await db.select().from(adminAlertsTable);
+    expect(alerts.find((a) => a.dedupeKey === `stock:low:${one}`)!.message).toBe(
+      "تبقّى وحدة واحدة فقط",
+    );
+
+    // Cold-restart semantics between passes: fresh in-memory Sets + fresh
+    // tables, so each leg is an independent first-seen alert.
+    await resetTestDb();
+    resetStockWatcherMemoryForTests();
+    const two = await seedProduct("Two Units", 2);
+    await checkLowStockForTests();
+    alerts = await db.select().from(adminAlertsTable);
+    expect(alerts.find((a) => a.dedupeKey === `stock:low:${two}`)!.message).toBe(
+      "تبقّى وحدتان فقط",
+    );
+
+    await resetTestDb();
+    resetStockWatcherMemoryForTests();
+    const three = await seedProduct("Three Units", 3);
+    await checkLowStockForTests();
+    alerts = await db.select().from(adminAlertsTable);
+    expect(alerts.find((a) => a.dedupeKey === `stock:low:${three}`)!.message).toBe(
+      "تبقّى 3 وحدات فقط",
+    );
+  });
+});
+
 describe("stockWatcher — suppressed alert does NOT re-ping Telegram (A6-P2-1)", () => {
   it("cold restart inside the 24h dedupe window: drawer row suppresses insert AND Telegram", async () => {
     await seedProduct("Zero Restart", 0);

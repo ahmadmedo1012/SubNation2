@@ -260,7 +260,7 @@ export function OnboardingPage() {
                   جاهز للبدء
                 </h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  اختر إلى أين تتوجّه — يمكنك دائماً العودة لإعدادات حسابك من صفحة الملف الشخصي.
+                  اختر إلى أين تتوجّه — يمكنك دائماً العودة لإعدادات حسابك من صفحة حسابك.
                 </p>
               </div>
 

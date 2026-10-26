@@ -142,7 +142,14 @@ describe("R137 (FE) — admin/coupons.tsx decomposition: page stays an orchestra
     const table = read("src/components/admin/coupons/CouponsTable.tsx");
     expect(table).toContain("aria-label={`أرشفة الكوبون ${coupon.code}`}");
     expect(table).toContain("aria-pressed={coupon.is_active}");
-    expect(table).toContain("{coupons.length} كوبون · {activeCount} نشط");
+    // R188-5 (D-F3): the footer's two frozen counts now ride formatCount
+    // (the coupon + active families — the old «{coupons.length} كوبون ·
+    // {activeCount} نشط» froze single forms). Whitespace-normalized per the
+    // R187 CI law — prettier's wrapping/`·{" "}` idiom cannot break the pin.
+    const flat = (s: string) => s.replace(/\{" "\}/g, " ").replace(/\s+/g, "");
+    expect(flat(table)).toContain(
+      "{formatCount(coupons.length,COUPON_COUNT_FORMS)}·{formatCount(activeCount,ACTIVE_COUNT_FORMS)}",
+    );
     // The header's honest R120-B4 wording (200-row cap).
     const header = read("src/components/admin/coupons/CouponsHeader.tsx");
     expect(header).toContain("عرض ${couponsCount} (الأحدث أولاً)");

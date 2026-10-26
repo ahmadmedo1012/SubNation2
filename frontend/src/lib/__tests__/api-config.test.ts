@@ -1,4 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// E-F4 (R188-7): unstub in afterEach, not at end-of-test-body — a failed
+// assertion used to skip the unstub and leak the stubbed VITE_API_*
+// into the rest of the worker (same idiom as boot-sentry-dsn-guard).
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("api-config", () => {
   it("normalizes the configured API origin and resolves API URLs", async () => {
@@ -12,8 +19,6 @@ describe("api-config", () => {
     expect(getSocketUrl()).toBe("https://api.example.com");
     expect(apiUrl("/api/auth/probe")).toBe("https://api.example.com/api/auth/probe");
     expect(apiUrl("/assets/app.js")).toBe("https://api.example.com/assets/app.js");
-
-    vi.unstubAllEnvs();
   });
 
   it("falls back to the legacy API variable and leaves protocol-relative paths untouched", async () => {
@@ -26,7 +31,5 @@ describe("api-config", () => {
     expect(getApiBaseUrl()).toBe("https://legacy.example.com");
     expect(apiUrl("//cdn.example.com/file.js")).toBe("//cdn.example.com/file.js");
     expect(apiUrl("relative/path")).toBe("relative/path");
-
-    vi.unstubAllEnvs();
   });
 });

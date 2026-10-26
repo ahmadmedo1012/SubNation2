@@ -75,6 +75,12 @@ export function useCheckoutRequote({
   // (cross-tab storage event) are picked up by the next run — each id is
   // quoted at most once per visit.
   const quotedProductIdsRef = useRef<Set<number>>(new Set());
+  // B-F1 (R188-6): a FLIGHT counter, not a boolean — a second requote
+  // flight (a cross-tab storage-event add during the mount window) arming
+  // while the first is in flight had the FIRST flight's finally clear the
+  // shared gate and unlock the confirm CTA while the new line's live
+  // price was still unreconciled (the 98-F2 class).
+  const requoteFlightsRef = useRef(0);
   useEffect(() => {
     if (!token || !isLoaded || items.length === 0) return;
     const pending = [...new Set(items.map((i) => i.productId))].filter(
@@ -82,6 +88,7 @@ export function useCheckoutRequote({
     );
     if (pending.length === 0) return;
     pending.forEach((id) => quotedProductIdsRef.current.add(id));
+    requoteFlightsRef.current += 1;
     setPricingRecheckInFlight(true);
     // try/finally + .catch: the in-flight gate MUST clear even when the
     // re-quote dies before its first await (a synchronous throw out of
@@ -184,7 +191,10 @@ export function useCheckoutRequote({
         if (anyPriceChanged) setPricesUpdatedNotice("تم تحديث الأسعار حسب الأسعار الحالية");
         if (dropped.length > 0) setDroppedLineNotices(dropped);
       } finally {
-        setPricingRecheckInFlight(false);
+        // B-F1 (R188-6): only the LAST flight to land clears the gate —
+        // an overlapping flight's verdict is still unreconciled stock.
+        requoteFlightsRef.current -= 1;
+        if (requoteFlightsRef.current === 0) setPricingRecheckInFlight(false);
       }
     })().catch(() => {
       // Fail-open, silently: the snapshot stands and the CTA unlocks

@@ -32,6 +32,7 @@ import { adminFetchJson } from "@/lib/admin-session";
 // --status-* tokens (high→success, medium→warning, low→low-stock).
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { productArtUrl } from "@/lib/product-art";
+import { formatCount } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -59,6 +60,18 @@ const DECIMAL_2_FORMATTER = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+/** Arabic plural forms for «ساعة» — R188 (D-F4): the stale banner's
+ *  hours-since-success count (integer hours from the backend's
+ *  Math.floor; was the frozen «N ساعة منذ آخر تحديث ناجح»). */
+const STALE_HOUR_COUNT_FORMS = {
+  zero: "ساعات",
+  one: "ساعة",
+  two: "ساعتان",
+  few: "ساعات",
+  many: "ساعة",
+  other: "ساعة",
+};
 
 interface AtRiskRow {
   product_id: number;
@@ -202,7 +215,11 @@ export function StockoutRiskPanel() {
           <span>
             {isCalibrating
               ? "خط الأنابيب في وضع المعايرة — التنبيهات معطلة مؤقتاً (معدل التقاط < 50%)."
-              : `البيانات قديمة (${data.data_freshness_hours ?? "?"} ساعة منذ آخر تحديث ناجح).`}
+              : `البيانات قديمة (${
+                  data.data_freshness_hours != null
+                    ? formatCount(data.data_freshness_hours, STALE_HOUR_COUNT_FORMS)
+                    : "? ساعة"
+                } منذ آخر تحديث ناجح).`}
           </span>
         </div>
       )}
@@ -365,7 +382,7 @@ function ExplainDrawer({
             value={row.predicted_demand_7d == null ? "—" : String(row.predicted_demand_7d)}
           />
           <KV
-            label="متوقع 30 يوم"
+            label="متوقع 30 يوماً"
             value={row.predicted_demand_30d == null ? "—" : String(row.predicted_demand_30d)}
           />
         </div>

@@ -1,6 +1,7 @@
 import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { useToast } from "@/hooks/useToast";
 import { getErrorMessage } from "@/lib/errors";
+import { formatCount } from "@/lib/utils";
 // R123 (E3 item 1): the two raw fetches ride the session-aware wrappers
 // — a 401 mid-upload gets the global «انتهت الجلسة» toast + redirect
 // instead of a «فشل الرفع» toast on a dialog being torn down, and the
@@ -44,6 +45,52 @@ interface InventoryUploadDialogProps {
 
 const MAX_PREVIEW_ROWS = 8;
 const FILE_BYTE_LIMIT = 256 * 1024; // 256 KB — comfortably above 500 lines
+
+// ── R188 (D-F3): the dialog's frozen count nouns — the element/row/
+//    error families ride formatCount (the R187L long-tail idiom; the
+//    compound families follow ROUTE_COUNT_FORMS — every form agrees).
+//    Was: «N عنصر» / «N عنصر متوفر حالياً» / «(تخطّي N مكرر)» /
+//    «+ N عنصر إضافي سيُرفع» / «+ N خطأ آخر».
+const ELEMENT_COUNT_FORMS = {
+  zero: "عناصر",
+  one: "عنصر",
+  two: "عنصران",
+  few: "عناصر",
+  many: "عنصراً",
+  other: "عنصر",
+};
+const ELEMENT_AVAILABLE_FORMS = {
+  zero: "عناصر متوفرة حالياً",
+  one: "عنصر متوفر حالياً",
+  two: "عنصران متوفران حالياً",
+  few: "عناصر متوفرة حالياً",
+  many: "عنصراً متوفراً حالياً",
+  other: "عنصر متوفر حالياً",
+};
+const ELEMENT_EXTRA_FORMS = {
+  zero: "عناصر إضافية سيُرفع",
+  one: "عنصر إضافي سيُرفع",
+  two: "عنصران إضافيان سيُرفعان",
+  few: "عناصر إضافية سيُرفع",
+  many: "عنصراً إضافياً سيُرفع",
+  other: "عنصر إضافي سيُرفع",
+};
+const DUPLICATE_COUNT_FORMS = {
+  zero: "مكررات",
+  one: "مكرر",
+  two: "مكرران",
+  few: "مكررات",
+  many: "مكرراً",
+  other: "مكرر",
+};
+const PARSE_ERROR_COUNT_FORMS = {
+  zero: "أخطاء أخرى",
+  one: "خطأ آخر",
+  two: "خطآن آخران",
+  few: "أخطاء أخرى",
+  many: "خطأً آخر",
+  other: "خطأ آخر",
+};
 
 export function InventoryUploadDialog({
   productId,
@@ -189,7 +236,8 @@ export function InventoryUploadDialog({
       );
       toast({
         title: "تم الرفع",
-        description: data?.message ?? `تم إضافة ${data?.added ?? 0} عنصر`,
+        description:
+          data?.message ?? `تم إضافة ${formatCount(data?.added ?? 0, ELEMENT_COUNT_FORMS)}`,
         // R186 (C-F5): the R124-I5 success-variant sweep miss — the one
         // inventory write surface whose success landed in the default
         // info/blue register while every sibling rides green.
@@ -230,7 +278,9 @@ export function InventoryUploadDialog({
           {typeof displayCount === "number" ? (
             <>
               <span aria-hidden="true">·</span>
-              <span className="shrink-0 font-bold">{displayCount} عنصر متوفر حالياً</span>
+              <span className="shrink-0 font-bold">
+                {formatCount(displayCount, ELEMENT_AVAILABLE_FORMS)}
+              </span>
             </>
           ) : loadingExisting ? (
             <>
@@ -265,9 +315,12 @@ export function InventoryUploadDialog({
             ) : willInsert === 0 ? (
               "لا توجد عناصر للرفع"
             ) : parsed.duplicateIndices.length > 0 ? (
-              `رفع ${willInsert} عنصر (تخطّي ${parsed.duplicateIndices.length} مكرر)`
+              `رفع ${formatCount(willInsert, ELEMENT_COUNT_FORMS)} (تخطّي ${formatCount(
+                parsed.duplicateIndices.length,
+                DUPLICATE_COUNT_FORMS,
+              )})`
             ) : (
-              `رفع ${willInsert} عنصر`
+              `رفع ${formatCount(willInsert, ELEMENT_COUNT_FORMS)}`
             )}
           </Button>
         </>
@@ -470,7 +523,7 @@ export function InventoryUploadDialog({
             </div>
             {parsed.entries.length > MAX_PREVIEW_ROWS && (
               <p className="text-2xs text-muted-foreground mt-1.5 text-center">
-                + {parsed.entries.length - MAX_PREVIEW_ROWS} عنصر إضافي سيُرفع
+                + {formatCount(parsed.entries.length - MAX_PREVIEW_ROWS, ELEMENT_EXTRA_FORMS)}
               </p>
             )}
           </div>
@@ -499,7 +552,7 @@ export function InventoryUploadDialog({
               ))}
               {parsed.errors.length > 10 && (
                 <div className="text-3xs text-muted-foreground text-center pt-1">
-                  + {parsed.errors.length - 10} خطأ آخر
+                  + {formatCount(parsed.errors.length - 10, PARSE_ERROR_COUNT_FORMS)}
                 </div>
               )}
             </div>

@@ -2,7 +2,7 @@ import { AlertCircle, Box, Clock, Radio, ShieldCheck } from "lucide-react";
 import type { ChartColors } from "@/lib/chart-theme";
 import { DetailsSection } from "@/components/admin/system/DetailsSection";
 import { MetricCard } from "@/components/admin/system/MetricCard";
-import { formatCount } from "@/lib/utils";
+import { arabicCountWord, formatCount } from "@/lib/utils";
 import { formatMs, formatNumber } from "@/components/admin/system/system-format";
 import type { MetricsSnapshot } from "@/components/admin/system/system-types";
 
@@ -23,6 +23,20 @@ const ROUTE_COUNT_FORMS = {
   few: "مسارات نشطة",
   many: "مسارًا نشطًا",
   other: "مسار نشط",
+};
+
+/** Arabic plural forms for «خطأ» — R188 (D-F4): the 5xx counts (this
+ *  tile's sub + HealthOverview's error-rate hint; the SAMPLE_COUNT_FORMS
+ *  export idiom — one family, no second hand-typed copy). The word-only
+ *  arabicCountWord keeps formatNumber's compact K/M rendering; was the
+ *  frozen «N خطأ». */
+export const ERROR_COUNT_FORMS = {
+  zero: "أخطاء",
+  one: "خطأ",
+  two: "خطآن",
+  few: "أخطاء",
+  many: "خطأً",
+  other: "خطأ",
 };
 
 export function HttpAnalyticsSection({
@@ -86,7 +100,10 @@ export function HttpAnalyticsSection({
             <MetricCard
               label="معدل الأخطاء (5xx)"
               value={`${(metrics.http.errorRate * 100).toFixed(2)}%`}
-              sub={`${formatNumber(metrics.http.requestsByStatusClass["5xx"] ?? 0)} خطأ`}
+              sub={`${formatNumber(metrics.http.requestsByStatusClass["5xx"] ?? 0)} ${arabicCountWord(
+                metrics.http.requestsByStatusClass["5xx"] ?? 0,
+                ERROR_COUNT_FORMS,
+              )}`}
               icon={AlertCircle}
               color={metrics.http.errorRate > 0.01 ? "text-status-error" : "text-status-success"}
               bg={metrics.http.errorRate > 0.01 ? "bg-status-error/10" : "bg-status-success/10"}

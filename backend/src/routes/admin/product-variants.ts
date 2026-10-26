@@ -9,6 +9,7 @@ import { writeAuditLog } from "../../lib/audit";
 // advisory on the write path below (see the R167 block above the helper).
 import { findTierPriceAnomalies, type TierPriceAnomaly } from "../../lib/catalog-quality";
 import { logger } from "../../lib/logger";
+import { isUniqueViolation } from "../../lib/pg-errors";
 import { notifyAdminStats } from "../../lib/socket";
 import { requireAdmin } from "../../middlewares/requireAdmin";
 import { ErrorCode, createErrorResponse } from "../../lib/errors";
@@ -79,9 +80,16 @@ async function formatVariant(
   };
 }
 
-/** Keep products.price = MIN(active variant price) after every mutation. */
-async function refreshProductDisplayPrice(productId: number): Promise<void> {
-  const [row] = await db
+/** Keep products.price = MIN(active variant price) after every mutation.
+ * R188-2 (C-F5): takes the caller's client (tx-compatible — the
+ * insertLedgerEntry `tx as unknown as typeof db` idiom) so the create/patch
+ * writes below can commit the refresh in the SAME transaction; callers that
+ * stay autocommit (delete) keep the default client. */
+async function refreshProductDisplayPrice(
+  productId: number,
+  client: typeof db = db,
+): Promise<void> {
+  const [row] = await client
     .select({ minPrice: sql<string | null>`MIN(${productVariantsTable.priceLyd})` })
     .from(productVariantsTable)
     .where(
@@ -90,7 +98,7 @@ async function refreshProductDisplayPrice(productId: number): Promise<void> {
   // Only overwrite when the product HAS active variants — a product whose
   // variants are all deactivated keeps its last display price (legacy path).
   if (row?.minPrice != null) {
-    await db
+    await client
       .update(productsTable)
       .set({ price: String(row.minPrice) })
       .where(eq(productsTable.id, productId));
@@ -421,28 +429,51 @@ router.post("/products/:id/variants", async (req, res) => {
       .status(409)
       .json(createErrorResponse("هذه الباقة موجودة مسبقًا لنفس المنتج", ErrorCode.CONFLICT));
 
-  const [created] = await db
-    .insert(productVariantsTable)
-    .values({
-      productId: id,
-      planLabel,
-      durationLabel,
-      durationDays:
-        typeof body.duration_days === "number" && body.duration_days >= 0
-          ? Math.round(body.duration_days)
-          : null,
-      costPrice: String(costUsd),
-      priceLyd: String(priceLyd),
-      sku: typeof body.sku === "string" && body.sku.trim() ? body.sku.trim().slice(0, 160) : null,
-      isActive: body.is_active !== false,
-      sortOrder:
-        typeof body.sort_order === "number" && body.sort_order >= 0
-          ? Math.round(body.sort_order)
-          : 0,
-    })
-    .returning();
+  // R188-2 (C-F5): the variant write + the display-price refresh were two
+  // autocommit writes — a crash between them left products.price stale vs
+  // MIN(active variant price) until the next write (the R125-I6 mixed-state
+  // class, fixed for the recompute endpoint but never extended here). One
+  // transaction now commits both.
+  // R188-2 (C-F7): the probe above is check-then-act;
+  // uniq_product_variants_plan_duration is the live guard — the loser's
+  // 23505 now maps to the probe's IDENTICAL 409 envelope (byte-identical
+  // body) instead of a raw 500 on an admin surface.
+  let created: typeof productVariantsTable.$inferSelect;
+  try {
+    created = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(productVariantsTable)
+        .values({
+          productId: id,
+          planLabel,
+          durationLabel,
+          durationDays:
+            typeof body.duration_days === "number" && body.duration_days >= 0
+              ? Math.round(body.duration_days)
+              : null,
+          costPrice: String(costUsd),
+          priceLyd: String(priceLyd),
+          sku:
+            typeof body.sku === "string" && body.sku.trim() ? body.sku.trim().slice(0, 160) : null,
+          isActive: body.is_active !== false,
+          sortOrder:
+            typeof body.sort_order === "number" && body.sort_order >= 0
+              ? Math.round(body.sort_order)
+              : 0,
+        })
+        .returning();
+      await refreshProductDisplayPrice(id, tx as unknown as typeof db);
+      return row;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return res
+        .status(409)
+        .json(createErrorResponse("هذه الباقة موجودة مسبقًا لنفس المنتج", ErrorCode.CONFLICT));
+    }
+    throw err;
+  }
 
-  await refreshProductDisplayPrice(id);
   await writeAuditLog(req, "product.variant.create", "product_variant", created.id, {
     productId: id,
     variantId: created.id,
@@ -583,13 +614,20 @@ router.patch("/products/:id/variants/:variantId", async (req, res) => {
     updates.isActive = body.is_active;
   }
 
-  const [updated] = await db
-    .update(productVariantsTable)
-    .set({ ...updates, updatedAt: new Date() })
-    .where(eq(productVariantsTable.id, variantId))
-    .returning();
+  // R188-2 (C-F5): same one-transaction shape as the create branch — the
+  // variant write and the display-price refresh commit together or not at
+  // all. (No 23505 mapping here: the label-rename dupe race keeps today's
+  // raw-error propagation — C-F7 scoped the create path only.)
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(productVariantsTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(productVariantsTable.id, variantId))
+      .returning();
+    await refreshProductDisplayPrice(id, tx as unknown as typeof db);
+    return row;
+  });
 
-  await refreshProductDisplayPrice(id);
   await writeAuditLog(req, "product.variant.update", "product_variant", variantId, {
     productId: id,
     variantId,

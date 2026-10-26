@@ -68,7 +68,7 @@ export default function ReferralsPage() {
   const seoBlock = useSeo({
     title: "برنامج الإحالة — SubNation",
     description:
-      "ادعُ أصدقاءك إلى SubNation برمز الإحالة الخاص بك واكسب 50 نقطة عند اعتماد أول شحن لكل صديق.",
+      "ادعُ أصدقائك إلى SubNation برمز الإحالة الخاص بك واكسب 50 نقطة عند اعتماد أول شحن لكل صديق.",
     path: "/referrals",
     robots: "noindex,follow",
   });
@@ -286,7 +286,7 @@ export default function ReferralsPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold">برنامج الإحالة</h1>
-          <p className="text-xs text-muted-foreground">ادعُ أصدقاءك واكسب نقاطاً</p>
+          <p className="text-xs text-muted-foreground">ادعُ أصدقائك واكسب نقاطاً</p>
         </div>
       </div>
 

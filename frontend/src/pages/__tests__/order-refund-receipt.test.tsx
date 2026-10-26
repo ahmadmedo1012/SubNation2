@@ -257,7 +257,9 @@ describe("OrderDetailPage — pending card copy is the unified delivery promise 
     // The lone backwards figure is gone, and the notification promise
     // no longer presumes a path a completed order never fires
     // («ستصلك إشعار» → «سنُشعرك»).
+    // R188-4 (D-F9): «عند الجاهزية» → «فور جهوزيته» — the R127
+    // support-faq standard wording (support-faq.ts:43's twin).
     expect(screen.queryByText(/5 إلى 15 دقيقة/)).not.toBeInTheDocument();
-    expect(screen.getByText(/سنُشعرك عند الجاهزية/)).toBeInTheDocument();
+    expect(screen.getByText(/سنُشعرك فور جهوزيته/)).toBeInTheDocument();
   });
 });

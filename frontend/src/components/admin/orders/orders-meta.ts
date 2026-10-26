@@ -41,7 +41,7 @@ export const DATE_RANGES = [
   { label: "الكل", days: 0 },
   { label: "اليوم", days: 1 },
   { label: "7 أيام", days: 7 },
-  { label: "30 يوم", days: 30 },
+  { label: "30 يوماً", days: 30 },
 ];
 
 /** 94-C2 (A2 P1-1 + P2-2): server-side page size for the orders

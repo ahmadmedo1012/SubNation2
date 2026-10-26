@@ -10,9 +10,10 @@ import {
 } from "lucide-react";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { SkeletonText } from "@/components/ui/Skeleton";
-import { formatRelativeTime } from "@/lib/utils";
+import { arabicCountWord, formatRelativeTime } from "@/lib/utils";
 import { type CheckStatus, type HealthCheck, type HealthzReadyResponse } from "@/lib/healthz";
 import { formatMs, formatNumber } from "@/components/admin/system/system-format";
+import { ERROR_COUNT_FORMS } from "@/components/admin/system/HttpAnalyticsSection";
 import { STATUS_META, type StatusMetaEntry } from "@/components/admin/system/system-meta";
 import { HealthTile } from "@/components/admin/system/HealthTile";
 import type {
@@ -28,6 +29,18 @@ import type {
 // page — loading/error/retry flow down as values + one callback; the
 // extracts render the byte-identical DOM they rendered inline yesterday
 // (the sentry tile's alertsStale local became a prop of the same name).
+
+/** Arabic plural forms for «اتصال» — R188 (D-F4): the Socket.IO tile's
+ *  client count (the word-only arabicCountWord keeps formatNumber's
+ *  compact rendering; was the frozen «N اتصال»). */
+const CONNECTION_COUNT_FORMS = {
+  zero: "اتصالات",
+  one: "اتصال",
+  two: "اتصالان",
+  few: "اتصالات",
+  many: "اتصالاً",
+  other: "اتصال",
+};
 
 export function HealthOverviewSection({
   health,
@@ -134,7 +147,7 @@ export function HealthOverviewSection({
                 label="Socket.IO"
                 value={
                   clients != null
-                    ? `${formatNumber(clients)} اتصال`
+                    ? `${formatNumber(clients)} ${arabicCountWord(clients, CONNECTION_COUNT_FORMS)}`
                     : c
                       ? STATUS_META[c.status].label
                       : "—"
@@ -178,7 +191,11 @@ export function HealthOverviewSection({
                 value={er == null ? "—" : `${(er * 100).toFixed(2)}%`}
                 status={tone}
                 icon={AlertCircle}
-                hint={errCount > 0 ? `${formatNumber(errCount)} خطأ 5xx` : "بدون أخطاء"}
+                hint={
+                  errCount > 0
+                    ? `${formatNumber(errCount)} ${arabicCountWord(errCount, ERROR_COUNT_FORMS)} 5xx`
+                    : "بدون أخطاء"
+                }
               />
             );
           })()}

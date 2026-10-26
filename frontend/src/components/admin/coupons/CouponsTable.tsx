@@ -13,7 +13,7 @@ import {
 // 93-C7 / C-UX2 (A12 §11.1): status pills ride the canonical
 // StatusBadge + --status-* tokens instead of raw emerald/yellow hues.
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCount, formatCurrency, formatDate } from "@/lib/utils";
 import { type Coupon } from "@/components/admin/coupons/coupons-meta";
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/coupons.tsx —
@@ -26,6 +26,26 @@ import { type Coupon } from "@/components/admin/coupons/coupons-meta";
 // effectivelyActive derivations are row-local and ride along verbatim.
 // The move only changes its address; DOM, classes, aria and Arabic copy
 // are byte-identical.
+
+/** R188 (D-F3): the footer's two frozen counts — the coupon family
+ *  and the elided active-adjective family beside it (was «N كوبون ·
+ *  N نشط"). */
+const COUPON_COUNT_FORMS = {
+  zero: "كوبونات",
+  one: "كوبون",
+  two: "كوبونان",
+  few: "كوبونات",
+  many: "كوبوناً",
+  other: "كوبون",
+};
+const ACTIVE_COUNT_FORMS = {
+  zero: "نشطة",
+  one: "نشط",
+  two: "نشطان",
+  few: "نشطة",
+  many: "نشطاً",
+  other: "نشط",
+};
 
 export function CouponsTable({
   coupons,
@@ -282,7 +302,8 @@ export function CouponsTable({
           the OrdersTable footer value) + tabular-nums joins the
           count line. */}
       <div className="px-4 py-2 border-t border-border/20 bg-muted/10 text-xs text-muted-foreground tabular-nums">
-        {coupons.length} كوبون · {activeCount} نشط
+        {formatCount(coupons.length, COUPON_COUNT_FORMS)} ·{" "}
+        {formatCount(activeCount, ACTIVE_COUNT_FORMS)}
       </div>
     </div>
   );

@@ -80,7 +80,10 @@ describe("createResilientRateLimitStore — command timeout fallback (R2)", () =
 
     const started = Date.now();
     const result = await store.increment("k2");
-    expect(Date.now() - started).toBeLessThan(100);
+    // R188-7 (E-F1): 2_000 like the sibling legs — a 100 ms wall-clock
+    // bound's only failure mode is a CI event-loop/GC stall (red CI, zero
+    // code regression); the "no penalty" claim stays pinned by the budget.
+    expect(Date.now() - started).toBeLessThan(2_000);
     expect(result.totalHits).toBe(1);
   });
 

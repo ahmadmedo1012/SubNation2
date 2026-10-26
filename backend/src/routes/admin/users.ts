@@ -16,6 +16,7 @@ import { findIdempotencyClaimed, scopeIdempotencyKey } from "../../lib/idempoten
 import { canonicalBodyHash, idempotencyReuseBody } from "../../lib/idempotency-body-hash";
 import { hasPermission, PERMISSION_SCOPES } from "../../lib/permissions";
 import { insertPointsLedgerEntry } from "../../lib/points-ledger";
+import { logger } from "../../lib/logger";
 
 const router = Router();
 
@@ -449,8 +450,23 @@ router.patch(
       return res.status(400).json(createErrorResponse("لا توجد تعديلات", ErrorCode.INVALID_DATA));
     }
 
-    const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
-    if (!updated) {
+    // R188-2 (C-F2): whatever ran above is ALREADY COMMITTED (wallet
+    // credit + ledger, or points + points_ledger) — this re-read only
+    // builds the 200 body. A DB blip on it must not 500 a money-committed
+    // request (the R187-G-F5 topup idiom): warn, then degrade the body to
+    // the committed values instead of answering 404/500.
+    let updated: typeof usersTable.$inferSelect | undefined;
+    let reReadFailed = false;
+    try {
+      [updated] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
+    } catch (err) {
+      reReadFailed = true;
+      logger.warn(
+        { err, userId: id, category: "admin-users" },
+        "[admin-users] post-commit re-read failed (non-fatal — adjustment committed)",
+      );
+    }
+    if (!reReadFailed && !updated) {
       // The wallet path would have caught this earlier; reachable only
       // if the row was deleted between the AdjustmentService commit and
       // this read.
@@ -487,12 +503,25 @@ router.patch(
     // inline.
     notifyAdminStats("user-update");
 
+    if (reReadFailed) {
+      // C-F2 degraded 200 — the committed values only; the cosmetic
+      // fields the re-read would have carried (phone, loyalty_tier, the
+      // money field this request did not touch) read null. The admin
+      // list refetch lands the fresh row.
+      return res.json({
+        id,
+        phone: null,
+        wallet_balance: walletResult ? walletResult.walletBalance : null,
+        loyalty_points: loyaltyApplied ? loyaltyApplied.after : null,
+        loyalty_tier: null,
+      });
+    }
     return res.json({
-      id: updated.id,
-      phone: updated.phone,
-      wallet_balance: parseFloat(String(updated.walletBalance)),
-      loyalty_points: updated.loyaltyPoints,
-      loyalty_tier: updated.loyaltyTier,
+      id: updated!.id,
+      phone: updated!.phone,
+      wallet_balance: parseFloat(String(updated!.walletBalance)),
+      loyalty_points: updated!.loyaltyPoints,
+      loyalty_tier: updated!.loyaltyTier,
     });
   },
 );

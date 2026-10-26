@@ -416,9 +416,11 @@ export class TopupService {
             .limit(3);
           if (lypaySiblings.length > 0) {
             const siblingIds = lypaySiblings.map((s) => `#${s.id}`).join("، ");
+            // R188-3 (D-F12): brand casing inside Arabic RTL copy — «LyPay»,
+            // the payment-networks.ts canon (netLabel map).
             throw new ServiceError(
               409,
-              `تحويل مكرر: يوجد طلب شحن lypay معتمد مطابق لنفس المبلغ والشبكة وحساب المُرسل خلال 24 ساعة — تحقق من التحويل قبل أن تحاول مجدداً (الطلبات: ${siblingIds})`,
+              `تحويل مكرر: يوجد طلب شحن LyPay معتمد مطابق لنفس المبلغ والشبكة وحساب المُرسل خلال 24 ساعة — تحقق من التحويل قبل أن تحاول مجدداً (الطلبات: ${siblingIds})`,
               "DUPLICATE_LYPAY_TRANSFER",
             );
           }

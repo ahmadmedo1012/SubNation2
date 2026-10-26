@@ -32,8 +32,9 @@
  * (default: null — the no-Redis production shape) with an optional
  * capture client for the mirror tests.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getRedisClient } from "../../lib/redis-client";
+import { envGuard } from "../../test/env-guard";
 
 // R104 (AG4-2): the Neon-persisted epoch marker is mocked out HERE —
 // these are unit tests of the in-memory gate. The marker adoption path
@@ -145,7 +146,16 @@ async function importOpenwa() {
   return mod;
 }
 
+const WHATSAPP_ENV = envGuard([
+  "WHATSAPP_OTP_BASE_URL",
+  "WHATSAPP_OTP_API_KEY",
+  "WHATSAPP_OTP_SESSION",
+  "WHATSAPP_OTP_SETTLE_MS",
+  "WHATSAPP_OTP_OPERATOR_E164",
+]);
+
 beforeEach(() => {
+  WHATSAPP_ENV.save();
   process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = SESSION_ID;
@@ -159,6 +169,14 @@ afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   vi.useRealTimers();
   vi.restoreAllMocks();
+  WHATSAPP_ENV.restore();
+});
+
+afterAll(() => {
+  // R188-7 (E-F5) pin: the guard leaves the fork baseline — src/test/env.ts
+  // sets none of this family, so the last test's tail (e.g. SETTLE_MS
+  // "2000" from the settle-window legs) must not survive the file.
+  expect(process.env.WHATSAPP_OTP_SETTLE_MS).toBeUndefined();
 });
 
 // ─── F. env parsing / clamping ───────────────────────────────────────────────

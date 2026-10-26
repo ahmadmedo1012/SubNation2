@@ -61,7 +61,10 @@ export async function deactivateExpiredFlashSales(): Promise<void> {
       expired.map((row) => ({
         type: "flash_sale_expired" as const,
         title: `انتهت تخفيضات: ${row.title}`,
-        message: `تم إنهاء التخفيضات تلقائياً بعد انتهاء وقتها (${row.endsAt.toISOString()}).`,
+        // R188-3 (D-F13): localized exactly like couponWatcher.ts's expiry
+        // line (ar-LY / Africa/Tripoli, Latin digits) — a raw ISO timestamp
+        // bidi-scrambles inside the RTL alert.
+        message: `تم إنهاء التخفيضات تلقائياً بعد انتهاء وقتها (${row.endsAt.toLocaleString("ar-LY", { timeZone: "Africa/Tripoli" })}).`,
         opts: {
           dedupeKey: `flash_sale_expired:${row.id}`,
           dedupeWindowMs: 7 * 24 * 60 * 60 * 1000,

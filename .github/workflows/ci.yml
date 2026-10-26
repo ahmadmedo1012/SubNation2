@@ -154,6 +154,13 @@ jobs:
               - ".github/workflows/ci.yml"
               - "Dockerfile"
               - "docker-compose.yml"
+              # R188-8 (F-F1): the remaining root toolchain/gate files — the
+              # config that DEFINES the lint gate (eslint.config.mjs), the
+              # pnpm behavior flags (.npmrc), and the build-context list
+              # (.dockerignore) must themselves trip the heavy jobs.
+              - "eslint.config.mjs"
+              - ".npmrc"
+              - ".dockerignore"
             deps:
               - "pnpm-lock.yaml"
               - "**/package.json"
@@ -315,7 +322,7 @@ jobs:
         # R127-L4 (B3 Phase 1): regex-mode scan of the frontend source for
         # AI-slop tells (bounce easings, slop gradients, glow shadows).
         # R134 (A5-F3): the engine is now a lockfile-pinned workspace
-        # devDependency (impeccable@4.1.0 + its @impeccable/cli-*
+        # devDependency (impeccable@4.7.0 + its @impeccable/cli-*
         # platform binaries as optionalDependencies) resolved by the
         # `pnpm install --frozen-lockfile` step above — every tarball is
         # integrity-hash-verified against the committed lockfile. The old
@@ -338,6 +345,15 @@ jobs:
 
       - name: Lint
         run: pnpm run lint
+
+      - name: Prettier format gate
+        # R188-8 (F-F3): prettier was enforced only at commit time
+        # (lint-staged --write, opt-out with --no-verify) — format drift
+        # shipped green, and the R187 CI round-1 failure (spec-truth pins
+        # vs commit-time yaml-wrapping) demonstrated the bite. The repo was
+        # fully reformatted in R188; this step keeps it at zero drift.
+        # .prettierignore scopes it (md files are exempt).
+        run: pnpm exec prettier --check .
 
       - name: Typecheck (project references + per-package)
         run: pnpm run typecheck
@@ -460,10 +476,12 @@ jobs:
         # failures look identical regardless of which workspace introduced
         # the regression. R136 (TST-2): the suites now run the
         # test:coverage scripts — same binary, same failure shape, plus
-        # the v8 report the artifact step below uploads. REPORT-ONLY this
-        # round: thresholds land in R137 calibrated against the first CI
-        # runs' artifact numbers (gating on never-measured numbers is a
-        # flaky gate waiting to happen; the artifacts ARE the baseline).
+        # the v8 report the artifact step below uploads. Coverage is
+        # REPORT-ONLY BY STANDING DESIGN (R188-8, F-F4): the vitest
+        # configs carry reporters only and thresholds are deliberately
+        # NOT gated — the uploaded artifacts ARE the coverage record.
+        # (The old "thresholds land in R137" promise never landed; it is
+        # retired. Re-gating requires an explicit round decision.)
         # R163: the scripts workspace rides the same job — its harness is
         # plain `vitest run` (no coverage config; 6 tests, no DB).
         run: pnpm --filter ${{ matrix.suite == 'backend' && '@workspace/api-server' || matrix.suite == 'scripts' && '@workspace/scripts' || '@workspace/subnation' }} run ${{ matrix.suite == 'scripts' && 'test' || 'test:coverage' }}

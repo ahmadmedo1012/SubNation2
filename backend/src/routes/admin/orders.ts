@@ -557,51 +557,69 @@ router.patch(
       // out of the per-order try changes nothing about refund error
       // handling — a notification failure still cannot fail the refund.
       const refundNotifications: Array<{ userId: number; orderCode: string }> = [];
-      for (const orderId of numIds) {
-        try {
-          const result = await RefundService.refundOrder(orderId, {
-            adminId,
-            note: typeof note === "string" ? note : undefined,
-          });
-          successes.push(result.orderId);
-          // A9-1 (R116): durable notification — the socket emit is
-          // transient, the notifications row survives to the next visit.
-          const refundCode = codeById.get(result.orderId);
-          if (refundCode) {
-            refundNotifications.push({ userId: result.userId, orderCode: refundCode });
-          }
-          // Per-refund socket notification — same shape the legacy path used.
-          import("../../lib/socket")
-            .then(({ emitToUser }) => {
-              emitToUser(result.userId, "order-updated", {
-                id: result.orderId,
-                status,
-                order_code: codeById.get(result.orderId) ?? null,
-              });
-              // R104 (AG3-5): the `wallet-updated` emit is REMOVED — no
-              // client listener has ever existed (grep-verified), so the
-              // event was a dead no-op. The user's wallet/orders views
-              // refresh via SessionActivityManager's visibility resync
-              // and normal staleness.
-            })
-            .catch((err) => logger.warn({ err }, "socket notify failed (refund)"));
-        } catch (err) {
-          if (err instanceof RefundError) {
-            failures.push({ orderId, code: err.code, message: err.message });
-          } else {
-            // Anything else is a programming error / DB outage — let it
-            // propagate so the admin sees a 500 and the request is not
-            // silently swallowed.
-            throw err;
+      try {
+        for (const orderId of numIds) {
+          try {
+            const result = await RefundService.refundOrder(orderId, {
+              adminId,
+              note: typeof note === "string" ? note : undefined,
+            });
+            successes.push(result.orderId);
+            // A9-1 (R116): durable notification — the socket emit is
+            // transient, the notifications row survives to the next visit.
+            const refundCode = codeById.get(result.orderId);
+            if (refundCode) {
+              refundNotifications.push({ userId: result.userId, orderCode: refundCode });
+            }
+            // Per-refund socket notification — same shape the legacy path used.
+            import("../../lib/socket")
+              .then(({ emitToUser }) => {
+                emitToUser(result.userId, "order-updated", {
+                  id: result.orderId,
+                  status,
+                  order_code: codeById.get(result.orderId) ?? null,
+                });
+                // R104 (AG3-5): the `wallet-updated` emit is REMOVED — no
+                // client listener has ever existed (grep-verified), so the
+                // event was a dead no-op. The user's wallet/orders views
+                // refresh via SessionActivityManager's visibility resync
+                // and normal staleness.
+              })
+              .catch((err) => logger.warn({ err }, "socket notify failed (refund)"));
+          } catch (err) {
+            if (err instanceof RefundError) {
+              failures.push({ orderId, code: err.code, message: err.message });
+            } else {
+              // Anything else is a programming error / DB outage — let it
+              // propagate so the admin sees a 500 and the request is not
+              // silently swallowed.
+              throw err;
+            }
           }
         }
+      } finally {
+        // R188-2 (C-F3): the raw rethrow above used to skip BOTH the
+        // notification batch and the audit row for the refunds already
+        // committed by earlier iterations — committed money with zero
+        // notifications/audit. Flush them in the finally (both helpers are
+        // non-fatal by contract, so neither can mask the original error)
+        // with the honest partial succeeded/failed lists, BEFORE the error
+        // propagates. Refund money semantics are untouched (exactly-once
+        // stays with RefundService's in-tx status guard).
+        // PERF #4 (R136): ONE multi-row INSERT for every refunded buyer's
+        // durable notification (mirrors the non-refund branch's call at the
+        // bottom of this handler). Same rows, same titles/links, one round
+        // trip instead of ≤200.
+        await notifyOrderStatusChangedBatch(refundNotifications, status);
+        void writeAuditLog(req, "order.bulk_refund", "order", null, {
+          ids: numIds,
+          succeeded: successes,
+          failed: failures.map((f) => ({ orderId: f.orderId, code: f.code })),
+          count_requested: numIds.length,
+          count_succeeded: successes.length,
+          count_failed: failures.length,
+        });
       }
-
-      // PERF #4 (R136): ONE multi-row INSERT for every refunded buyer's
-      // durable notification (mirrors the non-refund branch's call at the
-      // bottom of this handler). Same rows, same titles/links, one round
-      // trip instead of ≤200.
-      await notifyOrderStatusChangedBatch(refundNotifications, status);
 
       // R125-I6/R136: the admin dashboards' stats families refresh on
       // event (the shared notifyAdminStats helper carries the exact
@@ -610,15 +628,6 @@ router.patch(
         status,
         succeeded: successes.length,
         failed: failures.length,
-      });
-
-      void writeAuditLog(req, "order.bulk_refund", "order", null, {
-        ids: numIds,
-        succeeded: successes,
-        failed: failures.map((f) => ({ orderId: f.orderId, code: f.code })),
-        count_requested: numIds.length,
-        count_succeeded: successes.length,
-        count_failed: failures.length,
       });
 
       // 2026-09-20 (free-infrastructure round): a refund fires the stock

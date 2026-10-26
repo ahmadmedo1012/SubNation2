@@ -9,7 +9,7 @@ const apiZodSrc = path.resolve(root, "shared", "api-zod", "src");
 
 // Our exports make assumptions about the title of the API being "Api" (i.e. generated output is `api.ts`).
 const titleTransformer: InputTransformerFn = (config) => {
-  config.info ??= {};
+  config.info ??= { title: "Api", version: "0.1.0" };
   config.info.title = "Api";
 
   return config;
@@ -37,7 +37,7 @@ export default defineConfig({
         fetch: {
           includeHttpResponseReturnType: false,
         },
-        // The workspace pins @tanstack/react-query 5 (catalog ^5.90.21), but
+        // The workspace pins @tanstack/react-query 5 (catalog ^5.104.5), but
         // the api-spec package itself does not depend on it, so orval cannot
         // detect the version and would fall back to v4 hook signatures
         // (breaks every frontend call site). Pin it.

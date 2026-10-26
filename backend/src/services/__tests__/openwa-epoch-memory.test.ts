@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { db, initTestDb } from "../../test/db";
+import { envGuard } from "../../test/env-guard";
 
 /**
  * R104 (AG4-2) / RT-3 (red team) — the Neon-persisted pairing-epoch
@@ -118,6 +119,15 @@ async function readMarker(): Promise<{
   return JSON.parse(raw) as { epoch: string; readySince: number; warmed: boolean };
 }
 
+const WHATSAPP_ENV = envGuard([
+  "WHATSAPP_OTP_BASE_URL",
+  "WHATSAPP_OTP_API_KEY",
+  "WHATSAPP_OTP_SESSION",
+  "WHATSAPP_OTP_SETTLE_MS",
+  "WHATSAPP_OTP_OPERATOR_E164",
+  "WHATSAPP_OTP_DISABLE_EPOCH_MEMORY",
+]);
+
 describe("whatsapp epoch memory (R104 AG4-2) — stable pairingId + Neon marker", () => {
   beforeAll(async () => {
     // initTestDb runs non-idempotent CREATE TYPE DDL — ONCE per file
@@ -133,6 +143,7 @@ describe("whatsapp epoch memory (R104 AG4-2) — stable pairingId + Neon marker"
   });
 
   beforeEach(async () => {
+    WHATSAPP_ENV.save();
     await db.execute(sql`DELETE FROM system_settings WHERE key = ${"openwa:epoch:" + SESSION_ID}`);
     process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
     process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
@@ -146,6 +157,7 @@ describe("whatsapp epoch memory (R104 AG4-2) — stable pairingId + Neon marker"
   afterEach(async () => {
     vi.useRealTimers();
     globalThis.fetch = ORIGINAL_FETCH;
+    WHATSAPP_ENV.restore();
   });
 
   it("1. first observation (no marker) → fresh FULL window + marker persisted (warmed:false)", async () => {

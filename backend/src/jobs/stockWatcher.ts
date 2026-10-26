@@ -1,6 +1,12 @@
 import { db, inventoryTable, productsTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { notifyLowStock } from "../telegram";
+// R188-3 (D-F2): unit counts pluralize — «وحدة واحدة» / «وحدتان» / «N وحدات» / «N وحدة».
+import {
+  arabicCountPhrase,
+  LOW_STOCK_UNIT_FORMS,
+  type ArabicCountForms,
+} from "../lib/arabic-count";
 import { logAdminAlert, logAdminAlertBatch } from "./alertLogger";
 import { logger } from "../lib/logger";
 import { captureSchedulerFailure } from "../lib/sentry";
@@ -83,7 +89,7 @@ async function checkLowStock(): Promise<void> {
         ...lowStock.map((p) => ({
           type: "low_stock" as const,
           title: `مخزون منخفض: ${p.name}`,
-          message: `تبقّى ${p.stock} وحدة فقط`,
+          message: `تبقّى ${arabicCountPhrase(p.stock, LOW_STOCK_UNIT_FORMS)} فقط`,
           opts: { dedupeKey: `stock:low:${p.productId}` },
         })),
       ]);
@@ -152,6 +158,14 @@ export const runStockSweep = checkLowStock;
  * (leader start); the 24h dedupeKey keeps the drawer clean across
  * restarts.
  */
+// R188-3 (D-F2): the orphan listing counts — «وحدة» / «وحدتان» / «N وحدات» / «N وحدة».
+const ORPHAN_UNIT_FORMS: ArabicCountForms = {
+  one: "وحدة",
+  two: "وحدتان",
+  few: "وحدات",
+  many: "وحدة",
+};
+
 export async function reportOrphanInventory(): Promise<void> {
   try {
     // R125-I6 (A8 B-10) site note: products.is_archived IS a leading
@@ -175,11 +189,14 @@ export async function reportOrphanInventory(): Promise<void> {
 
     const total = rows.reduce((acc, r) => acc + Number(r.unsold), 0);
     const listing = rows
-      .map((r) => `${r.name} (#${r.productId}): ${Number(r.unsold)} وحدة`)
+      .map(
+        (r) =>
+          `${r.name} (#${r.productId}): ${arabicCountPhrase(Number(r.unsold), ORPHAN_UNIT_FORMS)}`,
+      )
       .join(" · ");
     await logAdminAlert(
       "system",
-      `مخزون يتيم تحت منتجات مؤرشفة: ${total} وحدة`,
+      `مخزون يتيم تحت منتجات مؤرشفة: ${arabicCountPhrase(total, ORPHAN_UNIT_FORMS)}`,
       `توجد وحدات غير مباعة مرتبطة بمنتجات مؤرشفة — غير قابلة للبيع ولا تظهر في لوحة المنتجات: ${listing}. راجعها من قاعدة البيانات (جدول inventory) وقرر الحذف أو إعادة التفعيل يدويًا.`,
       { dedupeKey: "inventory:orphan-archived" },
     );

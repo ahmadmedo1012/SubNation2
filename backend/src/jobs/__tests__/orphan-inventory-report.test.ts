@@ -70,15 +70,32 @@ describe("reportOrphanInventory (AUD103-8-F6)", () => {
     const alerts = await db.select().from(adminAlertsTable);
     expect(alerts).toHaveLength(1);
     expect(alerts[0].dedupeKey).toBe("inventory:orphan-archived");
-    expect(alerts[0].title).toContain("3 وحدة");
+    expect(alerts[0].title).toContain("3 وحدات");
     expect(alerts[0].message).toContain("ArchivedProduct");
+    // R188-3 (D-F2): the listing line pluralizes the per-product count.
+    expect(alerts[0].message).toContain(`ArchivedProduct (#${archived.id}): 3 وحدات`);
     expect(alerts[0].message).toContain(`#${archived.id}`);
     // The active product's stock and the sold-out archived product are NOT flagged.
     expect(alerts[0].message).not.toContain("ActiveProduct");
     expect(alerts[0].message).not.toContain(`#${archivedEmpty.id}`);
 
     // …and the archived product's SOLD units did not inflate the count.
-    expect(alerts[0].message).not.toContain("5 وحدة");
+    expect(alerts[0].message).not.toContain("5 وحدات");
+  });
+
+  it("R188-3 (D-F2): orphan counts pluralize — «وحدة» / «وحدتان» / «N وحدات»", async () => {
+    const one = await seedProduct("OrphanOne", true, { unsold: 1, sold: 0 });
+    const two = await seedProduct("OrphanTwo", true, { unsold: 2, sold: 0 });
+
+    await reportOrphanInventory();
+
+    const alerts = await db.select().from(adminAlertsTable);
+    expect(alerts).toHaveLength(1);
+    // total = 1 + 2 → the few form in the title; the listing carries the
+    // bare word forms for one and two.
+    expect(alerts[0].title).toBe("مخزون يتيم تحت منتجات مؤرشفة: 3 وحدات");
+    expect(alerts[0].message).toContain(`OrphanOne (#${one.id}): وحدة`);
+    expect(alerts[0].message).toContain(`OrphanTwo (#${two.id}): وحدتان`);
   });
 
   it("zero orphans → no alert at all", async () => {

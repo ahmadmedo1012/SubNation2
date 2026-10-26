@@ -80,7 +80,7 @@ export default function LoyaltyPage() {
   const seoBlock = useSeo({
     title: "الولاء والإحالة — SubNation",
     description:
-      "نقاط ولاء SubNation — اكسب النقاط مع كل عملية شراء، حوّلها إلى رصيد، وادعُ أصدقاءك للمكافآت.",
+      "نقاط ولاء SubNation — اكسب النقاط مع كل عملية شراء، حوّلها إلى رصيد، وادعُ أصدقائك للمكافآت.",
     path: "/loyalty",
     robots: "noindex,follow",
   });
@@ -341,7 +341,7 @@ export default function LoyaltyPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold">الولاء والإحالة</h1>
-          <p className="text-xs text-muted-foreground">اكسب نقاطاً وادعُ أصدقاءك</p>
+          <p className="text-xs text-muted-foreground">اكسب نقاطاً وادعُ أصدقائك</p>
         </div>
       </div>
 

@@ -315,6 +315,10 @@ describe("R143 (L7-1): lypay reference-optional soft-dedup on approve (sender_ac
     expect(se.message).toContain("تحويل مكرر");
     expect(se.message).toContain(`#${t1.id}`);
     expect(se.code).toBe("DUPLICATE_LYPAY_TRANSFER");
+    // R188-3 (D-F12): the brand rides the payment-networks canon casing
+    // («LyPay», netLabel map) — never lowercase inside the RTL copy.
+    expect(se.message).toContain("طلب شحن LyPay معتمد");
+    expect(se.message).not.toContain("lypay");
 
     // Credited exactly once; the duplicate stays pending for the operator.
     const [u] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));

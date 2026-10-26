@@ -234,26 +234,20 @@ regexes = [
 # FILE-EXACT, not directory-wide: a future real secret committed into a
 # NEW test file must still fail the gate.
 [[allowlists]]
-description = "Test fixtures — synthetic Idempotency-Key headers (client request IDs, not credentials), the canonical throwaway ENCRYPTION_KEY, and the copilot scanner's own fixture corpus"
+description = "Test fixtures — synthetic Idempotency-Key headers (client request IDs, not credentials) and the canonical throwaway ENCRYPTION_KEY"
 paths = [
   '''backend/src/routes/__tests__/wallet-topups-idempotency\.test\.ts''',
   '''backend/src/routes/__tests__/orders-idempotency-route\.test\.ts''',
   '''backend/src/routes/__tests__/loyalty-durable-idempotency\.test\.ts''',
   '''backend/src/test/env\.ts''',
   '''backend/src/lib/__tests__/encryption-boot-assert\.test\.ts''',
-  '''backend/src/lib/copilot/__tests__/secret-scan\.test\.ts''',
 ]
 
-# Belt & suspenders for 8.24.x (the gitleaks-action default): aws-access-
-# token has NO embedded allowlist, so this targetRules+paths entry still
-# suppresses it there. On 8.27+ the unscoped entry above already covers
-# the same file; keeping both is harmless (gitleaks evaluates all lists).
-[[allowlists]]
-description = "secret-scan.test.ts embeds AWS-docs-style + JWT fixtures on purpose — it is the corpus that proves the copilot secret scanner works"
-targetRules = ["aws-access-token", "jwt"]
-paths = [
-  '''backend/src/lib/copilot/__tests__/secret-scan\.test\.ts''',
-]
+# R188-8 (F-F2): two dead entries deleted here — the unscoped paths entry
+# and the targetRules (aws-access-token/jwt) block for
+# backend/src/lib/copilot/__tests__/secret-scan.test.ts. The whole copilot
+# lib (test corpus included) was removed in R181; the paths have matched
+# nothing since.
 
 # False-positive regex allowlist: the `gcp-api-key` default rule is greedy
 # and flags any 35+ char alphanumeric string starting with a Firebase-style

@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { InlineStockEdit } from "@/components/admin/products/InlineStockEdit";
 import { CATEGORY_INITIAL_COLOR } from "@/components/admin/products/products-meta";
+import { ORDER_COUNT_FORMS } from "@/components/admin/orders/orders-meta";
 import { categoryLabel, formatCount, formatCurrency } from "@/lib/utils";
 import { productArtUrl } from "@/lib/product-art";
 import type { AdminProduct } from "@workspace/api-client-react";
@@ -20,6 +21,18 @@ import { CheckSquare, Edit2, Layers, Square, Trash2, Upload } from "lucide-react
 // (typing in the search box re-renders nothing but the box) is preserved
 // byte-for-byte. The move only changes its address; DOM, classes, aria and
 // event semantics are byte-identical.
+
+/** R188 (D-F3): the card's stock line — the unit family (was the
+ *  frozen «N وحدة»); the order count beside it rides the shared admin
+ *  ORDER family (orders-meta). */
+const UNIT_COUNT_FORMS = {
+  zero: "وحدات",
+  one: "وحدة",
+  two: "وحدتان",
+  few: "وحدات",
+  many: "وحدةً",
+  other: "وحدة",
+};
 
 /* ── R124-I5 (A6 F4 — the R118-B2 orders.tsx pattern) ──────────────────
  * The search box is a CONTROLLED input — every keystroke re-rendered the
@@ -237,11 +250,13 @@ const ProductCard = React.memo(function ProductCard({
                    SET, not +N — say so on the trigger too. */
                 title="انقر لتعديل المخزون — تعيين العدد الكلي (وليس إضافة)"
               >
-                {product.stock_count} وحدة
+                {formatCount(product.stock_count, UNIT_COUNT_FORMS)}
               </button>
             )}
             <span className="text-muted-foreground">·</span>
-            <span className="text-muted-foreground">{product.order_count} طلب</span>
+            <span className="text-muted-foreground">
+              {formatCount(product.order_count, ORDER_COUNT_FORMS)}
+            </span>
           </div>
         </div>
 

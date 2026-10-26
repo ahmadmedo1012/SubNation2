@@ -164,7 +164,7 @@ export function TopupsToolbar({
             <CheckCheck className="w-3.5 h-3.5" />
           )}
           {isApproveAllBusy && approveAllProgress
-            ? `جاري ${approveAllProgress.done}/${approveAllProgress.total}…`
+            ? `جارٍ ${approveAllProgress.done}/${approveAllProgress.total}…`
             : /* R134 (the R126-A1-11 close-out): while more pages
                  remain unloaded, «الكل» over-promises — the loop
                  only iterates the loaded window. The label now

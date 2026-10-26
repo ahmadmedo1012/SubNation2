@@ -206,6 +206,13 @@ export function ProductVariantsDialog({
 
   const submitForm = (e: React.FormEvent) => {
     e.preventDefault();
+    // B-F2 (R188-6) — the R148 (D1) twin (pages/admin/products.tsx): a
+    // submit event bypasses the disabled submit button (⌘S / implicit
+    // Enter), and the variant POST carries no Idempotency-Key — two
+    // presses during one POST mint two identical rows. preventDefault
+    // stays FIRST: the swallowed event must not fall through to a
+    // native form GET.
+    if (busy) return;
     // R137 (closing): the field gates and the PATCH/POST body construction
     // moved verbatim to variants-meta (validateVariantForm /
     // variantSubmitBodies) — same messages, same order, same bodies.

@@ -1,14 +1,17 @@
 import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { inArray } from "drizzle-orm";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq, inArray } from "drizzle-orm";
 import {
   adminUsersTable,
+  auditLogsTable,
   db,
+  execTestSql,
   initTestDb,
-  resetTestDb,
+  notificationsTable,
   ordersTable,
   productsTable,
+  resetTestDb,
   usersTable,
   walletLedgerTable,
 } from "../../test/db";
@@ -447,6 +450,135 @@ describe("PATCH /api/admin/orders/bulk-status — the mixed refund batch's 207 p
       expect(after.get(a)).toBe("refunded");
       expect(after.get(b)).toBe("refunded");
     } finally {
+      await close();
+    }
+  });
+});
+
+describe("PATCH /api/admin/orders/bulk-status — R188-2 (C-F3) raw mid-loop refund error still flushes notifications + audit", () => {
+  /**
+   * The refund loop rethrows raw (non-RefundError) errors so the admin sees
+   * a 500 — but the rethrow used to skip BOTH notifyOrderStatusChangedBatch
+   * and the order.bulk_refund audit row for the refunds already committed by
+   * earlier iterations: committed money movements with zero notifications /
+   * audit. The flush now rides a finally around the loop.
+   *
+   * Harness: a real injected DB failure (the recompute-atomicity suite's
+   * trigger idiom) — the THIRD refund's orders-row UPDATE raises, so
+   * refunds #1/#2 commit for real (wallet credit + ledger) and #3 dies
+   * mid-transaction with a raw error. No mocks anywhere on the money path.
+   */
+  async function armThirdRefundTrigger(): Promise<void> {
+    await execTestSql(`
+      CREATE TABLE IF NOT EXISTS bulk_refund_inject (n integer NOT NULL DEFAULT 0);
+      TRUNCATE bulk_refund_inject;
+      INSERT INTO bulk_refund_inject DEFAULT VALUES;
+      CREATE OR REPLACE FUNCTION bulk_refund_fail_on_third() RETURNS trigger AS $$
+      BEGIN
+        UPDATE bulk_refund_inject SET n = n + 1;
+        IF (SELECT n FROM bulk_refund_inject LIMIT 1) >= 3 THEN
+          RAISE EXCEPTION 'injected third-refund failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS trg_bulk_refund_inject ON orders;
+      CREATE TRIGGER trg_bulk_refund_inject BEFORE UPDATE ON orders
+        FOR EACH ROW EXECUTE FUNCTION bulk_refund_fail_on_third();
+    `);
+  }
+
+  async function disarmThirdRefundTrigger(): Promise<void> {
+    await execTestSql(`DROP TRIGGER IF EXISTS trg_bulk_refund_inject ON orders;`);
+  }
+
+  /** The refund branch's finance gate reads the admin row's permissions —
+   * the wildcard holder (same shape as the R183 block above). */
+  async function seedFinanceAdminR188(): Promise<string> {
+    const [a] = await db
+      .insert(adminUsersTable)
+      .values({
+        username: "admin_bulk_refund_r188",
+        passwordHash: "x",
+        isActive: true,
+        permissions: ["all"],
+      })
+      .returning();
+    return signAdminToken({ adminId: a.id, role: "admin" });
+  }
+
+  /** Raw fetch — the injected failure surfaces as the express default
+   * error handler's non-JSON 500, which the shared `patch` helper would
+   * choke parsing (the recompute-atomicity suite's recomputeRaw note).
+   * Status only. */
+  async function patchRaw(url: string, token: string, body: unknown): Promise<number> {
+    const res = await fetch(`${url}/api/admin/orders/bulk-status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    await res.text();
+    return res.status;
+  }
+
+  it("a raw error on the 3rd refund still writes the 2 committed refunds' notification rows + the partial audit row, then 500s", async () => {
+    const app = buildApp();
+    const { url, close } = await listen(app);
+    try {
+      const token = await seedFinanceAdminR188();
+      const a = await seedOrder("completed");
+      const b = await seedOrder("completed");
+      const c = await seedOrder("completed");
+      await armThirdRefundTrigger();
+
+      const status = await patchRaw(url, token, { ids: [a, b, c], status: "refunded" });
+
+      // The raw error still propagates — the admin sees the 500.
+      expect(status).toBe(500);
+
+      // Money truth: refunds #1/#2 committed for real (exactly-once, the
+      // in-tx status guard); #3 rolled back with its failed tx.
+      const after = await statuses([a, b, c]);
+      expect(after.get(a)).toBe("refunded");
+      expect(after.get(b)).toBe("refunded");
+      expect(after.get(c)).toBe("completed");
+      const ledgerRows = await db.select().from(walletLedgerTable);
+      expect(ledgerRows.filter((r) => r.type === "refund")).toHaveLength(2);
+
+      // THE FIX: the durable notifications for the two committed refunds
+      // still landed (the A9-1 buyer rows)…
+      const notifRows = await db.select().from(notificationsTable);
+      expect(notifRows).toHaveLength(2);
+      for (const row of notifRows) {
+        expect(row.type).toBe("order");
+        expect(row.title).toContain("تم استرداده");
+        expect(row.link).toMatch(/^\/orders\/SNBULK/);
+      }
+
+      // …and the audit row records the honest partial outcome (the write
+      // is fire-and-forget — poll like the tickets-audit suite).
+      await vi.waitFor(async () => {
+        expect(
+          await db
+            .select()
+            .from(auditLogsTable)
+            .where(eq(auditLogsTable.action, "order.bulk_refund")),
+        ).toHaveLength(1);
+      });
+      const [auditRow] = await db
+        .select()
+        .from(auditLogsTable)
+        .where(eq(auditLogsTable.action, "order.bulk_refund"));
+      const meta = JSON.parse(auditRow.metadata as string) as Record<string, unknown>;
+      expect(meta).toMatchObject({
+        count_requested: 3,
+        count_succeeded: 2,
+        count_failed: 0,
+      });
+      expect(meta.succeeded).toEqual([a, b]);
+      expect(meta.failed).toEqual([]);
+    } finally {
+      await disarmThirdRefundTrigger();
       await close();
     }
   });

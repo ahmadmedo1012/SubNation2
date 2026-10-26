@@ -31,7 +31,7 @@ export function ReferralBox({ data }: { data: LoyaltyData }) {
     <div className="bg-card border border-border/60 rounded-2xl p-5 float-in stagger-3">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <h2 className="font-bold text-base mb-1">ادعُ أصدقاءك</h2>
+          <h2 className="font-bold text-base mb-1">ادعُ أصدقائك</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {/* R115 (policy B): اعتماد — the award lands on the
                 friend's first APPROVED topup, not at signup. */}

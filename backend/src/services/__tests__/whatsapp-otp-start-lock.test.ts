@@ -24,6 +24,7 @@
  *      admin alert.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { envGuard } from "../../test/env-guard";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -69,20 +70,22 @@ function makeFakePool(client: ReturnType<typeof makeFakeClient>, connectErr?: Er
 function makeHangingUnlockClient() {
   const calls: string[] = [];
   const client = {
-    query: vi.fn((text: string): Promise<
-      { rows: { acquired: boolean }[] } | { rows: { unlocked: boolean }[] }
-    > => {
-      if (text.includes("pg_try_advisory_lock")) {
-        calls.push("try_lock");
-        return Promise.resolve({ rows: [{ acquired: true }] });
-      }
-      if (text.includes("pg_advisory_unlock")) {
-        calls.push("unlock");
-        return new Promise(() => {});
-      }
-      calls.push("query:" + text.slice(0, 24));
-      return Promise.resolve({ rows: [] });
-    }),
+    query: vi.fn(
+      (
+        text: string,
+      ): Promise<{ rows: { acquired: boolean }[] } | { rows: { unlocked: boolean }[] }> => {
+        if (text.includes("pg_try_advisory_lock")) {
+          calls.push("try_lock");
+          return Promise.resolve({ rows: [{ acquired: true }] });
+        }
+        if (text.includes("pg_advisory_unlock")) {
+          calls.push("unlock");
+          return new Promise(() => {});
+        }
+        calls.push("query:" + text.slice(0, 24));
+        return Promise.resolve({ rows: [] });
+      },
+    ),
     release: vi.fn((destroy?: boolean) => {
       calls.push(destroy === true ? "release_destroy" : "release");
     }),
@@ -124,7 +127,17 @@ async function importService() {
   return mod;
 }
 
+const WHATSAPP_ENV = envGuard([
+  "WHATSAPP_OTP_BASE_URL",
+  "WHATSAPP_OTP_API_KEY",
+  "WHATSAPP_OTP_SESSION",
+  "WHATSAPP_OTP_SETTLE_MS",
+  "WHATSAPP_OTP_OPERATOR_E164",
+  "OTP_UNLOCK_TIMEOUT_MS",
+]);
+
 beforeEach(() => {
+  WHATSAPP_ENV.save();
   process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = "subnation-otp";
@@ -140,7 +153,7 @@ afterEach(() => {
   vi.doUnmock("@workspace/db");
   vi.doUnmock("../openwa.service");
   vi.doUnmock("../../jobs/alertLogger");
-  delete process.env.OTP_UNLOCK_TIMEOUT_MS;
+  WHATSAPP_ENV.restore();
 });
 
 describe("OTP start-lock gate (R117 A1-P2/A1-P3)", () => {
@@ -287,12 +300,10 @@ describe("OTP start-lock unlock race + admin alerts (R118-B1b: A1 F-4/F-5)", () 
 
   it("F-5: unlock failure raises the deduped otp:lockpool admin alert", async () => {
     const alertSpy = vi.fn(
-      async (
-        _type: string,
-        _title: string,
-        _message: string,
-        _opts?: { dedupeKey?: string },
-      ) => ({ suppressed: false, id: 1 }),
+      async (_type: string, _title: string, _message: string, _opts?: { dedupeKey?: string }) => ({
+        suppressed: false,
+        id: 1,
+      }),
     );
     const client = makeFakeClient({ unlockFails: true });
     vi.doMock("@workspace/db", () => mockDbBoundary());
@@ -320,12 +331,10 @@ describe("OTP start-lock unlock race + admin alerts (R118-B1b: A1 F-4/F-5)", () 
 
   it("F-5: pool saturation raises the deduped otp:lockpool:saturation admin alert", async () => {
     const alertSpy = vi.fn(
-      async (
-        _type: string,
-        _title: string,
-        _message: string,
-        _opts?: { dedupeKey?: string },
-      ) => ({ suppressed: false, id: 1 }),
+      async (_type: string, _title: string, _message: string, _opts?: { dedupeKey?: string }) => ({
+        suppressed: false,
+        id: 1,
+      }),
     );
     vi.doMock("@workspace/db", () => mockDbBoundary());
     vi.doMock("../openwa.service", () => mockOpenwaBoundary());

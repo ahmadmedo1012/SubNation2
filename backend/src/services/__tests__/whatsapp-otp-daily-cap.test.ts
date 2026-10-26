@@ -17,6 +17,7 @@
  * bypassed and the single-process flow is exercised directly).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { envGuard } from "../../test/env-guard";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -60,7 +61,17 @@ async function importService() {
   return import("../whatsapp-otp.service");
 }
 
+const WHATSAPP_ENV = envGuard([
+  "WHATSAPP_OTP_BASE_URL",
+  "WHATSAPP_OTP_API_KEY",
+  "WHATSAPP_OTP_SESSION",
+  "WHATSAPP_OTP_SETTLE_MS",
+  "WHATSAPP_OTP_OPERATOR_E164",
+  "OTP_DAILY_SEND_CAP",
+]);
+
 beforeEach(() => {
+  WHATSAPP_ENV.save();
   process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = "subnation-otp";
@@ -78,7 +89,7 @@ afterEach(() => {
   vi.doUnmock("@workspace/db");
   vi.doUnmock("../openwa.service");
   vi.doUnmock("../../jobs/alertLogger");
-  delete process.env.OTP_DAILY_SEND_CAP;
+  WHATSAPP_ENV.restore();
 });
 
 describe("startOtp — process-wide daily send ceiling (R120-B6/A8-F5)", () => {

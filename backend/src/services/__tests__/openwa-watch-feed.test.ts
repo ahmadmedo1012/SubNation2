@@ -36,6 +36,7 @@ vi.mock("../whatsapp-watch", () => ({
 }));
 
 import { observeWhatsAppChannel, observeWhatsAppSendFailure } from "../whatsapp-watch";
+import { envGuard } from "../../test/env-guard";
 
 vi.mock("../../lib/whatsapp-epoch-store", () => ({
   readEpochMarker: vi.fn(async () => null),
@@ -100,7 +101,16 @@ async function importOpenwa() {
   return mod;
 }
 
+const WHATSAPP_ENV = envGuard([
+  "WHATSAPP_OTP_BASE_URL",
+  "WHATSAPP_OTP_API_KEY",
+  "WHATSAPP_OTP_SESSION",
+  "WHATSAPP_OTP_SETTLE_MS",
+  "WHATSAPP_OTP_OPERATOR_E164",
+]);
+
 beforeEach(() => {
+  WHATSAPP_ENV.save();
   process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = SESSION_ID;
@@ -114,6 +124,7 @@ afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   vi.useRealTimers();
   vi.restoreAllMocks();
+  WHATSAPP_ENV.restore();
 });
 
 describe("send-path outcomes feed the channel-death watch (B5-5, R111)", () => {

@@ -18,6 +18,7 @@
  * (same vi.doMock pattern as whatsapp-readiness.test.ts).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { envGuard } from "../../test/env-guard";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -39,7 +40,16 @@ function emptyRecentOtpsDb(overrides: Partial<Record<"insert", ReturnType<typeof
   };
 }
 
+const WHATSAPP_ENV = envGuard([
+  "WHATSAPP_OTP_BASE_URL",
+  "WHATSAPP_OTP_API_KEY",
+  "WHATSAPP_OTP_SESSION",
+  "WHATSAPP_OTP_SETTLE_MS",
+  "WHATSAPP_OTP_OPERATOR_E164",
+]);
+
 beforeEach(() => {
+  WHATSAPP_ENV.save();
   process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = "subnation-otp";
@@ -54,6 +64,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.doUnmock("@workspace/db");
   vi.doUnmock("../openwa.service");
+  WHATSAPP_ENV.restore();
 });
 
 describe("startOtp — settle-gate + insert-retry orchestration (96-F1)", () => {

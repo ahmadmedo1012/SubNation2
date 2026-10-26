@@ -2,6 +2,19 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, Download, RefreshCw, X, Zap } from "lucide-react";
 import type { RefObject } from "react";
 import { BULK_STATUSES } from "@/components/admin/orders/orders-meta";
+import { formatCount } from "@/lib/utils";
+
+/** R188 (D-F3): the selection count's compound family (the
+ *  ROUTE_COUNT_FORMS idiom — noun + agreeing adjective, every form
+ *  inflects; was the frozen «N طلب محدد»). */
+const ORDER_SELECTED_COUNT_FORMS = {
+  zero: "طلبات محددة",
+  one: "طلب محدد",
+  two: "طلبان محددان",
+  few: "طلبات محددة",
+  many: "طلباً محدداً",
+  other: "طلب محدد",
+};
 
 // R137 (FE): extracted verbatim from pages/admin/orders.tsx — the bulk
 // action bar + the hand-rolled R120-B4 status menu. THE MONEY PATH
@@ -57,7 +70,9 @@ export function BulkActionBar({
       {/* R125-I2 (A6-B6): --primary-text (raw --primary is 3.76:1
           on dark — the text floor is 4.5:1; the Zap icon keeps
           text-primary: icons only need the 3:1 non-text floor). */}
-      <span className="text-sm font-bold text-primary-text">{selectedCount} طلب محدد</span>
+      <span className="text-sm font-bold text-primary-text">
+        {formatCount(selectedCount, ORDER_SELECTED_COUNT_FORMS)}
+      </span>
       <div className="flex gap-2 ms-auto flex-wrap items-center">
         {/* Bulk status dropdown */}
         {/* R120-B4 (A2-F19): menu semantics on the hand-rolled

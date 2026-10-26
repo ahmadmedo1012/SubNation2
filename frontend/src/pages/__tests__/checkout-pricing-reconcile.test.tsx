@@ -380,4 +380,115 @@ describe("CheckoutPage — mount-time live-price re-quote (98-F2 / R98-A3 F5 P2)
     await waitFor(() => expect(cta).toBeEnabled());
     await waitFor(() => expect(cta.textContent).toContain("98.00 د.ل"));
   });
+
+  it("B-F1 (R188-6): two OVERLAPPING flights — the first landing while the second is pending keeps the CTA locked", async () => {
+    // The cross-tab window (lib/cart.tsx:407-415): while the mount
+    // requote (product 5) is in flight, another tab adds a NEW unquoted
+    // product (6) — the storage-event re-sync re-runs the effect and
+    // arms a SECOND flight. The boolean gate let the FIRST flight's
+    // finally clear the shared flag (the CTA unlocked with product 6's
+    // live price still unreconciled — the 98-F2 class, narrow
+    // reintroduction); the flight counter clears only when the LAST
+    // flight lands.
+    seedCart();
+    let release5!: (value: unknown) => void;
+    let release6!: (value: unknown) => void;
+    getProductMock.mockImplementation((id: number) =>
+      id === 5
+        ? new Promise((resolve) => {
+            release5 = resolve;
+          })
+        : new Promise((resolve) => {
+            release6 = resolve;
+          }),
+    );
+    renderPage();
+
+    // Flight 1 (product 5) pending → the CTA wears the in-flight label.
+    const cta = await screen.findByRole("button", { name: /جارٍ تحديث الأسعار/ });
+    expect(cta).toBeDisabled();
+
+    // The cross-tab add: the new line (product 6, variant 102, 20.00)
+    // lands through the storage event → the effect arms flight 2 for
+    // the NEW id only (5 is already quoted).
+    const added: LocalCartItem = {
+      ...CART_ITEM,
+      productId: 6,
+      variantId: 102,
+      variantLabel: "سنة واحدة",
+      slug: "netflix-1y",
+      name: "Netflix سنة",
+      priceLYD: 20,
+      salePriceLYD: null,
+      discountPercent: null,
+      quantity: 1,
+    };
+    const nextCart = JSON.stringify([CART_ITEM, added]);
+    await act(async () => {
+      localStorage.setItem("subnation_cart_v2", nextCart);
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "subnation_cart_v2", newValue: nextCart }),
+      );
+    });
+    await waitFor(() => expect(getProductMock).toHaveBeenCalledWith(6));
+
+    // Flight 1 lands with CHANGED pricing (the sale ended: 49 → 75).
+    // Waiting for the repriced line total proves flight 1's continuation
+    // ran THROUGH its finally (same render batch) — while flight 2 is
+    // STILL pending, the CTA must stay locked: this is the exact
+    // assertion the boolean accounting failed (the first finally
+    // unlocked the confirm while product 6's price was unreconciled).
+    await act(async () => {
+      release5(
+        liveProduct({
+          sale_price: null,
+          discount_percent: null,
+          variants: [
+            {
+              id: 101,
+              plan_label: null,
+              duration_label: "شهر واحد",
+              label: "شهر واحد",
+              price: 75,
+              sale_price: null,
+              discount_percent: null,
+              is_available: true,
+            },
+          ],
+        }),
+      );
+    });
+    expect(await screen.findAllByText("150.00 د.ل")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /جارٍ تحديث الأسعار/ })).toBeDisabled();
+
+    // The LAST flight lands (product 6, byte-identical pricing →
+    // silent) → the gate clears and the CTA sells the reconciled grand
+    // total (75×2 + 20 = 170).
+    await act(async () => {
+      release6(
+        liveProduct({
+          id: 6,
+          slug: "netflix-1y",
+          name: "Netflix سنة",
+          price: 20,
+          sale_price: null,
+          discount_percent: null,
+          variants: [
+            {
+              id: 102,
+              plan_label: null,
+              duration_label: "سنة واحدة",
+              label: "سنة واحدة",
+              price: 20,
+              sale_price: null,
+              discount_percent: null,
+              is_available: true,
+            },
+          ],
+        }),
+      );
+    });
+    await waitFor(() => expect(cta).toBeEnabled());
+    await waitFor(() => expect(cta.textContent).toContain("170.00 د.ل"));
+  });
 });

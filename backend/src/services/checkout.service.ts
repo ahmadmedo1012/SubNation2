@@ -33,6 +33,7 @@ import { notifyCouponMaxedOut } from "../telegram";
 import { computeTier, purchaseAwardPoints } from "../lib/loyalty-policy";
 import { insertPointsLedgerEntry } from "../lib/points-ledger";
 import { toNumber } from "../lib/numeric";
+import { arabicCountPhrase, TIMES_USED_FORMS } from "../lib/arabic-count";
 import { getFulfillmentProvider } from "./providers/registry";
 
 /**
@@ -58,10 +59,9 @@ export type CheckoutFailureReason =
   | "OUT_OF_STOCK"
   | "INVENTORY_CLAIMED"
   | "COUPON_EXHAUSTED"
-  // H5 (deep-audit 2026-09-06): the optimistic wallet deduction lost a
-  // race (e.g. a concurrent topup-approval + purchase). Previously this
-  // escaped as a raw 500 on the most money-sensitive endpoint; now it is
-  // a first-class 409-retryable failure.
+  // H5 (deep-audit 2026-09-06): the optimistic wallet deduction lost a race
+  // (e.g. a concurrent topup-approval + purchase) — a first-class 409-retryable
+  // failure, previously a raw 500 on the most money-sensitive endpoint.
   | "CONCURRENCY_ERROR"
   // M1 (round-3 audit): final-price integrity gate tripped — the computed
   // price is non-finite or non-positive. Fail closed, never transact.
@@ -939,14 +939,14 @@ export async function purchase(input: CheckoutInput): Promise<CheckoutResult> {
   }
 
   // F8 — coupon-maxed side effects, strictly AFTER the commit (see the
-  // couponMaxedSignal declaration). Fire-and-forget, same as before, just
-  // on the honest side of the commit boundary.
+  // couponMaxedSignal declaration), fire-and-forget on the honest side.
   if (couponMaxedSignal.code !== null) {
     notifyCouponMaxedOut(couponMaxedSignal.code, couponMaxedSignal.maxUses);
     logAdminAlert(
       "coupon_maxed",
       `كوبون استُنفد: ${couponMaxedSignal.code}`,
-      `وصل الكوبون إلى الحد الأقصى من الاستخدام (${couponMaxedSignal.maxUses} مرة) وأُوقف تلقائياً`,
+      // R188 desk (D-F10): «مرة» pluralizes — TIMES_USED_FORMS shared with the Telegram card.
+      `وصل الكوبون إلى الحد الأقصى من الاستخدام (${arabicCountPhrase(couponMaxedSignal.maxUses, TIMES_USED_FORMS)}) وأُوقف تلقائياً`,
     );
   }
 

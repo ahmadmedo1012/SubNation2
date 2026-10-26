@@ -286,6 +286,12 @@ export default function AdminTicketsPage() {
 
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
+    // B-F3 (R188-6) — the R94-A1 #3 twin (pages/support.tsx): the reply
+    // form's Input submits implicitly on Enter, bypassing the disabled
+    // submit button — two quick Enters during the in-flight POST
+    // duplicated the customer-facing reply (the endpoint has no
+    // idempotency — R151's DUPLICATE-reply note above).
+    if (sending) return;
     if (!selected || !replyText.trim()) return;
     setSending(true);
     try {

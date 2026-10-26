@@ -179,7 +179,8 @@ describe("AdminTopupsPage — bulk confirm modal dialog semantics (F3-03)", () =
 
       const dialog = await screen.findByRole("dialog", { name: "تأكيد الرفض الجماعي" });
       expect(dialog).toHaveAttribute("aria-modal", "true");
-      expect(within(dialog).getByText("1 طلب سيتم معالجته")).toBeInTheDocument();
+      // R188-5 (D-F5): the verbal-noun restructure («سيتم معالجة N»).
+      expect(within(dialog).getByText("سيتم معالجة 1 طلب")).toBeInTheDocument();
     } finally {
       vi.unstubAllGlobals();
     }

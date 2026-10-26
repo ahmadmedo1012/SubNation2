@@ -130,7 +130,8 @@ describe("AdminTopupsPage — the bulk loop sends the CONFIRMED scope (R187 D-F1
     fireEvent.click(bulkApprove);
 
     // The confirm modal names the same counted scope.
-    expect(bulkDialog().getByText(/طلب سيتم معالجته|1 طلب/)).toBeInTheDocument();
+    // R188-5 (D-F5): the verbal-noun restructure («سيتم معالجة N»).
+    expect(bulkDialog().getByText(/سيتم معالجة 1 طلب/)).toBeInTheDocument();
 
     fireEvent.click(bulkDialog().getByRole("button", { name: "موافقة" }));
 

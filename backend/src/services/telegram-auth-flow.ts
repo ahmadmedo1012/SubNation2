@@ -169,6 +169,19 @@ export async function findOrCreateTelegramUser(
         })
         .returning();
 
+      // R188-1 (C-F1): the referral EVENT row rides the user-creation tx
+      // (whatsapp-otp.service.ts house idiom). As a separate autocommit
+      // write, its failure left users.referred_by set with NO event row
+      // and no self-heal — TopupService.approve awards the referrer's
+      // +50 points only when the event row exists, so the award silently
+      // never paid while the referee's welcome bonus still did.
+      if (referredById && referredById !== row.id) {
+        await tx
+          .insert(referralEventsTable)
+          .values({ referrerId: referredById, refereeId: row.id, status: "pending" })
+          .onConflictDoNothing();
+      }
+
       return [row];
     });
     created = u;
@@ -204,13 +217,6 @@ export async function findOrCreateTelegramUser(
       lastSeenAt: now,
     })
     .onConflictDoNothing();
-
-  if (referredById && referredById !== created.id) {
-    await db
-      .insert(referralEventsTable)
-      .values({ referrerId: referredById, refereeId: created.id, status: "pending" })
-      .onConflictDoNothing();
-  }
 
   // R154 (P3-A): the exactly-once new-account operator notification. This
   // is the ONE hook every Telegram signup path lands on (widget, Mini

@@ -544,6 +544,19 @@ export async function resolveFirebaseSession(
         })
         .returning();
 
+      // R188-1 (C-F1): the referral EVENT row rides the user-creation tx
+      // (whatsapp-otp.service.ts house idiom). As a separate autocommit
+      // write, its failure left users.referred_by set with NO event row
+      // and no self-heal — TopupService.approve awards the referrer's
+      // +50 points only when the event row exists, so the award silently
+      // never paid while the referee's welcome bonus still did.
+      if (referredById && referredById !== row.id) {
+        await tx
+          .insert(referralEventsTable)
+          .values({ referrerId: referredById, refereeId: row.id, status: "pending" })
+          .onConflictDoNothing();
+      }
+
       return [row];
     });
     created = u;
@@ -552,8 +565,9 @@ export async function resolveFirebaseSession(
     // button races two session requests with the same idToken — both miss
     // step 1/3, both INSERT, and the loser's 23505 surfaced as a raw 500
     // for a registration that actually succeeded. Re-read the winner's
-    // row and return it as a normal login; the winner performs the
-    // identity upsert + referral event right after its own commit.
+    // row and return it as a normal login; the winner commits the
+    // referral event inside its own creation tx (R188-1) and performs
+    // the identity upsert right after it.
     if (!isUniqueViolation(err)) throw err;
     const [winner] = await db
       .select()
@@ -562,13 +576,6 @@ export async function resolveFirebaseSession(
       .limit(1);
     if (!winner) throw err;
     return { user: winner, isNewUser: false, provider };
-  }
-
-  if (referredById && referredById !== created.id) {
-    await db
-      .insert(referralEventsTable)
-      .values({ referrerId: referredById, refereeId: created.id, status: "pending" })
-      .onConflictDoNothing();
   }
 
   await upsertIdentity(

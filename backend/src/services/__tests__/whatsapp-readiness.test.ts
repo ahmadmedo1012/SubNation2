@@ -15,6 +15,7 @@
  * the rate-limit probes return an empty recent-OTP list.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { envGuard } from "../../test/env-guard";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -32,7 +33,16 @@ function installFetchMock(handler: (url: string) => Response | Promise<Response>
   }) as unknown as typeof fetch;
 }
 
+const WHATSAPP_ENV = envGuard([
+  "WHATSAPP_OTP_BASE_URL",
+  "WHATSAPP_OTP_API_KEY",
+  "WHATSAPP_OTP_SESSION",
+  "WHATSAPP_OTP_SETTLE_MS",
+  "WHATSAPP_OTP_OPERATOR_E164",
+]);
+
 beforeEach(() => {
+  WHATSAPP_ENV.save();
   process.env.WHATSAPP_OTP_BASE_URL = "http://openwa.test";
   process.env.WHATSAPP_OTP_API_KEY = "owa_k1_test_key";
   process.env.WHATSAPP_OTP_SESSION = "subnation-otp";
@@ -48,6 +58,11 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
+  // R188-7 (E-F3): doMock registrations persist across vi.resetModules()
+  // — without the unmock every LATER import in this fork keeps receiving
+  // the stale shallow db mock (defensive idiom from whatsapp-otp-start-lock).
+  vi.doUnmock("@workspace/db");
+  WHATSAPP_ENV.restore();
 });
 
 describe("getWhatsAppGatewayReadiness", () => {

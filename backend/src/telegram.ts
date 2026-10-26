@@ -46,6 +46,9 @@
 
 import { logger } from "./lib/logger";
 import { formatLyd } from "./lib/money";
+// R188-3 (D-F10/D-F11): «مرة» and «ساعة» counts pluralize; D-F2's low-stock
+// «وحدة» forms are shared with stockWatcher so the drawer and card agree.
+import { arabicCountPhrase, LOW_STOCK_UNIT_FORMS, TIMES_USED_FORMS } from "./lib/arabic-count";
 import { safeInc, telegramSendsTotal } from "./lib/metrics";
 // R158 (B-F4): the payment-network labels now come from the ONE shared
 // registry (allowlist + 400 copy + these labels previously lived in three
@@ -348,7 +351,8 @@ export function notifyCouponMaxedOut(code: string, maxUses: number): void {
     `🎟️ <b>كوبون استُنفد بالكامل</b>`,
     ``,
     `الرمز: <code>${escapeHtml(code)}</code>`,
-    `تم استخدامه <b>${maxUses} مرة</b> (الحد الأقصى)`,
+    // R188-3 (D-F10): «مرة» pluralizes — «مرة واحدة» / «مرتين» / «N مرات» / «N مرة».
+    `تم استخدامه <b>${arabicCountPhrase(maxUses, TIMES_USED_FORMS)}</b> (الحد الأقصى)`,
     ``,
     `ℹ️ الكوبون لا يزال نشطاً ولكنه لن يقبل استخدامات جديدة.`,
   ].join("\n");
@@ -356,7 +360,19 @@ export function notifyCouponMaxedOut(code: string, maxUses: number): void {
 }
 
 export function notifyCouponExpiringSoon(code: string, expiresAt: Date, hoursLeft: number): void {
-  const timeLabel = hoursLeft <= 1 ? "أقل من ساعة" : `${Math.floor(hoursLeft)} ساعة`;
+  // R188-3 (D-F11): integer hours pluralize — «ساعة واحدة» / «N ساعات»
+  // (2-10, the numeral stays) / «N ساعة» (11+). The drawer twin
+  // (couponWatcher) prints toFixed(1) fractions — CLDR "other", «ساعة» —
+  // and stays as is.
+  const timeLabel =
+    hoursLeft <= 1
+      ? "أقل من ساعة"
+      : arabicCountPhrase(Math.floor(hoursLeft), {
+          one: "ساعة واحدة",
+          two: "2 ساعات",
+          few: "ساعات",
+          many: "ساعة",
+        });
   // R143 (L14-5): timeZone pinned to match timestampLine() below and the
   // admin drawer card for the SAME expiry (couponWatcher formats it in
   // Africa/Tripoli). Without the option the card rendered the server's
@@ -390,7 +406,10 @@ export interface NotifyLowStockInput {
 
 export function notifyLowStock(input: NotifyLowStockInput): void {
   const urgency = input.stockCount === 0 ? "🚨 <b>نفاد المخزون</b>" : "⚠️ <b>مخزون منخفض</b>";
-  const countStr = input.stockCount === 0 ? "لا توجد وحدات متبقية" : `${input.stockCount} وحدة فقط`;
+  const countStr =
+    input.stockCount === 0
+      ? "لا توجد وحدات متبقية"
+      : `${arabicCountPhrase(input.stockCount, LOW_STOCK_UNIT_FORMS)} فقط`;
   const msg = [
     urgency,
     ``,

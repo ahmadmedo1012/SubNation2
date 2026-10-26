@@ -1,4 +1,5 @@
 import type { ProductListItem } from "@workspace/api-client-react";
+import { productToItem, trackSelectItem } from "@/lib/analytics-events";
 import { productArtUrl } from "@/lib/product-art";
 import { Link } from "wouter";
 
@@ -81,6 +82,14 @@ export function ShelfRail({
                    RecommendationsSection:87, seo-builders:107) — a legacy
                    slug-less row must never link to /product/null. */
                 href={`/product/${p.slug ?? p.id}`}
+                /* R188-4 (R188-A seed): GA4 select_item — the shelf→PDP
+                   hop, the same event every sibling product-click surface
+                   fires (ProductCard :339, flash-sales :104,
+                   RecommendationsSection :94 = R187's A-F3 for this
+                   identical blindness class). The list DTO is
+                   single-price, so no variant arg (the flash-card
+                   shape). */
+                onClick={() => trackSelectItem(productToItem(p), "home-shelf")}
                 className="group shrink-0 block rounded-xl focus-visible:outline-offset-4"
                 aria-label={p.name ?? "منتج"}
               >

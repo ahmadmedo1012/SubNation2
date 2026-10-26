@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Express } from "express";
 import { eq } from "drizzle-orm";
 import {
@@ -437,6 +437,74 @@ describe("POST /api/admin/pricing/recompute — atomicity (R125-I6, A8 B-3)", ()
       expect(audits).toHaveLength(0);
     } finally {
       await disarmTriggers();
+      close();
+    }
+  });
+});
+
+// ── R188-2 (C-F4): the lost-update guard on the pre-tx drift snapshot ──────
+//
+// The drift set is scanned BEFORE the recompute transaction opens; an
+// operator's explicit price override committing in that window used to be
+// silently clobbered by the bulk UPDATE (lost update on the charge-authority
+// column, still counted as "updated"). The read price now rides the VALUES
+// list and guards the UPDATE — a row that moved mid-flight drops out of
+// RETURNING (rows-affected honesty excludes it from the count + audit).
+describe("POST /api/admin/pricing/recompute — R188-2 (C-F4) mid-flight price override survives", () => {
+  it("an operator override committed between the drift scan and the UPDATE is NOT clobbered and not counted", async () => {
+    const { productA } = await seedCatalog();
+    const { url, close } = await listen(buildApp());
+    try {
+      // The lost-update window: the route's pre-tx scan sees v1 at 250.00
+      // (drifted vs engine 200); the operator's explicit 333.00 override
+      // commits AFTER the scan but BEFORE the recompute transaction's
+      // UPDATE — landed deterministically at db.transaction entry (the
+      // users-loyalty-guard spy idiom, transaction flavor).
+      const realTransaction = db.transaction.bind(db);
+      const txSpy = vi.spyOn(db, "transaction").mockImplementation(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((cb: any, config?: any) =>
+          // The override commits as its OWN autocommit statement BEFORE
+          // the recompute's BEGIN (pglite is single-session — an outer
+          // client query inside an open tx would deadlock the queue).
+          (async () => {
+            await db
+              .update(productVariantsTable)
+              .set({ priceLyd: "333.00" })
+              .where(eq(productVariantsTable.id, productA.v1Id));
+            return realTransaction(cb, config);
+          })()) as never,
+      );
+
+      let res: { status: number; body: Record<string, unknown> };
+      try {
+        res = await recompute(url);
+      } finally {
+        txSpy.mockRestore();
+      }
+
+      expect(res.status).toBe(200);
+      // THE FIX: the moved row dropped out of the guarded UPDATE — not
+      // clobbered, not counted (the old write reported variants_updated: 1
+      // and left the engine's 200.00 on the operator's 333.00 row).
+      expect(res.body).toMatchObject({ variants_updated: 0 });
+      expect(String((await variantRow(productA.v1Id)).priceLyd)).toBe("333.00");
+      expect(String((await variantRow(productA.v2Id)).priceLyd)).toBe("400.00");
+
+      // The display-price refresh stays honest over LIVE prices: MIN(333,
+      // 400) — it follows the override, not the clobbered engine price.
+      expect(String((await productRow(productA.productId)).price)).toBe("333.00");
+
+      // The audit row carries the same honesty (no change recorded).
+      const audits = await db
+        .select()
+        .from(auditLogsTable)
+        .where(eq(auditLogsTable.action, "pricing.recompute"));
+      expect(audits).toHaveLength(1);
+      const meta = JSON.parse(audits[0].metadata as string) as Record<string, unknown>;
+      expect(meta).toMatchObject({ variants_updated: 0 });
+      expect(meta.changes).toEqual([]);
+    } finally {
       close();
     }
   });

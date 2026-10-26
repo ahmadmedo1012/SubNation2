@@ -233,3 +233,16 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
     expect(meta).toContain("export interface ScopeOption {");
   });
 });
+
+describe("R188 (B-F4) — both dialog submits carry the in-flight re-entry guard", () => {
+  it("the invite POST and the permission-save PATCH are guarded right after preventDefault (no Idempotency-Key — a double-submit minted TWO admin accounts)", () => {
+    // The R148 (D1) products.tsx guard family: the dialog forms are
+    // Enter-submittable past the disabled submit button, and the
+    // admin-invitation POST /api/admin/admins carries no
+    // Idempotency-Key — two submits during one POST mint two admin
+    // accounts. Both hoisted submit handlers take the guard as their
+    // first check after preventDefault.
+    expect(page).toContain("if (createSaving) return;");
+    expect(page).toContain("if (editSaving) return;");
+  });
+});

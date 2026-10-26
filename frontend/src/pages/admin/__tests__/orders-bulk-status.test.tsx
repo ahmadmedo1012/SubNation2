@@ -144,7 +144,7 @@ async function openBulkConfirm(statusLabel: string) {
   await screen.findAllByText("SN-1001");
   selectRow("SN-1001");
   selectRow("SN-1002");
-  expect(screen.getByText("2 طلب محدد")).toBeInTheDocument();
+  expect(screen.getByText("2 طلبان محددان")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "تغيير الحالة" }));
   // The dropdown lives in the same relative anchor as its trigger —
@@ -468,7 +468,7 @@ describe("AdminOrdersPage — select-all branches on MEMBERSHIP, not size (R126-
     // Select the two COMPLETED rows on the «الكل» tab…
     selectRow("SN-1001");
     selectRow("SN-1002");
-    expect(screen.getByText("2 طلب محدد")).toBeInTheDocument();
+    expect(screen.getByText("2 طلبان محددان")).toBeInTheDocument();
 
     // …then narrow the tab to «قيد الانتظار»: the two visible pending
     // rows are UNSELECTED, yet the stale selection's SIZE (2) equals
@@ -485,7 +485,7 @@ describe("AdminOrdersPage — select-all branches on MEMBERSHIP, not size (R126-
     expect(rowSelected("SN-1003")).toBe(true);
     expect(rowSelected("SN-1004")).toBe(true);
     // The bulk bar still reads a live selection count.
-    expect(screen.getByText("2 طلب محدد")).toBeInTheDocument();
+    expect(screen.getByText("2 طلبان محددان")).toBeInTheDocument();
   });
 
   it("a fully-selected window with an extra hidden id: the checked select-all CLEARS (was: an unclickable no-op)", async () => {
@@ -496,7 +496,7 @@ describe("AdminOrdersPage — select-all branches on MEMBERSHIP, not size (R126-
     selectRow("SN-1001");
     selectRow("SN-1002");
     selectRow("SN-1003");
-    expect(screen.getByText("3 طلب محدد")).toBeInTheDocument();
+    expect(screen.getByText("3 طلبات محددة")).toBeInTheDocument();
 
     // …then narrow to «مكتمل»: both visible rows are selected (the
     // button reads checked) but SN-1003 rides hidden in the selection
@@ -514,7 +514,7 @@ describe("AdminOrdersPage — select-all branches on MEMBERSHIP, not size (R126-
     expect(rowSelected("SN-1001")).toBe(false);
     expect(rowSelected("SN-1002")).toBe(false);
     // The bulk bar (gated on size > 0) is gone entirely.
-    expect(screen.queryByText(/طلب محدد/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/محدد/)).not.toBeInTheDocument();
   });
 });
 

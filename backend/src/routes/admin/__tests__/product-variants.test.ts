@@ -1,10 +1,11 @@
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Express } from "express";
 import { eq } from "drizzle-orm";
 import {
   adminUsersTable,
   auditLogsTable,
   db,
+  execTestSql,
   initTestDb,
   ordersTable,
   productVariantsTable,
@@ -48,12 +49,7 @@ import { adminProductVariantsRouter } from "../product-variants";
 function buildApp(): Express {
   const app = express();
   app.use(express.json({ limit: "1mb" }));
-  app.use(
-    "/api/admin",
-    requireAdmin,
-    requirePermission("inventory"),
-    adminProductVariantsRouter,
-  );
+  app.use("/api/admin", requireAdmin, requirePermission("inventory"), adminProductVariantsRouter);
   return app;
 }
 
@@ -128,6 +124,28 @@ async function call(
   return { status: res.status, body: text ? (JSON.parse(text) as Record<string, unknown>) : null };
 }
 
+/** Status + raw body text — the injected mid-tx failures surface as the
+ * express default error handler's non-JSON 500 (the recompute-atomicity
+ * suite's recomputeRaw note); the byte-identity leg below also needs the
+ * raw text. */
+async function callRaw(
+  url: string,
+  method: string,
+  path: string,
+  token: string,
+  body?: unknown,
+): Promise<{ status: number; text: string }> {
+  const res = await fetch(`${url}/api/admin${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return { status: res.status, text: await res.text() };
+}
+
 beforeAll(async () => {
   await initTestDb();
 });
@@ -193,7 +211,10 @@ describe("POST /api/admin/products/:id/variants (R118-A5 #8)", () => {
         expect(res.body).toMatchObject({ code: "INVALID_DATA" });
       }
       expect(
-        await db.select().from(productVariantsTable).where(eq(productVariantsTable.productId, productId)),
+        await db
+          .select()
+          .from(productVariantsTable)
+          .where(eq(productVariantsTable.productId, productId)),
       ).toHaveLength(0);
     } finally {
       close();
@@ -408,7 +429,13 @@ describe("DELETE /api/admin/products/:id/variants/:variantId (R118-A5 #8)", () =
       // Display price follows the surviving variant.
       const [p] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
       expect(String(p.price)).toBe("800.00");
-      expect(String((await db.select().from(productVariantsTable).where(eq(productVariantsTable.id, v2.id)))[0].priceLyd)).toBe("800.00");
+      expect(
+        String(
+          (
+            await db.select().from(productVariantsTable).where(eq(productVariantsTable.id, v2.id))
+          )[0].priceLyd,
+        ),
+      ).toBe("800.00");
     } finally {
       close();
     }
@@ -442,6 +469,191 @@ describe("auth gates (R118-A5 #8)", () => {
       const allowed = await call(url, "GET", `/products/${productId}/variants`, scopedToken);
       expect(allowed.status).toBe(200);
       expect(Array.isArray(allowed.body)).toBe(true);
+    } finally {
+      close();
+    }
+  });
+});
+
+// ── R188-2 (C-F5): variant write + display-price refresh = ONE transaction ──
+//
+// The create/patch writes used to be two autocommit writes — a crash
+// between them left products.price stale vs MIN(active variant price)
+// until the next write (the R125-I6 mixed-state class, fixed for the
+// recompute endpoint but never extended here). Both legs inject a REAL
+// failure into the refresh's products UPDATE (the recompute-atomicity
+// suite's trigger idiom): the variant write must now roll back with it.
+describe("R188-2 (C-F5) — atomic variant write + display-price refresh", () => {
+  async function armProductPriceTrigger(): Promise<void> {
+    await execTestSql(`
+      CREATE OR REPLACE FUNCTION variant_refresh_fail() RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'injected products-price refresh failure';
+      END;
+      $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS trg_variant_refresh ON products;
+      CREATE TRIGGER trg_variant_refresh BEFORE UPDATE ON products
+        FOR EACH ROW EXECUTE FUNCTION variant_refresh_fail();
+    `);
+  }
+
+  async function disarmProductPriceTrigger(): Promise<void> {
+    await execTestSql(`DROP TRIGGER IF EXISTS trg_variant_refresh ON products;`);
+  }
+
+  it("create: a refresh failure rolls the variant INSERT back (no stale products.price state)", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct("999.00");
+    const { url, close } = await listen(buildApp());
+    try {
+      await armProductPriceTrigger();
+      const res = await callRaw(url, "POST", `/products/${productId}/variants`, token, {
+        plan_label: "Family",
+        duration_label: "شهر واحد",
+        cost_price: 10,
+      });
+      expect(res.status).toBe(500);
+
+      // THE FIX: the insert died WITH the failed refresh — no committed
+      // variant with a stale display price (old behavior: the variant row
+      // survived at 200.00 while products.price stayed 999.00).
+      expect(
+        await db
+          .select()
+          .from(productVariantsTable)
+          .where(eq(productVariantsTable.productId, productId)),
+      ).toHaveLength(0);
+      expect(String((await productRow(productId)).price)).toBe("999.00");
+      expect(
+        await db
+          .select()
+          .from(auditLogsTable)
+          .where(eq(auditLogsTable.action, "product.variant.create")),
+      ).toHaveLength(0);
+    } finally {
+      await disarmProductPriceTrigger();
+      close();
+    }
+  });
+
+  it("patch: a refresh failure rolls the variant UPDATE back too", async () => {
+    const token = await seedAdmin(["inventory"]);
+    const productId = await seedProduct("200.00");
+    const v = await seedVariant(productId, { duration: "شهر واحد", price: "200.00" });
+    const { url, close } = await listen(buildApp());
+    try {
+      await armProductPriceTrigger();
+      const res = await callRaw(url, "PATCH", `/products/${productId}/variants/${v.id}`, token, {
+        price_lyd: 250,
+      });
+      expect(res.status).toBe(500);
+
+      // The price edit died WITH the failed refresh (old behavior: the
+      // variant sat at 250.00 while products.price stayed 200.00).
+      expect(String((await variantRow(v.id)).priceLyd)).toBe("200.00");
+      expect(String((await productRow(productId)).price)).toBe("200.00");
+      expect(
+        await db
+          .select()
+          .from(auditLogsTable)
+          .where(eq(auditLogsTable.action, "product.variant.update")),
+      ).toHaveLength(0);
+    } finally {
+      await disarmProductPriceTrigger();
+      close();
+    }
+  });
+
+  async function variantRow(id: number) {
+    const [row] = await db
+      .select()
+      .from(productVariantsTable)
+      .where(eq(productVariantsTable.id, id))
+      .limit(1);
+    return row!;
+  }
+
+  async function productRow(id: number) {
+    const [row] = await db.select().from(productsTable).where(eq(productsTable.id, id)).limit(1);
+    return row!;
+  }
+});
+
+// ── R188-2 (C-F7): the create dupe race converges to the probe's 409 ───────
+//
+// The friendly dupe probe is check-then-act; uniq_product_variants_plan_
+// duration (NULLS NOT DISTINCT) is the live guard. The loser's 23505 used
+// to surface as a raw 500 on an admin surface — it now maps to the IDENTICAL
+// 409 envelope the probe returns. The race is landed deterministically at
+// db.transaction entry (the winning insert commits as its own autocommit
+// statement BEFORE the loser's BEGIN — pglite is single-session).
+describe("R188-2 (C-F7) — concurrent duplicate variant create converges to the probe's 409", () => {
+  it("the loser's unique violation answers the byte-identical probe envelope (not a 500)", async () => {
+    const token = await seedAdmin(["inventory"]);
+    // Product P carries the dupe pair up front — the probe path.
+    const productP = await seedProduct();
+    await seedVariant(productP, { plan: "Family", duration: "شهر واحد", price: "200.00" });
+    // Product Q is empty — the race path (probe misses, winner lands
+    // mid-flight, loser's insert hits the index).
+    const productQ = await seedProduct();
+
+    const { url, close } = await listen(buildApp());
+    try {
+      const probe = await callRaw(url, "POST", `/products/${productP}/variants`, token, {
+        plan_label: "Family",
+        duration_label: "شهر واحد",
+        cost_price: 5,
+      });
+      expect(probe.status).toBe(409);
+
+      const realTransaction = db.transaction.bind(db);
+      const txSpy = vi.spyOn(db, "transaction").mockImplementation(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((cb: any, config?: any) =>
+          (async () => {
+            // The winning concurrent create commits between Q's probe
+            // (which saw no row) and the loser's INSERT.
+            await db.insert(productVariantsTable).values({
+              productId: productQ,
+              planLabel: "Family",
+              durationLabel: "شهر واحد",
+              costPrice: "5.00",
+              priceLyd: "100.00",
+            });
+            return realTransaction(cb, config);
+          })()) as never,
+      );
+
+      let raced: { status: number; text: string };
+      try {
+        raced = await callRaw(url, "POST", `/products/${productQ}/variants`, token, {
+          plan_label: "Family",
+          duration_label: "شهر واحد",
+          cost_price: 5,
+        });
+      } finally {
+        txSpy.mockRestore();
+      }
+
+      // THE FIX: 409 (the old path answered a raw 500)…
+      expect(raced.status).toBe(409);
+      // …and the body is BYTE-IDENTICAL to the probe's envelope.
+      expect(raced.text).toBe(probe.text);
+
+      // Exactly ONE variant row on Q (the winner) — the loser's insert
+      // rolled back with its transaction; no audit row for the refusal.
+      const rowsQ = await db
+        .select()
+        .from(productVariantsTable)
+        .where(eq(productVariantsTable.productId, productQ));
+      expect(rowsQ).toHaveLength(1);
+      expect(rowsQ[0].planLabel).toBe("Family");
+      expect(
+        await db
+          .select()
+          .from(auditLogsTable)
+          .where(eq(auditLogsTable.action, "product.variant.create")),
+      ).toHaveLength(0);
     } finally {
       close();
     }

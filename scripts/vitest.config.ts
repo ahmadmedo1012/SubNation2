@@ -13,5 +13,8 @@ export default defineConfig({
     // R180: vitest 5 flips clearMocks' default to true. Pin the v4
     // semantics this suite was written under (mirrors backend config).
     clearMocks: false,
+    // R188-7 (E-F2): 10 s like the backend/frontend pins — never ride the
+    // 5 s default the R187 CI round-1 timeout burned.
+    testTimeout: 10_000,
   },
 });

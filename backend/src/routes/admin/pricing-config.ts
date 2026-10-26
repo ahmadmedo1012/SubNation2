@@ -194,14 +194,25 @@ router.post("/pricing/recompute", async (req, res) => {
     for (let offset = 0; offset < changes.length; offset += PRICE_REWRITE_CHUNK) {
       const chunk = changes.slice(offset, offset + PRICE_REWRITE_CHUNK);
       const valuesList = sql.join(
-        chunk.map((c) => sql`(${c.id}::int, ${String(c.computed)}::numeric)`),
+        chunk.map(
+          (c) => sql`(${c.id}::int, ${String(c.computed)}::numeric, ${String(c.current)}::numeric)`,
+        ),
         sql`, `,
       );
+      // R188-2 (C-F4): the drift set was scanned pre-tx, so an operator's
+      // explicit price override landing between the read and this write
+      // used to be silently clobbered (lost update on the charge-authority
+      // column, still counted as "updated"). The read price rides the
+      // VALUES list and guards the UPDATE — a row that moved mid-flight
+      // drops out of RETURNING and the rows-affected honesty below already
+      // excludes it from the count. The checkout VARIANT_STALE in-tx
+      // re-check (checkout.service.ts:492-507) is the house precedent.
       const result = await tx.execute(sql`
         UPDATE product_variants AS v
         SET price_lyd = s.p
-        FROM (VALUES ${valuesList}) AS s(id, p)
+        FROM (VALUES ${valuesList}) AS s(id, p, old_price)
         WHERE v.id = s.id
+          AND v.price_lyd = s.old_price
         RETURNING v.id
       `);
       const rows =

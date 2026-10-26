@@ -1,5 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { Archive, Eye, EyeOff, X, Zap } from "lucide-react";
+import { formatCount } from "@/lib/utils";
+
+/** R188 (D-F3): the selection count's compound family (the
+ *  ROUTE_COUNT_FORMS idiom — noun + agreeing adjective, every form
+ *  inflects; was the frozen «N منتج محدد"). */
+const PRODUCT_SELECTED_COUNT_FORMS = {
+  zero: "منتجات محددة",
+  one: "منتج محدد",
+  two: "منتجان محددان",
+  few: "منتجات محددة",
+  many: "منتجاً محدداً",
+  other: "منتج محدد",
+};
 
 // R137 (FE decomposition): extracted verbatim from pages/admin/products.tsx —
 // the bulk action bar (selection count + activate/hide/archive/cancel).
@@ -28,7 +41,9 @@ export function BulkActionBar({
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/8 border border-primary/20 rounded-2xl animate-in fade-in slide-in-from-top-1 duration-150">
       <Zap className="w-4 h-4 text-primary shrink-0" />
-      <span className="text-sm font-bold text-primary-text">{selectedCount} منتج محدد</span>
+      <span className="text-sm font-bold text-primary-text">
+        {formatCount(selectedCount, PRODUCT_SELECTED_COUNT_FORMS)}
+      </span>
       <div className="flex gap-2 ms-auto flex-wrap">
         <Button
           size="sm"

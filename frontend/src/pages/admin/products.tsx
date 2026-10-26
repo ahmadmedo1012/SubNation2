@@ -36,7 +36,7 @@ import { useLocation, useSearch } from "wouter";
 // formatter its evidence rows use.
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AlertTriangle, ChevronDown, ChevronLeft, RefreshCw } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCount, formatCurrency } from "@/lib/utils";
 import { AdminLayout } from "./layout";
 import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 // R137 (FE decomposition): the page's self-contained subcomponents and
@@ -62,7 +62,11 @@ import { AdminScopeGate } from "../../components/admin/AdminScopeGate";
 //   • ProductsGrid — the stale-error banner / skeleton / error-card /
 //     empty / grid tree; ProductCard + InlineStockEdit ride along inside
 //     it (the R124-I5 memoized card + the row-local stock editor)
-import { EMPTY_FORM, PRODUCTS_SERVER_CAP } from "@/components/admin/products/products-meta";
+import {
+  EMPTY_FORM,
+  PRODUCT_COUNT_FORMS,
+  PRODUCTS_SERVER_CAP,
+} from "@/components/admin/products/products-meta";
 import { BulkActionBar } from "@/components/admin/products/BulkActionBar";
 import { ProductEditorCard } from "@/components/admin/products/ProductEditorCard";
 import { ProductsGrid } from "@/components/admin/products/ProductsGrid";
@@ -562,7 +566,7 @@ export default function AdminProductsPage() {
     // R115 (A9 P1): same one-way-door honesty as the single archive.
     const confirmed = await confirm({
       title: "أرشفة المنتجات المحددة؟",
-      description: `سيتم أرشفة ${selectedIds.size} منتج — الأرشفة نهائية من الواجهة: بياناتها ومبيعاتها تبقى في السجل، لكنها تُخفى من المتجر ومن قائمة المنتجات، واستعادتها تتطلب تدخلاً مباشراً.`,
+      description: `سيتم أرشفة ${formatCount(selectedIds.size, PRODUCT_COUNT_FORMS)} — الأرشفة نهائية من الواجهة: بياناتها ومبيعاتها تبقى في السجل، لكنها تُخفى من المتجر ومن قائمة المنتجات، واستعادتها تتطلب تدخلاً مباشراً.`,
       confirmLabel: "أرشفة",
       destructive: true,
     });

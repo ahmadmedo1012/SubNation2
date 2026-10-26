@@ -1,7 +1,8 @@
 import React from "react";
 import { Edit2 } from "lucide-react";
 import { displayUserName, displayUserPhone, type AdminUserShape } from "@/lib/admin/user-display";
-import { formatCurrency, tierColor, tierLabel } from "@/lib/utils";
+import { formatCount, formatCurrency, tierColor, tierLabel } from "@/lib/utils";
+import { ORDER_COUNT_FORMS } from "@/components/admin/orders/orders-meta";
 import { type UserRowProps } from "@/components/admin/users/DesktopUserRow";
 import { ProviderBadges } from "@/components/admin/users/ProviderBadges";
 
@@ -11,6 +12,19 @@ import { ProviderBadges } from "@/components/admin/users/ProviderBadges";
 // rides along unchanged; `user` + `onEdit` flow down from the page
 // (openEdit is the page-owned callback). The move only changes its
 // address; DOM, classes and aria are byte-identical.
+
+/** R188 (D-F3): the mobile card's two frozen counts — the order count
+ *  rides the shared admin ORDER family (orders-meta), the points count
+ *  the wallet/loyalty points table (the StatsRow POINTS_COUNT_FORMS
+ *  idiom, kept local so this card can never disagree with the storefront
+ *  points cluster). */
+const POINTS_COUNT_FORMS = {
+  one: "نقطة",
+  two: "نقطتان",
+  few: "نقاط",
+  many: "نقطة",
+  other: "نقطة",
+};
 
 /** Mobile card. */
 export const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit }: UserRowProps) {
@@ -38,14 +52,16 @@ export const MobileUserCard = React.memo(function MobileUserCard({ user, onEdit 
         <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
           <span className={tierColor(user.loyalty_tier)}>{tierLabel(user.loyalty_tier)}</span>
           <span>·</span>
-          <span>{user.order_count} طلب</span>
+          <span>{formatCount(user.order_count, ORDER_COUNT_FORMS)}</span>
         </div>
       </div>
       <div className="text-start shrink-0">
         <div className="font-bold text-primary-text tabular-nums text-sm">
           {formatCurrency(user.wallet_balance)}
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">{user.loyalty_points} نقطة</div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {formatCount(user.loyalty_points, POINTS_COUNT_FORMS)}
+        </div>
       </div>
       <button
         onClick={() => onEdit(user)}

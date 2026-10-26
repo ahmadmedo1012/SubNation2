@@ -271,3 +271,18 @@ describe("R137 (FE) — the extracts are self-contained presentational units", (
     expect(meta).not.toMatch(/customFetch[<(]|useQuery[<(]|\.refetch\(|await /);
   });
 });
+
+describe("R188 (B-F3) — handleReply carries the storefront twin's in-flight guard", () => {
+  it("the reply POST is guarded by `sending` right after preventDefault (byte-identical to pages/support.tsx's R94-A1 #3 line)", () => {
+    // pages/support.tsx (R94-A1 #3) has carried the guard since the
+    // storefront round: the reply form's Input submits implicitly on
+    // Enter, bypassing the disabled submit button — two quick Enters
+    // during the in-flight POST duplicated the reply in the ticket.
+    // The admin pane has the same form shape (TicketDetailPane's Input
+    // inside form onSubmit) on the SAME customer-facing thread, the
+    // reply endpoint has no idempotency, and R151's comment in this
+    // very file documents a resubmit "created a DUPLICATE
+    // customer-facing reply".
+    expect(page).toContain("if (sending) return;");
+  });
+});

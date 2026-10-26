@@ -185,7 +185,7 @@ describe("AdminProductsPage — honest bulk-archive summaries (A2 P2-8)", () => 
   async function confirmBulkArchive() {
     fireEvent.click(screen.getByRole("button", { name: "تحديد Netflix 1M" }));
     fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
-    expect(screen.getByText("2 منتج محدد")).toBeInTheDocument();
+    expect(screen.getByText("2 منتجان محددان")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "أرشفة" }));
     const title = await screen.findByText("أرشفة المنتجات المحددة؟");
@@ -626,7 +626,7 @@ describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R12
     // Select the two MUSIC rows on the «الكل» view…
     fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
     fireEvent.click(screen.getByRole("button", { name: "تحديد Apple Music" }));
-    expect(screen.getByText("2 منتج محدد")).toBeInTheDocument();
+    expect(screen.getByText("2 منتجان محددان")).toBeInTheDocument();
 
     // …then narrow the chip to «منصات المشاهدة»: the two visible streaming
     // rows are UNSELECTED, yet the stale selection's SIZE (2) equals
@@ -645,7 +645,7 @@ describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R12
     expect(rowSelected("Hulu 1M")).toBe(true);
     // The bulk bar still reads a live selection count (the old branch
     // zeroed the set — the bar vanished entirely).
-    expect(screen.getByText("2 منتج محدد")).toBeInTheDocument();
+    expect(screen.getByText("2 منتجان محددان")).toBeInTheDocument();
   });
 
   it("a fully-selected window with an extra hidden id: the checked select-all CLEARS (was: a silent re-select that pruned the hidden id)", async () => {
@@ -656,7 +656,7 @@ describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R12
     fireEvent.click(screen.getByRole("button", { name: "تحديد Netflix 1M" }));
     fireEvent.click(screen.getByRole("button", { name: "تحديد Spotify 3M" }));
     fireEvent.click(screen.getByRole("button", { name: "تحديد Apple Music" }));
-    expect(screen.getByText("3 منتج محدد")).toBeInTheDocument();
+    expect(screen.getByText("3 منتجات محددة")).toBeInTheDocument();
 
     // …then narrow to «موسيقى وصوتيات»: both visible rows are selected (the
     // button reads checked) but Netflix 1M rides hidden in the set —
@@ -674,7 +674,7 @@ describe("AdminProductsPage — select-all branches on MEMBERSHIP, not size (R12
     expect(rowSelected("Spotify 3M")).toBe(false);
     expect(rowSelected("Apple Music")).toBe(false);
     // The bulk bar (gated on size > 0) is gone entirely.
-    expect(screen.queryByText(/منتج محدد/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/محدد/)).not.toBeInTheDocument();
   });
 });
 

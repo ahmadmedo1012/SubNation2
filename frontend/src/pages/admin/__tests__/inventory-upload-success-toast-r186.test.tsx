@@ -81,7 +81,8 @@ describe("InventoryUploadDialog — the success toast rides the green variant (R
       target: { value: "a@x.com|pw1\nb@x.com|pw2\nc@x.com|pw3" },
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "رفع 3 عنصر" }));
+    // R188-5 (D-F3): the button label pluralizes — 3 rides the few form.
+    fireEvent.click(await screen.findByRole("button", { name: "رفع 3 عناصر" }));
 
     await waitFor(() => expect(toastMock).toHaveBeenCalledTimes(1));
     const toastArg = toastMock.mock.calls[0][0];

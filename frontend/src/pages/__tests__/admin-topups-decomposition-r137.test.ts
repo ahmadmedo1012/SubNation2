@@ -172,7 +172,8 @@ describe("R137 (FE) — admin/topups.tsx decomposition: page stays an orchestrat
     );
     const bulk = read("src/components/admin/topups/BulkConfirmModal.tsx");
     // R160: ellipsis dialect — ASCII ... → «…» with the source copy.
-    expect(bulk).toContain("`جاري ${progress.done}/${progress.total}…`");
+    // R188-5 (D-F6): جاري → جارٍ (the kasratan form, the repo standard).
+    expect(bulk).toContain("`جارٍ ${progress.done}/${progress.total}…`");
     // The stat strip kept the pending chip + the honest search count.
     const header = read("src/components/admin/topups/TopupsHeader.tsx");
     expect(header).toContain("{pendingCount} قيد الانتظار");

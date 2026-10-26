@@ -6,6 +6,7 @@ import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { intParam } from "../lib/http";
 import { applyFlashSale, computeFlashSalePrice, type FlashSaleStage } from "../lib/pricing";
 import { roundLyd } from "../lib/money";
+import { isUniqueViolation } from "../lib/pg-errors";
 
 const router = Router();
 
@@ -264,9 +265,13 @@ router.post("/items", requireUser, async (req, res) => {
 
   let item: typeof cartItemsTable.$inferSelect;
 
-  if (existing) {
-    const newQty = Math.min(existing.quantity + quantity, MAX_QUANTITY);
-    [item] = await db
+  // The existing-row bump (and the 23505 loser's convergence below):
+  // replace the line's variant when one is chosen, cap at MAX_QUANTITY.
+  const applyQuantityBump = async (
+    row: typeof cartItemsTable.$inferSelect,
+  ): Promise<typeof cartItemsTable.$inferSelect> => {
+    const newQty = Math.min(row.quantity + quantity, MAX_QUANTITY);
+    const [bumped] = await db
       .update(cartItemsTable)
       .set({
         quantity: newQty,
@@ -274,19 +279,39 @@ router.post("/items", requireUser, async (req, res) => {
         variantLabel,
         updatedAt: new Date(),
       })
-      .where(eq(cartItemsTable.id, existing.id))
+      .where(eq(cartItemsTable.id, row.id))
       .returning();
+    return bumped;
+  };
+
+  if (existing) {
+    item = await applyQuantityBump(existing);
   } else {
-    [item] = await db
-      .insert(cartItemsTable)
-      .values({
-        userId,
-        productId: product_id,
-        variantId: variant ? variant.id : null,
-        variantLabel,
-        quantity,
-      })
-      .returning();
+    try {
+      [item] = await db
+        .insert(cartItemsTable)
+        .values({
+          userId,
+          productId: product_id,
+          variantId: variant ? variant.id : null,
+          variantLabel,
+          quantity,
+        })
+        .returning();
+    } catch (err) {
+      // R188-2 (C-F6): two concurrent POSTs can both miss the SELECT above
+      // and both INSERT — the loser's uniq_cart_items_user_product 23505
+      // now converges to the designed bump-quantity outcome instead of a
+      // raw 500 (non-money route, API clients only — minimal backstop).
+      if (!isUniqueViolation(err)) throw err;
+      const [raced] = await db
+        .select()
+        .from(cartItemsTable)
+        .where(and(eq(cartItemsTable.userId, userId), eq(cartItemsTable.productId, product_id)))
+        .limit(1);
+      if (!raced) throw err;
+      item = await applyQuantityBump(raced);
+    }
   }
 
   const response = await buildCartItemResponse(

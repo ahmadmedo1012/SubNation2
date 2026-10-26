@@ -2,6 +2,7 @@ import { useAdminHeaders } from "@/hooks/useAdminHeaders";
 import { useChartColors } from "@/lib/chart-theme";
 import { useAuth } from "@/lib/auth";
 import { formatCount, formatCurrency } from "@/lib/utils";
+import { ORDER_COUNT_FORMS } from "@/components/admin/orders/orders-meta";
 // R137 (FE admin decomposition): the page's self-contained presentational
 // sections and pure chart helpers moved to @/components/admin/dashboard/*
 // (verbatim moves — every query, every range/export action, every
@@ -301,7 +302,7 @@ export default function AdminDashboardPage() {
           // R122 (A2-P2): finance-gated tile — see canSeeMoney above.
           finance: true,
           value: formatCurrency(stats.today_revenue ?? 0),
-          sub: `${stats.today_orders ?? 0} طلب اليوم`,
+          sub: `${formatCount(stats.today_orders ?? 0, ORDER_COUNT_FORMS)} اليوم`,
           icon: TrendingUp,
           color: "text-primary",
           bg: "bg-primary/10",
@@ -335,7 +336,7 @@ export default function AdminDashboardPage() {
           // R122 (A2-P2): finance-gated tile — see canSeeMoney above.
           finance: true,
           value: formatCurrency(stats.total_revenue ?? 0),
-          sub: `${stats.total_orders ?? 0} طلب إجمالاً`,
+          sub: `${formatCount(stats.total_orders ?? 0, ORDER_COUNT_FORMS)} إجمالاً`,
           icon: BarChart2,
           color: "text-status-success",
           bg: "bg-status-success/10",
