@@ -77,9 +77,17 @@
 
 - None this round: every commit-message claim below is diff-verified before push (the R187-K standing lens applied at ship time).
 
-## 8. Ship record — staged at round close
+## 8. Ship record — repo-side CLOSED GREEN, the rotation LIVE
 
-**Push:** three conventional commits (the code harvest, the docs-truth/ledger harvest, and the ship record) — fast-forward from `173e6406`, no force-push, remote HEAD re-verified after the push. CI, the Docker dispatch (per the sequencing law: push → CI green → dispatch), the Coolify rotation watch, and the read-only production probes follow the standing R187 sequence; the outcomes ride the ship-record commit's message and `source-of-truth` entry #30's closing clause, per the house rule that the round's final counts and probe results finalize only at ship.
+**Push:** `173e6406..3bc58721` fast-forward (three conventional commits: `e8427f23` fix(detail,r188) the code harvest · `12a7af18` chore(format,r188) the 43-file formatting-only reformat · `3bc58721` docs(r188) the round ledger) — **no force-push; remote HEAD re-verified equal to the local HEAD after the push.** A mid-ship restructure, honestly recorded: the first attempt's format commit accidentally carried the new round-close.md (git's untracked-directory collapse put `docs/engineering/R188/` in the residue list) — caught by the commit-message-vs-diff sweep BEFORE the push, both local commits rebuilt cleanly (nothing was pushed in the bad shape; the remote only ever saw the clean fast-forward).
+
+**CI run `40264361117` on `3bc58721` — completed success** (~15 min; all executed jobs green: the gitleaks, path-filter, CVE, scripts/frontend/backend unit suites, the production build, and the lint/typecheck/drift job now carrying **the new prettier format gate**; e2e = the standing by-design push-skip).
+
+**Docker: run `40265438164` dispatched per the sequencing law (push → CI green → dispatch) — completed success** (the GHCR `main-amd64` + `sha-3bc58721-amd64` tags landed).
+
+**The Coolify rotation: LIVE within ~90 s of the image landing** — the production entry rotated `index-BDL0hpyk.js` → `index-CchymUxt.js` (the R187 watcher-lag did not recur; healthz 200 through the cutover).
+
+**Read-only production probes (all green on the serving tree):** `/api/healthz` **200**; `/api/catalog/stats` → 45 products, purchasable floor **980**, no flash sale (the R182 contract intact); the five admin-family **401 gates** (session, metrics, enrichment/status, topups, orders); the live entry's residue sweep — **zero** copilot/calculator bytes, the GA4 `push(arguments)` marker ×1; **the R188 discriminators live**: the new home chunk (`home-BwYdjVhF.js`) carries the ShelfRail `home-shelf` select_item list-id, and the topups chunk (`topups-CyEdiX2k.js`) carries «سيتم معالجة» (D-F5) + «جارٍ ${done}/${total}» (D-F6) with the old broken forms **byte-gone**; a fresh browser session (agent-browser): the homepage + the PDP (`/product/lifetime-cloud-storage`) render with **zero page errors and zero console entries**, the Product-LD carries the honest schema, screenshots captured (`/tmp/r188-live-home.png`, `/tmp/r188-live-pdp.png`).
 
 ## 9. Definition-of-done scorecard
 
