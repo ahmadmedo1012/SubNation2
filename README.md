@@ -159,12 +159,12 @@ pnpm --filter @workspace/api-server exec vitest run    # backend unit tests
 pnpm --filter @workspace/subnation run test:e2e        # guest-only Playwright smoke (needs a running stack)
 ```
 
-Current suite (at R187 — the suites grow every round — or shrink by
+Current suite (at R188 — the suites grow every round — or shrink by
 honest deletion, as R185's orphan-test removal did; each round's
 CHANGELOG entry carries the exact centrally-verified counts; CI runs
-both unit suites on every code push): **frontend 317 test files /
-2,889 tests** · **backend 306 test files / 2,739 tests** · **scripts
-8 files / 74 tests** — combined **5,702** (R187's 19 new pinning-test
+both unit suites on every code push): **frontend 320 test files /
+2,913 tests** · **backend 310 test files / 2,760 tests** · **scripts
+8 files / 74 tests** — combined **5,747** (R188's 7 new pinning-test
 files included; extended-suite legs included) · guest-only e2e
 **15 spec files / 3 projects** (desktop-chromium, mobile-390, tablet-768 —
 the R160 tablet band; **135 runs, 135/135 green on production at R163** —
@@ -263,7 +263,16 @@ Migration-era guides (historical): `docs/deprecated/COOLIFY_ORACLE_MIGRATION.md`
   (dependency-touching pushes + weekly schedule — not every code push),
   and an impeccable UI-anti-pattern gate; docs-only pushes skip the heavy
   jobs via the workflow's path filter). Round-by-round deployment + audit
-  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R187**
+  history: [`CHANGELOG.md`](./CHANGELOG.md) — latest rounds: **R188**
+  (the rotated-lenses perfection round — a 6-squad parallel audit on
+  rotated lenses incl. the NEW Arabic-copy linguistics lens and the
+  seeds/deferrals ledger: 39 verified findings, 7 P2s closed (the
+  out-of-tx referral_events insert with its no-self-heal half-referral,
+  «أصدقاءك» ×5, the frozen «N وحدة» low-stock alerts on both surfaces,
+  the 17-site frozen-count JSX long tail, the bulk-confirm pronoun
+  agreement, the 100 ms wall-clock CI-flake pin, the CI filter omitting
+  the gate-defining files) + 32 detail fixes, +45 pinning tests,
+  combined 5,747, the prettier format gate landed in CI), **R187**
   (the continuation detail-perfection round — a 12-squad parallel audit
   incl. two NEW lenses (the cross-layer contract chain and the test
   quality lens): 91 verified findings, 16 P2s closed (the rec-rail
@@ -325,7 +334,7 @@ in [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md):
   variant tree + usage terms: −62.6% of the catalog wire bytes.
 - **Route-chunk warm-up** — pointerenter/focusin delegation pre-imports the
   likely-next route (−150–400 ms perceived nav on 3G/4G), saveData-respecting.
-- **Eager path ≈ 145.5 KiB gz (149,029 B at R187)** (entry + vendor + CSS) under a CI budget gate —
+- **Eager path ≈ 145.5 KiB gz (149,032 B at R188)** (entry + vendor + CSS) under a CI budget gate —
   150 KiB warn (raised from 145 KiB at R144-E2, basis in
   `frontend/vite.config.ts`) / 160 KiB hard-fail, enforced by the production
   build.
