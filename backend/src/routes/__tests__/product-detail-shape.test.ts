@@ -219,10 +219,7 @@ describe("product detail routes — response shape pinned across the F-1 stage c
     const { productId } = await seedDetailFixture();
     const app = buildApp();
 
-    const { status, body } = await call<Record<string, unknown>>(
-      app,
-      `/api/products/${productId}`,
-    );
+    const { status, body } = await call<Record<string, unknown>>(app, `/api/products/${productId}`);
     expect(status).toBe(200);
 
     // Snapshot-like field list — order matters (byte-identical constraint).
@@ -256,7 +253,10 @@ describe("product detail routes — response shape pinned across the F-1 stage c
     const app = buildApp();
 
     const byId = await call<Record<string, unknown>>(app, `/api/products/${productId}`);
-    const bySlug = await call<Record<string, unknown>>(app, "/api/products/by-slug/shape-fixture-product");
+    const bySlug = await call<Record<string, unknown>>(
+      app,
+      "/api/products/by-slug/shape-fixture-product",
+    );
 
     expect(bySlug.status).toBe(200);
     expect(Object.keys(bySlug.body)).toEqual(DETAIL_FIELDS);

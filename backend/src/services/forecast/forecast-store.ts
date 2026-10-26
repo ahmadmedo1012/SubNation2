@@ -174,7 +174,8 @@ export async function latestForProduct(
     FROM orders
     WHERE product_id = ${productId} AND status IN ('pending', 'completed')
   `);
-  const histRow = (histResult as unknown as { rows?: Array<{ days: number }> } | Array<{ days: number }>);
+  const histRow = histResult as unknown as
+    { rows?: Array<{ days: number }> } | Array<{ days: number }>;
   const days = Array.isArray(histRow) ? histRow[0]?.days : histRow.rows?.[0]?.days;
 
   return {

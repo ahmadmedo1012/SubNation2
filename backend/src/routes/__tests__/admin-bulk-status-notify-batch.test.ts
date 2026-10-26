@@ -167,9 +167,7 @@ describe("PATCH /api/admin/orders/bulk-status — batched buyer notifications (F
 
       expect(res.status).toBe(200);
       expect(body).toMatchObject({ updated: 0, skipped_blocked_completion: 1 });
-      expect(
-        insertSpy.mock.calls.filter((call) => call[0] === notificationsTable),
-      ).toHaveLength(0);
+      expect(insertSpy.mock.calls.filter((call) => call[0] === notificationsTable)).toHaveLength(0);
       expect(await db.select().from(notificationsTable)).toHaveLength(0);
     } finally {
       insertSpy.mockRestore();

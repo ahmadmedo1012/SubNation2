@@ -88,10 +88,7 @@ async function flushBoot(): Promise<void> {
  * short-circuit), so "not called" outcomes CANNOT be probed this way —
  * use __sentryBootStateForTests() for those (see the file docblock).
  */
-async function probeSdkLive(
-  boot: typeof import("../boot-sentry"),
-  label: string,
-): Promise<void> {
+async function probeSdkLive(boot: typeof import("../boot-sentry"), label: string): Promise<void> {
   state.captureException.mockClear();
   state.withScope.mockClear();
   boot.bufferedReactErrorHandler()(new Error(label), { componentStack: "<Probe>" });
@@ -180,7 +177,7 @@ describe("scheduleSentryBoot — VITE_SENTRY_DSN set (97-F6 behavior preserved)"
 });
 
 describe("scheduleSentryBoot — R127-L10 (B4 D2) replay-roll-aware schedule", () => {
-  it("sticky session winners (stored roll \"1\") keep the idle boot — SDK live with no engagement", async () => {
+  it('sticky session winners (stored roll "1") keep the idle boot — SDK live with no engagement', async () => {
     // MODE=production gives the roll its 0.1 rate so the stored verdict
     // is read (same idiom as instrument-replay-lazy's winner suite; in
     // test/dev the rate is 0 and every session is non-sampled).
@@ -231,7 +228,7 @@ describe("scheduleSentryBoot — R127-L10 (B4 D2) replay-roll-aware schedule", (
     });
   });
 
-  it("a stored losing roll (\"0\", production rate) stays deferred on idle", async () => {
+  it('a stored losing roll ("0", production rate) stays deferred on idle', async () => {
     // MODE=production + a stored "0" verdict — the mirror of the
     // winner test above: the sticky roll is READ in production mode,
     // and a recorded loser defers even there (90% of sessions).

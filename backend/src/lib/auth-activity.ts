@@ -28,9 +28,10 @@ export interface AuthActivityParams {
  *           | "github" | "facebook" | "apple" | "unknown"
  * `outcome` is: "success" | "failure" | "lockout"
  */
-function deriveAuthLabels(
-  params: AuthActivityParams,
-): { method: string; outcome: "success" | "failure" | "lockout" } {
+function deriveAuthLabels(params: AuthActivityParams): {
+  method: string;
+  outcome: "success" | "failure" | "lockout";
+} {
   const provider = (params.provider ?? "").toLowerCase();
   let method = "unknown";
   if (provider === "firebase" || provider === "google" || provider === "google.com") {

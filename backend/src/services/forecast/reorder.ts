@@ -12,10 +12,7 @@
 
 const SAFETY_STOCK_FACTOR = 1.2;
 
-export function recommendReorderQty(
-  predictedDemand30d: number,
-  currentStock: number,
-): number {
+export function recommendReorderQty(predictedDemand30d: number, currentStock: number): number {
   const desired = predictedDemand30d * SAFETY_STOCK_FACTOR;
   const gap = desired - currentStock;
   if (!Number.isFinite(gap) || gap <= 0) return 0;

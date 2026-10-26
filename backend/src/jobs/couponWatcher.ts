@@ -66,8 +66,7 @@ export async function checkExpiringCoupons(): Promise<void> {
         expired.map((coupon) => ({
           type: "coupon_expired" as const,
           title: `انتهى كوبون وأُوقف تلقائياً: ${coupon.code}`,
-          message:
-            "تجاوز الكوبون وقت انتهائه فأُوقف تلقائياً — لن يقبل استخدامات جديدة.",
+          message: "تجاوز الكوبون وقت انتهائه فأُوقف تلقائياً — لن يقبل استخدامات جديدة.",
           opts: { dedupeKey: `coupon:expired:${coupon.id}` },
         })),
       );

@@ -90,10 +90,7 @@ describe("HomePage — search-history dropdown semantics (R134 A2-F3)", () => {
   beforeEach(() => {
     mockHooks();
     window.history.replaceState(null, "", "/");
-    localStorage.setItem(
-      "subnation_search_history",
-      JSON.stringify(["نتفلكس", "شاهد"]),
-    );
+    localStorage.setItem("subnation_search_history", JSON.stringify(["نتفلكس", "شاهد"]));
   });
 
   it("the focused input announces the popup: expanded + controls + autocomplete=list", () => {

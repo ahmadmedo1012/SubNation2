@@ -102,8 +102,7 @@ function parseLine(line: string): ParsedInventoryEntry | { error: string } {
       const password = pickStringField(obj, ["password", "account_password", "pass", "pwd"]);
       const code = pickStringField(obj, ["code", "key"]);
       const extra =
-        pickStringField(obj, ["extra", "extra_details", "details", "note", "notes"]) ||
-        undefined;
+        pickStringField(obj, ["extra", "extra_details", "details", "note", "notes"]) || undefined;
 
       if (email && password) {
         return { kind: "credentials", email, password, extra };
@@ -144,10 +143,7 @@ function parseLine(line: string): ParsedInventoryEntry | { error: string } {
   return { error: "تعذّر تحليل السطر" };
 }
 
-function pickStringField(
-  obj: Record<string, unknown>,
-  keys: string[],
-): string | undefined {
+function pickStringField(obj: Record<string, unknown>, keys: string[]): string | undefined {
   for (const k of keys) {
     const v = obj[k];
     if (typeof v === "string" && v.trim()) return v.trim();

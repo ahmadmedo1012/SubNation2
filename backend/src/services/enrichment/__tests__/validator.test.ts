@@ -58,7 +58,7 @@ describe("validateDescription", () => {
 });
 
 describe("validateDescriptionLong", () => {
-  const longArabic = ("اشترك واستمتع بأفضل خدمة بث في السوق الليبي. ").repeat(8);
+  const longArabic = "اشترك واستمتع بأفضل خدمة بث في السوق الليبي. ".repeat(8);
 
   it("passes a 300–8000 char Arabic long description", () => {
     expect(validateDescriptionLong(longArabic).ok).toBe(true);

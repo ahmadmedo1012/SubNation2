@@ -2,10 +2,7 @@ import { describe, expect, it, beforeAll, beforeEach } from "vitest";
 import { sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { db, initTestDb, resetTestDb } from "../../test/db";
-import {
-  applyUsersColumnReconcileStage,
-  applyUsersPasswordlessCleanupStage,
-} from "../../migrate";
+import { applyUsersColumnReconcileStage, applyUsersPasswordlessCleanupStage } from "../../migrate";
 
 /**
  * F1 (round-94 A6) — steady-state boots execute ZERO DDL on `users`.

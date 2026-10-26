@@ -50,10 +50,7 @@ async function seedUser(balance: string) {
 }
 
 async function seedProductWithStock(units: number, price = "10.00") {
-  const [p] = await db
-    .insert(productsTable)
-    .values({ name: "M9 Race Product", price })
-    .returning();
+  const [p] = await db.insert(productsTable).values({ name: "M9 Race Product", price }).returning();
   for (let i = 0; i < units; i++) {
     await db.insert(inventoryTable).values({
       productId: p.id,
@@ -97,9 +94,7 @@ describe("M9 — wallet never negative (R118-A5 #4)", () => {
       // the REAL transaction session, after the freshness read resolved
       // but before the CAS debit UPDATE runs.
       writer: (realTx) =>
-        realTx.execute(
-          sql`UPDATE users SET wallet_balance = '0.00' WHERE id = ${user.id}`,
-        ),
+        realTx.execute(sql`UPDATE users SET wallet_balance = '0.00' WHERE id = ${user.id}`),
     });
 
     let result: Awaited<ReturnType<typeof CheckoutService.purchase>>;
@@ -125,7 +120,10 @@ describe("M9 — wallet never negative (R118-A5 #4)", () => {
 
     // Zero money movement: no order, no ledger row.
     expect(
-      await db.select({ id: ordersTable.id }).from(ordersTable).where(eq(ordersTable.userId, user.id)),
+      await db
+        .select({ id: ordersTable.id })
+        .from(ordersTable)
+        .where(eq(ordersTable.userId, user.id)),
     ).toHaveLength(0);
     expect(
       await db

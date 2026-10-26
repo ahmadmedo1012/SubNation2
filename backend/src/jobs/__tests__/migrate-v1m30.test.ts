@@ -59,7 +59,8 @@ async function columnExists(table: string, column: string): Promise<boolean> {
 
 /** Restore the pre-R123 boot shape: the table + the column + the chain-era FK. */
 async function restoreLegacyOrganizations(fkName?: string): Promise<void> {
-  await db.execute(sql.raw(`
+  await db.execute(
+    sql.raw(`
     CREATE TABLE IF NOT EXISTS organizations (
       id serial PRIMARY KEY,
       name varchar(255) NOT NULL,
@@ -68,7 +69,8 @@ async function restoreLegacyOrganizations(fkName?: string): Promise<void> {
       updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT organizations_slug_unique UNIQUE (slug)
     )
-  `));
+  `),
+  );
   if (!(await columnExists("users", "organization_id"))) {
     await db.execute(sql.raw(`ALTER TABLE users ADD COLUMN organization_id integer`));
   }
@@ -120,10 +122,7 @@ describe("V1-M30 — applyOrganizationsRemovalStage (R123-A7 P2)", () => {
     expect(await columnExists("users", "organization_id")).toBe(false);
     // No FK residue on users (the column drop carries it away; the sweep
     // ran first) — and users itself still works.
-    const [user] = await db
-      .insert(usersTable)
-      .values({ phone: "0917300001" })
-      .returning();
+    const [user] = await db.insert(usersTable).values({ phone: "0917300001" }).returning();
     expect(user).toBeDefined();
     // No FK residue on users — the harness's only users FK is the
     // referred_by self-reference (the column drop carried the org FK away

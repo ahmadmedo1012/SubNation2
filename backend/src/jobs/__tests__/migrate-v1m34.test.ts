@@ -82,9 +82,7 @@ async function restoreLegacySwaps(): Promise<void> {
   await db.execute(
     sql.raw(`CREATE INDEX idx_wallet_ledger_user_created ON wallet_ledger (user_id, created_at)`),
   );
-  await db.execute(
-    sql.raw(`CREATE INDEX idx_orders_user_created ON orders (user_id, created_at)`),
-  );
+  await db.execute(sql.raw(`CREATE INDEX idx_orders_user_created ON orders (user_id, created_at)`));
 }
 
 beforeAll(initTestDb, 60_000);
@@ -93,10 +91,7 @@ beforeEach(async () => {
   await resetTestDb();
   // Pristine state: the harness DDL carries none of the three objects —
   // drop any index a previous case created so every test starts absent.
-  for (const name of [
-    "idx_coupons_expires_at",
-    ...SWAPS.map((s) => s.name),
-  ]) {
+  for (const name of ["idx_coupons_expires_at", ...SWAPS.map((s) => s.name)]) {
     await db.execute(sql.raw(`DROP INDEX IF EXISTS ${name}`));
   }
 });
@@ -112,7 +107,9 @@ describe("V1-M34 — applyR135IndexWaveStage (R135, DB-1)", () => {
 
     for (const { name } of SWAPS) {
       const def = await indexDef(name);
-      expect(def, `indexdef of ${name}`).toContain("USING btree (user_id, created_at DESC, id DESC)");
+      expect(def, `indexdef of ${name}`).toContain(
+        "USING btree (user_id, created_at DESC, id DESC)",
+      );
       expect(def).not.toContain("(user_id, created_at)");
     }
   });
@@ -218,7 +215,9 @@ describe("R135 — the drizzle 0023 mirror (chain follows the schema)", () => {
   function sqlText(chunk: SQL | undefined): string {
     if (!chunk) return "";
     const chunks = (chunk as unknown as { queryChunks?: Array<{ value: unknown }> }).queryChunks;
-    return String(chunks?.map((c) => (Array.isArray(c.value) ? c.value.join("") : c.value)).join(""));
+    return String(
+      chunks?.map((c) => (Array.isArray(c.value) ? c.value.join("") : c.value)).join(""),
+    );
   }
 
   async function statements(): Promise<string[]> {

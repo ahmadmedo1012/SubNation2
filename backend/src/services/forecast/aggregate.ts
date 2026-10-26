@@ -49,9 +49,7 @@ function rowsOf<T>(result: unknown): T[] {
  * Returns one history slice per active+non-archived product. Archived
  * and inactive products are excluded at the SQL layer (FR-FORECAST-004).
  */
-export async function loadOrderHistoryForActiveProducts(): Promise<
-  ProductOrderHistory[]
-> {
+export async function loadOrderHistoryForActiveProducts(): Promise<ProductOrderHistory[]> {
   // 1. Per-product per-day order counts over the last 28 days.
   const aggResult = await db.execute(sql`
     SELECT

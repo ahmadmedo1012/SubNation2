@@ -26,7 +26,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { warn } = vi.hoisted(() => ({ warn: vi.fn() }));
 
 vi.mock("../logger", () => ({
-  logger: { warn, info: vi.fn(), error: vi.fn(), child: vi.fn(() => ({ warn, info: vi.fn(), error: vi.fn() })) },
+  logger: {
+    warn,
+    info: vi.fn(),
+    error: vi.fn(),
+    child: vi.fn(() => ({ warn, info: vi.fn(), error: vi.fn() })),
+  },
 }));
 
 import { warnLegacySplitOriginEnvAtBoot } from "../origins";

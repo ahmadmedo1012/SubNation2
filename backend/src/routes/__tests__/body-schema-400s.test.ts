@@ -56,7 +56,12 @@ async function listen(app: Express): Promise<{ url: string; close: () => void }>
   });
 }
 
-async function post(url: string, path: string, body: unknown, headers: Record<string, string> = {}) {
+async function post(
+  url: string,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) {
   const res = await fetch(`${url}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
@@ -108,7 +113,12 @@ describe("POST /api/coupons/validate — raw body read (A5-04)", () => {
     const { url, close } = await listen(app);
     try {
       const { token } = await seedUser();
-      const res = await post(url, "/api/coupons/validate", { code: 5, order_amount: 100 }, { Cookie: `auth_token=${token}` });
+      const res = await post(
+        url,
+        "/api/coupons/validate",
+        { code: 5, order_amount: 100 },
+        { Cookie: `auth_token=${token}` },
+      );
       expect(res.status).toBe(400);
       expect(res.body).toMatchObject({ code: "INVALID_DATA" });
     } finally {
@@ -125,7 +135,12 @@ describe("POST /api/coupons/validate — raw body read (A5-04)", () => {
     try {
       const { token } = await seedUser();
       const cookie = { Cookie: `auth_token=${token}` };
-      const r1 = await post(url, "/api/coupons/validate", { code: "X", order_amount: "lots" }, cookie);
+      const r1 = await post(
+        url,
+        "/api/coupons/validate",
+        { code: "X", order_amount: "lots" },
+        cookie,
+      );
       expect(r1.status).toBe(400);
       const r2 = await post(url, "/api/coupons/validate", { code: {} }, cookie);
       expect(r2.status).toBe(400);

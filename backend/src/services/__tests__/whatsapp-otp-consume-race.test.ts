@@ -25,13 +25,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import {
-  db,
-  initTestDb,
-  resetTestDb,
-  usersTable,
-  whatsappOtpsTable,
-} from "../../test/db";
+import { db, initTestDb, resetTestDb, usersTable, whatsappOtpsTable } from "../../test/db";
 import { verifyOtp, getServerSecret } from "../whatsapp-otp.service";
 import { hashOtp } from "../../lib/whatsapp-otp";
 
@@ -69,13 +63,10 @@ function wrapThenable(builder: any, runWriter: () => Promise<void>): any {
     get(target, prop) {
       if (prop === "then") {
         return (onFulfilled?: (rows: unknown) => unknown, onRejected?: (err: unknown) => unknown) =>
-          target.then(
-            async (rows: unknown) => {
-              await runWriter();
-              return onFulfilled ? onFulfilled(rows) : rows;
-            },
-            onRejected,
-          );
+          target.then(async (rows: unknown) => {
+            await runWriter();
+            return onFulfilled ? onFulfilled(rows) : rows;
+          }, onRejected);
       }
       const value = Reflect.get(target, prop, target);
       if (typeof value !== "function") return value;

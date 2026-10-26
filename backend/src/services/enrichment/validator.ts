@@ -56,9 +56,7 @@ export function arabicRatio(text: string): number {
 function checkArabic(text: string, errors: string[]): void {
   const ratio = arabicRatio(text);
   if (ratio < ARABIC_RATIO_THRESHOLD) {
-    errors.push(
-      `arabic_ratio ${ratio.toFixed(2)} below threshold ${ARABIC_RATIO_THRESHOLD}`,
-    );
+    errors.push(`arabic_ratio ${ratio.toFixed(2)} below threshold ${ARABIC_RATIO_THRESHOLD}`);
   }
 }
 
@@ -114,10 +112,7 @@ export function validateFaq(value: unknown): ValidationResult {
  * the parsed JSON; for description fields the caller passes the
  * trimmed text.
  */
-export function validateDraft(
-  field: FieldName,
-  value: string | FaqEntry[],
-): ValidationResult {
+export function validateDraft(field: FieldName, value: string | FaqEntry[]): ValidationResult {
   if (field === "description") return validateDescription(value as string);
   if (field === "description_long") return validateDescriptionLong(value as string);
   return validateFaq(value);

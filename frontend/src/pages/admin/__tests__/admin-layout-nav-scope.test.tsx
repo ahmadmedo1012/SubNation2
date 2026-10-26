@@ -74,9 +74,13 @@ describe("AdminLayout nav scope ↔ API permission parity (R120-B4 A2-F1)", () =
     // family's gate is the "/flash-sales" path-scoped mount, and the
     // router itself mounts ungated at the root below.
     const src = backendSource("routes/admin/index.ts");
-    const gateMatch = src.match(/protectedRouter\.use\("\/flash-sales", requirePermission\("inventory"\)\);/);
+    const gateMatch = src.match(
+      /protectedRouter\.use\("\/flash-sales", requirePermission\("inventory"\)\);/,
+    );
     expect(gateMatch).not.toBeNull();
-    const routerMatch = src.match(/protectedRouter\.use\("\/", adminFlashSalesRouter\); \/\/ \/flash-sales/);
+    const routerMatch = src.match(
+      /protectedRouter\.use\("\/", adminFlashSalesRouter\); \/\/ \/flash-sales/,
+    );
     expect(routerMatch).not.toBeNull();
   });
 

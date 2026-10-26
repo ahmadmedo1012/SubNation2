@@ -305,8 +305,7 @@ export async function consumeConsentToken(
   let raw: string | null = null;
   try {
     raw = (await withRedisCommandTimeout("consent_consume_getdel", () => redis.getDel(key))) as
-      | string
-      | null;
+      string | null;
   } catch (err) {
     logger.warn({ err }, "[account-link-consent] Redis consume GETDEL timed out — PG fallback");
     return consumeConsentTokenViaPg(token, expected);

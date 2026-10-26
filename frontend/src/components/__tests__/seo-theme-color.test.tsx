@@ -35,7 +35,9 @@ describe("MetaTags — theme-color rides the brand ramp (A3 P3-6)", () => {
   it("writes a base tag with the dark-theme primary (#dc1840, no media)", () => {
     render(<MetaTags {...BASE_INPUT} />);
 
-    const base = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])');
+    const base = document.head.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]:not([media])',
+    );
     expect(base).not.toBeNull();
     expect(base!.getAttribute("content")).toBe("#dc1840");
   });

@@ -64,12 +64,7 @@ export function generateOtp(): string {
  * Binds the hash to (code, phone, purpose) so a leaked hash row can
  * only validate against the exact tuple it was issued for.
  */
-export function hashOtp(
-  code: string,
-  phone: string,
-  purpose: OtpPurpose,
-  secret: string,
-): string {
+export function hashOtp(code: string, phone: string, purpose: OtpPurpose, secret: string): string {
   if (!secret) throw new Error("hashOtp: secret is required");
   const message = `${code}:${phone}:${purpose}`;
   return createHmac("sha256", secret).update(message).digest("hex");

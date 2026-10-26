@@ -55,7 +55,9 @@ function stripComments(src: string): string {
 const pageExtracts = (page: string): string[] => {
   const dir = resolve(process.cwd(), `src/components/${page}`);
   return existsSync(dir)
-    ? readdirSync(dir).filter((f) => f.endsWith(".tsx")).map((f) => `src/components/${page}/${f}`)
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith(".tsx"))
+        .map((f) => `src/components/${page}/${f}`)
     : [];
 };
 

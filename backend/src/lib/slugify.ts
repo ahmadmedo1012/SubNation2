@@ -149,11 +149,7 @@ export function slugify(input: string): string {
  *   slugifyWithId("",                 7)           → "product-7"
  *   slugifyWithId("🎮🎮🎮",            9)           → "product-9"
  */
-export function slugifyWithId(
-  input: string,
-  id: number,
-  withIdSuffix: boolean = false,
-): string {
+export function slugifyWithId(input: string, id: number, withIdSuffix: boolean = false): string {
   const base = slugify(input);
   if (!base) return `product-${id}`;
   return withIdSuffix ? `${base}-${id}` : base;

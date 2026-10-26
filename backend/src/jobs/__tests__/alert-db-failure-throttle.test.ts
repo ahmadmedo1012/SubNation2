@@ -1,10 +1,7 @@
 import { describe, expect, it, beforeAll, beforeEach, afterEach } from "vitest";
 import { sql } from "drizzle-orm";
 import { db, initTestDb } from "../../test/db";
-import {
-  __resetAlertDbFailureThrottleForTests,
-  logAdminAlert,
-} from "../alertLogger";
+import { __resetAlertDbFailureThrottleForTests, logAdminAlert } from "../alertLogger";
 
 /**
  * F9 (round-94 A6) — DB failure must not become a phone-spam channel.

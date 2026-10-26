@@ -62,7 +62,11 @@ const COMPOSITE_INDEXES: Array<{ table: string; name: string; columns: string }>
     name: "idx_referral_referrer_created",
     columns: "(referrer_id, created_at DESC)",
   },
-  { table: "support_tickets", name: "idx_tickets_user_created", columns: "(user_id, created_at DESC)" },
+  {
+    table: "support_tickets",
+    name: "idx_tickets_user_created",
+    columns: "(user_id, created_at DESC)",
+  },
 ];
 
 interface Recorded {
@@ -88,9 +92,7 @@ function recorder(): Recorded {
 }
 
 async function indexExists(name: string): Promise<boolean> {
-  const result = await db.execute(
-    sql`SELECT 1 AS one FROM pg_indexes WHERE indexname = ${name}`,
-  );
+  const result = await db.execute(sql`SELECT 1 AS one FROM pg_indexes WHERE indexname = ${name}`);
   const rows = (result as unknown as { rows?: unknown[] }).rows ?? [];
   return rows.length > 0;
 }

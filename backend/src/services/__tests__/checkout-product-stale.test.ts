@@ -166,10 +166,7 @@ describe("F4: product price/state re-validated inside the purchase transaction",
     const product = await seedProduct("10.00");
 
     pricingHook.fn = async () => {
-      await db
-        .update(productsTable)
-        .set({ price: "10.0" })
-        .where(eq(productsTable.id, product.id));
+      await db.update(productsTable).set({ price: "10.0" }).where(eq(productsTable.id, product.id));
     };
 
     const result = await CheckoutService.purchase({ userId: user.id, productId: product.id });

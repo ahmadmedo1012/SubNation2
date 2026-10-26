@@ -85,21 +85,13 @@ describe("verifyOtp", () => {
   });
 
   it("rejects an expired code", () => {
-    const result = verifyOtp(
-      "123456",
-      freshRow({ expiresAt: new Date(Date.now() - 1) }),
-      SECRET,
-    );
+    const result = verifyOtp("123456", freshRow({ expiresAt: new Date(Date.now() - 1) }), SECRET);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("expired");
   });
 
   it("rejects after the attempt cap is hit", () => {
-    const result = verifyOtp(
-      "123456",
-      freshRow({ attempts: OTP_MAX_ATTEMPTS }),
-      SECRET,
-    );
+    const result = verifyOtp("123456", freshRow({ attempts: OTP_MAX_ATTEMPTS }), SECRET);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("exhausted");
   });

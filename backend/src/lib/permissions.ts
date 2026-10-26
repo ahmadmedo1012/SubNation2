@@ -72,12 +72,7 @@ export function requirePermission(required: PermissionScope) {
     if (!hasPermission(granted, required)) {
       res
         .status(403)
-        .json(
-          createErrorResponse(
-            "ليست لديك صلاحية للوصول إلى هذه الصفحة",
-            ErrorCode.FORBIDDEN,
-          ),
-        );
+        .json(createErrorResponse("ليست لديك صلاحية للوصول إلى هذه الصفحة", ErrorCode.FORBIDDEN));
       return;
     }
     next();

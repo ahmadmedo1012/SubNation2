@@ -9,7 +9,11 @@ import {
   productsTable,
   usersTable,
 } from "../../test/db";
-import { applyIdempotencyBodyHashStage, applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
+import {
+  applyIdempotencyBodyHashStage,
+  applyIdempotencyKeysStage,
+  applyIdempotencyReferenceTypeStage,
+} from "../../migrate";
 import { pruneOldIdempotencyKeys } from "../idempotency-retention";
 
 /**

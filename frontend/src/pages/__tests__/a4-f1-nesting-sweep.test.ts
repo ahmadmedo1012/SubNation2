@@ -56,7 +56,9 @@ const sourceTsxFiles = collectSourceTsx(resolve(process.cwd(), "src"));
 const checkoutSurfaceSource = (): string => {
   const dir = resolve(process.cwd(), "src/components/checkout");
   const extracts = existsSync(dir)
-    ? readdirSync(dir).filter((f) => f.endsWith(".tsx")).map((f) => resolve(dir, f))
+    ? readdirSync(dir)
+        .filter((f) => f.endsWith(".tsx"))
+        .map((f) => resolve(dir, f))
     : [];
   return [resolve(process.cwd(), "src/pages/checkout.tsx"), ...extracts]
     .map((f) => readFileSync(f, "utf8"))
@@ -108,7 +110,10 @@ describe("A4-F1 completion — zero Button-inside-Link nesting app-wide (R120-B7
       // the app-wide net above still guards the whole class.
     ];
     for (const [kind, rel, label] of pins) {
-      const text = kind === "checkout" ? checkoutSurfaceSource() : readFileSync(resolve(process.cwd(), "src", rel), "utf8");
+      const text =
+        kind === "checkout"
+          ? checkoutSurfaceSource()
+          : readFileSync(resolve(process.cwd(), "src", rel), "utf8");
       expect(text, `${rel} — ${label}`).toMatch(/<Button[^>]*asChild[^>]*>/);
     }
   });

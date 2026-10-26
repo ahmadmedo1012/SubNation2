@@ -10,7 +10,11 @@ import {
   productsTable,
   usersTable,
 } from "../../test/db";
-import { applyIdempotencyBodyHashStage, applyIdempotencyKeysStage, applyIdempotencyReferenceTypeStage } from "../../migrate";
+import {
+  applyIdempotencyBodyHashStage,
+  applyIdempotencyKeysStage,
+  applyIdempotencyReferenceTypeStage,
+} from "../../migrate";
 
 /**
  * R102: the V1-M19 generalization (nullable order_id + reference_type)

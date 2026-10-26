@@ -164,12 +164,10 @@ describe("logAdminAlertBatch — dedupe (Round-5 parity, batched)", () => {
     // Two rows seeded 2 days ago: outside the default 24h window, inside
     // a 7-day window. The batch must suppress ONLY the long-window entry.
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
-    await db
-      .insert(adminAlertsTable)
-      .values([
-        { type: "no_stock", title: "short", message: "m", dedupeKey: "short" },
-        { type: "no_stock", title: "long", message: "m", dedupeKey: "long" },
-      ]);
+    await db.insert(adminAlertsTable).values([
+      { type: "no_stock", title: "short", message: "m", dedupeKey: "short" },
+      { type: "no_stock", title: "long", message: "m", dedupeKey: "long" },
+    ]);
     await db.execute(
       sql`UPDATE admin_alerts SET created_at = ${twoDaysAgo} WHERE dedupe_key IN ('short', 'long')`,
     );

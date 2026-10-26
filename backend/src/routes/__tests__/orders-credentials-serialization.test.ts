@@ -384,7 +384,10 @@ describe("R118-A1 F-7: buyer-side decrypt_failed flag (formatOrder)", () => {
       process.env.ENCRYPTION_KEY = originalKey;
       __resetEncryptionKeyCacheForTests();
     }
-    await db.update(ordersTable).set({ status: "failed" }).where(eq(ordersTable.id, seeded.order.id));
+    await db
+      .update(ordersTable)
+      .set({ status: "failed" })
+      .where(eq(ordersTable.id, seeded.order.id));
 
     const token = signUserToken({ userId: seeded.user.id });
     const detail = (await getJson(`/api/orders/${seeded.order.orderCode}`, token)) as {

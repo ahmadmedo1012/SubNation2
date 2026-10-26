@@ -29,10 +29,7 @@ export const TELEGRAM_AUTH_FRESHNESS_SEC = 30 * 60;
  *  never rendered to the response — see routes/auth-settings.ts where
  *  every reason maps to a single localised user-facing message. */
 export type TelegramAuthFailure =
-  | "missing_hash"
-  | "missing_id"
-  | "bad_signature"
-  | "stale_auth_date";
+  "missing_hash" | "missing_id" | "bad_signature" | "stale_auth_date";
 
 export interface TelegramAuthFields {
   id: string;
@@ -45,8 +42,7 @@ export interface TelegramAuthFields {
 }
 
 export type TelegramAuthResult =
-  | { ok: true; fields: TelegramAuthFields }
-  | { ok: false; reason: TelegramAuthFailure };
+  { ok: true; fields: TelegramAuthFields } | { ok: false; reason: TelegramAuthFailure };
 
 interface VerifyOptions {
   /** Override freshness window (test-only). Defaults to TELEGRAM_AUTH_FRESHNESS_SEC. */
@@ -190,11 +186,7 @@ export function signTelegramFixture(
 export const TELEGRAM_WEBAPP_FRESHNESS_SEC = 24 * 60 * 60;
 
 export type TelegramWebAppFailure =
-  | "missing_init_data"
-  | "missing_hash"
-  | "missing_user"
-  | "bad_signature"
-  | "stale_auth_date";
+  "missing_init_data" | "missing_hash" | "missing_user" | "bad_signature" | "stale_auth_date";
 
 export interface TelegramWebAppUser {
   id: string;
@@ -315,8 +307,7 @@ export function verifyTelegramWebAppData(
       last_name: typeof userObj.last_name === "string" ? userObj.last_name : undefined,
       username: typeof userObj.username === "string" ? userObj.username : undefined,
       photo_url: typeof userObj.photo_url === "string" ? userObj.photo_url : undefined,
-      language_code:
-        typeof userObj.language_code === "string" ? userObj.language_code : undefined,
+      language_code: typeof userObj.language_code === "string" ? userObj.language_code : undefined,
     },
   };
 }

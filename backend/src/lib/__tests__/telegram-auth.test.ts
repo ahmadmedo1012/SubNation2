@@ -46,10 +46,7 @@ describe("verifyTelegramAuth", () => {
     });
 
     it("accepts a payload with only required fields (no name/photo)", () => {
-      const payload = signTelegramFixture(
-        { id: 1, auth_date: nowSec() },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 1, auth_date: nowSec() }, BOT_TOKEN);
 
       const result = verifyTelegramAuth(payload, BOT_TOKEN);
 
@@ -66,10 +63,7 @@ describe("verifyTelegramAuth", () => {
       // check-string, otherwise the hash check would fail every time
       // a referral is supplied.
       const auth_date = nowSec();
-      const payload = signTelegramFixture(
-        { id: 123, auth_date },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 123, auth_date }, BOT_TOKEN);
       const withReferral = { ...payload, referralCode: "FRIEND01" };
 
       const result = verifyTelegramAuth(withReferral, BOT_TOKEN);
@@ -80,10 +74,7 @@ describe("verifyTelegramAuth", () => {
 
   describe("signature failures", () => {
     it("rejects a payload signed with a different bot token", () => {
-      const payload = signTelegramFixture(
-        { id: 1, auth_date: nowSec() },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 1, auth_date: nowSec() }, BOT_TOKEN);
 
       const result = verifyTelegramAuth(payload, "0000000:wrong-token");
 
@@ -103,10 +94,7 @@ describe("verifyTelegramAuth", () => {
     });
 
     it("rejects a payload with a corrupted hash", () => {
-      const payload = signTelegramFixture(
-        { id: 1, auth_date: nowSec() },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 1, auth_date: nowSec() }, BOT_TOKEN);
       const corrupted = {
         ...payload,
         hash: "0".repeat(payload.hash.length),
@@ -140,28 +128,19 @@ describe("verifyTelegramAuth", () => {
     });
 
     it("rejects a payload with no hash", () => {
-      const result = verifyTelegramAuth(
-        { id: 1, auth_date: nowSec() },
-        BOT_TOKEN,
-      );
+      const result = verifyTelegramAuth({ id: 1, auth_date: nowSec() }, BOT_TOKEN);
 
       expect(result).toEqual({ ok: false, reason: "missing_hash" });
     });
 
     it("rejects a payload with no id", () => {
-      const result = verifyTelegramAuth(
-        { auth_date: nowSec(), hash: "abcd" },
-        BOT_TOKEN,
-      );
+      const result = verifyTelegramAuth({ auth_date: nowSec(), hash: "abcd" }, BOT_TOKEN);
 
       expect(result).toEqual({ ok: false, reason: "missing_id" });
     });
 
     it("rejects an empty bot token", () => {
-      const payload = signTelegramFixture(
-        { id: 1, auth_date: nowSec() },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 1, auth_date: nowSec() }, BOT_TOKEN);
 
       const result = verifyTelegramAuth(payload, "");
 
@@ -204,10 +183,7 @@ describe("verifyTelegramAuth", () => {
     });
 
     it("rejects a payload with non-numeric auth_date", () => {
-      const payload = signTelegramFixture(
-        { id: 1, auth_date: "yesterday" },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 1, auth_date: "yesterday" }, BOT_TOKEN);
 
       const result = verifyTelegramAuth(payload, BOT_TOKEN);
 
@@ -217,10 +193,7 @@ describe("verifyTelegramAuth", () => {
     it("respects a custom freshnessSec override (test convenience)", () => {
       const now = 2_000_000_000;
       // 1 hour ago — well past the default 30-minute window.
-      const payload = signTelegramFixture(
-        { id: 1, auth_date: now - 3600 },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 1, auth_date: now - 3600 }, BOT_TOKEN);
 
       // Default window — should reject.
       expect(verifyTelegramAuth(payload, BOT_TOKEN, { nowSec: now })).toEqual({
@@ -239,10 +212,7 @@ describe("verifyTelegramAuth", () => {
 
   describe("type coercion / robustness", () => {
     it("coerces numeric id to string in the fields output", () => {
-      const payload = signTelegramFixture(
-        { id: 42, auth_date: nowSec() },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 42, auth_date: nowSec() }, BOT_TOKEN);
 
       const result = verifyTelegramAuth(payload, BOT_TOKEN);
 
@@ -257,10 +227,7 @@ describe("verifyTelegramAuth", () => {
     it("does not include null/undefined optional fields in the output", () => {
       const auth_date = nowSec();
       // Only required fields signed.
-      const payload = signTelegramFixture(
-        { id: 1, auth_date },
-        BOT_TOKEN,
-      );
+      const payload = signTelegramFixture({ id: 1, auth_date }, BOT_TOKEN);
 
       const result = verifyTelegramAuth(payload, BOT_TOKEN);
 
@@ -364,10 +331,7 @@ describe("verifyTelegramWebAppData", () => {
 
     it("rejects a stale auth_date past the freshness window", () => {
       const auth_date = nowSec() - (TELEGRAM_WEBAPP_FRESHNESS_SEC + 5);
-      const initData = signTelegramWebAppFixture(
-        { user: { id: 1 }, auth_date },
-        BOT_TOKEN,
-      );
+      const initData = signTelegramWebAppFixture({ user: { id: 1 }, auth_date }, BOT_TOKEN);
       const result = verifyTelegramWebAppData(initData, BOT_TOKEN);
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.reason).toBe("stale_auth_date");
@@ -379,10 +343,7 @@ describe("verifyTelegramWebAppData", () => {
       // The Login Widget uses secretKey = SHA256(botToken).
       // The Mini App  uses secretKey = HMAC_SHA256("WebAppData", botToken).
       // A widget-signed payload MUST NOT verify as a WebApp payload.
-      const widgetPayload = signTelegramFixture(
-        { id: 1, auth_date: nowSec() },
-        BOT_TOKEN,
-      );
+      const widgetPayload = signTelegramFixture({ id: 1, auth_date: nowSec() }, BOT_TOKEN);
       const widgetAsInitData = new URLSearchParams(
         Object.entries(widgetPayload).map(([k, v]) => [k, String(v)]),
       ).toString();

@@ -26,11 +26,7 @@
 export type SchedulerMode = "embedded" | "dedicated" | "single" | "disabled";
 
 export type SchedulerReason =
-  | "active"
-  | "disabled_by_env"
-  | "not_leader"
-  | "redis_unavailable"
-  | "unknown";
+  "active" | "disabled_by_env" | "not_leader" | "redis_unavailable" | "unknown";
 
 export interface SchedulerStateSnapshot {
   /** What kind of scheduler topology this process believes is in effect. */

@@ -364,7 +364,11 @@ export async function logAdminAlertBatch(
       if (suppressedByClaim.size > 0 || keyedKeys.length > 0) {
         const suppressedCount = outcomes.filter((o) => o.suppressed).length;
         logger.debug(
-          { category: "alerts.dedupe", suppressed: suppressedCount, inserted: insertIndices.length },
+          {
+            category: "alerts.dedupe",
+            suppressed: suppressedCount,
+            inserted: insertIndices.length,
+          },
           "logAdminAlertBatch: batch deduped",
         );
       }
