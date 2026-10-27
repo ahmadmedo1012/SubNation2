@@ -163,9 +163,13 @@ export function injectSeoNav(html: string, meta: SeoNavMeta): string {
         .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
         .join("")}</section>`
     : "";
+  // RH-293: the query limit alone was not enough — the nav renderer also
+  // capped every route at 12, so streaming's 17th product still vanished.
+  // Category shells carry up to 24; home/PDP keep the light 12.
+  const productLinkCap = path.startsWith("/category/") ? 24 : 12;
   const productLinks = (meta.productLinks ?? [])
     .filter((link) => link.slug && link.slug !== path.replace(/^\/product\//, ""))
-    .slice(0, 12);
+    .slice(0, productLinkCap);
   const productItems = productLinks
     .map(
       (link) =>
