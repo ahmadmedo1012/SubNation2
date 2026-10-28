@@ -602,14 +602,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     };
   }
 
-  // RH-323: the legacy /streaming shortcut still answers 200 with the SPA's
-  // client-side 404 surface (noindex, no canonical). Consolidate it onto the
-  // live category with a permanent redirect; keep the match exact so deeper
-  // paths and other legacy slugs keep their existing behavior.
-  if (norm === "/streaming") {
-    return { status: 301, redirectTo: "/category/streaming" };
-  }
-
+  if (norm === "/streaming") return { status: 301, redirectTo: "/category/streaming" };
   const category = /^\/category\/([^/]+)$/.exec(norm);
   if (category) {
     const meta = SHELL_CATEGORY_META[category[1]];
