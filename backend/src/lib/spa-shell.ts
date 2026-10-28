@@ -602,6 +602,7 @@ export async function resolveSpaShellMeta(pathname: string, origin: string): Pro
     };
   }
 
+  if (norm === "/streaming") return { status: 301, redirectTo: "/category/streaming" };
   const category = /^\/category\/([^/]+)$/.exec(norm);
   if (category) {
     const meta = SHELL_CATEGORY_META[category[1]];
