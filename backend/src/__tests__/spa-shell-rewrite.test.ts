@@ -1060,6 +1060,17 @@ describe("SPA shell rewrite — no-JS fallback H1 + internal links (R176)", () =
     expect(r.status).toBe(301);
     expect(r.location).toContain("/category/software");
   });
+
+  it("301s the legacy /streaming shortcut to the live category (RH-323)", async () => {
+    const r = await get("/streaming", UA_BROWSER, "manual");
+    expect(r.status).toBe(301);
+    expect(r.location).toContain("/category/streaming");
+  });
+
+  it("does not over-reach the /streaming redirect to deeper paths", async () => {
+    const r = await get("/streaming/extra", UA_BROWSER, "manual");
+    expect(r.status).not.toBe(301);
+  });
 });
 
 // ── Unknown paths: no canonical, noindex (R122 A7-P1-2) ───────────────────
