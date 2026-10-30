@@ -1,14 +1,16 @@
 name: CI
 
 on:
-  # R134 (A7-F9 — the queued config-touch landed): the develop filter is
-  # GONE (.hermes.md: "Branch: main only — no develop branch exists" —
-  # it referenced a branch this repo never had). main-only, the first
-  # intentional filter shape since the file was born.
+  # R190 (trigger widening): EVERY push (any branch) and EVERY pull_request,
+  # superseding the R134 main-only shape. Rationale: the repo is PUBLIC
+  # (Actions minutes are free — the R122 verification), and the path-filter
+  # cost gate below already skips the heavy jobs for docs-only pushes, so
+  # widening branch coverage costs nothing a contributor cares about while
+  # catching a regression on ANY branch at the push itself — before the PR
+  # is even opened. push/PR keys carry no filters = all branches (the
+  # documented GitHub Actions semantics).
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   # FH-A12 F-4/F-5: manual full run (October renewal smoke test) — bypasses
   # the path filters, so every job runs.
   workflow_dispatch: {}

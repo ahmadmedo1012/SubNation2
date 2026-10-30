@@ -241,13 +241,49 @@ paths = [
   '''backend/src/routes/__tests__/loyalty-durable-idempotency\.test\.ts''',
   '''backend/src/test/env\.ts''',
   '''backend/src/lib/__tests__/encryption-boot-assert\.test\.ts''',
+  # R189-restore: the R188-8 deletion below was WRONG — re-added by the
+  # audit that followed the 2026-10-26 weekly-schedule red run (CI run
+  # 40304420494, secret-scan job: generic-api-key + jwt findings in this
+  # file). R181 removed the file from HEAD, but the file is IMMUTABLY in
+  # git history and the weekly schedule/dispatch scan is FULL-HISTORY —
+  # "matched nothing" was true only for the push-event last-commit scan,
+  # never for the weekly sweep. Scope stays FILE-EXACT per the header
+  # policy: a real secret in any other file (or a future re-created file
+  # of a different name) still fails the gate loudly.
+  '''backend/src/lib/copilot/__tests__/secret-scan\.test\.ts''',
 ]
 
-# R188-8 (F-F2): two dead entries deleted here — the unscoped paths entry
-# and the targetRules (aws-access-token/jwt) block for
-# backend/src/lib/copilot/__tests__/secret-scan.test.ts. The whole copilot
-# lib (test corpus included) was removed in R181; the paths have matched
-# nothing since.
+# R189-restore (belt & suspenders, same rationale as the entry above): the
+# targetRules (aws-access-token/jwt) + paths block for the copilot scanner's
+# own fixture corpus, deleted in R188-8 on the mistaken "dead entry" call.
+# aws-access-token has no embedded allowlist, so this shape still suppresses
+# it on 8.24.x (the gitleaks-action default binary for local runs); on
+# 8.27+ the unscoped paths entry above covers the same file.
+[[allowlists]]
+description = "secret-scan.test.ts embeds AWS-docs-style + JWT fixtures on purpose — it is the corpus that proved the copilot secret scanner works (deleted from HEAD in R181; rides git history for the weekly full scan)"
+targetRules = ["aws-access-token", "jwt"]
+paths = [
+  '''backend/src/lib/copilot/__tests__/secret-scan\.test\.ts''',
+]
+
+# R189: the e2e-hermetic ci.yml job (landed d196e505) boots the runner-
+# owned stack with a SYNTHETIC ENCRYPTION_KEY — the 0-9a-f sequence hex
+# repeated 4x, exactly 64 hex chars because encryption.ts's parseKey()
+# (Buffer.from(key,'hex') → 32 bytes) rejects every other shape, so a
+# prefixed/spelled-out form is impossible. The value is obviously
+# non-random, never a credential, never leaves the runner — but the
+# default generic-api-key entropy heuristic flags it on the push scan
+# (CI run 40991950613, red, blocked every downstream job). Suppression is
+# VALUE-SCOPED and UNSCOPED-top-level (the only shape the R112 matrix
+# honors for default rules on 8.27.2, verified locally on the exact
+# pinned binary): ONLY this exact literal is allowed, anywhere. A
+# different hex value — in ci.yml or anywhere else — still fails the
+# gate. Same trust class as the canonical 0011..ddeeff entry above.
+[[allowlists]]
+description = "Synthetic CI-only ENCRYPTION_KEY (the 0-9a-f sequence hex x4) for the e2e-hermetic runner stack — obviously non-random, never a secret, never leaves the runner"
+regexes = [
+  '''0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef''',
+]
 
 # False-positive regex allowlist: the `gcp-api-key` default rule is greedy
 # and flags any 35+ char alphanumeric string starting with a Firebase-style
