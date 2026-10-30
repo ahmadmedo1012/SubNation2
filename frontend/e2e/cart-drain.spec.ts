@@ -57,13 +57,18 @@ test.describe("guest cart drain — the session round-trip", () => {
       .first();
     await expect(cartLink).toBeVisible({ timeout: 10_000 });
 
-    // /cart: the line renders with its name (cart.tsx:388) and quantity
-    // (cart.tsx:501-506, the «الكمية N» counter span).
+    // /cart: the line renders with its name (cart.tsx:388) and quantity.
+    // R182 (Lane-C D6) re-pin: the counter span LOST its aria-label
+    // (non-conforming ARIA on a non-interactive span — removed with the
+    // Navbar sr-only announcer carrying count CHANGES); the quantity is
+    // the span's own TEXT now. Assert the exact digit inside the row's
+    // stepper cell instead of getByLabel.
     await page.goto("/cart");
     await expect(page.getByRole("heading", { name: "سلة المشتريات" })).toBeVisible();
     const row = page.locator("main").getByText(target.name).first();
     await expect(row).toBeVisible();
-    await expect(page.getByLabel("الكمية 1")).toBeVisible();
+    const qtyCell = page.locator("main").locator("span.tabular-nums", { hasText: /^1$/ }).first();
+    await expect(qtyCell).toBeVisible();
 
     // Remove via the trash button (cart.tsx:529 aria-label). The
     // X-shown-at-qty-1 stepper twin (cart.tsx:492) shares the label — the
@@ -99,7 +104,9 @@ test.describe("guest cart drain — the session round-trip", () => {
     await expect(page.locator("main").getByText(target.name).first()).toBeVisible({
       timeout: 10_000,
     });
-    await expect(page.getByLabel("الكمية 1")).toBeVisible();
+    await expect(
+      page.locator("main").locator("span.tabular-nums", { hasText: /^1$/ }).first(),
+    ).toBeVisible();
     await expect(cartLink).toBeVisible();
   });
 });

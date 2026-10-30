@@ -42,13 +42,28 @@ test.describe("GA4 (R168) — loader + Enhanced Measurement", () => {
     // The loader's config command is buffered on window.dataLayer
     // (the app-side contract — the loader sets dataLayer + gtag
     // before the script attaches).
+    //
+    // SHAPE NOTE (the R168 live-vs-CI flake fix): the app-side gtag
+    // shim pushes the LIVE ARGUMENTS OBJECT, not an array — gtag.js
+    // itself requires exactly that (analytics.ts: the queue silently
+    // stops processing on rest-parameter arrays). Array.isArray(entry)
+    // therefore rejects the app's OWN buffered command and only ever
+    // passed when gtag.js had already consumed + re-pushed a processed
+    // array-shaped entry — timing the runner cannot control (the
+    // scheduled production run failed this poll on desktop-chromium
+    // 2026-10-26 for exactly this reason). The predicate now accepts
+    // BOTH shapes — the buffered arguments object (the deterministic
+    // app-side truth) and the processed array — by indexing instead
+    // of type-checking.
     await expect
       .poll(async () =>
         page.evaluate(() => {
           const layer = (window as { dataLayer?: unknown[] }).dataLayer ?? [];
-          return layer.some(
-            (entry) => Array.isArray(entry) && entry[0] === "config" && entry[1] === "G-RKRV3ZC3MF",
-          );
+          return layer.some((entry) => {
+            if (!entry || typeof entry !== "object") return false;
+            const indexed = entry as { [k: number]: unknown };
+            return indexed[0] === "config" && indexed[1] === "G-RKRV3ZC3MF";
+          });
         }),
       )
       .toBe(true);

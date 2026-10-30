@@ -635,3 +635,146 @@ jobs:
           E2E_ENABLED: "1"
           E2E_BASE_URL: ${{ vars.E2E_BASE_URL || 'http://localhost:8080' }}
         run: pnpm --filter @workspace/subnation run test:e2e
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # HERMETIC E2E — the guest smoke suite on EVERY push and PR
+  # ─────────────────────────────────────────────────────────────────────────
+  # R168-e2e: the e2e job above is the PRODUCTION heartbeat (dispatch/
+  # schedule only — it probes the live deployment via vars.E2E_BASE_URL).
+  # Until now NO browser-level gate ran on ordinary pushes/PRs: a runtime
+  # regression could merge fully green and only surface at the weekly
+  # heartbeat (the 2026-10-26 scheduled run was exactly that — red, with
+  # the cart-drain label regression + the GA4 dataLayer poll flake, both
+  # invisible to push CI).
+  #
+  # This job builds the SAME guest suite against a stack the runner owns:
+  #   · a disposable postgres:16 service container;
+  #   · the production build (API + Vite SPA, GA tag baked for the
+  #     analytics specs, a valid-shaped BOGUS Sentry DSN — beacons 403
+  #     silently; home.spec's documented transport-noise filter covers it);
+  #   · APP_URL carries the PRODUCTION URL space (https://subnation.ly)
+  #     so the origin-hardcoded SEO/JSON-LD assertions hold verbatim,
+  #     while APP_ORIGINS also allows the localhost page origin;
+  #   · the seed (scripts/src/seed.ts) mirrors the admin create flow:
+  #     slugged products + deliverable inventory + one sold-out product
+  #     + an enabled auth provider (SEED_ENABLE_AUTH_PROVIDERS=1).
+  #
+  # The suite is the SAME specs the heartbeat runs — zero forked
+  # expectations. Local reproduction: the recipe is a straight script
+  # (boot → wait /healthz → seed → playwright); verified end-to-end
+  # before landing (144 tests × 3 projects green, incl. the re-pinned
+  # cart-drain quantity + the GA4 dataLayer shape fix).
+  e2e-hermetic:
+    name: E2E hermetic (guest suite, local stack)
+    needs: [secret-scan, filter]
+    # Docs-only pushes skip (the filter job decides); dispatch and the
+    # weekly schedule run it too — three chances to catch a runtime
+    # regression, never zero.
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.filter.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: e2e
+          POSTGRES_PASSWORD: e2e
+          POSTGRES_DB: subnation_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      HUSKY: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter @workspace/subnation exec playwright install --with-deps chromium
+      - name: Production build (GA tag baked, bogus Sentry DSN)
+        env:
+          # The GA4 activation surface the analytics specs pin (R168):
+          # without the baked tag the loader no-ops and waitForResponse
+          # times out. The Sentry DSN is valid-shaped but carries a
+          # bogus key — ingest answers 403, the SDK swallows it, and
+          # home.spec's transport-noise filter documents the class.
+          VITE_GA_TRACKING_ID: G-RKRV3ZC3MF
+          VITE_SENTRY_DSN: https://0123456789abcdef0123456789abcdef@o000000.ingest.sentry.io/0000000
+        run: pnpm --filter @workspace/api-server run build
+      - name: Boot the built stack (migrations run at boot)
+        env:
+          DATABASE_URL: postgresql://e2e:e2e@localhost:5432/subnation_e2e
+          # Synthetic 32+ char secrets — jwt.ts/encryption.ts reject
+          # shorter values at module load; these never leave the runner.
+          SESSION_SECRET: ci-hermetic-session-secret-0123456789abcdef
+          ADMIN_JWT_SECRET: ci-hermetic-admin-jwt-secret-0123456789abcd
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          # The production URL SPACE (canonical sitemap/JSON-LD/og URLs —
+          # the specs assert these verbatim) while the runner serves on
+          # localhost:8080; APP_ORIGINS admits the real page origin for
+          # the CORS/CSRF gates.
+          APP_URL: https://subnation.ly
+          APP_ORIGINS: http://localhost:8080,https://subnation.ly
+          PORT: "8080"
+          NODE_ENV: production
+        run: |
+          cd backend
+          node --enable-source-maps ./dist/index.mjs > "$RUNNER_TEMP/server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/server.pid"
+          cd ..
+      - name: Wait for /healthz
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8080/healthz > /dev/null; then
+              echo "stack healthy after ${i}s"; exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/server.pid")" 2>/dev/null; then
+              echo "server died during boot:"; cat "$RUNNER_TEMP/server.log"; exit 1
+            fi
+            sleep 1
+          done
+          echo "stack never became healthy:"; tail -50 "$RUNNER_TEMP/server.log"; exit 1
+      - name: Seed the disposable catalog
+        env:
+          DATABASE_URL: postgresql://e2e:e2e@localhost:5432/subnation_e2e
+          SEED_ENABLE_AUTH_PROVIDERS: "1"
+          ADMIN_PASSWORD: E2eAdminPass@2026
+        run: pnpm db:seed
+      - name: Run the guest smoke suite (the heartbeat's own specs)
+        env:
+          E2E_ENABLED: "1"
+          E2E_BASE_URL: http://localhost:8080
+        run: pnpm --filter @workspace/subnation run test:e2e
+      - name: Stop the stack
+        if: always()
+        run: kill "$(cat "$RUNNER_TEMP/server.pid")" 2>/dev/null || true
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-hermetic-failures
+          path: |
+            frontend/test-results/
+            ${{ runner.temp }}/server.log
+          retention-days: 7
+          if-no-files-found: warn

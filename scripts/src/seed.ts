@@ -1,11 +1,17 @@
 import argon2 from "argon2";
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { loadLocalEnv } from "./runtime";
+// The SAME slug generator the admin product-create route uses
+// (backend/src/routes/admin/products.ts:216). Self-contained module (zero
+// imports), safe to reuse here via tsx. Seeded products WITHOUT slugs look
+// nothing like production's: /sitemap.xml skips them (no /product/<slug>
+// entries), the PDP is unreachable, and the e2e cart/api families starve.
+import { slugifyWithId } from "../../backend/src/lib/slugify";
 
 // Load .env files BEFORE importing @workspace/db, which throws at module
 // load time if DATABASE_URL is missing.
 loadLocalEnv();
-const { db, pool, usersTable, productsTable, adminUsersTable, loginAttemptsTable } =
+const { db, pool, usersTable, productsTable, adminUsersTable, loginAttemptsTable, inventoryTable } =
   await import("@workspace/db");
 
 // Argon2id with the same OWASP-2024 parameters as backend/src/lib/crypto.ts —
@@ -138,22 +144,126 @@ async function seed() {
 
   let added = 0;
   for (const product of sampleProducts) {
-    if (!existingNames.has(product.name)) {
-      await db.insert(productsTable).values({ ...product, imageUrl: null });
-      added++;
+    if (existingNames.has(product.name)) continue;
+    // Mirror the admin create flow exactly: insert → slugify(name, id) →
+    // update, with the id-suffixed fallback on a unique-violation — the
+    // seeded catalog lands in the SAME shape production products have.
+    const [inserted] = await db
+      .insert(productsTable)
+      .values({ ...product, imageUrl: null })
+      .returning({ id: productsTable.id });
+    let slug = slugifyWithId(product.name, inserted.id, /* withIdSuffix */ false);
+    try {
+      await db.update(productsTable).set({ slug }).where(eq(productsTable.id, inserted.id));
+    } catch (err) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "code" in err &&
+        (err as { code: string }).code === "23505"
+      ) {
+        slug = slugifyWithId(product.name, inserted.id, /* withIdSuffix */ true);
+        await db.update(productsTable).set({ slug }).where(eq(productsTable.id, inserted.id));
+      } else {
+        throw err;
+      }
     }
+    added++;
   }
 
   console.log(added > 0 ? `✅ Added ${added} products` : "✅ Products already exist — skipping");
+
+  // ── Inventory: deliverable units so the catalog is BUYABLE ────────────
+  // The available_only predicate (catalog.service.ts) counts inventory
+  // rows (is_sold = false AND ≥1 credential field) — a seeded catalog
+  // with zero units renders every product sold-out: /api/products?
+  // available_only=true returns [], the guest cart families starve, and
+  // the PDP shows «نفد المخزون» everywhere. The e2e guest suite is
+  // read-only (no checkout), so the credential payloads are honest-shaped
+  // placeholders — the encryption-at-rest path only engages at checkout.
+  // ONE product stays deliberately unstocked (the last) so the sold-out
+  // PDP honesty spec has a real candidate instead of skipping.
+  const stocked = await db
+    .select({ id: productsTable.id, name: productsTable.name })
+    .from(productsTable)
+    .orderBy(productsTable.id);
+  const [{ count: unitCount }] = await db
+    .select({ count: count() })
+    .from(inventoryTable)
+    .where(eq(inventoryTable.isSold, false));
+  if (unitCount === 0 && stocked.length > 1) {
+    const toStock = stocked.slice(0, -1); // all but the last (sold-out candidate)
+    for (const product of toStock) {
+      for (let i = 1; i <= 3; i++) {
+        await db.insert(inventoryTable).values({
+          productId: product.id,
+          accountEmail: `unit-${i}@${(product.name ?? "product").toLowerCase().replace(/[^a-z0-9]+/g, "-") || "product"}.seed.local`,
+          accountPassword: `seed-unit-${product.id}-${i}`,
+          isSold: false,
+        });
+      }
+    }
+    console.log(
+      `✅ Added ${toStock.length * 3} deliverable inventory units (3 per product; last product left sold-out)`,
+    );
+  } else if (unitCount > 0) {
+    console.log(`✅ Inventory already stocked (${unitCount} unsold units) — skipping`);
+  }
+
+  // ── Auth providers: at least one enabled identity (OPT-IN) ────────────
+  // /api/auth/providers reads system_settings rows keyed 'auth.<id>' and
+  // returns ONLY enabled providers — a fresh boot creates every row with
+  // enabled:false, so the api-contracts e2e family expects ≥1 enabled
+  // identity and starves. GATED: SEED_ENABLE_AUTH_PROVIDERS=1 opts in
+  // (the hermetic CI stack sets it; a production seed run NEVER flips a
+  // live login provider on by default).
+  if (process.env.SEED_ENABLE_AUTH_PROVIDERS === "1") {
+    const current = await db.execute(
+      sql`SELECT value FROM system_settings WHERE key = 'auth.google'`,
+    );
+    const currentRows = (current as unknown as { rows?: Array<{ value?: unknown }> }).rows ?? [];
+    let merged: Record<string, unknown> = { enabled: true, firebase_enabled: true };
+    if (currentRows.length > 0) {
+      try {
+        merged = {
+          ...(JSON.parse(String(currentRows[0].value ?? "{}")) as Record<string, unknown>),
+          enabled: true,
+          // has_config for google = a non-secret field the providers filter
+          // reads (firebase_enabled is the ONLY google field) — without it
+          // the filter drops the provider even when enabled.
+          firebase_enabled: true,
+        };
+      } catch {
+        /* corrupt row — the fresh shape wins */
+      }
+    }
+    await db.execute(
+      sql`INSERT INTO system_settings (key, value, updated_at)
+        VALUES ('auth.google', ${JSON.stringify(merged)}, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(merged)}, updated_at = NOW()`,
+    );
+    console.log(
+      "✅ Enabled the Google auth provider (system_settings.auth.google — SEED_ENABLE_AUTH_PROVIDERS=1)",
+    );
+  } else {
+    console.log(
+      "ℹ️  Auth providers left as-booted (set SEED_ENABLE_AUTH_PROVIDERS=1 to enable google)",
+    );
+  }
 
   // ── Summary ─────────────────────────────────────────────────────────────────
   const [{ count: adminCount }] = await db.select({ count: count() }).from(adminUsersTable);
   const [{ count: productCount }] = await db.select({ count: count() }).from(productsTable);
   const [{ count: userCount }] = await db.select({ count: count() }).from(usersTable);
+  const [{ count: unitCountFinal }] = await db
+    .select({ count: count() })
+    .from(inventoryTable)
+    .where(eq(inventoryTable.isSold, false));
 
   console.log("\n── Database Summary ────────────────────────────────");
   console.log(`   Admins:   ${adminCount ?? 0}`);
   console.log(`   Products: ${productCount ?? 0}`);
+  console.log(`   Units:    ${unitCountFinal ?? 0} (unsold, deliverable)`);
   console.log(`   Users:    ${userCount ?? 0}`);
   console.log("────────────────────────────────────────────────────");
   console.log("\n✅ Seed complete!\n");
