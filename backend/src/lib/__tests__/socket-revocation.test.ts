@@ -17,6 +17,7 @@ import {
   type SocketIdentity,
 } from "../socket";
 import { __clearSessionValidityCacheForTests } from "../session-liveness";
+import { __clearAdminRowCacheForTests } from "../admin-user-row-cache";
 
 /**
  * 93-A1 S1 (round-93) — Socket.IO revocation parity.
@@ -76,6 +77,10 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetTestDb();
   __clearSessionValidityCacheForTests();
+  // R192: the admin row cache carries the same cross-test poisoning
+  // hazard the session cache has (resetTestDb restarts identity → the
+  // next test's admin reuses id 1) — clear it for the same reason.
+  __clearAdminRowCacheForTests();
 });
 
 describe("authenticateSocketHandshake — sessionId capture (93-A1 S1)", () => {

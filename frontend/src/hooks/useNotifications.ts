@@ -13,6 +13,19 @@ import { NOTIFICATION_NEW_EVENT } from "@/lib/socket-events";
 import { SOCKET_RESYNC_EVENT } from "@/lib/socket";
 import { toast } from "@/hooks/useToast";
 
+/**
+ * The bell's visible-tab poll cadence.
+ *
+ * R192 (the Neon compute-quota incident): 60 s → 120 s. The poll is
+ * foreground-only and every tab-switch-back refetches immediately
+ * (the visibilitychange handler), so the badge still FEELS live; the
+ * halved cadence halves the per-open-tab DB-read load against a
+ * scale-to-zero database (each poll = session probe + uncached
+ * notifications SELECT). The socket accelerators
+ * (NOTIFICATION_NEW_EVENT on socket-bearing pages) are unchanged.
+ */
+const NOTIFICATION_POLL_INTERVAL_MS = 120_000;
+
 export interface Notif {
   id: number;
   type: string;
@@ -194,7 +207,10 @@ export function useNotifications({ token }: { token: string | null }) {
       return;
     }
     void fetchAll();
-    let id: ReturnType<typeof setInterval> | null = setInterval(() => void fetchAll(), 60_000);
+    let id: ReturnType<typeof setInterval> | null = setInterval(
+      () => void fetchAll(),
+      NOTIFICATION_POLL_INTERVAL_MS,
+    );
     const onSocketNotification = () => void fetchAll();
     window.addEventListener(NOTIFICATION_NEW_EVENT, onSocketNotification);
     // R154 (P5): the reconnect-resync gap — a same-tab WiFi blip on a
@@ -214,7 +230,7 @@ export function useNotifications({ token }: { token: string | null }) {
         }
       } else {
         void fetchAll();
-        if (id === null) id = setInterval(() => void fetchAll(), 60_000);
+        if (id === null) id = setInterval(() => void fetchAll(), NOTIFICATION_POLL_INTERVAL_MS);
       }
     };
     document.addEventListener("visibilitychange", onVisibility);

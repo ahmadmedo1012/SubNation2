@@ -256,9 +256,13 @@ describe("R140 central — non-money section rules joined the /20 hairline famil
     expect(RECENT_ORDERS_STRIP).not.toContain("divide-border/15");
   });
 
-  it("FaqSection's answer divider + not-found's quick-links rule ride /20 (the /40 scatter is gone)", () => {
-    expect(FAQ_SECTION).toContain("border-t border-border/20");
-    expect(FAQ_SECTION).not.toContain("border-t border-border/40");
+  it("FaqSection's answer divider (R192: via the shared FaqAccordion) + not-found's quick-links rule ride /20 (the /40 scatter is gone)", () => {
+    // R192 (T2-3): the divider's single source of truth is now the
+    // shared component; FaqSection renders it via <FaqAccordion />.
+    const faqAccordion = live("src/components/faq-accordion.tsx");
+    expect(faqAccordion).toContain("border-t border-border/20");
+    expect(faqAccordion).not.toContain("border-t border-border/40");
+    expect(FAQ_SECTION).toContain("<FaqAccordion items={SUPPORT_FAQ} />");
     expect(NOT_FOUND).toContain("border-t border-border/20");
     expect(NOT_FOUND).not.toContain("border-t border-border/40");
   });

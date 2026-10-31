@@ -1,9 +1,12 @@
-import { adminUsersTable, db } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import type { NextFunction, Request, Response } from "express";
 import { ErrorCode, createErrorResponse } from "../lib/errors";
 import { verifyAdminTokenDetailed } from "../lib/jwt";
 import { isValidAdminSession } from "../lib/admin-session";
+// R192 (Neon compute-quota incident): the row read rides the 30 s
+// active-only cache — see lib/admin-user-row-cache.ts for the exact
+// semantics (soft-disable propagates within ≤ 30 s: the same window the
+// admin SESSION row already carries at 60 s, R104 AG5-4, halved).
+import { getAdminRowCached } from "../lib/admin-user-row-cache";
 
 export interface AdminAuthenticatedRequest extends Request {
   adminId: number;
@@ -112,17 +115,11 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   // is_active so soft-disabled admins lose access in real time, and
   // (c) read the latest permissions array. One indexed PK lookup —
   // negligible vs the JWT verify above on the same request.
-  const [admin] = await db
-    .select({
-      id: adminUsersTable.id,
-      username: adminUsersTable.username,
-      role: adminUsersTable.role,
-      isActive: adminUsersTable.isActive,
-      permissions: adminUsersTable.permissions,
-    })
-    .from(adminUsersTable)
-    .where(eq(adminUsersTable.id, result.payload.adminId))
-    .limit(1);
+  // R192: served from the 30 s ACTIVE-only row cache — the admin UI's
+  // 15-60 s polling no longer keeps a scale-to-zero database awake
+  // (soft-disable propagates within ≤ 30 s — half the session row's
+  // own 60 s window).
+  const admin = await getAdminRowCached(result.payload.adminId);
 
   if (!admin) {
     res.status(401).json(createErrorResponse("جلسة الإدارة غير صالحة", ErrorCode.INVALID_TOKEN));

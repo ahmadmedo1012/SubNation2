@@ -40,6 +40,15 @@ const SocketInitializer = lazyWithRetry(() =>
   import("@/components/SocketInitializer").then((m) => ({ default: m.SocketInitializer })),
 );
 
+// R192 (T2-1): the global connectivity cue — lazy like every other
+// chrome piece (never first-paint content; a first-paint-offline boot is
+// covered by the PWA offline shell, and the pill appears on idle).
+const ConnectivityBanner = lazyWithRetry(() =>
+  import("@/components/layout/ConnectivityBanner").then((m) => ({
+    default: m.ConnectivityBanner,
+  })),
+);
+
 /**
  * R104 (free-tier sleep economics): the deferral mount is now
  * ADMIN-ONLY. Anonymous visitors AND regular authenticated users
@@ -133,6 +142,41 @@ export function IdleToaster() {
     <ErrorBoundary fallback={null}>
       <Suspense fallback={null}>
         <Toaster />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+/**
+ * R192 (T2-1): idle-mounted ConnectivityBanner — the same deferral
+ * contract as IdleToaster above (requestIdleCallback with a 2 s
+ * timeout fallback; an ErrorBoundary so a render throw can never
+ * unmount the tree; null until mounted). Renders null while
+ * online-and-stable — the chunk load is its only steady-state cost.
+ */
+export function DeferredConnectivityBanner() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    type IdleWindow = Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const w = window as IdleWindow;
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(() => setMounted(true), { timeout: 2_000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const timer = setTimeout(() => setMounted(true), 2_000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!mounted) return null;
+
+  return (
+    <ErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        <ConnectivityBanner />
       </Suspense>
     </ErrorBoundary>
   );

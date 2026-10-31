@@ -299,8 +299,10 @@ describe("R-140-f — the socket initializer rides a boundary (the last bare laz
     expect(SHELL).toContain(
       "<ErrorBoundary fallback={null}>\n      <Suspense fallback={null}>\n        <SocketInitializer />",
     );
-    // Two slim chrome boundaries now: Toaster (R130 A5-F5) + socket.
-    expect((SHELL.match(/<ErrorBoundary fallback=\{null\}>/g) ?? []).length).toBe(2);
+    // Three slim chrome boundaries now: Toaster (R130 A5-F5) + socket +
+    // the connectivity cue (R192 T2-1 — the same convention: a chrome
+    // render throw must never cost the tree).
+    expect((SHELL.match(/<ErrorBoundary fallback=\{null\}>/g) ?? []).length).toBe(3);
   });
 
   it("a SocketInitializer render throw is CONTAINED — nothing escapes to the React root", async () => {

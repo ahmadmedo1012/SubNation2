@@ -97,22 +97,29 @@ describe("R139 — category landing: the page-title anchor + hero-card family", 
     expect(category).not.toContain("hover:bg-secondary/40");
   });
 
-  it("card frames rest at /60 (empty state + FAQ accordion) — zero /55 left in live markup", () => {
+  it("card frames rest at /60 (empty state + FAQ accordion via the R192 shared component) — zero /55 left in live markup", () => {
     expect(category).toContain(
       '"bg-card border border-border/60 rounded-2xl py-12 px-4 text-center float-in"',
     );
-    expect(category).toContain(
-      '"group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none float-in"',
+    // R192 (T2-3): the FAQ card frame's single source of truth is the
+    // shared FaqAccordion — the /60 edge + marker suppression live
+    // there; this page passes float-in through itemClassName.
+    const faqAccordion = live(read("src/components/faq-accordion.tsx"));
+    expect(faqAccordion).toContain(
+      "group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none",
     );
+    expect(category).toContain('itemClassName="float-in"');
     expect(category).not.toMatch(/border-border\/55\b/);
+    expect(faqAccordion).not.toMatch(/border-border\/55\b/);
   });
 
   it("the chip geometry keeps the storefront 44px tap floor (min-h-11 on every chip surface)", () => {
-    // Four live surfaces: the sibling-chip Link, the neutral escape
-    // button, the error branch's FetchErrorCard retry override, and
-    // R177's unknown-category recovery Link (the last bare text escape
-    // hatch — now the same 44px floor).
-    expect(category.match(/min-h-11/g) ?? []).toHaveLength(4);
+    // R192 (T2-2) added TWO floors: the browse controls' متوفر فقط
+    // chip + the sort select's h-11 (the home bar's own vocabulary).
+    // Live surfaces: the sibling-chip Link, the neutral escape button,
+    // the error branch's FetchErrorCard retry override, R177's
+    // unknown-category recovery Link, the متوفر فقط chip — five.
+    expect(category.match(/min-h-11/g) ?? []).toHaveLength(5);
   });
 });
 

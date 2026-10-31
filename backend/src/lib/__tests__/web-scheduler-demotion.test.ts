@@ -128,6 +128,11 @@ beforeEach(() => {
   // this suite exercises — delete it so the election path is the default
   // under test no matter what the surrounding environment carries.
   delete process.env.SINGLE_INSTANCE_MODE;
+  // R192 (Neon compute-quota incident): with the flag unset AND no
+  // REDIS_URL, startWebSchedulers now takes the single-instance SAFE
+  // DEFAULT — this suite exercises the ELECTION wiring, so pin the
+  // Redis-fleet shape explicitly.
+  process.env.REDIS_URL = "redis://test-fleet.example:6379";
   // R104 (AG6-6): zero the boot one-shot deferral (real timers here).
   process.env.BOOT_ONE_SHOT_DELAY_MS = "0";
   capturedOptions = {};
@@ -150,6 +155,7 @@ afterEach(async () => {
   }
   delete process.env.DISABLE_WEB_SCHEDULERS;
   delete process.env.SINGLE_INSTANCE_MODE;
+  delete process.env.REDIS_URL;
 });
 
 describe("R6 — startWebSchedulers demotion wiring", () => {

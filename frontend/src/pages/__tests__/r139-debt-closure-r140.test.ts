@@ -150,10 +150,14 @@ describe("R140 (b, img) — the flash card image: lazy/async/descriptive-alt ver
 });
 
 describe("R140 (c) — storefront non-money section rules: ONE hairline family (/20, the receipt-grade precedent)", () => {
-  it("category's two section rules ride border-border/20 — the FAQ answer divider + the sibling-nav boundary", () => {
-    expect(category).toContain(
+  it("category's two section rules ride border-border/20 — the FAQ answer divider (via the R192 shared FaqAccordion) + the sibling-nav boundary", () => {
+    // R192 (T2-3): the FAQ markup converged onto the shared component —
+    // the divider line's single source of truth is faq-accordion.tsx.
+    const faqAccordion = live(read("src/components/faq-accordion.tsx"));
+    expect(faqAccordion).toContain(
       "px-4 pt-1 pb-4 border-t border-border/20 text-sm text-muted-foreground leading-relaxed",
     );
+    expect(category).toContain("<FaqAccordion items={meta.faqs}");
     expect(category).toContain('<section className="pt-6 border-t border-border/20">');
   });
 

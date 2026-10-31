@@ -33,7 +33,10 @@ import {
 
 function CartSkeleton() {
   return (
-    <div className="space-y-2.5">
+    // R192 (T1-4): the loading swap announces itself to AT like every
+    // family sibling (the RouteSkeleton role="status" aria-live idiom,
+    // R135 FE-2) — this composite shell was the last silent one.
+    <div className="space-y-2.5" role="status" aria-live="polite">
       {Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i}

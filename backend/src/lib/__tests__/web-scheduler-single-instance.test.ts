@@ -256,10 +256,10 @@ describe("R108 — SINGLE_INSTANCE_MODE=true: ungated in-process schedulers", ()
     expect(getSchedulerState()).toMatchObject({ mode: "single", active: true });
   });
 
-  it.each(["false", "1", "yes", "garbage", undefined])(
+  it.each(["false", "1", "yes", "garbage"])(
     "SINGLE_INSTANCE_MODE=%s takes the r107 ELECTION path (mode embedded)",
     async (value) => {
-      if (value !== undefined) process.env.SINGLE_INSTANCE_MODE = value;
+      process.env.SINGLE_INSTANCE_MODE = value;
       const handle = await startWebSchedulers(fakeRedis as never);
       trackHandle(handle);
 
@@ -270,6 +270,44 @@ describe("R108 — SINGLE_INSTANCE_MODE=true: ungated in-process schedulers", ()
       expect(handle.leadership?.instanceId).toBe("test-instance");
     },
   );
+
+  // ── R192 (the Neon compute-quota incident): the SAFE DEFAULT ─────────
+  //
+  // SINGLE_INSTANCE_MODE was documented-but-optional: an operator who
+  // never set it in the Coolify env panel silently ran the PG
+  // leader-lease refresher — a scheduler_leader_lease UPDATE every 25 s,
+  // 24/7, the code's own comment calls it "keeps Neon's compute awake
+  // 24/7". The default is now single-instance whenever there is no
+  // Redis fleet to elect against. Explicit values keep their meaning.
+  it("flag UNSET + REDIS_URL unset → single-instance (the R192 safe default — no PG lease, no election)", async () => {
+    // The real no-Redis shape: null client AND no REDIS_URL (the
+    // beforeEach deletes it) — exactly the Coolify production shape the
+    // incident ran in.
+    const handle = await startWebSchedulers(null as never);
+    trackHandle(handle);
+
+    expect(acquireSchedulerLeadership).not.toHaveBeenCalled();
+    expect(getSchedulerState()).toMatchObject({ mode: "single", active: true });
+  });
+
+  it("flag UNSET + REDIS_URL set → election (a Redis fleet exists to elect against)", async () => {
+    process.env.REDIS_URL = "redis://test-fleet.example:6379";
+    const handle = await startWebSchedulers(fakeRedis as never);
+    trackHandle(handle);
+
+    expect(acquireSchedulerLeadership).toHaveBeenCalledTimes(1);
+    expect(getSchedulerState()).toMatchObject({ mode: "embedded", active: true });
+  });
+
+  it('explicit "false" keeps the election path even without Redis (operator override wins over the safe default)', async () => {
+    process.env.SINGLE_INSTANCE_MODE = "false";
+    delete process.env.REDIS_URL;
+    const handle = await startWebSchedulers(null as never);
+    trackHandle(handle);
+
+    expect(acquireSchedulerLeadership).toHaveBeenCalledTimes(1);
+    expect(getSchedulerState()).toMatchObject({ mode: "embedded", active: true });
+  });
 
   it("no-Redis shape: heartbeat skipped AND the 30 s recovery poll never armed (no leaked interval)", async () => {
     process.env.SINGLE_INSTANCE_MODE = "true";

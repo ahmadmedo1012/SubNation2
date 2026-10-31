@@ -1,4 +1,7 @@
 import { ProductCard } from "@/components/ProductCard";
+import { FaqAccordion } from "@/components/faq-accordion";
+import { Select } from "@/components/ui/select";
+import { SORTS, readInitialFiltersFromUrl } from "@/components/home/catalog-filters";
 import { Button } from "@/components/ui/button";
 import { FetchErrorCard } from "@/components/ui/fetch-error-card";
 import { ProductCardShell } from "@/components/ui/route-skeleton";
@@ -12,13 +15,16 @@ import {
   ChevronLeft,
   GraduationCap,
   Music2,
+  Package,
+  Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   TrendingUp,
   Tv2,
 } from "lucide-react";
 import { keepPreviousData } from "@tanstack/react-query";
-import { useEffect, useMemo, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { Link, useParams, useLocation } from "wouter";
 
 // ── Category accent system ────────────────────────────────────────────────
@@ -140,10 +146,27 @@ export default function CategoryPage() {
   const meta = isKnownSlug(slug) ? CATEGORY_META[slug] : null;
   const theme = meta ? CATEGORY_THEME[meta.slug] : null;
 
-  // available_only=false so the grid also shows out-of-stock items.
-  // ProductCard's mute treatment + 'نفد المخزون' badge handle the
+  // R192 (T2-2 — browse-quality parity with home's catalog bar): the
+  // category landing now carries the sort select + the متوفر فقط chip
+  // (home keeps the single search data-owner role — no search here).
+  // Seed from the URL on mount (home's R98-04 reader, sort/availableOnly
+  // legs — the whitelists live there) and mirror back below.
+  const [initialFilters] = useState(readInitialFiltersFromUrl);
+  const [sort, setSort] = useState(initialFilters.sort);
+  const [availableOnly, setAvailableOnly] = useState(initialFilters.availableOnly);
+
+  // available_only=false (the default) so the grid also shows out-of-stock
+  // items — ProductCard's mute treatment + 'نفد المخزون' badge handle the
   // visual differentiation; an empty category page would be a soft-404.
-  const params = { ...(meta ? { category: meta.slug } : {}), fields: "list" as const };
+  // R192: the explicit chip flips it to true server-side (the same param
+  // home's toggle rides), and an explicit sort rides the backend's own
+  // ordering.
+  // Home's exact param shape (Record<string, string> — the generated
+  // client's accepted form; available_only rides the string "true").
+  const params: Record<string, string> = { fields: "list" };
+  if (meta) params.category = meta.slug;
+  if (sort) params.sort = sort;
+  if (availableOnly) params.available_only = "true";
   const {
     data: products = [],
     isLoading,
@@ -162,6 +185,26 @@ export default function CategoryPage() {
       staleTime: 3 * 60 * 1000,
     },
   });
+
+  // R192 (T2-2): mirror the committed browse filters into the
+  // querystring — home's R98-04 replaceState idiom (invisible to the
+  // router; Back leaves the page, not the filter clicks).
+  useEffect(() => {
+    if (!meta) return;
+    const qs = new URLSearchParams();
+    if (sort) qs.set("sort", sort);
+    if (availableOnly) qs.set("available_only", "true");
+    const query = qs.toString();
+    try {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}`,
+      );
+    } catch {
+      // Exotic embedding contexts — filters still work in-memory.
+    }
+  }, [meta, sort, availableOnly]);
 
   // ── Structured data ──────────────────────────────────────────────
   // R-140-g (JSON-LD completeness audit): the mature full set for a
@@ -205,10 +248,15 @@ export default function CategoryPage() {
   // is stable, so within each group the backend's default order
   // (الأحدث) is preserved. The category page exposes no user-facing
   // sort, so there is no explicit ordering intent to respect here.
-  const displayProducts = useMemo(
-    () => [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available)),
-    [products],
-  );
+  // R192 (T2-2): home's exact rule — an explicit sort is the user's
+  // ordering intent (the backend's own); the available-first re-sort
+  // leads only the DEFAULT browse view (R122 A11-F3 keeps its contract:
+  // /category/streaming opens with stock leading, نفد never walls the
+  // page; Array#sort is stable so the backend order holds within groups).
+  const displayProducts = useMemo(() => {
+    if (sort) return products;
+    return [...products].sort((a, b) => Number(b.is_available) - Number(a.is_available));
+  }, [products, sort]);
 
   // R168: GA4 view_item_list — one impression per committed category
   // listing (the slug the landing page owns). Fires on the query's
@@ -403,6 +451,16 @@ export default function CategoryPage() {
               كل منتجات هذه الفئة نفدت مؤقتاً — يتجدّد المخزون باستمرار
             </p>
           ))}
+        {/* R192 (T2-2): the browse-quality controls — home's sort trio +
+            its متوفر فقط chip, category-scoped (search stays home's). */}
+        {!isLoading && products.length > 0 && (
+          <BrowseControls
+            sort={sort}
+            onSortChange={setSort}
+            availableOnly={availableOnly}
+            onAvailableOnlyChange={setAvailableOnly}
+          />
+        )}
         {isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -450,8 +508,10 @@ export default function CategoryPage() {
         )}
       </section>
 
-      {/* FAQ accordion — exact support-page pattern, with the category's
-          accent on the heading border so it threads through visually. */}
+      {/* FAQ accordion — the shared support-page pattern (R192 T2-3:
+          one FaqAccordion component; this lane adds the float-in stagger),
+          with the category's accent on the heading border so it threads
+          through visually. */}
       <section aria-labelledby="faq-heading" className="max-w-3xl mb-8">
         <h2
           id="faq-heading"
@@ -464,37 +524,7 @@ export default function CategoryPage() {
         <p className="text-xs text-muted-foreground mb-4">
           الأسئلة الأكثر شيوعاً عن اشتراكات {meta.label} — اضغط على أي سؤال لرؤية الإجابة.
         </p>
-        <div className="space-y-2">
-          {meta.faqs.map((item, i) => (
-            <details
-              key={i}
-              /* R139 (precision): border-border/55 → /60 — the resting
-                 card-frame family value (the /55 scatter r139 retired
-                 lane-wide). The support lane's FaqSection twin still rides
-                 /55 — the support lane owns that convergence; the family
-                 value wins here first. Summary hover:bg-muted/15 stays
-                 byte-identical to that twin (a matched pair). */
-              className="group bg-card border border-border/60 rounded-2xl overflow-hidden [&_summary::-webkit-details-marker]:hidden [&_summary]:list-none float-in"
-            >
-              <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/15 transition-colors select-none">
-                <span className="text-sm font-bold flex-1">{item.question}</span>
-                <ChevronLeft className="w-4 h-4 text-muted-foreground transition-transform group-open:-rotate-90 shrink-0" />
-              </summary>
-              {/* R140 (r139 debt closure — the section-rule scatter): the
-                  answer divider joins the ONE storefront hairline family
-                  value /20 — the money-path receipt-grade precedent
-                  (divide-border/20 on every statement row; terms.tsx's
-                  two section rules already ride /20). /40 was the
-                  pre-r140 scatter r139-k flagged. FLAGGED for the
-                  orchestrator: the support lane's FaqSection twin
-                  (components/support/FaqSection.tsx:37) still rides /40 —
-                  both twins must land on /20 to stay a matched pair. */}
-              <div className="px-4 pt-1 pb-4 border-t border-border/20 text-sm text-muted-foreground leading-relaxed">
-                {item.answer}
-              </div>
-            </details>
-          ))}
-        </div>
+        <FaqAccordion items={meta.faqs} itemClassName="float-in" />
       </section>
 
       {/* Sibling-categories nav — each chip uses its OWN category accent
@@ -557,4 +587,83 @@ function isKnownSlug(s: string | undefined): s is CategoryMeta["slug"] {
   // a hand-maintained literal list here once shadowed five live
   // categories behind a 404 surface (r100).
   return typeof s === "string" && KNOWN_SLUGS.has(s);
+}
+
+/**
+ * R192 (T2-2): the category browse controls — home's CatalogFiltersBar
+ * vocabulary scoped to this page: the shared ui/select sort control
+ * (SlidersHorizontal affordance, the R138 quiet-nav overrides) + the
+ * متوفر فقط chip (the exact calm-tint vocabulary both bars speak).
+ * Search deliberately does NOT appear — home owns the single search
+ * data source; the category's escape hatch is the sibling-chips row.
+ */
+function BrowseControls({
+  sort,
+  onSortChange,
+  availableOnly,
+  onAvailableOnlyChange,
+}: {
+  sort: string;
+  onSortChange: (next: string) => void;
+  availableOnly: boolean;
+  onAvailableOnlyChange: (next: boolean) => void;
+}) {
+  // T1-3: the search affordance — a compact field that hands the query
+  // to home's catalog (?search= is a first-class deep-link surface,
+  // advertised by the WebSite SearchAction JSON-LD). Home stays the
+  // single search data owner; this is navigation, not a second search.
+  const [, navigate] = useLocation();
+  const [query, setQuery] = useState("");
+  const submitSearch = () => {
+    const q = query.trim();
+    if (!q) return;
+    navigate(`/?search=${encodeURIComponent(q)}`);
+  };
+  return (
+    <div className="flex items-center gap-2 mb-4 flex-wrap">
+      <div className="relative flex-1 min-w-[140px]">
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submitSearch();
+          }}
+          aria-label="ابحث في كل المتجر"
+          placeholder="ابحث في كل المتجر…"
+          enterKeyHint="search"
+          className="w-full h-11 ps-9 pe-3 rounded-xl bg-card border border-border/50 hover:border-border/70 focus:border-border/75 text-sm"
+        />
+      </div>
+      <div className="relative shrink-0">
+        <SlidersHorizontal className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        <Select
+          value={sort}
+          onChange={(e) => onSortChange(e.target.value)}
+          aria-label="ترتيب منتجات الفئة"
+          title="ترتيب منتجات الفئة"
+          className="ps-9 h-11 font-semibold border-border/50 hover:border-border/70"
+        >
+          {SORTS.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <button
+        onClick={() => onAvailableOnlyChange(!availableOnly)}
+        aria-pressed={availableOnly}
+        className={`flex items-center gap-1.5 px-3.5 py-1.5 min-h-11 shrink-0 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-150 press-spring ${
+          availableOnly
+            ? "bg-status-success/15 text-status-success border border-status-success/30 font-bold"
+            : "bg-muted/30 border border-border/30 text-muted-foreground hover:text-foreground hover:border-border/70 hover:bg-muted/60"
+        }`}
+      >
+        <Package className="w-3.5 h-3.5" />
+        متوفر فقط
+      </button>
+    </div>
+  );
 }

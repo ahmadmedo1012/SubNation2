@@ -47,20 +47,34 @@
  *   authorizeJoinUser, authorizeJoinAdmin, isOriginAllowed —
  *   all exported for unit testing without spinning up a server.
  */
-import { adminUsersTable, db } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import type { Socket } from "socket.io";
 import { verifyAdminTokenDetailed, verifyUserTokenDetailed } from "../jwt";
 import { logger } from "../logger";
 import { hasPermission } from "../permissions";
 import { isSessionRowLive } from "../session-liveness";
 import { isValidAdminSession } from "../admin-session";
+// R192 (Neon compute-quota incident): the admin row read rides the 30 s
+// ACTIVE-only cache (lib/admin-user-row-cache.ts) — the periodic socket
+// re-verify no longer queries admin_users per pass (soft-disable
+// propagates within ≤ 30 s + the re-verify interval itself).
+import { getAdminRowCached } from "../admin-user-row-cache";
 import { getRemoteAddr, recordRejection } from "./rejections";
 
 /** How often each connected socket's identity is re-verified against the
  * DB (sessions row / admin is_active). 93-A1 S1 recommended "e.g. every 5
- * min" — cheap indexed lookups (session probe is additionally 60 s-cached). */
-export const SOCKET_REVERIFY_INTERVAL_MS = 5 * 60_000;
+ * min" — cheap indexed lookups (session probe is additionally 60 s-cached).
+ *
+ * R192 (the Neon compute-quota incident): 5 min was EXACTLY the wrong
+ * cadence for a scale-to-zero database — Neon's autosuspend window is
+ * ~5 min, so one query per 5 min per connected socket reset the idle
+ * timer forever: a single admin tab or a wallet/order page left open
+ * kept the compute endpoint awake 24/7 (12 queries/hour/socket, and the
+ * admin panel holds a persistent socket). At 15 min the endpoint sleeps
+ * ~10 of every 15 minutes between probes; a wake costs seconds of
+ * compute, not an hour. Revocation SLA moves 5 → 15 min on LIVE SOCKETS
+ * only — every HTTP navigation still gates through requireUser /
+ * requireAdmin instantly, and room-join re-checks fire at join time. */
+export const SOCKET_REVERIFY_INTERVAL_MS = 15 * 60_000;
 
 /** AUD103-3-F2 (r103): scope-gated room for live admin ALERT broadcasts.
  * "admin-room" stays open to every active admin (counter-only stats
@@ -364,11 +378,7 @@ export async function verifySocketIdentityLive(
           return result;
         }
       }
-      const [admin] = await db
-        .select({ isActive: adminUsersTable.isActive, permissions: adminUsersTable.permissions })
-        .from(adminUsersTable)
-        .where(eq(adminUsersTable.id, identity.adminId))
-        .limit(1);
+      const admin = await getAdminRowCached(identity.adminId);
       if (!admin) {
         result.ok = false;
         result.adminRevoked = true;
@@ -380,7 +390,8 @@ export async function verifySocketIdentityLive(
       } else {
         // AUD103-3-F2 (r103): carry the live scopes out so the caller can
         // reconcile the scope-gated alert room without a second read.
-        result.adminPermissions = admin.permissions;
+        // (null from the jsonb column → undefined on the result type.)
+        result.adminPermissions = admin.permissions ?? undefined;
       }
     } catch (err) {
       logger.warn(

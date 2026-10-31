@@ -85,11 +85,14 @@ export default function AdminRiskPage() {
     queryKey: ["admin-risk-dashboard"],
     queryFn: async () =>
       adminFetchJson<DashboardResponse>(`/api/admin/risk/dashboard?hours=24`, { headers }),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
     // 96-F7 (R96 M11): 30s polling must pause when the tab is hidden —
     // an idle risk-monitor tab on a phone burned 2 requests/minute on
     // mobile data. Every other admin poller (orders/products/alerts)
     // already sets this to false.
+    // R192 (Neon compute-quota incident): 30 s → 60 s — halves the
+    // DB-backed dashboard reads of an open monitoring tab against a
+    // scale-to-zero database (one-minute granularity is the ops norm).
     refetchIntervalInBackground: false,
     // R123 (E3 P3g): no token ⇒ no fetch (see header comment). R125-I4
     // (A3-11): no users scope ⇒ no fetch either.

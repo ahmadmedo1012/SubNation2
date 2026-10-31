@@ -138,7 +138,24 @@ export async function startWebSchedulers(
   // periodic Neon coordination queries — jobs still run here on their normal
   // cadence. The election path below stays fully intact for future
   // multi-instance (unset the flag to get r107 behavior back).
-  const singleInstance = (process.env.SINGLE_INSTANCE_MODE ?? "").toLowerCase() === "true";
+  //
+  // R192 (the Neon compute-quota incident): single-instance is now the
+  // SAFE DEFAULT whenever REDIS_URL is unset — the deployment shape this
+  // project actually runs (one Coolify container, no Redis). Previously
+  // an operator who never set the flag in the Coolify env panel silently
+  // got the PG leader-lease refresher: a scheduler_leader_lease UPDATE
+  // every 25 s, 24/7 — the code's own comment calls out exactly this
+  // ("keeps Neon's compute awake 24/7 — 144 coordination queries/hour"),
+  // and the free-plan allowance does not survive it. With no Redis there
+  // is no second instance to elect against — the election machinery buys
+  // nothing here. Explicit configurations are all preserved:
+  //   SINGLE_INSTANCE_MODE=true  → single (unchanged)
+  //   SINGLE_INSTANCE_MODE=false → election (explicit multi-instance)
+  //   flag unset + REDIS_URL set → election (a Redis fleet exists)
+  //   flag unset + REDIS_URL unset → single (the safe default, NEW)
+  const singleInstanceFlag = (process.env.SINGLE_INSTANCE_MODE ?? "").toLowerCase();
+  const singleInstance =
+    singleInstanceFlag === "true" || (singleInstanceFlag === "" && !process.env.REDIS_URL);
 
   if (disabled) {
     // R146 audit F4: the alerting evaluator starts even under

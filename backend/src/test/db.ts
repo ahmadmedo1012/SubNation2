@@ -571,7 +571,20 @@ export async function execTestSql(statements: string): Promise<void> {
   await client.exec(statements);
 }
 
-/** Wipe all rows + reset identity sequences between tests for pure isolation. */
+/** Wipe all rows + reset identity sequences between tests for pure isolation.
+ *
+ * R192: also drops the admin_users row cache — a module-level TTL cache
+ * would otherwise serve the PREVIOUS test's admin row for the reused
+ * id-1 identity the RESTART IDENTITY produces (the same cross-test
+ * poisoning hazard lib/session-liveness.ts's cache has, cleared the
+ * same way by the suites that import it directly — here centralized so
+ * every admin route test is covered, not just the ones that remember).
+ * Dynamic import: this module IS the @workspace/db alias target, so a
+ * static import of the cache module (which imports @workspace/db) would
+ * be circular; at call time both modules are fully initialized.
+ */
 export async function resetTestDb(): Promise<void> {
   await db.execute(sql.raw(`TRUNCATE TABLE ${TABLES.join(", ")} RESTART IDENTITY CASCADE;`));
+  const { __clearAdminRowCacheForTests } = await import("../lib/admin-user-row-cache");
+  __clearAdminRowCacheForTests();
 }
